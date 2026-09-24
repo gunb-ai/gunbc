@@ -33,12 +33,12 @@ import v2.std.node {
   fold_node_topdown
 }
 import v2.std.compilers.body_lowering {
-  Application,
-  ApplicationRefused,
+  ApplicationSlotsFound,
+  ApplicationSlotsRefused,
   ArrowHead,
   AtomHead,
-  NotApplication,
-  application_read
+  NotApplicationSlots,
+  application_slots
 }
 import std.algebra { Cons, Empty }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -115,11 +115,12 @@ fn local_machine_shape_findings(n: Node, module_qn: Optional<QualifiedName>) -> 
     []
   } else {
     // A refused application may be the construction this gate exists to catch, so it is a
-    // finding, located where application_read refused it -- never read as "not a call".
-    match application_read(site: n) {
-      NotApplication => []
-      ApplicationRefused { diagnostics: d } => Cons { head: d.head, tail: d.tail }
-      Application { view: v } =>
+    // finding, located where the base read refused it -- never read as "not a call". The gate
+    // reads the head only, so it takes application_slots, not the operand-strict application_read.
+    match application_slots(site: n) {
+      NotApplicationSlots => []
+      ApplicationSlotsRefused { diagnostics: d } => Cons { head: d.head, tail: d.tail }
+      ApplicationSlotsFound { slots: v } =>
         match v.head_identity {
           AtomHead { identity: sym } =>
             if sym == ^MachineShape {

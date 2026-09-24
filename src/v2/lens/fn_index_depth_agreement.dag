@@ -8,22 +8,19 @@ import v2.std.collection { Absent, List, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count, symbol_eq }
-import v2.std.compilers.body_lowering {
-  Application,
-  ApplicationRefused,
-  ArrowHead,
-  AtomHead,
-  NotApplication,
-  application_read
-}
+import v2.std.compilers.body_lowering { ArrowHead, AtomHead }
 import v2.std.text { String, string_eq }
 import v2.std.fn_index {
   FnArrowDecl,
+  SkeletonApplicationFound,
+  SkeletonApplicationRefused,
+  SkeletonNotApplication,
   atom_identities_in_node,
   atom_identities_in_subtree,
-  callees_from_node,
+  callees_from_decl,
   fn_arrow_decl_facts_live,
-  param_names_of
+  param_names_of,
+  skeleton_application_read
 }
 
 // THE INSTRUMENT BEHIND TWO CLAIMS IN v2.std.fn_index, so that neither is a transcribed number.
@@ -130,8 +127,8 @@ fn param_collides_with_a_declaration(
 // accumulated list over a 60k-node corpus and did not terminate in twenty minutes. A cost shape
 // that bad is fixed rather than tolerated even in an instrument (DESIGN section 6, bare minimum
 // cost), and the distinct-callee refinement buys nothing a raw count does not already decide.
-// ONE application_read PER NODE, three counts. `refused_applications` is the population the old
-// node_query reader folded into "not a call": a Transform whose shape application_read refuses.
+// ONE skeleton_application_read PER NODE, three counts. `refused_applications` is the population
+// the old node_query reader folded into "not a call": a Transform whose shape the read refuses.
 // It is counted, not dropped, so a non-zero is visible in the tally and refused by the verdict.
 type ChannelState {
   node: Node
@@ -150,11 +147,11 @@ type ChannelCounts {
   refused_applications: Int
 }
 
-fn channel_counts_of(node: Node) -> ChannelCounts {
-  match application_read(site: node) {
-    NotApplication => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 0 }
-    ApplicationRefused { diagnostics: _ } => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 1 }
-    Application { view: v } =>
+fn channel_counts_of(decl: FnArrowDecl, node: Node) -> ChannelCounts {
+  match skeleton_application_read(decl: decl, site: node) {
+    SkeletonNotApplication => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 0 }
+    SkeletonApplicationRefused { diagnostics: _ } => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 1 }
+    SkeletonApplicationFound { application: v } =>
       match v.head_identity {
         AtomHead { identity: _ } => ChannelCounts { call_nodes: 1, resolved_callees: 1, refused_applications: 0 }
         ArrowHead => ChannelCounts { call_nodes: 1, resolved_callees: 0, refused_applications: 0 }
@@ -162,8 +159,8 @@ fn channel_counts_of(node: Node) -> ChannelCounts {
   }
 }
 
-fn channel_step(acc: ChannelState, _edge: Edge, child: ChannelState) -> ChannelState {
-  let here = channel_counts_of(node: child.node)
+fn channel_step(decl: FnArrowDecl, acc: ChannelState, child: ChannelState) -> ChannelState {
+  let here = channel_counts_of(decl: decl, node: child.node)
   ChannelState {
     node: acc.node,
     call_nodes: acc.call_nodes + child.call_nodes + here.call_nodes,
@@ -172,12 +169,13 @@ fn channel_step(acc: ChannelState, _edge: Edge, child: ChannelState) -> ChannelS
   }
 }
 
-fn channel_subtree(node: Node) -> ChannelState {
+fn channel_subtree(decl: FnArrowDecl) -> ChannelState {
+  let node = decl.output
   let below = fold_node(
     n: node,
-    algebra: NodeFold { init: channel_init, step: channel_step }
+    algebra: NodeFold { init: channel_init, step: fn(acc, _edge, child) { channel_step(decl: decl, acc: acc, child: child) } }
   )
-  let root = channel_counts_of(node: node)
+  let root = channel_counts_of(decl: decl, node: node)
   ChannelState {
     node: node,
     call_nodes: below.call_nodes + root.call_nodes,
@@ -220,10 +218,10 @@ fn pick_first_decl(acc: FirstDeclChannel, decl: FnArrowDecl) -> FirstDeclChannel
     FirstDeclChannel {
       decl_name: decl.name,
       subtree_nodes: node_subtree_count(n: decl.output),
-      call_shaped: channel_subtree(node: decl.output).call_nodes,
+      call_shaped: channel_subtree(decl: decl).call_nodes,
       atom_callees: length(
-        xs: callees_from_node(
-          node: decl.output,
+        xs: callees_from_decl(
+          decl: decl,
           terminal_callee_symbols: no_terminal_callees
         ).texts
       )
@@ -280,10 +278,10 @@ fn bounded_compare_step(
   if acc.compared >= bounded_compare_limit {
     acc
   } else {
-    let channel = channel_subtree(node: decl.output)
+    let channel = channel_subtree(decl: decl)
     let atom = length(
-      xs: callees_from_node(
-        node: decl.output,
+      xs: callees_from_decl(
+        decl: decl,
         terminal_callee_symbols: no_terminal_callees
       ).texts
     )
@@ -358,11 +356,11 @@ fn tally_decl(
   let depth_one = length(xs: atom_identities_in_node(node: decl.output))
   let legacy = length(xs: legacy_atoms(node: decl.output))
   let subtree = length(xs: atom_identities_in_subtree(node: decl.output))
-  let channel = channel_subtree(node: decl.output)
+  let channel = channel_subtree(decl: decl)
   let channel_count = channel.resolved_callees
   let deep_callees = length(
-    xs: callees_from_node(
-      node: decl.output,
+    xs: callees_from_decl(
+      decl: decl,
       terminal_callee_symbols: no_terminal_callees
     ).texts
   )
@@ -438,7 +436,7 @@ fn fn_index_depth_agreement() -> ProcessExit {
     )
   } else if tally.param_collisions == 0 {
     exit_failure(
-      reason: "no live declaration references its own parameter by a lexeme that also names a declaration, so the parameter exclusion in callees_from_node excludes nothing"
+      reason: "no live declaration references its own parameter by a lexeme that also names a declaration, so the parameter exclusion in callees_from_decl excludes nothing"
     )
   } else if bounded_channel_compare().channel_refused_total > 0 {
     exit_failure(

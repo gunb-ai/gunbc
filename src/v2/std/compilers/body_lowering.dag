@@ -302,23 +302,97 @@ fn application_refused(reason: Symbol, at: Node) -> ApplicationRead {
   ApplicationRefused { diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: reason, n: at)) }
 }
 
-fn application_read(site: Node) -> ApplicationRead {
+// THE ONE BASE READ, shared by application_read and its skeleton refinement
+// (v2.std.fn_index skeleton_application_read). It decides everything about the application except
+// what a residue OPERAND means: that depends on the route the Node came from, so a residue operand
+// is marked here rather than refused, and each reader above this one decides. Every other defect --
+// a named edge, a missing or non-callee head, a residue head -- refuses here, for every route.
+type OperandSlot
+  = WholeOperand { node: Node }
+  | ResidueOperand { node: Node }
+
+type ApplicationSlots {
+  head: Node
+  head_identity: ApplicationHead
+  operands: List<OperandSlot>
+}
+
+type ApplicationSlotsRead
+  = NotApplicationSlots
+  | ApplicationSlotsFound { slots: ApplicationSlots }
+  | ApplicationSlotsRefused { diagnostics: NonEmptyDiagnostics }
+
+fn application_slots_refused(reason: Symbol, at: Node) -> ApplicationSlotsRead {
+  ApplicationSlotsRefused { diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: reason, n: at)) }
+}
+
+fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
+  fold(site.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: xs, diagnostics: _ } =>
+        match e.label {
+          Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          Positional => outcome_accepted(value: list_snoc_item(xs: xs, item: e.target))
+        }
+    }
+  })
+}
+
+fn operand_slot_of(n: Node) -> OperandSlot {
+  if view_is_surface_residue(n: n) { ResidueOperand { node: n } } else { WholeOperand { node: n } }
+}
+
+fn application_slots(site: Node) -> ApplicationSlotsRead {
   match site.kind {
     ComputationNode { behavior: Transform } =>
-      match view_whole_positional_children(site: site) {
-        Rejected { diagnostics: r } => ApplicationRefused { diagnostics: r }
+      match application_positional_targets(site: site) {
+        Rejected { diagnostics: r } => ApplicationSlotsRefused { diagnostics: r }
         Accepted { value: children, diagnostics: _ } =>
           match children {
-            Empty => application_refused(reason: ^body_view_transform_head_absent, at: site)
-            Cons { head: head, tail: operands } =>
-              match application_head_optional(n: head) {
-                Absent => application_refused(reason: ^body_view_transform_head_not_callee, at: head)
-                Present { value: identity } =>
-                  Application { view: ApplicationView { head: head, head_identity: identity, operands: operands } }
+            Empty => application_slots_refused(reason: ^body_view_transform_head_absent, at: site)
+            Cons { head: head, tail: rest } =>
+              if view_is_surface_residue(n: head) {
+                application_slots_refused(reason: ^body_view_operand_residue, at: head)
+              } else {
+                match application_head_optional(n: head) {
+                  Absent => application_slots_refused(reason: ^body_view_transform_head_not_callee, at: head)
+                  Present { value: identity } =>
+                    ApplicationSlotsFound {
+                      slots: ApplicationSlots {
+                        head: head,
+                        head_identity: identity,
+                        operands: fold(rest, init: Empty, f: fn(xs, n) { list_snoc_item(xs: xs, item: operand_slot_of(n: n)) })
+                      }
+                    }
+                }
               }
           }
       }
-    _ => NotApplication
+    _ => NotApplicationSlots
+  }
+}
+
+// On a lowered body every residue operand is a partial read, so the first one refuses, located.
+fn application_read(site: Node) -> ApplicationRead {
+  match application_slots(site: site) {
+    NotApplicationSlots => NotApplication
+    ApplicationSlotsRefused { diagnostics: d } => ApplicationRefused { diagnostics: d }
+    ApplicationSlotsFound { slots: sl } =>
+      match fold(sl.operands, init: outcome_accepted(value: Empty), f: fn(acc, slot) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: xs, diagnostics: _ } =>
+            match slot {
+              WholeOperand { node: n } => outcome_accepted(value: list_snoc_item(xs: xs, item: n))
+              ResidueOperand { node: n } => view_refusal(reason: ^body_view_operand_residue, at: n)
+            }
+        }
+      }) {
+        Rejected { diagnostics: r } => ApplicationRefused { diagnostics: r }
+        Accepted { value: operands, diagnostics: _ } =>
+          Application { view: ApplicationView { head: sl.head, head_identity: sl.head_identity, operands: operands } }
+      }
   }
 }
 

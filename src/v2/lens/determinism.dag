@@ -24,12 +24,12 @@ import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnost
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v2.std.compilers.body_lowering {
-  Application,
-  ApplicationRefused,
+  ApplicationSlotsFound,
+  ApplicationSlotsRefused,
   ArrowHead,
   AtomHead,
-  NotApplication,
-  application_read
+  NotApplicationSlots,
+  application_slots
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.witness { Holds, Violates, Witness }
@@ -103,9 +103,11 @@ fn determinism_axis_for_primitive_name(sym: Symbol) -> std.determinism.Determini
 }
 
 // WHAT THE LENS COULD CLASSIFY, AND WHAT IT COULD NOT READ. `axis` composes over every node the
-// lens could read; `unread` carries each application v2.std.compilers.body_lowering
-// application_read refused, located at its offending node. A refused application is not "not a
-// call": it may be exactly the order-leaking call, so an `axis` of Deterministic establishes
+// lens could read; `unread` carries each application the base read
+// v2.std.compilers.body_lowering application_slots refused, located at its offending node. The lens
+// reads the HEAD only, so it takes the base read rather than the operand-strict application_read,
+// and one read serves both the compile tree and the fn-arrow skeletons its transitive walk folds.
+// A refused application is not "not a call": it may be exactly the order-leaking call, so an `axis` of Deterministic establishes
 // nothing while `unread` is non-empty, and every consumer below refuses on it (DESIGN §5).
 type DeterminismRead {
   axis: std.determinism.Determinism
@@ -117,11 +119,11 @@ data determinism_read_nothing_unread: List<Diagnostic> = []
 // An Arrow head is a resolved reference to a declared function, not a primitive name, so it joins
 // no PrimitiveIdentity; the callee's own body is classified where that declaration is read.
 fn local_determinism_read(n: Node) -> DeterminismRead {
-  match application_read(site: n) {
-    NotApplication => DeterminismRead { axis: std.determinism.Deterministic, unread: determinism_read_nothing_unread }
-    ApplicationRefused { diagnostics: d } =>
+  match application_slots(site: n) {
+    NotApplicationSlots => DeterminismRead { axis: std.determinism.Deterministic, unread: determinism_read_nothing_unread }
+    ApplicationSlotsRefused { diagnostics: d } =>
       DeterminismRead { axis: std.determinism.Deterministic, unread: Cons { head: d.head, tail: d.tail } }
-    Application { view: v } =>
+    ApplicationSlotsFound { slots: v } =>
       match v.head_identity {
         AtomHead { identity: sym } =>
           DeterminismRead { axis: determinism_axis_for_primitive_name(sym: sym), unread: determinism_read_nothing_unread }

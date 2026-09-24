@@ -21,14 +21,18 @@ import v2.std.algebra {
 import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.body_lowering {
-  Application,
-  ApplicationRefused,
+  ApplicationHead,
+  ApplicationSlotsFound,
+  ApplicationSlotsRefused,
   ArrowHead,
   AtomHead,
-  NotApplication,
-  application_read,
+  NotApplicationSlots,
+  ResidueOperand,
+  WholeOperand,
+  application_slots,
   body_lowering_diagnostic
 }
+import v2.std.node { is_empty_conj_root }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_singleton }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
@@ -67,7 +71,7 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // A CONSUMER THAT GUESSES WRONG GETS A GREEN. A skeleton node is `TypeNode { connective: Conj }`,
 // EXCEPT a named call, which carries `ComputationNode { behavior: Transform }` with the callee
 // identity leaf as its first positional child -- the same carrier `v2.compiler.body_lowering_fold`
-// produces for a lowered body, so `v2.std.compilers.body_lowering` `application_read` is the
+// produces for a lowered body, so `v2.std.compilers.body_lowering` `application_slots` (read through skeleton_application_read below) is the
 // authority over this substrate and a consumer needs no predicate of its own. UNTIL gunbc#10282 THE MARSHAL SPELLED CALLS `Conj` TOO, and the cost of leaving that
 // undocumented is measured rather than hypothetical: every call-shaped lens folding these skeletons
 // was green with no authorable red, and `v2.lens.no_dual_representation_test.scan` grew a private
@@ -204,7 +208,7 @@ fn param_names_of(decl: FnArrowDecl) -> List<String> {
 }
 
 // Immediate atom identities remain the literal/reference reader used by the effect and live-read
-// lenses. Call reachability does not consume this channel: callees_from_node selects call nodes
+// lenses. Call reachability does not consume this channel: callees_from_decl selects call nodes
 // structurally below.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
   let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
@@ -272,27 +276,97 @@ fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
   }
 }
 
+// THE SKELETON ROUTE'S APPLICATION READ, AND WHY ITS INPUT IS THE DECLARATION.
+//
+// This is v2.std.compilers.body_lowering application_slots -- the one base read under
+// application_read -- refined for exactly one fact: the host fn-arrow marshal
+// (v1_compiler.coproduct_reflection marshal_generic) projects only names, parameter references,
+// string literals and call structure, and emits an EMPTY Conj in the slot of every expression it
+// does not project (a non-string literal, a non-parameter variable, `[]`, an anonymous `{}`, a bare
+// `return`, an empty block ...; the population is enumerated in #12202). On a lowered body that
+// shape is residue and application_read refuses it. In a skeleton it is the marshal saying
+// "unprojected", so it reads as SkeletonUnprojected.
+//
+// THE PROVENANCE IS THE INPUT TYPE, NOT A SPELLING. The refinement takes the FnArrowDecl the node
+// belongs to, and an FnArrowDecl can be constructed only by the host marshal, in this module, or in
+// a witness: v2.lens.machine_shape's single-constructor gate refuses the literal anywhere else. So
+// an empty Conj built by any other producer never reaches this arm -- through the body route it is
+// still refused -- and nothing about the Node itself has to be trusted.
+//
+// SkeletonUnprojected carries only its location. It is never readable as a value: a consumer that
+// needs the operand's content refuses, located at it.
+type SkeletonOperand
+  = SkeletonProjected { node: Node }
+  | SkeletonUnprojected { at: Node }
+
+type SkeletonApplication {
+  head: Node
+  head_identity: ApplicationHead
+  operands: List<SkeletonOperand>
+}
+
+type SkeletonApplicationRead
+  = SkeletonNotApplication
+  | SkeletonApplicationFound { application: SkeletonApplication }
+  | SkeletonApplicationRefused { diagnostics: NonEmptyDiagnostics }
+
+type SkeletonOperandsScan
+  = SkeletonOperandsRead { operands: List<SkeletonOperand> }
+  | SkeletonOperandRefused { at: Node }
+
+fn skeleton_application_read(decl: FnArrowDecl, site: Node) -> SkeletonApplicationRead {
+  match application_slots(site: site) {
+    NotApplicationSlots => SkeletonNotApplication
+    ApplicationSlotsRefused { diagnostics: d } => SkeletonApplicationRefused { diagnostics: d }
+    ApplicationSlotsFound { slots: sl } =>
+      match fold(sl.operands, init: SkeletonOperandsRead { operands: [] }, f: fn(acc, slot) {
+        match acc {
+          SkeletonOperandRefused { at: at } => SkeletonOperandRefused { at: at }
+          SkeletonOperandsRead { operands: xs } =>
+            match slot {
+              WholeOperand { node: n } => SkeletonOperandsRead { operands: list_snoc_item(xs: xs, item: SkeletonProjected { node: n }) }
+              ResidueOperand { node: n } =>
+                if is_empty_conj_root(n: n) {
+                  SkeletonOperandsRead { operands: list_snoc_item(xs: xs, item: SkeletonUnprojected { at: n }) }
+                } else {
+                  SkeletonOperandRefused { at: n }
+                }
+            }
+        }
+      }) {
+        SkeletonOperandRefused { at: at } =>
+          SkeletonApplicationRefused {
+            diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: ^body_view_operand_residue, n: at))
+          }
+        SkeletonOperandsRead { operands: ops } =>
+          SkeletonApplicationFound {
+            application: SkeletonApplication { head: sl.head, head_identity: sl.head_identity, operands: ops }
+          }
+      }
+  }
+}
+
 // THREE ANSWERS PER NODE, NOT TWO. A node is not an application, or it is one whose callee is
-// named, or it is one this reader cannot read -- a partial Transform (v2.std.compilers.body_lowering
-// application_read refused it), or a resolved Arrow head, which carries no lexeme to match against
-// a declaration name. The last two used to answer "no callee here" and drop the call out of every
-// reachability walk silently; they are carried as located diagnostics instead (DESIGN §5).
+// named, or it is one this reader cannot read -- a partial Transform (the skeleton read refused
+// it), or a resolved Arrow head, which carries no lexeme to match against a declaration name. The
+// last two used to answer "no callee here" and drop the call out of every reachability walk
+// silently; they are carried as located diagnostics instead (DESIGN §5).
 type CalleeTextRead
   = NoCallee
   | CalleeText { text: String }
   | CalleeUnreadable { diagnostics: NonEmptyDiagnostics }
 
-fn callee_text_read(node: Node) -> CalleeTextRead {
-  match application_read(site: node) {
-    NotApplication => NoCallee
-    ApplicationRefused { diagnostics: d } => CalleeUnreadable { diagnostics: d }
-    Application { view: v } =>
-      match v.head_identity {
+fn callee_text_read(decl: FnArrowDecl, node: Node) -> CalleeTextRead {
+  match skeleton_application_read(decl: decl, site: node) {
+    SkeletonNotApplication => NoCallee
+    SkeletonApplicationRefused { diagnostics: d } => CalleeUnreadable { diagnostics: d }
+    SkeletonApplicationFound { application: a } =>
+      match a.head_identity {
         AtomHead { identity: sym } => CalleeText { text: symbol_lexeme(sym: sym) }
         ArrowHead =>
           CalleeUnreadable {
             diagnostics: diagnostics_singleton(
-              d: body_lowering_diagnostic(reason: ^fn_index_callee_head_unnamed, n: v.head)
+              d: body_lowering_diagnostic(reason: ^fn_index_callee_head_unnamed, n: a.head)
             )
           }
       }
@@ -355,11 +429,11 @@ fn callee_scan_of(read: CalleeTextRead) -> CalleeScan {
 // The cost figures that motivated this shape are not transcribed here. They are re-derived by the
 // arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
 // produces them.
-fn callee_texts_in_subtree(node: Node) -> CalleeScan {
+fn callee_texts_in_decl(decl: FnArrowDecl) -> CalleeScan {
   fold_node(
-    n: node,
+    n: decl.output,
     algebra: NodeFold {
-      init: fn(self) { callee_scan_of(read: callee_text_read(node: self)) },
+      init: fn(self) { callee_scan_of(read: callee_text_read(decl: decl, node: self)) },
       step: fn(acc, _edge, sub) {
         CalleeScan {
           texts: list_append(left: acc.texts, right: sub.texts),
@@ -372,8 +446,8 @@ fn callee_texts_in_subtree(node: Node) -> CalleeScan {
 
 // The refusals ride beside the callee lexemes unfiltered: a terminal roster names callees whose
 // BODIES are not entered, and an unreadable call has no name to be on that roster.
-fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> CalleeScan {
-  let scan = callee_texts_in_subtree(node: node)
+fn callees_from_decl(decl: FnArrowDecl, terminal_callee_symbols: List<String>) -> CalleeScan {
+  let scan = callee_texts_in_decl(decl: decl)
   CalleeScan { texts: fold_list(
     xs: scan.texts,
     empty: empty_fn_arrow_string_list,
@@ -442,8 +516,8 @@ fn call_reachable_decls_go(
             refusals: refusals
           )
         Absent =>
-          let scan = callees_from_node(
-            node: seed.output,
+          let scan = callees_from_decl(
+            decl: seed,
             terminal_callee_symbols: terminal_callee_symbols
           )
           let callee_decls = fold_list(

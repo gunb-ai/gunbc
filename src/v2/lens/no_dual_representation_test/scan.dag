@@ -26,13 +26,15 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.compilers.body_lowering {
-  Application,
-  ApplicationRefused,
-  ApplicationView,
+  ApplicationSlots,
+  ApplicationSlotsFound,
+  ApplicationSlotsRefused,
   ArrowHead,
   AtomHead,
-  NotApplication,
-  application_read
+  NotApplicationSlots,
+  ResidueOperand,
+  WholeOperand,
+  application_slots
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { Char, String }
@@ -41,8 +43,8 @@ import v2.std.text { Char, String }
 data no_declared_pool_files: List<String> = []
 
 // EqOperandUnreadable: the left operand of an equality site is an application this scan could not
-// read -- application_read refused it, or its head is a resolved Arrow with no name to look the
-// callee up by -- so whether the site is BodyAlphaEquivalent is undecided. It is reported, not
+// read -- application_slots refused it, its head is a resolved Arrow with no name to look the
+// callee up by, or its first argument is a residue operand with no content to inline -- so whether the site is BodyAlphaEquivalent is undecided. It is reported, not
 // read as "not a call" (DESIGN §5).
 type DualRepViolationKind
   = SameSymbolEquality
@@ -224,18 +226,27 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
 // THE FORKED CALL PREDICATE IS GONE. This module carried `skeleton_is_call`,
 // `skeleton_is_callee_atom`, `skeleton_callee_target` and `skeleton_call_argument_targets` -- the
 // shared call reader respelled against `TypeNode { connective: Conj }`, because the marshal spelled
-// calls that way. The marshal now emits the call carrier, and the one reader over it is
-// v2.std.compilers.body_lowering `application_read`.
-fn first_call_arg_name(view: ApplicationView) -> String {
-  match list_at_optional(xs: view.operands, index: 0) {
-    Present { value: arg } => node_atom_name(n: arg)
-    Absent => ""
+// calls that way. The marshal now emits the call carrier, and the one base reader over it is
+// v2.std.compilers.body_lowering `application_slots`.
+//
+// The first argument's name is inlined into the callee body, so it must be READ. A residue operand
+// -- in a skeleton, the empty Conj the marshal leaves where it did not project an expression --
+// has no content to read, and makes the equivalence undecided rather than false.
+type FirstArgRead
+  = FirstArgName { name: String }
+  | FirstArgUnreadable
+
+fn first_call_arg_read(slots: ApplicationSlots) -> FirstArgRead {
+  match list_at_optional(xs: slots.operands, index: 0) {
+    Present { value: WholeOperand { node: arg } } => FirstArgName { name: node_atom_name(n: arg) }
+    Present { value: ResidueOperand { node: _ } } => FirstArgUnreadable
+    Absent => FirstArgName { name: "" }
   }
 }
 
 fn body_alpha_equivalent_to_single_arg_call(
   callee: String,
-  view: ApplicationView,
+  arg: String,
   rhs: Node,
   fns: List<DualRepFnFact>
 ) -> Bool {
@@ -243,7 +254,6 @@ fn body_alpha_equivalent_to_single_arg_call(
   if is_empty(xs: rec.name) {
     false
   } else {
-    let arg = first_call_arg_name(view: view)
     let param = first_param_sym(params: rec.params)
     let inlined = replace_param_in_output(
       output: rec.output,
@@ -264,17 +274,21 @@ fn classify_application_lhs(
   site: EqNodeSite,
   fns: List<DualRepFnFact>
 ) -> List<DualRepViolation> {
-  match application_read(site: site.lhs) {
-    NotApplication => empty_dual_rep_violations
-    ApplicationRefused { diagnostics: _ } => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
-    Application { view: v } =>
+  match application_slots(site: site.lhs) {
+    NotApplicationSlots => empty_dual_rep_violations
+    ApplicationSlotsRefused { diagnostics: _ } => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
+    ApplicationSlotsFound { slots: v } =>
       match v.head_identity {
         ArrowHead => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
         AtomHead { identity: sym } =>
-          if body_alpha_equivalent_to_single_arg_call(callee: sym, view: v, rhs: site.rhs, fns: fns) {
-            dual_rep_violation(path: path, fn_name: fn_name, kind: BodyAlphaEquivalent)
-          } else {
-            empty_dual_rep_violations
+          match first_call_arg_read(slots: v) {
+            FirstArgUnreadable => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
+            FirstArgName { name: arg } =>
+              if body_alpha_equivalent_to_single_arg_call(callee: sym, arg: arg, rhs: site.rhs, fns: fns) {
+                dual_rep_violation(path: path, fn_name: fn_name, kind: BodyAlphaEquivalent)
+              } else {
+                empty_dual_rep_violations
+              }
           }
       }
   }
