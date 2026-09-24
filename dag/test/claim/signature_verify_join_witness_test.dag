@@ -5,7 +5,8 @@ import std.types { String, NonEmptyStr }
 import std.measure { byte_size_count }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
-  SignatureVerified, SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, verify_signature,
+  SignatureVerified, SignatureInvalid, VerifyingKeyMalformed, VerifyingKeyUndecodable, SignatureUndecodable,
+  verify_signature,
 }
 
 // THE JOIN between the wire carriers and the .dag curve verifier, claimed on RFC 6979 §A.2.5's
@@ -17,16 +18,35 @@ import extdeps.crypto.signature {
 data rfc6979_key_wire: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BGD-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2eQP-EAi4vJmkGunpVii8ZPLxsgwtfp9Rd6PClNRGIpk=" }
 data rfc6979_sample_sig_wire: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "79SLKqy2qP0RQN2c1F6B1p0sh3tWqvmRw00OqE6vNxb3yxyULWV8QdQ2x6G24p9l8-kA27mv9AZNxKsvhDrNqA==" }
 
-// A 33-octet key presents to the seam as malformed by size, named against the suite's 65; a
-// carrier that is not base64 presents as size 0.
+// A 33-octet key presents to the seam as malformed by size, named against the suite's 65.
 test fn malformed_carriers_refuse_before_the_curve() -> Bool {
   match verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "AwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIj" }, signature: rfc6979_sample_sig_wire, message: "sample") {
-    VerifyingKeyMalformed { declared: d, expected: e } =>
-      byte_size_count(b: d) == 33 && byte_size_count(b: e) == 65
-        && match verify_signature(key: rfc6979_key_wire, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "not*base64" }, message: "sample") {
-          SignatureMalformed { declared: d2, expected: e2 } => byte_size_count(b: d2) == 0 && byte_size_count(b: e2) == 64
-          _ => false
-        }
+    VerifyingKeyMalformed { declared: d, expected: e } => byte_size_count(b: d) == 33 && byte_size_count(b: e) == 65
+    _ => false
+  }
+}
+
+// A carrier that does not base64-decode has no measured size: it refuses naming the carrier, never
+// as Malformed with a size nobody observed (review 70731). Key and signature are told apart.
+test fn an_undecodable_key_refuses_as_undecodable() -> Bool {
+  match verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "not*base64" }, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "AA" }, message: "sample") {
+    VerifyingKeyUndecodable { point_b64url: p } => p == "not*base64"
+    _ => false
+  }
+}
+
+test fn an_undecodable_signature_refuses_as_undecodable() -> Bool {
+  match verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "AA" }, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "not*base64" }, message: "sample") {
+    SignatureUndecodable { b64url: b } => b == "not*base64"
+    _ => false
+  }
+}
+
+// The discriminating control: "==" DOES decode, to zero octets, so size 0 was measured and the
+// refusal stays Malformed with declared 0 -- the undecodable arm is not a catch-all for small keys.
+test fn an_empty_decoded_key_stays_malformed_at_zero() -> Bool {
+  match verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "==" }, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "AA" }, message: "sample") {
+    VerifyingKeyMalformed { declared: d, expected: e } => byte_size_count(b: d) == 0 && byte_size_count(b: e) == 65
     _ => false
   }
 }
