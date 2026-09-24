@@ -13,7 +13,7 @@ import v2.lens.registry {
   MetaExecConfinement,
   IdenticalVariantPayload, InertCarrier, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LeafModelVerification, LifecycleCarrier, LiveReadClassification,
-  MachineShape, MockTotality, MutationAdequacy, NonFoldResidue, ProductionQualificationOriginProbe,
+  SingleConstructor, MockTotality, MutationAdequacy, NonFoldResidue, ProductionQualificationOriginProbe,
   RealizationVocabularyContainment, RosterRegistry, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
   WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
@@ -593,7 +593,7 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    MachineShape => LensInvariantSurface {
+    SingleConstructor => LensInvariantSurface {
       module: module,
       lens_id: id,
       projection: ProjectionNodeDag,

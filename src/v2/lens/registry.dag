@@ -41,7 +41,7 @@ type LensIdV0
   | LeafModelVerification
   | LifecycleCarrier
   | LiveReadClassification
-  | MachineShape
+  | SingleConstructor
   | MockTotality
   | MetaExecConfinement
   | MutationAdequacy
@@ -276,9 +276,9 @@ data lens_registry_v0_live_read_classification: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.live_read_classification" }
 }
 
-data lens_registry_v0_machine_shape: LensRegistryEntryV0 = {
-  lens_id: MachineShape
-  module_path: Bound { path: "v2.lens.machine_shape" }
+data lens_registry_v0_single_constructor: LensRegistryEntryV0 = {
+  lens_id: SingleConstructor
+  module_path: Bound { path: "v2.lens.single_constructor" }
 }
 
 data lens_registry_v0_undecidable_verdict_collapse: LensRegistryEntryV0 = {
@@ -415,7 +415,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_languages_consumer_census,
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
-  lens_registry_v0_machine_shape,
+  lens_registry_v0_single_constructor,
   lens_registry_v0_undecidable_verdict_collapse,
   lens_registry_v0_meta_exec_confinement,
   lens_registry_v0_mock_totality,
@@ -599,8 +599,8 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
       LiveReadClassification => true
       _ => false
     }
-    MachineShape => match right {
-      MachineShape => true
+    SingleConstructor => match right {
+      SingleConstructor => true
       _ => false
     }
     MetaExecConfinement => match right {
