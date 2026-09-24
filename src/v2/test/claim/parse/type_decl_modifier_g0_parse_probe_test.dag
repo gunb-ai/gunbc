@@ -75,8 +75,8 @@ test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
 // identity and NEITHER publishes authored text, by two different mechanisms -- which is the
 // property the class-stamped sites had before promotion. A lexeme stamp is the third
 // outcome: it publishes the authored text itself (v2.compiler.02_parse
-// symbol_intern_lexeme), which would change the identity every caret literal and generic
-// parameter carries corpus-wide and falsify
+// symbol_intern_lexeme), which would change the identity every caret literal carries
+// corpus-wide (generic parameter names are binders and ARE lexeme-stamped: v2.test.claim.type_param_binder_frame) and falsify
 // v2.lens.identity_captured_navigation.analyze node_source_symbol_note.
 //
 // The pair below discriminates on ONE spelling, in both directions: the word is absent from
