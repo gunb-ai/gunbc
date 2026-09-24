@@ -1347,6 +1347,9 @@ pub struct V2NativeCliHeld {
     /// spoke of "the one argument the positive control supplies" -- both wrong since that arm became
     /// an expecting-red probe, and corrected rather than left standing (review 69621).
     pub door_refusal_exit_status: i64,
+    /// Where the generation-one executable was kept (`keep_generation_one_executable`), named by
+    /// its own sha256, carried so the instrument's receipt names the file generation two invokes.
+    pub generation_one_executable: String,
 }
 
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
@@ -1762,6 +1765,54 @@ fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), S
     Ok((door_exit_status, emitted_bytes, refusal_status))
 }
 
+/// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable
+/// emitting `v2.compiler.compile` and nothing else may stand in for it. The probe root is NOT
+/// retained: once the executable is copied out and its copy re-hashes to the identity the run
+/// recorded, the root and its per-run cargo target dir have no further consumer, so it drops as
+/// `PrivateProbeRoot` is designed to. The copy is named by its own sha256, so the path names the
+/// bytes that ran, and the printed line carries the closure and seed identities beside it so the
+/// provenance is one record. Declared at `gunbc.gen_one_executable_keep_seed_growth`; it
+/// dissolves when the door writes its own crate.
+fn keep_generation_one_executable(prepared: &EmittedPreparation) -> Result<PathBuf, String> {
+    let base = prepared
+        ._probe_root
+        .path()
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — probe root {} has no parent",
+                prepared._probe_root.display()
+            )
+        })?
+        .to_path_buf();
+    let kept = base.join(format!(
+        "v2-native-cli-gen-one-{}",
+        prepared.binary_identity
+    ));
+    std::fs::copy(&prepared.binary_path, &kept).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — copy {} -> {}: {e}",
+            prepared.binary_path.display(),
+            kept.display()
+        )
+    })?;
+    if sha256_file(&kept)? != prepared.binary_identity {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — {} does not hash to {}",
+            kept.display(),
+            prepared.binary_identity
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: generation-one executable kept path={} binary_sha256={} closure_identity={} seed_sha256={}",
+        kept.display(),
+        prepared.binary_identity,
+        prepared.closure_identity,
+        prepared.seed_identity
+    );
+    Ok(kept)
+}
+
 pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, String> {
     let started = std::time::Instant::now();
     eprintln!(
@@ -1781,6 +1832,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     // green — a door that accepts everything is a broken instrument, not a broken build.
     let (door_exit_status, door_emitted_bytes, door_refusal_exit_status) =
         walk_cli_door(&prepared.binary_path, &super::process_workspace_root())?;
+    let generation_one_executable = keep_generation_one_executable(&prepared)?;
     // The counters are carried and not adjudicated here, on the same rule `run_self_host` follows:
     // a non-clean build is an observation that did not hold, a refusal above is the subject never
     // having been reached, and the instrument seam is the one place that knows the difference.
@@ -1793,6 +1845,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         door_exit_status,
         door_emitted_bytes: door_emitted_bytes as i64,
         door_refusal_exit_status,
+        generation_one_executable: generation_one_executable.display().to_string(),
     })
 }
 

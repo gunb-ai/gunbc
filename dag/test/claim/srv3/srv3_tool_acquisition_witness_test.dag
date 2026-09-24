@@ -35,7 +35,7 @@ fn acquisition_label(a: Srv3ToolAcquisition) -> String {
 fn row_labels() -> List<String> {
   list_map(
     xs: srv3_toolchain_rows(),
-    f: fn(r) { concat(concat(r.tool_name as String, " <- "), acquisition_label(a: r.acquisition)) },
+    f: fn(r) { concat(concat(r.tool.name as String, " <- "), acquisition_label(a: r.acquisition)) },
   )
 }
 
