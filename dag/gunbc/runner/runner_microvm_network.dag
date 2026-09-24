@@ -3,7 +3,7 @@ module gunbc.runner_microvm_network
 import std.types { String, NonEmptyStr, Bool, Int, List, Port }
 import std.algebra { trim }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr, Ipv4Prefix, ipv4_prefix, render_ipv4_prefix, ipv4_address_eq }
@@ -38,7 +38,7 @@ import extdeps.tools.conntrack {
   conntrack_list_expectations_command,
 }
 
-data runner_microvm_network_disposition: Disposition = SingleAuthority
+data runner_microvm_network_disposition: ConstructionMechanism = SingleAuthority
 
 // ONE SLOT, ONE /30, AND THE PREFIX IS WHAT MAKES TAP-TO-TAP UNREACHABLE BY ARITHMETIC RATHER THAN
 // BY A FIREWALL RULE. A /30 carries exactly four addresses -- network, host, guest, broadcast -- so

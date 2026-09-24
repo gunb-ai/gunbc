@@ -1,7 +1,7 @@
 module gunbc.runner_microvm_attempt
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -14,7 +14,7 @@ import gunbc.fabric_required_build_cell {
   FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape, members_owned,
 }
 
-data runner_microvm_attempt_disposition: Disposition = SingleAuthority
+data runner_microvm_attempt_disposition: ConstructionMechanism = SingleAuthority
 
 // A GUEST IS RESOURCES BELONGING TO ONE OWNED ATTEMPT, NOT A VM AT A FIXED PATH.
 //

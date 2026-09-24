@@ -1,7 +1,7 @@
 module gunbc.runner_microvm_shakedown
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.decl_ref { decl_ref }
 import std.measure { second, money_amount_micro, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
@@ -25,7 +25,7 @@ import extdeps.github.actions_runner { ActionsRunnerRelease }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
-data runner_microvm_shakedown_disposition: Disposition = SingleAuthority
+data runner_microvm_shakedown_disposition: ConstructionMechanism = SingleAuthority
 
 // THE SHAKEDOWN'S WORK, DEMAND AND OFFER, DERIVED ONCE FOR BOTH SIDES OF THE RESERVATION.
 //

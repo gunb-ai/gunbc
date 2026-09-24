@@ -2,7 +2,7 @@ module gunbc.build_cache_unit
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { ByteSize, byte_size_count }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import gunbc.build_cache_instance { BuildCacheInstance }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SliceUnitFile,
@@ -22,7 +22,7 @@ import extdeps.cache.sccache {
   sccache_cache_dir_env_var, sccache_cache_size_env_var,
 }
 
-data build_cache_unit_scope_disposition: Disposition = SingleAuthority
+data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE UNIT IS DERIVED FROM THE INSTANCE, WHICH IS THE WHOLE POINT. A hand-written unit beside a
 // declared BuildCacheInstance is two representations of one deployment, and they drift in the

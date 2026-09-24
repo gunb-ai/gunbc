@@ -2,7 +2,7 @@ module gunbc.runner_local_state
 
 import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd {
   SystemdUnitActiveState,
   Active,
@@ -19,7 +19,7 @@ import gunbc.runner_slot_allocation {
   SlotServesFabricExecution,
 }
 
-data gunbc_runner_local_state_scope_disposition: Disposition = SingleAuthority
+data gunbc_runner_local_state_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // ONE PHYSICAL READ TRANSACTION, PROJECTED INTO SEPARATE AUTHORITIES.
 //
