@@ -1,0 +1,272 @@
+module test.claim.scm.scm_repository_convert_witness_test
+
+// THE CONVERSION DECISION, ARM BY ARM, ON PLANTED DOCUMENTS. `convert_repository_to_sharded` is the
+// effectful shell -- it reads a host file and writes shards -- so the SCM claim substrate cannot run
+// it (the witnesses are SubstrateInputsOnly). Everything the shell decides, it decides through
+// `repository_convert_plan`, which is pure: a parsed document in, a write-plan / no-op plan / refusal
+// out. These claims drive one planted document per arm and assert the arm each reaches, so widening
+// the admitted set, admitting a damaged document, or folding the no-op into a write fails here.
+//
+// WHY THE PLANTS MIX ENCODER-PRODUCED AND HAND-AUTHORED DOCUMENTS. The v6 and v7 plants ride
+// `encode_repository` / `encode_repository_v7` over a fixture-built repository, because those claims
+// are about the ADMISSION of the formats the current codec emits, and re-hand-authoring a whole
+// table per claim would put a second construction rule beside the encoder for no new evidence. The
+// refusal plants are hand-authored, following `scm_repository_load_witness_test`'s rule: a claim
+// that a malformed document refuses must not depend on the encoder agreeing about what malformed
+// is. The v5 plant is hand-authored because no v5 writer remains in the tree -- v5 is a format this
+// build READS and CONVERTS, so the witness must be able to say what one is.
+//
+// WHAT IS NOT CLAIMED HERE, AND WHERE IT IS COVERED. That the shell writes nothing on a refusal is
+// an ordering fact about the shell's body -- every refusal arm returns before `save_repository_sharded`
+// is reachable -- demonstrated by inspection and by the live rehearsal over the production envelope,
+// not decidable at the hermetic boundary. That a converted envelope loads back with the same
+// population is `scm_object_shard_witness_test`'s and the live rehearsal's claim; the plan only
+// certifies that the write the shell would perform carries the whole decoded repository.
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.json.emit {
+  json_object, json_kv, json_string, json_int, json_null, json_array,
+}
+import gunbc.scm.object_table_json { encode_object_table }
+import gunbc.scm.repository_convert {
+  RepositoryConvertWritePlan,
+  RepositoryConvertNoOpPlan,
+  RepositoryConvertRefusePlan,
+  RepositoryConvertReadVersionUnreadable,
+  RepositoryConvertReadVersionRefused,
+  RepositoryConvertReadDamaged,
+  repository_convert_plan,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  encode_repository,
+  encode_repository_v7,
+  encode_optional_reference,
+  encode_optional_manifest_reference,
+  repository_envelope_format_tag,
+  repository_envelope_format_tag_v5,
+  repository_envelope_format_tag_v4,
+  repository_envelope_format_tag_v3,
+  repository_object_identity_rule_tag,
+}
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_root_of }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE COMMIT OVER ONE STAGED PATH, built by the fixture's production verbs -- the same store,
+// manifest, and mint the conversion would read back.
+fn convert_scene() -> MbBuild {
+  mb_commit(build: mb_stage(build: mb_start(), path: "src/main.dag", text: "the candidate's whole text"), message: "a base commit")
+}
+
+fn convert_scene_repository(build: MbBuild) -> RepositoryEnvelope? {
+  match build {
+    MbBuilt { repository: r, at: _ } => Present { value: r }
+    MbSetupFailed => none
+  }
+}
+
+// THE v7 PLANT IS THE INDEX DOCUMENT THE SHARDED WRITER EMITS. A second conversion wake-up over it
+// must plan no write -- the typed no-op that makes the entry idempotent.
+test fn a_v7_index_plans_no_write() -> Bool {
+  match convert_scene_repository(build: convert_scene()) {
+    Absent => false
+    Present { value: repo } =>
+      match repository_convert_plan(v: encode_repository_v7(repo: repo)) {
+        RepositoryConvertNoOpPlan => true
+        _ => false
+      }
+  }
+}
+
+// THE v6 PLANT IS WHAT THE PRODUCTION ENVELOPE DECLARES TODAY. The plan must carry the whole
+// decoded repository into the write arm -- from_format naming the tag the document declared, and the
+// envelope holding exactly the population the fixture built, because the decode the plan ran IS the
+// admission census.
+test fn a_v6_document_plans_a_write_carrying_its_whole_repository() -> Bool {
+  match convert_scene_repository(build: convert_scene()) {
+    Absent => false
+    Present { value: repo } =>
+      match repository_convert_plan(v: encode_repository(repo: repo)) {
+        RepositoryConvertWritePlan { from_format, envelope } =>
+          from_format == repository_envelope_format_tag
+            && count(envelope.store.objects) == count(repo.store.objects)
+            && count(envelope.commits) == count(repo.commits)
+        _ => false
+      }
+  }
+}
+
+// THE v5 PLANT IS HAND-AUTHORED because the tree holds no v5 writer: the format is read-and-convert
+// only. Its envelope member population is v6's; inside a commit record, v5 declares no `integration`
+// member (no v5 writer had a squash producer), so the plant's commit record omits one.
+test fn a_v5_document_plans_a_write() -> Bool {
+  match convert_scene() {
+    MbSetupFailed => false
+    MbBuilt { repository: repo, at: head } =>
+      match head {
+        Absent => false
+        Present { value: head_ref } =>
+          match mb_root_of(build: MbBuilt { repository: repo, at: head }, reference: head_ref) {
+            Absent => false
+            Present { value: root } => {
+              let acc = encode_object_table(store: repo.store)
+              let commit = json_object(members: [
+                json_kv(key: "id", value: json_int(n: 0)),
+                json_kv(key: "root", value: json_object(members: [
+                  json_kv(key: "uncontained", value: json_string(s: root.digest as String)),
+                ])),
+                json_kv(key: "message", value: json_string(s: "a v5 base commit")),
+                json_kv(key: "ancestry", value: json_null()),
+              ])
+              match repository_convert_plan(v: json_object(members: [
+                json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v5)),
+                json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
+                json_kv(key: "objects", value: json_array(elements: acc.objects)),
+                json_kv(key: "next_commit_ordinal", value: json_int(n: 1)),
+                json_kv(key: "commits", value: json_array(elements: [commit])),
+                json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
+                json_kv(key: "staged", value: encode_optional_manifest_reference(acc: acc, staged: repo.staged)),
+              ])) {
+                RepositoryConvertWritePlan { from_format, envelope } =>
+                  from_format == repository_envelope_format_tag_v5 && count(envelope.commits) == 1
+                _ => false
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE v5 PLANT'S DISCRIMINATING CONTROL. A v5 body whose commit record DECLARES an integration
+// member is a document no v5 writer could have produced -- the member census refuses it, and the
+// plan must read that as damage, never as an admission. A tolerant reader would convert it, and the
+// converted envelope would carry a fact v5 never wrote.
+test fn a_v5_commit_declaring_integration_is_damaged_not_converted() -> Bool {
+  match convert_scene() {
+    MbSetupFailed => false
+    MbBuilt { repository: repo, at: head } =>
+      match head {
+        Absent => false
+        Present { value: head_ref } =>
+          match mb_root_of(build: MbBuilt { repository: repo, at: head }, reference: head_ref) {
+            Absent => false
+            Present { value: root } => {
+              let acc = encode_object_table(store: repo.store)
+              let commit = json_object(members: [
+                json_kv(key: "id", value: json_int(n: 0)),
+                json_kv(key: "root", value: json_object(members: [
+                  json_kv(key: "uncontained", value: json_string(s: root.digest as String)),
+                ])),
+                json_kv(key: "message", value: json_string(s: "a v5 commit with a v6-shaped record")),
+                json_kv(key: "ancestry", value: json_null()),
+                json_kv(key: "integration", value: json_null()),
+              ])
+              match repository_convert_plan(v: json_object(members: [
+                json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v5)),
+                json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
+                json_kv(key: "objects", value: json_array(elements: acc.objects)),
+                json_kv(key: "next_commit_ordinal", value: json_int(n: 1)),
+                json_kv(key: "commits", value: json_array(elements: [commit])),
+                json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
+                json_kv(key: "staged", value: encode_optional_manifest_reference(acc: acc, staged: repo.staged)),
+              ])) {
+                RepositoryConvertRefusePlan { cause: RepositoryConvertReadDamaged { cause: _ } } => true
+                _ => false
+              }
+            }
+          }
+      }
+  }
+}
+
+// A DAMAGED v6 READ PLANS A REFUSAL, NOT A WRITE: the dangling commit root names no object the
+// document holds. This is the no-partial-conversion decision at the plan layer -- the arm a caller
+// converts with is never reached from a document whose decode refused.
+test fn a_damaged_v6_document_plans_a_refusal_not_a_write() -> Bool {
+  match repository_convert_plan(v: json_object(members: [
+    json_kv(key: "format", value: json_string(s: repository_envelope_format_tag)),
+    json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
+    json_kv(key: "objects", value: json_array(elements: [])),
+    json_kv(key: "next_commit_ordinal", value: json_int(n: 1)),
+    json_kv(key: "commits", value: json_array(elements: [
+      json_object(members: [
+        json_kv(key: "id", value: json_int(n: 0)),
+        json_kv(key: "root", value: json_object(members: [
+          json_kv(key: "uncontained", value: json_string(s: "0000000000000000")),
+        ])),
+        json_kv(key: "message", value: json_string(s: "a commit whose root is not in the store")),
+        json_kv(key: "ancestry", value: json_null()),
+        json_kv(key: "integration", value: json_null()),
+      ]),
+    ])),
+    json_kv(key: "checked_out", value: json_int(n: 0)),
+    json_kv(key: "staged", value: json_null()),
+  ])) {
+    RepositoryConvertRefusePlan { cause: RepositoryConvertReadDamaged { cause: _ } } => true
+    _ => false
+  }
+}
+
+// v4 IS KNOWN AND REFUSED, NOT CONVERTED. Its population omits the stage member and no production
+// envelope was written in it; the conversion's mandate admits the v5 and v6 monoliths, and an entry
+// that converts more than its mandate is a widening nobody reviewed. The refusal carries the tag the
+// document declared, so the operator can tell known-not-admitted from unknown.
+test fn a_v4_document_is_version_refused_not_converted() -> Bool {
+  match repository_convert_plan(v: json_object(members: [
+    json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v4)),
+  ])) {
+    RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found } } =>
+      found == repository_envelope_format_tag_v4
+    _ => false
+  }
+}
+
+// THE RETIRED FORMAT REFUSES WITH ITS OWN TAG, not with the unknown-format arm: "this build has
+// refused the format your repository was written in" and "this build has never heard of that format"
+// are different facts, and the tag each refusal carries is what keeps them apart for the renderer.
+test fn a_retired_v3_document_is_version_refused_with_its_tag() -> Bool {
+  match repository_convert_plan(v: json_object(members: [
+    json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v3)),
+  ])) {
+    RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found } } =>
+      found == repository_envelope_format_tag_v3
+    _ => false
+  }
+}
+
+// AN UNKNOWN TAG IS REFUSED WITH THE TAG IT FOUND. A conversion that rewrites a document it cannot
+// read would be the fabricated-plausible-output failure at a persistence boundary; refusing with the
+// observed tag is the honest whole answer.
+test fn an_unknown_format_is_version_refused_with_the_tag_it_found() -> Bool {
+  match repository_convert_plan(v: json_object(members: [
+    json_kv(key: "format", value: json_string(s: "gunbc-scm-repository-v9")),
+  ])) {
+    RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found } } =>
+      found == "gunbc-scm-repository-v9"
+    _ => false
+  }
+}
+
+// A DOCUMENT WITH NO `format` MEMBER IS UNVERSIONED, NOT DAMAGED. The version check is the entry's
+// first question; a document that cannot answer it never reaches the schema, and "unversioned" is
+// refused as its own arm rather than folded into the decode refusal.
+test fn a_document_without_a_format_member_is_version_unreadable() -> Bool {
+  match repository_convert_plan(v: json_object(members: [])) {
+    RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable } => true
+    _ => false
+  }
+}
+
+// A NON-STRING `format` MEMBER IS THE SAME ARM: the document has not declared a version in the one
+// shape a declaration takes. Collapsing this into DamagedRead would report a schema defect for a
+// document the schema was never consulted about.
+test fn a_document_with_a_non_string_format_member_is_version_unreadable() -> Bool {
+  match repository_convert_plan(v: json_object(members: [
+    json_kv(key: "format", value: json_int(n: 7)),
+  ])) {
+    RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable } => true
+    _ => false
+  }
+}

@@ -1,0 +1,360 @@
+module gunbc.scm.repository_convert
+
+// THE ONE-TIME MONOLITH-TO-SHARDED CONVERSION, DECLARED WHERE THE TWO FORMATS IT JOINS LIVE.
+//
+// v7 made the sharded envelope the only layout a production write produces, and the bounded read made
+// a v7 load affordable at envelope scale -- but nothing converts a repository that still sits on disk
+// as a monolith. The belt's own saves convert lazily (the integrate's save is sharded, so the first
+// successful integrate over a monolith rewrites it), and that lazy path died on the production
+// envelope: the dogfood integrate loads the `shell-typed-invocation` monolith fast now, then refuses
+// fast, because the candidate the capture bound is not a commit the envelope holds -- so no integrate
+// ever succeeds, so no integrate ever saves, so the monolith is never converted. The lazy conversion
+// has a prerequisite (a successful integrate) the damaged envelope cannot satisfy. The conversion
+// therefore stands alone: this module reads the monolith document, validates it whole, and writes the
+// v7 shards plus the index -- the same bytes the first sharded save would have written, produced by an
+// entry that does not need the integrate's luck.
+//
+// THE ENTRY IS VERSION-CHECKED, AND THE CHECK IS FIRST. The format tag is read before any other
+// member, and the read is refused unless the tag names a format this build converts FROM (v5 or v6 --
+// the two monolith populations `gunbc.scm.repository_envelope` certifies readers for). v7 is the
+// typed no-op: the envelope is already sharded, so a second run writes nothing and says so, which is
+// what makes a repeated wake-up over an already-converted envelope harmless. v4 is KNOWN and REFUSED
+// rather than converted: its population omits the stage member, no production envelope was ever
+// written in it, and a conversion entry that admits more than its mandate ("v5 to v7") is a widening
+// nobody reviewed. v3 is retired, and a tag this build has never heard of is unknown; both refuse
+// with the tag they found, because "the format this repository was written in, which this build will
+// not convert" and "a format this build has never heard of" are different facts an operator repairs
+// differently.
+//
+// A DAMAGED READ REFUSES BEFORE ANY WRITE, AND THAT ORDER IS THE TYPE'S ARGUMENT. The monolith decode
+// is total-in-memory: `decode_repository` validates the whole document -- every object, every commit
+// root, the allocator, the member census -- and only an admitted decode reaches `save_repository_sharded`.
+// There is no arm in which a shard was written for a repository whose read refused; refusing rather
+// than partially converting is not a check the writer performs but a state the writer cannot be
+// constructed in (DESIGN section 5). A refused conversion leaves the monolith byte-for-byte on disk,
+// so the operator's next act can be a repair of the document, not a recovery from a half-written one.
+//
+// THE WRITE IS THE SHARDED WRITER, UNCHANGED. `save_repository_sharded` writes shards first (each
+// sealed by its content identity, each skipped if a shard of that name already holds those bytes) and
+// the index last, so an interrupted conversion leaves the previous document naming only shards that
+// exist. The monolith's bytes at the index path are replaced by the v7 index -- the pre-conversion
+// document is not deleted by name, it is superseded by contents, per the declared migration's
+// rollback note (docs/plans/scm-envelope-read-path-bounded-migration.md): the load path dispatches on
+// the format tag, so a restored v6 document reads exactly as today.
+//
+// WHY THE PLAN IS SPLIT FROM THE SHELL. `repository_convert_plan` is pure -- a parsed document in, a
+// write-plan, a no-op plan, or a refusal out -- so the version check, the admission set, and the
+// damaged-read refusal are witnessable on planted documents at the hermetic boundary, where the
+// effectful shell is not (the SCM witnesses are SubstrateInputsOnly). The shell composes read, plan,
+// and write; every decision a witness asserts lives in the plan.
+
+import std.types { String, Int }
+import std.measure { ByteSize, byte_size_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  filesystem_read_outcome,
+}
+import extdeps.languages.json.emit {
+  serialize_json, JsonValue, json_object, json_kv, json_string, json_int,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, JsonDocumentGap,
+}
+import gunbc.scm.json_member { read_string_member, MemberString }
+import gunbc.scm.object_shard_json { shard_roster_of }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryDecodeRefusal,
+  repository_format_of,
+  RepositoryFormatV7,
+  RepositoryFormatV6,
+  RepositoryFormatV5,
+  decode_repository,
+  RepositoryDecoded,
+  RepositoryDecodeRefused,
+  RepositoryEncodeRefusal,
+}
+import gunbc.scm.repository_save { save_repository_sharded, RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable }
+
+// THE OUTCOME OF ONE CONVERSION ATTEMPT. Three arms, and the distinction between the first two is the
+// idempotence contract: `RepositoryConverted` says this run wrote the v7 layout, `RepositoryConvertNoOp`
+// says the envelope already declared v7 and nothing was written. A caller scheduling repeated
+// wake-ups (the belt's per-item obligation shape) can hold either as the settled state; the refusal
+// arm is the only one that names work left to do.
+type RepositoryConvert
+  = RepositoryConverted { path: String, from_format: String, objects: Int, shards: Int, written: ByteSize }
+  | RepositoryConvertNoOp { path: String }
+  | RepositoryConvertRefused { cause: RepositoryConvertRefusal }
+
+// THE REFUSALS CARRY THEIR PATH, as the load and save arms do: a conversion refusal that does not say
+// which envelope it was converting is not located, and a caller converting two envelopes cannot tell
+// which one refused.
+//
+// THE READ-SIDE ARMS AND THE WRITE-SIDE ARMS ARE NOT FOLDED, because their owners differ the same way
+// they differ in `gunbc.scm.repository_load` and `gunbc.scm.repository_save`: a document refusal is a
+// fact about the BYTES (repair or restore the document), an unwritable path is a fact about the HOST
+// (check the directory), an unrepresentable repository is a fact about the VALUE (no writer can write
+// it anywhere). One arm over the three would send the operator to the wrong repair.
+type RepositoryConvertRefusal
+  = RepositoryConvertFileUnreadable { path: String, error: String }
+  | RepositoryConvertDocumentUnparseable { path: String, gap: JsonDocumentGap }
+  | RepositoryConvertVersionUnreadable { path: String }
+  | RepositoryConvertVersionRefused { path: String, found: String }
+  | RepositoryConvertDamaged { path: String, cause: RepositoryDecodeRefusal }
+  | RepositoryConvertEncodeRefused { path: String, cause: RepositoryEncodeRefusal }
+  | RepositoryConvertFileUnwritable { path: String, error: String }
+  | RepositoryConvertByteCountUnrepresentable { path: String, reported: Int }
+
+// THE PLAN IS THE DECISION WITHOUT THE EFFECTS. `RepositoryConvertWritePlan` carries the decoded
+// envelope because the decode is the admission: a plan exists only for a document that read whole.
+// `RepositoryConvertRefusePlan`'s causes omit the path -- the plan decides about a DOCUMENT, and the
+// shell that read the document is the one that knows where it lives; locating the refusal is the
+// shell's act, one level up, the same split `gunbc.scm.repository_envelope` (pure decode, refuses
+// without paths) and `gunbc.scm.repository_load` (reads, locates) already carry.
+type RepositoryConvertPlan
+  = RepositoryConvertWritePlan { from_format: String, envelope: RepositoryEnvelope }
+  | RepositoryConvertNoOpPlan
+  | RepositoryConvertRefusePlan { cause: RepositoryConvertReadRefusal }
+
+// THE READ-SIDE REFUSAL VOCABULARY, PATH-FREE FOR THE REASON THE PLAN'S HEADER GIVES, and named
+// apart from the outcome's arms because a coproduct's constructors are global in .dag -- two arms
+// spelling one name would collide at resolve time, which is the compiler keeping the plan's
+// unlocated causes from silently becoming the outcome's located ones. VersionUnreadable is its own
+// arm rather than a Damaged decode: a document with no readable `format` member has not declared a
+// version at all, and "unversioned" is the operator's first question, not a schema defect.
+type RepositoryConvertReadRefusal
+  = RepositoryConvertReadVersionUnreadable
+  | RepositoryConvertReadVersionRefused { found: String }
+  | RepositoryConvertReadDamaged { cause: RepositoryDecodeRefusal }
+
+// THE VERSION CHECK, AND THE ADMISSION SET IT ENFORCES. v5 and v6 are the conversion sources because
+// both are the monolith population this build's reader certifies -- one reader body, two member
+// policies, and no invented migration between them. v7 is the no-op, v4 is known and refused, v3 is
+// retired, and anything else is unknown: all three refuse with the tag the document carried, and the
+// renderer below classifies them for the message, asking the format authority rather than matching
+// tags itself.
+fn repository_convert_format_plan(tag: String, v: JsonValue) -> RepositoryConvertPlan {
+  match repository_format_of(tag: tag) {
+    RepositoryFormatV7 => RepositoryConvertNoOpPlan
+    RepositoryFormatV6 =>
+      repository_convert_decode_plan(from_format: tag, v: v)
+    RepositoryFormatV5 =>
+      repository_convert_decode_plan(from_format: tag, v: v)
+    _ => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found: tag } }
+  }
+}
+
+// THE DECODE IS WHERE "REFUSES A DAMAGED READ RATHER THAN PARTIALLY CONVERTING" IS ENFORCED. The
+// decode answers the whole document or refuses it; there is no decoded-envelope-but-for-the-bad-part
+// value to write, and the save is only reachable from the admitted branch below.
+fn repository_convert_decode_plan(from_format: String, v: JsonValue) -> RepositoryConvertPlan {
+  match decode_repository(v: v) {
+    RepositoryDecoded { envelope } =>
+      RepositoryConvertWritePlan { from_format: from_format, envelope: envelope }
+    RepositoryDecodeRefused { cause } =>
+      RepositoryConvertRefusePlan { cause: RepositoryConvertReadDamaged { cause: cause } }
+  }
+}
+
+// THE PURE DECISION, ONE DOCUMENT IN. The caller (the shell, or a witness at the hermetic boundary)
+// has already parsed; everything the conversion admits or refuses is decided here.
+fn repository_convert_plan(v: JsonValue) -> RepositoryConvertPlan {
+  match read_string_member(v: v, key: "format") {
+    MemberString { value: tag } => repository_convert_format_plan(tag: tag, v: v)
+    _ => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable }
+  }
+}
+
+// THE SHELL. Read, parse, plan, and only then write -- the order is the guarantee, not a check inside
+// the writer: every refusal arm returns before `save_repository_sharded` is reachable, so no shard and
+// no index of a refused conversion is on disk.
+fn convert_repository_to_sharded(path: String) -> RepositoryConvert {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      RepositoryConvertRefused { cause: RepositoryConvertFileUnreadable { path: path, error: e } }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } =>
+          RepositoryConvertRefused { cause: RepositoryConvertDocumentUnparseable { path: path, gap: gap } }
+        JsonDocumentParsed { value: v } =>
+          match repository_convert_plan(v: v) {
+            RepositoryConvertNoOpPlan =>
+              RepositoryConvertNoOp { path: path }
+            RepositoryConvertRefusePlan { cause } =>
+              RepositoryConvertRefused { cause: repository_convert_read_refusal_located(path: path, cause: cause) }
+            RepositoryConvertWritePlan { from_format, envelope } =>
+              repository_convert_write(path: path, from_format: from_format, envelope: envelope)
+          }
+      }
+  }
+}
+
+// LOCATING A READ REFUSAL IS THE SHELL'S ACT. The plan's causes are path-free; the outcome's carry
+// the path the shell read, one match per arm, with nothing merged.
+fn repository_convert_read_refusal_located(path: String, cause: RepositoryConvertReadRefusal) -> RepositoryConvertRefusal {
+  match cause {
+    RepositoryConvertReadVersionUnreadable =>
+      RepositoryConvertVersionUnreadable { path: path }
+    RepositoryConvertReadVersionRefused { found } =>
+      RepositoryConvertVersionRefused { path: path, found: found }
+    RepositoryConvertReadDamaged { cause: c } =>
+      RepositoryConvertDamaged { path: path, cause: c }
+  }
+}
+
+// THE WRITE IS THE SHARDED WRITER'S OUTCOME, CARRIED ONE-TO-ONE. The save's three failure arms map to
+// the conversion's three write-side arms without re-wording: the causes have one home, in
+// `gunbc.scm.repository_save`, and a second phrasing here would fork what the operator repairs.
+fn repository_convert_write(path: String, from_format: String, envelope: RepositoryEnvelope) -> RepositoryConvert {
+  match save_repository_sharded(path: path, repo: envelope) {
+    RepositorySaved { path: _, written } =>
+      RepositoryConverted {
+        path: path,
+        from_format: from_format,
+        objects: count(envelope.store.objects),
+        shards: count(shard_roster_of(objects: envelope.store.objects)),
+        written: written,
+      }
+    RepositorySaveRefusedByCodec { path: _, cause } =>
+      RepositoryConvertRefused { cause: RepositoryConvertEncodeRefused { path: path, cause: cause } }
+    RepositoryFileUnwritable { path: _, error } =>
+      RepositoryConvertRefused { cause: RepositoryConvertFileUnwritable { path: path, error: error } }
+    RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+      RepositoryConvertRefused { cause: RepositoryConvertByteCountUnrepresentable { path: path, reported: reported } }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE OPERATOR ENTRY. One conversion attempt becomes one durable, dashboard-readable receipt, the
+// same shape the belt's per-item obligation entries use: the verdict travels as a written document,
+// not as an exit code, so a refused conversion is a record an operator can read, not a crash a
+// scheduler has to interpret. Exit is nonzero only when the receipt itself could not be written.
+// ------------------------------------------------------------------------------------------------
+
+data repository_convert_receipt_schema: String = "gunbc-scm-convert/v1"
+
+fn repository_convert_outcome_json(path: String, from_format: String, objects: Int, shards: Int, written: ByteSize) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+    json_kv(key: "status", value: json_string(s: "converted")),
+    json_kv(key: "path", value: json_string(s: path)),
+    json_kv(key: "from_format", value: json_string(s: from_format)),
+    json_kv(key: "objects", value: json_int(n: objects)),
+    json_kv(key: "shards", value: json_int(n: shards)),
+    json_kv(key: "written_bytes", value: json_int(n: byte_size_count(b: written))),
+  ])
+}
+
+fn repository_convert_noop_json(path: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+    json_kv(key: "status", value: json_string(s: "noop")),
+    json_kv(key: "path", value: json_string(s: path)),
+  ])
+}
+
+// THE REFUSAL DETAIL NAMES THE ARM AND WITHHOLDS THE INNER CAUSE, for the reason
+// `gunbc.scm.repository_load`'s renderer states: the inner gap and decode payloads belong to their
+// own formats' renderers, and inventing a summary of a value this module did not decode is the
+// fabricated-plausible-output failure at a user-facing boundary. The arm's name is the operator's
+// handle; the classification of a refused version (retired / known-not-admitted / unknown) is asked
+// of `repository_format_of`, the format authority, not matched here.
+fn repository_convert_refused_json(cause: RepositoryConvertRefusal) -> JsonValue {
+  match cause {
+    RepositoryConvertFileUnreadable { path, error } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "file-unreadable")),
+        json_kv(key: "detail", value: json_string(s: join(["the envelope could not be read: ", path, " (", error, ")"], ""))),
+      ])
+    RepositoryConvertDocumentUnparseable { path, gap: _ } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "document-unparseable")),
+        json_kv(key: "detail", value: json_string(s: concat("the envelope document is not valid JSON: ", path))),
+      ])
+    RepositoryConvertVersionUnreadable { path } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "version-unreadable")),
+        json_kv(key: "detail", value: json_string(s: concat("the envelope carries no readable string format member, so its version cannot be checked: ", path))),
+      ])
+    RepositoryConvertVersionRefused { path, found } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "version-refused")),
+        json_kv(key: "detail", value: json_string(s: repository_convert_version_refused_detail(path: path, found: found))),
+      ])
+    RepositoryConvertDamaged { path, cause: _ } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "damaged-read")),
+        json_kv(key: "detail", value: json_string(s: concat("the envelope document is damaged and was not converted; nothing was written: ", path))),
+      ])
+    RepositoryConvertEncodeRefused { path, cause: _ } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "encode-refused")),
+        json_kv(key: "detail", value: json_string(s: concat("the envelope cannot be represented by any writer, so it cannot be converted: ", path))),
+      ])
+    RepositoryConvertFileUnwritable { path, error } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "file-unwritable")),
+        json_kv(key: "detail", value: json_string(s: join(["the envelope could not be written: ", path, " (", error, ")"], ""))),
+      ])
+    RepositoryConvertByteCountUnrepresentable { path, reported } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "byte-count-unrepresentable")),
+        json_kv(key: "detail", value: json_string(s: join(["the envelope write reported a nonsensical byte count (", to_string(reported), "): ", path], ""))),
+      ])
+  }
+}
+
+fn repository_convert_version_refused_detail(path: String, found: String) -> String {
+  match repository_format_of(tag: found) {
+    RepositoryFormatV4 =>
+      join(["the envelope declares format ", found, ", which this build reads but does not convert (the conversion admits v5 and v6 monoliths): ", path], "")
+    _ =>
+      join(["the envelope declares format ", found, ", which this build does not read and will not convert: ", path], "")
+  }
+}
+
+fn scm_convert_repository_cli(path: String, receipt_path: String) -> ProcessExit {
+  let document = serialize_json(v: match convert_repository_to_sharded(path: path) {
+    RepositoryConverted { path: p, from_format, objects, shards, written } =>
+      repository_convert_outcome_json(path: p, from_format: from_format, objects: objects, shards: shards, written: written)
+    RepositoryConvertNoOp { path: p } =>
+      repository_convert_noop_json(path: p)
+    RepositoryConvertRefused { cause } =>
+      repository_convert_refused_json(cause: cause)
+  })
+  let w = Filesystem.Write(path: receipt_path, content: document)
+  if !w.success {
+    exit_failure(reason: join(["scm_convert_repository_cli: receipt could not be written: ", w.error, "; result was ", document], ""))
+  } else {
+    ExitSuccess
+  }
+}
