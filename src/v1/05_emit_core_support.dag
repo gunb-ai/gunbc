@@ -10,7 +10,7 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget }
-import gunbc.rust_emitted_edge { EmittedEdge }
+import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule, leaf_owner_modules_from_registry }
 
@@ -49,10 +49,6 @@ fn escape_json_string(s: String) -> String {
     |> split(delimiter: "\"") |> join(separator: "\\\"")
     |> split(delimiter: "\n") |> join(separator: "\\n")
     |> split(delimiter: "\t") |> join(separator: "\\t")
-}
-
-fn module_to_filename(name: String) -> String {
-  name |> split(delimiter: ".") |> join(separator: "_")
 }
 
 type ModuleFilenameOwners {
