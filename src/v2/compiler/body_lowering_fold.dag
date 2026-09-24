@@ -3013,20 +3013,20 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
       match body_lower_arrow_lambda_captured_optional(node: node) {
         Present { value: captured } => body_lower_arrow_lambda_value(shell: node, captured: captured)
         Absent =>
-      if body_lower_value_is_function_value_shell(node: node) {
-        outcome_accepted(value: optional_absent())
-      } else {
-        let raw = body_lower_deep_unwrap_optional(node: node)
-        match body_lower_fold(node: raw) {
-          Accepted { value: folded, diagnostics: d } =>
-            match body_lower_lowered_behind_shells_optional(node: folded) {
-              Present { value: lowered } =>
-                outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
-              Absent => body_lower_body_subtree_lower(captured: raw)
-            }
-          Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
-        }
-      }
+          match body_lower_fn_literal_captured_optional(node: node) {
+            Present { value: captured } => body_lower_fn_literal_value(shell: node, captured: captured)
+            Absent =>
+              let raw = body_lower_deep_unwrap_optional(node: node)
+              match body_lower_fold(node: raw) {
+                Accepted { value: folded, diagnostics: d } =>
+                  match body_lower_lowered_behind_shells_optional(node: folded) {
+                    Present { value: lowered } =>
+                      outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+                    Absent => body_lower_body_subtree_lower(captured: raw)
+                  }
+                Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
+              }
+          }
       }
   }
 }
@@ -3162,6 +3162,17 @@ fn body_lower_lambda_after_binders_optional(node: Node) -> Optional<Node> {
 
 // repeat(seq(`,`, ident)): the empty conj, or seq(seq(`,`, ident), repeat).
 fn body_lower_lambda_repeat_binders_optional(repeat: Node) -> Optional<List<Edge>> {
+  body_lower_comma_repeat_binders_optional(repeat: repeat, comma_required: true)
+}
+
+// The element separator is a required `,` in the arrow-lambda production and an OPTIONAL `,` in
+// dag_grammar_comma_list_expr (the fn literal's untyped params); an elided optional is the empty conj.
+fn body_lower_comma_separator_admitted(node: Node, comma_required: Bool) -> Bool {
+  body_lower_lambda_token_is(node: node, token: ^dag_token_comma)
+    || ((!comma_required) && is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: node)))
+}
+
+fn body_lower_comma_repeat_binders_optional(repeat: Node, comma_required: Bool) -> Optional<List<Edge>> {
   let r = body_lower_deep_unwrap_optional(node: repeat)
   if is_empty_conj_root(n: r) {
     let no_binders: List<Edge> = []
@@ -3173,11 +3184,11 @@ fn body_lower_lambda_repeat_binders_optional(repeat: Node) -> Optional<List<Edge
         match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
           Absent => optional_absent()
           Present { value: element } =>
-            if body_lower_lambda_token_is(node: element.left, token: ^dag_token_comma) {
+            if body_lower_comma_separator_admitted(node: element.left, comma_required: comma_required) {
               match body_lower_lambda_binder_edge_optional(binder: element.right) {
                 Absent => optional_absent()
                 Present { value: edge } =>
-                  match body_lower_lambda_repeat_binders_optional(repeat: pair.right) {
+                  match body_lower_comma_repeat_binders_optional(repeat: pair.right, comma_required: comma_required) {
                     Absent => optional_absent()
                     Present { value: rest } => optional_present(value: Cons { head: edge, tail: rest })
                   }
@@ -3261,6 +3272,129 @@ fn body_lower_lambda_parts_optional(captured: Node) -> Optional<BodyLowerLambdaP
   }
 }
 
+// A FN LITERAL IN VALUE POSITION LOWERS THROUGH THE SAME PRODUCER. dag_grammar_fn_literal_expr is
+//   seq(`fn`, seq(`(`, seq(opt(untyped_params), seq(`)`, seq(opt(seq(`->`, type_expr)), fn_body)))))
+// Its params are dag_grammar_untyped_params_helper, a dag_grammar_comma_list_expr of bare idents, so
+// each binder's type is elided exactly as a lambda's is. Its body is a fn_body block and is lowered
+// by the named fn's own body lowering (body_lower_body_from_fn_captured, so let- and block-tails
+// lower as they do in a named fn) -- not by the expression reader, and not by a second walker. The
+// return type, when written, is lowered as a named fn's is; otherwise it is elided.
+fn body_lower_fn_literal_captured_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: id } =>
+      if id == ^dag_surface_fn_literal {
+        parse_production_captured_child_optional(node: stripped)
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+// opt(comma_list(ident)): the empty conj (no params), or seq(first, seq(repeat, opt(`,`))).
+fn body_lower_fn_literal_binders_optional(params: Node) -> Optional<List<Edge>> {
+  let p = body_lower_deep_unwrap_optional(node: params)
+  if is_empty_conj_root(n: p) {
+    let no_binders: List<Edge> = []
+    optional_present(value: no_binders)
+  } else {
+    match sugar_sequence_pair_optional(node: p) {
+      Absent => optional_absent()
+      Present { value: list } =>
+        match body_lower_lambda_binder_edge_optional(binder: list.left) {
+          Absent => optional_absent()
+          Present { value: first } =>
+            match sugar_sequence_pair_optional(node: list.right) {
+              Absent => optional_absent()
+              Present { value: tail } =>
+                match body_lower_comma_repeat_binders_optional(repeat: tail.left, comma_required: false) {
+                  Absent => optional_absent()
+                  Present { value: rest } => optional_present(value: Cons { head: first, tail: rest })
+                }
+            }
+        }
+    }
+  }
+}
+
+// opt(seq(`->`, type_expr)): the authored return type lowered, or the elided type when absent.
+// Present-but-unreadable is Absent, and refuses.
+fn body_lower_fn_literal_codomain_optional(ret: Node, shell: Node) -> Optional<Node> {
+  let r = body_lower_deep_unwrap_optional(node: ret)
+  if is_empty_conj_root(n: r) {
+    optional_present(value: type_annotation_elided_node(at: shell))
+  } else {
+    match sugar_sequence_pair_optional(node: r) {
+      Absent => optional_absent()
+      Present { value: pair } =>
+        if body_lower_lambda_token_is(node: pair.left, token: ^dag_token_arrow) {
+          body_lower_type_expr_lowered_optional(node: pair.right)
+        } else {
+          optional_absent()
+        }
+    }
+  }
+}
+
+fn body_lower_fn_literal_value(shell: Node, captured: Node) -> Outcome<Optional<Node>> {
+  let unread: Outcome<Optional<Node>> = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_fn_literal_shape_unread, n: shell)
+  )
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => unread
+    Present { value: after_fn } =>
+      match body_lower_fn_decl_spine_right(node: after_fn) {
+        Absent => unread
+        Present { value: after_lparen } =>
+          match sugar_sequence_pair_optional(node: after_lparen) {
+            Absent => unread
+            Present { value: params_pair } =>
+              match sugar_sequence_pair_optional(node: params_pair.right) {
+                Absent => unread
+                Present { value: rparen_pair } =>
+                  match sugar_sequence_pair_optional(node: rparen_pair.right) {
+                    Absent => unread
+                    Present { value: ret_pair } =>
+                      match body_lower_fn_literal_binders_optional(params: params_pair.left) {
+                        Absent => unread
+                        Present { value: binders } =>
+                          match body_lower_fn_literal_codomain_optional(ret: ret_pair.left, shell: shell) {
+                            Absent => unread
+                            Present { value: codomain } =>
+                              match body_lower_body_from_fn_captured(captured: ret_pair.right) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: Absent, diagnostics: _ } =>
+                                  outcome_rejected(
+                                    d: body_lower_diagnostic(
+                                      reason: ^body_lowering_reason_fn_literal_body_unread,
+                                      n: ret_pair.right
+                                    )
+                                  )
+                                Accepted { value: Present { value: body }, diagnostics: d } =>
+                                  match body_lower_function_value_arrow(
+                                    shell: shell,
+                                    binders: binders,
+                                    codomain: codomain,
+                                    body: body
+                                  ) {
+                                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                    Accepted { value: arrow, diagnostics: ad } =>
+                                      outcome_with_diagnostics(
+                                        value: optional_present(value: arrow),
+                                        diagnostics: diagnostics_merge(outer: d, inner: ad)
+                                      )
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_arrow_lambda_value(shell: Node, captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_lambda_parts_optional(captured: captured) {
     Absent =>
@@ -3273,7 +3407,12 @@ fn body_lower_arrow_lambda_value(shell: Node, captured: Node) -> Outcome<Optiona
             d: body_lower_diagnostic(reason: ^body_lowering_reason_lambda_body_unread, n: parts.body)
           )
         Accepted { value: Present { value: body }, diagnostics: d } =>
-          match body_lower_function_value_arrow(shell: shell, binders: parts.binders, body: body) {
+          match body_lower_function_value_arrow(
+            shell: shell,
+            binders: parts.binders,
+            codomain: type_annotation_elided_node(at: shell),
+            body: body
+          ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: arrow, diagnostics: ad } =>
               outcome_with_diagnostics(
@@ -3285,15 +3424,19 @@ fn body_lower_arrow_lambda_value(shell: Node, captured: Node) -> Outcome<Optiona
   }
 }
 
-// THE ONE FUNCTION-VALUE ARROW PRODUCER. Every function value in value position -- `p => body`
-// here, and `fn(a, b) { .. }` once its binders and body are read -- builds its Arrow through this,
-// from its binder edges (Named domain edges, one per parameter, in authored order) and its ALREADY
-// LOWERED body, so there is one shape and one place the elided types are chosen.
-fn body_lower_function_value_arrow(shell: Node, binders: List<Edge>, body: Node) -> Outcome<Node> {
+// THE ONE FUNCTION-VALUE ARROW PRODUCER. Every function value in value position -- `p => body` and
+// `fn(a, b) -> R { .. }` -- builds its Arrow through this, from its binder edges (Named domain
+// edges, one per parameter, in authored order), its codomain (the authored return type, or the
+// elided type where none is written) and its ALREADY LOWERED body, so there is one Arrow shape.
+fn body_lower_function_value_arrow(
+  shell: Node,
+  binders: List<Edge>,
+  codomain: Node,
+  body: Node
+) -> Outcome<Node> {
   match body_lower_reify_arrow_body(body: body) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: reified, diagnostics: bd } =>
-      let codomain = type_annotation_elided_node(at: shell)
       outcome_with_diagnostics(
         value: node_lowered_from(
           source: shell,
@@ -3314,17 +3457,6 @@ fn body_lower_function_value_arrow(shell: Node, binders: List<Edge>, body: Node)
         ),
         diagnostics: bd
       )
-  }
-}
-
-// `fn(a) { body }` in value position still has no producer on this route (dag_surface_fn_literal is
-// preserved structure, lowered only by fold_lowering inside a fold-family call). The body walker
-// would answer it with its body's first primary, so it is named here and declined.
-fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
-  let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
-  match parse_production_emitted_identity_optional(node: stripped) {
-    Present { value: id } => (id == ^dag_surface_arrow_lambda) || (id == ^dag_surface_fn_literal)
-    Absent => false
   }
 }
 

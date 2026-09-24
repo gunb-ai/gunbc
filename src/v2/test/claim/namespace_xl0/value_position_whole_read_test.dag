@@ -22,6 +22,8 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Bind,
+  ComputationNode,
   Arrow,
   Found,
   Named,
@@ -77,6 +79,10 @@ data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\ni
 data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => x, v: p) }\n"
 
 data vpw_lambda_undeclared_source: String = "module v2.test.vpw_lambda_undeclared\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => vpw_undeclared_lambda_body, v: p) }\n"
+
+// A fn literal in argument position, once with an expression body and once with a let-block body.
+// The callees differ from the lambda fixture's so each shape claim is satisfied by its own module.
+data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_literal(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_apply_block(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_literal(f: fn(x) { x }, v: p) }\n\nfn vpw_probe_block(p: Bool) -> Bool {\n  vpw_apply_block(f: fn(x) {\n    let y = x\n    y\n  }, v: p)\n}\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -244,7 +250,10 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
       head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
       tail: Cons {
         head: vpw_read(source: vpw_arg_lambda_source, id: ^vpw_arg_lambda_artifact, unit: ^vpw_arg_lambda_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_lambda.dag"),
-        tail: Empty
+        tail: Cons {
+          head: vpw_read(source: vpw_arg_fn_literal_source, id: ^vpw_arg_fn_literal_artifact, unit: ^vpw_arg_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_fn_literal.dag"),
+          tail: Empty
+        }
       }
     }
   }
@@ -303,12 +312,14 @@ type VpwShape
   = VpwNestedCall { callee: Symbol, inner: Symbol }
   | VpwSingleCall { callee: Symbol, inner: Symbol }
   | VpwLambdaArgument { callee: Symbol, binder: Symbol }
+  | VpwFnLiteralBlockArgument { callee: Symbol, binder: Symbol }
 
 fn vpw_node_has_shape(n: Node, shape: VpwShape) -> Bool {
   match shape {
     VpwNestedCall { callee: c, inner: i } => vpw_nested_call_shape(n: n, callee: c, inner: i)
     VpwSingleCall { callee: c, inner: i } => vpw_single_call_shape(n: n, callee: c, inner: i)
     VpwLambdaArgument { callee: c, binder: b } => vpw_lambda_argument_shape(n: n, callee: c, binder: b)
+    VpwFnLiteralBlockArgument { callee: c, binder: b } => vpw_fn_literal_block_argument_shape(n: n, callee: c, binder: b)
   }
 }
 
@@ -388,4 +399,36 @@ fn vpw_lambda_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
 
 test fn a_lambda_argument_lowers_to_an_arrow_binding_its_parameter_for_its_body() -> Bool {
   vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply, binder: ^x })
+}
+
+test fn a_fn_literal_argument_lowers_to_the_same_arrow_as_a_lambda() -> Bool {
+  vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply_literal, binder: ^x })
+}
+
+// A let-block body is lowered by the named fn's body lowering, so the Arrow's body is the Bind a
+// named fn's `let` lowers to -- not the block's first atom, and not an unlowered shell.
+fn vpw_fn_literal_block_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee)
+    && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
+      acc || (match a.kind {
+        TypeNode { connective: Arrow } =>
+          match vpw_domain_binds(arrow: a, binder: binder) {
+            Present { value: _ } =>
+              match arrow_body_target_lookup(children: a.children) {
+                Found { target: body } =>
+                  match body.kind {
+                    ComputationNode { behavior: Bind } => true
+                    _ => false
+                  }
+                _ => false
+              }
+            Absent => false
+          }
+        _ => false
+      })
+    })
+}
+
+test fn a_fn_literal_argument_with_a_let_block_body_lowers_its_body_as_a_named_fn_does() -> Bool {
+  vpw_any_node(shape: VpwFnLiteralBlockArgument { callee: ^vpw_apply_block, binder: ^x })
 }
