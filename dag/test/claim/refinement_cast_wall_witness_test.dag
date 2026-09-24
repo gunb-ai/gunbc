@@ -81,6 +81,16 @@ data count_is_nat_source: String = "module probe_refinement_count_nat\nimport st
 
 data bool_as_int_source: String = "module probe_refinement_bool_as_int\nimport std.types { Bool, Int }\nfn bit(b: Bool) -> Int { b as Int }\n"
 
+// THE HOMONYM. v2.std.nat.Nat is spelled "Nat" and is not a refinement of Int (it is a Peano
+// Zero | Succ coproduct with its own typed nat_sub). The subtraction row is keyed on the resolved
+// DECLARATION, so a difference of two Peano Nats keeps its own typing and returns into a Peano Nat
+// position without a mismatch. Keyed on the last name segment, it would be typed Int and refuse.
+data peano_nat_difference_source: String = "module probe_refinement_peano_difference\nimport v2.std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Nat { a - b }\n"
+
+test fn w_peano_nat_difference_is_not_the_refinement() -> Bool {
+  blocking_count(source: peano_nat_difference_source) == 0
+}
+
 test fn w_nat_difference_leaves_the_refinement() -> Bool {
   blocking_count(source: nat_difference_source) >= 1
 }

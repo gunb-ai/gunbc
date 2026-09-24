@@ -8393,7 +8393,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_result = operands.right
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
+      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
       let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
