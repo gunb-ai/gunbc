@@ -5652,25 +5652,25 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
   }
 }
 
-// THE GUARD IS THE WHOLE OVERLAP STORY. A statement spine is taken over by
-// the Bind lowering ONLY when it is headed by a statement-form let AND has a
-// following statement -- exactly the case that has no lowering today. Every
-// other spine keeps the path it already had, so this cannot re-route a body
-// that already lowers.
-fn body_lower_stmt_spine_is_let_headed(spine: Node) -> Bool {
+// THE GUARD IS WHETHER THERE IS A SEQUENCE, NOT WHAT HEADS IT. A spine of two or more statements
+// is a statement sequence and has exactly one lowering, body_lower_stmt_spine: a let-headed one
+// becomes a Bind over the remainder, and any other head refuses with
+// ^body_lowering_reason_statement_precedes_without_binding, because a non-binding statement has no
+// continuation to bind. This guard used to admit only let-headed spines and hand every other
+// multi-statement spine back to the expression walker, which answered with ONE statement and
+// silently discarded the rest -- `{ 1 \n 2 }` normalized clean (claim
+// v2.test.claim.body_lowering.statement_let_bind unbound_statement_prefix_refuses_holds). A
+// single-statement spine is not a sequence and keeps the expression path.
+fn body_lower_stmt_spine_is_sequence(spine: Node) -> Bool {
   match body_lower_stmt_spine_head_optional(spine: spine) {
     Absent => false
-    Present { value: head } =>
+    Present { value: _ } =>
       match body_lower_stmt_spine_rest_optional(spine: spine) {
         Absent => false
         Present { value: rest } =>
           match body_lower_stmt_spine_head_optional(spine: rest) {
             Absent => false
-            Present { value: _ } =>
-              match body_lower_statement_let_captured_optional(stmt: head) {
-                Absent => false
-                Present { value: _ } => true
-              }
+            Present { value: _ } => true
           }
       }
   }
@@ -5684,7 +5684,7 @@ fn body_lower_try_statement_spine(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_stmt_seq) {
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
     ParseSubtreeFound { captured: spine } =>
-      if body_lower_stmt_spine_is_let_headed(spine: spine) {
+      if body_lower_stmt_spine_is_sequence(spine: spine) {
         bind_outcome(
           o: body_lower_stmt_spine(spine: spine),
           f: fn(lowered) { outcome_accepted(value: optional_present(value: lowered)) }
