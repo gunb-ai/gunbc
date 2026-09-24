@@ -824,7 +824,7 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
                             spelling.text.clone(),
                             algebra_type_param_names(carrier.profile.clone())
                                 .iter()
-                                .fold(0, |n: i64, _| (n + 1)),
+                                .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
                         )
                     } else {
                         inner.clone()

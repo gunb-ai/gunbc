@@ -47,8 +47,15 @@ pub fn nat_ceil_div(a: Nat, b: Nat) -> Option<Nat> {
         std::option::Option::None
     } else {
         {
-            let carry = if ((a.clone() % b.clone()) == 0) { 0 } else { 1 };
-            Some(((a.clone() / b.clone()) + carry.clone()))
+            let carry = if (v1_rt::int_rem(a.clone(), b.clone()) == 0) {
+                0
+            } else {
+                1
+            };
+            Some(v1_rt::int_add(
+                v1_rt::int_div(a.clone(), b.clone()),
+                carry.clone(),
+            ))
         }
     }
 }
@@ -73,7 +80,7 @@ pub fn nat_range_accumulate(
             break acc.clone();
         } else {
             {
-                let __tco_0 = (lo.clone() + 1);
+                let __tco_0 = v1_rt::int_add(lo.clone(), 1);
                 let __tco_1 = hi;
                 let __tco_2 = v1_rt::concat(acc, Rc::new(vec![lo.clone()]));
                 __tco_loop_lo = __tco_0;
