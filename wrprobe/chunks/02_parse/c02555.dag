@@ -1,0 +1,37 @@
+module chunk
+
+fn expr_parse_demand_fold(expr: GrammarExpr) -> ParseDemandFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { parse_demand_fold_leaf() },
+      literal_terminal: fn(_, _) { parse_demand_fold_leaf() },
+      nonterminal: fn(_) { ParseDemandFold { demands_nonterminal: true, discarding_sites: 0 } },
+      sequence: fn(l, r) {
+        ParseDemandFold {
+          demands_nonterminal: l.demands_nonterminal || r.demands_nonterminal,
+          discarding_sites: l.discarding_sites + r.discarding_sites
+        }
+      },
+      choice: fn(l, r) {
+        ParseDemandFold {
+          demands_nonterminal: l.demands_nonterminal || r.demands_nonterminal,
+          discarding_sites: l.discarding_sites + r.discarding_sites + parse_demand_fold_site(attempted: l)
+        }
+      },
+      optional: fn(e) {
+        ParseDemandFold {
+          demands_nonterminal: e.demands_nonterminal,
+          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
+        }
+      },
+      repeat: fn(e) {
+        ParseDemandFold {
+          demands_nonterminal: e.demands_nonterminal,
+          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
+        }
+      }
+    }
+  )
+}
+

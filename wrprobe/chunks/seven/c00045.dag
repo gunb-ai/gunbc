@@ -1,0 +1,12 @@
+module chunk
+
+fn g_tree_has_arrow_body(root: Node) -> Bool {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || g_tree_has_arrow_body(root: e.target)
+      })
+  }
+}
+

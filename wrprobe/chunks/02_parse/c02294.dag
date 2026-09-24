@@ -1,0 +1,11 @@
+module chunk
+
+fn class_bucket_alts_for_other(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
+  filter(xs: alts, predicate: fn(alt) {
+    let first = prepared_expr_fold_first(alt: alt)
+    first.nullable || any(xs: first.terminals, predicate: fn(k) {
+      first_key_eq(left: k, right: FirstAnyOfClass { token_class: token_class })
+    })
+  })
+}
+

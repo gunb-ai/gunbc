@@ -1,0 +1,36 @@
+module chunk
+
+fn derive_grammar_relation_row_node_resolved(
+  production: FormalProduction,
+  resolution: EmittedProductionResolution
+) -> Witness<Node> {
+  let emitted = resolution.emitted
+  match emitted.kind {
+    TypeNode { connective: Conj } =>
+      match derive_grammar_relation_token_edges_resolved(
+        production: production,
+        resolution: resolution
+      ) {
+        Holds { value: token_edges } =>
+          Holds {
+            value: grammar_relation_row_to_node(
+              row: derive_grammar_relation_row(production: production, emitted: emitted),
+              tokens: grammar_relation_tokens_node(
+                tokens: grammar_relation_token_edge_targets(edges: token_edges),
+                token_to_node: fn(token_node) { token_node }
+              )
+            )
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_emitted_not_conj,
+          at: node_locus(node: emitted),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+

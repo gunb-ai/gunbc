@@ -1,0 +1,23 @@
+module chunk
+
+fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
