@@ -61,7 +61,7 @@ data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport v2
 
 data vpw_operand_call_source: String = "module v2.test.vpw_operand_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { if p { vpw_id(p: vpw_undeclared_operand) && p } else { false } }\n"
 
-data vpw_operand_expr_source: String = "module v2.test.vpw_operand_expr\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(vpw_left: Bool, vpw_right: Bool) -> Bool { vpw_id(p: vpw_left) == vpw_right }\n"
+data vpw_operand_expr_source: String = "module v2.test.vpw_operand_expr\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(vpw_left: Bool, vpw_right: Bool) -> Bool { (vpw_id(p: vpw_left)) == vpw_right }\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -322,11 +322,12 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 
 // A LOWERED OPERATOR EXPRESSION IS THE SAME Transform A CALL IS (v2.std.compilers.body_lowering
 // lower_binary_infix: the operator first, then left, then right), so the call readers read it: the
-// operator as callee, the two operands as arguments. `vpw_id(p: vpw_left) == vpw_right` in an
+// operator as callee, the two operands as arguments. `(vpw_id(p: vpw_left)) == vpw_right` in an
 // expression body must lower to ==(vpw_id(vpw_left), vpw_right): the left operand the WHOLE call with
-// its argument present. This is the discriminator for v2.compiler.body_lowering_fold
-// body_lower_operator_operand's fallback -- the call is not an operand atom, so the operand reader
-// declines it and only the value reader lowers it. Removing that fallback refuses the module
+// its argument present. The operand is PARENTHESISED because that is the shape in five of the six files that
+// refused operator_operand_unread on the native lane (`(a == b) && (c == d)`); an unparenthesised call
+// operand was measured to lower before body_lower_operator_operand's fallback is reached, so it did not
+// discriminate the fallback (M1 and M2 both stayed green on srv1 at ee53a8a930). Removing that fallback refuses the module
 // (operator_operand_unread, no roots); a reader that answered the callee alone fails the inner-call
 // arm.
 fn vpw_call_operand_shape(n: Node, operator: Symbol, callee: Symbol, inner: Symbol, right: Symbol) -> Bool {
