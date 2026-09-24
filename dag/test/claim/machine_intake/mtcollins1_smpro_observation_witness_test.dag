@@ -1,0 +1,138 @@
+module test.claim.machine_intake.mtcollins1_smpro_observation_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present }
+import extdeps.bmc.ipmi_master_write_read {
+  MasterWriteReadBus, PrivateBus, PublicBus, CompletionNakOnWrite,
+  master_write_read_bus_byte, master_write_read_slave_byte,
+}
+import extdeps.ampere.smpro_register {
+  SmproStageDefined, SmproStageUndefined, SmproStatusDefined,
+  smpro_bootstage_of, smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg,
+}
+import extdeps.ampere.scp_diagnostic { DdrTraining, DdrInitialization, OperatingSystem, Completed, Failed }
+import gunbc.machine_intake_mtcollins1_smpro_observation {
+  SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
+  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
+  mtcollins1_smpro_probe_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED TRANSPORT RESULTS, NOT OBSERVED ONES. No SMpro exchange with this BMC exists in the
+// corpus yet: that is what this pass will produce. The stdout renderings follow ipmitool(1) raw
+// (space-separated hex bytes on completion code 00h), and the refusal stderr is ipmitool's
+// "Unable to send RAW command (... rsp=0xNN)" line.
+
+fn raw(socket: Int, register: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> SmproProbeRaw {
+  SmproProbeRaw { socket: socket, register: register, request: "raw 0x06 0x52 0x05 0x9e 0x02 0x02 0x02", at: "2026-09-24T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+fn read_ok(socket: Int, register: NonEmptyStr, stdout: String) -> SmproProbeOutcome {
+  smpro_probe_outcome(raw: raw(socket: socket, register: register, exit_code: 0, stdout: stdout, stderr: ""))
+}
+
+data nak_stderr: String = "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"
+
+// ── request framing (IPMI v2.0 §22.11) ──────────────────────────────────────────────────────────
+
+test fn bus_two_private_is_byte_05_and_public_04() -> Bool {
+  (match master_write_read_bus_byte(bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus }) { Present { value: b } => b == 5 Absent => false })
+    && (match master_write_read_bus_byte(bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PublicBus }) { Present { value: b } => b == 4 Absent => false })
+    && (match master_write_read_bus_byte(bus: MasterWriteReadBus { channel: 0, bus_id: 8, bus_type: PrivateBus }) { Present { value: _ } => false Absent => true })
+}
+
+test fn the_seven_bit_address_is_shifted_and_an_eight_bit_one_refuses() -> Bool {
+  (match master_write_read_slave_byte(seven_bit_address: 79) { Present { value: b } => b == 158 Absent => false })
+    && (match master_write_read_slave_byte(seven_bit_address: 158) { Present { value: _ } => false Absent => true })
+}
+
+test fn the_bootstage_request_writes_the_register_and_the_size() -> Bool {
+  (smpro_request_text(bus: 5, slave: 158, reg: 176) as String) == "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02"
+}
+
+test fn the_plan_is_five_registers_on_two_sockets() -> Bool {
+  mtcollins1_smpro_probe_count() == 10
+}
+
+// ── one transport result -> one typed outcome ───────────────────────────────────────────────────
+
+test fn the_manufacturer_id_in_wire_order_passes_the_control() -> Bool {
+  let o = read_ok(socket: 0, register: smpro_manufacturer_id_reg.name, stdout: " cd 3a\n")
+  (match o { SmproWordRead { raw: _, word: w } => w == 52538 _ => false }) && (match smpro_control_refusal(o: o) { Absent => true Present { value: _ } => false })
+}
+
+test fn a_byte_swapped_id_refuses_the_control_and_says_what_it_read() -> Bool {
+  match smpro_control_refusal(o: read_ok(socket: 0, register: smpro_manufacturer_id_reg.name, stdout: " 3a cd\n")) {
+    Present { value: why } => contains(why, "read 0x3acd")
+    Absent => false
+  }
+}
+
+test fn a_nak_is_the_controllers_refusal_not_a_transport_failure() -> Bool {
+  match smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr)) {
+    SmproControllerRefused { raw: _, completion: CompletionNakOnWrite } => true
+    _ => false
+  }
+}
+
+test fn a_deadline_with_no_completion_code_is_a_transport_failure() -> Bool {
+  match smpro_probe_outcome(raw: raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 124, stdout: "", stderr: "")) {
+    SmproTransportFailed { raw: _, timed_out: t } => t
+    _ => false
+  }
+}
+
+test fn one_byte_on_success_is_malformed_not_a_zero_word() -> Bool {
+  match read_ok(socket: 0, register: smpro_bootstage_reg.name, stdout: " cd\n") {
+    SmproResponseMalformed { raw: _, detail: _ } => true
+    _ => false
+  }
+}
+
+// ── the BOOTSTAGE word ──────────────────────────────────────────────────────────────────────────
+
+test fn the_high_byte_is_the_stage_and_the_low_byte_the_status() -> Bool {
+  let b = smpro_bootstage_of(word: 1027)
+  (match b.stage { SmproStageDefined { stage: DdrTraining } => true _ => false })
+    && (match b.status { SmproStatusDefined { status: Failed } => true _ => false })
+}
+
+test fn a_stage_code_past_the_table_stays_a_number() -> Bool {
+  match smpro_bootstage_of(word: 2561).stage { SmproStageUndefined { code: c } => c == 10 _ => false }
+}
+
+// ── what a pass reports ─────────────────────────────────────────────────────────────────────────
+
+fn socket_reads(socket: Int, bootstage: String) -> List<SmproProbeOutcome> {
+  [
+    read_ok(socket: socket, register: smpro_manufacturer_id_reg.name, stdout: "cd 3a"),
+    read_ok(socket: socket, register: smpro_cur_bootstage_reg.name, stdout: "00 09"),
+    read_ok(socket: socket, register: smpro_bootstage_reg.name, stdout: bootstage),
+  ]
+}
+
+test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
+  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
+  count(f) == 2 && any(f, x => contains(x, "SMpro socket 1: BOOTSTAGE DDR training report status, failed"))
+    && any(f, x => contains(x, "SMpro socket 0: BOOTSTAGE OS booting, completed without error"))
+}
+
+test fn two_sockets_at_the_same_stage_add_no_finding() -> Bool {
+  count(mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))) == 0
+}
+
+test fn socket_one_unreadable_beside_a_read_socket_zero_is_named() -> Bool {
+  let s1 = [smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr))]
+  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
+  any(f, x => contains(x, "SMpro socket 1: stage NOT ESTABLISHED"))
+}
+
+// THE DOSSIER EXISTS WHEN NOTHING WAS ANSWERED.
+test fn a_pass_where_nothing_was_sent_still_renders_every_socket() -> Bool {
+  let os = [SmproNotSent { socket: 0, register: smpro_bootstage_reg.name, reason: "socket 0 control: MANUFACTURER_ID TRANSPORT FAILED" }, SmproNotSent { socket: 1, register: smpro_bootstage_reg.name, reason: "socket 0 control did not establish the transport" }]
+  let t = mtcollins1_smpro_dossier_text(outcomes: os)
+  contains(t, "SMpro socket 0: stage NOT ESTABLISHED") && contains(t, "SMpro socket 1: stage NOT ESTABLISHED") && contains(t, "(no request sent)")
+    && count(mtcollins1_smpro_findings(outcomes: os)) == 0
+}

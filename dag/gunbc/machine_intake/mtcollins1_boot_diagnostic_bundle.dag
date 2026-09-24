@@ -14,6 +14,10 @@ import extdeps.bmc.ipmi
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
+import gunbc.machine_intake_mtcollins1_smpro_observation {
+  SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed,
+  mtcollins1_smpro_probe_count, mtcollins1_smpro_dossier_text, mtcollins1_smpro_findings,
+}
 import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_findings, mtcollins1_sensor_table_text }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
@@ -218,6 +222,13 @@ type SensorReading
   | SensorsUnread { cause: BmcReadCause }
   | SensorsNotTaken { reason: NonEmptyStr }
 
+// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_mtcollins1_smpro_observation), taken after the
+// attempt. Its probes are kept whole, every one with its raw observation, including when none of
+// them was answered: the dossier is rendered for any outcome list.
+type SmproReading
+  = SmproProbed { outcomes: List<SmproProbeOutcome> }
+  | SmproNotTaken { reason: NonEmptyStr }
+
 type MembersReading<T>
   = MembersRead { members: List<T> }
   | MembersUnread { cause: BmcReadCause }
@@ -274,6 +285,7 @@ type MtCollins1BootDiagnosticBundle {
   sel_after: SelSnapshotReading
   sdr_cache: SdrCacheReading
   sensors: SensorReading
+  smpro: SmproReading
   inventory: InventoryReading
   console: ConsoleReading
 }
@@ -378,6 +390,17 @@ fn console_findings(c: ConsoleReading) -> List<String> {
   match c {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _ } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), socket_summary_findings(o: o))
     _ => []
+  }
+}
+
+fn smpro_findings(s: SmproReading) -> List<String> {
+  match s { SmproProbed { outcomes: os } => mtcollins1_smpro_findings(outcomes: os) SmproNotTaken { reason: _ } => [] }
+}
+
+fn smpro_text(s: SmproReading) -> String {
+  match s {
+    SmproProbed { outcomes: os } => mtcollins1_smpro_dossier_text(outcomes: os)
+    SmproNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
 }
 
@@ -514,6 +537,23 @@ fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead
   } }
 }
 
+// A PROBE THE BMC ANSWERED WITH A COMPLETION CODE IS AN ANSWER: a NAK on the SMpro's address says the
+// BMC is up and the device did not acknowledge. Only a probe with no completion code (the session or
+// the deadline) is this channel failing, and it carries the first such probe's transport cause.
+fn smpro_channel(s: SmproReading) -> BmcChannelRead {
+  BmcChannelRead { channel: "ipmi master write-read (smpro)", standing: match s {
+    SmproNotTaken { reason: _ } => BmcChannelNotAttempted
+    SmproProbed { outcomes: os } =>
+      if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true _ => false }) { BmcChannelAnswered }
+      else {
+        match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] _ => [] }).first() {
+          Absent => BmcChannelNotAttempted
+          Present { value: r } => BmcChannelFailed { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: r.at, exit_code: r.exit_code, stderr: r.stderr) }
+        }
+      }
+  } }
+}
+
 fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelRead> {
   [
     sel_channel(channel: "ipmi sel before", s: bundle.sel_before),
@@ -528,6 +568,7 @@ fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelR
       SensorsUnread { cause: c } => BmcChannelFailed { cause: c }
       SensorsNotTaken { reason: _ } => BmcChannelNotAttempted
     } },
+    smpro_channel(s: bundle.smpro),
     members_channel(channel: "redfish memory", m: bundle.inventory.memory),
     members_channel(channel: "redfish processors", m: bundle.inventory.processors),
   ]
@@ -559,7 +600,7 @@ fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> Li
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),
-    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(console_findings(c: bundle.console), shred))))))
+    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(console_findings(c: bundle.console), shred)))))))
 }
 
 // THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a
@@ -701,6 +742,8 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     sel_raw_text(label: "after", s: bundle.sel_after),
     "== bmc sensors (ipmi sdr elist) ==",
     sensors_text(s: bundle.sensors),
+    "== smpro boot stage (ipmi master write-read) ==",
+    smpro_text(s: bundle.smpro),
     "== bmc inventory (redfish) ==",
     concat("system=", if bundle.inventory.system_id == "" { "not-read" } else { bundle.inventory.system_id }),
     processor_members_text(m: bundle.inventory.processors),
@@ -731,9 +774,12 @@ data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
-// The two SEL snapshots, the one SDR dump and the one sensor read each run under the same
-// coreutils bound.
-data mtcollins1_boot_ipmi_read_count: Int = 4
+// The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the plan can
+// send (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run
+// under the same coreutils bound.
+fn mtcollins1_boot_ipmi_read_count() -> Int {
+  4 + mtcollins1_smpro_probe_count()
+}
 
 data mtcollins1_boot_redfish_read_budget: Int = 48
 
@@ -745,7 +791,7 @@ data mtcollins1_boot_collection_member_bound: Int = 40
 data mtcollins1_boot_publish_allowance: Second = second(count: 60)
 
 fn mtcollins1_boot_diagnostics_allowance() -> Second {
-  let sel = mtcollins1_boot_ipmi_read_count * ((second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int))
+  let sel = mtcollins1_boot_ipmi_read_count() * ((second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int))
   let redfish = mtcollins1_boot_redfish_read_budget * (second_count(s: mtcollins1_boot_redfish_read_deadline) as Int)
   second(count: sel + redfish + (second_count(s: mtcollins1_boot_publish_allowance) as Int))
 }
