@@ -172,13 +172,6 @@ fn ampere_ras_section_header_of(dword: Int) -> AmpereRasSectionHeader? {
   }
 }
 
-fn ampere_ras_header_is_type(h: AmpereRasSectionHeader, t: AmpereRasErrorType) -> Bool {
-  match h.error_type {
-    AmpereRasTypeDefined { error_type: e } => ampere_ras_error_type_code(t: e) == ampere_ras_error_type_code(t: t)
-    AmpereRasTypeUndefined { code: _ } => false
-  }
-}
-
 fn ampere_ras_error_type_reading_text(r: AmpereRasErrorTypeReading) -> String {
   match r {
     AmpereRasTypeDefined { error_type: t } => ampere_ras_error_type_name(t: t)
