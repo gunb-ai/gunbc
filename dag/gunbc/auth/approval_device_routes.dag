@@ -23,7 +23,7 @@ import extdeps.apple.app_attest {
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability {
-  ProposeApprove, ProposeDeny, utc_instant_is_canonical, utc_instant_before,
+  ProposeApprove, ProposeDeny, utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after,
   issue_capability, CapabilityIssued, CapabilityIssuanceRefused, approval_capability_signing_input,
 }
 import gunbc.auth.approval_app_attest_config {
@@ -117,10 +117,6 @@ fn device_instant_plus(t: Timestamp, s: Second) -> Timestamp {
   Clock.TimestampAdd(timestamp: t, offset: second_count(s: s)).result
 }
 
-fn device_instant_minus(t: Timestamp, s: Second) -> Timestamp {
-  Clock.TimestampAdd(timestamp: t, offset: 0 - second_count(s: s)).result
-}
-
 // ── The verifier's expectations, from the configuration ──────────────────────────────────────
 type VerifierExpectations
   = VerifierReady { app_id: NonEmptyStr, config: AppAttestVerifierConfig }
@@ -176,10 +172,17 @@ type DeviceReadAdmission
   = DeviceReadAdmitted { enrollment: VerifiedDeviceEnrollment }
   | DeviceReadRefused { status: HttpStatus, reason: String }
 
+// The window is closed below and open above, in whole seconds from the observed instant: a pure
+// comparison over gunbc.auth.approval_capability utc_instant_seconds_after, so no clock call and no
+// negative offset handed to a Nat carrier. Both instants must be canonical; either one failing is
+// outside the window.
 fn requested_at_within_skew(requested_at: Timestamp, observed_at: Timestamp) -> Bool {
-  utc_instant_is_canonical(t: requested_at)
-    && !utc_instant_before(a: requested_at, b: device_instant_minus(t: observed_at, s: approval_device_read_skew))
-    && utc_instant_before(a: requested_at, b: device_instant_plus(t: observed_at, s: approval_device_read_skew))
+  utc_instant_is_canonical(t: requested_at) && utc_instant_is_canonical(t: observed_at)
+    && seconds_within_half_open_window(d: utc_instant_seconds_after(later: requested_at, earlier: observed_at), w: second_count(s: approval_device_read_skew) as Int)
+}
+
+fn seconds_within_half_open_window(d: Int, w: Int) -> Bool {
+  d >= 0 - w && d < w
 }
 
 // ADMISSION OF A READ: a bound native verifier realization, an ACTIVE enrolment named by the body, a

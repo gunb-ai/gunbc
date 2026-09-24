@@ -6,7 +6,7 @@ import gunbc.auth.approval_writer_authority { ApprovalServingProcess, BrokerProc
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
-  redemption_status,
+  redemption_status, requested_at_within_skew,
 }
 import gunbc.auth.approval_device_redemption { observe_enrollment, EnrolmentSlotUnreadable, approval_device_store_root, DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
@@ -122,6 +122,21 @@ test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
       EscalationUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
       _ => false
     })
+}
+
+// The skew window is closed below and open above: 60 s before is inside, 61 s before is not; 59 s
+// after is inside, 60 s after is not; a non-canonical claimed time is never inside. The bounds are a
+// pure seconds comparison (gunbc.auth.approval_capability utc_instant_seconds_after), so the claim is
+// hermetic; an observed instant that is not canonical is outside the window too.
+test fn the_read_skew_window_brackets_sixty_seconds() -> Bool {
+  requested_at_within_skew(requested_at: "2026-09-21T11:59:00Z", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: "2026-09-21T11:58:59Z", observed_at: fx_now)
+    && requested_at_within_skew(requested_at: "2026-09-21T12:00:59Z", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: "2026-09-21T12:01:00Z", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: "not-a-time", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: fx_now, observed_at: "2026-02-30T12:00:00Z")
+    && requested_at_within_skew(requested_at: "2024-02-29T23:59:30Z", observed_at: "2024-03-01T00:00:29Z")
+    && !requested_at_within_skew(requested_at: "2023-12-31T23:59:59Z", observed_at: "2024-01-01T00:01:00Z")
 }
 
 // The redemption outcome's status map, exhaustive over the closed outcome: the arms the app
