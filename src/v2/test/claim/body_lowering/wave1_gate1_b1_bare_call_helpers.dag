@@ -35,7 +35,7 @@ fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
 fn wave1_gate1_b1_normalized_module(source: String) -> Optional<Node> {
   match conserved_normalize_of_text(path: "wave1_gate1_b1_probe_file", text: source, explained: no_explained_drops()) {
     Rejected { diagnostics: _ } => Absent
-    Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+    Accepted { value: tree, diagnostics: _ } => Present { value: tree.root }
   }
 }
 

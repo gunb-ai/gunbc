@@ -44,7 +44,7 @@ fn wave1_gate1_a1_parsed_add_module() -> Optional<Node> {
 fn wave1_gate1_a1_normalized_add_module() -> Optional<Node> {
   match conserved_normalize_of_text(path: "wave1_gate1_a1_add_probe_file", text: wave1_gate1_a1_add_module_source, explained: no_explained_drops()) {
     Rejected { diagnostics: _ } => Absent
-    Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+    Accepted { value: tree, diagnostics: _ } => Present { value: tree.root }
   }
 }
 

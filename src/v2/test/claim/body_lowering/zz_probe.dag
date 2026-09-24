@@ -1,0 +1,7 @@
+module v2.test.claim.body_lowering.zz_probe
+
+import v2.test.claim.body_lowering.normalize_outcome_helpers { body_lowering_normalize_outcome }
+
+fn p1() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f() -> Int {\n  1\n  2\n}\n", file: ^p) }
+fn p2() -> String { body_lowering_normalize_outcome(src: "module m.t\ntype A { meet: fn(Int, Int) -> Int }\ndata d: A = A { meet: fn(a, b) { a } }\n", file: ^p) }
+fn p3() -> String { body_lowering_normalize_outcome(src: "module m.t\ntype A { meet: fn(Int, Int) -> Int }\ndata d: A = A { meet: (a, b) => a }\n", file: ^p) }
