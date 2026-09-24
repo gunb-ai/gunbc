@@ -37,7 +37,7 @@ import v2.std.node {
   arrow_type_params_target_lookup,
   node_subtree_nodes
 }
-import v2.std.node_query { call_argument_targets, call_callee_target }
+import v2.std.node_query { call_argument_targets, call_callee_target, node_positional_child_targets }
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -395,20 +395,16 @@ fn vpw_symbol_in(xs: List<Symbol>, s: Symbol) -> Bool {
 }
 
 fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
-  match list_at_optional(xs: arrow.children, index: 0) {
-    Present { value: e } =>
-      match e.label {
-        Positional =>
-          match named_edge_target_lookup(children: e.target.children, name: binder) {
-            Found { target: t } =>
-              match node_atom_identity_optional(node: t) {
-                Present { value: tv } =>
-                  if vpw_symbol_in(xs: arrow_type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
-                Absent => optional_absent()
-              }
-            _ => optional_absent()
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match named_edge_target_lookup(children: domain.children, name: binder) {
+        Found { target: t } =>
+          match node_atom_identity_optional(node: t) {
+            Present { value: tv } =>
+              if vpw_symbol_in(xs: arrow_type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
+            Absent => optional_absent()
           }
-        Named { name: _ } => optional_absent()
+        _ => optional_absent()
       }
     Absent => optional_absent()
   }
@@ -528,9 +524,13 @@ test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_forme
 fn vpw_first_type_binder(arrow: Node) -> Optional<Node> {
   match arrow_type_params_target_lookup(children: arrow.children) {
     Found { target: conj } =>
-      match list_at_optional(xs: conj.children, index: 0) {
-        Present { value: e } => optional_present(value: e.target)
-        Absent => optional_absent()
+      match arrow_type_param_names(n: arrow) {
+        Cons { head: first, tail: _ } =>
+          match named_edge_target_lookup(children: conj.children, name: first) {
+            Found { target: b } => optional_present(value: b)
+            _ => optional_absent()
+          }
+        Empty => optional_absent()
       }
     _ => optional_absent()
   }
