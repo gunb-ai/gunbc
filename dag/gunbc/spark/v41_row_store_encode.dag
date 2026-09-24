@@ -19,7 +19,7 @@ import gunbc.spark.v41_engram_row_store {
   V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,
   V41PublishedSpan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
   v41_row_store_spec, v41_published_span_plan, v41_identify_row_store, v41_live_head_sizes,
-  v41_magic_octets, weight_bytes, scale_bytes, v41_store_key,
+  v41_magic_octets, weight_bytes, scale_bytes, v41_store_key, v41_store_size,
 }
 
 // ── THE HOST REALIZATION OF v41_place_row: WHAT THE ENCODER IS TOLD, DERIVED ───────────────────
@@ -145,6 +145,7 @@ type V41StoreEncodeArgs {
   scale_bytes: ByteSize
   magic_hex: String
   out: NonEmptyStr
+  expected_size: ByteSize
 }
 
 type V41StoreEncodePlan
@@ -180,6 +181,7 @@ fn v41_layer_store_args(t: V41LayerTable, spec: V41RowStoreEncodingSpec, spans: 
         scale_bytes: scale_bytes(g: spec.geometry),
         magic_hex: v41_magic_hex(),
         out: v41_store_out_path(layer: t.layer, rank: r.rank),
+        expected_size: v41_store_size(spec: spec, rows: r.end - r.start),
       })
     }
   }

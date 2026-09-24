@@ -20142,7 +20142,7 @@ pub fn emit_tco_param(
 ) -> String {
     {
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let ty = if rust_type_node_is_arrow(authored.clone()) {
             emit_rust_param_type(
                 authored.clone(),
                 generic_param_names.clone(),
@@ -20335,7 +20335,7 @@ pub fn emit_rust_param_type(
     env: Rc<TypeEnv>,
     fn_param_needs_static: bool,
 ) -> String {
-    if ((n.params.clone().len() as i64) > 0) {
+    if rust_type_node_is_arrow(n.clone()) {
         {
             let param_types = Rc::new({
                 let mut __result = Vec::new();
@@ -20407,7 +20407,7 @@ pub fn emit_param(
     {
         let pname = crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone());
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let ty = if rust_type_node_is_arrow(authored.clone()) {
             emit_rust_param_type(
                 authored.clone(),
                 generic_param_names.clone(),

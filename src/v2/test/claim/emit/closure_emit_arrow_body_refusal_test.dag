@@ -1,0 +1,94 @@
+module v2.test.emit.closure_emit_arrow_body_refusal
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.self_host.compiler_closure_emit { emit_compiler_import_closure_from_ingest_located }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.translate {
+  ArrowBodyNotATypeExpression,
+  translate_diagnostic_reason_symbol
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE DOOR'S VERDICT ON A MODULE WHOSE FUNCTION HAS A BODY (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body). Before this row the closure emitter ACCEPTED this
+// module and printed `add` as its function TYPE -- `( { x: i32, y: i32 }) -> (i32) -> i32` inside a
+// record rendering of the module -- with the body `x + y` gone and nothing refusing. The type-expression
+// arrow projection in `v2.compiler.translate` read only the positional parameter and result children,
+// so the body edge was discarded silently. It now refuses at that link, located at the arrow.
+//
+// THE RED ON THE OLD TREE IS THE ACCEPT ITSELF: every assertion below is false for an Accepted outcome,
+// so deleting the refusal from `translate_type_expression_arrow_project` turns both rows red. The reason
+// is compared through the reason roster's own symbol function, not a literal, so a rename of the
+// reason cannot leave this row asserting a spelling nothing produces.
+//
+// WHAT THIS DOES NOT CLAIM: that the door renders the body. No Rust grammar row renders a dag module or
+// a nested fn declaration yet, so a refusal is the honest answer; the rendering is the class's next rung.
+data arrow_body_probe_source: String = "module arrow_body_probe\n\nimport v2.std.integer { Int }\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+data arrow_body_probe_ingest: SourceRootIngest = Cons {
+  head: DagSourceReadWitness {
+    source: Medium { carried: arrow_body_probe_source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^arrow_body_probe_artifact, file_path: "src/v2/arrow_body_probe.dag" },
+    compilation_unit: ^arrow_body_probe_cu,
+    source_root: V2Tree
+  },
+  tail: Empty
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE: both rows read one field of the same emit, and the emit pays a
+// grammar preparation and a full front end, more than one claim's budget
+// (v2.workflow.floor_pure_producer_share, WARM). It publishes only what the rows read -- the fatal
+// reason and its rendered locus -- so the stored value carries no Node, SpanIndex or closure. An
+// ACCEPTED emit publishes `ArrowBodyProbeAccepted`, which both rows read as false.
+type ArrowBodyProbeVerdict
+  = ArrowBodyProbeAccepted
+  | ArrowBodyProbeRefused { reason: Symbol, locus: String }
+
+fn arrow_body_probe_verdict() -> ArrowBodyProbeVerdict {
+  let e = emit_compiler_import_closure_from_ingest_located(
+    ingest: arrow_body_probe_ingest,
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^arrow_body_probe, tail: Empty } },
+      imports: Empty
+    },
+    target: rust_target_model()
+  )
+  match e.outcome {
+    Accepted { value: _, diagnostics: _ } => ArrowBodyProbeAccepted
+    Rejected { diagnostics: d } =>
+      ArrowBodyProbeRefused {
+        reason: diagnostics_fatal_reason(d: d),
+        locus: lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: e.spans)
+      }
+  }
+}
+
+test fn a_function_body_the_emitter_cannot_render_refuses_rather_than_dropping_holds() -> Bool {
+  match arrow_body_probe_verdict() {
+    ArrowBodyProbeAccepted => false
+    ArrowBodyProbeRefused { reason: reason, locus: _ } =>
+      reason == translate_diagnostic_reason_symbol(reason: ArrowBodyNotATypeExpression)
+  }
+}
+
+// LOCATED MEANS IN THE AUTHORED FILE: a refusal rendered as a synthetic occurrence would satisfy the
+// reason row and leave the operator with nothing to open.
+test fn the_body_refusal_is_located_in_the_authored_file_holds() -> Bool {
+  match arrow_body_probe_verdict() {
+    ArrowBodyProbeAccepted => false
+    ArrowBodyProbeRefused { reason: _, locus: locus } =>
+      string_contains(s: locus, pattern: "arrow_body_probe_cu bytes ")
+  }
+}
