@@ -4,7 +4,7 @@ import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.git {
   git_config_global_get_all_command, git_config_global_add_command,
-  git_safe_directory_key, git_safe_directory_wildcard,
+  git_safe_directory_key, git_safe_directory_wildcard, SafeDirectoryGrant,
 }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_command_observe }
@@ -44,11 +44,6 @@ import gunbc.ci_deploy_access { DeployAccess }
 // not report a host converged on a grant wider than the one it models, nor delete an entry it did
 // not write. A different path is simply not the grant: it reads back as absent and the exact one is
 // added.
-type SafeDirectoryGrant {
-  principal: NonEmptyStr
-  path: NonEmptyStr
-}
-
 type SafeDirectoryStanding
   = SafeDirectoryGranted
   | SafeDirectoryAbsent

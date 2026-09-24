@@ -3,8 +3,9 @@ module test.claim.live_deploy.checkout_safe_directory_witness
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import extdeps.git.inspect { config_reading }
+import extdeps.git { SafeDirectoryGrant }
 import gunbc.live_deploy.checkout_safe_directory {
-  SafeDirectoryGrant, deploy_checkout_safe_directory_grant, safe_directory_standing, safe_directory_after_add,
+  deploy_checkout_safe_directory_grant, safe_directory_standing, safe_directory_after_add,
   SafeDirectoryGranted, SafeDirectoryAbsent, SafeDirectoryUnreadable, SafeDirectoryAdded, SafeDirectoryRefused,
 }
 
