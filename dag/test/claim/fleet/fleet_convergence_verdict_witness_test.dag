@@ -124,3 +124,13 @@ test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
       _ => false
     }
 }
+
+// Empty-case discriminator: receipts exist but NONE is this host's, so the filtered list
+// is empty while the input is not. Unobserved is the only admissible arm — a judge that
+// read another host's receipt, or a fabricated default, would answer Converged here.
+test fn knob_standing_with_only_foreign_receipts_is_unobserved() -> Bool {
+  match host_knob_standing(host: "srv5" as HostIdentity, receipts: [converged_receipt(host: "srv6")]) {
+    KnobUnobserved { host: _ } => true
+    _ => false
+  }
+}
