@@ -46,22 +46,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reference site. So the red arms below are red on BOTH earlier revisions, for two different reasons.
 //
 // THE MODULES VARY ONE THING EACH. An undeclared name as the argument of a call scrutinee must refuse
-// at resolve at its own atom (the scrutinee reached resolve whole); the declared twin resolves. A
-// lambda argument must not refuse the file. An undeclared name inside a call argument, and inside a
-// call that is an operator OPERAND in an if-arm (body_lower_operator_operand's fallback, the third
-// cause, body_lowering_reason_operator_operand_unread), must each refuse at resolve at its own atom.
-// Call arguments and scrutinees as such are gunbc#12173's subject
-// (v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal); they are here as the population
-// the shape claims below read.
+// at resolve at its own atom (the scrutinee reached resolve whole); the declared twin resolves. An
+// undeclared name inside a nested call argument must refuse at its atom. Call arguments and
+// scrutinees as such are gunbc#12173's subject (v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal);
+// they are here as the population the shape claims below read, which assert the lowered call's SHAPE.
+//
+// THE LAMBDA CLAIMS ARE A NAMED FRONTIER, ENROLLED EXPECTED-RED. A lambda argument whose body uses its
+// own parameter must RESOLVE, and an undeclared name in a lambda body must refuse at its atom. Neither
+// holds today: a lambda argument refuses its module as call_argument_unread, which is gen-one's first
+// fatal (dag/examples/weather/weather.dag). Carrying the lambda's shell whole under the
+// value_carried_unlowered advisory was tried in gunbc#12198 and measured on srv1 at 8fc9f27377: the
+// module then normalizes, but BOTH claims stay red, because a carried shell gives the resolver no scope
+// for the parameter -- a refusal moved from normalize to resolve, not a repair, so it was dropped.
+// The repair is real lambda lowering in argument position, owned by the body-lowering modeling pass
+// (MQ lane, adhoc-1b3dbcdb-f9f); these two rows flip green when it lands and the floor reports them
+// for removal.
 data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
 
 data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: p) {\n    true => p\n    false => p\n  }\n}\n"
 
 data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => x, v: p) }\n"
 
-data vpw_operand_call_source: String = "module v2.test.vpw_operand_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { if p { vpw_id(p: vpw_undeclared_operand) && p } else { false } }\n"
-
-data vpw_operand_expr_source: String = "module v2.test.vpw_operand_expr\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(vpw_left: Bool, vpw_right: Bool) -> Bool { vpw_id(p: vpw_left) == vpw_right }\n"
+data vpw_lambda_undeclared_source: String = "module v2.test.vpw_lambda_undeclared\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => vpw_undeclared_lambda_body, v: p) }\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -83,11 +89,8 @@ data vpw_ingest: SourceRootIngest = Cons {
         tail: Cons {
           head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
           tail: Cons {
-            head: vpw_read(source: vpw_operand_call_source, id: ^vpw_operand_call_artifact, unit: ^vpw_operand_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_operand_call.dag"),
-            tail: Cons {
-              head: vpw_read(source: vpw_operand_expr_source, id: ^vpw_operand_expr_artifact, unit: ^vpw_operand_expr_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_operand_expr.dag"),
-              tail: Empty
-            }
+            head: vpw_read(source: vpw_lambda_undeclared_source, id: ^vpw_lambda_undeclared_artifact, unit: ^vpw_lambda_undeclared_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_lambda_undeclared.dag"),
+            tail: Empty
           }
         }
       }
@@ -108,7 +111,7 @@ type VpwOutcomes
       match_declared: VpwVerdict
       arg_lambda: VpwVerdict
       arg_call: VpwVerdict
-      operand_call: VpwVerdict
+      lambda_undeclared: VpwVerdict
     }
 
 fn vpw_verdict_of(outcome: NativeCensusModuleOutcome) -> VpwVerdict {
@@ -155,7 +158,7 @@ fn vpw_outcomes() -> VpwOutcomes {
         match_declared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_match_declared"),
         arg_lambda: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_lambda"),
         arg_call: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_call"),
-        operand_call: vpw_verdict_in(context: context, module_name: "v2.test.vpw_operand_call")
+        lambda_undeclared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_lambda_undeclared")
       }
   }
 }
@@ -177,7 +180,7 @@ fn vpw_is_unbound_at(v: VpwVerdict, spelling: Symbol) -> Bool {
 
 test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, operand_call: _ } =>
+    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_scrutinee)
     VpwContextRefused => false
   }
@@ -185,36 +188,32 @@ test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_ato
 
 test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, operand_call: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
 }
 
-test fn a_lambda_argument_does_not_refuse_its_file() -> Bool {
+test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, operand_call: _ } =>
-      match v {
-        VpwFileRefused => false
-        VpwAbsent => false
-        _ => true
-      }
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _ } =>
+      vpw_is_resolved(v: v)
+    VpwContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom() -> Bool {
+  match vpw_outcomes() {
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v } =>
+      vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_lambda_body)
     VpwContextRefused => false
   }
 }
 
 test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, operand_call: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_argument)
-    VpwContextRefused => false
-  }
-}
-
-test fn an_undeclared_name_inside_a_call_operand_refuses_at_resolve_at_its_atom() -> Bool {
-  match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, operand_call: v } =>
-      vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_operand)
     VpwContextRefused => false
   }
 }
@@ -227,8 +226,21 @@ test fn an_undeclared_name_inside_a_call_operand_refuses_at_resolve_at_its_atom(
 // Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the #12145 regression) both
 // fail these. Renaming the callee in the expected spelling makes them red. The ingest is enrolled warm
 // beside vpw_outcomes; the walk runs per claim.
+// The shape claims read their own ingest, WITHOUT the lambda fixtures: module_roots_from_source_root_ingest
+// refuses the whole ingest when one module refuses, and a lambda argument still refuses its module on
+// this route (the two lambda claims above are enrolled expected-red in v2.workflow.floor_expected_red).
+// A shared ingest would make every shape claim red for the lambda's reason and not its own -- the
+// collateral srv1 measured at 8fc9f27377 against main.
+data vpw_shape_ingest: SourceRootIngest = Cons {
+    head: vpw_read(source: vpw_match_call_source, id: ^vpw_match_call_artifact, unit: ^vpw_match_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_match_call.dag"),
+    tail: Cons {
+      head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
+      tail: Empty
+    }
+  }
+
 fn vpw_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
-  module_roots_from_source_root_ingest(ingest: vpw_ingest, lm: dag_language_model())
+  module_roots_from_source_root_ingest(ingest: vpw_shape_ingest, lm: dag_language_model())
 }
 
 fn vpw_roots() -> FreeMonoid<Node> {
@@ -280,14 +292,11 @@ fn vpw_nested_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 type VpwShape
   = VpwNestedCall { callee: Symbol, inner: Symbol }
   | VpwSingleCall { callee: Symbol, inner: Symbol }
-  | VpwCallOperand { operator: Symbol, callee: Symbol, inner: Symbol, right: Symbol }
 
 fn vpw_node_has_shape(n: Node, shape: VpwShape) -> Bool {
   match shape {
     VpwNestedCall { callee: c, inner: i } => vpw_nested_call_shape(n: n, callee: c, inner: i)
     VpwSingleCall { callee: c, inner: i } => vpw_single_call_shape(n: n, callee: c, inner: i)
-    VpwCallOperand { operator: o, callee: c, inner: i, right: r } =>
-      vpw_call_operand_shape(n: n, operator: o, callee: c, inner: i, right: r)
   }
 }
 
@@ -318,28 +327,4 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
     Present { value: a } => vpw_is_atom(n: a, id: inner)
     Absent => false
   })
-}
-
-// A LOWERED OPERATOR EXPRESSION IS THE SAME Transform A CALL IS (v2.std.compilers.body_lowering
-// lower_binary_infix: the operator first, then left, then right), so the call readers read it: the
-// operator as callee, the two operands as arguments. `vpw_id(p: vpw_left) == vpw_right` in an
-// expression body must lower to ==(vpw_id(vpw_left), vpw_right): the left operand the WHOLE call with
-// its argument present. This is the discriminator for v2.compiler.body_lowering_fold
-// body_lower_operator_operand's fallback -- the call is not an operand atom, so the operand reader
-// declines it and only the value reader lowers it. Removing that fallback refuses the module
-// (operator_operand_unread, no roots); a reader that answered the callee alone fails the inner-call
-// arm.
-fn vpw_call_operand_shape(n: Node, operator: Symbol, callee: Symbol, inner: Symbol, right: Symbol) -> Bool {
-  let args = call_argument_targets(node: n)
-  vpw_is_call_to(n: n, callee: operator) && (length(xs: args) == 2) && (match list_at_optional(xs: args, index: 0) {
-    Present { value: l } => vpw_single_call_shape(n: l, callee: callee, inner: inner)
-    Absent => false
-  }) && (match list_at_optional(xs: args, index: 1) {
-    Present { value: r } => vpw_is_atom(n: r, id: right)
-    Absent => false
-  })
-}
-
-test fn a_call_operand_lowers_whole_under_its_operator() -> Bool {
-  vpw_any_node(shape: VpwCallOperand { operator: ^dag_token_eq_eq, callee: ^vpw_id, inner: ^vpw_left, right: ^vpw_right })
 }

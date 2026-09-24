@@ -37,6 +37,7 @@ import extdeps.git.object_store { git_sha1_object_id, git_object_id_content_hash
 import extdeps.crypto.hash { sha256_digest, sha256_digest_content_hash }
 import extdeps.pin { Pin, ExactPin, admit_pin_integrity, PinIntegrityAdmitted }
 import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_bin_dir }
 import extdeps.version { VersionIdentity }
 import extdeps.container.oci.descriptor { OciDescriptor, accept_descriptor, DescriptorAccepted }
 import extdeps.container.oci.digest {
@@ -68,7 +69,7 @@ data tool_pin_fixture: Pin<CliTool> = Pin {
   subject: CliTool {
     name: "cargo",
     min_version: Absent,
-    installable_via: [SourceApt { package: "cargo" }],
+    installable_via: [SourceApt { package: "cargo", bin_dir: apt_bin_dir }],
   },
   version: "1.93.0" as VersionIdentity,
   expected_identity: content_hash_of_value(value: "cargo-structural-identity" as NonEmptyStr),

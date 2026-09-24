@@ -1,0 +1,115 @@
+module test.claim.runner.runner_microvm_guest_bring_up_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
+import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, GuestBringUpReading, GuestConsoleRead, GuestConsoleUnreadable, GuestConsoleUnbound, GuestConsoleNotStarted,
+  guest_bring_up_from_console, bring_up_phase_label,
+  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
+}
+import gunbc.runner_microvm_lifecycle_realize { attempt_console_binding_of, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted }
+import gunbc.runner_guest_image { guest_observation_line, GuestBooted, RunnerStarted, RunnerExited }
+import extdeps.github.actions_runner { actions_runner_listening_line_suffix }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONSOLES BELOW ARE BUILT BY THE GUEST'S OWN EMITTERS, not typed out, so a change to the
+// guest's line format moves these claims with it (gunbc.runner_guest_image guest_observation_line, and
+// upstream's listener line for RunnerListening). The host-side prefix journalctl adds is prepended to
+// every line, as the real read carries it.
+fn journal(lines: List<String>) -> String {
+  join(map(lines, l => join(["1790000000.000000 srv2 firecracker[4242]: ", l], "")), "\n")
+}
+
+fn booted() -> String { guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image) }
+fn started() -> String { guest_observation_line(event: RunnerStarted, image: gunbc_runner_guest_image) }
+fn exited() -> String { guest_observation_line(event: RunnerExited, image: gunbc_runner_guest_image) }
+fn listening() -> String { join(["[RUNNER 2026-09-23 12:00:00Z INFO] ", actions_runner_listening_line_suffix], "") }
+
+data witness_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv2, slot_index: 4 }
+
+fn witness_identity() -> AttemptIdentity? {
+  match microvm_attempt(slot: witness_slot, attempt_id: "w-1") {
+    MicroVmAttemptAccepted { attempt: a } =>
+      Present {
+        value: AttemptIdentity {
+          attempt: a,
+          allocation_generation: 1,
+          invocation_id: "inv-1" as NonEmptyStr,
+          jit_registration_id: "reg-1" as NonEmptyStr,
+          credential_device_path: "/srv/jail/attempt/jit.env",
+          guest_image: gunbc_runner_guest_image,
+        }
+      }
+    MicroVmAttemptRefused { refusal: _ } => none
+  }
+}
+
+fn reached(console: String) -> String {
+  match witness_identity() {
+    Absent => "fixture-refused"
+    Present { value: id } =>
+      match guest_bring_up_from_console(identity: id, console: console) {
+        GuestConsoleRead { reached: p, refused: rs } => join([bring_up_phase_label(phase: p), " refused=", to_string(length(rs))], "")
+        GuestConsoleUnreadable { unit: _, detail: _ } => "unreadable"
+        GuestConsoleUnbound { reason: _ } => "unbound"
+        GuestConsoleNotStarted => "not-started"
+      }
+  }
+}
+
+// A GUEST THAT BOOTED AND WHOSE LISTENER REPORTED READY REACHES RunnerListening, in order, with
+// nothing refused. RunnerStarted and RunnerExited are not phases and move nothing.
+test fn a_booted_listening_guest_reaches_runner_listening() -> Bool {
+  reached(console: journal(lines: [booted(), started(), listening(), exited()])) == "runner-listening refused=0"
+}
+
+// THE CASE THE DEADLINE ALONE CANNOT SEPARATE: a guest that booted and never listened stops at
+// GuestBooted, and one that printed nothing stays at VmmStarted -- the host's own last phase.
+test fn a_guest_that_booted_but_never_listened_is_distinguished_from_one_that_never_booted() -> Bool {
+  reached(console: journal(lines: [booted(), started(), exited()])) == "guest-booted refused=0"
+    && reached(console: journal(lines: ["[    0.000000] Linux version 6.1", "kernel panic"])) == "vmm-started refused=0"
+    && reached(console: "") == "vmm-started refused=0"
+}
+
+// A LISTENING REPORT WITH NO BOOT REPORT BEFORE IT IS REFUSED, NOT ACCEPTED: advance_bring_up refuses
+// a skipped phase, and the fold keeps the refusal instead of dropping it, so the reading stays at
+// VmmStarted and counts one refused report. A boot line arriving after it still advances.
+test fn a_listening_report_before_any_boot_report_is_refused_and_counted() -> Bool {
+  reached(console: journal(lines: [listening()])) == "vmm-started refused=1"
+    && reached(console: journal(lines: [listening(), booted()])) == "guest-booted refused=1"
+}
+
+// A REPEATED REPORT OF THE PHASE ALREADY REACHED IS NEITHER A TRANSITION NOR A REFUSAL: the console is
+// a stream and the listener may print its readiness line more than once.
+test fn a_repeated_report_of_the_current_phase_is_not_a_refusal() -> Bool {
+  reached(console: journal(lines: [booted(), booted(), listening(), listening()])) == "runner-listening refused=0"
+}
+
+// THE CONSOLE IS BOUND TO THIS ATTEMPT'S INVOCATION. The unit's environment must name the attempt's
+// own invocation_id and the unit's systemd invocation must have been read; an environment naming a
+// different attempt invocation -- the red: a unit reused, or a reading taken from the wrong one -- is
+// unbound, and so is an unread environment or an unread systemd invocation.
+fn binding_label(env: UnitInvocationReading, systemd_invocation: String) -> String {
+  match witness_identity() {
+    Absent => "fixture-refused"
+    Present { value: id } =>
+      match attempt_console_binding_of(identity: id, unit: "gunbc-attempt-w-1.service" as NonEmptyStr, environment: env, systemd_invocation: systemd_invocation) {
+        AttemptConsoleBound { unit: _, systemd_invocation: s } => join(["bound ", s as String], "")
+        AttemptConsoleUnbound { reason: _ } => "unbound"
+        AttemptConsoleNotStarted => "not-started"
+      }
+  }
+}
+
+test fn the_console_binds_only_to_this_attempts_invocation() -> Bool {
+  binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "abc123") == "bound abc123"
+    && binding_label(env: UnitInvocationRead { invocation_id: "inv-2" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
+    && binding_label(env: UnitInvocationUnread { reason: "x" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
+    && binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "") == "unbound"
+}

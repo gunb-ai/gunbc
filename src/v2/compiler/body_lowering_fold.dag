@@ -1244,12 +1244,7 @@ fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRe
   OperatorExpressionRefused { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: reason, n: at)) }
 }
 
-// One operand of an operator expression, lowered whole or refused at the operand. A call or other
-// non-operator sequence in operand position is a value, not an operand atom: after the operand reader
-// declines it, it is read whole by the one value reader (body_lower_value_lowered), the reader call
-// arguments and match scrutinees use, and only a value that reader cannot lower refuses as
-// body_lowering_reason_operator_operand_unread. Before gunbc#12145 the operand reader narrowed such an
-// operand to its head (`f(x) == y` compared `f`); after it, the operand refused its whole module.
+// One operand of an operator expression, lowered whole or refused at the operand.
 fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   let operand = body_lower_strip_operator_free_levels(node: node)
   match body_lower_read_operator_expression(node: operand) {
@@ -1267,15 +1262,9 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
             match body_lower_operand_ref_optional(node: operand) {
               Present { value: lowered } => outcome_accepted(value: lowered)
               Absent =>
-                match body_lower_value_lowered(node: operand) {
-                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: Present { value: lowered }, diagnostics: d } =>
-                    outcome_with_diagnostics(value: lowered, diagnostics: d)
-                  Accepted { value: Absent, diagnostics: _ } =>
-                    outcome_rejected(
-                      d: body_lower_diagnostic(reason: ^body_lowering_reason_operator_operand_unread, n: operand)
-                    )
-                }
+                outcome_rejected(
+                  d: body_lower_diagnostic(reason: ^body_lowering_reason_operator_operand_unread, n: operand)
+                )
             }
         }
       }
@@ -3145,25 +3134,7 @@ fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
 // had no lowered form for the literal. The literal's producer is now body_lower_list_literal, reached
 // from body_lower_primary_expr, so the value reader below lowers it here exactly as in any other
 // value position; no argument-specific list handling remains.
-// A FUNCTION VALUE IN ARGUMENT POSITION IS CARRIED WHOLE, NOT READ AS ITS PARAMETER. `f => body`
-// and `fn(a) { body }` have no producer on this route (body_lower_value_is_function_value_shell), so
-// body_lower_value_lowered declines them. Before gunbc#12145 the operand reader then answered the
-// lambda with its parameter atom (`filter(f => g(f))` passed `f`); after it, the argument refused
-// its module as call_argument_unread -- gen-one's first fatal emitting v2.compiler.compile, at
-// dag/examples/weather/weather.dag. The argument is carried as its preserved shell under
-// body_lowering_reason_value_carried_unlowered, the disposition a field initializer already gives a
-// function value (body_lower_value_lowered_or_carried), for fold_lowering to consume. This is the
-// Carried arm of the closed value outcome the body-lowering modeling pass (MQ-1) will type; until
-// then the advisory is its located cause.
 fn body_lower_arg_value_read(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
-  if body_lower_value_is_function_value_shell(node: value_capture) {
-    body_lower_value_lowered_or_carried(value: value_capture)
-  } else {
-    body_lower_arg_value_read_value(arg_capture: arg_capture, value_capture: value_capture)
-  }
-}
-
-fn body_lower_arg_value_read_value(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
   match body_lower_value_lowered(node: value_capture) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: Present { value: lowered }, diagnostics: d } =>
