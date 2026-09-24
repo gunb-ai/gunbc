@@ -1,6 +1,7 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
@@ -13,12 +14,6 @@ import std.temporal_effect {
 import std.algebra { trim }
 import std.measure { Second, second, second_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.scoped_authorization {
-  AttemptIdentity, AuthorizationRequest,
-  authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
-  ClaimHeld, ClaimLost, ClaimUndecided,
-}
-import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim, unterminated_claim_exit }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
   mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
 }
@@ -26,15 +21,15 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium,
   mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256, mtcollins1_boot_medium_label,
   MtCollins1BootSubject,
-  mtcollins1_boot_authorization_request,
+  mtcollins1_boot_subject,
 }
-import gunbc.auth.approval_gate {
-  ApprovalGate, GateAdmitted, GateRefused, ApprovalPending, ApprovalDenied, ApprovalExpired, ApprovalNotFiled, ApprovalIntentMismatch, ApprovalStoreUnreadable, ApprovalAuthorizeRefused,
-  approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
-  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
+import gunbc.machine_intake_mtcollins1_standing_ruling {
+  StandingRulingConfirmation, StandingRulingConfirmed, StandingRulingRefused, mtcollins1_boot_standing_ruling_read,
 }
-import gunbc.auth.approval_request_client { stored_request_from_authorization }
-import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
+import gunbc.machine_intake_mtcollins1_maintenance_hold {
+  UnitHoldProof, UnitHeld, UnitHoldRefused,
+  mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
+}
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
@@ -75,7 +70,6 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.durable_compare_and_set { CasGeneration }
 
 data mtcollins1_boot_label: String = "mtcollins1 boot"
 
@@ -89,8 +83,6 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
-data mtcollins1_boot_poll_tick_budget: Int = 90
-
 data mtcollins1_boot_sol_settle: Second = second(count: 2)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
@@ -101,47 +93,17 @@ data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
 
 data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
-
-data mtcollins1_boot_submit_timeout: Second = second(count: 30)
-
-data mtcollins1_boot_submit_body_file_name: String = "mtcollins1-approval-submit.json"
-
-fn mtcollins1_boot_approval_window() -> Second {
-  second(count: mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int))
-}
-
+// NO APPROVAL WINDOW IS BUDGETED ANY MORE (operator ruling 2026-09-23): the boot is a recurring
+// automated effect under workload identity (gunbc.auth.privileged_effect_census derives
+// FederatedScopedGrant for it), so the step no longer waits on a human.
 fn mtcollins1_boot_step_timeout_minutes() -> Minute {
   let secs = second_count(s: mtcollins1_boot_prelude_allowance)
-    + second_count(s: mtcollins1_boot_approval_window())
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: oob_power_readback_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: mtcollins1_boot_diagnostics_allowance())
   minute(count: (secs + 59) / 60)
-}
-
-fn mtcollins1_boot_refusal(gate: ApprovalGate<MtCollins1BootSubject>) -> ProcessExit {
-  match gate {
-    GateAdmitted { authorization: _ } => ExitSuccess
-    GateRefused { cause: c } =>
-      match c {
-        ApprovalPending { escalation_id: e } =>
-          exit_failure(reason: concat("mtcollins1 boot: still pending operator decision for ", e as String))
-        ApprovalDenied { reason: r } =>
-          exit_failure(reason: concat("mtcollins1 boot: operator denied; controller untouched: ", r as String))
-        ApprovalExpired =>
-          exit_failure(reason: "mtcollins1 boot: approval window expired; controller untouched")
-        ApprovalNotFiled { escalation_id: e } =>
-          exit_failure(reason: concat("mtcollins1 boot: no request filed for ", e as String))
-        ApprovalIntentMismatch { requested_revision: a, decided_revision: b } =>
-          exit_failure(reason: concat("mtcollins1 boot: stored decision is for another intent (", concat(a as String, concat(" vs ", b as String)), ")"))
-        ApprovalStoreUnreadable { detail: d } =>
-          exit_failure(reason: concat("mtcollins1 boot: approval store unreadable: ", d as String))
-        ApprovalAuthorizeRefused { detail: d } =>
-          exit_failure(reason: concat("mtcollins1 boot: grant present but authorize refused: ", d as String))
-      }
-  }
 }
 
 fn mtcollins1_boot_sol_held_from_observations(
@@ -248,10 +210,19 @@ fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
 }
 
 fn mtcollins1_sol_release(
+  proof: UnitHoldProof,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
 ) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_release_sol"),
+  ]
 {
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 SOL release") {
+    Present { value: _ } => return false
+    Absent => {}
+  }
   dropped = diagnostic.ipmi.Tool.SolDeactivate(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
@@ -302,17 +273,21 @@ fn sol_acquire_plan(verdict: ObservationVerdict, pid_path: String, capture_path:
 // BINDING THE CAPTURE TO THIS ATTEMPT IS ONE OPERATION WITH ONE AUTHORITY, consumed by every plan
 // arm that proceeds. Emptying the file is what makes the verdict's evidence this attempt's: the
 // collector appends, so after this write every firmware, loader and envelope line the verdict reads
-// was produced after this grant, and a stale refusal from an earlier attempt cannot be attributed
+// was produced after this run took the unit hold, and a stale refusal from an earlier attempt cannot be attributed
 // to this boot.
 fn mtcollins1_sol_bind_capture_to_attempt(capture_path: String) -> Bool {
   Filesystem.Write(path: capture_path, content: "").success
 }
 
-fn mtcollins1_sol_acquire_after_grant(
+fn mtcollins1_sol_acquire_under_unit_hold(
+  proof: UnitHoldProof,
   password_file: NonEmptyStr,
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
 {
   match mtcollins1_bmc_username {
     Absent =>
@@ -333,11 +308,11 @@ fn mtcollins1_sol_acquire_after_grant(
             exit_failure(reason: concat("mtcollins1 boot: a collector is held but the capture at ", capture_path, " could not be bound to this attempt; refusing rather than reading another attempt's lines"))
           }
         SolAcquireReleaseThenStart => {
-          let _cleared = mtcollins1_sol_release(username: username, password_file: password_file)
-          mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          let _cleared = mtcollins1_sol_release(proof: proof, username: username, password_file: password_file)
+          mtcollins1_sol_activate_held(proof: proof, username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
         }
         SolAcquireStart =>
-          mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          mtcollins1_sol_activate_held(proof: proof, username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
       }
   }
 }
@@ -348,12 +323,20 @@ fn mtcollins1_sol_acquire_after_grant(
 // already-held converged collector, and that route binds it too. If the bind fails the acquire
 // refuses rather than proceeding against a capture of unknown provenance.
 fn mtcollins1_sol_activate_held(
+  proof: UnitHoldProof,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
+  ]
 {
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 SOL activate") {
+    Present { value: why } => return exit_failure(reason: why)
+    Absent => {}
+  }
   if pid_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
   }
@@ -402,7 +385,7 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // THE MEDIUM DECIDES BEFORE THE CONTROLLER IS TOUCHED. The census terminal is printed by the census
 // program on the census medium and by nothing else, so a boot that attaches the stock installer can
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
-// holding the grant, taking the SOL lease, powering the unit and timing out would report a
+// taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
 // hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
 fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
   match medium {
@@ -413,7 +396,7 @@ fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
 }
 
 // THE SUBJECT AND THE MEDIUM ARE JOINED BEFORE THE CAPTURE IS READ: the signed subject names the
-// image the grant was issued for, the medium names the image this verdict expects to have booted,
+// image the boot was minted for, the medium names the image this verdict expects to have booted,
 // and a terminal is a fact about ONE image. A census terminal against a stock-authorized subject is
 // refused here rather than accepted (review 5261662425).
 // THE TERMINAL IS A THREE-VALUED VERDICT, NOT A BOOL. A Bool collapsed "no complete observation
@@ -757,124 +740,109 @@ fn mtcollins1_boot_await_capture_terminal(
   }
 }
 
-fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
+fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String) -> HeldLeaseObservedState
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
 {
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
     Present { value: user } => {
-      let _attempted = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+      let _attempted = mtcollins1_sol_release(proof: proof, username: user, password_file: password_file as NonEmptyStr)
       mtcollins1_sol_observed_from_pid_path(pid_path: pid_path)
     }
   }
 }
 
-fn mtcollins1_boot_settle_from_fresh_clock(
-  outcome: ProcessExit,
-  escalation_id: NonEmptyStr,
-  attempt: AttemptIdentity,
-  held_at: CasGeneration,
-) -> ProcessExit
-{
-  match approval_instant_now() {
-    Absent =>
-      unterminated_claim_exit(
-        label: mtcollins1_boot_label,
-        outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable at the terminal; refusing to stamp completion or abort with the pre-actuation instant"),
-        detail: "clock unreadable at claim terminal",
-      )
-    Present { value: at } =>
-      settle_authorization_claim(
-        label: mtcollins1_boot_label,
-        outcome: outcome,
-        escalation_id: escalation_id,
-        attempt: attempt,
-        held_at: held_at,
-        at: at,
-      )
-  }
-}
-
-fn mtcollins1_boot_after_gate(
-  gate: ApprovalGate<MtCollins1BootSubject>,
-  request: AuthorizationRequest<MtCollins1BootSubject>,
+// EVERY BMC ACTUATION HAPPENS UNDER THE UNIT HOLD, AND THE SOL ACQUIRE IS THE FIRST OF THEM. The
+// SOL deactivate/activate is a BMC write too, so it sits after the hold like the attach, the boot
+// device and the power cycle -- which is what dissolves the pre-approval SOL mutation: there is no
+// approval stage left for the SOL to precede, and the gate it must follow is the hold.
+fn mtcollins1_boot_actuate(
+  proof: UnitHoldProof,
+  subject: MtCollins1BootSubject,
   password_file: String,
   attempt: String,
   sol_pid_path: String,
   sol_capture_path: String,
 ) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+  ]
 {
-  match gate {
-    GateAdmitted { authorization: auth } =>
-      match approval_instant_now() {
+  match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+    ExitSuccess => {
+      let issued = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+        Present { value: why } => exit_failure(reason: why)
         Absent =>
-          exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot decide whether the operator grant has expired before a controller write")
-        Present { value: at } =>
-          match authorize(authorization: auth, request: request, observed_at: at) {
-            AuthorizationRefused { cause: c } =>
-              exit_failure(reason: concat("mtcollins1 boot: ", authorization_refusal_reason(cause: c)))
-            AuthorizationPermitted { grant: g } =>
-              match claim_authorization_slot(escalation_id: g.escalation_id, attempt: g.attempt, at: at) {
-                ClaimLost { holder: who } =>
-                  exit_failure(reason: concat("mtcollins1 boot: operator grant already claimed: ", who as String))
-                ClaimUndecided { reason: why } =>
-                  exit_failure(reason: concat("mtcollins1 boot: ", why as String))
-                ClaimHeld { state: _, generation: held_at } =>
-                  match mtcollins1_sol_acquire_after_grant(password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
-                    ExitFailure { code: _, reason: r } =>
-                      mtcollins1_boot_settle_from_fresh_clock(
-                        outcome: exit_failure(reason: r),
-                        escalation_id: g.escalation_id,
-                        attempt: g.attempt,
-                        held_at: held_at,
-                      )
-                    ExitSuccess => {
-                      let issued = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
-                        Present { value: why } => exit_failure(reason: why)
-                        Absent =>
-                          match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
-                            ExitSuccess =>
-                              mtcollins1_drive_handoff(
-                                label: "mtcollins1 cdrom handoff",
-                                password_file_raw: password_file,
-                                capability_row: mtcollins1_capability_row,
-                                selection: request.subject.selection,
-                              )
-                            other => other
-                          }
-                      }
-                      let observed = match issued {
-                        ExitSuccess =>
-                          mtcollins1_boot_await_capture_terminal(
-                            remaining: mtcollins1_boot_terminal_tick_budget(),
-                            capture_path: sol_capture_path,
-                            subject: request.subject,
-                          )
-                        other => other
-                      }
-                      let teardown = mtcollins1_boot_release_sol(password_file: password_file, pid_path: sol_pid_path)
-                      let terminal = match observed {
-                        ExitSuccess =>
-                          match teardown {
-                            LeaseRunningExpected =>
-                              exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
-                            LeaseRunningStale =>
-                              exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
-                            _ => ExitSuccess
-                          }
-                        other => other
-                      }
-                      mtcollins1_boot_settle_from_fresh_clock(
-                        outcome: terminal,
-                        escalation_id: g.escalation_id,
-                        attempt: g.attempt,
-                        held_at: held_at,
-                      )
-                    }
-                  }
-              }
+          match mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt) {
+            ExitSuccess =>
+              mtcollins1_drive_handoff(
+                proof: proof,
+                label: "mtcollins1 cdrom handoff",
+                password_file_raw: password_file,
+                capability_row: mtcollins1_capability_row,
+                selection: subject.selection,
+              )
+            other => other
           }
       }
-    _ => mtcollins1_boot_refusal(gate: gate)
+      let observed = match issued {
+        ExitSuccess =>
+          mtcollins1_boot_await_capture_terminal(
+            remaining: mtcollins1_boot_terminal_tick_budget(),
+            capture_path: sol_capture_path,
+            subject: subject,
+          )
+        other => other
+      }
+      let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
+      match observed {
+        ExitSuccess =>
+          match teardown {
+            LeaseRunningExpected =>
+              exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
+            LeaseRunningStale =>
+              exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
+            _ => ExitSuccess
+          }
+        other => other
+      }
+    }
+  }
+}
+
+// THE LIVE ACQUIRE AND THE EFFECT ARE ONE BOUNDARY. This function performs the acquire itself and
+// the only arm that reaches a BMC write is UnitHeld, whose proof exists only because the
+// compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
+// caller could author. The hold is freed whatever the actuation answered.
+fn mtcollins1_boot_under_live_unit_hold(
+  ruling: StandingRulingConfirmation,
+  run_id: NonEmptyStr,
+  subject: MtCollins1BootSubject,
+  password_file: String,
+  sol_pid_path: String,
+  sol_capture_path: String,
+) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+  ]
+{
+  match mtcollins1_boot_acquire_unit_hold(ruling: ruling, run_id: run_id) {
+    UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
+    UnitHeld { proof: p } =>
+      unit_hold_release(
+        proof: p,
+        outcome: mtcollins1_boot_actuate(
+          proof: p,
+          subject: subject,
+          password_file: password_file,
+          attempt: run_id as String,
+          sol_pid_path: sol_pid_path,
+          sol_capture_path: sol_capture_path,
+        ),
+      )
   }
 }
 
@@ -886,17 +854,16 @@ fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
   if mtcollins1_boot_host_must_be_srv1(host: host) {
     ExitSuccess
   } else {
-    exit_failure(reason: concat("mtcollins1 boot refuses host '", concat(host, concat("': POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String))))
+    exit_failure(reason: concat("mtcollins1 boot refuses host '", concat(host, concat("': the unit hold store (gunbc.machine_intake_mtcollins1_maintenance_hold unit_hold_store_root) is on the runner host where the operator takes maintenance holds, which is ", operator_host_srv1 as String))))
   }
 }
 
-// EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude, which writes the
-// diagnostic bundle (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) and the receipt, and
-// appends the bundle's decisive findings to a refusal reason. The attempt below therefore returns a
-// RECORD of how far it got with the BMC instead of a bare exit: an attempt that refused before the
-// credential was read carries that reason, and the bundle says the BMC sections were NOT TAKEN and
-// why, rather than leaving them out (brief, 2026-09-23: accepted, refused, timed out, approval
-// expired and pre-OS refusal each upload a bundle).
+// EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
+// writes the diagnostic bundle (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) and the
+// receipt, and appends the bundle's decisive findings to a refusal reason. The attempt returns a
+// RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
+// was read -- including the standing ruling unconfirmed or the unit held -- still uploads a bundle
+// saying the BMC sections were NOT TAKEN and why.
 // THE SDR CACHE SITS BESIDE THE CREDENTIAL FILE, under the runner's per-job temporary directory,
 // because it is dumped with that credential and lives exactly as long as the attempt that reads it.
 // It is not secret (sensor names and thresholds), so it needs no shred.
@@ -908,7 +875,6 @@ type MtCollins1BootBmcAccess
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
-  escalation_id: NonEmptyStr?
   bmc: MtCollins1BootBmcAccess
 }
 
@@ -919,10 +885,9 @@ fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
   }
 }
 
-fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit, escalation_id: NonEmptyStr?) -> MtCollins1BootAttempt {
+fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: outcome,
-    escalation_id: escalation_id,
     bmc: BmcAccessNotReached { reason: concat("the attempt ended before the BMC credential was read (", mtcollins1_boot_exit_reason(outcome: outcome), ")") as NonEmptyStr },
   }
 }
@@ -986,7 +951,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   let exit_word = match concluded { ExitSuccess => "ok"  _ => "refused" }
   let receipt_body = join([
-    concat("escalation_id=", match attempt.escalation_id { Present { value: e } => e as String Absent => "not-filed (the attempt ended before an approval request was filed)" }),
+    "authorization=standing ruling (gunbc.machine_intake_mtcollins1_standing_ruling), read before the unit hold; no per-run approval",
     concat("attempt=", attempt_identity_text(a: run)),
     concat("exit=", exit_word),
     bundle_write_receipt_line(w: write),
@@ -1002,33 +967,40 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   concluded
 }
 
+// THE HOST ADMISSION, ONE FOLD FOR BOTH SEAMS: the dispatch's host input must name the store host.
+// The boot job always starts on srv1's runner (its labels never read the input), so a dispatch naming
+// another host is REFUSED there with a typed reason -- never skipped, since a skipped job reports
+// success (review 70894) -- by mtcollins1_boot_admit_executor, a credential-free step before the WIF
+// token and the fleet key. The wet entry re-runs the same fold, so neither seam can drift.
+fn mtcollins1_boot_host_admission() -> ProcessExit {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; the unit hold store is srv1 only")))))
+    ActionsVariablePresent { value: host } => mtcollins1_boot_refuses_off_srv1(host: host)
+  }
+}
+
+fn mtcollins1_boot_admit_executor() -> ProcessExit {
+  mtcollins1_boot_host_admission()
+}
+
 fn mtcollins1_boot_wet() -> ProcessExit
 {
-  let attempt = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } =>
-      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; loopback filing is srv1 only"))))), escalation_id: none)
-    ActionsVariablePresent { value: host } =>
-      match mtcollins1_boot_refuses_off_srv1(host: host) {
-        ExitSuccess => mtcollins1_boot_wet_on_srv1()
-        other => mtcollins1_boot_ended_before_bmc(outcome: other, escalation_id: none)
-      }
+  let attempt = match mtcollins1_boot_host_admission() {
+    ExitSuccess => mtcollins1_boot_wet_on_srv1()
+    other => mtcollins1_boot_ended_before_bmc(outcome: other)
   }
   mtcollins1_boot_conclude(attempt: attempt)
 }
 
-// THE "BEFORE" SEL SNAPSHOT IS TAKEN ONCE THE CREDENTIAL IS READ AND BEFORE THE GATE'S ARM ACTS, so
-// that the delta brackets every controller write the attempt makes. It is a readonly read, and
-// taking it on a refused gate (approval expired or denied) still records what the BMC logged over
-// the approval window.
+// THE "BEFORE" SEL SNAPSHOT IS A READONLY READ taken once the credential is read and the standing
+// ruling confirmed, and before the unit hold is taken, so the delta brackets every controller write
+// the attempt makes (gunbc#12093).
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))), escalation_id: none)
-  }
-  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
-  if sub_path == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched"))), escalation_id: none)
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))))
   }
   let sol_pid_path = actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env)
   let sol_capture_path = actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)
@@ -1037,77 +1009,44 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
     ActionsVariableAbsent { variable: _, detail: _ } => ""
   }
   if run_id == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; refusing rather than reusing a standing escalation id"), escalation_id: none)
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; the unit hold owner and the cookie jar are run-owned"))
   }
   let sha = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
   }
   if sha == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision"), escalation_id: none)
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the boot subject binds the execution revision"))
   }
   match mtcollins1_boot_medium_refusal(medium: mtcollins1_boot_medium) {
-    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why), escalation_id: none)
+    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
   match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
-    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why), escalation_id: none)
+    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
-  let request = mtcollins1_boot_authorization_request(
-    escalation_id: escalation,
-    attempt: concat("mtcollins1-boot-", run_id) as AttemptIdentity,
-    execution_revision: sha as NonEmptyStr,
-  )
-  match approval_instant_now() {
+  let pw_read = Filesystem.Read(path: cred)
+  if !pw_read.success {
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error)))
+  }
+  let ruling = match mtcollins1_boot_standing_ruling_read() {
+    StandingRulingRefused { reason: r } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: r as String))
+    StandingRulingConfirmed { confirmation: c } => c
+  }
+  let subject = mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr)
+  match mtcollins1_bmc_username {
     Absent =>
-      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot mint issued_at or an approval window; controller untouched"), escalation_id: Present { value: escalation })
-    Present { value: issued } => {
-      let expires = approval_expires_at(issued: issued, window: mtcollins1_boot_approval_window())
-      match approval_file_stored_request(stored: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires), body_file_name: mtcollins1_boot_submit_body_file_name, submit_timeout: mtcollins1_boot_submit_timeout) {
-        ApprovalFilingRefused { reason: r } =>
-          mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(r, "; controller untouched"))), escalation_id: Present { value: escalation })
-        ApprovalFiled => {
-          let gate = approval_gate_from_outcome(
-            outcome: approval_poll_ticks(
-              remaining: mtcollins1_boot_poll_tick_budget,
-              cadence: mtcollins1_boot_poll_cadence,
-              escalation_id: escalation,
-              expires_at: expires,
-            ),
-            request: request,
-          )
-          let pw_read = Filesystem.Read(path: cred)
-          if !pw_read.success {
-            return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error)), escalation_id: Present { value: escalation })
-          }
-          match mtcollins1_bmc_username {
-            Absent =>
-              MtCollins1BootAttempt {
-                outcome: mtcollins1_boot_after_gate(gate: gate, request: request, password_file: cred, attempt: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
-                escalation_id: Present { value: escalation },
-                bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
-              }
-            Present { value: user } => {
-              let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
-              let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
-              let actuated = mtcollins1_boot_after_gate(
-                gate: gate,
-                request: request,
-                password_file: cred,
-                attempt: run_id,
-                sol_pid_path: sol_pid_path,
-                sol_capture_path: sol_capture_path,
-              )
-              MtCollins1BootAttempt {
-                outcome: actuated,
-                escalation_id: Present { value: escalation },
-                bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
-              }
-            }
-          }
-        }
+      MtCollins1BootAttempt {
+        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
+      }
+    Present { value: user } => {
+      let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
+      let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
+      MtCollins1BootAttempt {
+        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
       }
     }
   }

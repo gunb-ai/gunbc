@@ -8,10 +8,8 @@ import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
   SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
   SolAcquireStart, sol_acquire_plan,
-  mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
-  mtcollins1_boot_submit_timeout,
   mtcollins1_boot_sol_is_held,
   mtcollins1_boot_sol_held_from_observations,
   mtcollins1_sol_observed_from_collector,
@@ -22,88 +20,34 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_medium_refusal,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
-import gunbc.auth.approval_gate { approval_status_from_get, approval_instant_from_probe }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
+import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_mtcollins1_boot_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
+import gunbc.fleet_workflow_steps { ci_fleet_key_agent_step }
+import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
 import std.temporal_effect {
   LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
-import std.scoped_authorization { authorization_claim_key }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject, MtCollins1BootMedium,
   mtcollins1_boot_subject, mtcollins1_boot_subject_for, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_label,
 }
-import gunbc.auth.approval_request_client {
-  approval_poll_standing, PollExpired, PollUnreadable,
-}
-import gunbc.auth.approval_status_wire {
-  StatusUnreadable, StatusPending, parse_filed_approval_status,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn approval_window_is_the_poll_budget_not_zero() -> Bool {
-  let window = second_count(s: mtcollins1_boot_approval_window()) as Int
-  window == mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int)
-    && window > 0
-}
-
-test fn the_submit_timeout_is_a_second_not_a_bare_literal() -> Bool {
-  (second_count(s: mtcollins1_boot_submit_timeout) as Int) == 30
-}
-
-test fn the_step_timeout_covers_the_poll_window_and_the_actuation_allowance() -> Bool {
+// NO APPROVAL WINDOW (operator ruling 2026-09-23): the step budget is the boot's own phases only.
+test fn the_step_timeout_covers_the_boot_phases() -> Bool {
   let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
-    + (second_count(s: mtcollins1_boot_approval_window()) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
     + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
   (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
-}
-
-test fn a_zero_window_expires_on_the_next_observation() -> Bool {
-  match approval_poll_standing(
-    status: StatusPending { expires_at: "2026-09-16T20:00:00Z" },
-    observed_at: "2026-09-16T20:00:01Z",
-    expires_at: "2026-09-16T20:00:00Z",
-  ) {
-    PollExpired => true
-    _ => false
-  }
-}
-
-test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {
-  match approval_status_from_get(success: false, body: "") {
-    StatusUnreadable { detail: _ } => true
-    _ => false
-  }
-    && match approval_poll_standing(
-      status: approval_status_from_get(success: false, body: ""),
-      observed_at: "2026-09-16T20:00:00Z",
-      expires_at: "2026-09-16T20:22:30Z",
-    ) {
-      PollUnreadable { detail: _ } => true
-      _ => false
-    }
-    && match parse_filed_approval_status(body: "standing=pending\nexpires_at=2026-09-16T20:22:30Z\n") {
-      StatusPending { expires_at: _ } => true
-      _ => false
-    }
-}
-
-test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
-  match approval_instant_from_probe(reading: none) { Absent => true  _ => false }
-    && match approval_instant_from_probe(reading: Present { value: "clock-unreadable" as NonEmptyStr }) { Absent => true  _ => false }
-    && match approval_instant_from_probe(reading: Present { value: "2026-09-16T20:00:00Z" as NonEmptyStr }) {
-      Present { value: t } => t as String == "2026-09-16T20:00:00Z"
-      _ => false
-    }
 }
 
 test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
@@ -143,17 +87,6 @@ test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
       cmdline_ok: true,
       cmdline_content: "ipmitool sol activate",
     )
-}
-
-// THE SLOT KEY CARRIES THE RELATION'S SCOPE AND IS SLOT-ADDRESSABLE: it is not the bare escalation
-// id (a second relation on the shared root could then collide with it) and it carries no `/`
-// (which gunbc.durable_cas_file_store refuses). Both halves are reds: the bare id and a slashed key.
-test fn a_boot_claim_slot_key_is_scoped_and_slot_addressable() -> Bool {
-  let eid = "mtcollins1-boot-1" as NonEmptyStr
-  let key = authorization_claim_key(escalation_id: eid) as String
-  key != (eid as String)
-    && string_contains(s: key, pattern: eid as String)
-    && !key.contains("/")
 }
 
 test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
@@ -484,31 +417,58 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
 }
 
-test fn boot_loopback_filing_is_srv1_only() -> Bool {
+// THE UNIT HOLD STORE IS ON THE RUNNER HOST, so a boot anywhere else would take a hold the operator
+// cannot see: srv1 only.
+test fn boot_is_srv1_only_where_the_unit_hold_store_is() -> Bool {
   mtcollins1_boot_host_must_be_srv1(host: operator_host_srv1 as String)
     && !mtcollins1_boot_host_must_be_srv1(host: operator_host_srv2 as String)
     && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
     && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv2 as String) { ExitSuccess => false  _ => true }
 }
 
-// THE FLEET KEY IS MATERIALIZED FOR THIS MODE, AND THE CONTROL IS THE MODE BESIDE IT. The
-// fleet-converge key step's condition is derived from the per-mode demand, so this is the executing
-// consumer of MtCollins1Boot => FleetSshKeyConsumed rather than a restatement of the arm.
-// approval_keyring_converge is asserted PRESENT in the same string because it is a real fleet-SSH
-// demand too, which keeps the claim from being satisfiable by a condition that names everything.
-//
-// WHY Consumed IS THE HONEST VALUE SINCE CENSUS STAGE 0D. Every transport mtcollins1_boot_wet's
-// closure reached before 0D presented a credential that is not the fleet key (local files, HTTP
-// loopback under the submission MAC key, HTTPS and ipmitool to the BMC under the pinned BMC
-// credential), and this claim asserted the arm NotConsumed as that route's executing consumer. 0D
-// adds one leg: gunbc.machine_intake_mtcollins1_census_medium_readback re-measures the served census
-// image on srv2 through typed_argv_exec_over_fleet_ssh as the fleet principal before the signed
-// subject is minted -- a genuine fleet-SSH demand, so the arm flips and this claim flips with it.
-// Flip the arm back and the boot job runs without the key its readback needs; this claim goes red.
-test fn mtcollins1_boot_materializes_the_fleet_key_for_the_census_readback() -> Bool {
-  let c = fleet_converge_fleet_ssh_key_step_if
-  string_contains(s: c, pattern: "'mtcollins1_boot'")
-    && string_contains(s: c, pattern: "'approval_keyring_converge'")
+// THE FLEET KEY IS MATERIALIZED IN THE BOOT'S OWN JOB. Since the boot became its own job (its
+// identity is the dedicated mtcollins1-boot federation, gunbc.auth.mtcollins1_boot_federation), the
+// key step is a step of that job, taken under the dedicated account's pinned cell. The census
+// medium readback on srv2 runs over fleet ssh, so a boot job without it could not re-measure the
+// served image. The approval submission MAC key is asserted ABSENT from the boot's script: it existed
+// only to sign the approval filing.
+// Read at the interface (DESIGN section 3): each rendered credential script is read from its own
+// producer, and the composition is read with those two steps SUPPLIED, so no claim renders the
+// whole job. RED: drop the key step from the composition, or put the MAC key back in the boot script.
+fn step_run_text(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn supplied_step(marker: String) -> Step {
+  RunStep { name: none, id: none, run: marker, shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
+}
+
+data supplied_fleet_key_marker: String = "SUPPLIED-FLEET-KEY-STEP"
+data supplied_boot_marker: String = "SUPPLIED-BOOT-STEP"
+
+fn supplied_boot_steps() -> List<Step> {
+  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: supplied_step(marker: supplied_fleet_key_marker), boot_step: supplied_step(marker: supplied_boot_marker))
+}
+
+test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
+  let runs = map(supplied_boot_steps(), s => step_run_text(s: s))
+  filter(runs, r => r == supplied_fleet_key_marker || r == supplied_boot_marker) == [supplied_fleet_key_marker, supplied_boot_marker]
+}
+
+test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
+  let inputs = step_inputs_text(s: ci_fleet_key_agent_step())
+  string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
+    && !string_contains(s: inputs, pattern: "expected_revision")
+}
+
+test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() -> Bool {
+  let inputs = step_inputs_text(s: fleet_converge_mtcollins1_boot_step())
+  string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
+    && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
+    && !string_contains(s: inputs, pattern: "expected_revision")
 }
 
 // THE MEDIUM GATE REFUSES BEFORE ANY CONTROLLER WRITE. A boot that attaches the stock installer can
@@ -600,4 +560,66 @@ test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> B
       SolAcquireRefuse { reason: _ } => true  _ => false })
     && (match sol_acquire_plan(verdict: Converged, pid_path: "", capture_path: cap) {
       SolAcquireRefuse { reason: _ } => true  _ => false })
+}
+
+// WALL 1 (side-chat review 5286225278): NO DISPATCH INPUT SELECTS THE BYTES THE WIF JOB EXECUTES. The
+// boot job's own checkout names only the event sha, and nothing in the rendered job mentions
+// expected_revision; the build job that produces the binaries it downloads checks out the event sha
+// FIRST for this mode, before expected_revision is consulted. RED: put expected_revision back in
+// either expression, or in either supplied script's producer, and a claim fails.
+// Read at the interface (DESIGN §3): the boot job's own checkout ref, its steps' run texts and its
+// env/with values, not a YAML render of the whole job.
+fn kv_text(e: YamlKeyValue) -> String {
+  match e.value {
+    YamlString { value: v } => v
+    _ => ""
+  }
+}
+
+fn step_inputs_text(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      concat(r, match e { Present { value: es } => join(map(es, x => kv_text(e: x)), " ")  _ => "" })
+    UsesStep { name: _, id: _, uses: _, with: w, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      concat(match w { Present { value: ws } => join(map(ws, x => kv_text(e: x)), " ")  _ => "" }, match e { Present { value: es } => join(map(es, x => kv_text(e: x)), " ")  _ => "" })
+  }
+}
+
+test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
+  let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
+  fleet_converge_mtcollins1_boot_checkout_ref_expr == "${{ github.sha }}"
+    && !string_contains(s: inputs, pattern: "expected_revision")
+    && string_contains(s: inputs, pattern: "${{ github.sha }}")
+    && starts_with(s: fleet_converge_checkout_ref_expr, prefix: "${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || ")
+}
+
+fn runner_labels(r: RunnerSpec) -> List<String> {
+  match r {
+    SelfHosted { labels: ls } => ls
+    RunsOnExpression { expression: _ } => []
+    HostedRunner { label: _ } => []
+  }
+}
+
+// WALL 2: THE CREDENTIALS NEVER REACH A CALLER-SELECTED RUNNER, AND ANOTHER HOST IS REFUSED, NEVER
+// SKIPPED. runs-on is srv1's literal labels and the concurrency domain is srv1's, so the job only ever
+// starts on srv1. The job condition reads the mode and NOT the host: a host term there skips the job,
+// and GitHub reports a skipped job as success (review 70894). The host is instead refused by the
+// credential-free admission step, which runs before the WIF token exists. The admission fold's own
+// refusal of srv2 is boot_is_srv1_only_where_the_unit_hold_store_is's subject. RED: the runner reading inputs.host,
+// the condition regaining a host term, or the admission moving after (or out of) the WIF step.
+fn step_id(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  _ => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  _ => "" }
+  }
+}
+
+test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential() -> Bool {
+  let ids = map(supplied_boot_steps(), s => step_id(s: s))
+  runner_labels(r: fleet_converge_mtcollins1_boot_runner()) == ["self-hosted", "linux", "arm64", "srv1"]
+    && !string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "inputs.host")
+    && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
+    && fleet_converge_mtcollins1_boot_concurrency_group == "gunbc-host-mutation-srv1"
+    && filter(ids, i => i == "mtcollins1_boot_admit" || i == "wif_auth") == ["mtcollins1_boot_admit", "wif_auth"]
 }

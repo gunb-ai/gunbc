@@ -27,6 +27,7 @@ type TargetProducer
   | HeadsReadingDifferentialProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
+  | EmittedCrateWorkspaceProducer
   | EvaluationStoreAddressExactHeadProducer
   | PrimitiveEgressCensusProducer
   | PrimitiveEgressCensusV2Producer

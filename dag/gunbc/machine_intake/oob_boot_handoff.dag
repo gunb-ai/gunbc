@@ -1,5 +1,6 @@
 module gunbc.machine_intake_oob_boot_handoff
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -354,6 +355,9 @@ fn oob_power_action_after_confirmed_selection(
   device: NonEmptyStr,
   running_restart: IpmiChassisControlAction,
 ) -> OobBootHandoffOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+  ]
 {
   let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
   return match oob_power_action_selection(observed: before, running_restart: running_restart) {
@@ -376,6 +380,9 @@ fn oob_power_actuate_and_read_back(
   device: NonEmptyStr,
   action: IpmiChassisControlAction,
 ) -> OobBootHandoffOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
+  ]
 {
   control = diagnostic.ipmi.Tool.ChassisPowerControl(
     bmc_host: bmc_host,
@@ -419,6 +426,10 @@ fn oob_boot_handoff(
   selection: IpmiBootSelection,
   running_restart: IpmiChassisControlAction,
 ) -> OobBootHandoffOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
+  ]
 {
   let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)
   if oob_handoff_is_admitted(admission: admission) == false {

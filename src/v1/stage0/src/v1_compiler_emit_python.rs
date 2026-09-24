@@ -219,7 +219,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
             let mut __result = Vec::new();
             for tm in modules.iter().cloned() {
                 __result.push({
-                    let mod_name = crate::v1_compiler_emit_core_support::module_to_filename(
+                    let mod_name = crate::gunbc_rust_emitted_edge::module_to_filename(
                         crate::v1_std_core::authored_name_at(
                             tm.type_env.clone().source_indices.clone(),
                             tm.module.clone(),
@@ -441,8 +441,7 @@ pub fn emit_py_module(
             __result
         })
         .join(&"\n\n\n".to_string());
-        let filename =
-            crate::v1_compiler_emit_core_support::module_to_filename(mod_name_str.clone());
+        let filename = crate::gunbc_rust_emitted_edge::module_to_filename(mod_name_str.clone());
         let content = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -492,7 +491,7 @@ pub fn emit_py_imports(
                 let mut __result = Vec::new();
                 for imp in imports.iter().cloned() {
                     __result.push({
-                        let mod_name = crate::v1_compiler_emit_core_support::module_to_filename(
+                        let mod_name = crate::gunbc_rust_emitted_edge::module_to_filename(
                             crate::v1_std_core::authored_name_at(
                                 source_indices.clone(),
                                 imp.clone(),
