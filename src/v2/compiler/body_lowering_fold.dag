@@ -3164,7 +3164,8 @@ fn body_lower_lambda_after_binders_optional(node: Node) -> Optional<Node> {
 fn body_lower_lambda_repeat_binders_optional(repeat: Node) -> Optional<List<Edge>> {
   let r = body_lower_deep_unwrap_optional(node: repeat)
   if is_empty_conj_root(n: r) {
-    optional_present(value: [])
+    let no_binders: List<Edge> = []
+    optional_present(value: no_binders)
   } else {
     match sugar_sequence_pair_optional(node: r) {
       Absent => optional_absent()
@@ -3272,34 +3273,47 @@ fn body_lower_arrow_lambda_value(shell: Node, captured: Node) -> Outcome<Optiona
             d: body_lower_diagnostic(reason: ^body_lowering_reason_lambda_body_unread, n: parts.body)
           )
         Accepted { value: Present { value: body }, diagnostics: d } =>
-          match body_lower_reify_arrow_body(body: body) {
+          match body_lower_function_value_arrow(shell: shell, binders: parts.binders, body: body) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: reified, diagnostics: bd } =>
-              let codomain = type_annotation_elided_node(at: shell)
+            Accepted { value: arrow, diagnostics: ad } =>
               outcome_with_diagnostics(
-                value: optional_present(
-                  value: node_lowered_from(
-                    source: shell,
-                    kind: TypeNode { connective: Arrow },
-                    children: [
-                      Edge {
-                        label: Positional,
-                        target: node_lowered_from(
-                          kind: TypeNode { connective: Conj },
-                          children: parts.binders,
-                          source: shell
-                        )
-                      },
-                      Edge { label: Positional, target: codomain },
-                      Edge { label: Positional, target: codomain },
-                      Edge { label: Named { name: ^arrow_body_edge }, target: reified }
-                    ]
-                  )
-                ),
-                diagnostics: diagnostics_merge(outer: d, inner: bd)
+                value: optional_present(value: arrow),
+                diagnostics: diagnostics_merge(outer: d, inner: ad)
               )
           }
       }
+  }
+}
+
+// THE ONE FUNCTION-VALUE ARROW PRODUCER. Every function value in value position -- `p => body`
+// here, and `fn(a, b) { .. }` once its binders and body are read -- builds its Arrow through this,
+// from its binder edges (Named domain edges, one per parameter, in authored order) and its ALREADY
+// LOWERED body, so there is one shape and one place the elided types are chosen.
+fn body_lower_function_value_arrow(shell: Node, binders: List<Edge>, body: Node) -> Outcome<Node> {
+  match body_lower_reify_arrow_body(body: body) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: reified, diagnostics: bd } =>
+      let codomain = type_annotation_elided_node(at: shell)
+      outcome_with_diagnostics(
+        value: node_lowered_from(
+          source: shell,
+          kind: TypeNode { connective: Arrow },
+          children: [
+            Edge {
+              label: Positional,
+              target: node_lowered_from(
+                kind: TypeNode { connective: Conj },
+                children: binders,
+                source: shell
+              )
+            },
+            Edge { label: Positional, target: codomain },
+            Edge { label: Positional, target: codomain },
+            Edge { label: Named { name: ^arrow_body_edge }, target: reified }
+          ]
+        ),
+        diagnostics: bd
+      )
   }
 }
 
