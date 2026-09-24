@@ -194,6 +194,68 @@ fn parse_r2_jurisdiction(raw: String) -> R2Jurisdiction? {
   )
 }
 
+// THE SIX ARMS ARE THE CREATE/GET BUCKET LOCATION VALUE SET (r2_create_bucket_location_hint_reading,
+// r2_get_bucket_location_reading), and they are ONE vocabulary answering TWO fields: Create's
+// locationHint is a requested placement, Get's location is a reported one. The type names the token,
+// not which field carried it; a consumer that reads a reported location says so at its own carrier.
+// Neither field is a jurisdiction (R2Jurisdiction above is that guarantee), so no arm here is one.
+type R2BucketLocation
+  = R2LocationApac
+  | R2LocationEeur
+  | R2LocationEnam
+  | R2LocationWeur
+  | R2LocationWnam
+  | R2LocationOc
+
+fn r2_bucket_location_wire(location: R2BucketLocation) -> String {
+  match location {
+    R2LocationApac => "apac"
+    R2LocationEeur => "eeur"
+    R2LocationEnam => "enam"
+    R2LocationWeur => "weur"
+    R2LocationWnam => "wnam"
+    R2LocationOc => "oc"
+  }
+}
+
+fn r2_bucket_locations() -> List<R2BucketLocation> {
+  [R2LocationApac, R2LocationEeur, R2LocationEnam, R2LocationWeur, R2LocationWnam, R2LocationOc]
+}
+
+// Read backward from the same rows, as parse_r2_jurisdiction is.
+fn parse_r2_bucket_location(raw: String) -> R2BucketLocation? {
+  fold(
+    r2_bucket_locations(),
+    init: none,
+    f: (acc, l) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if r2_bucket_location_wire(location: l) == raw { Present { value: l } } else { none }
+    },
+  )
+}
+
+// ONE DECLARATION PER LOCATION, so a route can cite the upstream location the way a Hetzner route
+// cites extdeps.cloud.hetzner hetzner_location_helsinki: by symbol, never by the wire token.
+data r2_location_apac: R2BucketLocation = R2LocationApac
+data r2_location_eeur: R2BucketLocation = R2LocationEeur
+data r2_location_enam: R2BucketLocation = R2LocationEnam
+data r2_location_weur: R2BucketLocation = R2LocationWeur
+data r2_location_wnam: R2BucketLocation = R2LocationWnam
+data r2_location_oc: R2BucketLocation = R2LocationOc
+
+// AN EXHAUSTIVE MATCH RATHER THAN A NAME BUILT FROM THE WIRE TOKEN, so every cited symbol is spelled
+// once and grep-verifiable (DESIGN section 3), and a seventh location must name its row to compile.
+fn r2_bucket_location_ref(location: R2BucketLocation) -> DeclarationRef {
+  match location {
+    R2LocationApac => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_apac")
+    R2LocationEeur => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_eeur")
+    R2LocationEnam => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_enam")
+    R2LocationWeur => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_weur")
+    R2LocationWnam => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_wnam")
+    R2LocationOc => decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_location_oc")
+  }
+}
+
 type R2S3Endpoint {
   account_id: String
   jurisdiction: R2Jurisdiction
