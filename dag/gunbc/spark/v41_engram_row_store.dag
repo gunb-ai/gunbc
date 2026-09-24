@@ -899,14 +899,19 @@ type V41ObservedRankStore {
   size: ByteSize
 }
 
-// THE SIZE A (layer, rank) STORE MUST HAVE, from the spec: the magic, then one record per row of the
-// rank's range.
+// THE SIZE OF A STORE OF `rows` RECORDS: the magic, then one record per row. The one formula; the key's
+// check below and the encode plan's expected size (gunbc.spark.v41_row_store_encode) both call it.
+fn v41_store_size(spec: V41RowStoreEncodingSpec, rows: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + rows * byte_size_count(b: v41_row_bytes(g: spec.geometry)))
+}
+
+// THE SIZE A (layer, rank) STORE MUST HAVE, from the spec: v41_store_size over the rank's range.
 fn v41_store_derived_size(spec: V41RowStoreEncodingSpec, layer: Nat, rank: Nat) -> ByteSize? {
   match v41_layer_of(spec: spec, layer: layer) {
     Absent => none
     Present { value: t } => match first(filter(t.ranks, r => r.rank == rank)) {
       Absent => none
-      Present { value: r } => Present { value: byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + (r.end - r.start) * byte_size_count(b: v41_row_bytes(g: spec.geometry))) }
+      Present { value: r } => Present { value: v41_store_size(spec: spec, rows: r.end - r.start) }
     }
   }
 }

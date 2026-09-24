@@ -138,9 +138,10 @@ fn v41_store_present(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41Store
 }
 
 // ONE STORE: encode if absent, then digest. A failed encode is its own arm and is not digested.
-// THE SIZE A STORE MUST HAVE, from its own encode operands: the magic, then rows x (weight + scale).
+// THE SIZE A STORE MUST HAVE is the encode plan's (V41StoreEncodeArgs.expected_size, from
+// gunbc.spark.v41_engram_row_store v41_store_size): the same formula the key checks, never re-derived here.
 fn v41_store_expected_size(a: V41StoreEncodeArgs) -> ByteSize {
-  byte_size(count: length(chars(a.magic_hex)) / 2 + a.rows * (byte_size_count(b: a.weight_bytes) + byte_size_count(b: a.scale_bytes)))
+  a.expected_size
 }
 
 type V41SizeRead

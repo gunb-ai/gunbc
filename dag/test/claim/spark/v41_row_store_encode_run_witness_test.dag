@@ -19,7 +19,7 @@ fn w_args(layer: Nat, rank: Nat) -> V41StoreEncodeArgs {
   V41StoreEncodeArgs {
     layer: layer, rank: rank, shard: "model-00047-of-00048.safetensors" as NonEmptyStr,
     weight_offset: byte_size(count: 664), scale_offset: byte_size(count: 98305579672), start: 0, rows: 1,
-    weight_bytes: byte_size(count: 256), scale_bytes: byte_size(count: 8), magic_hex: "454e4752310a", out: "/m/s" as NonEmptyStr,
+    weight_bytes: byte_size(count: 256), scale_bytes: byte_size(count: 8), magic_hex: "454e4752310a", out: "/m/s" as NonEmptyStr, expected_size: byte_size(count: 270),
   }
 }
 
