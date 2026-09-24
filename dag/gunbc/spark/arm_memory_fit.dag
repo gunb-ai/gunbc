@@ -479,7 +479,7 @@ fn open_rank_demand(rank: Nat) -> ArmRankDemand {
     collective_workspace: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmCollectiveWorkspace, receipt_kind: "CollectiveWorkspaceBound" as NonEmptyStr) },
     activation_workspace: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmActivationWorkspace, receipt_kind: "ActivationWorkspaceBound" as NonEmptyStr) },
     graph_capture: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmGraphCapture, receipt_kind: "GraphCaptureBound" as NonEmptyStr) },
-    kv_cache: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the engine does not yet emit the per-group layer counts, page sizes and windows that the layout needs -- so the KV demand cannot be derived for this subject. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr },
+    kv_cache: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the pinned engines do not emit the per-group metadata the layout needs: the honest emission point is upstream vLLM's get_kv_cache_group_metadata (vllm/v1/core/kv_cache_utils.py, cited at extdeps.vllm.kv_layout), whose line would carry each group's kind, layer count, block size, page bytes and window; until an engine built from a revision emitting that line runs here, every capture through gunbc.spark.vllm_kv_layout_observe lands KvLayoutUnreadable and this term stays open. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr },
     fragmentation_allowance: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmFragmentationAllowance, receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr) },
   }
 }
@@ -1468,4 +1468,154 @@ fn arm_memory_launch_gate(
   }
 }
 
-data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the bounded-experiment observer admits component-scoped memory receipts (CheckpointRankResidencyBound, ActivationWorkspaceBound, GraphCaptureBound, CollectiveWorkspaceBound, RuntimeFixedAllocationBound, AllocatorFragmentationBound, KvLayoutReceipt) bound to the launch that minted them, typed as receipt records carrying the checkpoint, runtime, topology, rank and phase they measure, replacing the wire-containment provenance check in roster_names_identity with an equality join on typed identity. SUFFICIENT FOR: a measurement tightens exactly the term it measured, the observed-above-bound arm is reachable against live receipts, and the verdict tightens across experiment iterations without the verdict vocabulary changing." as NonEmptyStr)
+// ── THE RECEIPT JOIN ─────────────────────────────────────────────────────────────────────────────
+//
+// THE FRONTIER'S DISCHARGE, landed: a typed receipt roster on the fit subject. A receipt is a
+// CLASSIFIED measurement bound to exactly one term of one rank; the measurement contract above
+// governs what discharges -- MeasuredUpperBound and MeasuredInterval replace the open obligation
+// they name, ObservationOnly and MeasurementRefused change nothing, because an observation that
+// does not establish a bound changes no bound. ONE TERM PER RECEIPT, ONE RECEIPT PER TERM: a
+// second receipt for an already-discharged term is refused (two measurements of one term need a
+// peak-over-runs protocol at capture time, not a roster fold), and a receipt whose rank or
+// component does not exist in this roster is refused rather than dropped -- a receipt that
+// vanished in the join would be the count-only conservation defect this module exists to close,
+// re-entering through the receipts door.
+type ArmComponentReceipt {
+  rank: Nat
+  component: ArmMemoryComponent
+  class: ArmMeasurementClass
+}
+
+fn receipt_measurement(class: ArmMeasurementClass) -> ArmMeasurement {
+  match class {
+    MeasuredUpperBound { measurement: m } => m
+    MeasuredInterval { lower: _, upper: _, measurement: m } => m
+    ObservationOnly { measurement: m, why: _ } => m
+    MeasurementRefused { cause: _ } =>
+      ArmMeasurement {
+        component: ArmCheckpointResidency,
+        rank: 0,
+        phase: ArmPhaseModelLoad,
+        workload: token_count(count: 0),
+        covers_lifetime: false,
+        protocol: ProtocolSingleSample,
+        observed: byte_size(count: 0),
+        receipt: "unreachable: a refused measurement carries no measurement and discharges nothing; the roster mint never reads this one" as NonEmptyStr,
+      }
+  }
+}
+
+// THE FIELD SETTER, exhaustive over the component coproduct -- the join's route back into the
+// record, so a receipt can replace exactly the field it names and no other.
+fn rank_with_component_bound(rd: ArmRankDemand, component: ArmMemoryComponent, bound: ArmComponentBound) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: rd.rank,
+    checkpoint_residency: if component == ArmCheckpointResidency { bound } else { rd.checkpoint_residency },
+    loader_transform: if component == ArmLoaderTransform { bound } else { rd.loader_transform },
+    runtime_fixed: if component == ArmRuntimeFixed { bound } else { rd.runtime_fixed },
+    collective_workspace: if component == ArmCollectiveWorkspace { bound } else { rd.collective_workspace },
+    activation_workspace: if component == ArmActivationWorkspace { bound } else { rd.activation_workspace },
+    graph_capture: if component == ArmGraphCapture { bound } else { rd.graph_capture },
+    kv_cache: if component == ArmKvCache { bound } else { rd.kv_cache },
+    fragmentation_allowance: if component == ArmFragmentationAllowance { bound } else { rd.fragmentation_allowance },
+  }
+}
+
+fn receipt_provenance_names_identity(r: ArmComponentReceipt, ckpt: ServingCheckpoint, rt: ServingRuntime, tp: ServingTopology) -> Bool {
+  match r.class {
+    MeasurementRefused { cause: _ } => true
+    MeasuredUpperBound { measurement: _ } =>
+      receipt_text_names_identity(class: r.class, ckpt: ckpt, rt: rt, tp: tp)
+    MeasuredInterval { lower: _, upper: _, measurement: _ } =>
+      receipt_text_names_identity(class: r.class, ckpt: ckpt, rt: rt, tp: tp)
+    ObservationOnly { measurement: _, why: _ } =>
+      receipt_text_names_identity(class: r.class, ckpt: ckpt, rt: rt, tp: tp)
+  }
+}
+
+fn receipt_text_names_identity(class: ArmMeasurementClass, ckpt: ServingCheckpoint, rt: ServingRuntime, tp: ServingTopology) -> Bool {
+  let m = receipt_measurement(class: class)
+  string_contains(s: m.receipt as String, pattern: serving_checkpoint_wire(c: ckpt) as String)
+    && string_contains(s: m.receipt as String, pattern: serving_runtime_wire(r: rt) as String)
+    && string_contains(s: m.receipt as String, pattern: serving_topology_wire(t: tp) as String)
+}
+
+fn receipt_pair_count(receipts: List<ArmComponentReceipt>, rank: Nat, component: ArmMemoryComponent) -> Nat {
+  count(filter(receipts, r => r.rank == rank && r.component == component))
+}
+
+fn roster_has_rank(ranks: List<ArmRankDemand>, rank: Nat) -> Bool {
+  any(ranks, r => r.rank == rank)
+}
+
+fn apply_receipt_to_ranks(ranks: List<ArmRankDemand>, r: ArmComponentReceipt) -> List<ArmRankDemand> {
+  map(ranks, rd =>
+    if rd.rank == r.rank {
+      rank_with_component_bound(rd: rd, component: r.component, bound: arm_apply_measurement(current: rank_component_bound(rd: rd, c: r.component), class: r.class))
+    } else {
+      rd
+    })
+}
+
+// THE ROSTER MINT. Validates the join, the roster law, and provenance on every receipt, folds the
+// receipts over the all-open rank records through the measurement contract, and returns the
+// sealed subject the verdict fold prices. A roster of single-run observations returns a subject
+// IDENTICAL in bounds to the all-open one -- the honest outcome of one experiment run, and the
+// reason FitProved waits for protocoled measurements rather than for one wet afternoon.
+fn arm_memory_fit_subject_with_receipts(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  intent: ServingCapacityIntent,
+  requested_profile: ServingLaunchProfile,
+  pool: ArmPoolBound,
+  deductions: ArmSupplyDeductions,
+  receipts: List<ArmComponentReceipt>,
+) -> ArmMemorySubjectMint {
+  let rank_count = serving_topology_rank_count(t: topology)
+  let open_ranks = map(nat_range_inclusive(lo: 1, hi: rank_count), i => open_rank_demand(rank: i - 1))
+  let rank_out_of_range = first(filter(receipts, r => !roster_has_rank(ranks: open_ranks, rank: r.rank)))
+  let duplicate = first(filter(receipts, r => receipt_pair_count(receipts: receipts, rank: r.rank, component: r.component) > 1))
+  let provenance_bad = first(filter(receipts, r => !receipt_provenance_names_identity(r: r, ckpt: checkpoint, rt: runtime, tp: topology)))
+  match rank_out_of_range {
+    Present { value: r } =>
+      ArmMemorySubjectRefused {
+        cause: join([
+          "a receipt names rank ", to_string(r.rank), ", which this topology of ", to_string(rank_count),
+          " rank(s) has no row for: a receipt that does not land on a rank is dropped by construction here, and construction refuses instead",
+        ], "") as NonEmptyStr,
+      }
+    Absent =>
+      match duplicate {
+        Present { value: r } =>
+          ArmMemorySubjectRefused {
+            cause: join([
+              "two receipts name rank ", to_string(r.rank), " ", arm_memory_component_wire(c: r.component),
+              ": one term carries one bound; combining measurements of one term is the peak-over-runs protocol's job at capture time, not a second receipt in one roster",
+            ], "") as NonEmptyStr,
+          }
+        Absent =>
+          match provenance_bad {
+            Present { value: r } =>
+              ArmMemorySubjectRefused {
+                cause: join([
+                  "a receipt for rank ", to_string(r.rank), " ", arm_memory_component_wire(c: r.component),
+                  " does not name this checkpoint x runtime x topology: a measurement carried onto another subject is evidence about a subject that is not this one",
+                ], "") as NonEmptyStr,
+              }
+            Absent =>
+              arm_memory_fit_subject_with_rank_demands(
+                checkpoint: checkpoint,
+                runtime: runtime,
+                topology: topology,
+                intent: intent,
+                requested_profile: requested_profile,
+                pool: pool,
+                deductions: deductions,
+                ranks: fold(receipts, init: open_ranks, f: fn(acc, r) { apply_receipt_to_ranks(ranks: acc, r: r) }))
+          }
+      }
+  }
+}
+
+data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "DISCHARGED 2026-09-24: the typed receipt join (ArmComponentReceipt, arm_memory_fit_subject_with_receipts) replaced the wire-containment provenance check with a construction-level join -- receipts name their term by (rank, component) and the measurement contract governs discharge. WHAT REMAINS: the receipt TEXT still carries the identity wires for provenance; the typed identity ride-along (a receipt record carrying checkpoint/runtime/topology as fields, compared by equality) is the remaining rung, landed when the bounded-experiment observer's capture leg mints receipts from live captures instead of witness fixtures. SUFFICIENT FOR: provenance becomes equality rather than containment, and the observer-side capture (memory-profile line, kv layout metadata) produces receipt values without hand-typed wires." as NonEmptyStr)

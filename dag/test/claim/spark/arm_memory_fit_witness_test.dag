@@ -19,7 +19,7 @@ import extdeps.vllm.kv_layout {
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, Glm53Exl3_205, GunbcGlm53NopeDerivedGb10, Gitcommit90Sm121Exl3,
   SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
-  glm_native_initial_profile, glm_native_serving_profile_2026_09_19,
+  glm_native_initial_profile, glm_native_concurrent_profile,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
   ArmNormalServing, ArmBoundedExperiment,
 }
@@ -32,6 +32,7 @@ import gunbc.spark.serving_capacity_intent {
 import gunbc.spark.pair_serving_capacity_floor {
   spark_pair_serving_minimum_cold_sessions, minimum_cold_sessions_intent,
 }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.arm_memory_fit {
   ArmMemoryComponent, ArmComponentBound, ArmRankDemand, ArmSupplyDeductions,
   ArmPoolBound,
@@ -52,7 +53,18 @@ import gunbc.spark.arm_memory_fit {
   ArmMeasurement, ArmMeasurementProtocol, ProtocolPeakOverRuns, ProtocolEngineReportedMaximum, ProtocolSingleSample,
   MeasuredUpperBound, MeasuredInterval, ObservationOnly, MeasurementRefused,
   ArmObservationConsistent, ArmMemoryModelFalsified,
+  ArmComponentReceipt, arm_memory_fit_subject_with_receipts,
 }
+
+// THE RESTORATION PROFILE, unwrapped through the plain carrier the resolver seam can type (the
+// sole-constructor payload's produced identity is erased at the cross-module Present seam).
+fn w_restoration_profile() -> ServingLaunchProfile {
+  match group_b_restoration_executable() {
+    Present { value: executable } => executable.profile
+    Absent => glm_native_initial_profile
+  }
+}
+
 
 // ── THE WITNESS SUBJECTS ARE FIXTURES WITH REAL PRODUCTION NUMBERS WHERE A DERIVATION EXISTS ────
 //
@@ -220,7 +232,7 @@ test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
-    profile: glm_native_serving_profile_2026_09_19,
+    profile: w_restoration_profile(),
   ) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
@@ -283,7 +295,7 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
-    requested_profile: glm_native_serving_profile_2026_09_19,
+    requested_profile: glm_native_concurrent_profile,
     pool: fx_pool(),
     deductions: fx_deductions()) {
     ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
@@ -294,7 +306,7 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
       runtime: GunbcGlm53NopeDerivedGb10,
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
-      requested_profile: glm_native_serving_profile_2026_09_19,
+      requested_profile: glm_native_concurrent_profile,
       pool: fx_pool(),
       deductions: fx_deductions(),
       ranks: fx_four_even_ranks()) {
@@ -808,7 +820,7 @@ test fn w_the_experiment_plan_refuses_empty_or_already_bounded_targets() -> Bool
 test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_profile() -> Bool {
   match arm_memory_fit_experiment_plan(
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-    workload: fx_shrunk_intent(), policy_profile: glm_native_serving_profile_2026_09_19,
+    workload: fx_shrunk_intent(), policy_profile: glm_native_concurrent_profile,
     targets: [ArmKvCache]) {
     ArmMemoryExperimentRefused { cause: c } => string_contains(s: c as String, pattern: "do not join")
     ArmMemoryExperimentAdmitted { plan: _ } => false
@@ -828,7 +840,7 @@ test fn w_the_intent_envelope_derives_from_the_seat_population() -> Bool {
           && token_count_value(t: intent_max_total_resident_tokens(i: i)) == 262144
       ServingCapacityIntentRefused { cause: _ } => false
     })
-    && (match intent_for_launch_profile(p: glm_native_serving_profile_2026_09_19) {
+    && (match intent_for_launch_profile(p: glm_native_concurrent_profile) {
       ServingCapacityIntentAdmitted { intent: i } =>
         intent_max_active_sequences(i: i) == 16
           && token_count_value(t: intent_max_total_resident_tokens(i: i)) == 4194304
@@ -858,6 +870,150 @@ test fn w_the_kv_byte_cost_derives_from_the_layout() -> Bool {
     })
 }
 
+// ── WITNESS 17: THE RECEIPT JOIN — ONE RECEIPT DISCHARGES EXACTLY ITS ONE TERM ──────────────────
+//
+// THE VERTICAL'S JOIN, LANDED: the bounded experiment's captures come back as typed receipts and
+// the roster mint applies them through the measurement contract. A MeasuredUpperBound discharges
+// the term it names -- and never another: rank zero's receipt leaves rank one's obligation
+// standing. An ObservationOnly receipt (a single run's engine log) discharges nothing at all,
+// which is why FitProved waits for protocoled measurements and not one wet afternoon.
+fn fx_measured_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib: Nat) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: component,
+    rank: rank,
+    phase: ArmPhaseGraphCapture,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolPeakOverRuns { runs: 3 },
+    observed: fx_gib(observed_gib),
+    receipt: fx_receipt(kind: "fx-peak-over-runs" as NonEmptyStr),
+  }
+  ArmComponentReceipt { rank: rank, component: component, class: arm_classify_measurement(m: m) }
+}
+
+fn fx_observation_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib: Nat) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: component,
+    rank: rank,
+    phase: ArmPhaseGraphCapture,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolSingleSample,
+    observed: fx_gib(observed_gib),
+    receipt: fx_receipt(kind: "fx-single-run-observation" as NonEmptyStr),
+  }
+  ArmComponentReceipt { rank: rank, component: component, class: arm_classify_measurement(m: m) }
+}
+
+fn join_subject(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
+  arm_memory_fit_subject_with_receipts(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    pool: fx_pool(),
+    deductions: fx_deductions(),
+    receipts: receipts)
+}
+
+fn obligations_of(mint: ArmMemorySubjectMint) -> List<NonEmptyStr> {
+  match mint {
+    ArmMemorySubjectRefused { cause: _ } => ["mint refused" as NonEmptyStr]
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } => os
+        _ => [] as List<NonEmptyStr>
+      }
+  }
+}
+
+test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool {
+  let mint = join_subject(receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)])
+  match mint {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } => {
+      let rank0 = first(filter(subject.ranks, r => r.rank == 0))
+      let rank1 = first(filter(subject.ranks, r => r.rank == 1))
+      (match rank0 {
+        Present { value: rd } => match rd.graph_capture {
+          ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 1073741824
+          _ => false
+        }
+        Absent => false
+      })
+        && (match rank1 {
+          Present { value: rd } => match rd.graph_capture {
+            ComponentBoundOpen { obligation: _ } => true
+            _ => false
+          }
+          Absent => false
+        })
+        && (match arm_memory_fit_verdict(subject: subject) {
+          ArmMemoryFitUnestablished { obligations: os } =>
+            !any(os, o => string_contains(s: o as String, pattern: "rank 0 graph-capture has no defensible bound"))
+              && any(os, o => string_contains(s: o as String, pattern: "rank 1 graph-capture has no defensible bound"))
+          _ => false
+        })
+    }
+  }
+}
+
+test fn w_an_observation_receipt_discharges_nothing() -> Bool {
+  let observed = join_subject(receipts: [fx_observation_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)])
+  let bare = arm_memory_fit_subject(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_shrunk_intent(),
+    requested_profile: fx_derived_profile(),
+    pool: fx_pool(),
+    deductions: fx_deductions())
+  length(obligations_of(mint: observed)) == length(obligations_of(mint: bare))
+    && length(obligations_of(mint: observed)) > 0
+}
+
+test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance() -> Bool {
+  (match join_subject(receipts: [
+    fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1),
+    fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 2),
+  ]) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "two receipts name rank 0 graph-capture")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match join_subject(receipts: [fx_measured_receipt(rank: 9, component: ArmGraphCapture, observed_gib: 1)]) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "rank 9")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+    && (match arm_memory_fit_subject_with_receipts(
+      checkpoint: Glm53Exl3_205,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      intent: fx_shrunk_intent(),
+      requested_profile: fx_derived_profile(),
+      pool: fx_pool(),
+      deductions: fx_deductions(),
+      receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+test fn w_the_joined_bound_participates_in_falsification() -> Bool {
+  match join_subject(receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match first(filter(subject.ranks, r => r.rank == 0)) {
+        Absent => false
+        Present { value: rd } =>
+          match arm_readback_observation(component: ArmGraphCapture, predicted: rd.graph_capture, observed: fx_gib(2), receipt: "fx-readback-after-join" as NonEmptyStr) {
+            ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+            ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+          }
+      }
+  }
+}
+
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
   w_the_production_tuple_is_unestablished_with_named_obligations()
     && w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank()
@@ -885,4 +1041,8 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_profile()
     && w_the_intent_envelope_derives_from_the_seat_population()
     && w_the_kv_byte_cost_derives_from_the_layout()
+    && w_a_measured_receipt_discharges_exactly_its_one_term()
+    && w_an_observation_receipt_discharges_nothing()
+    && w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance()
+    && w_the_joined_bound_participates_in_falsification()
 }

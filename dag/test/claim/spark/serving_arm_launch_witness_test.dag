@@ -11,7 +11,7 @@ import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOv
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
-  ServingLaunchProfile, glm_native_concurrent_profile, glm_native_serving_profile_2026_09_19,
+  ServingLaunchProfile, glm_native_concurrent_profile,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
   GunbcSparkrunVllmDs4Gb10,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, SingleSparkTp1,
@@ -21,6 +21,7 @@ import gunbc.spark.serving_arm_launch {
   ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
   plan_arm_launch_for, arm_node, arm_container_spec,
 }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.arm_memory_fit {
   arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict,
@@ -269,12 +270,21 @@ test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
 // normal-serving plan for the exact tuple additionally refuses at the intent wall (no execution
 // receipt for this profile exists yet); the verdict row is what tells the operator what has to
 // exist BEFORE such a receipt can mean the arm is safe to serve on.
+// THE RESTORATION PROFILE, unwrapped through the plain carrier the resolver seam can type (the
+// sole-constructor payload's produced identity is erased at the cross-module Present seam).
+fn w_restoration_profile() -> ServingLaunchProfile {
+  match group_b_restoration_executable() {
+    Present { value: executable } => executable.profile
+    Absent => glm_native_initial_profile
+  }
+}
+
 test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool {
   match arm_memory_fit_subject_for_launch(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
-    profile: glm_native_serving_profile_2026_09_19,
+    profile: w_restoration_profile(),
   ) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>

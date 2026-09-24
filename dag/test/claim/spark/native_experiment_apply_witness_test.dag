@@ -1,0 +1,168 @@
+module test.claim.spark.native_experiment_apply_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.native_experiment_apply {
+  ArmExperimentActuationAdmitted, ArmExperimentActuationRefused,
+  arm_experiment_actuation_admission, spark_native_experiment_default_actuation,
+  spark_native_experiment_actuation_dry, spark_native_experiment_profile_anchor,
+}
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+}
+import gunbc.spark.native_serving_realization { glm_native_rank_unit_name }
+import gunbc.spark.arm_memory_fit {
+  ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  ArmPhaseIdleServing, ArmPhaseModelLoad, ArmPhaseGraphCapture,
+  ArmGraphCapture, ArmKvCache,
+  arm_memory_fit_subject_for_launch, arm_memory_fit_verdict, arm_memory_fit_experiment_plan,
+  arm_memory_subject_open_components, arm_memory_experiment_runtime_seconds,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused,
+}
+import gunbc.spark.pair_serving_apply { SparkPairHostApplyPlan }
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+
+// ── THE ACTUATION'S ADMISSION, BOTH ARMS ─────────────────────────────────────────────────────────
+//
+// THE WET ROUTE'S SAFETY IS THIS FOLD, and every refusal names the missing half of the vertical:
+// the verdict (with named obligations), the plan (typed, this subject, covering every open
+// obligation). The admitted arm renders the legs: four apply legs workers-before-head, four stop
+// legs, every apply script starting the unit (never enabling it) and waiting on the engine's own
+// memory-profiling line.
+fn fx_gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+fn fx_restoration_plan() -> ArmMemoryExperimentPlan? {
+  match group_b_restoration_executable() {
+    Absent => none
+    Present { value: executable } =>
+      let profile = executable.profile
+      match arm_memory_fit_subject_for_launch(
+        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+        ArmMemorySubjectRefused { cause: _ } => none
+        ArmMemorySubjectReady { subject: subject } =>
+          match arm_memory_fit_experiment_plan(
+            checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+            workload: subject.intent, policy_profile: profile,
+            targets: arm_memory_subject_open_components(subject: subject)) {
+            ArmMemoryExperimentAdmitted { plan: p } => Present { value: p }
+            ArmMemoryExperimentRefused { cause: _ } => none
+          }
+      }
+  }
+}
+
+fn fx_unestablished() -> ArmMemoryFitVerdict {
+  match group_b_restoration_executable() {
+    Absent => ArmMemoryFitUnestablished { obligations: ["unreachable" as NonEmptyStr] }
+    Present { value: executable } =>
+      let profile = executable.profile
+      match arm_memory_fit_subject_for_launch(
+        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+        profile: profile) {
+        ArmMemorySubjectRefused { cause: _ } => ArmMemoryFitUnestablished { obligations: ["unreachable" as NonEmptyStr] }
+        ArmMemorySubjectReady { subject: subject } => arm_memory_fit_verdict(subject: subject)
+      }
+  }
+}
+
+fn script_of(p: SparkPairHostApplyPlan) -> String {
+  p.script
+}
+
+test fn w_the_actuation_refuses_without_the_unestablished_verdict_with_named_obligations() -> Bool {
+  (match arm_experiment_actuation_admission(
+    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+    verdict: ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) },
+    plan: fx_restoration_plan()) {
+    ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "PROVED")
+    ArmExperimentActuationAdmitted { apply_legs: _, stop_legs: _ } => false
+  })
+    && (match arm_experiment_actuation_admission(
+      checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+      verdict: ArmMemoryFitRefused { rank: 1, phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1), cause: "fx" as NonEmptyStr },
+      plan: fx_restoration_plan()) {
+      ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "REFUSED")
+      ArmExperimentActuationAdmitted { apply_legs: _, stop_legs: _ } => false
+    })
+    && (match arm_experiment_actuation_admission(
+      checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+      verdict: ArmMemoryFitUnestablished { obligations: [] },
+      plan: fx_restoration_plan()) {
+      ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "NO named obligations")
+      ArmExperimentActuationAdmitted { apply_legs: _, stop_legs: _ } => false
+    })
+    && (match arm_experiment_actuation_admission(
+      checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+      verdict: fx_unestablished(), plan: none) {
+      ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "typed experiment plan")
+      ArmExperimentActuationAdmitted { apply_legs: _, stop_legs: _ } => false
+    })
+}
+
+test fn w_the_actuation_refuses_a_plan_that_skips_an_open_obligation() -> Bool {
+  match group_b_restoration_executable() {
+    Absent => false
+    Present { value: executable } =>
+      let profile = executable.profile
+      match arm_memory_fit_subject_for_launch(
+        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+        ArmMemorySubjectRefused { cause: _ } => false
+        ArmMemorySubjectReady { subject: subject } =>
+          match arm_memory_fit_experiment_plan(
+            checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+            workload: subject.intent, policy_profile: profile, targets: [ArmGraphCapture, ArmKvCache]) {
+            ArmMemoryExperimentRefused { cause: _ } => false
+            ArmMemoryExperimentAdmitted { plan: partial } =>
+              match arm_experiment_actuation_admission(
+                checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+                verdict: arm_memory_fit_verdict(subject: subject), plan: Present { value: partial }) {
+                ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "does not target every open obligation")
+                ArmExperimentActuationAdmitted { apply_legs: _, stop_legs: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// ── THE ADMITTED ARM: ONE-SHOT LEGS, STARTED NOT ENABLED, AWAITED ON THE ENGINE'S OWN LINE ───────
+test fn w_the_admitted_actuation_starts_all_ranks_and_stops_all_ranks() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { apply_legs: apply, stop_legs: stop } =>
+      length(apply) == 4
+        && length(stop) == 4
+        && all(apply, p =>
+          string_contains(s: script_of(p: p), pattern: "systemctl start")
+            && !string_contains(s: script_of(p: p), pattern: "systemctl enable")
+            && string_contains(s: script_of(p: p), pattern: spark_native_experiment_profile_anchor)
+            && string_contains(s: script_of(p: p), pattern: "RuntimeMaxSec="))
+        && all(stop, p => string_contains(s: script_of(p: p), pattern: "systemctl stop"))
+        && (match first(apply) {
+          Present { value: first_leg } =>
+            (first_leg.unit_name as String) == (glm_native_rank_unit_name as String)
+          Absent => false
+        })
+        && (match first(stop) {
+          Present { value: _ } => true
+          Absent => false
+        })
+  }
+}
+
+test fn w_the_actuation_receipt_waits_on_the_parser_anchor() -> Bool {
+  string_contains(s: spark_native_experiment_profile_anchor, pattern: "Desired GPU memory utilization is (")
+    && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "APPLY")
+    && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "STOP")
+}
+
+test fn w_all_native_experiment_apply_claims_hold() -> Bool {
+  w_the_actuation_refuses_without_the_unestablished_verdict_with_named_obligations()
+    && w_the_actuation_refuses_a_plan_that_skips_an_open_obligation()
+    && w_the_admitted_actuation_starts_all_ranks_and_stops_all_ranks()
+    && w_the_actuation_receipt_waits_on_the_parser_anchor()
+}

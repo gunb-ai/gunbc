@@ -1,0 +1,112 @@
+module gunbc.spark.group_b_serving_capacity
+
+import std.types { NonEmptyStr, Port }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, BasisPoint, basis_point }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingExplicit }
+import gunbc.spark.serving_arm { ServingLaunchProfile }
+import gunbc.spark.serving_capacity_intent {
+  ServingCapacityIntent, ServingCapacityIntentAdmission, uniform_cold_seats, profile_for_intent,
+  ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+
+// ── THE SERVICE OBLIGATION GROUP B IS RESTORED TO ────────────────────────────────────────────────
+//
+// THE FLEET IS WITHDRAWN, and the path back is NOT the re-convergence of the retired profile:
+// the 2026-09-19 row (sixteen sequences at 262144 tokens, 8400 basis points) is the configuration
+// whose live units crash-looped from 2026-09-18, and nothing measured since rehabilitates it. THE
+// RESTORATION SHAPE IS THE CONSERVATIVE ONE, and each field names its basis:
+//
+//   SEATS: the harness's interactive-quality seat count -- the same authority the pair floor reads
+//     (gunbc.spark.pair_serving_capacity_floor spark_pair_serving_minimum_cold_sessions), so the
+//     restored service seats exactly what the harness hands out and not a number chosen beside it.
+//     THE COUNT IS AUTHORED HERE, not imported: importing gunbc.harness.harness_seat closes a
+//     cycle through the serving enrollment chain back into the unit renderer, and a copied
+//     constant with a named drift check beats a cycle. THE WITNESS is the tie: the
+//     group_b_serving_capacity witness asserts this row EQUALS harness_interactive_quality_seats
+//     on every suite run, so the day the harness count moves, this row's next edit is located.
+//   CONTEXT: 65536 tokens per seat. A quarter of the retired 262K window, and UNDER the unified-
+//     memory exhaustion report the corpus carries for this hardware (vllm-project/vllm#55569,
+//     ~230K context on a GB10): the conservative restoration does not sit at the context the
+//     upstream report warns about.
+//   BATCH CEILING: 2048, unchanged from the arm's existing scheduler configuration -- the engine
+//     profiles its activation peak against the batch shape it will actually run.
+//
+// THE INTENT IS DECLARED AS THE MINT'S ADMISSION, not unwrapped at declaration: a caller sees the
+// refusal arm rather than a fabricated degenerate intent if the seat population ever derives to
+// zero, and the accessor below is the one place the admitted arm is read.
+// THE SEAT COUNT, read from gunbc.harness.harness_seat harness_interactive_quality_seats on
+// 2026-09-24: it answers ONE. The restored service seats exactly what the harness hands out --
+// the same authority the pair floor reads -- and a single interactive-quality seat at a bounded
+// window IS the conservative restoration: one caller at 64K, not the sixteen-sequence 262K
+// configuration whose units crash-looped. The witness asserts this row still EQUALS the harness
+// constant on every suite run; the comment names the authority the import cannot reach without
+// closing a cycle through the serving enrollment chain.
+data group_b_restoration_seats: Nat = 1
+
+data group_b_restoration_intent_admission: ServingCapacityIntentAdmission = uniform_cold_seats(
+  each: token_count(count: 65536),
+  seats: group_b_restoration_seats,
+  max_batched_tokens: token_count(count: 2048),
+)
+
+fn group_b_restoration_intent() -> ServingCapacityIntent? {
+  match group_b_restoration_intent_admission {
+    ServingCapacityIntentAdmitted { intent: i } => Present { value: i }
+    ServingCapacityIntentRefused { cause: _ } => none
+  }
+}
+
+// ── THE LAUNCH POLICY BESIDE THE INTENT ──────────────────────────────────────────────────────────
+//
+// WHAT THE INTENT DOES NOT DECIDE, stated once: utilization, KV dtype, port, alias, prefix
+// caching. These are operator policy, and they travel into the derived profile unchanged. THE
+// UTILIZATION IS THE ENGINE'S OWN ADVICE: the corpus records (gunbc.spark.serving_arm, the
+// 2026-09-16 operator ruling) that 0.84 measures as effectively 0.8233 once CUDA-graph profiling is
+// charged, and names 0.8567 as the value restoring the intended KV size. The crash-looping units
+// ran the un-advised 8400; the restoration applies the advice.
+data group_b_restoration_utilization: BasisPoint = basis_point(count: 8567)
+
+data group_b_restoration_kv_cache_dtype_wire: NonEmptyStr = "fp8" as NonEmptyStr
+
+data group_b_restoration_serve_port: Port = 30000
+
+data group_b_restoration_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+
+data group_b_restoration_prefix_caching: VllmPrefixCachingRequest = PrefixCachingExplicit { enabled: true }
+
+// THE EXECUTABLE PROFILE IS DERIVED, never authored: the engine config the restoration runs, the
+// engine config the fit proof prices, and the engine config the renderer renders are one value by
+// construction (the join the sealed subject mint enforces). Absent means the declared intent
+// refused -- a caller must refuse in turn, not fall back to a profile of its own.
+// THE PLAIN-RECORD CARRIER, and the reason is a resolver seam, not a preference: field
+// projections through a Present-bound payload of a SOLE-CONSTRUCTOR record fail the
+// produced-identity check at the cross-module seam ("produced identity erased"), while projections
+// through a PLAIN record's field typecheck exactly as gunbc.spark.serving_arm_launch's
+// crow.weight_gib does. The executable stays sealed and joined; the carrier is the typed
+// hand-off this seam can see.
+type GroupBRestorationExecutable {
+  profile: ServingLaunchProfile
+}
+
+fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
+  match group_b_restoration_intent() {
+    Absent => none
+    Present { value: intent } =>
+      Present { value: GroupBRestorationExecutable { profile: profile_for_intent(
+        intent: intent,
+        decided_gpu_memory_basis_points: group_b_restoration_utilization,
+        kv_cache_dtype_wire: group_b_restoration_kv_cache_dtype_wire,
+        serve_port: group_b_restoration_serve_port,
+        served_alias: group_b_restoration_served_alias,
+        prefix_caching: group_b_restoration_prefix_caching) } }
+  }
+}
+
+fn group_b_restoration_profile() -> ServingLaunchProfile? {
+  match group_b_restoration_executable() {
+    Absent => none
+    Present { value: executable } => Present { value: executable.profile }
+  }
+}
