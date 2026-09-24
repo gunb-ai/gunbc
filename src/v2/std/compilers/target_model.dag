@@ -4214,7 +4214,10 @@ fn target_value_expression_string_literal(value: Node) -> TargetValueExpression 
   }
 }
 
-fn target_value_expression_int_literal(lexeme: String) -> TargetValueExpression {
+// THE WIRE CARRIES THE LITERAL'S OWN SOURCE OCCURRENCE, not a synthetic one: this node is the
+// literal's realization, and a target that has not declared `int_literal_form` refuses AT it, so the
+// refusal must name the authored literal rather than a synthetic occurrence nobody can open.
+fn target_value_expression_int_literal(lexeme: String, source: Node) -> TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprIntLiteral,
     node: Node {
@@ -4227,7 +4230,7 @@ fn target_value_expression_int_literal(lexeme: String) -> TargetValueExpression 
           target: target_model_type_atom_node(identity: symbol_intern_lexeme(lexeme: lexeme))
         )
       ],
-      occurrence_id: OccurrenceSynthetic
+      occurrence_id: source.occurrence_id
     }
   }
 }
@@ -13813,7 +13816,8 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
             Absent =>
               outcome_accepted(
                 target_value_expression_int_literal(
-                  lexeme: integer_int_to_decimal_string(value: magnitude)
+                  lexeme: integer_int_to_decimal_string(value: magnitude),
+                  source: node
                 )
               )
           }

@@ -39,6 +39,11 @@ data arrow_body_probe_source: String = "module arrow_body_probe\n\nimport v2.std
 
 data arrow_body_mixed_probe_source: String = "module arrow_body_probe\n\nimport v2.std.integer { Int }\n\ntype Pair { a: Int, b: Int }\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
+// A MODULE THAT DECLARES NOTHING. Every grafted module body carries the production marker, so a
+// member check over raw children holds for it vacuously, and the fold would publish zero bytes as
+// an Accepted program. It must refuse instead, located in the authored file.
+data arrow_body_empty_probe_source: String = "module arrow_body_probe\n\n"
+
 fn arrow_body_probe_ingest(source: String) -> SourceRootIngest {
   Cons {
     head: DagSourceReadWitness {
@@ -87,6 +92,10 @@ fn arrow_body_mixed_probe_verdict() -> ArrowBodyProbeVerdict {
   arrow_body_probe_verdict_of(source: arrow_body_mixed_probe_source)
 }
 
+fn arrow_body_empty_probe_verdict() -> ArrowBodyProbeVerdict {
+  arrow_body_probe_verdict_of(source: arrow_body_empty_probe_source)
+}
+
 test fn a_function_body_is_rendered_with_its_declaration_holds() -> Bool {
   match arrow_body_probe_verdict() {
     ArrowBodyProbeAccepted { text: text } =>
@@ -120,5 +129,14 @@ test fn the_module_refusal_is_located_in_the_authored_file_holds() -> Bool {
     ArrowBodyProbeAccepted { text: _ } => false
     ArrowBodyProbeRefused { reason: _, locus: locus } =>
       string_contains(s: locus, pattern: "arrow_body_probe_cu bytes ")
+  }
+}
+
+test fn a_module_declaring_nothing_refuses_rather_than_emitting_nothing_holds() -> Bool {
+  match arrow_body_empty_probe_verdict() {
+    ArrowBodyProbeAccepted { text: _ } => false
+    ArrowBodyProbeRefused { reason: reason, locus: locus } =>
+      (reason == translate_diagnostic_reason_symbol(reason: ModuleNotATypeExpression))
+        && string_contains(s: locus, pattern: "arrow_body_probe_cu bytes ")
   }
 }

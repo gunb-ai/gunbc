@@ -138,35 +138,62 @@ fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
   produced_decl_conjs_in_children(children: root.children, acc: Empty)
 }
 
+fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: n } => n == ^grammar_production_identity_node_projection
+    Positional => false
+  }
+}
+
 fn produced_module_member_is_bodied_decl(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: n } =>
-      if n == ^grammar_production_identity_node_projection {
-        true
-      } else {
-        match edge.target.kind {
-          TypeNode { connective: Arrow } =>
-            match find_arrow_body_child(root: edge.target) {
-              Accepted { value: _, diagnostics: _ } => true
-              Rejected { diagnostics: _ } => false
-            }
-          _ => false
-        }
+    Named { name: _ } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          match find_arrow_body_child(root: edge.target) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
       }
     Positional => false
   }
 }
 
-// Counts module bodies found and module bodies holding a member that is not a bodied declaration.
+// One module body's standing: how many real members it declares (the production marker the graft
+// stamps on every body is not a member) and whether each of them is a bodied declaration.
+type ProducedModuleBodyStanding { members: Int, all_bodied: Bool }
+
+fn produced_module_body_standing(body: Node) -> ProducedModuleBodyStanding {
+  fold(body.children, init: ProducedModuleBodyStanding { members: 0, all_bodied: true }, f: fn(acc, e) {
+    if produced_module_edge_is_production_marker(edge: e) {
+      acc
+    } else {
+      ProducedModuleBodyStanding {
+        members: acc.members + 1,
+        all_bodied: acc.all_bodied && produced_module_member_is_bodied_decl(edge: e)
+      }
+    }
+  })
+}
+
+// A body is RENDERABLE when it declares at least one member and every member is a bodied
+// declaration. The per-body count is load-bearing: every grafted body carries the production
+// marker, so a body-level "all members pass" over the raw children holds for `module empty` too,
+// and the fold then publishes a zero-byte emission as though it were the program.
+fn produced_module_body_is_renderable(body: Node) -> Bool {
+  let standing = produced_module_body_standing(body: body)
+  (standing.members > 0) && standing.all_bodied
+}
+
+// Counts module bodies found and module bodies the fold cannot render whole.
 type ProducedModuleCensus { bodies: Int, unrenderable: Int }
 
 fn produced_module_census(node: Node, acc: ProducedModuleCensus) -> ProducedModuleCensus {
   if namespace_graft_node_is_module_body(node: node) {
     ProducedModuleCensus {
       bodies: acc.bodies + 1,
-      unrenderable: if fold(node.children, init: true, f: fn(ok, e) {
-        ok && produced_module_member_is_bodied_decl(edge: e)
-      }) {
+      unrenderable: if produced_module_body_is_renderable(body: node) {
         acc.unrenderable
       } else {
         acc.unrenderable + 1
@@ -177,15 +204,17 @@ fn produced_module_census(node: Node, acc: ProducedModuleCensus) -> ProducedModu
   }
 }
 
-// A TREE IS RENDERED AS A MODULE ONLY WHEN EVERY MEMBER OF EVERY MODULE BODY IN IT IS A BODIED
-// DECLARATION. The module body is the node the dag language authority marks
+// A TREE IS RENDERED AS A MODULE ONLY WHEN EVERY MODULE BODY IN IT DECLARES AT LEAST ONE MEMBER AND
+// EVERY MEMBER IS A BODIED DECLARATION. The module body is the node the dag language authority marks
 // (`v2.extdeps.languages.dag` `namespace_graft_node_is_module_body`), and a member is a bodied
 // declaration exactly when `emit_produced_module` renders it through the target's declared rows
-// (DESIGN section 4: the rows read backward, never a second emitter). The whole-body condition is the
-// wall: the declaration collector skips a member that is not an arrow, so a module declaring
-// `type Pair { .. }` beside `fn add` would otherwise emit `fn add` alone and drop the type with
-// nothing refusing. Such a module is NOT admitted here; it reaches the type-expression translate,
-// which refuses it typed and located (`translate_module_not_a_type_expression`).
+// (DESIGN section 4: the rows read backward, never a second emitter). Both halves are walls. The
+// declaration collector skips a member that is not an arrow, so a module declaring `type Pair { .. }`
+// beside `fn add` would otherwise emit `fn add` alone and drop the type with nothing refusing; and a
+// module declaring nothing would emit zero bytes as an Accepted program -- the absence
+// `v2.compiler.self_host.candidate_generation` refuses as `rust_module_emission_decl_absent`. Neither
+// is admitted here; each reaches the type-expression translate, which refuses it typed and located
+// (`translate_module_not_a_type_expression`).
 fn produced_module_declares_bodied_members(root: Node) -> Bool {
   let census = produced_module_census(node: root, acc: ProducedModuleCensus { bodies: 0, unrenderable: 0 })
   (census.bodies > 0) && (census.unrenderable == 0)
