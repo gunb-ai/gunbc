@@ -1,0 +1,351 @@
+module v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CALL ARGUMENT INSIDE AN IF-ARM, AND A STATEMENT FOLLOWED BY ANOTHER, REACH A VERDICT; NEITHER IS
+// DROPPED.
+//
+// THE SUBJECT IS THE NATIVE LANE'S FRONT END AND RESOLVE, as in
+// v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal. Two links in
+// v2.compiler.body_lowering_fold dropped source silently on main:
+//
+// AN IF-ARM WAS READ BY THE OPERAND READER ALONE. body_lower_try_if_from_captured lowered the
+// condition with body_lower_value_lowered but each arm with body_lower_if_arm_operand_optional,
+// which reads a call `g(p: x)` as `g`, so an undeclared `x` in either arm resolved. The arms now go
+// through the same reader as the condition, body_lower_if_part_lowered.
+//
+// A STATEMENT SPINE WAS TAKEN OVER BY body_lower_stmt_spine ONLY WHEN LET-HEADED. Any other
+// multi-statement body fell to the expression walkers, which lowered the first statement and dropped
+// the rest, so `{ c \n x }` resolved with `x` undeclared. body_lower_stmt_spine already refuses a
+// non-binding statement that precedes another as statement_precedes_without_binding; the guard now
+// hands it every spine with a following statement.
+//
+// Each red module varies one thing; the controls are the same shapes with declared names, a let
+// block, a match, and a let followed by its body, and must resolve. The bare-name arm is the neighbour main
+// already read, refusing on both sides.
+data iasl_ifarm_und_source: String = "module v2.test.iasl_ifarm_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: iasl_undeclared_ifarm) } else { c } }\n"
+
+data iasl_ifarm_else_und_source: String = "module v2.test.iasl_ifarm_else_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { c } else { iasl_t(p: iasl_undeclared_else) } }\n"
+
+data iasl_ifarm_nested_und_source: String = "module v2.test.iasl_ifarm_nested_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { if c { iasl_t(p: iasl_undeclared_nested) } else { c } } else { c } }\n"
+
+data iasl_block_und_source: String = "module v2.test.iasl_block_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  c\n  iasl_undeclared_block_second\n}\n"
+
+data iasl_ifarm_block_und_source: String = "module v2.test.iasl_ifarm_block_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c {\n    c\n    iasl_undeclared_arm_second\n  } else { c } }\n"
+
+data iasl_let_then_bare_und_source: String = "module v2.test.iasl_let_then_bare_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  let d = c\n  d\n  iasl_undeclared_after_let\n}\n"
+
+data iasl_block_ctl_source: String = "module v2.test.iasl_block_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  1\n  c\n}\n"
+
+data iasl_ifarm_ctl_source: String = "module v2.test.iasl_ifarm_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: c) } else { c } }\n"
+
+data iasl_ifarm_nested_ctl_source: String = "module v2.test.iasl_ifarm_nested_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { if c { iasl_t(p: c) } else { c } } else { iasl_g(a: c, b: true) } }\n"
+
+data iasl_ifarm_letblock_ctl_source: String = "module v2.test.iasl_ifarm_letblock_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c {\n    let d = iasl_t(p: c)\n    d\n  } else { c } }\n"
+
+data iasl_let_block_ctl_source: String = "module v2.test.iasl_let_block_ctl\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool {\n  let d = iasl_t(p: c)\n  iasl_g(a: d, b: c)\n}\n"
+
+data iasl_ifarm_bare_und_source: String = "module v2.test.iasl_ifarm_bare_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_undeclared_ifarm_bare } else { c } }\n"
+
+data iasl_ifarm_match_ctl_source: String = "module v2.test.iasl_ifarm_match_ctl\n\nimport v2.std.logic { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: x } => x\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
+
+fn iasl_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data iasl_ingest: SourceRootIngest = Cons {
+    head: iasl_read(source: iasl_ifarm_match_ctl_source, id: ^iasl_ifarm_match_ctl_artifact, unit: ^iasl_ifarm_match_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_match_ctl.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_und_source, id: ^iasl_ifarm_und_artifact, unit: ^iasl_ifarm_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_und.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_else_und_source, id: ^iasl_ifarm_else_und_artifact, unit: ^iasl_ifarm_else_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_else_und.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_nested_und_source, id: ^iasl_ifarm_nested_und_artifact, unit: ^iasl_ifarm_nested_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_nested_und.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_block_und_source, id: ^iasl_block_und_artifact, unit: ^iasl_block_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_block_und.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_block_und_source, id: ^iasl_ifarm_block_und_artifact, unit: ^iasl_ifarm_block_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_block_und.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_let_then_bare_und_source, id: ^iasl_let_then_bare_und_artifact, unit: ^iasl_let_then_bare_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_let_then_bare_und.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_block_ctl_source, id: ^iasl_block_ctl_artifact, unit: ^iasl_block_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_block_ctl.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_ctl_source, id: ^iasl_ifarm_ctl_artifact, unit: ^iasl_ifarm_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_ctl.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_nested_ctl_source, id: ^iasl_ifarm_nested_ctl_artifact, unit: ^iasl_ifarm_nested_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_nested_ctl.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_letblock_ctl_source, id: ^iasl_ifarm_letblock_ctl_artifact, unit: ^iasl_ifarm_letblock_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_letblock_ctl.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_let_block_ctl_source, id: ^iasl_let_block_ctl_artifact, unit: ^iasl_let_block_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_let_block_ctl.dag"),
+    tail: Cons {
+    head: iasl_read(source: iasl_ifarm_bare_und_source, id: ^iasl_ifarm_bare_und_artifact, unit: ^iasl_ifarm_bare_und_cu, path: "src/v2/test/fixture/namespace_xl0/iasl_ifarm_bare_und.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason call_argument_value_resolve_refusal cav_outcomes is: the stored value is a verdict per
+// module with no resolution context, Node or closure in it.
+type IaslVerdict
+  = IaslResolved
+  | IaslRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | IaslFileRefused { fatal_reason: Optional<Symbol> }
+  | IaslAbsent
+
+type IaslOutcomes
+  = IaslContextRefused
+  | IaslOutcomesDecided {
+      ifarm_und: IaslVerdict
+      ifarm_else_und: IaslVerdict
+      ifarm_nested_und: IaslVerdict
+      block_und: IaslVerdict
+      ifarm_block_und: IaslVerdict
+      let_then_bare_und: IaslVerdict
+      block_ctl: IaslVerdict
+      ifarm_ctl: IaslVerdict
+      ifarm_nested_ctl: IaslVerdict
+      ifarm_letblock_ctl: IaslVerdict
+      let_block_ctl: IaslVerdict
+      ifarm_bare_und: IaslVerdict
+      ifarm_match_ctl: IaslVerdict
+    }
+
+fn iasl_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+    }
+  )
+}
+
+fn iasl_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> IaslVerdict {
+  match outcome {
+    NativeCensusModuleResolved => IaslResolved
+    NativeCensusModuleFileRefused =>
+      IaslFileRefused { fatal_reason: iasl_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      IaslRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn iasl_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> IaslVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: iasl_ingest),
+    empty: IaslAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        iasl_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn iasl_outcomes() -> IaslOutcomes {
+  match native_test_context_from_ingest(ingest: iasl_ingest) {
+    Rejected { diagnostics: _ } => IaslContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      IaslOutcomesDecided {
+        ifarm_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_und", unit: ^iasl_ifarm_und_cu),
+        ifarm_else_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_else_und", unit: ^iasl_ifarm_else_und_cu),
+        ifarm_nested_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_nested_und", unit: ^iasl_ifarm_nested_und_cu),
+        block_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_block_und", unit: ^iasl_block_und_cu),
+        ifarm_block_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_block_und", unit: ^iasl_ifarm_block_und_cu),
+        let_then_bare_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_let_then_bare_und", unit: ^iasl_let_then_bare_und_cu),
+        block_ctl: iasl_verdict_in(context: context, module_name: "v2.test.iasl_block_ctl", unit: ^iasl_block_ctl_cu),
+        ifarm_ctl: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_ctl", unit: ^iasl_ifarm_ctl_cu),
+        ifarm_nested_ctl: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_nested_ctl", unit: ^iasl_ifarm_nested_ctl_cu),
+        ifarm_letblock_ctl: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_letblock_ctl", unit: ^iasl_ifarm_letblock_ctl_cu),
+        let_block_ctl: iasl_verdict_in(context: context, module_name: "v2.test.iasl_let_block_ctl", unit: ^iasl_let_block_ctl_cu),
+        ifarm_bare_und: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_bare_und", unit: ^iasl_ifarm_bare_und_cu),
+        ifarm_match_ctl: iasl_verdict_in(context: context, module_name: "v2.test.iasl_ifarm_match_ctl", unit: ^iasl_ifarm_match_ctl_cu)
+      }
+  }
+}
+
+fn iasl_is_resolved(v: IaslVerdict) -> Bool {
+  match v {
+    IaslResolved => true
+    _ => false
+  }
+}
+
+// Refused at normalize, and the fatal cause is a non-binding statement preceding another.
+fn iasl_is_statement_refused(v: IaslVerdict) -> Bool {
+  match v {
+    IaslFileRefused { fatal_reason: Present { value: r } } =>
+      r == ^body_lowering_reason_statement_precedes_without_binding
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the name's own atom.
+fn iasl_is_unbound_at(v: IaslVerdict, spelling: Symbol) -> Bool {
+  match v {
+    IaslRefused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
+    _ => false
+  }
+}
+
+test fn a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: v, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_ifarm)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_call_argument_in_an_else_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: v, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_else)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_call_argument_in_a_nested_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: v, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_nested)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_bare_name_in_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: v, ifarm_match_ctl: _ } =>
+      iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_ifarm_bare)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: v, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_statement_refused(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_statement_followed_by_another_in_an_if_arm_refuses_at_normalize() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: v, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_statement_refused(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_statement_after_a_let_followed_by_another_refuses_at_normalize() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: v, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_statement_refused(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_literal_statement_followed_by_a_declared_name_refuses_at_normalize() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: v, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_statement_refused(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn declared_call_arguments_in_if_arms_resolve() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: v, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_resolved(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn declared_call_arguments_in_nested_if_arms_resolve() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: v, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_resolved(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_let_block_in_an_if_arm_resolves() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: v, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_resolved(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_let_followed_by_its_body_resolves() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: v, ifarm_bare_und: _, ifarm_match_ctl: _ } =>
+      iasl_is_resolved(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn a_match_in_an_if_arm_resolves() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: v } =>
+      iasl_is_resolved(v: v)
+    IaslContextRefused => false
+  }
+}
