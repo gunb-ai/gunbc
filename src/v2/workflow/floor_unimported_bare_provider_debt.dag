@@ -6,6 +6,10 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.types { GitRef, FilePath }
 import extdeps.git
+import v2.workflow.floor_unimported_bare_provider_debt_roster {
+  UnimportedBareProviderRowView,
+  unimported_bare_provider_roster_rows,
+}
 
 // A FILE THAT DECLARES ANY IMPORT LINE HAS ITS BARE CHANNEL OFF (`gunbc.recurring_failure_mode`
 // `bare_reference_channel_declines_a_pull_in_silence`, gate one), so every bare name it uses whose
@@ -14,106 +18,171 @@ import extdeps.git
 // refuses at a distant registry join when nothing does, while the whole-pool floor realizes every
 // module and admits the same file. Removing gate one was measured and refused on cost (that row
 // carries the measurement), so the rule runs the other way: such a pair is REFUSED at the file, on
-// both routes, by one check (`v1_compiler.cli_run` `unimported_bare_providers`), and the pairs
-// standing on main when the rule landed are carried as monotone debt in
+// both routes, and the pairs standing when the rule landed are carried as monotone debt in
 // `v2.workflow.floor_unimported_bare_provider_debt_roster`.
 //
-// THIS MODULE IS THE VERDICT OVER AN EDIT OF THAT ROSTER. If CI rewrote the roster from the check,
-// the assertion would collapse into the check agreeing with itself (DESIGN section 5, a monotone
-// debt contract over a closed subject universe). So the floor evaluates the roster at the diff
-// base and at the head and asks `unimported_bare_provider_roster_edit`: the roster may not gain an
-// identity, a dropped identity must be retired, and a retirement may only name something that was
-// debt. Identities arrive as the roster's own spelling (`unimported_bare_provider_identity`).
+// THIS MODULE OWNS EVERY DECISION ABOUT THAT ROSTER; the host only supplies facts it alone can read
+// (which roster files exist, which files it checked and which pairs they carry, and the roster as
+// it stood at the diff base). Three judgments, each returning located refusals and never a count:
+//
+//   COHERENCE -- one row per identity. A duplicate refuses, and "active and retired at once" is a
+//   duplicate, because standing is one field of one row.
+//   EDIT -- against the base: no identity gained, no row removed (a retirement included), and a
+//   standing moves only ActiveDebt -> ActiveDebt, ActiveDebt -> Retired { cause }, or
+//   Retired { c } -> Retired { same c }. The cause travels through the comparison, so a rewritten
+//   cause is caught here and not lost as "not a new retirement".
+//   STANDING -- against the tree: an active row whose file is gone refuses (delete-without-retire),
+//   each cause is held to its claim, a checked file's active rows must still be carried, and a
+//   carried pair must have a row.
+//
+// If CI rewrote the roster from the check, the assertion would collapse into the check agreeing
+// with itself (DESIGN section 5); the roster is seeded once and only ever read here.
 
-// Each refusal names the identity it is about, so a red is located and never a count.
-type UnimportedBareProviderRosterEdit =
-    RosterEditAdmitted
-  | RosterGainedIdentity { identity: String }
-  | RosterDroppedIdentityWithoutRetirement { identity: String }
-  | RetirementNamesNoBaseIdentity { identity: String }
-
-fn unimported_bare_provider_identity_set(ids: List<String>) -> Map<String, Bool> {
+fn unimported_bare_provider_string_set(ids: List<String>) -> Map<String, Bool> {
   fold(ids, init: empty_map(), f: (acc, id) => map_insert(m: acc, key: id, value: true))
 }
 
-fn unimported_bare_provider_member(set: Map<String, Bool>, id: String) -> Bool {
+fn unimported_bare_provider_in(set: Map<String, Bool>, id: String) -> Bool {
   match map_lookup(m: set, key: id) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-// Order is fixed so the first refusal is deterministic: growth first (the one edit the contract
-// forbids outright), then a removal with no disposition, then a disposition naming nothing that was
-// owed -- neither a base roster row nor one already retired at base, which is what keeps a
-// retirement from being minted for a pair that was never debt. Membership is a map lookup, so the
-// verdict is linear in the roster, not quadratic.
+fn unimported_bare_provider_label_map(rows: List<UnimportedBareProviderRowView>) -> Map<String, String> {
+  fold(rows, init: empty_map(), f: (acc, r) => map_insert(m: acc, key: r.identity, value: r.label))
+}
+
+type UnimportedBareProviderCoherenceAcc {
+  seen: Map<String, Bool>
+  refusals: List<String>
+}
+
+// One row per identity. Linear: membership is a map lookup.
+fn unimported_bare_provider_roster_coherence(rows: List<UnimportedBareProviderRowView>) -> List<String> {
+  fold(
+    rows,
+    init: UnimportedBareProviderCoherenceAcc { seen: empty_map(), refusals: [] },
+    f: (acc, r) =>
+      if unimported_bare_provider_in(set: acc.seen, id: r.identity) {
+        UnimportedBareProviderCoherenceAcc {
+          seen: acc.seen,
+          refusals: acc.refusals + ["RosterDuplicateIdentity " + r.identity],
+        }
+      } else {
+        UnimportedBareProviderCoherenceAcc {
+          seen: map_insert(m: acc.seen, key: r.identity, value: true),
+          refusals: acc.refusals,
+        }
+      },
+  ).refusals
+}
+
+// The edit against the base. Growth and removal are identity-set differences; a transition is a
+// label comparison, admitted only from ActiveDebt or to the same retired label.
 fn unimported_bare_provider_roster_edit(
-  base: List<String>,
-  base_retired: List<String>,
-  head: List<String>,
-  head_retired: List<String>,
-) -> UnimportedBareProviderRosterEdit {
-  let base_set = unimported_bare_provider_identity_set(ids: base)
-  let head_set = unimported_bare_provider_identity_set(ids: head)
-  let retired_set = unimported_bare_provider_identity_set(ids: head_retired)
-  let base_retired_set = unimported_bare_provider_identity_set(ids: base_retired)
+  base: List<UnimportedBareProviderRowView>,
+  head: List<UnimportedBareProviderRowView>,
+) -> List<String> {
+  let base_labels = unimported_bare_provider_label_map(rows: base)
+  let head_labels = unimported_bare_provider_label_map(rows: head)
   let gained = fold(
     head,
-    init: RosterEditAdmitted,
-    f: (acc, id) =>
-      match acc {
-        RosterEditAdmitted =>
-          if unimported_bare_provider_member(set: base_set, id: id) {
-            acc
-          } else {
-            RosterGainedIdentity { identity: id }
-          }
-        _ => acc
-      },
-  )
-  let dropped = fold(
-    base,
-    init: gained,
-    f: (acc, id) =>
-      match acc {
-        RosterEditAdmitted =>
-          if unimported_bare_provider_member(set: head_set, id: id)
-            || unimported_bare_provider_member(set: retired_set, id: id) {
-            acc
-          } else {
-            RosterDroppedIdentityWithoutRetirement { identity: id }
-          }
-        _ => acc
+    init: [],
+    f: (acc, r) =>
+      match map_lookup(m: base_labels, key: r.identity) {
+        Present { value: _ } => acc
+        Absent => acc + ["RosterGainedIdentity " + r.identity]
       },
   )
   fold(
-    head_retired,
-    init: dropped,
-    f: (acc, id) =>
-      match acc {
-        RosterEditAdmitted =>
-          if unimported_bare_provider_member(set: base_set, id: id)
-            || unimported_bare_provider_member(set: base_retired_set, id: id) {
+    base,
+    init: gained,
+    f: (acc, b) =>
+      match map_lookup(m: head_labels, key: b.identity) {
+        Absent => acc + ["RosterRemovedIdentity " + b.identity + " (was " + b.label + ")"]
+        Present { value: now } =>
+          if b.active || now == b.label {
             acc
           } else {
-            RetirementNamesNoBaseIdentity { identity: id }
+            acc + ["RosterRetirementChanged " + b.identity + " (" + b.label + " -> " + now + ")"]
           }
-        _ => acc
       },
   )
 }
 
-// The floor's receipt text for a refused edit, and the empty string for an admitted one: the
-// floor prints it and mints no wording of its own.
-fn unimported_bare_provider_roster_edit_refusal(edit: UnimportedBareProviderRosterEdit) -> String {
-  match edit {
-    RosterEditAdmitted => ""
-    RosterGainedIdentity { identity: id } => "RosterGainedIdentity " + id
-    RosterDroppedIdentityWithoutRetirement { identity: id } =>
-      "RosterDroppedIdentityWithoutRetirement " + id
-    RetirementNamesNoBaseIdentity { identity: id } => "RetirementNamesNoBaseIdentity " + id
+// One row against the tree. At most one refusal per row, in a fixed order: existence first, since a
+// row on a missing file cannot be judged for carriage.
+fn unimported_bare_provider_row_standing(
+  r: UnimportedBareProviderRowView,
+  exists: Bool,
+  is_checked: Bool,
+  is_carried: Bool,
+) -> List<String> {
+  if r.active && !exists {
+    ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
+  } else {
+    if r.file_deleted && exists {
+      ["RetiredFileDeletedButPresent " + r.identity]
+    } else {
+      if r.imports_fixed && !exists {
+        ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+      } else {
+        if r.active && is_checked && !is_carried {
+          ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
+        } else {
+          if r.imports_fixed && is_checked && is_carried {
+            ["RetiredImportsFixedButCarried " + r.identity]
+          } else {
+            []
+          }
+        }
+      }
+    }
   }
+}
+
+// The roster against the tree. `present_files` are the roster's files that exist; `checked_files`
+// are the files whose pairs the host derived, and `carried` the identities those files carry.
+// A carried pair with NO row is unrostered. One with a row is judged by that row: active debt is
+// owed, and a retirement still carried is refused by its own cause check -- so each pair is
+// reported once, by the row that owns it.
+fn unimported_bare_provider_roster_standing(
+  head: List<UnimportedBareProviderRowView>,
+  present_files: List<String>,
+  checked_files: List<String>,
+  carried: List<String>,
+) -> List<String> {
+  let present = unimported_bare_provider_string_set(ids: present_files)
+  let checked = unimported_bare_provider_string_set(ids: checked_files)
+  let carried_set = unimported_bare_provider_string_set(ids: carried)
+  let rostered_set = unimported_bare_provider_string_set(ids: map(head, r => r.identity))
+  let row_refusals = fold(
+    head,
+    init: [],
+    f: (acc, r) =>
+      acc + unimported_bare_provider_row_standing(
+        r: r,
+        exists: unimported_bare_provider_in(set: present, id: r.file),
+        is_checked: unimported_bare_provider_in(set: checked, id: r.file),
+        is_carried: unimported_bare_provider_in(set: carried_set, id: r.identity),
+      ),
+  )
+  fold(
+    carried,
+    init: row_refusals,
+    f: (acc, id) =>
+      if unimported_bare_provider_in(set: rostered_set, id: id) {
+        acc
+      } else {
+        acc + ["Unrostered " + id]
+      },
+  )
+}
+
+// The head roster as the verdict reads it; the host calls this in the same frame it judges in.
+fn unimported_bare_provider_head_rows() -> List<UnimportedBareProviderRowView> {
+  unimported_bare_provider_roster_rows()
 }
 
 // The roster AS IT STOOD AT THE DIFF BASE, for the floor to evaluate alone. A failed read is its own

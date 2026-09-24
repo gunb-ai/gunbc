@@ -4,95 +4,173 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.floor_unimported_bare_provider_debt {
-  UnimportedBareProviderRosterEdit,
-  RosterEditAdmitted,
-  RosterGainedIdentity,
-  RosterDroppedIdentityWithoutRetirement,
-  RetirementNamesNoBaseIdentity,
+  unimported_bare_provider_roster_coherence,
   unimported_bare_provider_roster_edit,
-  unimported_bare_provider_roster_edit_refusal,
+  unimported_bare_provider_roster_standing,
 }
 import v2.workflow.floor_unimported_bare_provider_debt_roster {
+  UnimportedBareProviderDisposition,
+  UnimportedBareProviderRowView,
+  ActiveDebt,
+  Retired,
+  ImportsFixed,
+  FileDeleted,
   unimported_bare_provider_identity,
+  unimported_bare_provider_row_view,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data id_a: String = unimported_bare_provider_identity(file: "dag/a.dag", name: "f")
-data id_b: String = unimported_bare_provider_identity(file: "dag/b.dag", name: "g")
-data id_c: String = unimported_bare_provider_identity(file: "dag/c.dag", name: "h")
+data a_active: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: ActiveDebt },
+)
+data a_imports_fixed: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: ImportsFixed } },
+)
+data a_file_deleted: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: FileDeleted } },
+)
+data b_active: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/b.dag", name: "g", standing: ActiveDebt },
+)
 
-// The identity spelling is the roster's own, and it keeps file and name apart: two pairs that
-// share a file but not a name are different identities.
+// Exactly one refusal, and it is this one: a second refusal, or a different one, is red.
+fn refuses_exactly(refusals: List<String>, expected: String) -> Bool {
+  length(refusals) == 1
+    && fold(refusals, init: false, f: (acc, r) => acc || r == expected)
+}
+
+// The identity spelling is the roster's own, and keeps file and name apart.
 test fn the_identity_spelling_keeps_file_and_name_apart() -> Bool {
-  id_a == "dag/a.dag#f"
-    && unimported_bare_provider_identity(file: "dag/a.dag", name: "g") != id_a
+  a_active.identity == "dag/a.dag#f"
+    && unimported_bare_provider_identity(file: "dag/a.dag", name: "g") != a_active.identity
 }
 
-// The positive control: an unchanged roster, and a removal carried by a retirement, admit.
-test fn an_unchanged_roster_and_a_retired_removal_are_admitted() -> Bool {
-  let unchanged = unimported_bare_provider_roster_edit(
-    base: [id_a, id_b],
-    base_retired: [],
-    head: [id_a, id_b],
-    head_retired: [],
-  )
-  let retired = unimported_bare_provider_roster_edit(
-    base: [id_a, id_b],
-    base_retired: [],
-    head: [id_a],
-    head_retired: [id_b],
-  )
-  unimported_bare_provider_roster_edit_refusal(edit: unchanged) == ""
-    && unimported_bare_provider_roster_edit_refusal(edit: retired) == ""
+// COHERENCE. Control: distinct identities. Reds: the same identity twice while active, and the same
+// identity active AND retired -- one standing per identity, so both are one duplicate.
+test fn coherence_admits_distinct_identities() -> Bool {
+  length(unimported_bare_provider_roster_coherence(rows: [a_active, b_active])) == 0
 }
 
-// Growth is the edit the contract forbids outright, and the refusal names the gained identity.
-test fn a_gained_identity_is_refused_by_name() -> Bool {
-  let edit = unimported_bare_provider_roster_edit(
-    base: [id_a],
-    base_retired: [],
-    head: [id_a, id_c],
-    head_retired: [],
+test fn coherence_refuses_a_duplicate_active_identity() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_coherence(rows: [a_active, b_active, a_active]),
+    expected: "RosterDuplicateIdentity dag/a.dag#f",
   )
-  match edit {
-    RosterGainedIdentity { identity: id } => id == id_c
-    _ => false
-  }
 }
 
-// A row may not simply vanish: without a retirement the removal is refused by name.
-test fn a_dropped_identity_without_retirement_is_refused_by_name() -> Bool {
-  let edit = unimported_bare_provider_roster_edit(
-    base: [id_a, id_b],
-    base_retired: [],
-    head: [id_a],
-    head_retired: [],
+test fn coherence_refuses_an_identity_both_active_and_retired() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_coherence(rows: [a_active, a_imports_fixed]),
+    expected: "RosterDuplicateIdentity dag/a.dag#f",
   )
-  match edit {
-    RosterDroppedIdentityWithoutRetirement { identity: id } => id == id_b
-    _ => false
-  }
 }
 
-// A retirement for a pair that was never debt is refused, so retirements cannot be minted freely;
-// one carried over from base stays admitted.
-test fn a_retirement_naming_no_base_identity_is_refused() -> Bool {
-  let minted = unimported_bare_provider_roster_edit(
-    base: [id_a],
-    base_retired: [],
-    head: [id_a],
-    head_retired: [id_c],
+// EDIT. Control: unchanged, ActiveDebt -> Retired, and a retirement carried unchanged all admit.
+test fn edit_admits_unchanged_retiring_and_a_carried_retirement() -> Bool {
+  length(unimported_bare_provider_roster_edit(base: [a_active, b_active], head: [a_active, b_active])) == 0
+    && length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_imports_fixed])) == 0
+    && length(unimported_bare_provider_roster_edit(base: [a_file_deleted], head: [a_file_deleted])) == 0
+}
+
+test fn edit_refuses_a_gained_identity() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_edit(base: [a_active], head: [a_active, b_active]),
+    expected: "RosterGainedIdentity dag/b.dag#g",
   )
-  let carried = unimported_bare_provider_roster_edit(
-    base: [id_a],
-    base_retired: [id_b],
-    head: [id_a],
-    head_retired: [id_b],
+}
+
+// An existing retirement may not be erased: the row exists at base and is gone at head.
+test fn edit_refuses_an_erased_retirement() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_edit(base: [a_imports_fixed, b_active], head: [b_active]),
+    expected: "RosterRemovedIdentity dag/a.dag#f (was Retired ImportsFixed)",
   )
-  (match minted {
-    RetirementNamesNoBaseIdentity { identity: id } => id == id_c
-    _ => false
-  })
-    && unimported_bare_provider_roster_edit_refusal(edit: carried) == ""
+}
+
+// A retirement's cause may not be rewritten, and a retirement may not revert to active debt.
+test fn edit_refuses_a_rewritten_cause_and_a_reverted_retirement() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_edit(base: [a_imports_fixed], head: [a_file_deleted]),
+    expected: "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)",
+  )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_edit(base: [a_imports_fixed], head: [a_active]),
+      expected: "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> ActiveDebt)",
+    )
+}
+
+// STANDING. Control: an active pair in a present file that still carries it, and a FileDeleted
+// retirement whose file is gone -- the proper disposition for a deleted debt-bearing file.
+test fn standing_admits_carried_debt_and_a_true_file_deleted() -> Bool {
+  length(unimported_bare_provider_roster_standing(
+    head: [a_active],
+    present_files: ["dag/a.dag"],
+    checked_files: ["dag/a.dag"],
+    carried: ["dag/a.dag#f"],
+  )) == 0
+    && length(unimported_bare_provider_roster_standing(
+      head: [a_file_deleted],
+      present_files: [],
+      checked_files: [],
+      carried: [],
+    )) == 0
+}
+
+// Deleting a debt-bearing file without retiring its rows refuses: FileDeleted is not voluntary.
+test fn standing_refuses_active_debt_on_a_deleted_file() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_standing(
+      head: [a_active],
+      present_files: [],
+      checked_files: [],
+      carried: [],
+    ),
+    expected: "ActiveDebtOnAbsentFile dag/a.dag#f -- the file is gone; retire the row as FileDeleted",
+  )
+}
+
+// Each cause is held to its claim.
+test fn standing_refuses_a_false_cause() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_standing(
+      head: [a_file_deleted],
+      present_files: ["dag/a.dag"],
+      checked_files: [],
+      carried: [],
+    ),
+    expected: "RetiredFileDeletedButPresent dag/a.dag#f",
+  )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_imports_fixed],
+        present_files: ["dag/a.dag"],
+        checked_files: ["dag/a.dag"],
+        carried: ["dag/a.dag#f"],
+      ),
+      expected: "RetiredImportsFixedButCarried dag/a.dag#f",
+    )
+}
+
+// A checked file's active row it no longer carries is stale; a carried pair not on the roster as
+// active debt is unrostered.
+test fn standing_refuses_stale_debt_and_an_unrostered_pair() -> Bool {
+  refuses_exactly(
+    refusals: unimported_bare_provider_roster_standing(
+      head: [a_active],
+      present_files: ["dag/a.dag"],
+      checked_files: ["dag/a.dag"],
+      carried: [],
+    ),
+    expected: "RosterStale dag/a.dag#f -- the file no longer carries this pair; retire it as ImportsFixed",
+  )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_active],
+        present_files: ["dag/a.dag"],
+        checked_files: ["dag/a.dag"],
+        carried: ["dag/a.dag#f", "dag/a.dag#h"],
+      ),
+      expected: "Unrostered dag/a.dag#h",
+    )
 }
