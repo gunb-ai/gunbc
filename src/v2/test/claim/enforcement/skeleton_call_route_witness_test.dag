@@ -1,0 +1,181 @@
+module v2.test.claim.enforcement.skeleton_call_route_witness
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.no_dual_representation_test.scan { FirstArgName, FirstArgUnreadable, argument_value_read }
+import v2.std.algebra { any, contains, fold_list, length }
+import v2.std.collection { List }
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  AtomHead,
+  ArrowHead,
+  NotApplication,
+  application_read
+}
+import v2.std.diagnostic { diagnostics_fatal_reason }
+import v2.std.fn_index { FnArrowDecl, callees_from_decl, fn_arrow_decl_facts_live }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  fold_node
+}
+import v2.std.text { String, string_eq }
+
+// THE ONE CALL ROUTE OVER BOTH SUBSTRATES. After the MQ-2 cutover a call is read by
+// v2.std.compilers.body_lowering application_read whether it came from a lowered body or from a
+// host fn-arrow skeleton; there is no skeleton-specific reader. That is sound only because the
+// marshal never leaves residue in an operand slot -- it wraps every argument, and an argument it
+// does not project is an empty Conj INSIDE the wrapper (count(x) => Transform[count, Conj[Conj[]]],
+// probed on the real marshal in gunbc#12202). These claims hold that route on a skeleton the real
+// marshal produced, and hold the one skeleton consumer that reads argument CONTENT to reading the
+// value through the wrapper.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn wall_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn wall_conj(children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
+}
+
+fn wall_wrap(n: Node) -> Node {
+  wall_conj(children: [Edge { label: Positional, target: n }])
+}
+
+// DISCRIMINATOR, body route: residue standing directly in an operand slot is refused, located.
+test fn body_route_refuses_an_empty_conj_operand() -> Bool {
+  let site = Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: wall_atom(id: ^skeleton_route_callee) },
+      Edge { label: Positional, target: wall_conj(children: []) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match application_read(site: site) {
+    ApplicationRefused { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_view_operand_residue
+    Application { view: _ } => false
+    NotApplication => false
+  }
+}
+
+// ---- THE INHABITANCE CLAIM, over a skeleton the real host marshal produced. ----
+
+data skeleton_route_subject_roots: List<String> = []
+
+data skeleton_route_subject_files: List<String> = [
+  "src/v2/test/claim/enforcement/skeleton_call_route_fixture.dag"
+]
+
+data skeleton_route_no_terminal_callees: List<String> = []
+
+data skeleton_route_no_decls: List<FnArrowDecl> = []
+
+fn skeleton_route_caller_decls() -> List<FnArrowDecl> {
+  fold_list(
+    xs: fn_arrow_decl_facts_live(pool_roots: skeleton_route_subject_roots, pool_files: skeleton_route_subject_files),
+    empty: skeleton_route_no_decls,
+    cons: fn(acc, decl) {
+      if string_eq(a: decl.name, b: "skeleton_call_route_fixture_caller") { [decl] } else { acc }
+    }
+  )
+}
+
+type RouteTally {
+  applications: Int
+  refused: Int
+  declared_callee_heads: Int
+  unprojected_first_arguments: Int
+}
+
+fn route_tally_of(n: Node) -> RouteTally {
+  match application_read(site: n) {
+    NotApplication => RouteTally { applications: 0, refused: 0, declared_callee_heads: 0, unprojected_first_arguments: 0 }
+    ApplicationRefused { diagnostics: _ } => RouteTally { applications: 0, refused: 1, declared_callee_heads: 0, unprojected_first_arguments: 0 }
+    Application { view: v } =>
+      RouteTally {
+        applications: 1,
+        refused: 0,
+        declared_callee_heads: match v.head_identity {
+          AtomHead { identity: id } => if id == ^count { 1 } else { 0 }
+          ArrowHead => 0
+        },
+        unprojected_first_arguments: match fold_list(xs: v.operands, empty: 0, cons: fn(acc, op) {
+          if acc > 0 { acc } else {
+            match argument_value_read(n: op) {
+              FirstArgUnreadable => 1
+              FirstArgName { name: _ } => 0
+            }
+          }
+        })
+      }
+  }
+}
+
+fn route_tally_sum(a: RouteTally, b: RouteTally) -> RouteTally {
+  RouteTally {
+    applications: a.applications + b.applications,
+    refused: a.refused + b.refused,
+    declared_callee_heads: a.declared_callee_heads + b.declared_callee_heads,
+    unprojected_first_arguments: a.unprojected_first_arguments + b.unprojected_first_arguments
+  }
+}
+
+fn route_tally(decl: FnArrowDecl) -> RouteTally {
+  fold_node(
+    n: decl.output,
+    algebra: NodeFold {
+      init: fn(n) { route_tally_of(n: n) },
+      step: fn(acc, _edge, child) { route_tally_sum(a: acc, b: child) }
+    }
+  )
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER: exactly one application in the real skeleton, read by
+// application_read with no refusal, whose head is the declared callee `count`, and whose argument
+// -- an unprojected data reference -- is read as unprojected through its wrapper, never as a name.
+test fn the_real_skeleton_call_reads_through_application_read_with_the_declared_callee() -> Bool {
+  let decls = skeleton_route_caller_decls()
+  length(xs: decls) == 1
+    && any(xs: decls, predicate: fn(d) {
+      let t = route_tally(decl: d)
+      t.applications == 1 && t.refused == 0 && t.declared_callee_heads == 1 && t.unprojected_first_arguments == 1
+    })
+}
+
+test fn the_real_skeleton_call_walk_names_the_callee_without_refusal() -> Bool {
+  let decls = skeleton_route_caller_decls()
+  length(xs: decls) == 1
+    && any(xs: decls, predicate: fn(d) {
+      let scan = callees_from_decl(decl: d, terminal_callee_symbols: skeleton_route_no_terminal_callees)
+      length(xs: scan.refusals) == 0
+        && contains(xs: scan.texts, item: "count", eq: string_eq)
+    })
+}
+
+// The scan's argument read, at its interface: through the marshal's wrappers to the value.
+test fn argument_value_read_reads_a_wrapped_name() -> Bool {
+  match argument_value_read(n: wall_wrap(n: wall_wrap(n: wall_atom(id: ^skeleton_route_x)))) {
+    FirstArgName { name: nm } => nm == "skeleton_route_x"
+    FirstArgUnreadable => false
+  }
+}
+
+test fn argument_value_read_refuses_a_wrapped_unprojected_value() -> Bool {
+  match argument_value_read(n: wall_wrap(n: wall_conj(children: []))) {
+    FirstArgUnreadable => true
+    FirstArgName { name: _ } => false
+  }
+}
