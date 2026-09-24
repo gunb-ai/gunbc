@@ -16,10 +16,10 @@ fn where_retained(src: String) -> String {
       match ds.head.at {
         NodeLocus { anchor: a } =>
           match parse_production_emitted_identity_optional(node: a.at) {
-            Present { value: s } => symbol_lexeme(sym: ds.head.reason) ++ " @ " ++ symbol_lexeme(sym: s)
-            Absent => symbol_lexeme(sym: ds.head.reason) ++ " @ <no production>"
+            Present { value: s } => symbol_lexeme(sym: ds.head.reason) + " @ " + symbol_lexeme(sym: s)
+            Absent => symbol_lexeme(sym: ds.head.reason) + " @ <no production>"
           }
-        _ => symbol_lexeme(sym: ds.head.reason) ++ " @ <non-node locus>"
+        _ => symbol_lexeme(sym: ds.head.reason) + " @ <non-node locus>"
       }
   }
 }
