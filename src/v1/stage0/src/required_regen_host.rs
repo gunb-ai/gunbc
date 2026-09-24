@@ -1161,7 +1161,7 @@ fn compile_stage0(
 fn emitted_tree_partition_rows(
     workspace: &Path,
 ) -> Result<
-    Rc<Vec<Rc<crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow>>>,
+    Rc<im::Vector<Rc<crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow>>>,
     String,
 > {
     use crate::gunbc_stage0_crate_partition_generated::{
@@ -1220,7 +1220,7 @@ fn emitted_tree_partition_rows(
             value.type_label_public()
         ));
     };
-    let mut rows = Vec::new();
+    let mut rows = im::Vector::new();
     for item in items.iter() {
         let ModelValue::Record { fields, .. } = item else {
             return Err(format!(
@@ -1258,18 +1258,18 @@ fn emitted_tree_partition_rows(
                 ))
             }
         };
-        rows.push(Rc::new(GeneratedPartitionCrateRow {
+        rows.push_back(Rc::new(GeneratedPartitionCrateRow {
             package_name: string(field(fields, "package_name")?, "package_name")?,
             crate_dir: string(field(fields, "crate_dir")?, "crate_dir")?,
             kind,
-            modules: Rc::new(model_value_to_string_list(
+            modules: Rc::new(im::Vector::from(model_value_to_string_list(
                 &field(fields, "modules")?,
                 ROWS,
-            )?),
-            reexport_packages: Rc::new(model_value_to_string_list(
+            )?)),
+            reexport_packages: Rc::new(im::Vector::from(model_value_to_string_list(
                 &field(fields, "reexport_packages")?,
                 ROWS,
-            )?),
+            )?)),
             carries_non_empty_wrappers,
         }));
     }
