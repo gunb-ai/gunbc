@@ -178,12 +178,191 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     ResolverBoundDeclaringIdentity => "the v2 resolver answering a qualified reference with an EXACT declaring identity by execution -- the binding's declaration containment path, not a leaf and not the authored spelling -- so that v2.compiler.repair_input_origin_roster derives RepairInputDeclared.declaring from that binding rather than from carrier_declaration_ref's spelling arm (XL-0's population; the roster producer itself exists and answers)"
     DeclaringIdentitySpellingCensus => "a declaring-identity spelling census that answers over XL-3's usable population on the production ingest route: QUALIFIED cross-module mentions (every position) and bare type names in FIELD position, joined to their declaring identity - the producer v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest exists and answers over the bare same-module classes only, which is not that population (XL-3's population)"
-    ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population): the typed import strip (std.import strip_import_statements, already built) applied to a throwaway tree, followed by the v2 production route -- ingest, graft, normalize, RESOLVE -- over every stripped module, its resolve refusals joined to occurrence identity where an id is minted and to module + path + locus structure where it is synthetic (the residual's ids are mixed, majority synthetic over the whole tree -- gunbc#11738's census-resolve run; a wave keyed on occurrence identity alone would cover a minority and report success on the rest). KNOWN NECESSARY prerequisites -- not an exhaustive set, and a fourth found by review is not the end of the list either -- each an undercount BY CONSTRUCTION rather than a missing producer file: (i) call callees and ARGUMENTS reach resolve (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering -- resolve fails OPEN for every dependent reached through a call, so its refusal roster cannot establish completeness over that population; the callee half is gunbc#11683's, the argument half is open); (ii) bare FIELD-position type names reach the containment tree (the grafting lane, namespace_cut_stage cause 4); (iii) a whole-tree v2 census that RESOLVES per module rather than stopping at normalize: the executing entry that omits resolve is the SourceRootEvalDriver's rendered census mode (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs, run_census), which calls v2.compiler.compile native_test_context_from_ingest, whose per-file native_test_context_fold_step reaches program_assembly_read_to_normalized_root_seeded and nothing further -- resolve is native_test_resolve_module, reached only from adjudicate mode's prepare over universe modules (gunbc.witness.v2_native_route native_route_census is a fold over supplied verdict rows and is not that entry). AND ONE UNRESOLVED OBLIGATION THAT NONE OF THOSE DISCHARGES, occurrence completeness: v2.compiler.resolve resolve_children_homogeneous_scope (and resolve_transform_children, resolve_edges_first_outer_then_inner, resolve_bind_edges) returns a Rejected accumulator without visiting the remaining children, so a module with two independent post-cut refusals records the first and never observes the second -- a truthful MODULE-level refusal and an incomplete OCCURRENCE-level population -- and an earlier parse or normalize refusal blocks a whole module the same way. Running resolve once per module therefore does not establish that every affected occurrence was observed; the census must report every site or explicitly refuse completeness, and its discriminator is two independently failing sites in ONE module, each shown individually reachable by a control, both reported. The Step-0 canary (gunbc.namespace_step0_candidate_run over tools.multi_module_compile_fixture) is NOT this instrument, on a population ground rather than a version-number one: its carrier is a per-bucket diagnostic HISTOGRAM differential (gunbc.namespace_step0_canary_v2 Step0HistogramDifferential, whose arms include OccurrenceJoinUnavailable), so it cannot carry an exact occurrence residual whatever pipeline compiles it; a rehearsal that observes a proposed cut through the old implementation is admissible as a differential, and what it may not do is be the authority that still answers after the surgery"
+    ExactOccurrenceResidualCensus => concat("the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population): the typed import strip (std.import strip_import_statements) applied to a throwaway tree, then the v2 production route -- ingest, graft, normalize, RESOLVE -- over every stripped module, its resolve refusals joined to occurrence identity where an id is minted and to module + path + locus structure where it is synthetic (the residual's ids are mixed, majority synthetic over the whole tree; a wave keyed on occurrence identity alone would cover a minority and report success on the rest). Its known necessary prerequisites are the typed list xl2_prerequisites -- not an exhaustive set -- rendered here from their standings: ", render_xl2_prerequisites())
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
     SeedDeletionObservation => "an observation of the live tree that the v1 seed families (interpreter, cli_run, seed harness, interpreter floor) are ABSENT, read from the tree rather than from an authored roster"
     LiveTreeCompilePhaseMeasurement => "a compile-phase board measured on the TREE UNDER JUDGMENT and joined to the receipt series by tree identity, which is what gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage consumes -- gated on an in-epoch receipt first and an affordable whole-closure measurement second, both named in this instrument's obstacle"
   }
+}
+
+// XL-2'S PREREQUISITES ARE ONE TYPED LIST, NOT PROSE INSIDE AN INSTRUMENT LABEL. The label used to
+// carry them as a paragraph, and two of its clauses went stale in place (the whole-tree census
+// "never reaches resolve" after gunbc#11738 made it resolve; the argument half "open" on a premise
+// gunbc#12108 measured to be false). A standing that is a field on an arm is read and rendered;
+// a standing inside a sentence is only re-read. Each arm names its OWNING CAPABILITY as a
+// DeclarationRef -- the discriminating claim that executes it -- so the citation wall refuses a
+// renamed or deleted owner instead of leaving the arm reading as delivered. The standings are
+// authored against those owners with their evidence; they are not re-executed here, because
+// re-running another module's claims from a production carrier is the layer inversion DESIGN
+// section 3 names (gunbc#11457). The owners run on the required floor under their own prefixes.
+type Xl2Prerequisite
+  = PlainCallArgumentReferenceVisibility
+  | IfArmCallArgumentReferenceVisibility
+  | BareFieldTypeVisibility
+  | WholeTreeResolveCensus
+  | ResolveOccurrenceCompleteness
+  | OperatorExpressionLoweredWhole
+  | OptionalAccessorLocatedRefusal
+  | MatchOnCallScrutineeNavigation
+  | CompoundCallArgumentValueLowering
+  | StrippedTreeRehearsalComposition
+  | BlockStatementReferenceVisibility
+  | LoweringOccurrenceProjection
+  | ListLiteralElementVisibility
+
+type Xl2PrerequisiteEvidence {
+  pr: Int
+  merge_sha: NonEmptyStr
+  measured_at: NonEmptyStr
+}
+
+// Delivered carries its owner, a MERGED sha, and its QUALIFICATION -- what the delivery does not
+// establish -- as a required field, because a delivery rendered without its limit is the rung
+// inflation this list exists to stop. A qualification may bound a delivery; it may never carry an
+// undelivered part of it: a capability delivered in part is TWO arms, the delivered part and the
+// outstanding part, so xl2_prerequisite_is_delivered and xl2_prerequisites_outstanding cannot
+// disagree with any qualification. An outstanding arm has no owner capability yet, which is what
+// outstanding means; it names what TRACKS the gap instead -- the rostered failure mode or the red
+// wall -- cited by symbol so the citation wall refuses it once that row is deleted. No standing
+// cites an open PR.
+type Xl2PrerequisiteStanding
+  = PrerequisiteDelivered { owner: DeclarationRef, evidence: Xl2PrerequisiteEvidence, qualification: NonEmptyStr }
+  | PrerequisiteOutstanding { tracked_by: DeclarationRef, why: NonEmptyStr }
+
+data xl2_prerequisites: List<Xl2Prerequisite> = [
+  PlainCallArgumentReferenceVisibility,
+  IfArmCallArgumentReferenceVisibility,
+  BareFieldTypeVisibility,
+  WholeTreeResolveCensus,
+  ResolveOccurrenceCompleteness,
+  OperatorExpressionLoweredWhole,
+  OptionalAccessorLocatedRefusal,
+  MatchOnCallScrutineeNavigation,
+  CompoundCallArgumentValueLowering,
+  StrippedTreeRehearsalComposition,
+  BlockStatementReferenceVisibility,
+  LoweringOccurrenceProjection,
+  ListLiteralElementVisibility,
+]
+
+fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
+  match p {
+    PlainCallArgumentReferenceVisibility => "plain call-argument references reach resolve/denominator grain"
+    IfArmCallArgumentReferenceVisibility => "call-argument references inside an if-arm reach resolve"
+    BareFieldTypeVisibility => "BARE field-position type names reach the containment tree"
+    WholeTreeResolveCensus => "a whole-tree v2 census that RESOLVES per module"
+    ResolveOccurrenceCompleteness => "occurrence completeness: every independent refusal reaches the census"
+    OperatorExpressionLoweredWhole => "an operator expression is lowered whole, so every operand reaches resolve"
+    MatchOnCallScrutineeNavigation => "a match whose scrutinee is a call has its arms navigated, not refused"
+    CompoundCallArgumentValueLowering => "a compound call-argument value (nested call, record, caret symbol, group, list) is lowered as a value, not refused as unread"
+    OptionalAccessorLocatedRefusal => "the Optional operand accessor carries a located refusal instead of answering Absent"
+    StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
+    BlockStatementReferenceVisibility => "every statement of a brace body, not only its first expression, reaches resolve"
+    ListLiteralElementVisibility => "every element of a list literal reaches resolve on every route"
+    LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
+  }
+}
+
+fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
+  match p {
+    PlainCallArgumentReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_is_reachable_by_the_collector_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
+      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility." as NonEmptyStr,
+    }
+    IfArmCallArgumentReferenceVisibility => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_if_arm_call_argument_is_reported_dropped_holds"),
+      why: "a call argument inside an if-arm reaches no reference site: v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it, and the conservation check reports it dropped (the tracking claim pins that drop). No fix has merged." as NonEmptyStr,
+    }
+    BareFieldTypeVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
+      evidence: Xl2PrerequisiteEvidence { pr: 11574, merge_sha: "b705d17c45" as NonEmptyStr, measured_at: "b705d17c45" as NonEmptyStr },
+      qualification: "BARE field types only. A QUALIFIED field-type mention is still absent from the census (v2.test.claim.declaring_identity_spelling.production_ingest a_qualified_field_type_mention_is_absent_from_the_census_today), so this does not establish field position as a whole." as NonEmptyStr,
+    }
+    WholeTreeResolveCensus => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.native_census.whole_tree_census_resolve", decl_name: "census_unbound_module_is_resolve_refused_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 11738, merge_sha: "c6b4e7ed2c" as NonEmptyStr, measured_at: "c6b4e7ed2c" as NonEmptyStr },
+      qualification: "the SourceRootEvalDriver's census-resolve mode (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs, run_census_resolve) resolves every module of the tree it is given; it runs over the live tree, not a stripped one (that composition is StrippedTreeRehearsalComposition). Its verdicts on the whole tree come from the CI floor: a 7 GB BuildBuddy runner page-thrashes on it." as NonEmptyStr,
+    }
+    ResolveOccurrenceCompleteness => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.native_census.whole_tree_census_resolve", decl_name: "census_two_independent_refusals_both_reach_the_census_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12116, merge_sha: "d759da1c50" as NonEmptyStr, measured_at: "d759da1c50" as NonEmptyStr },
+      qualification: "every independent failure chain reaches census-resolve as one row, two refusals inside ONE declaration both reach the census, and a refused Bind binder marks its body incomplete (v2.test.claim.resolve.resolve_walk_population walk_refused_prerequisite_marks_incomplete_holds). NOT claimed: a Stage0 whole-tree fixed point -- main carries pre-existing Stage0 drift (30 files, pinned at 1f76eef) owned by the stage0-regen-coverage lane adhoc-1b5279ad-913. A module refused at parse or normalize is reported file-refused with completeness unavailable, not resolved." as NonEmptyStr,
+    }
+    OperatorExpressionLoweredWhole => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal", decl_name: "an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12145, merge_sha: "ada85b9452" as NonEmptyStr, measured_at: "ada85b9452" as NonEmptyStr },
+      qualification: "v2.compiler.body_lowering_fold body_lower_read_operator_expression reads the grammar's precedence tower whole, so every operand of a chained or comparison expression (`a == b`, `a + b * c > d`) reaches the normalized tree and resolve, and on the Outcome lowering routes an unreadable operand refuses at its position. Bounded to the Outcome routes: the Optional accessor still answers Absent (OptionalAccessorLocatedRefusal). Its two collateral regressions are separate outstanding arms, MatchOnCallScrutineeNavigation and CompoundCallArgumentValueLowering." as NonEmptyStr,
+    }
+    MatchOnCallScrutineeNavigation => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.match_on_a_call_scrutinee_refused_as_arm_navigation", decl_name: "match_on_a_call_scrutinee_refused_as_arm_navigation"),
+      why: "a collateral regression of gunbc#12145, kept explicit beside that arm's narrow delivery: a match whose scrutinee is a call refuses its module at normalize as body_lowering_reason_match_arm_navigation_refused (one-commit differential 2de78893dfe -> ada85b9452, recorded on the tracking row), so its references never reach resolve. No fix has merged." as NonEmptyStr,
+    }
+    CompoundCallArgumentValueLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.compound_call_argument_value_refused_as_unread", decl_name: "compound_call_argument_value_refused_as_unread"),
+      why: "a collateral regression of gunbc#12145, kept explicit beside that arm's narrow delivery: a call argument whose value is a nested call, record literal, caret symbol, parenthesised group or list literal refuses its whole module at normalize as body_lowering_reason_call_argument_unread, so its references never reach resolve. No fix has merged." as NonEmptyStr,
+    }
+    OptionalAccessorLocatedRefusal => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
+      why: "the Optional accessor v2.compiler.body_lowering_fold body_lower_operand_ref_optional -- and body_lower_named_arg_value_optional above it -- answers Absent on an unread operator expression instead of carrying a located refusal, so an operand it cannot read is silently missing from the census rather than refused. The tracking row stays open for exactly this half of its trigger." as NonEmptyStr,
+    }
+    StrippedTreeRehearsalComposition => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "test.claim.namespace_xl2_rehearsal_census", decl_name: "xl2_residual_control_is_reported_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12097, merge_sha: "1d4fa51a3d" as NonEmptyStr, measured_at: "1d4fa51a3d" as NonEmptyStr },
+      qualification: "delivered at COMPOSITION grain: gunbc.namespace_xl2_rehearsal_census composes the import strip, the census-resolve observation and the completeness decision, built and exercised through its seven controls in test.claim.namespace_xl2_rehearsal_census. The real exact-base path, gunbc.namespace_xl2_rehearsal_census run_xl2_rehearsal_at, is NOT executed: no whole-tree rehearsal has run and no residual has been taken, so this is not the rehearsal instrument's delivery." as NonEmptyStr,
+    }
+    BlockStatementReferenceVisibility => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "v2.test.claim.body_lowering.statement_let_bind", decl_name: "unbound_statement_prefix_refuses_holds"),
+      why: "`{ 1 \n 2 }` is ACCEPTED by normalize with the `2` dropped: v2.compiler.body_lowering_fold body_lower_body_from_fn_captured lowers only the first binary expression of the body (body_lower_body_subtree_lower_from_binary), so references in every later statement never reach resolve. The wall that exists for it, the tracking claim, is RED on main. No fix has merged." as NonEmptyStr,
+    }
+    ListLiteralElementVisibility => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.list_literal_elements_dropped_at_v2_body_lowering", decl_name: "list_literal_elements_dropped_at_v2_body_lowering"),
+      why: "v2.compiler.body_lowering_fold body_lower_primary_expr answers a list literal `[a]` with its first atom `[`, so its elements are dropped on every route -- data initializers, let values, call arguments (fierce-hawk-274, main 1b2f64fd49). As a call argument the shape refuses (body_lowering_reason_call_argument_unread) rather than drops, which is loud but still hides the elements. No fix has merged." as NonEmptyStr,
+    }
+    LoweringOccurrenceProjection => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),
+      why: "most authored atoms do not keep their minted occurrence through normalize: lowering rebuilds type-position atoms, field projections, match and record constructors, pipe and lambda arguments and dotted spines as node_synthetic, and binders become Named edge labels with no occurrence. Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. The per-module count is the conservation check's, re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. No fix has merged." as NonEmptyStr,
+    }
+  }
+}
+
+fn xl2_prerequisite_is_delivered(p: Xl2Prerequisite) -> Bool {
+  match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => true
+    PrerequisiteOutstanding { tracked_by: _, why: _ } => false
+  }
+}
+
+fn xl2_prerequisites_outstanding() -> List<Xl2Prerequisite> {
+  xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p) == false)
+}
+
+fn render_xl2_prerequisite(p: Xl2Prerequisite) -> String {
+  match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner, evidence, qualification } =>
+      concat("[DELIVERED gunbc#", concat(to_string(value: evidence.pr),
+      concat(" merge ", concat(evidence.merge_sha as String,
+      concat(" measured_at ", concat(evidence.measured_at as String,
+      concat(", owner ", concat(owner.module_path as String, concat(" ", concat(owner.decl_name as String,
+      concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", qualification as String)))))))))))))
+    PrerequisiteOutstanding { tracked_by, why } =>
+      concat("[OUTSTANDING, tracked by ", concat(tracked_by.module_path as String, concat(" ", concat(tracked_by.decl_name as String,
+      concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", why as String)))))))
+  }
+}
+
+// What the list is NOT, stated once beside it so no arm is read as covering it. (a) Kernel
+// canonical leaves (Bool, Int, ...) resolve with NO import through v2.compiler.resolve
+// resolved_reference_identity (ResolvedToKernelSymbol), so deleting the import root cannot make
+// them refuse: they are OUTSIDE the cut's observable population, and the absence of a residual row
+// for them is not coverage. (b) The native requalification walls -- import hygiene (sleek-cat-104)
+// and the diagnostic.dag field-read (gunbc#12033 step 2) -- are a separate axis: they decide
+// whether the native route re-qualifies, not whether the rehearsal's residual is observable.
+fn render_xl2_prerequisites() -> String {
+  concat(
+    fold(xl2_prerequisites, init: "", f: fn(acc, p) { concat(acc, concat("\n      - ", render_xl2_prerequisite(p: p))) }),
+    "\n      NOT in the observable population: kernel canonical leaves (e.g. Bool) resolve with no import via v2.compiler.resolve resolved_reference_identity, so no residual for them is not coverage. A SEPARATE AXIS from these prerequisites: the native requalification walls (import hygiene, sleek-cat-104; diagnostic.dag field-read, gunbc#12033 step 2). The Step-0 canary (gunbc.namespace_step0_candidate_run) is not this instrument: its carrier is a per-bucket histogram differential (gunbc.namespace_step0_canary_v2 Step0HistogramDifferential) and cannot carry an exact occurrence residual.")
 }
 
 // AN INSTRUMENT THAT IS MISSING AND ONE THAT IS REFUSED ARE DIFFERENT STATES WITH DIFFERENT
@@ -937,7 +1116,7 @@ fn xl2_stage_standing(producer: RehearsalProducerStanding, held: List<StageDeliv
 // held rehearsal receipt clears the stage without this being edited (see above).
 fn rehearsal_producer_standing() -> RehearsalProducerStanding {
   RehearsalProducerUnavailable {
-    why: "XL-2 is the ROOT-DELETION REHEARSAL: the cut executed in a throwaway tree, its failure roster captured as the census. Its deliverable is an instrument DISCRIMINATED ONCE on the production route, and no honest producer of the residual exists today: a roster taken now is a strict undercount presented as the census (DESIGN section 4b(1), the shape review 64925 refused on XL-4). WHAT blocks the producer -- the known necessary prerequisites, the occurrence-completeness obligation, the residual's key, and why the Step-0 canary is not it -- is stated ONCE, on missing_instrument_label ExactOccurrenceResidualCensus, and is deliberately not restated here. This arm exists so the empty delivery roster is not read as an instrument nobody has started: Outstanding never meant buildable, it meant a named outstanding population, and a lane (wise-pike-696, 2026-09-19) was dispatched to build the instrument on that reading. Startability is the chain axis and stays separate: XL-2 is chain-startable off XL-1 while its own standing is NotDerivable, which is the two-axis design working. The base-pinned execution remains ACT-0's RehearsalFailureRosterDigest either way." as NonEmptyStr,
+    why: "XL-2 is the ROOT-DELETION REHEARSAL: the cut executed in a throwaway tree, its failure roster captured as the census, delivered as an instrument DISCRIMINATED ONCE on the production route. No honest producer of that residual exists today: a roster taken now is a strict undercount presented as the census (DESIGN section 4b(1), the shape review 64925 refused on XL-4). What blocks the producer is the typed list xl2_prerequisites, rendered on missing_instrument_label ExactOccurrenceResidualCensus from each arm's own standing, and it is deliberately not restated here. Delivering every prerequisite does NOT flip this literal: the prerequisites are necessary, the producer is a separate deliverable, and this literal is retired only by the change that lands it. Startability is the chain axis and stays separate: XL-2 is chain-startable off XL-1 while its own standing is NotDerivable. The base-pinned execution remains ACT-0's RehearsalFailureRosterDigest either way." as NonEmptyStr,
     cause: needs(i: ExactOccurrenceResidualCensus)
   }
 }
