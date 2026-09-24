@@ -5928,7 +5928,15 @@ fn body_lower_stmt_spine_has_successor(spine: Node) -> Bool {
     Present { value: rest } =>
       match body_lower_stmt_spine_head_optional(spine: rest) {
         Absent => false
-        Present { value: _ } => true
+        Present { value: _ } =>
+          match body_lower_stmt_spine_head_optional(spine: spine) {
+            Absent => false
+            Present { value: head } =>
+              match body_lower_statement_let_captured_optional(stmt: head) {
+                Absent => false
+                Present { value: _ } => true
+              }
+          }
       }
   }
 }
