@@ -21,16 +21,10 @@ import std.algebra { PartialFunction }
 // v2.compiler.infer imports these back; this is a relocation of one
 // authority, never a second declaration of it (DESIGN.md §3).
 
-// GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape
-// hatch. A node no derivation rule in v2.compiler.infer covers carries it, together with a typed,
-// located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's
-// frequency is observable rather than zeroed by construction (DESIGN section 5). Before this arm
-// existed, underived nodes were routed through solve_constraints with the singleton candidate set
-// [root], and the grounding carried the SOURCE NODE as its resolved type: every literal, binding
-// and operation was typed as itself and read downstream as an established judgment. The rules
-// that discharge it are the functions in v2.compiler.infer, each annotated where it is declared;
-// how many nodes remain on the frontier is measured by counting that diagnostic, never
-// transcribed here. The arm deletes when every node kind has a derivation rule.
+// Why GroundingNotDerived exists: before this arm, a node no derivation rule covered was routed
+// through solve_constraints with the singleton candidate set [root], and the resulting grounding
+// carried the SOURCE NODE as its resolved type. Every literal, binding and operation was typed as
+// itself, and every downstream consumer read that as an established judgment.
 type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }
   | GroundingNotDerived { node: Node }
