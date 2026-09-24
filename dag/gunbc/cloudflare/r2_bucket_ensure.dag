@@ -292,6 +292,23 @@ fn apply_r2_bucket_create(
   }
 }
 
+// THE REPORTED LOCATION RIDES ON THE CONVERGED LINE, because it is the observation
+// product.supplier.cloudflare_r2 cloudflare_r2_bucket_location_observations transcribes to read the
+// route's region, and the Get that produces it is already paid here. The token is printed as the
+// wire answered it; whether it parses is the consumer's decision, not the receipt's.
+fn r2_bucket_read_location_text(read: R2BucketRead) -> String {
+  match read {
+    R2BucketPresent { bucket: bucket } =>
+      match bucket.location {
+        Present { value: raw } => concat("location=", raw)
+        Absent => "location=unreported"
+      }
+    R2BucketAbsent => "location=unreported"
+    R2AccountNotEntitled => "location=unreported"
+    R2BucketReadRefused { cause: _ } => "location=unreported"
+  }
+}
+
 fn ensure_r2_purpose_bucket(
   purpose: BucketPurpose,
   admin: Secret,
@@ -313,14 +330,16 @@ fn ensure_r2_purpose_bucket(
         held: false,
       }
     Present { value: bucket_name } => {
-      let classified = classify_r2_bucket_ensure(
-        desired: desired,
-        read: read_r2_bucket(admin: admin, account_id: account_id, bucket_name: bucket_name),
-      )
+      let read = read_r2_bucket(admin: admin, account_id: account_id, bucket_name: bucket_name)
+      let classified = classify_r2_bucket_ensure(desired: desired, read: read)
       match classified.decision {
         Noop =>
           R2PurposeEnsureOutcome {
-            line: purpose_line(purpose: purpose, classified: classified, detail: bucket_name as String),
+            line: purpose_line(
+              purpose: purpose,
+              classified: classified,
+              detail: join([bucket_name as String, r2_bucket_read_location_text(read: read)], " "),
+            ),
             held: true,
           }
         Refuse { reason: reason } =>
