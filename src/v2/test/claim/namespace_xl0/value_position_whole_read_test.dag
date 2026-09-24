@@ -223,7 +223,7 @@ test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom
 // resolver (program_assembly module_roots_from_source_root_ingest, projected through
 // normalized_tree_roots_to_nodes) and assert the call's shape: a Transform whose operator is the
 // authored callee, with exactly one argument, whose argument is the authored inner call or atom.
-// Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the #12145 regression) both
+// Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the whole-module refusal #12145 exposed once that truncation was closed) both
 // fail these. Renaming the callee in the expected spelling makes them red. The ingest is enrolled warm
 // beside vpw_outcomes; the walk runs per claim.
 // The shape claims read their own ingest, WITHOUT the lambda fixtures: module_roots_from_source_root_ingest
