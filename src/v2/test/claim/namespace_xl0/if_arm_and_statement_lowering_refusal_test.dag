@@ -36,8 +36,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // AN IF-ARM WAS READ BY THE OPERAND READER ALONE. body_lower_try_if_from_captured lowered the
 // condition with body_lower_value_lowered but each arm with body_lower_if_arm_operand_optional,
-// which reads a call `g(p: x)` as `g`, so an undeclared `x` in either arm resolved. The arms now go
-// through the same reader as the condition, body_lower_if_part_lowered.
+// which reads a call `g(p: x)` as `g`, so an undeclared `x` in either arm resolved. An arm is a brace
+// statement sequence, and v2.compiler.body_lowering_fold body_lower_if_arm_lowered now lowers it
+// through body_lower_stmt_spine; an `else if` arm keeps the if reader, and the operand reader is
+// only the fallback for a lowered statement that leaves no lowered node.
 //
 // A STATEMENT SPINE WAS TAKEN OVER BY body_lower_stmt_spine ONLY WHEN LET-HEADED. Any other
 // multi-statement body fell to the expression walkers, which lowered the first statement and dropped
