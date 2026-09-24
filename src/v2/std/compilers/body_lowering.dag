@@ -356,22 +356,15 @@ type OperatorRead
   | Operator { view: OperatorView }
   | OperatorRefused { diagnostics: NonEmptyDiagnostics }
 
-fn application_head_is_operator(head: ApplicationHead, operators: List<Symbol>) -> Bool {
-  match head {
-    AtomHead { identity: id } => view_symbol_listed(id: id, xs: operators)
-    ArrowHead => false
-  }
-}
-
 fn call_read(site: Node, operators: List<Symbol>) -> CallRead {
   match application_read(site: site) {
     NotApplication => NotCall
     ApplicationRefused { diagnostics: r } => CallRefused { diagnostics: r }
     Application { view: a } =>
-      if application_head_is_operator(head: a.head_identity, operators: operators) {
-        NotCall
-      } else {
-        Call { view: CallView { site: site, callee: a.head, callee_identity: a.head_identity, arguments: a.operands } }
+      let call = Call { view: CallView { site: site, callee: a.head, callee_identity: a.head_identity, arguments: a.operands } }
+      match a.head_identity {
+        AtomHead { identity: id } => if view_symbol_listed(id: id, xs: operators) { NotCall } else { call }
+        ArrowHead => call
       }
   }
 }
