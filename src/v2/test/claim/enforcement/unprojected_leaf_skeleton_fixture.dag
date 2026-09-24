@@ -1,9 +1,0 @@
-module v2.test.claim.enforcement.unprojected_leaf_skeleton_fixture
-
-import v2.std.integer { Int }
-
-// The subject of v2.test.claim.enforcement.unprojected_leaf_skeleton_witness: one call whose only
-// argument is an int literal, which the host fn-arrow marshal does not project.
-fn unprojected_leaf_fixture_callee(x: Int) -> Int = x
-
-fn unprojected_leaf_fixture_caller() -> Int = unprojected_leaf_fixture_callee(x: 1)

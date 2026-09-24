@@ -1164,26 +1164,6 @@ fn transform_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
     )
 }
 
-// AN EXPRESSION THIS MARSHAL DOES NOT PROJECT IS A TYPED OPAQUE LEAF, NOT AN EMPTY CONJ. An int
-// literal, a non-parameter variable, any node that yields no edge here used to marshal to
-// `TypeNode { connective: Conj }` with no children, which is exactly the surface residue
-// `v2.std.compilers.body_lowering` `application_read` refuses as an operand -- so every call with
-// such an argument refused and the fn-arrow reachability walk could read almost nothing. The leaf
-// is the shape `node_is_unprojected_leaf` admits: one Named edge whose name is
-// `body_view_unprojected_leaf_marker` (spelled here through the generated constant, never a second
-// literal) over an empty Conj. Positions are unchanged: the leaf stands in the slot the empty Conj
-// stood in. Declared seed growth: gunbc.fn_arrow_skeleton_unprojected_leaf_seed_growth.
-fn unprojected_leaf_record(ctx: &InterpContext) -> Value {
-    conj_record(
-        ctx,
-        vec![edge_named(
-            ctx,
-            crate::fn_arrow_skeleton_seed_constants_generated::FN_ARROW_SKELETON_UNPROJECTED_LEAF_MARKER,
-            conj_record(ctx, vec![]),
-        )],
-    )
-}
-
 fn marshal_skeleton(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -1316,8 +1296,6 @@ fn marshal_generic(
         matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty();
     if is_call_shaped {
         (transform_record(ctx, edges), refs)
-    } else if edges.is_empty() {
-        (unprojected_leaf_record(ctx), refs)
     } else {
         (conj_record(ctx, edges), refs)
     }
@@ -2541,10 +2519,9 @@ mod parse_only_uppercase_variant_regression_tests {
         let ctx = test_ctx();
         let si = ctx.source_indices();
         let (skel, _) = marshal_generic(&ctx, &uppercase_var_without_binding(), &[], &si);
-        // No atom is minted, so the expression is unprojected: the typed opaque leaf, whose one
-        // edge is the marker, never an atom.
-        assert!(
-            is_unprojected_leaf(&ctx, &skel),
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            0,
             "capitalization alone must not mint a variant-value skeleton atom"
         );
     }
@@ -2681,9 +2658,9 @@ mod parse_only_uppercase_variant_regression_tests {
         }
     }
 
-    // THE DISCRIMINATING PAIR FOR THE CALL CARRIER. `v2.std.compilers.body_lowering::application_read`
-    // admits a node only when its kind is `ComputationNode { behavior: Transform }` AND its first
-    // positional child is a callee (Atom or Arrow). Before this marshal emitted the carrier, the first assertion
+    // THE DISCRIMINATING PAIR FOR THE CALL CARRIER. `v2.std.node_query::node_is_call` accepts a
+    // node only when its kind is `ComputationNode { behavior: Transform }` AND its first positional
+    // child is a callee reference. Before this marshal emitted the carrier, the first assertion
     // below read `TypeNode` for every node the corpus could produce, so every call-shaped lens over
     // a skeleton was green with no reachable red. The second row is the control that keeps the fix
     // from degenerating into "everything is a call".
@@ -2696,13 +2673,13 @@ mod parse_only_uppercase_variant_regression_tests {
         assert!(
             is_transform_computation_node(&ctx, &skel),
             "a marshaled call must carry ComputationNode {{ behavior: Transform }} -- the exact \
-             kind application_read matches, behavior included"
+             kind node_is_call matches, behavior included"
         );
         let callee = first_child_target(&ctx, &skel).expect("call skeleton has a first child");
         assert!(
             is_atom_type_node(&ctx, &callee),
-            "the first positional child must be TypeNode {{ connective: Atom }} -- application_read \
-             admits only an Atom or Arrow head"
+            "the first positional child must be TypeNode {{ connective: Atom }} -- node_is_call's \
+             second predicate, node_is_callee_reference, accepts only Atom or Arrow"
         );
     }
 
@@ -2714,95 +2691,6 @@ mod parse_only_uppercase_variant_regression_tests {
         assert!(
             is_conj_type_node(&ctx, &skel),
             "only a call node may carry the call carrier; everything else stays TypeNode {{ connective: Conj }}"
-        );
-    }
-
-    fn int_literal_expr(value: i64) -> Rc<crate::v1_std_core::Node> {
-        make_named_expr_node(
-            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-            String::new(),
-            Rc::new(ExprData::ExprLiteral {
-                value: Rc::new(crate::std_syntax::LiteralValue::LitInt { value }),
-            }),
-            empty_node_list(),
-            None,
-            dummy_span(),
-            dummy_span(),
-        )
-    }
-
-    fn children_of(ctx: &InterpContext, skel: &Value) -> Vec<Value> {
-        match field(ctx, skel, "children") {
-            Some(Value::List(items)) => items.iter().cloned().collect(),
-            _ => vec![],
-        }
-    }
-
-    // The exact shape `v2.std.compilers.body_lowering::node_is_unprojected_leaf` admits: a Conj
-    // with ONE Named edge, named by the declared marker, over an EMPTY Conj.
-    fn is_unprojected_leaf(ctx: &InterpContext, skel: &Value) -> bool {
-        if !is_conj_type_node(ctx, skel) {
-            return false;
-        }
-        let edges = children_of(ctx, skel);
-        if edges.len() != 1 {
-            return false;
-        }
-        let named_marker = match field(ctx, &edges[0], "label") {
-            Some(label) => {
-                variant_is(ctx, Some(&label), "Named")
-                    && matches!(
-                        variant_field(ctx, &label, "name"),
-                        Some(Value::Str(name)) if name.to_string()
-                            == crate::fn_arrow_skeleton_seed_constants_generated::FN_ARROW_SKELETON_UNPROJECTED_LEAF_MARKER
-                    )
-            }
-            None => false,
-        };
-        let target_empty = match field(ctx, &edges[0], "target") {
-            Some(t) => is_conj_type_node(ctx, &t) && children_of(ctx, &t).is_empty(),
-            None => false,
-        };
-        named_marker && target_empty
-    }
-
-    // THE CONTROL gentle-koi-724 and neat-boar-16 required: an int-literal argument in a host
-    // fn-arrow skeleton marshals to the typed opaque leaf, in the argument's own slot. On main it
-    // marshaled to an empty Conj, which application_read refuses as residue -- so re-emitting the
-    // empty Conj reds this test.
-    #[test]
-    fn int_literal_call_argument_marshals_to_the_unprojected_leaf() {
-        let ctx = test_ctx();
-        let si = ctx.source_indices();
-        let (skel, _) = marshal_generic(&ctx, &call_expr("f", vec![int_literal_expr(1)]), &[], &si);
-        assert!(
-            is_transform_computation_node(&ctx, &skel),
-            "f(1) is a call carrier"
-        );
-        let edges = children_of(&ctx, &skel);
-        assert_eq!(edges.len(), 2, "callee then exactly one argument slot");
-        let arg = field(&ctx, &edges[1], "target").expect("argument edge has a target");
-        assert!(
-            is_unprojected_leaf(&ctx, &arg),
-            "the unprojected int literal must be the typed opaque leaf, not an empty Conj"
-        );
-    }
-
-    #[test]
-    fn projected_argument_is_not_the_unprojected_leaf() {
-        let ctx = test_ctx();
-        let si = ctx.source_indices();
-        let (skel, _) = marshal_generic(
-            &ctx,
-            &call_expr("f", vec![call_expr("g", vec![])]),
-            &[],
-            &si,
-        );
-        let edges = children_of(&ctx, &skel);
-        let arg = field(&ctx, &edges[1], "target").expect("argument edge has a target");
-        assert!(
-            !is_unprojected_leaf(&ctx, &arg),
-            "a projected argument (here a call) keeps its own shape"
         );
     }
 

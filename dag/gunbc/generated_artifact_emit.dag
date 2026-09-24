@@ -14,7 +14,6 @@ import gunbc.generated_artifact {
   V1InterpreterDispatchGeneratedRsArtifact,
   EvaluationBudgetConsequenceGeneratedRsArtifact,
   ReleaseLocusSeedConstantsGeneratedRsArtifact,
-  FnArrowSkeletonSeedConstantsGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
   WholeCorpusCompileMeasuredRootDemandsArtifact,
@@ -75,7 +74,6 @@ import gunbc.seed_retention_frontier_emit {
 }
 import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
 import gunbc.release_locus_seed_constants_emit { expected_release_locus_seed_constants_generated_rs }
-import gunbc.fn_arrow_skeleton_seed_constants_emit { expected_fn_arrow_skeleton_seed_constants_generated_rs }
 import gunbc.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs,
   V1InterpreterDispatchGenerated,
@@ -154,8 +152,6 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       artifact_generated(content: expected_evaluation_budget_consequence_generated_rs())
     ReleaseLocusSeedConstantsGeneratedRsArtifact =>
       artifact_generated(content: expected_release_locus_seed_constants_generated_rs())
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact =>
-      artifact_generated(content: expected_fn_arrow_skeleton_seed_constants_generated_rs())
     V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
       V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
       V1InterpreterDispatchGenerationRefused { reason } =>
@@ -269,7 +265,6 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     SeedRetentionFrontierGeneratedRsArtifact => true
     EvaluationBudgetConsequenceGeneratedRsArtifact => true
     ReleaseLocusSeedConstantsGeneratedRsArtifact => true
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => true
     V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false

@@ -11,7 +11,7 @@ import gunbc.generated_artifact {
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
-  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FnArrowSkeletonSeedConstantsGeneratedRsArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
 }
@@ -136,7 +136,6 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     V1InterpreterDispatchGeneratedRsArtifact => []
     EvaluationBudgetConsequenceGeneratedRsArtifact => []
     ReleaseLocusSeedConstantsGeneratedRsArtifact => []
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []
     Fci1BoundedExecutionContextArtifact => []
     CouponCadQueryProgramArtifact => []

@@ -42,7 +42,6 @@ type GeneratedArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
   | ReleaseLocusSeedConstantsGeneratedRsArtifact
-  | FnArrowSkeletonSeedConstantsGeneratedRsArtifact
   | FileTransportRealizationGeneratedRsArtifact
   | Fci1BoundedExecutionContextArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
@@ -55,7 +54,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FnArrowSkeletonSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -221,7 +220,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "release_locus_seed_constants_generated.rs" }
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "fn_arrow_skeleton_seed_constants_generated.rs" }
     FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
     Fci1BoundedExecutionContextArtifact => ArtifactLocation { directory: "tools", name: "fabric_ci_fci1_bounded_execution_context.env" }
     AutoinstallUserDataArtifact { spec } =>
@@ -302,7 +300,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Fci1BoundedExecutionContextArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
@@ -364,7 +361,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => match b { ReleaseLocusSeedConstantsGeneratedRsArtifact => true  _ => false }
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => match b { FnArrowSkeletonSeedConstantsGeneratedRsArtifact => true  _ => false }
     FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
     Fci1BoundedExecutionContextArtifact => match b { Fci1BoundedExecutionContextArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
@@ -439,7 +435,6 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
     EvaluationBudgetConsequenceGeneratedRsArtifact => decl_ref(module_path: "gunbc.evaluation_budget_consequence_emit", decl_name: "expected_evaluation_budget_consequence_generated_rs")
     ReleaseLocusSeedConstantsGeneratedRsArtifact => decl_ref(module_path: "gunbc.release_locus_seed_constants_emit", decl_name: "expected_release_locus_seed_constants_generated_rs")
-    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => decl_ref(module_path: "gunbc.fn_arrow_skeleton_seed_constants_emit", decl_name: "expected_fn_arrow_skeleton_seed_constants_generated_rs")
     FileTransportRealizationGeneratedRsArtifact => decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "expected_gunbc_file_transport_generated_rs")
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")

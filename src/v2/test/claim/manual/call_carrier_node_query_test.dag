@@ -17,9 +17,7 @@ import v2.std.compilers.body_lowering {
   ApplicationRefused,
   ArrowHead,
   AtomHead,
-  InspectableOperand,
   NotApplication,
-  UnprojectedOperand,
   application_read
 }
 import v2.std.diagnostic { diagnostics_fatal_reason }
@@ -137,13 +135,11 @@ test fn call_carrier_arguments_match() -> Bool {
       let args = v.operands
       let arity_two = count(args) == 2
       let first_is_x = match list_at_optional(xs: args, index: 0) {
-        Present { value: InspectableOperand { node: a0 } } => a0 == call_carrier_arg_x()
-        Present { value: UnprojectedOperand { at: _ } } => false
+        Present { value: a0 } => a0 == call_carrier_arg_x()
         Absent => false
       }
       let second_is_y = match list_at_optional(xs: args, index: 1) {
-        Present { value: InspectableOperand { node: a1 } } => a1 == call_carrier_arg_y()
-        Present { value: UnprojectedOperand { at: _ } } => false
+        Present { value: a1 } => a1 == call_carrier_arg_y()
         Absent => false
       }
       arity_two && first_is_x && second_is_y

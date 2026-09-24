@@ -31,9 +31,7 @@ import v2.std.compilers.body_lowering {
   ApplicationView,
   ArrowHead,
   AtomHead,
-  InspectableOperand,
   NotApplication,
-  UnprojectedOperand,
   application_read
 }
 import v2.std.node_query { node_positional_child_targets }
@@ -228,23 +226,16 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
 // shared call reader respelled against `TypeNode { connective: Conj }`, because the marshal spelled
 // calls that way. The marshal now emits the call carrier, and the one reader over it is
 // v2.std.compilers.body_lowering `application_read`.
-// The first argument's name is inlined into the callee body, so it must be READ; an unprojected
-// operand has no content to read and makes the equivalence undecided rather than false.
-type FirstArgRead
-  = FirstArgName { name: String }
-  | FirstArgUnprojected
-
-fn first_call_arg_read(view: ApplicationView) -> FirstArgRead {
+fn first_call_arg_name(view: ApplicationView) -> String {
   match list_at_optional(xs: view.operands, index: 0) {
-    Present { value: InspectableOperand { node: arg } } => FirstArgName { name: node_atom_name(n: arg) }
-    Present { value: UnprojectedOperand { at: _ } } => FirstArgUnprojected
-    Absent => FirstArgName { name: "" }
+    Present { value: arg } => node_atom_name(n: arg)
+    Absent => ""
   }
 }
 
 fn body_alpha_equivalent_to_single_arg_call(
   callee: String,
-  arg: String,
+  view: ApplicationView,
   rhs: Node,
   fns: List<DualRepFnFact>
 ) -> Bool {
@@ -252,6 +243,7 @@ fn body_alpha_equivalent_to_single_arg_call(
   if is_empty(xs: rec.name) {
     false
   } else {
+    let arg = first_call_arg_name(view: view)
     let param = first_param_sym(params: rec.params)
     let inlined = replace_param_in_output(
       output: rec.output,
@@ -279,14 +271,10 @@ fn classify_application_lhs(
       match v.head_identity {
         ArrowHead => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
         AtomHead { identity: sym } =>
-          match first_call_arg_read(view: v) {
-            FirstArgUnprojected => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
-            FirstArgName { name: arg } =>
-              if body_alpha_equivalent_to_single_arg_call(callee: sym, arg: arg, rhs: site.rhs, fns: fns) {
-                dual_rep_violation(path: path, fn_name: fn_name, kind: BodyAlphaEquivalent)
-              } else {
-                empty_dual_rep_violations
-              }
+          if body_alpha_equivalent_to_single_arg_call(callee: sym, view: v, rhs: site.rhs, fns: fns) {
+            dual_rep_violation(path: path, fn_name: fn_name, kind: BodyAlphaEquivalent)
+          } else {
+            empty_dual_rep_violations
           }
       }
   }
