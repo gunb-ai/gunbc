@@ -7459,10 +7459,21 @@ pub fn one_sided_callable_value_mismatch(
     produced: Rc<Node>,
     type_env: Rc<TypeEnv>,
 ) -> bool {
-    ((((type_node_is_arrow(declared.clone()) != type_node_is_arrow(produced.clone()))
-        && !direct_call_formal_has_unbound_type_variable(declared.clone()))
-        && !direct_call_formal_has_unbound_type_variable(produced.clone()))
+    (((type_node_is_arrow(declared.clone()) != type_node_is_arrow(produced.clone()))
+        && !one_sided_non_arrow_side_is_open(declared.clone(), declared.clone(), produced.clone()))
         && one_sided_callable_mismatch(declared.clone(), produced.clone(), type_env.clone()))
+}
+
+pub fn one_sided_non_arrow_side_is_open(
+    formal: Rc<Node>,
+    formal_basis: Rc<Node>,
+    actual: Rc<Node>,
+) -> bool {
+    if type_node_is_arrow(formal.clone()) {
+        direct_call_formal_has_unbound_type_variable(actual.clone())
+    } else {
+        direct_call_formal_has_unbound_type_variable(formal_basis.clone())
+    }
 }
 
 pub fn one_sided_callable_mismatch(
@@ -7502,17 +7513,21 @@ pub fn direct_call_arg_type_mismatch(
             if (type_node_is_arrow(formal.clone()) && type_node_is_arrow(actual.clone())) {
                 callable_signature_mismatch(formal.clone(), actual.clone(), source_indices.clone())
             } else {
-                if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
-                    || direct_call_formal_has_unbound_type_variable(actual.clone()))
-                {
-                    false
+                if (type_node_is_arrow(formal.clone()) || type_node_is_arrow(actual.clone())) {
+                    (!one_sided_non_arrow_side_is_open(
+                        formal.clone(),
+                        substitution_basis.clone(),
+                        actual.clone(),
+                    ) && one_sided_callable_mismatch(
+                        formal.clone(),
+                        actual.clone(),
+                        type_env.clone(),
+                    ))
                 } else {
-                    if (type_node_is_arrow(formal.clone()) || type_node_is_arrow(actual.clone())) {
-                        one_sided_callable_mismatch(
-                            formal.clone(),
-                            actual.clone(),
-                            type_env.clone(),
-                        )
+                    if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
+                        || direct_call_formal_has_unbound_type_variable(actual.clone()))
+                    {
+                        false
                     } else {
                         if (type_node_is_callable(formal.clone())
                             || type_node_is_callable(actual.clone()))
