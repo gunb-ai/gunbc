@@ -1,0 +1,47 @@
+module gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+// WHY THIS IS ITS OWN ROW AND NOT AN AMENDMENT OF required_lanes_do_not_resolve_product_layer_modules.
+// That row's trigger admits "every module that consumes a declaration the revision changed" as the
+// grain the incident needs, and gunbc#12130 built exactly that route: the floor's
+// interface-consumer planning Strict-prepares every untouched module that reads a changed
+// declaration interface, and the touched-entry seed prepares every touched file. Neither reaches
+// the population this row is about. A change to the COMPILER -- a new or tightened check, a
+// classifier that reads a spelling differently -- changes no declaration a module imports, so it
+// plans no consumer, yet it can refuse code in any admitted module. So that row's trigger can be
+// met while this loss stands, which is why the loss is stated here at its own grain.
+//
+// THE SPECIMEN (2026-09-23). A whole-root `gunbc compile --target dag` (session neat-ibex-861)
+// reported 500 blocking diagnostics while every required lane was green. 280 of them came from 56
+// transition-admission rows orphaned by gunbc#11774, which landed green because a refused floor
+// did not fail the job before gunbc#11829; gunbc#12195 deletes them. Of the rest, 181 are in 62
+// modules and are dominated by check classes (direct-call and list-element declared-type
+// inhabitance 99, ambiguous reference 41). They stand in files last edited before the checks that
+// refuse them landed. dag/gunbc/fleet/fleet_convergence_verdict.dag (Optional<ConvergeCliReceipt>
+// at a bare ConvergeCliReceipt formal, repaired at the call site by gunbc#12192) is one of them.
+// The population, by identity, is gunbc.whole_root_blocking_diagnostic_roster
+// whole_root_blocking_diagnostic_snapshot, a typed snapshot and not an observation.
+//
+// WHY NO GATE IS BUILT WITH THIS ROW. The whole-root compile's reconcile phase alone took about 15
+// minutes on the 2026-09-23 run, and the admission demand row in
+// tools/whole_corpus_compile_measured_root_demands.json was measured on a corpus about 43% smaller.
+// A floor phase would stack that on the floor's own strict preparation, so it is priced out of the
+// floor. A scheduled run or a new job is a standing claim on a paid runner and needs the operator.
+data compiler_change_refusals_land_outside_every_compiled_closure: RungDrop = RungDrop {
+  identity: "compiler_change_refusals_land_outside_every_compiled_closure" as NonEmptyStr,
+  subject: "A compiler change that adds or tightens a refusal can refuse code in admitted modules that no required lane compiles on that change, so the refusal lands on main while every required lane reports SUCCESS",
+  declared: "2026-09-24",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the whole-corpus compile-clean pass of the required floor, deleted by the 2026-08-15 floor cut (gunbc.rung_drop.floor_cut_effect_gates names compile-clean among its outstanding gates); the replacement floor compiles its nominal gate closure plus diff-derived seeds, and a compiler change seeds none of the modules its new refusal reaches" },
+    population: [
+      "every blocking diagnostic the whole-root compile reports in a module no required lane compiled on the change that introduced it, keyed by (module, verbatim message, occurrence); the standing members at declaration are gunbc.whole_root_blocking_diagnostic_roster whole_root_blocking_diagnostic_snapshot (a 2026-09-23 snapshot typed TranscribedUncited, re-seeded from the first real run)",
+      "the 1198 modules the whole-root compile enters in the name census only are not compiled by it, so a refusal in one of them is outside this population as well as outside the lanes; that gap belongs to gunbc.rung_drop.required_lanes_do_not_resolve_product_layer_modules and is not claimed here",
+      "designed must-not-resolve probes under dag/test/probe/ and dag/test/fixture/ appear in the snapshot because the whole-root compile does not apply floor_prepared_subject_exclusions; they are members of the roster so a join does not report them as new, and whether each still refuses with its designed class is gunbc.compile_diagnostic_census's question, not this row's",
+    ],
+    restoration_trigger: "THE CAPABILITY: a whole-root blocking-diagnostic identity join runs on a schedule or a gate over the landing revisions of main, compiling every admitted dag-primary source and joining its blocking diagnostics at (module, verbatim message, occurrence) grain against a committed debt roster, so that a NEW row is a red, attributed observation naming the row and the revisions since the last green run, and a DEPARTED row needs a typed disposition (repaired, module deleted, or now compiled by a required lane). The first such run re-seeds the roster, replacing the snapshot. SUFFICIENT FOR: making every blocking refusal a compiler change introduces outside the compiled closures visible, by identity, within one run interval. WHAT DOES NOT RETIRE THIS ROW: a one-off whole-root run or a receipt outside a schedule or gate, which is the snapshot this row already carries; the roster landing with no join executing it, which is the inert tier DESIGN section 6 names; a count comparison in place of the identity join (DESIGN section 5); burning the standing rows down to zero, which empties the population without adding the capability; or gunbc.rung_drop.required_lanes_do_not_resolve_product_layer_modules retiring on its changed-declaration arm, which this row exists because it can. A gate that refuses the merge, rather than a schedule that reports after it, would climb past the declared previous rung for this subject, and is the operator's call because it needs a runner above the whole-root compile's measured demand.",
+  },
+}
