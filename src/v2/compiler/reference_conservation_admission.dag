@@ -502,9 +502,10 @@ fn changed_scope_observation_of_subjects(subjects: FreeMonoid<ReferenceConservat
 // capabilities are required, neither of which is a declaration today, and both are named for what
 // they are:
 // - a positive production control, which is what makes the observation eligible to be an
-//   admission. `required_consumer` names the instrument row that would run it
-//   (gunbc.instrument_targets, the extension shape DESIGN "Building & checks" gives for a new
-//   measurement).
+//   admission. `required_consumer` cites the constructor a new instrument row is built with
+//   (gunbc.instrument_targets instrument_test_target, the extension shape DESIGN "Building &
+//   checks" gives for a new measurement); the row itself does not exist yet, and a citation of an
+//   absent declaration is refused by the declarations phase, so the constructor is what is cited.
 // - the transitive affected set over v2.std.dependency DependencyView, which replaces the
 //   direct-import scope.
 type ObservationFrontier {
@@ -515,7 +516,7 @@ type ObservationFrontier {
 
 data changed_scope_observation_frontier: ObservationFrontier = ObservationFrontier {
   observation: DeclarationRef { module_path: "v2.compiler.reference_conservation_admission", decl_name: "changed_scope_observation", field: WholeDeclaration },
-  required_consumer: DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "reference_conservation_changed_scope", field: WholeDeclaration },
+  required_consumer: DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "instrument_test_target", field: WholeDeclaration },
   required_scope: DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration }
 }
 
