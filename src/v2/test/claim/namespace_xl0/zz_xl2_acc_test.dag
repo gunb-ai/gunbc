@@ -1,0 +1,68 @@
+module v2.test.claim.namespace_xl0.zz_xl2_acc
+
+import v2.compiler.compile { NativeCensusModuleFileRefused, NativeCensusModuleResolveRefused, NativeCensusModuleResolved, NativeTestContext, native_census_module_resolution, native_census_modules, native_lane_file_refusal_index, native_test_context_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.compilers.lexing { symbol_lexeme }
+import std.algebra { Cons, Empty }
+import std.process { ProcessExit, ExitFailure }
+import extdeps.communication.medium { Lossless, Medium }
+
+fn zz_read(source: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: "src/v2/test/fixture/zz.dag" },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data zz_ingest: SourceRootIngest = Cons { head: zz_read(source: "module v2.test.zzzzc0_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a && (u)\n}\n", unit: ^zzc0_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc1_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  if a { b && (u) } else { b }\n}\n", unit: ^zzc1_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc2_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  match a { true => b && (u)  false => b }\n}\n", unit: ^zzc2_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc3_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  g(p: a && (u))\n}\n", unit: ^zzc3_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc4_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  !(u)\n}\n", unit: ^zzc4_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc5_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  if a { !(u) } else { b }\n}\n", unit: ^zzc5_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc6_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a && [u]\n}\n", unit: ^zzc6_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc7_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  if a { g(p: a && (u)) } else { b }\n}\n", unit: ^zzc7_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc8_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  let x = b && (u)\n  x\n}\n", unit: ^zzc8_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc9_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  match a { true => g(p: !(u))  false => b }\n}\n", unit: ^zzc9_cu), tail: Empty } } } } } } } } } }
+
+fn zz_resolve(context: NativeTestContext, unit: Symbol) -> String {
+  fold_list(xs: native_census_modules(ingest: zz_ingest), empty: "OK?", cons: fn(acc, entry) {
+    if entry.module == "v2.test.zz" + symbol_lexeme(sym: unit) {
+      match native_census_module_resolution(context: context, refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals), entry: entry) {
+        NativeCensusModuleResolved => "RESOLVED"
+        NativeCensusModuleFileRefused => "FILE"
+        NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } => symbol_lexeme(sym: d.head.reason)
+      }
+    } else { acc }
+  })
+}
+
+fn zz_show(context: NativeTestContext, unit: Symbol) -> String {
+  fold_list(xs: context.file_refusals, empty: zz_resolve(context: context, unit: unit) + " | ", cons: fn(acc, r) {
+    if r.path == unit { symbol_lexeme(sym: r.fatal_reason) + " | " } else { acc }
+  })
+}
+
+fn zz_acc() -> ProcessExit {
+  match native_test_context_from_ingest(ingest: zz_ingest) {
+    Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: "ctx" }
+    Accepted { value: context, diagnostics: _ } => ExitFailure { code: 1, reason: zz_show(context: context, unit: ^zzc0_cu) + zz_show(context: context, unit: ^zzc1_cu) + zz_show(context: context, unit: ^zzc2_cu) + zz_show(context: context, unit: ^zzc3_cu) + zz_show(context: context, unit: ^zzc4_cu) + zz_show(context: context, unit: ^zzc5_cu) + zz_show(context: context, unit: ^zzc6_cu) + zz_show(context: context, unit: ^zzc7_cu) + zz_show(context: context, unit: ^zzc8_cu) + zz_show(context: context, unit: ^zzc9_cu) }
+  }
+}
+
+data zz_ingest_ok: SourceRootIngest = Cons { head: zz_read(source: "module v2.test.zzzzc2_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  match a { true => b && (u)  false => b }\n}\n", unit: ^zzc2_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc8_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  let x = b && (u)\n  x\n}\n", unit: ^zzc8_cu), tail: Cons { head: zz_read(source: "module v2.test.zzzzc9_cu\n\nimport v2.std.logic { Bool }\n\nfn g(p: Bool) -> Bool { p }\n\nfn f(a: Bool, b: Bool) -> Bool {\n  match a { true => g(p: !(u))  false => b }\n}\n", unit: ^zzc9_cu), tail: Empty } } }
+
+fn zz_atoms_into(n: Node, acc: String) -> String {
+  let here = match v2.std.grammar.node_atom_identity_optional(node: n) {
+    v2.std.optional.Present { value: id } => acc + " " + symbol_lexeme(sym: id)
+    v2.std.optional.Absent => acc
+  }
+  fold(n.children, init: here + " (", f: fn(a, e) { zz_atoms_into(n: e.target, acc: a) }) + ")"
+}
+
+fn zz_dump() -> ProcessExit {
+  match v2.compiler.program_assembly.module_roots_from_source_root_ingest(ingest: zz_ingest_ok, lm: v2.extdeps.languages.dag.dag_language_model()) {
+    Rejected { diagnostics: d } => ExitFailure { code: 1, reason: "rej " + symbol_lexeme(sym: d.head.reason) }
+    Accepted { value: roots, diagnostics: _ } =>
+      ExitFailure { code: 1, reason: fold_list(xs: v2.compiler.normalized_tree.normalized_tree_roots_to_nodes(roots: roots), empty: "", cons: fn(acc, r) { acc + "\n#### " + zz_atoms_into(n: r, acc: "") }) }
+  }
+}

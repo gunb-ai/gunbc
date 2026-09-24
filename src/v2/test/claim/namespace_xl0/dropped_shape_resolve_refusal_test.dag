@@ -1,0 +1,350 @@
+module v2.test.claim.namespace_xl0.dropped_shape_resolve_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN UNDECLARED NAME REACHABLE ONLY THROUGH A SHAPE BODY LOWERING USED TO DROP IS REFUSED -- AT
+// RESOLVE AT ITS ATOM, OR AT NORMALIZE WITH ITS OWN CAUSE.
+//
+// THE SUBJECT IS THE NATIVE LANE'S FRONT END AND RESOLVE, on the route the lane runs:
+// native_test_context_from_ingest tokenizes, parses, normalizes and indexes the supplied sources, and
+// native_census_module_resolution resolves one module against it. Three links of
+// v2.compiler.body_lowering_fold lowered a proper part of what the source wrote, with no diagnostic:
+//
+//   an if-arm was read by the operand readers alone (body_lower_if_arm_operand_optional), so a call
+//   argument inside `if c { g(p: x) } else { .. }` never reached the tree and x resolved vacuously;
+//   the arms now go through body_lower_if_part_lowered, the walker-first reader the condition used.
+//
+//   a statement spine reached body_lower_stmt_spine only when a let headed it, so `{ c \n x }` fell
+//   to a first-match expression reader that lowered `c` and dropped `x`; every spine with a following
+//   statement is now the statement lowering's, which refuses a non-binding statement that precedes
+//   another (body_lowering_reason_statement_precedes_without_binding) -- the refusal
+//   v2.test.claim.body_lowering.statement_let_bind unbound_statement_prefix_refuses_holds asks for.
+//
+//   the operand accessor answered Absent for an operand it refused, and a parenthesised group had no
+//   reader: body_lower_try_operand_or_reject and body_lower_primary_expr then answered the first atom
+//   (`c && (x)` lowered to Transform(&&, c, `(`)). The accessor now answers OperandRefRead -- the
+//   operand whole, a located refusal, or not an operand -- and a group is its inner expression.
+//
+// THE MODULES VARY ONE THING EACH. The then- and else-arm candidates put an undeclared name in a call
+// argument inside one arm; the declared-arm module is the same call with a bound name, so an argument
+// reaching resolve is not by itself a refusal; the outside-call module puts the undeclared argument in
+// a call that is the whole body, which main already lowered, so it refuses on both sides and shows the
+// refusal is resolve's. The second-statement candidate is the dropped statement; the let-headed
+// module is its neighbour whose spine main already lowered, and the let-reference module is that
+// spine with a bound continuation. The three group candidates put an undeclared name inside a
+// parenthesised operand in a match arm, a let value and a call argument; on main the first two
+// resolved with the name dropped and the third refused at normalize as an unread call argument. The
+// declared-group module is a bound name in the same position, and the plain-argument module is the
+// same operator with no group, which main already lowered.
+
+data dsr_then_arm_source: String = "module v2.test.dsr_then_arm\n\nimport v2.std.logic { Bool }\n\nfn dsr_callee(probe: Bool) -> Bool { probe }\n\nfn dsr_probe(c: Bool) -> Bool { if c { dsr_callee(probe: dsr_undeclared_then) } else { false } }\n"
+
+data dsr_else_arm_source: String = "module v2.test.dsr_else_arm\n\nimport v2.std.logic { Bool }\n\nfn dsr_callee(probe: Bool) -> Bool { probe }\n\nfn dsr_probe(c: Bool) -> Bool { if c { false } else { dsr_callee(probe: dsr_undeclared_else) } }\n"
+
+data dsr_declared_arm_source: String = "module v2.test.dsr_declared_arm\n\nimport v2.std.logic { Bool }\n\ndata dsr_declared_value: Bool = true\n\nfn dsr_callee(probe: Bool) -> Bool { probe }\n\nfn dsr_probe(c: Bool) -> Bool { if c { dsr_callee(probe: dsr_declared_value) } else { false } }\n"
+
+data dsr_outside_call_source: String = "module v2.test.dsr_outside_call\n\nimport v2.std.logic { Bool }\n\nfn dsr_callee(probe: Bool) -> Bool { probe }\n\nfn dsr_probe(c: Bool) -> Bool { dsr_callee(probe: dsr_undeclared_outside) }\n"
+
+data dsr_second_statement_source: String = "module v2.test.dsr_second_statement\n\nimport v2.std.logic { Bool }\n\nfn dsr_probe(c: Bool) -> Bool {\n  c\n  dsr_undeclared_statement\n}\n"
+
+data dsr_let_headed_source: String = "module v2.test.dsr_let_headed\n\nimport v2.std.logic { Bool }\n\nfn dsr_probe(c: Bool) -> Bool {\n  let dsr_bound = c\n  dsr_undeclared_after_let\n}\n"
+
+data dsr_let_reference_source: String = "module v2.test.dsr_let_reference\n\nimport v2.std.logic { Bool }\n\nfn dsr_probe(c: Bool) -> Bool {\n  let dsr_bound = c\n  dsr_bound\n}\n"
+
+data dsr_group_match_arm_source: String = "module v2.test.dsr_group_match_arm\n\nimport v2.std.logic { Bool }\n\nfn dsr_probe(c: Bool) -> Bool {\n  match c {\n    true => c && (dsr_undeclared_group_match)\n    false => c\n  }\n}\n"
+
+data dsr_group_let_value_source: String = "module v2.test.dsr_group_let_value\n\nimport v2.std.logic { Bool }\n\nfn dsr_probe(c: Bool) -> Bool {\n  let dsr_bound = c && (dsr_undeclared_group_let)\n  dsr_bound\n}\n"
+
+data dsr_group_call_arg_source: String = "module v2.test.dsr_group_call_arg\n\nimport v2.std.logic { Bool }\n\nfn dsr_callee(probe: Bool) -> Bool { probe }\n\nfn dsr_probe(c: Bool) -> Bool { dsr_callee(probe: c && (dsr_undeclared_group_arg)) }\n"
+
+data dsr_group_declared_source: String = "module v2.test.dsr_group_declared\n\nimport v2.std.logic { Bool }\n\ndata dsr_declared_value: Bool = true\n\nfn dsr_probe(c: Bool) -> Bool {\n  let dsr_bound = c && (dsr_declared_value)\n  dsr_bound\n}\n"
+
+data dsr_plain_call_arg_source: String = "module v2.test.dsr_plain_call_arg\n\nimport v2.std.logic { Bool }\n\nfn dsr_callee(probe: Bool) -> Bool { probe }\n\nfn dsr_probe(c: Bool) -> Bool { dsr_callee(probe: c && dsr_undeclared_plain_arg) }\n"
+
+fn dsr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data dsr_ingest: SourceRootIngest = Cons {
+    head: dsr_read(source: dsr_then_arm_source, id: ^dsr_then_arm_artifact, unit: ^dsr_then_arm_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_then_arm.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_else_arm_source, id: ^dsr_else_arm_artifact, unit: ^dsr_else_arm_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_else_arm.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_declared_arm_source, id: ^dsr_declared_arm_artifact, unit: ^dsr_declared_arm_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_declared_arm.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_outside_call_source, id: ^dsr_outside_call_artifact, unit: ^dsr_outside_call_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_outside_call.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_second_statement_source, id: ^dsr_second_statement_artifact, unit: ^dsr_second_statement_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_second_statement.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_let_headed_source, id: ^dsr_let_headed_artifact, unit: ^dsr_let_headed_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_let_headed.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_let_reference_source, id: ^dsr_let_reference_artifact, unit: ^dsr_let_reference_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_let_reference.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_group_match_arm_source, id: ^dsr_group_match_arm_artifact, unit: ^dsr_group_match_arm_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_group_match_arm.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_group_let_value_source, id: ^dsr_group_let_value_artifact, unit: ^dsr_group_let_value_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_group_let_value.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_group_call_arg_source, id: ^dsr_group_call_arg_artifact, unit: ^dsr_group_call_arg_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_group_call_arg.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_group_declared_source, id: ^dsr_group_declared_artifact, unit: ^dsr_group_declared_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_group_declared.dag"),
+    tail: Cons {
+    head: dsr_read(source: dsr_plain_call_arg_source, id: ^dsr_plain_call_arg_artifact, unit: ^dsr_plain_call_arg_cu, path: "src/v2/test/fixture/namespace_xl0/dsr_plain_call_arg.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes is: the stored
+// value is a verdict per module -- reason symbols and the atom a resolve refusal names -- with no
+// resolution context, Node or closure in it. A module the front end refused carries the fatal reason
+// its compilation unit was refused with.
+type DsrVerdict
+  = DsrResolved
+  | DsrRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | DsrFileRefused { fatal_reason: Optional<Symbol> }
+  | DsrAbsent
+
+type DsrOutcomes
+  = DsrContextRefused
+  | DsrOutcomesDecided {
+      then_arm: DsrVerdict
+      else_arm: DsrVerdict
+      declared_arm: DsrVerdict
+      outside_call: DsrVerdict
+      second_statement: DsrVerdict
+      let_headed: DsrVerdict
+      let_reference: DsrVerdict
+      group_match_arm: DsrVerdict
+      group_let_value: DsrVerdict
+      group_call_arg: DsrVerdict
+      group_declared: DsrVerdict
+      plain_call_arg: DsrVerdict
+    }
+
+fn dsr_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+    }
+  )
+}
+
+fn dsr_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> DsrVerdict {
+  match outcome {
+    NativeCensusModuleResolved => DsrResolved
+    NativeCensusModuleFileRefused =>
+      DsrFileRefused { fatal_reason: dsr_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      DsrRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn dsr_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> DsrVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: dsr_ingest),
+    empty: DsrAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        dsr_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn dsr_outcomes() -> DsrOutcomes {
+  match native_test_context_from_ingest(ingest: dsr_ingest) {
+    Rejected { diagnostics: _ } => DsrContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      DsrOutcomesDecided {
+        then_arm: dsr_verdict_in(context: context, module_name: "v2.test.dsr_then_arm", unit: ^dsr_then_arm_cu),
+        else_arm: dsr_verdict_in(context: context, module_name: "v2.test.dsr_else_arm", unit: ^dsr_else_arm_cu),
+        declared_arm: dsr_verdict_in(context: context, module_name: "v2.test.dsr_declared_arm", unit: ^dsr_declared_arm_cu),
+        outside_call: dsr_verdict_in(context: context, module_name: "v2.test.dsr_outside_call", unit: ^dsr_outside_call_cu),
+        second_statement: dsr_verdict_in(context: context, module_name: "v2.test.dsr_second_statement", unit: ^dsr_second_statement_cu),
+        let_headed: dsr_verdict_in(context: context, module_name: "v2.test.dsr_let_headed", unit: ^dsr_let_headed_cu),
+        let_reference: dsr_verdict_in(context: context, module_name: "v2.test.dsr_let_reference", unit: ^dsr_let_reference_cu),
+        group_match_arm: dsr_verdict_in(context: context, module_name: "v2.test.dsr_group_match_arm", unit: ^dsr_group_match_arm_cu),
+        group_let_value: dsr_verdict_in(context: context, module_name: "v2.test.dsr_group_let_value", unit: ^dsr_group_let_value_cu),
+        group_call_arg: dsr_verdict_in(context: context, module_name: "v2.test.dsr_group_call_arg", unit: ^dsr_group_call_arg_cu),
+        group_declared: dsr_verdict_in(context: context, module_name: "v2.test.dsr_group_declared", unit: ^dsr_group_declared_cu),
+        plain_call_arg: dsr_verdict_in(context: context, module_name: "v2.test.dsr_plain_call_arg", unit: ^dsr_plain_call_arg_cu)
+      }
+  }
+}
+
+fn dsr_is_resolved(v: DsrVerdict) -> Bool {
+  match v {
+    DsrResolved => true
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the argument's own atom.
+fn dsr_is_unbound_at(v: DsrVerdict, spelling: Symbol) -> Bool {
+  match v {
+    DsrRefused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
+    _ => false
+  }
+}
+
+fn dsr_is_file_refused_for(v: DsrVerdict, reason: Symbol) -> Bool {
+  match v {
+    DsrFileRefused { fatal_reason: Present { value: r } } => r == reason
+    _ => false
+  }
+}
+
+test fn an_undeclared_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: v, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_then)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_call_argument_in_an_else_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: v, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_else)
+    DsrContextRefused => false
+  }
+}
+
+test fn a_declared_call_argument_in_an_arm_resolves() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: v, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_resolved(v: v)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_call_argument_outside_an_if_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: v, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_outside)
+    DsrContextRefused => false
+  }
+}
+
+test fn a_second_statement_after_a_non_binding_one_refuses_at_normalize() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: v, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_file_refused_for(v: v, reason: ^body_lowering_reason_statement_precedes_without_binding)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_statement_after_a_let_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: v, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_after_let)
+    DsrContextRefused => false
+  }
+}
+
+test fn a_let_bound_continuation_resolves() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: v, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_resolved(v: v)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_parenthesised_operand_of_a_match_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: v, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_group_match)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_parenthesised_operand_of_a_let_value_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: v, group_call_arg: _, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_group_let)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_parenthesised_operand_of_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: v, group_declared: _, plain_call_arg: _ } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_group_arg)
+    DsrContextRefused => false
+  }
+}
+
+test fn a_declared_name_in_a_parenthesised_operand_resolves() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: v, plain_call_arg: _ } =>
+      dsr_is_resolved(v: v)
+    DsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_plain_right_operand_of_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match dsr_outcomes() {
+    DsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _, group_match_arm: _, group_let_value: _, group_call_arg: _, group_declared: _, plain_call_arg: v } =>
+      dsr_is_unbound_at(v: v, spelling: ^dsr_undeclared_plain_arg)
+    DsrContextRefused => false
+  }
+}
