@@ -6,9 +6,14 @@ import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, None }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
-import v2.compiler.body_lowering_fold { body_lower_finish_for_normalize }
+import v2.compiler.body_lowering_fold {
+  BodyLowered,
+  BodyLowering,
+  BodyWrapperRetained,
+  body_lower_finish_for_normalize
+}
 
-data body_lowering_rejection_propagation_note: String = "THE DISCRIMINATING CONTROL for the deleted rejection catch. body_lower_finish_for_normalize used to match EVERY Rejected from body_lower_after_children and return a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them — so a malformed form, a violated invariant and a genuinely unsupported one all left the seam looking like the same counted frontier state.\n\nThese two claims are the pair that separates them, and they are durable because both are invariants rather than observations of the present frontier: a form the lowering strategies REJECT must leave the seam Rejected carrying its own reason, and an emitted identity with no registered producer must STILL leave it Accepted carrying the retention reason. The first fails on the pre-repair implementation, which returned Accepted; the second fails on any over-correction that deletes the legitimate retention arm along with the catch. Neither claim mentions a specific std module, so neither inverts when the frontier moves.\n\nThe rejecting specimen is a pass-through production (^dag_surface_expr) carrying a production-identity child and NO captured child, which is exactly the shape body_lower_unwrap_pass_through refuses with ^body_lowering_reason_unsupported_form. The retaining specimen carries an identity no producer is registered for, which reaches the final arm of body_lower_production_emitted."
+data body_lowering_rejection_propagation_note: String = "THE DISCRIMINATING CONTROL for the deleted rejection catch. body_lower_finish_for_normalize used to match EVERY Rejected from body_lower_after_children and return a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them — so a malformed form, a violated invariant and a genuinely unsupported one all left the seam looking like the same counted frontier state.\n\nThese two claims are the pair that separates them, and they are durable because both are invariants rather than observations of the present frontier: a form the lowering strategies REJECT must leave the seam Rejected carrying its own reason, and an emitted identity with no registered producer must STILL leave it Accepted as the BodyWrapperRetained variant (retention has been a typed variant rather than a diagnostic reason since MQ-4). The first fails on the pre-repair implementation, which returned Accepted; the second fails on any over-correction that deletes the legitimate retention arm along with the catch. Neither claim mentions a specific std module, so neither inverts when the frontier moves.\n\nThe rejecting specimen is a pass-through production (^dag_surface_expr) carrying a production-identity child and NO captured child, which is exactly the shape body_lower_unwrap_pass_through refuses with ^body_lowering_reason_unsupported_form. The retaining specimen carries an identity no producer is registered for, which reaches the final arm of body_lower_production_emitted."
 
 fn atom_node(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
@@ -42,7 +47,7 @@ fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
   })
 }
 
-fn finish(id: Symbol) -> v2.std.diagnostic.Outcome<Node> {
+fn finish(id: Symbol) -> v2.std.diagnostic.Outcome<BodyLowering> {
   let shell = emitted_shell(id: id)
   body_lower_finish_for_normalize(
     n: shell,
@@ -62,14 +67,11 @@ fn rendered_arm(id: Symbol) -> String {
   }
 }
 
-fn accepted_reasons(id: Symbol) -> List<Symbol> {
+fn finish_is_retained(id: Symbol) -> Bool {
   match finish(id: id) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
-      match d {
-        v2.std.diagnostic.Some { diagnostics: ne } => all_reasons(d: ne)
-        None => []
-      }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Accepted { value: BodyWrapperRetained { retention: _ }, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: BodyLowered { node: _ }, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -81,7 +83,7 @@ test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
   match finish(id: ^dag_surface_expr) {
     v2.std.diagnostic.Rejected { diagnostics: d } =>
       reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_unsupported_form)
-        && (reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_wrapper_retained_emitted) == false)
+        && (reasons_contain(reasons: all_reasons(d: d), sym: ^normalized_tree_reason_wrapper_retention_not_normalized) == false)
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -96,8 +98,5 @@ test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool {
 }
 
 test fn unregistered_producer_still_retains() -> Bool {
-  reasons_contain(
-    reasons: accepted_reasons(id: ^probe_unregistered_surface_form),
-    sym: ^body_lowering_reason_wrapper_retained_emitted
-  )
+  finish_is_retained(id: ^probe_unregistered_surface_form)
 }

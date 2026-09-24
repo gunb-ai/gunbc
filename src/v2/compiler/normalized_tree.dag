@@ -1,20 +1,17 @@
 module v2.compiler.normalized_tree
 
-import v2.compiler.body_lowering_fold { body_lowering_diagnostics_carry_wrapper_retention }
+import v2.compiler.body_lowering_fold {
+  BodyLoweredTree,
+  wrapper_retention_diagnostics
+}
 import v2.std.diagnostic {
   Accepted,
-  Diagnostic,
   Diagnostics,
-  ExternalContractUnknown,
   Outcome,
   Rejected,
-  bind_outcome,
-  diagnostics_singleton,
-  Unavailable,
-  node_locus,
   rejected_with_pending
 }
-import std.algebra { Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.node { Node, Symbol }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
@@ -52,11 +49,33 @@ type NormalizedTree sole_constructor {
   record_declarations: FreeMonoid<Symbol>,
 }
 
-// Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state
-// — a root carrying wrapper-retention diagnostics presented as normalized — remains describable;
-// admit_normalized_tree is now the sole constructor, so no Accepted program reaches the carrier
-// while holding retention evidence. Next-rung trigger: the retention disposition riding in the
-// carrier's own type rather than decided at the door.
+// THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
+// (v2.compiler.body_lowering_fold WrapperRetention), gathered by v2.compiler.normalize into the
+// BodyLoweredTree it hands here. This is where that list is CONSUMED: an empty list releases the
+// Node; any retention refuses, once per retained shell and located AT that shell, rather than once at
+// the module root. Before MQ-4 this door decided by scanning diagnostic REASONS for the retention
+// reason -- a classifier over an encoding that a single `diagnostics: _` anywhere upstream could
+// empty. There is no reason to scan now: the retention is a value, and it has no arm that reaches
+// NormalizedTree except through this refusal.
+//
+// Rung, stated honestly: the refusal is structural along the production route (normalize and
+// normalize_census cannot build a NormalizedTree or CensusTree without passing here), and
+// admit_normalized_tree / admit_census_tree take a bare Node, which a hand-built fixture supplies
+// and which by construction carries no retention. What is not structural is the absence of an
+// authored drop inside v2.compiler.body_lowering_fold: .dag has no module-private declarations, so a
+// match arm there that discards BodyWrapperRetained stays writable; every such arm names the variant.
+fn admit_retention_free(tree: BodyLoweredTree, diagnostics: Diagnostics) -> Outcome<Node> {
+  match tree.retained {
+    Empty => Accepted { value: tree.node, diagnostics: diagnostics }
+    Cons { head: first, tail: rest } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: diagnostics,
+          rejected: wrapper_retention_diagnostics(first: first, rest: rest)
+        )
+      }
+  }
+}
 
 // THE ABSENCE HAS A NAME, for the same reason test_marker_channel_empty does. A caller holding a
 // hand-built root has no import decls to offer, and `Empty` at the call site says only "a list",
@@ -72,14 +91,6 @@ fn no_record_declarations() -> FreeMonoid<Symbol> {
   Empty
 }
 
-fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
-    at: node_locus(node: root),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
 fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
@@ -87,23 +98,14 @@ fn admit_normalized_tree(
   record_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
-  if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
-    Rejected {
-      diagnostics: rejected_with_pending(
-        pending: diagnostics,
-        rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
-      )
-    }
-  } else {
-    Accepted {
-      value: NormalizedTree {
-        root: root,
-        test_markers: test_markers,
-        import_bindings: import_bindings,
-        record_declarations: record_declarations
-      },
-      diagnostics: diagnostics
-    }
+  Accepted {
+    value: NormalizedTree {
+      root: root,
+      test_markers: test_markers,
+      import_bindings: import_bindings,
+      record_declarations: record_declarations
+    },
+    diagnostics: diagnostics
   }
 }
 
@@ -129,33 +131,25 @@ type CensusTree sole_constructor {
   record_declarations: FreeMonoid<Symbol>,
 }
 
-// The census door refuses on the same evidence the full door does. Census mode never visits a fn
-// body, so retention here can only be DECLARATION-level -- a signature, type or spine the lowering
-// could not read -- and a declaration census that silently dropped one would answer resolution with
-// a confident "not declared" (DESIGN section 5). A declaration that failed to PARSE never reaches
-// this door: the census entry takes a ParseTree.
+// The census route refuses retention through admit_retention_free exactly as the full route does
+// (v2.compiler.normalize normalize_census). Census mode never visits a fn body, so retention there
+// can only be DECLARATION-level -- a signature, type or spine the lowering could not read -- and a
+// declaration census that silently dropped one would answer resolution with a confident "not
+// declared" (DESIGN section 5). A declaration that failed to PARSE never reaches this door: the
+// census entry takes a ParseTree.
 fn admit_census_tree(
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
   record_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<CensusTree> {
-  if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
-    Rejected {
-      diagnostics: rejected_with_pending(
-        pending: diagnostics,
-        rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
-      )
-    }
-  } else {
-    Accepted {
-      value: CensusTree {
-        root: root,
-        import_bindings: import_bindings,
-        record_declarations: record_declarations
-      },
-      diagnostics: diagnostics
-    }
+  Accepted {
+    value: CensusTree {
+      root: root,
+      import_bindings: import_bindings,
+      record_declarations: record_declarations
+    },
+    diagnostics: diagnostics
   }
 }
 
@@ -208,44 +202,29 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
 // marker channel and no import bindings. That is a statement about the caller's input, not a default: a caller
 // holding source goes through v2.compiler.normalize, which captures the channel from the parse tree.
 //
-// The plural door: the same decision per element, refusing as a whole so a partially admitted list
-// has no representation.
-//
-// Threading is explicit rather than bind_outcome because bind_outcome MERGES the accumulated
-// diagnostics with each step's, and every step here carries the same shared diagnostics — threading
-// would accumulate N+1 copies of one set. The decision is still per element (the same verdict each
-// time, reading only the shared diagnostics), the refusal carries its pending set exactly once via
-// admit_normalized_tree, and the accepted diagnostics attach once at the end.
+// Nothing here can refuse: a hand-built Node carries no retention (retention exists only as the
+// body lowering's typed result, refused by admit_retention_free on the normalize route), so this is
+// a map. The Outcome is kept so the caller's diagnostics attach exactly once, at the end.
 fn admit_unmarked_normalized_roots(
   roots: FreeMonoid<Node>,
   diagnostics: Diagnostics
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
-  match fold_list(
-    xs: roots,
-    empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
-    cons: fn(acc, root) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: admitted, diagnostics: _ } =>
-          match admit_normalized_tree(
+  Accepted {
+    value: fold_list(
+      xs: roots,
+      empty: Empty,
+      cons: fn(acc, root) {
+        list_snoc_item(
+          xs: acc,
+          item: NormalizedTree {
             root: root,
             test_markers: test_marker_channel_empty(),
-            import_bindings: Empty,
-            record_declarations: no_record_declarations(),
-            diagnostics: diagnostics
-          ) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: one, diagnostics: _ } =>
-              Accepted {
-                value: list_snoc_item(xs: admitted, item: one),
-                diagnostics: v2.std.diagnostic.None
-              }
+            import_bindings: no_import_bindings(),
+            record_declarations: no_record_declarations()
           }
+        )
       }
-    }
-  ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: all, diagnostics: _ } =>
-      Accepted { value: all, diagnostics: diagnostics }
+    ),
+    diagnostics: diagnostics
   }
 }

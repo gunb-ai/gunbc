@@ -3,6 +3,8 @@ module v2.test.manual.body_lowering_normalize_add
 import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
   body_lower_domain_from_param_list,
+  BodyLowered,
+  BodyWrapperRetained,
   body_lower_fn_decl_to_arrow,
   body_lower_return_type_from_fn_captured,
   body_lower_try_infix_transform,
@@ -312,7 +314,8 @@ test fn body_lowering_arrow_direct_well_formed() -> Bool {
     Absent => false
     Present { value: fn_decl } =>
       match body_lower_fn_decl_to_arrow(shell: fn_decl) {
-        Accepted { value: arrow, diagnostics: _ } => well_formed(n: arrow)
+        Accepted { value: BodyLowered { node: arrow }, diagnostics: _ } => well_formed(n: arrow)
+        Accepted { value: BodyWrapperRetained { retention: _ }, diagnostics: _ } => false
         Rejected { diagnostics: _ } => false
       }
   }

@@ -6,6 +6,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_return_type_from_fn_captured,
   body_lower_unwrap_captured
 }
+import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -14,7 +15,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -258,5 +259,61 @@ test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool {
   match nfbcp_parsed(text: nfbcp_no_return_type_source) {
     Absent => false
     Present { value: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MQ-4: THE DEEPEST RETENTION ROUTE, REFUSED AT ITS OWN LOCUS, END TO END.
+//
+// The retention above is minted at the deepest call site a module's normalize can reach:
+// v2.compiler.normalize normalize_node_ctx -> body_lower_finish_for_normalize ->
+// body_lower_after_children -> body_lower_production_emitted -> body_lower_forward_row_apply ->
+// body_lower_fn_decl_to_arrow -> body_lower_fn_decl_to_arrow_admitted, whose signature arm answers
+// body_lower_wrapper_retained_shell. Every frame on that chain now returns the typed BodyLowering, so
+// the retention cannot be dropped by a `diagnostics: _` on the way up; normalize gathers it into its
+// BodyLoweredTree and v2.compiler.normalized_tree admit_retention_free refuses it.
+//
+// This row runs that whole route on the real parse and asserts WHERE the refusal lands: under the
+// door's cause, anchored at the fn_decl shell that was retained -- not at the module root, where the
+// pre-MQ-4 door placed its single diagnostic. Deleting the door's refusal arm (admitting every tree)
+// turns normalize Accepted and reds it; the positive control keeps it from holding by refusing
+// everything.
+fn nfbcp_retention_anchored_at_fn_decl(d: Diagnostic) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match parse_production_emitted_identity_optional(node: a.at) {
+        Present { value: id } => id == ^dag_surface_fn_decl
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn nfbcp_is_door_retention(d: Diagnostic) -> Bool {
+  d.reason == ^normalized_tree_reason_wrapper_retention_not_normalized
+}
+
+test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_no_return_type_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: nfbcp_is_door_retention(d: ne.head) && nfbcp_retention_anchored_at_fn_decl(d: ne.head), f: fn(found, d) {
+            found || (nfbcp_is_door_retention(d: d) && nfbcp_retention_anchored_at_fn_decl(d: d))
+          })
+      }
+  }
+}
+
+test fn nfbcp_control_ordinary_fn_normalizes_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_ordinary_fn_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
   }
 }
