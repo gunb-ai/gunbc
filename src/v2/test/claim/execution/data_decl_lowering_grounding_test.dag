@@ -6,7 +6,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
   DerivedGrounding,
   GroundingNotDerived,
-  InferredTree,
   infer
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -17,10 +16,9 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   dag_node_is_int_literal_atom
 }
-import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List, list_at_optional }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -116,39 +114,36 @@ fn ddl_fn_brace_resolved() -> Outcome<Node> {
   ddl_resolved(source: ddl_fn_brace_source)
 }
 
-fn ddl_node_derived(inferred: InferredTree, n: Node) -> Bool {
-  match inferred.facts.lookup(n) {
-    Absent => false
-    Present { value: facts } =>
-      match facts.grounding {
-        GroundingNotDerived { node: _ } => false
-        DerivedGrounding { grounding: _ } => true
-      }
+// THE CHECK READS INFER'S OWN FRONTIER DIAGNOSTICS, ONE PASS. Infer carries a typed
+// `infer_grounding_not_derived` on its Accepted path for every node it leaves on the frontier
+// (v2.compiler.infer node_grounding_frontier_note), so "no such diagnostic" is "every recorded node
+// derived", which is what translate's gate reads. An earlier cut looked every node up in the facts
+// map, which is a linear scan per node, and cost 81k eval steps per claim on the required floor
+// against a 72.3k budget. The claim's subject is infer's verdict, not the lookup.
+fn ddl_is_frontier_diagnostic(d: Diagnostic) -> Bool {
+  d.reason == ^infer_grounding_not_derived
+}
+
+fn ddl_no_frontier_diagnostic(ds: Diagnostics) -> Bool {
+  match ds {
+    None => true
+    Some { diagnostics: ne } =>
+      !ddl_is_frontier_diagnostic(d: ne.head)
+        && !any(xs: ne.tail, predicate: fn(d) { ddl_is_frontier_diagnostic(d: d) })
   }
 }
 
-fn ddl_underived_count(inferred: InferredTree) -> Int {
-  fold_list(
-    xs: node_subtree_nodes(root: inferred.root),
-    empty: 0,
-    cons: fn(acc, n) {
-      if ddl_node_derived(inferred: inferred, n: n) { acc } else { acc + 1 }
-    }
-  )
-}
-
-// The whole resolved tree grounds, which is what translate's subtree gate demands of it. A count
-// of zero over a non-trivial tree is the claim: the node count guards against an empty walk.
+// The whole resolved tree grounds, which is what translate's subtree gate demands of it. The node
+// count guards against an empty walk.
 fn ddl_fully_grounded(resolved: Outcome<Node>) -> Bool {
   match resolved {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
-      match infer(tree: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: inferred, diagnostics: _ } =>
-          (length(xs: node_subtree_nodes(root: inferred.root)) > 3)
-            && (ddl_underived_count(inferred: inferred) == 0)
-      }
+      (length(xs: node_subtree_nodes(root: tree)) > 3)
+        && (match infer(tree: tree) {
+          Rejected { diagnostics: _ } => false
+          Accepted { value: _, diagnostics: ds } => ddl_no_frontier_diagnostic(ds: ds)
+        })
   }
 }
 
