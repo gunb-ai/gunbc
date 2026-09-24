@@ -673,11 +673,14 @@ fn org_runner_route_on_executor(gh_absence: HostCliDependencyAbsence?, bindings:
 }
 
 fn organization_runner_read_route() -> OrgRunnerRouteAdmission {
+  let gh_absence = first_absent_gh_cli_operation_host_cli_dependency()
+  let admin_token = shell.Env.Get(name: org_admin_token_env_name).value
+  let gh_token = shell.Env.Get(name: gh_token_env_name).value
   org_runner_route_on_executor(
-    gh_absence: first_absent_gh_cli_operation_host_cli_dependency(),
+    gh_absence: gh_absence,
     bindings: org_runner_route_from_bindings(
-      admin_token: shell.Env.Get(name: org_admin_token_env_name).value,
-      gh_token: shell.Env.Get(name: gh_token_env_name).value
+      admin_token: admin_token,
+      gh_token: gh_token
     )
   )
 }

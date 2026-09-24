@@ -61,8 +61,8 @@ test fn bmc_plan_steady_state_is_keyless_wif() -> Bool {
   let steady = bmc_plan_steady_state_phase(plan: srv3_onboarding_plan)
   (steady == FabricJoined)
     && posture_is_keyless(p: bmc_plan_steady_state_posture(plan: srv3_onboarding_plan))
-    && !string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "credentials_json")
-    && string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "id-token: write")
+    && !string_contains(s: bmc_smoke_workflow_text(), pattern: "credentials_json")
+    && string_contains(s: bmc_smoke_workflow_text(), pattern: "id-token: write")
 }
 
 fn prev_next_is_identity(p: BmcOnboardingPhase) -> Bool {
@@ -238,4 +238,11 @@ test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
            }
          InstallBootTargetSelected { target: _ } => false
        }
+}
+
+fn bmc_smoke_workflow_text() -> String {
+  match emit_bmc_token_smoke_workflow_yaml() {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
 }
