@@ -45,7 +45,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_spine_node }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.compilers.body_lowering { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.constraints {
   CanonicalGrounding,
@@ -2242,7 +2242,7 @@ fn infer_freemonoid_type_of(element_type: Node) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: qualified_name_spine_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
       Edge { label: Positional, target: canonicalize_node_strip_provenance(n: element_type) }
     ],
     occurrence_id: OccurrenceSynthetic
