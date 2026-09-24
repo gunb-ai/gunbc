@@ -10,6 +10,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
+  NoWitnessDischarge,
   FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
@@ -21,6 +22,8 @@ import gunbc.auth.privileged_effect_census {
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
+  ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
@@ -39,6 +42,7 @@ fn recurring_read() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -51,6 +55,7 @@ fn one_off_irreversible_mint() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
     minted_reach: MintsResourceScopedCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -63,6 +68,7 @@ fn one_off_grant_unbindable() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityUnbindable { cause: "grant administrator only" as NonEmptyStr },
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -85,6 +91,7 @@ fn dashboard_only() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityUnbindable { cause: "no API" as NonEmptyStr },
     minted_reach: MintsNoCredential,
     billing: BillsExternally,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -97,6 +104,7 @@ fn recurring_but_witnessed() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
     minted_reach: MintsNoCredential,
     billing: BillsExternally,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -180,11 +188,11 @@ test fn each_witness_ground_fires_alone() -> Bool {
   let base = recurring_read()
   let wide = PrivilegedEffect {
     subject: base.subject, frequency: FleetOnce, reversibility: ReversibleByReapply, surface: ApiSurface,
-    workload_identity: base.workload_identity, minted_reach: MintsAccountWideCredential, billing: NoBillingConsequence,
+    workload_identity: base.workload_identity, minted_reach: MintsAccountWideCredential, billing: NoBillingConsequence, witness_discharge: NoWitnessDischarge,
   }
   let break_glass = PrivilegedEffect {
     subject: base.subject, frequency: BreakGlassOnly, reversibility: ReversibleByReapply, surface: ApiSurface,
-    workload_identity: base.workload_identity, minted_reach: MintsNoCredential, billing: NoBillingConsequence,
+    workload_identity: base.workload_identity, minted_reach: MintsNoCredential, billing: NoBillingConsequence, witness_discharge: NoWitnessDischarge,
   }
   !witness_required(e: base)
     && witness_required(e: one_off_irreversible_mint())
@@ -243,4 +251,89 @@ test fn the_runner_group_create_selects_and_realizes_operator_approval() -> Bool
     declaration_ref_display_key(ref: v.site) == "gunbc.runner_group_restriction_ensure_run::microvm_runner_group_after_gate"
       && selected_approved(s: v.selection)
       && match v.conformance { Conforms => true _ => false })
+}
+
+// THE MT. COLLINS BOOT (operator ruling 2026-09-23): the census row runs through the real fold and
+// DERIVES the federated pattern, and the site's realization conforms -- the boot is no longer an
+// unrostered per-run approval.
+test fn the_mtcollins1_boot_selects_federation_and_conforms() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet"
+      && selected_federated(s: v.selection)
+      && match v.conformance {
+        Conforms => true
+        DivergesWithReason { reason: _ } => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+// THE STANDING RULING IS WHAT THE DERIVATION RESTS ON, so the mutation is that one field. The boot is
+// declared IrreversibleEffect (a power cycle destroys RAM and session state). Under the operator's
+// standing authorization, conditional on the unit hold, it selects federation; strip the ruling and
+// the same effect owes a witness AND must run unattended, so no pattern is admissible -- the fold
+// refuses rather than quietly picking one. The label is not what decides; the ruling is.
+test fn the_mtcollins1_boot_is_irreversible_and_federated_only_under_its_standing_ruling() -> Bool {
+  let e = mtcollins1_boot_effect()
+  let without_ruling = PrivilegedEffect {
+    subject: e.subject,
+    frequency: e.frequency,
+    reversibility: e.reversibility,
+    surface: e.surface,
+    workload_identity: e.workload_identity,
+    minted_reach: e.minted_reach,
+    billing: e.billing,
+    witness_discharge: NoWitnessDischarge,
+  }
+  let declared_irreversible = match e.reversibility {
+    IrreversibleEffect { what_is_lost: _ } => true
+    ReversibleByReapply => false
+  }
+  declared_irreversible
+    && selected_federated(s: select_authorization_pattern(e: e))
+    && match select_authorization_pattern(e: without_ruling) {
+      NoAdmissiblePattern { causes: _, scope: _ } => true
+      _ => false
+    }
+}
+
+// THE RULING DISCHARGES IRREVERSIBILITY AND NOTHING ELSE: an irreversible effect that also mints an
+// account-wide credential still owes a per-instance witness under the same ruling.
+test fn a_standing_ruling_does_not_discharge_a_wide_credential() -> Bool {
+  let e = mtcollins1_boot_effect()
+  let wide = PrivilegedEffect {
+    subject: e.subject, frequency: e.frequency, reversibility: e.reversibility, surface: e.surface,
+    workload_identity: e.workload_identity, minted_reach: MintsAccountWideCredential, billing: e.billing,
+    witness_discharge: e.witness_discharge,
+  }
+  !witness_required(e: e) && witness_required(e: wide)
+}
+
+// EVERY STANDING RULING IN THE CENSUS NAMES AN INTERLOCK ROSTERED AGAINST ITS OWN SITE.
+test fn every_standing_ruling_has_its_interlock_rostered() -> Bool {
+  (rulings_without_a_rostered_interlock() |> count) == 0
+}
+
+// THE CENSUS SHOWS THE INTERLOCK: every interlocked site is a census row, and the boot's names the
+// unit hold and the refusal fold that honors it.
+test fn the_mtcollins1_boot_interlock_is_rostered_against_a_census_row() -> Bool {
+  (interlocked_sites_missing_from_census() |> count) == 0
+    && any(privileged_effect_interlocks, i =>
+      declaration_ref_display_key(ref: i.site) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet"
+        && declaration_ref_display_key(ref: i.refusal) == "gunbc.machine_intake_mtcollins1_maintenance_hold::unit_hold_acquire"
+        && any(i.hold_owning_roots, r => declaration_ref_display_key(ref: r.root) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet")
+        && any(i.hold_owning_roots, r => declaration_ref_display_key(ref: r.root) == "gunbc.host_reset_return_run::host_reset_return_wet"))
+}
+
+// ONE RULING, EVERY ROOT A CENSUS ROW AT THE SAME GRAIN (side-chat review 5288466573): the ruling's
+// roots and the census sites carrying its discharge are the same set, both roots select the federated
+// pattern and conform, and both carry an interlock row.
+test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
+  (ruling_roots_missing_from_census() |> count) == 0
+    && (census_sites_outside_ruling_roots() |> count) == 0
+    && any(census_verdicts(), v =>
+      declaration_ref_display_key(ref: v.site) == "gunbc.host_reset_return_run::host_reset_return_wet"
+        && selected_federated(s: v.selection)
+        && match v.conformance { Conforms => true  _ => false })
+    && any(privileged_effect_interlocks, i => declaration_ref_display_key(ref: i.site) == "gunbc.host_reset_return_run::host_reset_return_wet")
 }

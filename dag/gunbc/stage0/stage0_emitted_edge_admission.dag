@@ -10,7 +10,7 @@ import gunbc.rust_emitted_edge {
   ReexportFacade,
   SemanticSourceReference
 }
-import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow, generated_partition_crate_rows }
 import gunbc.stage0_partition_package_graph {
   stage0_host_shell_dependency_names,
   stage0_host_shell_package_name,
@@ -60,7 +60,11 @@ type Stage0EmittedEdgeAdmission
 // this too, so the crate a lib.rs includes a module into and the crate this admission places it in
 // are one answer.
 fn stage0_partition_module_owner_packages(module_basename: String) -> List<String> {
-  generated_partition_crate_rows
+  partition_module_owner_packages_over(module_basename: module_basename, rows: generated_partition_crate_rows)
+}
+
+fn partition_module_owner_packages_over(module_basename: String, rows: List<GeneratedPartitionCrateRow>) -> List<String> {
+  rows
     |> filter(row =>
       stage0_partition_row_is_module_bearing_package(row: row)
         && (row.modules |> any(m => m == module_basename))

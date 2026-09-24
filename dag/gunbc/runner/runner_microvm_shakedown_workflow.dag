@@ -186,6 +186,7 @@ fn microvm_shakedown_job(script: String) -> Job {
     id: microvm_shakedown_workflow_job_id,
     name: none,
     runner: SelfHosted { labels: microvm_shakedown_runs_on() },
+    environment: none,
     steps: [microvm_shakedown_known_task_step(script: script)],
     needs: [],
     env: none,

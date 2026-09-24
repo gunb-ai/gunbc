@@ -15,7 +15,7 @@ import gunbc.spark.v41_engram_row_store {
   V41PublishedSpan, V41PublishedSpanPlan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
   V41PublishedSpanDigest, V41PublishedSpanReadings, V41PublishedSpansRead, V41PublishedSpansUnread,
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
-  V41PublishedStoreReadings, V41PublishedStoresRead, V41PublishedStoresUnread, V41RankStoreIdentity,
+  V41PublishedStoreReadings, V41PublishedStoresRead, V41PublishedStoresUnread, V41RankStoreIdentity, V41ObservedRankStore,
   v41_published_span_plan, v41_row_store_encoding_key, v41_rank_store_identity,
 }
 import extdeps.safetensors.format { SafetensorsShardFile }
@@ -41,9 +41,20 @@ fn w_read(spans: List<V41PublishedSpan>, c: String) -> V41PublishedSpanReadings 
   V41PublishedSpansRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, spans: map(spans, sp => V41PublishedSpanDigest { span: sp, sha256: w_sha(c: c) }) }
 }
 
-// ONE STORE PER (LAYER, RANK) OF THE GIVEN LAYERS, ALL WITH DIGEST c.
+// THE SIZE EACH LIVE STORE MUST HAVE: 6 bytes of magic plus 264 per row of the rank's range, computed
+// independently of v41_store_derived_size (Python, over vLLM's rank bounds for this checkpoint).
+fn w_size(layer: Nat, rank: Nat) -> Nat {
+  let l1 = [25344148902, 25344310470, 25344505302, 25344663702]
+  let l14 = [25344806262, 25345045974, 25345200678, 25345351158]
+  match get(xs: if layer == 1 { l1 } else { l14 }, index: rank) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// ONE STORE PER (LAYER, RANK) OF THE GIVEN LAYERS, ALL WITH DIGEST c, EACH AT ITS DERIVED SIZE.
 fn w_stores(layers: List<Nat>, c: String) -> V41PublishedStoreReadings {
-  V41PublishedStoresRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, stores: flat_map(layers, l => map([0, 1, 2, 3], k => v41_rank_store_identity(layer: l, rank: k, digest: w_sha(c: c)))) }
+  V41PublishedStoresRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, stores: flat_map(layers, l => map([0, 1, 2, 3], k => V41ObservedRankStore { identity: v41_rank_store_identity(layer: l, rank: k, digest: w_sha(c: c)), size: byte_size(count: w_size(layer: l, rank: k)) })) }
 }
 
 data w_candidate_layers: List<Nat> = [1, 14]
@@ -160,4 +171,16 @@ test fn an_unread_reading_is_unestablished() -> Bool {
     V41PublishedRowStoreKeyed { digest: _ } => false
     V41PublishedRowStoreRefused { defects: _ } => false
   })
+}
+
+// A STORE OF THE WRONG SIZE IS NOT KEYED, even with every digest present: layer 14 rank 3 one byte short
+// refuses by name (a digest over a file FileBackedEngramStorage could not open).
+test fn a_store_of_the_wrong_size_does_not_key() -> Bool {
+  let right = w_stores(layers: w_candidate_layers, c: "c")
+  let short = match right {
+    V41PublishedStoresRead { host: h, observed_at: t, stores: st } => V41PublishedStoresRead { host: h, observed_at: t, stores: map(st, o => if o.identity.layer == 14 && o.identity.rank == 3 { V41ObservedRankStore { identity: o.identity, size: byte_size(count: w_size(layer: 14, rank: 3) - 1) } } else { o }) }
+    V41PublishedStoresUnread { obligation: o } => V41PublishedStoresUnread { obligation: o }
+  }
+  w_refused_with(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"), st: short), fragment: "layer.14.rank.3 is 25345351157 bytes and the layout derives 25345351158")
+    && w_hex(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"), st: right)).length() > 0
 }

@@ -1948,6 +1948,7 @@ fn witness_floor_job() -> Job {
     id: floor_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: witness_floor_steps(),
     needs: witness_floor_lane_needs(),
     env: none,
@@ -2088,6 +2089,7 @@ fn build_lane_job() -> Job {
     id: build_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: build_lane_steps(),
     needs: build_lane_needs(),
     env: none,
@@ -2468,6 +2470,7 @@ fn required_lanes_aggregate_job() -> Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: [required_lanes_aggregate_step()],
     needs: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) { lane.job_id }),
     env: none,
@@ -2584,6 +2587,15 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
 // a separate verdict, and it costs a whole checkout, toolchain install and release build of the
 // same tree. `rust_clippy_all_targets_step` is the worked example: it kept its step id, its
 // verdict and its coverage, and stopped costing a job, by moving onto `required-witnesses-build`.
+//
+// THE SECOND WORKED EXAMPLE, AND ITS SIGN-OFF (operator decision msg_6e36a6a2, 2026-09-23, which
+// supersedes msg_4a9045fc and the ~20 min pricing of msg_f1ade7cf-77e4-4896-a8b3-476747692c37).
+// This file's build lane -- the stage0 mirrors' generated-artifact and regen-fixed-point phases,
+// which no job had run since #11742 -- returns as ONE merge_group-only STEP on the emitted floor
+// job (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
+// already checks out and builds claim_executor, and the lane measured 22.5 min on the fleet (run
+// 35890770775), fitting after the floor process exits. The sign-off covers exactly that step on
+// that event; it admits no per-PR run and no new job.
 //
 // THIS COMMENT IS RATIONALE, NOT A GATE. No `Accepted` program reads it, so it stops nobody --
 // it records WHY the roster is small so the next author meets the reasoning rather than
