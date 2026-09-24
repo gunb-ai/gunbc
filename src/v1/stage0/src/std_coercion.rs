@@ -152,6 +152,31 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
+pub fn refinement_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<CastRule>>> = {
+            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+}
+
+pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool {
+    {
+        let mut __found = false;
+        for r in refinement_cast_rules().iter().cloned() {
+            if ((r.from_type.clone() == source_type.clone())
+                && (r.to_type.clone() == target_type.clone()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     ({
         let mut __found = false;

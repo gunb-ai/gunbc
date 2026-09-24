@@ -1,0 +1,351 @@
+module v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CALL ARGUMENT WHOSE VALUE IS A LIST, A NESTED CALL, A RECORD OR A GROUP IS READ WHOLE, AND AN
+// UNDECLARED NAME INSIDE IT REFUSES AT RESOLVE, AT ITS ATOM.
+//
+// THE SUBJECT IS THE NATIVE LANE'S FRONT END AND RESOLVE: native_test_context_from_ingest
+// tokenizes, parses, normalizes and indexes the supplied sources, and native_census_module_resolution
+// resolves one module against it. v2.compiler.body_lowering_fold body_lower_call_arg_value read an
+// argument's value with the operand reader alone. Before gunbc#12145 that reader narrowed any
+// sequence to its left element, so `h(q: a)` read as `h` and `[a]` as `[` and the names inside were
+// silently dropped; after it, the same arguments answered Absent and body_lower_call_arg_value refused
+// the WHOLE module as call_argument_unread. The value is now lowered by body_lower_value_lowered, the
+// reader field initializers and if-conditions use, with the operand reader as its fallback.
+//
+// A MATCH SCRUTINEE IS THE SAME KIND OF VALUE: body_lower_match_scrutinee_optional read it with the
+// operand reader alone, so `match t(p: x) {..}` narrowed to `t` before gunbc#12145 and refused the whole
+// match after it; it now goes through body_lower_value_lowered too.
+//
+// THE MODULES VARY ONE THING EACH. Seven candidates put an undeclared name inside a named list, a
+// positional list, a nested call, a list inside a nested call, a positional nested call, a record
+// literal and a parenthesised group; on main each refused normalize, before gunbc#12145 each resolved
+// with the name dropped. Three controls must resolve: literal and string lists, an empty list and a
+// nullary call, and declared names in the same positions -- so reading an argument whole is not by
+// itself a refusal. The plain-name module is the neighbour main already read, refusing on both sides.
+data cav_list_named_source: String = "module v2.test.cav_list_named\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: [cav_undeclared_list_named]) }\n"
+
+data cav_list_positional_source: String = "module v2.test.cav_list_positional\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h([cav_undeclared_list_positional]) }\n"
+
+data cav_call_named_source: String = "module v2.test.cav_call_named\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(p: cav_undeclared_call_named), b: true) }\n"
+
+data cav_call_list_source: String = "module v2.test.cav_call_list\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: true, b: cav_h(xs: [cav_undeclared_call_list])) }\n"
+
+data cav_call_positional_source: String = "module v2.test.cav_call_positional\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(cav_t(p: cav_undeclared_call_positional)) }\n"
+
+data cav_record_source: String = "module v2.test.cav_record\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: CavRecord { f: cav_undeclared_record }) }\n"
+
+data cav_record_list_source: String = "module v2.test.cav_record_list\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: CavRecord { f: [cav_undeclared_record_list] }) }\n"
+
+data cav_group_source: String = "module v2.test.cav_group\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: (cav_undeclared_group)) }\n"
+
+data cav_literals_source: String = "module v2.test.cav_literals\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: 1, b: cav_h(xs: \"a\")) }\n"
+
+data cav_empty_list_source: String = "module v2.test.cav_empty_list\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(), b: 2) }\n"
+
+data cav_declared_inside_source: String = "module v2.test.cav_declared_inside\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\ndata cav_declared: Bool = true\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(p: cav_declared), b: cav_h(xs: CavRecord { f: cav_declared })) }\n"
+
+data cav_plain_name_source: String = "module v2.test.cav_plain_name\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: 1, b: cav_undeclared_plain) }\n"
+
+data cav_match_scrutinee_source: String = "module v2.test.cav_match_scrutinee\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_t(p: cav_undeclared_scrutinee) {\n    true => c\n    false => c\n  }\n}\n"
+
+fn cav_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data cav_ingest: SourceRootIngest = Cons {
+    head: cav_read(source: cav_list_named_source, id: ^cav_list_named_artifact, unit: ^cav_list_named_cu, path: "src/v2/test/fixture/namespace_xl0/cav_list_named.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_list_positional_source, id: ^cav_list_positional_artifact, unit: ^cav_list_positional_cu, path: "src/v2/test/fixture/namespace_xl0/cav_list_positional.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_call_named_source, id: ^cav_call_named_artifact, unit: ^cav_call_named_cu, path: "src/v2/test/fixture/namespace_xl0/cav_call_named.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_call_list_source, id: ^cav_call_list_artifact, unit: ^cav_call_list_cu, path: "src/v2/test/fixture/namespace_xl0/cav_call_list.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_call_positional_source, id: ^cav_call_positional_artifact, unit: ^cav_call_positional_cu, path: "src/v2/test/fixture/namespace_xl0/cav_call_positional.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_record_source, id: ^cav_record_artifact, unit: ^cav_record_cu, path: "src/v2/test/fixture/namespace_xl0/cav_record.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_record_list_source, id: ^cav_record_list_artifact, unit: ^cav_record_list_cu, path: "src/v2/test/fixture/namespace_xl0/cav_record_list.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_group_source, id: ^cav_group_artifact, unit: ^cav_group_cu, path: "src/v2/test/fixture/namespace_xl0/cav_group.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_literals_source, id: ^cav_literals_artifact, unit: ^cav_literals_cu, path: "src/v2/test/fixture/namespace_xl0/cav_literals.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_empty_list_source, id: ^cav_empty_list_artifact, unit: ^cav_empty_list_cu, path: "src/v2/test/fixture/namespace_xl0/cav_empty_list.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_declared_inside_source, id: ^cav_declared_inside_artifact, unit: ^cav_declared_inside_cu, path: "src/v2/test/fixture/namespace_xl0/cav_declared_inside.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_plain_name_source, id: ^cav_plain_name_artifact, unit: ^cav_plain_name_cu, path: "src/v2/test/fixture/namespace_xl0/cav_plain_name.dag"),
+    tail: Cons {
+    head: cav_read(source: cav_match_scrutinee_source, id: ^cav_match_scrutinee_artifact, unit: ^cav_match_scrutinee_cu, path: "src/v2/test/fixture/namespace_xl0/cav_match_scrutinee.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes is: the stored
+// value is a verdict per module with no resolution context, Node or closure in it.
+type CavVerdict
+  = CavResolved
+  | CavRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | CavFileRefused { fatal_reason: Optional<Symbol> }
+  | CavAbsent
+
+type CavOutcomes
+  = CavContextRefused
+  | CavOutcomesDecided {
+      list_named: CavVerdict
+      list_positional: CavVerdict
+      call_named: CavVerdict
+      call_list: CavVerdict
+      call_positional: CavVerdict
+      record: CavVerdict
+      record_list: CavVerdict
+      group: CavVerdict
+      literals: CavVerdict
+      empty_list: CavVerdict
+      declared_inside: CavVerdict
+      plain_name: CavVerdict
+      match_scrutinee: CavVerdict
+    }
+
+fn cav_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+    }
+  )
+}
+
+fn cav_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> CavVerdict {
+  match outcome {
+    NativeCensusModuleResolved => CavResolved
+    NativeCensusModuleFileRefused =>
+      CavFileRefused { fatal_reason: cav_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      CavRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn cav_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> CavVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: cav_ingest),
+    empty: CavAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        cav_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn cav_outcomes() -> CavOutcomes {
+  match native_test_context_from_ingest(ingest: cav_ingest) {
+    Rejected { diagnostics: _ } => CavContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      CavOutcomesDecided {
+        list_named: cav_verdict_in(context: context, module_name: "v2.test.cav_list_named", unit: ^cav_list_named_cu),
+        list_positional: cav_verdict_in(context: context, module_name: "v2.test.cav_list_positional", unit: ^cav_list_positional_cu),
+        call_named: cav_verdict_in(context: context, module_name: "v2.test.cav_call_named", unit: ^cav_call_named_cu),
+        call_list: cav_verdict_in(context: context, module_name: "v2.test.cav_call_list", unit: ^cav_call_list_cu),
+        call_positional: cav_verdict_in(context: context, module_name: "v2.test.cav_call_positional", unit: ^cav_call_positional_cu),
+        record: cav_verdict_in(context: context, module_name: "v2.test.cav_record", unit: ^cav_record_cu),
+        record_list: cav_verdict_in(context: context, module_name: "v2.test.cav_record_list", unit: ^cav_record_list_cu),
+        group: cav_verdict_in(context: context, module_name: "v2.test.cav_group", unit: ^cav_group_cu),
+        literals: cav_verdict_in(context: context, module_name: "v2.test.cav_literals", unit: ^cav_literals_cu),
+        empty_list: cav_verdict_in(context: context, module_name: "v2.test.cav_empty_list", unit: ^cav_empty_list_cu),
+        declared_inside: cav_verdict_in(context: context, module_name: "v2.test.cav_declared_inside", unit: ^cav_declared_inside_cu),
+        plain_name: cav_verdict_in(context: context, module_name: "v2.test.cav_plain_name", unit: ^cav_plain_name_cu),
+        match_scrutinee: cav_verdict_in(context: context, module_name: "v2.test.cav_match_scrutinee", unit: ^cav_match_scrutinee_cu)
+      }
+  }
+}
+
+fn cav_is_resolved(v: CavVerdict) -> Bool {
+  match v {
+    CavResolved => true
+    _ => false
+  }
+}
+
+// Refused at normalize, and the fatal cause is the list literal the argument reader does not lower.
+fn cav_is_list_refused(v: CavVerdict) -> Bool {
+  match v {
+    CavFileRefused { fatal_reason: Present { value: r } } => r == ^body_lowering_reason_list_literal_unlowered
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the name's own atom.
+fn cav_is_unbound_at(v: CavVerdict, spelling: Symbol) -> Bool {
+  match v {
+    CavRefused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
+    _ => false
+  }
+}
+
+test fn a_named_list_argument_refuses_at_normalize_at_the_list() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: v, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_list_refused(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn a_positional_list_argument_refuses_at_normalize_at_the_list() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: v, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_list_refused(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_nested_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: v, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_unbound_at(v: v, spelling: ^cav_undeclared_call_named)
+    CavContextRefused => false
+  }
+}
+
+test fn a_list_inside_a_nested_call_argument_refuses_at_normalize_at_the_list() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: v, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_list_refused(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_positional_nested_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: v, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_unbound_at(v: v, spelling: ^cav_undeclared_call_positional)
+    CavContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: v, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_unbound_at(v: v, spelling: ^cav_undeclared_record)
+    CavContextRefused => false
+  }
+}
+
+test fn a_list_inside_a_record_literal_argument_refuses_at_normalize_at_the_list() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: v, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_list_refused(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_parenthesised_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: v, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_unbound_at(v: v, spelling: ^cav_undeclared_group)
+    CavContextRefused => false
+  }
+}
+
+test fn literal_and_string_arguments_resolve() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: v, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_resolved(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn a_nullary_call_argument_resolves() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: v, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
+      cav_is_resolved(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn declared_names_inside_nested_call_and_record_arguments_resolve() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: v, plain_name: _, match_scrutinee: _ } =>
+      cav_is_resolved(v: v)
+    CavContextRefused => false
+  }
+}
+
+test fn an_undeclared_plain_name_argument_refuses_at_resolve_at_its_atom() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: v, match_scrutinee: _ } =>
+      cav_is_unbound_at(v: v, spelling: ^cav_undeclared_plain)
+    CavContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
+  match cav_outcomes() {
+    CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: v } =>
+      cav_is_unbound_at(v: v, spelling: ^cav_undeclared_scrutinee)
+    CavContextRefused => false
+  }
+}

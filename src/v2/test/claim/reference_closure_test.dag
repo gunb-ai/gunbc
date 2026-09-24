@@ -1,0 +1,247 @@
+module v2.test.claim.reference_closure
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_with_admission_context_policy
+}
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.reference_closure { ReferenceClosureMember, reference_derived_closure }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.std.algebra { contains, fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_synthetic }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE ESTABLISHES, AND NO MORE. v2.compiler.reference_closure reference_derived_closure,
+// with each member's resolution supplied by the real resolver over the inline corpus below, answers set-equal at module identity with the expected closure, and refuses where it must.
+// That is a SUPPLIED-INPUT claim at the fold's interface (DESIGN section 3). The owed inhabitance
+// claim -- the same fold on the door route, with non-member declarations from the census, set-equal
+// with the seed's reference-derived closure of v2.compiler.compile -- is declared in
+// v2.compiler.reference_closure and is not discharged here.
+//
+// THE CORPUS HAS ONE MEMBER PER EDGE KIND THE SEED'S CLOSURE FOLLOWS: an import no body mentions
+// (rc_imported), a fully qualified reference with no import (rc_dotted, the shape of every member the
+// seed's closure of v2.compiler.compile adds beyond its import graph, e.g. std.perturbation from
+// std.determinism), and a module reached only transitively through a member (rc_transitive). One
+// declared module nothing reaches (rc_outside) must stay out, which is the discriminating half: a
+// fold that answered the roster would pass every membership row and fail this one.
+
+data rc_entry_source: String = "module v2.test.rc_entry\n\nimport v2.std.logic { Bool }\nimport v2.test.rc_imported { rc_imported_fn }\n\nfn rc_entry_fn(p: Bool) -> Bool { v2.test.rc_dotted.rc_dotted_fn(p: p) }\n"
+
+data rc_imported_source: String = "module v2.test.rc_imported\n\nimport v2.std.logic { Bool }\n\nfn rc_imported_fn(p: Bool) -> Bool { p }\n"
+
+data rc_dotted_source: String = "module v2.test.rc_dotted\n\nimport v2.std.logic { Bool }\n\nfn rc_dotted_fn(p: Bool) -> Bool { v2.test.rc_transitive.rc_transitive_fn(p: p) }\n"
+
+data rc_transitive_source: String = "module v2.test.rc_transitive\n\nimport v2.std.logic { Bool }\n\nfn rc_transitive_fn(p: Bool) -> Bool { p }\n"
+
+data rc_outside_source: String = "module v2.test.rc_outside\n\nimport v2.std.logic { Bool }\n\nfn rc_outside_fn(p: Bool) -> Bool { p }\n"
+
+data rc_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
+
+// A member whose body names a declaration no module declares. The fold must refuse with the
+// resolver's own cause and must not drop the member or widen to the roster.
+data rc_broken_entry_source: String = "module v2.test.rc_broken_entry\n\nimport v2.std.logic { Bool }\n\nfn rc_broken_fn(p: Bool) -> Bool { v2.test.rc_dotted.rc_no_such_fn(p: p) }\n"
+
+fn rc_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+data rc_ingest: SourceRootIngest = [
+  rc_read(source: rc_logic_source, id: ^rc_logic_read, path: "src/v2/test/fixture/reference_closure/logic.dag"),
+  rc_read(source: rc_entry_source, id: ^rc_entry_read, path: "src/v2/test/fixture/reference_closure/entry.dag"),
+  rc_read(source: rc_imported_source, id: ^rc_imported_read, path: "src/v2/test/fixture/reference_closure/imported.dag"),
+  rc_read(source: rc_dotted_source, id: ^rc_dotted_read, path: "src/v2/test/fixture/reference_closure/dotted.dag"),
+  rc_read(source: rc_transitive_source, id: ^rc_transitive_read, path: "src/v2/test/fixture/reference_closure/transitive.dag"),
+  rc_read(source: rc_outside_source, id: ^rc_outside_read, path: "src/v2/test/fixture/reference_closure/outside.dag"),
+  rc_read(source: rc_broken_entry_source, id: ^rc_broken_entry_read, path: "src/v2/test/fixture/reference_closure/broken_entry.dag")
+]
+
+// THE SHARE POINTS ARE THE STAGES NO CLAIM HERE IS ABOUT: the parse-and-normalize of the inline
+// corpus, and the resolution of each member. Both are NULLARY PRODUCERS enrolled in
+// v2.workflow.floor_pure_producer_share, the shape v2.test.claim.namespace_xl0
+// cross_module_reference_resolution already inhabits and for the same measured reason: resolving
+// even a one-fn subject costs more than a new witness may spend, and the first floor run of this
+// file (gunbc#12186, run 35932249293) re-paid the whole ingest in every claim at ~841k eval steps.
+// The real path still runs -- the floor's preparation executes each producer once and refuses
+// loudly if it cannot -- and every claim below executes the closure FOLD itself, which is what each
+// claim is about.
+fn rc_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: rc_ingest, lm: dag_language_model())
+}
+
+fn rc_resolve_subject(subject: String) -> Outcome<Node> {
+  match rc_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      )
+  }
+}
+
+fn rc_resolved_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_entry") }
+
+fn rc_resolved_imported() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_imported") }
+
+fn rc_resolved_dotted() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_dotted") }
+
+fn rc_resolved_transitive() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_transitive") }
+
+fn rc_resolved_logic() -> Outcome<Node> { rc_resolve_subject(subject: "v2.std.logic") }
+
+fn rc_resolved_broken_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_broken_entry") }
+
+fn rc_resolved_of(dotted: String) -> Outcome<Node> {
+  if dotted == "v2.test.rc_entry" { rc_resolved_entry() }
+  else if dotted == "v2.test.rc_imported" { rc_resolved_imported() }
+  else if dotted == "v2.test.rc_dotted" { rc_resolved_dotted() }
+  else if dotted == "v2.test.rc_transitive" { rc_resolved_transitive() }
+  else if dotted == "v2.std.logic" { rc_resolved_logic() }
+  else if dotted == "v2.test.rc_broken_entry" { rc_resolved_broken_entry() }
+  else { rc_resolve_subject(subject: dotted) }
+}
+
+fn rc_import_targets(roots: FreeMonoid<NormalizedTree>, member_module: QualifiedName) -> FreeMonoid<QualifiedName> {
+  fold_list(xs: roots, empty: Empty, cons: fn(acc, tree) {
+    match qualified_name_from_module_node(root: tree.root) {
+      Accepted { value: qn, diagnostics: _ } =>
+        if qn == member_module {
+          fold_list(xs: tree.import_bindings, empty: acc, cons: fn(a, row) { Cons { head: row.target, tail: a } })
+        } else {
+          acc
+        }
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
+fn rc_roster(roots: FreeMonoid<NormalizedTree>) -> FreeMonoid<QualifiedName> {
+  fold_list(xs: roots, empty: Empty, cons: fn(acc, tree) {
+    match qualified_name_from_module_node(root: tree.root) {
+      Accepted { value: qn, diagnostics: _ } => Cons { head: qn, tail: acc }
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
+fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
+  bind_outcome(
+    o: rc_fixture_normalized(),
+    f: fn(roots) {
+      reference_derived_closure(
+        entry: qualified_name_from_dotted_string(dotted: entry),
+        entry_locus: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rc_entry_locus } }, children: []),
+        roster: rc_roster(roots: roots),
+        resolve_member: fn(member_module) {
+          bind_outcome(
+            o: rc_resolved_of(dotted: qualified_name_to_dotted_string(qn: member_module)),
+            f: fn(resolved) {
+              outcome_accepted(value: ReferenceClosureMember {
+                resolved: resolved,
+                import_targets: rc_import_targets(roots: roots, member_module: member_module)
+              })
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn rc_qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
+fn rc_closure_is(entry: String, expected: FreeMonoid<String>) -> Bool {
+  match rc_closure_of(entry: entry) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: reached, diagnostics: _ } =>
+      length(xs: reached) == length(xs: expected)
+        && fold_list(xs: expected, empty: true, cons: fn(ok, name) {
+          ok && contains(xs: reached, item: qualified_name_from_dotted_string(dotted: name), eq: rc_qn_eq)
+        })
+  }
+}
+
+fn rc_closure_contains(entry: String, name: String) -> Bool {
+  match rc_closure_of(entry: entry) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: reached, diagnostics: _ } =>
+      contains(xs: reached, item: qualified_name_from_dotted_string(dotted: name), eq: rc_qn_eq)
+  }
+}
+
+// SET EQUALITY AT MODULE IDENTITY: every expected module is reached and nothing else is, so the
+// count and the memberships together exclude both a missing member and an extra one.
+test fn the_closure_is_exactly_the_modules_the_entry_reaches_holds() -> Bool {
+  rc_closure_is(
+    entry: "v2.test.rc_entry",
+    expected: [
+      "v2.test.rc_entry",
+      "v2.test.rc_imported",
+      "v2.test.rc_dotted",
+      "v2.test.rc_transitive",
+      "v2.std.logic"
+    ]
+  )
+}
+
+// An import no body mentions leaves no reference in the resolved tree; it is followed anyway.
+test fn an_import_no_body_mentions_is_a_member_holds() -> Bool {
+  rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_imported")
+}
+
+// The seed-closure shape the import graph misses: a qualified reference with no import.
+test fn a_qualified_reference_with_no_import_is_a_member_holds() -> Bool {
+  rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_dotted")
+}
+
+test fn a_module_reached_only_through_a_member_is_a_member_holds() -> Bool {
+  rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_transitive")
+}
+
+// THE DISCRIMINATING RED: a fold that answered the roster would pass every row above and fail here.
+test fn a_declared_module_nothing_reaches_is_not_a_member_holds() -> Bool {
+  !rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_outside")
+}
+
+test fn a_member_whose_reference_does_not_resolve_refuses_the_closure_holds() -> Bool {
+  match rc_closure_of(entry: "v2.test.rc_broken_entry") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn an_entry_that_is_not_rostered_refuses_with_its_own_cause_holds() -> Bool {
+  match rc_closure_of(entry: "v2.test.rc_no_such_entry") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^reference_closure_entry_not_rostered
+  }
+}

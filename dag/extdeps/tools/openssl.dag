@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_openssl }
+import extdeps.apt { apt_bin_dir, package_openssl }
 import extdeps.numeric.base16 { base16_decode_lower }
 import v2.std.optional { Absent, Present }
 import std.algebra { trim }
@@ -24,7 +24,7 @@ data openssl_binary_name: NonEmptyStr = "openssl"
 data openssl_cli_tool: CliTool = CliTool {
   name: openssl_binary_name,
   min_version: none,
-  installable_via: [SourceApt { package: package_openssl }],
+  installable_via: [SourceApt { package: package_openssl, bin_dir: apt_bin_dir }],
 }
 
 // `openssl dgst -sha256 -sign KEY -hex` IS RSASSA-PKCS1-v1_5 OVER SHA-256 -- RS256 as RFC 7518

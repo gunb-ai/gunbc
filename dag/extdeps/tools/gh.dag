@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_gh }
+import extdeps.apt { apt_bin_dir, package_gh }
 
 // THE TOOL ROW FOR THE GITHUB CLI, so that the binary every `transport shell` operation in
 // extdeps.github spawns (argv word "gh") is a declared executor prerequisite that
@@ -25,7 +25,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data gh_cli_tool: CliTool = CliTool {
   name: "gh",
   min_version: none,
-  installable_via: [SourceApt { package: package_gh }],
+  installable_via: [SourceApt { package: package_gh, bin_dir: apt_bin_dir }],
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
