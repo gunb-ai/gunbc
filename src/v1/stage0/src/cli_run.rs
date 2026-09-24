@@ -32641,9 +32641,6 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
     names
 }
 
-/// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
-/// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
-/// value field access, not a module-qualified name).
 /// SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER: the kernel type names
 /// (`std_types::kernel_type_set`) and the container carrier spellings
 /// (`std_types::container_type_arity`) are resolved by the type env as primitives and pull no
@@ -32671,6 +32668,9 @@ fn ref_field_chain_head(
     }
 }
 
+/// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
+/// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
+/// value field access, not a module-qualified name).
 fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
     use crate::v1_std_core::ExprData;
     let mut segs: Vec<String> = vec![node.name.clone()];
