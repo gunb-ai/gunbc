@@ -1,0 +1,256 @@
+module v2.test.claim.namespace_xl0.reference_conservation
+
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  RefusalNotAtOrAbove,
+  ReferenceConservationReport,
+  ReferenceConservationSubject,
+  dag_declared_token_classes,
+  reference_conservation_holds,
+  reference_conservation_of_subject,
+  reference_conservation_subject_of_read
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE CONTROLS FOR v2.compiler.reference_conservation.
+//
+// Each drop fixture carries ONE shape lowering is known to lose and names the one atom it loses;
+// the clean control carries the same kinds of atom in positions lowering keeps. The claims assert
+// two things per drop fixture -- the check is RED on it, and the red names the expected atom -- so
+// a check that went red for some other reason (a population bug, an unreadable extent) cannot
+// stand in for the discrimination. The control asserts the check is GREEN with a nonzero
+// population, so a check that found nothing to conserve cannot pass as clean.
+//
+// THE DROP CLAIMS ARE STATED AS TODAY'S MEASUREMENT. When a lowering repair lands, its fixture's
+// drop claim reds; the repair re-states it as a conserved control rather than deleting it (DESIGN
+// section 4b(4): the discriminating evidence stays enrolled after the climb). The `a + b` fixture
+// is the one #12145 repaired; it is now a conserved control.
+
+fn conservation_fixture_read(id_tail: String, source: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: "reference_conservation_fixture_" + id_tail),
+      file_path: "src/v2/test/fixture/reference_conservation/" + id_tail + ".dag"
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: "reference_conservation_cu_" + id_tail),
+    source_root: DagTree
+  }
+}
+
+// THE SHARED PRODUCER IS THE SUBJECT (parse + normalize), NEVER THE VERDICT. Each fixture's
+// `*_subject` is nullary and pure (its source is inline) and is enrolled WARM in
+// v2.workflow.floor_pure_producer_share, so the production phases no claim here is about are paid
+// once; every claim still executes reference_conservation_of_subject, which is what it names.
+fn conservation_subject(id_tail: String, source: String) -> ReferenceConservationSubject {
+  match dag_prepared_grammar() {
+    Accepted { value: prepared, diagnostics: residue } =>
+      reference_conservation_subject_of_read(
+        read: conservation_fixture_read(id_tail: id_tail, source: source),
+        lm: dag_language_model(),
+        prepared: prepared,
+        residue: residue
+      )
+    Rejected { diagnostics: d } =>
+      ReferenceConservationSubject { path: "grammar-unprepared", parsed: Rejected { diagnostics: d }, normalized: Rejected { diagnostics: d } }
+  }
+}
+
+fn conservation_report_of(subject: ReferenceConservationSubject) -> ReferenceConservationReport {
+  reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes())
+}
+
+fn report_drops_identity(report: ReferenceConservationReport, wanted: Symbol) -> Bool {
+  report_drop_count(report: report, wanted: wanted) > 0
+}
+
+fn report_drop_count(report: ReferenceConservationReport, wanted: Symbol) -> Int {
+  fold_list(
+    xs: report.dropped,
+    empty: 0,
+    cons: fn(acc, row) { if row.atom.identity == wanted { acc + 1 } else { acc } }
+  )
+}
+
+// ---- the clean control -------------------------------------------------------------------------
+
+data clean_control_source: String = "module v2.test.reference_conservation_clean\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_body(a: Bool, b: Bool) -> Bool { rc_callee(a) }\n\nfn rc_bare(c: Bool) -> Bool { c }\n\ndata rc_row: Int = 7\n\ntest fn rc_marked_holds() -> Bool { rc_bare(true) }\n"
+
+fn clean_control_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "clean", source: clean_control_source)
+}
+
+fn clean_control_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: clean_control_subject())
+}
+
+test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
+  reference_conservation_holds(report: clean_control_report())
+}
+
+// The three numbers are separate and together account for the whole population: a check that
+// found nothing to conserve, or that summed locus-erased into conserved, cannot pass this.
+test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
+  let r = clean_control_report()
+  r.conserved > 0 && r.locus_erased > 0 && r.conserved + r.locus_erased == r.authored
+}
+
+test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
+  clean_control_report().import_channel > 0
+}
+
+// The `test` marker is consumed into NormalizedTree.test_markers; it is counted there, and the
+// test fn it marks is still found and conserved as an ordinary declaration.
+test fn the_clean_control_routes_the_test_marker_to_its_channel_holds() -> Bool {
+  clean_control_report().test_marker_channel == 1
+}
+
+// ---- drop 1: the second statement of a block ---------------------------------------------------
+
+data block_second_statement_source: String = "module v2.test.reference_conservation_block\n\nfn rc_block() -> Int { 1 \n 2 }\n"
+
+fn block_second_statement_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "block_second_statement", source: block_second_statement_source)
+}
+
+fn block_second_statement_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: block_second_statement_subject())
+}
+
+test fn the_block_second_statement_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: block_second_statement_report(), wanted: ^dag_token_int_literal) == 1
+}
+
+// ---- drop 2: a call argument inside an if-arm --------------------------------------------------
+
+// The argument's spelling is used NOWHERE else in its declaration, so the declaration-scoped pool
+// cannot account for it and the red names exactly it.
+data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(probe: rc_arm_arg) } else { c } }\n"
+
+fn if_arm_call_argument_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "if_arm_call_argument", source: if_arm_call_argument_source)
+}
+
+fn if_arm_call_argument_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: if_arm_call_argument_subject())
+}
+
+test fn the_if_arm_call_argument_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: if_arm_call_argument_report(), wanted: ^rc_arm_arg) == 1
+}
+
+// ---- former drop 3: a later operand of an operator chain (repaired by #12145) ------------------
+
+// MEASURED BOTH WAYS. On main fec339d561 (before #12145) this check reported `rc_rhs` as exactly one
+// DroppedReference. On #12145's head babf511 and on main after it, the operand keeps its occurrence
+// and the row is gone. The fixture stays enrolled as the regression control DESIGN section 4b(4)
+// asks for: if the operator tower ever drops a later operand again, this goes red on that atom.
+data infix_right_operand_source: String = "module v2.test.reference_conservation_infix\n\nimport v2.std.logic { Bool }\n\ndata rc_lhs: Int = 1\n\ndata rc_rhs: Int = 2\n\nfn rc_compare() -> Bool { rc_lhs == rc_rhs }\n"
+
+fn infix_right_operand_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "infix_right_operand", source: infix_right_operand_source)
+}
+
+fn infix_right_operand_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: infix_right_operand_subject())
+}
+
+test fn the_infix_right_operand_is_conserved_holds() -> Bool {
+  let r = infix_right_operand_report()
+  reference_conservation_holds(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
+}
+
+// ---- a measured drop outside the brief: the named-argument label ------------------------------
+
+// Found by this check, not assumed: a call lowers its arguments positionally, so the LABEL of a
+// named argument (`probe:` below) reaches no node and no edge of the normalized tree. The label
+// names the callee's parameter, so it is a reference the resolver can no longer check. Stated as
+// today's measurement; it reds when lowering carries the label.
+data named_argument_label_source: String = "module v2.test.reference_conservation_label\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
+
+fn named_argument_label_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "named_argument_label", source: named_argument_label_source)
+}
+
+fn named_argument_label_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: named_argument_label_subject())
+}
+
+test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
+  let r = named_argument_label_report()
+  report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
+}
+
+// ---- a module-wide refusal: a list-literal call argument (main after #12145) -------------------
+
+// Measured on main 1b2f64fd49: a call argument whose value is a list literal (or a call) is not
+// read by v2.compiler.body_lowering_fold body_lower_operand_ref_optional, so
+// body_lower_call_arg_value refuses with body_lowering_reason_call_argument_unread and the WHOLE
+// module fails normalize. The refusal is located at the argument, so the atoms under it are
+// `refused`; every other atom of the module is lost with no refusal at or above it, and is a
+// RefusalNotAtOrAbove row. Stated as today's measurement: when the argument reader learns list
+// literals and calls, this reds and is restated as a conserved control.
+data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\nfn rc_list_caller() -> Int { rc_list_callee(xs: [rc_elsewhere]) }\n"
+
+fn list_literal_argument_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "list_literal_argument", source: list_literal_argument_source)
+}
+
+fn list_literal_argument_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: list_literal_argument_subject())
+}
+
+fn report_every_drop_is_an_unlocated_refusal(report: ReferenceConservationReport) -> Bool {
+  fold_list(
+    xs: report.dropped,
+    empty: true,
+    cons: fn(acc, row) {
+      acc && match row.cause {
+        RefusalNotAtOrAbove => true
+        _ => false
+      }
+    }
+  )
+}
+
+test fn a_list_literal_call_argument_refuses_its_whole_module_holds() -> Bool {
+  let r = list_literal_argument_report()
+  r.refused > 0 && length(xs: r.dropped) > 0 && report_every_drop_is_an_unlocated_refusal(report: r)
+}
+
+// ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
+
+// `rc_rep` is spelled three times in one declaration: as the parameter binder (rebuilt into an
+// edge label, so LocusErased against the pool's one label), as the first block statement (its
+// occurrence survives), and as the second block statement (dropped). The pool holds one copy and
+// the binder consumes it, so exactly ONE DroppedReference remains -- neither zero (a pool that
+// failed to consume) nor two (a pool that was never read).
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_rep \n rc_rep }\n"
+
+fn repeated_spelling_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)
+}
+
+fn repeated_spelling_report() -> ReferenceConservationReport {
+  conservation_report_of(subject: repeated_spelling_subject())
+}
+
+test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
+  let r = repeated_spelling_report()
+  report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
+}

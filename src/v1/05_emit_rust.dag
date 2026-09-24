@@ -4688,6 +4688,23 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
 // UNREFUTED rather than proven: the two-arm measurement below moved 20 use-lines and every one is
 // explained by the GATE, so nothing in it exhibits a producer-side change -- but nothing in it
 // positively rules one out either.
+// THE EMITTED-TEXT ATTESTATION READS CODE, NOT STRING CONTENTS. A candidate use-line is admitted
+// only when its name is spelled in the module's own emitted text, and that gate exists to reject a
+// misproposed candidate -- but a name inside a string literal is prose the program carries as data,
+// not a path the emitted code takes. Measured: std.content_hash's grounding note mentions
+// `v2.std.node.Hash`, so a proposed `Hash` passed the gate and the module emitted
+// `pub use crate::v2_std_node::{Hash};`, an import nothing uses and a reverse edge the crate
+// partition refuses (v2.std.node imports std.content_hash). Escaped backslashes and quotes are
+// removed first, so the quote characters left delimit literals; the odd segments are their bodies.
+fn rust_code_outside_string_literals(s: String) -> String {
+  replace(replace(s, "\\\\", " "), "\\\"", " ")
+    |> split(delimiter: "\"")
+    |> enumerate
+    |> filter(pair => pair.first % 2 == 0)
+    |> map(pair => pair.second)
+    |> join(separator: " ")
+}
+
 fn rust_identifier_tokens(s: String) -> List<String> {
   let spaced = replace(replace(replace(replace(replace(replace(replace(replace(replace(s,
     "<", " "), ">", " "), ",", " "), "(", " "), ")", " "), "[", " "), "]", " "), "&", " "), ":", " ")
@@ -5232,7 +5249,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
-    let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
+    let emitted_source_tokens = rust_identifier_tokens(s: rust_code_outside_string_literals(s: emitted_source))
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
     let origin_candidates = repair_input_origin_candidates(
