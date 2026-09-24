@@ -1,7 +1,7 @@
 module test.claim.approval_broker_serve_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String, NonEmptyStr, HttpMethod, GET, POST, PUT }
+import std.types { Bool, String, NonEmptyStr }
 import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
@@ -40,6 +40,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_submit_url,
   approval_broker_status_url,
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

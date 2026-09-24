@@ -99,6 +99,9 @@ pub mod extdeps_uri;
 #[path = "../../stage0/src/extdeps_external_authority.rs"]
 pub mod extdeps_external_authority;
 #[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_ietf_http_semantics.rs"]
+pub mod extdeps_ietf_http_semantics;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_process_termination.rs"]
 pub mod std_process_termination;
 #[rustfmt::skip]

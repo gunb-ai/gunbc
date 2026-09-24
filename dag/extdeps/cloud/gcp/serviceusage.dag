@@ -5,8 +5,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import std.types { List, Secret, String }
-import v2.std.network { POST, GET }
 import extdeps.transports.rest { RestOutcome }
+import extdeps.ietf.http_semantics { POST, GET }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

@@ -3,8 +3,8 @@ module extdeps.ntfy.ntfy
 import std.types { NonEmptyStr, String, Int, Secret, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.network { POST }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.ietf.http_semantics { POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
