@@ -599,11 +599,18 @@ test fn witness_dispatch_button_carries_accent() -> Bool {
   }
 }
 
-test fn witness_page_containers_centered() -> Bool {
+// FULL-WIDTH PAGE (operator ruling 2026-09-24): the page takes the full viewport like the
+// issue-tracker model — the centered measure column is retired. Containers keep their side
+// padding; no max-width cap or auto-centering survives on .roadmap / .header-inner /
+// .daily-workspace.
+test fn witness_page_containers_full_width() -> Bool {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
+      string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24) }")
+        && !string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width")
+        && !string_contains(s: h, pattern: ".header-inner { max-width")
+        && !string_contains(s: h, pattern: ".daily-workspace { padding: var(--space-16) var(--space-24); max-width")
   }
 }
 
@@ -834,7 +841,7 @@ test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
     && string_contains(s: roadmap_css(), pattern: ".dispatch-btn.action-focal { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
     && string_contains(s: roadmap_css(), pattern: "li.node:focus-visible { outline: var(--border-2) solid var(--focus) }")
     && !string_contains(s: roadmap_css(), pattern: "action-live")
-    && string_contains(s: roadmap_css(), pattern: ".header-inner { max-width: var(--measure); margin-left: auto; margin-right: auto; display: flex; align-items: center; gap: var(--space-12) }")
+    && string_contains(s: roadmap_css(), pattern: ".header-inner { display: flex; align-items: center; gap: var(--space-12) }")
 }
 
 // ── Project hierarchy, rendering half (operator request 2026-09-20) ─────────────────────────────
@@ -1873,7 +1880,7 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
         && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 2
         && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
         && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", issue_results_row_tracks()], ""))
-        && string_contains(s: css, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
+        && string_contains(s: css, pattern: ".roadmap { padding: var(--space-16) var(--space-24) }")
   }
 }
 

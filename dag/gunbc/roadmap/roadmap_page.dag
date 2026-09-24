@@ -209,7 +209,7 @@ fn theme_toggle_control() -> Fragment {
 // venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name
 // lives in the wordmark, so the two never restate each other.
 
-data header_composition_frame_note: String = "HEADER AND CONTENT SHARE ONE COMPOSITION FRAME (A2 hierarchy closeout, operator gap ruling 2026-08-02: the wide-screen fold showed two alignment systems — the header hugging the left viewport edge while the content column centered at the page measure, leaving a dead gutter that read as accident). The header element keeps its full-width surface and border — it is a chassis edge — but its CONTENT now lives in .header-inner, the same measure_page/auto-margin frame the .roadmap and .daily-workspace columns use, so the wordmark, page name, and controls sit flush over the content column at every width. One frame, stated once: the inner wrapper consumes the identical tokens, so a measure change moves header and content together."
+data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH (operator ruling 2026-09-24, superseding the 2026-08-02 centered-measure frame): the page takes the full viewport like the issue-tracker model — the measure_page cap and auto-centering are retired from .header-inner, .roadmap, and .daily-workspace. The header element keeps its full-width surface and border — it is a chassis edge — and its content in .header-inner now flows edge to edge with the same side padding the content containers carry. measure_page survives only on the sandbox audition surfaces, which are deliberately narrow."
 
 fn roadmap_header(page: String) -> Fragment {
   el("header", [

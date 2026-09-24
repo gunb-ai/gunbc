@@ -346,7 +346,15 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "da96935903bfe1f1"
+data roadmap_css_lift_parity_digest: String = "94a319f52570ab24"
+// Re-pinned 2026-09-24 for the full-width ruling (operator: the page takes the full viewport like
+// the issue-tracker model — the centered measure column read as a ~50% lock). The MaxWidth/
+// auto-margin decls are retired from .header-inner, .roadmap, and .daily-workspace; side padding
+// stays. Behavioral receipts: witness_page_containers_full_width (re-lawed from
+// witness_page_containers_centered), witness_prominence_and_frame_rules_present_in_css, and
+// witness_issue_table_long_cells_clip_within_their_tracks (the bounding pin moves from the measure
+// cap to the padding-only container). Derived by execution (roadmap_css_derived_digest on this
+// tree); this digest only pins bytes.
 // Re-pinned 2026-09-24 for the shared-grid fix (owner column-alignment complaint): the issue
 // table becomes ONE grid container — .issue-table carries the roster-derived
 // grid-template-columns (extdeps.google.issue_tracker issue_results_row_tracks) alone; the header

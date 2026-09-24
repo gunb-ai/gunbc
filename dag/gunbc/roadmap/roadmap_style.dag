@@ -15,7 +15,7 @@ import gunbc.design.scale {
   space_0, space_1, space_2, space_3, space_4, space_6, space_8, space_12, space_16, space_20, space_24,
   text_10, text_11, text_12, text_13, text_14, text_15, text_18,
   font_sans, font_mono,
-  radius_3, radius_999, border_1, border_2, measure_page, height_control, width_status,
+  radius_3, radius_999, border_1, border_2, height_control, width_status,
 }
 import gunbc.design.theme {
   Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
@@ -639,9 +639,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Background, r: SurfaceRole),
     ] },
     StaticRule { selector: ClassSelector { name: "header-inner" }, decls: [
-      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
-      decl(prop: MarginLeft, value: "auto"),
-      decl(prop: MarginRight, value: "auto"),
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_12)),
@@ -674,9 +671,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "roadmap" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
-      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
-      decl(prop: MarginLeft, value: "auto"),
-      decl(prop: MarginRight, value: "auto"),
     ] },
     StaticRule { selector: RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
       decl(prop: MarginTop, value: scale_var(t: space_20)),
@@ -900,9 +894,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "daily-workspace" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
-      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
-      decl(prop: MarginLeft, value: "auto"),
-      decl(prop: MarginRight, value: "auto"),
     ] },
     StaticRule { selector: ClassSelector { name: "roadmap-frontier" }, decls: [
       decl(prop: Display, value: "flex"),
