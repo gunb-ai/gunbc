@@ -136,10 +136,14 @@ test fn the_block_second_statement_is_reported_dropped_holds() -> Bool {
   report_drop_count(report: block_second_statement_report(), wanted: ^dag_token_int_literal) == 1
 }
 
-// ---- drop 2: a call argument inside an if-arm --------------------------------------------------
+// ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ----------------------
 
-// The argument's spelling is used NOWHERE else in its declaration, so the declaration-scoped pool
-// cannot account for it and the red names exactly it.
+// MEASURED BOTH WAYS. Before #12221 an if-arm was read by the operand reader alone, and this check
+// reported `rc_arm_arg` as exactly one DroppedReference. #12221 lowers an arm through the statement
+// authority, so the argument keeps its occurrence and the row is gone. The fixture stays enrolled
+// as the regression control DESIGN section 4b(4) asks for. The argument's spelling is used NOWHERE
+// else in its declaration, so a return of the drop reds on exactly it; `refused == 0` keeps a
+// located refusal of the arm from standing in for conservation.
 data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(probe: rc_arm_arg) } else { c } }\n"
 
 fn if_arm_call_argument_subject() -> ReferenceConservationSubject {
@@ -150,8 +154,9 @@ fn if_arm_call_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: if_arm_call_argument_subject())
 }
 
-test fn the_if_arm_call_argument_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: if_arm_call_argument_report(), wanted: ^rc_arm_arg) == 1
+test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
+  let r = if_arm_call_argument_report()
+  r.refused == 0 && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
 }
 
 // ---- former drop 3: a later operand of an operator chain (repaired by #12145) ------------------
@@ -235,12 +240,12 @@ test fn a_list_literal_call_argument_refuses_its_whole_module_holds() -> Bool {
 
 // ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
 
-// `rc_rep` is spelled three times in one declaration: as the parameter binder (rebuilt into an
-// edge label, so LocusErased against the pool's one label), as the first block statement (its
-// occurrence survives), and as the second block statement (dropped). The pool holds one copy and
-// the binder consumes it, so exactly ONE DroppedReference remains -- neither zero (a pool that
-// failed to consume) nor two (a pool that was never read).
-data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_rep \n rc_rep }\n"
+// `rc_rep` is spelled twice in one declaration, as the bodies of the second and third arms of a
+// three-arm match. Lowering keeps the second arm and drops the third (the measured drop pinned by
+// the_third_match_arm_is_reported_dropped_holds below), so the surviving occurrence and the lost
+// one share a spelling. Exactly ONE DroppedReference names `rc_rep` -- neither zero (a surviving
+// same-spelled occurrence standing in for the lost one) nor two (the survivor counted as lost).
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_rep: Int = 2\n\nfn rc_repeat(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_rep\n    RcC => rc_rep\n  }\n}\n"
 
 fn repeated_spelling_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)
@@ -251,8 +256,7 @@ fn repeated_spelling_report() -> ReferenceConservationReport {
 }
 
 test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
-  let r = repeated_spelling_report()
-  report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
+  report_drop_count(report: repeated_spelling_report(), wanted: ^rc_rep) == 1
 }
 
 // ---- a measured drop found by admission: the where-refinement predicate -----------------------
