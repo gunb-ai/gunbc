@@ -725,11 +725,22 @@ fn required_gate_prefixes() -> List<String> {
 // DeclinedOutsideRequiredGate and a broken line would stay green. ADMITTED BY OPERATOR DEFAULT-APPROVAL on a 15-minute timeout, 2026-09-23 (escalation msg_731e354b, relayed by stern-carp-604), NOT a deliberated ruling -- the same standing as the allowance ruling itself, and to be weighed as a default. The module declares
 // SubstrateInputsOnly, and its only preparation growth is extdeps.languages.yaml, which the
 // policy module itself now imports.
+//
+// THE FOURTH ROW IS THE STAGE0 EMITTED-EDGE ADMISSION'S WITNESSES (gunbc#12171, parent ruling msg_7d7e1845 from loyal-swift-608). The
+// admission itself runs over the real seed emission inside required-regen, which is the
+// generated-artifact phase, off this gate under `gunbc.rung_drop`
+// `witness_floor_off_the_required_gate`. What this row buys is narrower and stated as such: the
+// admission's discriminating REDs and controls execute over supplied edges and the committed
+// partition rows on every required run, so a regression in the ADMISSION is caught at merge. The
+// admission over the REAL emission still runs only at author regen, and rides that drop. The
+// module declares SubstrateInputsOnly and adds no preparation beyond gunbc.rust_emitted_edge and
+// the stage0 partition rows.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
     "test.claim.runner_capacity_realize_witness",
     "test.claim.corpus_census_allowance_witness_test",
+    "test.claim.stage0_emitted_edge_admission_witness",
   ]
 }
 

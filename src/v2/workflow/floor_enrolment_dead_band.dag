@@ -1,0 +1,45 @@
+module v2.workflow.floor_enrolment_dead_band
+
+import v2.std.collection { List }
+import std.types { NonEmptyStr }
+
+// THE ENROLMENT GATE'S DEAD BAND, AND THE EXACT IDENTITIES OBSERVED IN IT (gunbc#11989, side-chat
+// ruling on PR comment 5795659115, after the precedent `gunbc.rung_drop`
+// `long_home_enrolment_margin_observed_only`).
+//
+// v2.workflow.floor_enrolment_margin gives a newly enrolled identity whose honest CPU lies in
+// (margin, per-subject line] no standing that holds: without a declaration it is over the margin and
+// blocks; under a typed cost-debt admission it is at or under the line, so the admission is stale and
+// blocks. The general class is rostered as `gunbc.recurring_failure_mode`
+// `enrolment_dead_band_has_no_representable_standing`.
+//
+// THIS AUTHORITY IS SEPARATE FROM floor_cost_debt_typed_admissions on purpose: a typed cost-debt
+// admission asserts a cost ABOVE the line, this one asserts a cost INSIDE the band, and one list
+// answering both would be a meaning fork. It is exact-identity and SELF-STALING: the margin gate
+// honours a row only while THIS run's exact observed CPU lies strictly above the margin and at or
+// under the line (`enrolment_declared_measured_standing`), so a row whose claim became cheap, or
+// became expensive enough for ordinary cost debt, blocks and names its own deletion. It covers the
+// enrolment-margin standing and nothing else: a semantic false, a runtime error, a route gap, a wall
+// interruption, a missing terminal and an eval-step overrun are other gates' and stay armed.
+// The declared drop is `gunbc.rung_drop` `app_attest_verifier_enrolment_dead_band_observed_only`.
+type EnrolmentDeadBandObservation {
+  identity: String
+  reason: NonEmptyStr
+}
+
+fn app_attest_verifier_enrolment_dead_band_observed_only() -> List<EnrolmentDeadBandObservation> {
+  [
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.app_attest_verifier_witness_test.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id",
+    reason: "the key-id structural step paired over its own subject (the real key's id admits, another key id refuses): its cost is one interpreted SHA-256 of the credential certificate's 65-octet key, measured inside the enrolment gate's dead band by the required floor's required-ci-measurement-receipt on gunbc#11989; owner: the App Attest device-attestation lane",
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.app_attest_verifier_witness_test.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions",
+    reason: "the assertion path's only real-bytes claim, paired over its own subject (Apple's assertion passes the RP ID step, a wrong App ID refuses it), whose cost is that real path on a seed interpreter that reifies no machine width, measured inside the enrolment gate's dead band by the required floor's required-ci-measurement-receipt on gunbc#11989; owner: the App Attest device-attestation lane",
+  },
+  ]
+}
+
+fn enrolment_dead_band_identities() -> List<String> {
+  app_attest_verifier_enrolment_dead_band_observed_only() |> map(o => o.identity)
+}

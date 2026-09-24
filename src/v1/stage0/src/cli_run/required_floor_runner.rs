@@ -1567,6 +1567,19 @@ pub(crate) enum EnrolmentMarginStanding {
         observed_cpu_ms: u64,
         line_ms: u64,
     },
+    /// Mirror of `EnrolmentDeadBandStale`: a dead-band row (v2.workflow.floor_enrolment_dead_band)
+    /// whose live reading is at or under the margin. The claim no longer needs the row; it blocks
+    /// so the row deletes.
+    DeadBandStale {
+        observed_cpu_ms: u64,
+        budget_ms: u64,
+    },
+    /// Mirror of `EnrolmentDeadBandWrongGround`: a dead-band row whose live reading is above the
+    /// per-subject line, where ordinary typed cost debt is the authority. It blocks.
+    DeadBandWrongGround {
+        observed_cpu_ms: u64,
+        line_ms: u64,
+    },
 }
 
 /// Host rendering of `EnrolmentCostReading` beside a declared-expensiveness standing.
@@ -1595,6 +1608,7 @@ pub(crate) enum EnrolmentDeclaredCostReading {
 pub(crate) enum EnrolmentExpensivenessGround {
     Roster,
     LongHome,
+    DeadBand,
 }
 
 impl EnrolmentMarginStanding {
@@ -1609,6 +1623,8 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => false,
             EnrolmentMarginStanding::RosterGroundStale { .. } => true,
+            EnrolmentMarginStanding::DeadBandStale { .. } => true,
+            EnrolmentMarginStanding::DeadBandWrongGround { .. } => true,
         }
     }
 
@@ -1622,7 +1638,9 @@ impl EnrolmentMarginStanding {
             | EnrolmentMarginStanding::CeilingCensored { .. }
             | EnrolmentMarginStanding::BoundWithoutCeiling { .. }
             | EnrolmentMarginStanding::NotMeasured { .. }
-            | EnrolmentMarginStanding::RosterGroundStale { .. } => EnrolmentPairingHole::None,
+            | EnrolmentMarginStanding::RosterGroundStale { .. }
+            | EnrolmentMarginStanding::DeadBandStale { .. }
+            | EnrolmentMarginStanding::DeadBandWrongGround { .. } => EnrolmentPairingHole::None,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 EnrolmentPairingHole::OutsideExecution
             }
@@ -1645,6 +1663,10 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "",
             EnrolmentMarginStanding::RosterGroundStale { .. } => "enrolment_roster_ground_stale",
+            EnrolmentMarginStanding::DeadBandStale { .. } => "enrolment_dead_band_stale",
+            EnrolmentMarginStanding::DeadBandWrongGround { .. } => {
+                "enrolment_dead_band_wrong_ground"
+            }
         }
     }
 
@@ -1664,6 +1686,8 @@ impl EnrolmentMarginStanding {
             }
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "expensiveness_declared",
             EnrolmentMarginStanding::RosterGroundStale { .. } => "roster_ground_stale",
+            EnrolmentMarginStanding::DeadBandStale { .. } => "dead_band_stale",
+            EnrolmentMarginStanding::DeadBandWrongGround { .. } => "dead_band_wrong_ground",
         }
     }
 
@@ -1703,6 +1727,7 @@ impl EnrolmentMarginStanding {
                 let ground_name = match ground {
                     EnrolmentExpensivenessGround::Roster => "roster",
                     EnrolmentExpensivenessGround::LongHome => "long_home",
+                    EnrolmentExpensivenessGround::DeadBand => "dead_band",
                 };
                 // The Roster ground IS decided here, from the live reading; LongHome is reported
                 // and not decided (the declared drop long_home_enrolment_margin_observed_only).
@@ -1711,6 +1736,9 @@ impl EnrolmentMarginStanding {
                         "admitted: live reading over the per-subject line"
                     }
                     EnrolmentExpensivenessGround::LongHome => "reported; does not decide this gate",
+                    EnrolmentExpensivenessGround::DeadBand => {
+                        "observed: live reading inside the dead band (margin, line]"
+                    }
                 };
                 match reading {
                     EnrolmentDeclaredCostReading::Observed { observed_cpu_ms } => format!(
@@ -1737,6 +1765,20 @@ impl EnrolmentMarginStanding {
                 "roster ground stale: observed_cpu_ms={observed_cpu_ms} is not above the \
                  per-subject line line_ms={line_ms}; the typed cost-debt row for this identity \
                  must delete"
+            ),
+            EnrolmentMarginStanding::DeadBandStale {
+                observed_cpu_ms,
+                budget_ms,
+            } => format!(
+                "dead band stale: observed_cpu_ms={observed_cpu_ms} is not above the enrolment \
+                 margin budget_ms={budget_ms}; the dead-band row for this identity must delete"
+            ),
+            EnrolmentMarginStanding::DeadBandWrongGround {
+                observed_cpu_ms,
+                line_ms,
+            } => format!(
+                "dead band wrong ground: observed_cpu_ms={observed_cpu_ms} is above the \
+                 per-subject line line_ms={line_ms}; reclassify through typed cost debt if justified"
             ),
         }
     }
@@ -1835,6 +1877,41 @@ pub(crate) fn floor_enrolment_typed_cost_debt_identities(
     Ok(out)
 }
 
+/// `v2.workflow.floor_enrolment_margin` `enrolment_dead_band_observed_identities`, decoded
+/// from the frame the same way. Its own authority (`v2.workflow.floor_enrolment_dead_band`),
+/// never a typed cost-debt row.
+pub(crate) fn floor_enrolment_dead_band_observed_identities(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<HashSet<String>, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    const QUALIFIED: &str =
+        "v2.workflow.floor_enrolment_margin.enrolment_dead_band_observed_identities";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let value = v1_interpreter::run_in_context(&ctx, QUALIFIED, false)
+        .map_err(|e| format!("{QUALIFIED}: {e}"))?;
+    let items = floor_decode_list(&ctx, Some(&value)).map_err(|e| format!("{QUALIFIED}: {e}"))?;
+    let mut out = HashSet::new();
+    for item in items {
+        match item {
+            v1_interpreter::Value::Str(s) => {
+                if !out.insert(s.to_string()) {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=EnrolmentDeadBandDuplicate identity={s}"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "{QUALIFIED}: expected a qualified name, got {}",
+                    floor_value_shape(Some(other))
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The per-claim cost population indexed by identity, built ONCE for the whole gate.
 ///
 /// THE SCAN THIS REPLACES WAS A QUADRATIC FOLD, and it is fixed here rather than excused by the
@@ -1880,11 +1957,14 @@ pub(crate) fn enrolment_expensiveness_declaration(
     identity: &str,
     typed_admission_holds: bool,
     long_home_holds: bool,
+    dead_band_holds: bool,
 ) -> Option<EnrolmentExpensivenessGround> {
     if typed_admission_holds {
         Some(EnrolmentExpensivenessGround::Roster)
     } else if long_home_holds {
         Some(EnrolmentExpensivenessGround::LongHome)
+    } else if dead_band_holds {
+        Some(EnrolmentExpensivenessGround::DeadBand)
     } else {
         None
     }
@@ -1951,6 +2031,34 @@ pub(crate) fn enrolment_margin_standing_for(
             },
             None => EnrolmentDeclaredCostReading::Absent,
         };
+        // THE DEAD BAND IS SELF-STALING and holds only an EXACT reading in (margin, line]; a bound
+        // or an absence gets the blocking arm an undeclared identity with that reading gets.
+        if ground == EnrolmentExpensivenessGround::DeadBand {
+            match reading {
+                EnrolmentDeclaredCostReading::Observed { observed_cpu_ms } => {
+                    if observed_cpu_ms > per_subject_line_ms {
+                        return EnrolmentMarginStanding::DeadBandWrongGround {
+                            observed_cpu_ms,
+                            line_ms: per_subject_line_ms,
+                        };
+                    }
+                    if observed_cpu_ms <= budget_ms {
+                        return EnrolmentMarginStanding::DeadBandStale {
+                            observed_cpu_ms,
+                            budget_ms,
+                        };
+                    }
+                }
+                EnrolmentDeclaredCostReading::BoundWithoutCeiling { cpu_lower_bound_ms } => {
+                    return EnrolmentMarginStanding::BoundWithoutCeiling { cpu_lower_bound_ms };
+                }
+                EnrolmentDeclaredCostReading::Absent => {
+                    return EnrolmentMarginStanding::NotMeasured {
+                        cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
+                    };
+                }
+            }
+        }
         if ground == EnrolmentExpensivenessGround::Roster {
             match reading {
                 EnrolmentDeclaredCostReading::Observed { observed_cpu_ms }
@@ -10528,11 +10636,13 @@ pub fn run_required_floor(
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
         let typed_admission = floor_enrolment_typed_cost_debt_identities(&prepared)?;
+        let dead_band = floor_enrolment_dead_band_observed_identities(&prepared)?;
         for identity in newly_enrolled {
             let declared_expensiveness = enrolment_expensiveness_declaration(
                 identity,
                 typed_admission.contains(identity),
                 long_home_identities.contains(identity),
+                dead_band.contains(identity),
             );
             let standing = enrolment_margin_standing_for(
                 identity,
@@ -13738,6 +13848,66 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
     }
 
+    /// THE DEAD-BAND GROUND IS SELF-STALING (gunbc#11989; mirror of v2.workflow.floor_enrolment_margin
+    /// EnrolmentExpensivenessDeadBand). It holds only an exact reading strictly above the margin and at
+    /// or under the line (303, 420 and 500 admit); at the margin it is stale and blocks (302), above
+    /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
+    #[test]
+    fn the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line() {
+        let identity = "m.dead_band";
+        let planned = RequiredFloorDisposition::Planned;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let occurrence_at = |cpu: u64| crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "passed".to_string(),
+            reading: crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms: cpu,
+                observed_wall_ms: cpu,
+            },
+            eval_steps: 1,
+            verdict_reached: true,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let dead_band = Some(EnrolmentExpensivenessGround::DeadBand);
+        let standing_at = |cpu: u64| {
+            let row = occurrence_at(cpu);
+            let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+                HashMap::new();
+            cost.insert(identity, &row);
+            enrolment_margin_standing_for(identity, &cost, &dispositions, 302, 500, dead_band)
+        };
+        for inside in [303, 420, 500] {
+            let s = standing_at(inside);
+            assert_eq!(s.name(), "expensiveness_declared", "cpu={inside}");
+            assert!(!s.blocks(), "cpu={inside}");
+        }
+        let stale = standing_at(302);
+        assert_eq!(stale.name(), "dead_band_stale");
+        assert_eq!(stale.cause(), "enrolment_dead_band_stale");
+        assert!(stale.blocks());
+        let wrong = standing_at(501);
+        assert_eq!(wrong.name(), "dead_band_wrong_ground");
+        assert_eq!(wrong.cause(), "enrolment_dead_band_wrong_ground");
+        assert!(wrong.blocks());
+        let absent = enrolment_margin_standing_for(
+            identity,
+            &HashMap::new(),
+            &dispositions,
+            302,
+            500,
+            dead_band,
+        );
+        assert_eq!(absent.name(), "not_measured");
+        assert!(absent.blocks());
+        assert_eq!(
+            enrolment_expensiveness_declaration(identity, false, false, true),
+            dead_band
+        );
+    }
+
     /// THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row
     /// carries no reading, so it admits only on THIS run's reading strictly above the per-subject
     /// line: over the line admits, at or under it is stale and blocks, and no cost row blocks as
@@ -13945,17 +14115,17 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     fn a_string_roster_append_does_not_declare_enrolment_expensiveness() {
         let identity = "fixture.tripwire_325";
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, false, false),
+            enrolment_expensiveness_declaration(identity, false, false, false),
             None,
             "string roster alone never declares"
         );
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, false, true),
+            enrolment_expensiveness_declaration(identity, false, true, false),
             Some(EnrolmentExpensivenessGround::LongHome),
             "long home declares even if a string-roster line also exists"
         );
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, true, false),
+            enrolment_expensiveness_declaration(identity, true, false, false),
             Some(EnrolmentExpensivenessGround::Roster)
         );
     }
