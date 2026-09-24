@@ -579,3 +579,62 @@ fn browse_component_tree_from(components: List<Component>, depth: Int) -> List<C
   }
 }
 
+// THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law: the column set, the row
+// anatomy, and the grid template are DECLARED here; every surface derives from these rows, and
+// nothing is hand-styled downstream that this model states). SOURCE, stated honestly: transcribed
+// VERBATIM from the owner's saved-results-page capture, /home/briansrls/chromium-565764076/ "test
+// - Chromium.html" (50 live rows; verified 2026-09-24 — docs/plans/buganizer-visual-contract.md,
+// §Issue-row anatomy): the header row's cells in order read P · TYPE · TITLE · ASSIGNEE · STATUS ·
+// D VIEWS · ID · LAST MODIFIED. The capture's column picker (bv2-column-picker-container) shows
+// the product's set is user-adjustable; THIS row pins the capture's rendered roster. The row
+// anatomy rides the same declaration: a row carries exactly one cell per column, in this order,
+// then the workflow's trailing ACTIONS slot (issue_results_row_tracks below).
+type IssueResultsColumnKind
+  = IssueColumnPriority
+  | IssueColumnType
+  | IssueColumnTitle
+  | IssueColumnAssignee
+  | IssueColumnStatus
+  | IssueColumnDViews
+  | IssueColumnId
+  | IssueColumnLastModified
+
+// ONE DECLARATION PER COLUMN carries the two facts every surface needs, stated once, here: the
+// header's wire spelling and the column's grid track.
+type IssueResultsColumn {
+  kind: IssueResultsColumnKind
+  header: NonEmptyStr
+  track: NonEmptyStr
+}
+
+data issue_results_columns: List<IssueResultsColumn> = [
+  IssueResultsColumn { kind: IssueColumnPriority, header: "P", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnType, header: "TYPE", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnTitle, header: "TITLE", track: "minmax(0, 1fr)" },
+  IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnStatus, header: "STATUS", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnId, header: "ID", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnLastModified, header: "LAST MODIFIED", track: "max-content" },
+]
+
+fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
+  match kind {
+    IssueColumnPriority => "priority"
+    IssueColumnType => "type"
+    IssueColumnTitle => "title"
+    IssueColumnAssignee => "assignee"
+    IssueColumnStatus => "status"
+    IssueColumnDViews => "d-views"
+    IssueColumnId => "id"
+    IssueColumnLastModified => "last-modified"
+  }
+}
+
+// THE ROW GRID TEMPLATE derives from the roster: the header and every row share ONE template by
+// construction — a row whose cells don't share the template is a derivation defect, never a
+// styling choice (owner complaint 2026-09-24, the column-alignment fix). The actions slot is the
+// workflow's furniture on the row (the project count and the dispatch actuator), the last track.
+fn issue_results_row_tracks() -> String {
+  join(concat(map(issue_results_columns, c => c.track as String), ["max-content"]), " ")
+}

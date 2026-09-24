@@ -92,6 +92,10 @@ import extdeps.google.issue_tracker {
   IssueActionKind, IssueActionAssign, IssueActionStartWork, issue_action_wire,
   IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonText, issue_button_idiom_wire,
   IssueActionAvailability, issue_action_availability_wire,
+  IssueResultsColumn, IssueResultsColumnKind,
+  IssueColumnPriority, IssueColumnType, IssueColumnTitle, IssueColumnAssignee,
+  IssueColumnStatus, IssueColumnDViews, IssueColumnId, IssueColumnLastModified,
+  issue_results_columns, issue_results_column_kind_wire,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
@@ -1424,21 +1428,71 @@ fn issue_controls_markup() -> Fragment {
       ])))
 }
 
-// THE DENSE ISSUE LINE (Buganizer visual contract, row anatomy: ID · Component · Title · Status,
-// one dense line). The table's row is NOT the taskbar — the taskbar is the tree's component; the
-// table reads the SAME decided bar view (one authority) onto the contract's dense line. No id
-// anchor on these rows: the forest's rows own the #node-* ids, and the detail-page link arrives
-// with its route. The row's li keeps li.node so selection and the band chips apply uniformly.
+// THE DENSE ISSUE LINE derives its anatomy FROM the extdeps model (owner ruling 2026-09-24, the
+// derivation law): one cell per declared results column, in roster order — P · TYPE · TITLE ·
+// ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED — then the workflow's trailing actions region
+// (the last grid track). The header and every row share the model's ONE grid template, so a row
+// whose cells don't share the template is a derivation defect, never a styling choice (owner
+// column-alignment fix 2026-09-24). Cells the domain has no fact for render EMPTY and keep their
+// track — emptiness never re-orders a row. The cells: TITLE reads the headline; ASSIGNEE reads
+// the standing's holder (who holds the work now — the attempt identity lives on the Work tab);
+// STATUS reads the decided bar signal; the ID cell links the issue's detail route (the capture's
+// ID-links-to-detail). The table's row is NOT the taskbar — the taskbar is the tree's component;
+// the table reads the SAME decided bar view (one authority) onto the contract's dense line. No id
+// anchor on the row's li: the forest's rows own the #node-* ids. The row's li keeps li.node so
+// selection and the band chips apply uniformly.
 // THE TABLE ROW SHOWS ONLY THE LATEST ATTEMPT'S SUMMARY, AND ONLY WHEN IT IS RECENT OR LIVE
 // (owner defect fix 2026-09-23): a stale attempt — launched against a revision that is no longer
 // the deployed head — is evidence for a superseded question, and its summary does not belong on
 // the dense table line; the row falls back to its scheduling voice (ready / blocked on / done),
 // and the attempt's full record stays reachable on the row's Work tab. The taskbar grammar in the
 // forest keeps the stale dim law — that is the bar's own voice, not the table's.
+fn issue_line_cell_class(kind: IssueResultsColumnKind) -> String {
+  join(["issue-cell issue-cell-", issue_results_column_kind_wire(kind: kind)], "")
+}
+
+fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> List<Fragment> {
+  match col.kind {
+    IssueColumnPriority => []
+    IssueColumnType => []
+    IssueColumnTitle => inline_md_nodes(text: view.headline)
+    IssueColumnAssignee =>
+      let assignee = issue_assignee_value(view: view, attempts: [])
+      if assignee == "" { [] } else { [ txt(assignee) ] }
+    IssueColumnStatus =>
+      if bar.signal == "" { [] } else {
+        [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
+      }
+    IssueColumnDViews => []
+    IssueColumnId =>
+      [ el_attrs("a", [
+          attr(name: "class", value: "issue-id-link" ),
+          attr(name: "href", value: join(["/issue/", view.node_id], "") ),
+        ], [ txt(view.node_id) ]) ]
+    IssueColumnLastModified => []
+  }
+}
+
+// THE ROW'S ACTIONS REGION: the workflow's trailing slot — the project's k-of-n count when the row
+// carries its tree, the latest attempt's summary count otherwise, and the row's dispatch actuator
+// (Start Work — execution; the durable Assign lives on the detail page's action bar, never here).
+fn issue_row_actions_nodes(row: IssueTableRow, view: WorkRowView, bar: TaskBarView) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: "issue-row-actions" ),
+    attr(name: "data-col", value: "actions" ),
+  ], concat(
+    match row.project {
+      Absent =>
+        if bar.count == "" { [] } else { [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ] }
+      Present { value: p } =>
+        [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
+    },
+    workflow_issue_action_nodes(view: view)))
+}
+
 fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Fragment {
   let view = row.view
   let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
-  let owner = issue_owner_value(view: view)
   Element {
     tag: "li",
     attributes: concat(
@@ -1449,29 +1503,34 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Frag
       [ attr(name: "data-search", value: issue_search_value(view: view) ),
         attr(name: "data-summary-only", value: "" ) ]),
     children: [ el_class("div", "issue-line", concat(
-      [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
-      concat(
-        if owner == "" { [] } else { [ el_class("span", "issue-component", [ txt(owner) ]) ] },
-        concat(
-          [ el_class("span", "issue-title", inline_md_nodes(text: view.headline)) ],
-          concat(
-            if bar.signal == "" { [] } else {
-              [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
-            },
-            concat(
-              match row.project {
-                Absent =>
-                  if bar.count == "" { [] } else { [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ] }
-                Present { value: p } =>
-                  [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
-              },
-              workflow_issue_action_nodes(view: view))))))) ],
+      map(issue_results_columns, c => el_attrs("span", [
+        attr(name: "class", value: issue_line_cell_class(kind: c.kind) ),
+        attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
+      ], issue_line_cell_content(col: c, view: view, bar: bar))),
+      [ issue_row_actions_nodes(row: row, view: view, bar: bar) ])) ],
   }
+}
+
+// THE TABLE HEADER derives from the SAME roster as the rows: one header cell per declared column
+// in roster order, then the actions slot's (empty) header cell — the header and every row are one
+// grid derivation, by construction.
+fn issue_table_header_nodes() -> Fragment {
+  el_class("div", "issue-table-header", concat(
+    map(issue_results_columns, c =>
+      el_attrs("span", [
+        attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
+        attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
+      ], [ txt(c.header as String) ])),
+    [ el_attrs("span", [
+        attr(name: "class", value: "issue-col issue-col-actions" ),
+        attr(name: "data-col", value: "actions" ),
+      ], []) ]))
 }
 
 fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView) -> Fragment {
   el_class("div", "issue-table", [
     el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
+    issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
     el("ul", map(rows, r => issue_line_li(row: r, observation: observation))),
   ])

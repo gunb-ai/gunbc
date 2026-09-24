@@ -56,6 +56,19 @@ import extdeps.google.issue_tracker {
   view_starred_by_me,
   view_to_be_verified,
   view_upvoted_by_me,
+  IssueResultsColumn,
+  IssueResultsColumnKind,
+  IssueColumnPriority,
+  IssueColumnType,
+  IssueColumnTitle,
+  IssueColumnAssignee,
+  IssueColumnStatus,
+  IssueColumnDViews,
+  IssueColumnId,
+  IssueColumnLastModified,
+  issue_results_columns,
+  issue_results_column_kind_wire,
+  issue_results_row_tracks,
 }
 import std.types { list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -658,3 +671,30 @@ test fn w_browse_components_derives_the_tree() -> Bool {
     })
 }
 
+// THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law): the column set, the
+// header spellings, the row anatomy, and the grid template are DECLARED in this model and every
+// surface derives from them. This pin states the roster IS the capture's: /home/briansrls/
+// chromium-565764076/ "test - Chromium.html" (50 live rows; verified 2026-09-24 —
+// docs/plans/buganizer-visual-contract.md §Issue-row anatomy) — P · TYPE · TITLE · ASSIGNEE ·
+// STATUS · D VIEWS · ID · LAST MODIFIED, in order.
+test fn w_issue_results_roster_is_the_capture() -> Bool {
+  let wires = map(issue_results_columns, c =>
+    join([issue_results_column_kind_wire(kind: c.kind), ":", c.header as String], ""))
+  count(issue_results_columns) == 8
+    && (match wires.first() { Present { value: w } => w == "priority:P", Absent => false })
+    && (match wires.skip(n: 1).first() { Present { value: w } => w == "type:TYPE", Absent => false })
+    && (match wires.skip(n: 2).first() { Present { value: w } => w == "title:TITLE", Absent => false })
+    && (match wires.skip(n: 3).first() { Present { value: w } => w == "assignee:ASSIGNEE", Absent => false })
+    && (match wires.skip(n: 4).first() { Present { value: w } => w == "status:STATUS", Absent => false })
+    && (match wires.skip(n: 5).first() { Present { value: w } => w == "d-views:D VIEWS", Absent => false })
+    && (match wires.skip(n: 6).first() { Present { value: w } => w == "id:ID", Absent => false })
+    && (match wires.skip(n: 7).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
+}
+
+// THE GRID TEMPLATE derives from the roster — one track per declared column, the workflow's
+// actions slot last — so the header and every row share it by construction. The pin states the
+// derivation's bytes; the render-side witness pins the served CSS carries exactly them.
+test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
+  issue_results_row_tracks() == "max-content max-content minmax(0, 1fr) max-content max-content max-content max-content max-content max-content"
+    && count(issue_results_columns) == 8
+}

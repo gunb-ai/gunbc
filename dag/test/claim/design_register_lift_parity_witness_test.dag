@@ -346,7 +346,17 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "2db467c49868bcc6"
+data roadmap_css_lift_parity_digest: String = "51c7bb991f057d9d"
+// Re-pinned 2026-09-24 for the derivation-law slice: the issue table's header and rows become ONE
+// grid derivation — .issue-table-header and .issue-line carry grid-template-columns from the
+// extdeps model's declared column roster (extdeps.google.issue_tracker issue_results_row_tracks),
+// with .issue-cell/.issue-cell-* cell rules; the old per-row flex sizing and the retired
+// .issue-component/.issue-title rules leave the sheet. Behavioral receipts:
+// w_issue_results_roster_is_the_capture, w_issue_results_row_tracks_derive_from_the_roster,
+// witness_issue_table_header_derives_from_the_model_roster,
+// witness_issue_table_rows_share_the_header_template,
+// witness_issue_table_grid_template_comes_from_the_model, the register censuses unchanged.
+// Derived by execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
 // Re-pinned 2026-09-24 for the tracker-ruling slice: the detail action bar (Assign text idiom
 // beside Start Work), the Work tab's event history, and the not-found document land as
 // .issue-action-bar / .issue-event-* / .issue-not-found rules, all routing the issue vars or the
