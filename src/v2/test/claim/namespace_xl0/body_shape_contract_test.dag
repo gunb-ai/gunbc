@@ -9,16 +9,8 @@ import v2.extdeps.languages.dag { dag_lex }
 import v2.std.algebra { list_append }
 import v2.std.collection { List, list_at_optional }
 import v2.std.compilers.body_lowering {
-  ApplicationOperand,
-  ApplicationRefused,
-  Application,
   AtomHead,
   ArrowHead,
-  InspectableOperand,
-  NotApplication,
-  UnprojectedOperand,
-  application_read,
-  body_view_unprojected_leaf_marker,
   BindView,
   BranchView,
   Call,
@@ -41,7 +33,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -152,17 +144,11 @@ fn is_authored_atom(n: Node, id: Symbol) -> Bool {
   spelled && authored
 }
 
-// The operand at `index`, provided it is inspectable: an unprojected leaf has no content to assert
-// about, so it answers Absent here and the claim over it goes red rather than passing on a blank.
-fn node_at(xs: List<ApplicationOperand>, index: Int) -> Optional<Node> {
-  match list_at_optional(xs: xs, index: index) {
-    Present { value: InspectableOperand { node: n } } => Present { value: n }
-    Present { value: UnprojectedOperand { at: _ } } => Absent
-    Absent => Absent
-  }
+fn node_at(xs: List<Node>, index: Int) -> Optional<Node> {
+  list_at_optional(xs: xs, index: index)
 }
 
-fn operand_is(xs: List<ApplicationOperand>, index: Int, id: Symbol) -> Bool {
+fn operand_is(xs: List<Node>, index: Int, id: Symbol) -> Bool {
   match node_at(xs: xs, index: index) {
     Present { value: n } => is_authored_atom(n: n, id: id)
     Absent => false
@@ -329,48 +315,3 @@ test fn body_shape_views_refuse_the_wrong_shape_holds() -> Bool {
   }
 }
 
-
-// THE UNPROJECTED-LEAF ENCODING, BOTH SIDES OF ITS BOUNDARY. These are supplied Nodes, not
-// production output, because the claim is about application_read's interface: the marker shape is
-// admitted as an UnprojectedOperand, and a bare empty Conj in the same position -- the residue an
-// early-stopping reader leaves -- is still refused. The producer of the marker shape is the host
-// skeleton marshal, and its inhabitance is asserted by the MQ-2 cutover over real skeletons.
-fn bs_atom(id: Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
-}
-
-fn bs_empty_conj() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
-}
-
-fn bs_apply(operand: Node) -> Node {
-  node_synthetic(
-    kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: bs_atom(id: ^f) }, Edge { label: Positional, target: operand }]
-  )
-}
-
-test fn an_unprojected_leaf_is_an_uninspectable_operand_and_empty_residue_refuses_holds() -> Bool {
-  let marked = node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: body_view_unprojected_leaf_marker }, target: bs_empty_conj() }]
-  )
-  let admitted = match application_read(site: bs_apply(operand: marked)) {
-    Application { view: v } =>
-      (count(v.operands) == 1)
-        && match list_at_optional(xs: v.operands, index: 0) {
-             Present { value: UnprojectedOperand { at: _ } } => true
-             _ => false
-           }
-    _ => false
-  }
-  let residue_refused = match application_read(site: bs_apply(operand: bs_empty_conj())) {
-    ApplicationRefused { diagnostics: _ } => true
-    _ => false
-  }
-  let atom_is_not_application = match application_read(site: bs_atom(id: ^f)) {
-    NotApplication => true
-    _ => false
-  }
-  admitted && residue_refused && atom_is_not_application
-}

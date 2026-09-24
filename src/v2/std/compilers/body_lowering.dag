@@ -268,42 +268,10 @@ type ApplicationHead
   = AtomHead { identity: Symbol }
   | ArrowHead
 
-// AN UNPROJECTED LEAF IS A DECLARED SHAPE, NOT RESIDUE. The host fn-arrow skeleton marshal
-// (v1 stage0 coproduct_reflection marshal_generic) does not project every leaf -- the `1` in `f(1)`
-// reaches a skeleton walk with no content -- and it says so with exactly this shape: a Conj with ONE
-// named edge, named by the marker below, to an empty Conj. It is admitted as an operand that is
-// present and uninspectable, so arity still counts it and a consumer that needs its content must
-// refuse, located at it. Any other empty or partial operand is still residue and still refuses: the
-// marker is the only way to say "unprojected", and it is declared once, here.
-data body_view_unprojected_leaf_marker: Symbol = ^fn_arrow_skeleton_unprojected
-
-fn node_is_unprojected_leaf(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Conj } =>
-      if count(n.children) == 1 {
-        match list_at_optional(xs: n.children, index: 0) {
-          Present { value: e } =>
-            match e.label {
-              Named { name: name } => (name == body_view_unprojected_leaf_marker) && is_empty_conj_root(n: e.target)
-              Positional => false
-            }
-          Absent => false
-        }
-      } else {
-        false
-      }
-    _ => false
-  }
-}
-
-type ApplicationOperand
-  = InspectableOperand { node: Node }
-  | UnprojectedOperand { at: Node }
-
 type ApplicationView {
   head: Node
   head_identity: ApplicationHead
-  operands: List<ApplicationOperand>
+  operands: List<Node>
 }
 
 type ApplicationRead
@@ -326,54 +294,19 @@ fn application_refused(reason: Symbol, at: Node) -> ApplicationRead {
   ApplicationRefused { diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: reason, n: at)) }
 }
 
-// Every edge positional; the first child is the head, each later child an operand that is either
-// an unprojected leaf or a whole, inspectable node. The first defect refuses at the node carrying it.
-type OperandScan {
-  seen_head: Bool
-  operands: Outcome<List<ApplicationOperand>>
-}
-
-fn application_operands(site: Node) -> Outcome<List<ApplicationOperand>> {
-  let scanned = fold(site.children, init: OperandScan { seen_head: false, operands: outcome_accepted(value: Empty) }, f: fn(acc, e) {
-    match acc.operands {
-      Rejected { diagnostics: r } => acc
-      Accepted { value: xs, diagnostics: _ } =>
-        match e.label {
-          Named { name: _ } =>
-            OperandScan { seen_head: true, operands: view_refusal(reason: ^body_view_unexpected_named_edge, at: site) }
-          Positional =>
-            if acc.seen_head == false {
-              OperandScan { seen_head: true, operands: acc.operands }
-            } else if node_is_unprojected_leaf(n: e.target) {
-              OperandScan { seen_head: true, operands: outcome_accepted(value: list_snoc_item(xs: xs, item: UnprojectedOperand { at: e.target })) }
-            } else if view_is_surface_residue(n: e.target) {
-              OperandScan { seen_head: true, operands: view_refusal(reason: ^body_view_operand_residue, at: e.target) }
-            } else {
-              OperandScan { seen_head: true, operands: outcome_accepted(value: list_snoc_item(xs: xs, item: InspectableOperand { node: e.target })) }
-            }
-        }
-    }
-  })
-  scanned.operands
-}
-
 fn application_read(site: Node) -> ApplicationRead {
   match site.kind {
     ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: site.children, index: 0) {
-        Absent => application_refused(reason: ^body_view_transform_head_absent, at: site)
-        Present { value: first } =>
-          match first.label {
-            Named { name: _ } => application_refused(reason: ^body_view_unexpected_named_edge, at: site)
-            Positional =>
-              match application_head_optional(n: first.target) {
-                Absent => application_refused(reason: ^body_view_transform_head_not_callee, at: first.target)
+      match view_whole_positional_children(site: site) {
+        Rejected { diagnostics: r } => ApplicationRefused { diagnostics: r }
+        Accepted { value: children, diagnostics: _ } =>
+          match children {
+            Empty => application_refused(reason: ^body_view_transform_head_absent, at: site)
+            Cons { head: head, tail: operands } =>
+              match application_head_optional(n: head) {
+                Absent => application_refused(reason: ^body_view_transform_head_not_callee, at: head)
                 Present { value: identity } =>
-                  match application_operands(site: site) {
-                    Rejected { diagnostics: r } => ApplicationRefused { diagnostics: r }
-                    Accepted { value: operands, diagnostics: _ } =>
-                      Application { view: ApplicationView { head: first.target, head_identity: identity, operands: operands } }
-                  }
+                  Application { view: ApplicationView { head: head, head_identity: identity, operands: operands } }
               }
           }
       }
@@ -389,7 +322,7 @@ type CallView {
   site: Node
   callee: Node
   callee_identity: ApplicationHead
-  arguments: List<ApplicationOperand>
+  arguments: List<Node>
 }
 
 type CallRead
@@ -400,7 +333,7 @@ type CallRead
 type OperatorView {
   site: Node
   operator: Symbol
-  operands: List<ApplicationOperand>
+  operands: List<Node>
 }
 
 type OperatorRead
