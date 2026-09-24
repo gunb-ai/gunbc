@@ -34,7 +34,8 @@ import gunbc.runner.runner_jit_admission {
 }
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
-  JitMintRefusedAttemptUnbound,
+  JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted,
+  RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionUnobserved,
   plan_jit_mint,
 }
 import gunbc.runner.runner_jit_perform {
@@ -1013,7 +1014,7 @@ fn planned(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintPlan {
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1051,8 +1052,43 @@ test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -
       (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && runner_label_sets_equal(
              a: map(req.labels, l => l.value as String),
-             b: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv2"],
+             b: ["self-hosted", runner_microvm_attempt_unit_name(attempt: a) as String],
            )
+    _ => false
+  }
+}
+
+// THE GUEST NEVER ANSWERS TO THE HOST'S PRODUCTION LABELS. This control used to pin
+// [self-hosted, linux, arm64, gunbc-heavy, srv2] -- the set fleet-desired.yml and the host-pinned
+// fleet-converge jobs target -- so a production converge job could have run inside a shakedown
+// VM. The red is that set: none of its host, class, OS or architecture labels may appear, and the
+// only non-provenance label is the attempt's own name.
+test fn witness_jit_mint_carries_no_host_production_label() -> Bool {
+  match planned(owned: true, perms: runner_grant) {
+    JitMintAuthorized { attempt: _, request: req } =>
+      let wire = map(req.labels, l => l.value as String)
+      count(filter(wire, w => w == "srv2" || w == "gunbc-heavy" || w == "linux" || w == "arm64")) == 0
+        && count(wire) == 2
+    _ => false
+  }
+}
+
+// THE MINT REFUSES A GROUP WHOSE RESTRICTION NOBODY OBSERVED, everything else being in order. This
+// is the block gunbc.runner_jit_mint microvm_jit_runner_group_restriction_frontier states: the cell
+// is owned, the credential holds the runner permission and the attempt binding is required, so the
+// ONLY thing that can refuse is the group standing -- and the controller passes the unobserved arm
+// today, which is why no real attempt mints yet. The positive control above is the same call with
+// the restricted arm.
+test fn witness_jit_mint_refuses_a_runner_group_not_observed_restricted() -> Bool {
+  match plan_jit_mint(
+    binding: jit_binding(owned: true),
+    authority: app_credential,
+    control_plane: observed_grant(perms: runner_grant),
+    organization: gunbai_org_ref,
+    runner_group: RunnerGroupRestrictionUnobserved { group: JitRunnerGroupId { value: 1 } },
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  ) {
+    JitMintRefusedRunnerGroupUnrestricted { group: g } => g == 1
     _ => false
   }
 }
@@ -1063,7 +1099,7 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a mint that would not carry the attempt identity" as NonEmptyStr,
     },
@@ -1087,7 +1123,7 @@ fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch 
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1143,7 +1179,7 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a dispatch that would not carry the attempt identity" as NonEmptyStr,
     },

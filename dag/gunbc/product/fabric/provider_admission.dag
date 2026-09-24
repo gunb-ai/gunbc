@@ -39,19 +39,17 @@ import product.fabric.provider_route {
 // and selection ranks CandidateOffers. So "an unadmitted offer won the ranking" has no constructor:
 // rung 4, not a check.
 //
-// ISSUANCE - CHECKED, AND SAID PLAINLY BECAUSE THE TWO ARE NOT THE SAME RUNG.
-// product.fabric.grant_issue's issue_grant takes the permit as a PARAMETER and compares it against
-// the offer, route, work and demand it was handed. That is validation, rung 2-to-3, and it is
-// deliberate: taking a CandidateOffer there would satisfy a residual capability that module has
-// declared open, which section 4b(3) names as the way a trigger gets retired while the capability
-// stays dead. Reporting this module's class as structural on the strength of the selection path
-// alone would be rung inflation, since a class's rung is the MINIMUM across its in-scope paths.
+// ISSUANCE - STRUCTURAL FOR OFFER AND ROUTE, CHECKED FOR THE USE. product.fabric.grant_issue's
+// issue_grant takes a SelectedOffer (product.fabric.selection, sole_constructor, built only by
+// select_supply's winning arm), which carries the sealed CandidateOffer and its permit. So an
+// unadmitted offer reaching issuance has no constructor on this path either. The permit's WORK and
+// DEMAND are still compared at issuance, because selection is not told the issuing Work - that half
+// is validation, rung 2-to-3, and it is the minimum across this class's issuance path.
 //
 // CONSUMED ON THE GRANT. ExecutionGrant carries the permit as its own field, so an auditor
 // reading a grant alone can re-derive the admitting posture revision, the route-facts revision and
 // the route without consulting the candidate that produced it. product.fabric.execution names
-// the three projections. Issuance still takes the permit as a parameter rather than a
-// CandidateOffer: residual capability ONE in grant_issue remains open.
+// the three projections.
 
 // STATED DIVERGENCE FROM std.scoped_authorization (DESIGN section 3b). That module already models
 // a permit-shaped answer - AuthorizationDecision<Subject> is Permitted { grant } | Refused { cause }
