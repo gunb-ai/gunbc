@@ -18,7 +18,7 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.materialization_ladder { DemandNature, FreshEffect, IdempotentEffect, PureComputation, WorldRead }
-import std.materialization_provider { DemandIdentity, demand_identity_canonical }
+import std.judgment_contract { DemandIdentity, demand_identity_canonical }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE ONE DEMAND ENGINE -- AVAILABILITY, NOT SCHEDULING
@@ -39,7 +39,7 @@ import std.materialization_provider { DemandIdentity, demand_identity_canonical 
 // case is witnessed rather than asserted (see the diamond and independent-peer claims).
 //
 // THE ENGINE IS GENERIC IN THE RESULT VALUE AND NOTHING ELSE. Subjects are DemandIdentity, whose
-// canonical encoding is length-prefixed and injective (std.materialization_provider
+// canonical encoding is length-prefixed and injective (std.judgment_contract
 // demand_identity_canonical), so identity equality and the stable dispatch order are the SAME
 // authority rather than two. A second comparison written here would be the fork that makes two
 // runs disagree about which demand is "next".

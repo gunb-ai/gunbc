@@ -41,7 +41,7 @@ import v2.std.text { String }
 import std.cache_identity { parse_source_artifact_kind }
 import std.content_hash { Fnv1a64Structural }
 import std.materialization_ladder { FreshEffect, PureComputation }
-import std.materialization_provider { DemandIdentity }
+import std.judgment_contract { DemandIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

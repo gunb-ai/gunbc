@@ -73,12 +73,20 @@ import v2.std.demand_engine {
 }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
-import std.materialization_provider {
+import std.judgment_contract {
   DeclaredInput,
   JudgmentContract,
-  native_module_infer_judgment_contract,
-  native_module_resolve_judgment_contract,
-  native_test_identity_judgment_contract
+  ResultContract,
+  Scoped,
+  SemanticOnly,
+  output_module_preparation_diagnostics,
+  output_module_test_verdicts,
+  persisted_output
+}
+import std.cache_identity {
+  native_module_infer_artifact_kind,
+  native_module_resolve_artifact_kind,
+  native_test_identity_artifact_kind
 }
 import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
@@ -3521,10 +3529,109 @@ fn native_demand_identity_subject(module: String, declaration: String) -> Fnv1a6
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE THREE JUDGMENTS OF THE NATIVE EVAL LAYER, DECLARED BESIDE THEIR PRODUCERS
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// These sat in std.materialization_provider beside the parse and typecheck contracts, which put a
+// statement about what THIS module's resolve, infer and eval judgments ARE in a module that cannot
+// call any of them. A contract belongs with the producer it constrains: when native_lane_module_
+// inference gains a declared input, the contract that must gain it is in the same file, and a
+// reviewer reading either sees both.
+//
+// THE NATIVE EVAL LAYER'S THREE JUDGMENTS. They are contracts rather than three inline identity
+// constructions because JudgmentContract is the authority for what a demand IS -- its subject, its
+// result contract and its demand nature -- and a scheduler that minted identities beside it would
+// be a second answer to that question, differing first on the field nobody checks. The scheduler
+// reads `demand_identity` and `demand_nature` off these and derives nothing itself.
+//
+// THE COMPILER IS A DECLARED INPUT OF ALL THREE, not an ambient fact. Two runs of one module under
+// different compilers are different judgments with different results, so a key that omitted the
+// compiler would let a later cross-run lookup serve the earlier compiler's answer -- which is the
+// whole reason the existing contracts above carry it too.
+//
+// ALL THREE ARE PureComputation, AND THAT IS A READING RATHER THAN A DEFAULT. Resolution, inference
+// and identity evaluation are functions of their inputs: they read no clock, mutate nothing, and
+// two evaluations of one subject under one compiler are interchangeable. That is what admits
+// in-flight sharing for them, and it is the property that would have to be withdrawn -- here, once
+// -- if any of them ever reached an effect.
+fn native_module_resolve_judgment_contract(
+  module_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_module_resolve_artifact_kind,
+      subject: module_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: Scoped)
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn native_module_infer_judgment_contract(
+  module_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_module_infer_artifact_kind,
+      subject: module_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: Scoped)
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+// THE SUBJECT IS THE MODULE AND DECLARATION COMBINED, not the declaration alone. `holds` names a
+// different judgment in every module that declares it, and a subject that lost the module would
+// give them one identity -- at which point the engine attaches one to the other as an equal
+// share-admitted demand and evaluates ONE, reporting a verdict for a declaration it never ran.
+fn native_test_identity_judgment_contract(
+  identity_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_test_identity_artifact_kind,
+      subject: identity_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_module_test_verdicts, occurrence_contract: SemanticOnly)
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
 // IDENTITY AND NATURE ARE READ OFF THE JUDGMENT CONTRACT, NEVER BUILT HERE
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// std.materialization_provider JudgmentContract is the authority for what a demand IS: its subject,
+// std.judgment_contract JudgmentContract is the authority for what a demand IS: its subject,
 // its result contract and its demand nature. A scheduler that constructed DemandIdentity values
 // itself would be a second answer to that question -- and the two would agree right up until one
 // of them gained a declared input, at which point the scheduler would key a demand the

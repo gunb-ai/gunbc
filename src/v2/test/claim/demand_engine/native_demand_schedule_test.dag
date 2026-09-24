@@ -30,7 +30,7 @@ import v2.compiler.compile {
   native_demand_resolve_identity
 }
 import std.content_hash { Fnv1a64Structural }
-import std.materialization_provider { DeclaredInput }
+import std.judgment_contract { DeclaredInput }
 import std.types { NonEmptyStr }
 
 
