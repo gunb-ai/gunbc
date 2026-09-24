@@ -202,8 +202,11 @@ test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
 // (RefusalNotAtOrAbove rows). v2.compiler.body_lowering_fold body_lower_list_literal now lowers the
 // literal as its free-monoid construction with every element whole, so this is restated as a
 // conserved control (DESIGN section 4b(4)): both elements, and the callee, reach the lowered tree.
-// A producer that kept only the first element drops `rc_list_second` and reds this.
-data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\ndata rc_list_second: Int = 4\n\nfn rc_list_caller() -> Int { rc_list_callee(xs: [rc_elsewhere, rc_list_second]) }\n"
+// A producer that kept only the first element drops `rc_list_second` and reds this. The argument
+// is POSITIONAL on purpose: a named argument's label is a separate, already-rostered drop
+// (a_named_argument_label_is_reported_dropped_holds below), and carrying it here would make this
+// control red for a reason that is not the list.
+data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\ndata rc_list_second: Int = 4\n\nfn rc_list_caller() -> Int { rc_list_callee([rc_elsewhere, rc_list_second]) }\n"
 
 fn list_literal_argument_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "list_literal_argument", source: list_literal_argument_source)
