@@ -70,13 +70,7 @@ type OperandRealization
 // unnamed-operand population of the v2 closure under an arithmetic operator). Refusing there would
 // refuse an operand nothing suggests is structural. What still refuses is the case the refusal is
 // FOR: a type node that DOES name a declaration whose identity the caller could not resolve.
-type HostRealizationReason
-  = KernelMintedType
-  | GenericTypeParameter
-  | HostContainer
-  | UnnamedSynthesizedType
-  | HostTextCarrier
-
+//
 // THE HOST TEXT CARRIER is the type the target's type renderer realizes as its native string (on
 // Rust, v1.compiler.emit_rust is_host_text_carrier_type: the String spelling whose declaration is not
 // a structural FreeMonoid<Char>). The operator decision reads the SAME predicate the renderer reads,
@@ -86,8 +80,14 @@ type HostRealizationReason
 // (extdeps.standards.rfc_5280 x509_validity_at, over the String alias Timestamp), while `==` on the
 // same operand passed by operator class: one operand, two answers about whether it has a host
 // realization.
+type HostRealizationReason
+  = KernelMintedType
+  | GenericTypeParameter
+  | HostContainer
+  | UnnamedSynthesizedType
+  | HostTextCarrier
 
-, never by guessing a
+// AN OPERAND WITHOUT A READABLE DECLARATION decides BY OPERATOR CLASS, never by guessing a
 // declaration. Equality and the connectives do not depend on the declaration at all: every
 // structural declaration realizes equality structurally and every host value realizes it natively,
 // and on the target these are one token (the emitted enum derives PartialEq), so `==`/`!=`/`&&`/

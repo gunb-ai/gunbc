@@ -37,7 +37,7 @@ import std.primitive_projection {
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1239,6 +1239,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "symbol_lexeme",
   "symbol_intern_lexeme",
   "data_init_decl_facts_live",
+  "bytes_octets",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1599,6 +1600,11 @@ data primitive_symbol_intern_lexeme_traversal: PrimitiveTraversalOrderFact = Pri
 // SourcePreservingOrder is the executed reading, not CanonicalOrder.
 data primitive_data_init_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_init_decl_facts_live, order: SourcePreservingOrder }
 
+// bytes_octets yields the carrier's octets in index order -- the interpreter's free_call.bytes_octets
+// arm and v1_rt::bytes_octets both map over the byte vector in place -- so the result's order is the
+// input's own, SourcePreservingOrder, and no host order is consulted.
+data primitive_bytes_octets_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_bytes_octets, order: SourcePreservingOrder }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1615,6 +1621,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_symbol_lexeme_traversal,
   primitive_symbol_intern_lexeme_traversal,
   primitive_data_init_decl_facts_live_traversal,
+  primitive_bytes_octets_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

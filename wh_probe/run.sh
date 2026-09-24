@@ -1,7 +1,7 @@
 set -x
 export CARGO_TARGET_DIR=$PWD/target
 cargo build --release -p v1-compiler --bin claim_executor --bin v1_src_dag_parse 2>&1 | tail -2
-for f in src/v1/05_emit_rust.dag src/v1/runtime_rust.dag dag/std/bytes.dag dag/std/operator_realization.dag dag/std/primitive_projection.dag dag/extdeps/languages/rust/emit.dag wh_probe/emit_probe.dag; do ./target/release/v1_src_dag_parse $f 2>&1 | tail -2; done
+for f in src/v1/05_emit_rust.dag dag/std/operator_realization.dag; do ./target/release/v1_src_dag_parse $f 2>&1 | tail -2 || exit 1; done
 for i in 1 2; do
 ./target/release/claim_executor --required-regen --source-root dag --source-root src/v2 2>&1 | grep -E "first_generation_equal|FAIL|error|panick" | head -20
 cp target/stage0-regen-candidate/src/*.rs src/v1/stage0/src/
