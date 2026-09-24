@@ -9628,8 +9628,8 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
 // one; carrying that spelling with two causes behind it would make the name a nickname for a
 // property it only partly describes (DESIGN section 3).
 //
-// AN ARROW IS DECIDED BY ITS CONNECTIVE, NOT BY ITS ARITY. This renderer and its callers
-// (emit_param, emit_tco_param, and the two closure-parameter sites) once asked `params |> count > 0`,
+// AN ARROW IS DECIDED BY ITS CONNECTIVE, NOT BY ITS ARITY. This renderer and its two guarded
+// callers (emit_param, emit_tco_param) once asked `params |> count > 0`,
 // so a NULLARY arrow `fn() -> Int` fell to the value renderer as `Rc<dyn Fn() -> i64>` while the
 // named function passed to it arrived bare -- rustc E0308, an emitted crate the interpreter's run of
 // the same source does not share (DESIGN section 7). The same arity-for-arrow conflation was repaired
