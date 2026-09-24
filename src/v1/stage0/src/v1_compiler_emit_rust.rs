@@ -38153,34 +38153,10 @@ pub fn emit_data_def_body(
                     scope.type_env.clone().source_indices.clone(),
                 ) && !data_value_has_cross_refs(value.clone()))
                 {
-                    match (*crate::v1_compiler_emit::emit_data_value_json(
-                        value.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                        emit_info.data_variant_wire_spellings.clone(),
-                    ))
-                    .clone()
-                    {
-                        EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
-                            v1_rt::concat(
-                                "            compile_error!(\"".to_string(),
-                                crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                                    r.clone(),
-                                ),
-                            ),
-                            "\")".to_string(),
-                        ),
-                        EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "            serde_json::from_value(serde_json::json!("
-                                        .to_string(),
-                                    json_str.clone(),
-                                ),
-                                "))\n".to_string(),
-                            ),
-                            "                .expect(\"valid data definition\")".to_string(),
-                        ),
-                    }
+                    match (*crate::v1_compiler_emit::emit_data_value_json(value.clone(), scope.type_env.clone().source_indices.clone(), emit_info.data_variant_wire_spellings.clone())).clone() {
+    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat("            compile_error!(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(r.clone())), "\")".to_string()),
+    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("            serde_json::from_str(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(json_str.clone())), "\")\n".to_string()), "                .expect(\"valid data definition\")".to_string()),
+}
                 } else {
                     {
                         let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
