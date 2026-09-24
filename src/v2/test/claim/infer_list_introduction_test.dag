@@ -11,6 +11,9 @@ import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Tra
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Present }
 import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
 import v2.std.qualified_name { qualified_name_from_node, qualified_name_spine_node }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, list_snoc_item }
@@ -116,4 +119,36 @@ test fn an_empty_list_derives_no_type_here() -> Bool {
           }
       }
   }
+}
+
+// A REPORT, NOT A CLAIM: each case's infer outcome rendered through the process exit, so a run names
+// what refused and where (gunbc run maps only ProcessExit to an exit code).
+fn ilt_diagnostic_text(d: Diagnostic) -> String {
+  symbol_lexeme(sym: d.reason) + " at=" + (match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => symbol_lexeme(sym: id)
+        Absent => "(non-atom node)"
+      }
+    _ => "(no node locus)"
+  })
+}
+
+fn ilt_outcome_text(tree: Node) -> String {
+  match infer(tree: tree) {
+    Rejected { diagnostics: r } => "rejected fatal=" + ilt_diagnostic_text(d: diagnostics_fatal(d: r)) + " head=" + ilt_diagnostic_text(d: r.head)
+    Accepted { value: t, diagnostics: _ } =>
+      match t.facts.lookup(tree) {
+        Absent => "accepted, no facts for the literal"
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: _ } => "accepted with a derived type"
+            Violates { diagnostic: d } => "accepted, type not derived: " + ilt_diagnostic_text(d: d)
+          }
+      }
+  }
+}
+
+fn ilt_report() -> ProcessExit {
+  exit_failure(reason: "ints: " + ilt_outcome_text(tree: ilt_ints) + " | mixed: " + ilt_outcome_text(tree: ilt_mixed) + " | empty: " + ilt_outcome_text(tree: ilt_empty))
 }
