@@ -193,7 +193,7 @@ pub fn uint8_channel_bit_width_int() -> Int {
 
 pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
     match crate::std_induction::int_pow_bounded(2, uint8_channel_bit_width_int()) {
-        Some(two_pow) => Some((two_pow.clone() - 1)),
+        Some(two_pow) => Some(v1_rt::int_sub(two_pow.clone(), 1)),
         std::option::Option::None => std::option::Option::None,
     }
 }
