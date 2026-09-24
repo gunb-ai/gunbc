@@ -1,0 +1,43 @@
+module probe.wr_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.algebra { fold_list }
+import v2.workflow.body_lowering_retention_census { retention_census, retention_census_render, diagnostic_ledger_render }
+
+fn probe(path: String) -> String {
+  let src = filesystem_read(path: path).content
+  match tokenize(text: src, file: ^wr_probe, rules: dag_lex()) {
+    Rejected { diagnostics: r } => concat("TOKENIZE REJECTED\n", diagnostic_ledger_render(ds: r))
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: r } => "GRAMMAR REJECTED"
+        Accepted { value: prepared, diagnostics: residue } =>
+          match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => concat("PARSE REJECTED\n", diagnostic_ledger_render(ds: r))
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: r } =>
+                  concat(retention_census_render(families: retention_census(ds: r)), diagnostic_ledger_render(ds: r))
+                Accepted { value: _, diagnostics: _ } => "NORMALIZED OK"
+              }
+          }
+      }
+  }
+}
+
+
+fn verdict(path: String) -> String {
+  let r = probe(path: path)
+  if r == "NORMALIZED OK" { "" } else { concat("\n##### ", concat(path, concat("\n", r))) }
+}
+
+fn mins() -> String {
+  concat(verdict(path: "wrprobe/min/a_let_in_lambda.dag"),
+    concat(verdict(path: "wrprobe/min/b_lambda_no_let.dag"), verdict(path: "wrprobe/min/c_let_in_fn.dag")))
+}

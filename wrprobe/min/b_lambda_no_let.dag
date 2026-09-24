@@ -1,0 +1,5 @@
+module chunk
+
+fn f(xs: List<Int>) -> List<Int> {
+  filter(xs: xs, predicate: fn(x) { g(v: x) })
+}
