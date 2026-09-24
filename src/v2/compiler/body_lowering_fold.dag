@@ -891,10 +891,19 @@ fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
   )
 }
 
+// A NESTED FUNCTION VALUE IS A SCOPE BOUNDARY FOR EVERY DEEP SEARCH HERE. `p => body` and
+// `fn(..) { .. }` own their bodies; a control form, a fn_body or an else-less-if statement inside
+// one belongs to that function value, which lowers it through body_lower_function_value_arrow.
+// Searching past the boundary answered an OUTER body `filter(xs: xs, predicate: fn(x) { let y = ..
+// y })` with the literal's `let` (body_lower_find_control_form_optional is pre-order and deep), so
+// the enclosing fn_decl lowered to nothing and was wrapper-retained; whether it did depended on
+// which callee the literal sat under, because a fold-family call is lowered before the search runs.
 fn body_lower_find_captured_prunable(id: Symbol) -> Bool {
   (id == ^dag_surface_module_header)
     || (id == ^dag_surface_qualified_name)
     || (id == ^dag_surface_type_expr)
+    || (id == ^dag_surface_arrow_lambda)
+    || (id == ^dag_surface_fn_literal)
 }
 
 fn body_lower_find_captured_under_children(root: Node, emitted: Symbol) -> ParseSubtreeFind {
