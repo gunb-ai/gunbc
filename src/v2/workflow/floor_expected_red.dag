@@ -1126,8 +1126,23 @@ fn floor_expected_red_chunk_lambda_argument_lowering() -> List<String> {
   Cons { head: "v2.test.claim.namespace_xl0.value_position_whole_read.a_lambda_argument_whose_body_uses_its_parameter_resolves", tail: Cons { head: "v2.test.claim.namespace_xl0.value_position_whole_read.an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom", tail: Empty {} } }
 }
 
+// A LIST LITERAL IN std.algebra BINDS TO std.algebra's OWN FreeMonoid ONCE A TYPE DECLARATION'S <T>
+// IS SCOPED. The self-reference claim of gunbc#12208 ingests a module std.algebra with the real
+// generic `type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }`, and resolve refuses
+// it unbound at `T` (srv1, neat-boar-16, cdabcf7dfd: llv_self_report `whole: resolve-refused
+// reason=resolve_reason_unbound_symbol at=T`). gunbc#12217 scoped `<T>` for fn signatures only; a
+// TYPE declaration's binders are trigger (1) of gunbc.recurring_failure_mode
+// generic_type_parameter_resolved_as_an_ordinary_atom_in_v2, and gunbc#12240 (crisp-dove-95) lands
+// them. The list head itself binds: the twin without FreeMonoid refuses located AT the
+// std.algebra.FreeMonoid head, and that twin is green and NOT enrolled here. The fixture keeps the
+// generic on purpose, so the claim tests the std.algebra that exists rather than a simplified one.
+// OWNER: gunbc#12240. DISSOLVE-ON: the row PASSING.
+fn floor_expected_red_chunk_std_algebra_list_self_reference() -> List<String> {
+  Cons { head: "v2.test.claim.namespace_xl0.list_literal_value_lowering.std_algebra_own_list_literals_bind_to_its_own_qualified_names", tail: Empty {} }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_lambda_argument_lowering(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}} }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_lambda_argument_lowering(), tail: Cons { head: floor_expected_red_chunk_std_algebra_list_self_reference(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}} }
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
