@@ -29,6 +29,7 @@ import gunbc.floor_demand {
   BeatStall, StallRead, StallUnread, SeamUnreadable, PeakBeatStallUnread, PeakBeatSeamUnreadable,
   SeamMovedDuringSample, PeakBeatSeamMovedDuringSample,
   beat_stall_is_zero, beat_stall_is_positive,
+  SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -703,4 +704,30 @@ test fn a_leaf_swap_reading_at_the_peak_decides_before_the_declared_policy() -> 
     _ => false
   }
   zero && spilled && unread
+}
+
+// THE PLANNING SEAM'S TWO SPELLINGS ARE TWO CONSTRUCTORS. `arm-set-planning` (every beat taken
+// before gunbc#12130) reads as SeamArmSetPlanning and `interface-consumer-planning` (at and after)
+// as SeamInterfaceConsumerPlanning: the wider phase's memory is never ingested as the narrower one,
+// and an unknown token reads as absent rather than as a neighbour.
+test fn the_two_planning_seam_tokens_read_as_distinct_constructors() -> Bool {
+  let old = match floor_seam_of_token(token: "arm-set-planning") {
+    Present { value: s } => match s {
+      SeamArmSetPlanning => true
+      _ => false
+    }
+    Absent => false
+  }
+  let new = match floor_seam_of_token(token: "interface-consumer-planning") {
+    Present { value: s } => match s {
+      SeamInterfaceConsumerPlanning => true
+      _ => false
+    }
+    Absent => false
+  }
+  let unknown = match floor_seam_of_token(token: "arm-set-plannning") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  old && new && unknown
 }

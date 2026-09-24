@@ -1,0 +1,186 @@
+module gunbc.spark.v41_index_engram_selection
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import std.content_hash { Sha256DigestHex }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.safetensors.format {
+  SafetensorsIndexMember, safetensors_index_member,
+  SafetensorsPopulationStanding, safetensors_population_standing,
+}
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_published_file_row, deepseek_v4_1_flash_safetensors_index_path,
+  deepseek_v4_1_flash_index_engram_selection_of, deepseek_v4_1_flash_engram_membership_closure_of,
+  deepseek_v4_1_flash_safetensors_index_file, deepseek_v4_1_flash_index_tensor_count,
+  deepseek_v4_1_flash_engram_shard_files, deepseek_v4_1_flash_engram_population_reading,
+  deepseek_v4_1_flash_engram_population,
+}
+
+// ── THE .engram. SELECTION OVER THE PINNED V4.1 INDEX, AS THIS REPOSITORY'S OBSERVATION ────────
+//
+// WHY THIS IS HERE AND NOT IN extdeps. A selection someone ran over a file is an observation, and an
+// observation is a receipt in the observing layer (DESIGN section 3), never a fact the upstream owns.
+// extdeps.deepseek.deepseek_v4_1_flash owns the pin (the index file's sha256 and size, its name count)
+// and the fold that decides whether a selection closes membership; this module owns the reading and
+// the instrument that produces it.
+//
+// THE READER IS extdeps.languages.json parse_json_document, THE JSON AUTHORITY, AND NOTHING BESIDE IT. An
+// earlier revision read the index with a token scan, a stated divergence taken because the parser did not
+// read a document of this size in the interpreter; that scan and the probe that watched for its
+// dissolution are deleted, not kept as a fallback. The selection is a fold over the parsed value: the
+// document's one `weight_map` member must be an object, every value in it a `.safetensors` shard name, and
+// the members whose name carries the selector are kept. The parse's working set is not small, so the one
+// production caller (gunbc.spark.v41_checkpoint_materialize v41_index_selection_ci_wet) runs it in its own
+// process, so a parse stopped for memory stops that read and not the fetch before it.
+//
+// WHERE THE READING COMES FROM. The index is not in this repository, so a data row cannot read it at
+// evaluation; the reading is the receipt of the enrolled route that reads it on a Spark (below). Its
+// values are COMPARED against the pin by the extdeps fold, so a reading of any other file, or over
+// fewer names, does not close membership.
+
+data v41_index_engram_selector: NonEmptyStr = ".engram." as NonEmptyStr
+
+type V41IndexParse
+  = V41IndexParsed { name_count: Nat, members: List<SafetensorsIndexMember> }
+  | V41IndexParseRefused { cause: NonEmptyStr }
+
+
+// THE FOLD OVER THE PARSED weight_map. One pass with constant state beyond the SELECTED members: a name
+// count, a count of values that are not a `.safetensors` shard string, and the members kept.
+type V41WeightMapFold {
+  names: Nat
+  not_shards: Nat
+  members: List<SafetensorsIndexMember>
+}
+
+fn v41_weight_map_step(acc: V41WeightMapFold, kv: JsonKeyValue, selector: NonEmptyStr) -> V41WeightMapFold {
+  match kv.value {
+    JsonString { value: shard } =>
+      if !shard.ends_with(".safetensors") || shard == "" || kv.key == "" {
+        V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+      } else {
+        V41WeightMapFold {
+          names: acc.names + 1,
+          not_shards: acc.not_shards,
+          members: if kv.key.contains(selector as String) { acc.members |> list_push(safetensors_index_member(name: kv.key as NonEmptyStr, shard: shard as NonEmptyStr)) } else { acc.members },
+        }
+      }
+    JsonNull => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonBool { value: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonNumber { lexeme: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonArray { elements: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonObject { members: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+  }
+}
+
+fn v41_select_weight_map(weight_map: JsonValue, selector: NonEmptyStr) -> V41IndexParse {
+  match weight_map {
+    JsonObject { members: kvs } => {
+      let f = fold(kvs, init: V41WeightMapFold { names: 0, not_shards: 0, members: [] as List<SafetensorsIndexMember> }, f: (acc, kv) => v41_weight_map_step(acc: acc, kv: kv, selector: selector))
+      if f.names == 0 {
+        V41IndexParseRefused { cause: "the index's weight_map is empty" as NonEmptyStr }
+      } else if f.not_shards != 0 {
+        V41IndexParseRefused { cause: join(["the index's weight_map carries ", to_string(f.not_shards), " entries whose value is not a .safetensors shard name"], "") as NonEmptyStr }
+      } else {
+        V41IndexParsed { name_count: f.names, members: f.members }
+      }
+    }
+    JsonNull => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonBool { value: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonNumber { lexeme: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonString { value: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonArray { elements: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+  }
+}
+
+fn v41_select_index_document(text: String, selector: NonEmptyStr) -> V41IndexParse {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => V41IndexParseRefused { cause: join(["the index is not a JSON document: ", json_document_gap_text(gap: g)], "") as NonEmptyStr }
+    JsonDocumentParsed { value: v } =>
+      match json_object_unique_member(v: v, key: "weight_map") {
+        JsonMemberFound { value: wm } => v41_select_weight_map(weight_map: wm, selector: selector)
+        JsonMemberAbsent => V41IndexParseRefused { cause: "the index has no weight_map member" as NonEmptyStr }
+        JsonMemberDuplicated { count: n } => V41IndexParseRefused { cause: join(["the index has ", to_string(n), " weight_map members"], "") as NonEmptyStr }
+        JsonMemberNotAnObject => V41IndexParseRefused { cause: "the index is not a JSON object" as NonEmptyStr }
+      }
+  }
+}
+
+// ── THE READING ────────────────────────────────────────────────────────────────────────────────
+//
+// A READING IS A RECEIPT OF AN ENROLLED ROUTE, AND ONLY THAT. The route is the fleet-converge mode
+// spark_v41_checkpoint_materialize: after the index verifies against its manifest row on the Spark, the
+// mode reads the file back, digests it and runs v41_select_index_document over its bytes, and its receipt
+// carries the `index-selection` lines this row is transcribed from, with the host and run it names --
+// the same standing as gunbc.spark.v41_engram_row_store v41_published_span_readings. A run of the scan
+// anywhere else is a diagnostic and does not land here. Until a dispatched run's receipt is transcribed
+// the reading is Unread, the observed population is the extdeps one scoped to the rows read, and the
+// candidate's Engram axis stays unestablished.
+type V41IndexEngramSelectionReading
+  = V41IndexEngramSelectionRead {
+      index_sha256_hex: Sha256DigestHex
+      index_bytes: ByteSize
+      name_count: Nat
+      members: List<SafetensorsIndexMember>
+      observed: NonEmptyStr
+    }
+  | V41IndexEngramSelectionUnread { obligation: NonEmptyStr }
+
+// THE LIVE READING, TRANSCRIBED FROM AN ENROLLED ROUTE'S RECEIPT. Its `index-selection` lines are the
+// spark_v41_index_selection step of fleet-converge run 35877813088 (mode spark_v41_checkpoint_materialize,
+// target srv8, main a0a4819), which verified the index against its manifest row on the host, read it back,
+// and parsed it with parse_json_document under a hard memory.max of 27917287424 bytes (the runner slot's,
+// its receipt's memory-fence lines). The values are the receipt's; the pin they are compared against is
+// extdeps.deepseek.deepseek_v4_1_flash's, so this row cannot close membership by restating it.
+data v41_index_engram_selection_reading: V41IndexEngramSelectionReading = V41IndexEngramSelectionRead {
+  index_sha256_hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex,
+  index_bytes: byte_size(count: 7470294),
+  name_count: 96085,
+  members: [
+    safetensors_index_member(name: "layers.14.engram.embed.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.embed.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.q_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.k_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.wkv.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.wkv.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.embed.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.k_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.wkv.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.wkv.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+  ],
+  observed: "fleet-converge run 35877813088, spark_v41_index_selection on srv8 at main a0a4819, 2026-09-23" as NonEmptyStr,
+}
+
+// THE ENGRAM POPULATION THIS REPOSITORY HAS OBSERVED. With no reading it is the extdeps population,
+// scoped to the rows read; with one, the members are the reading's and the closure is the extdeps fold
+// over the reading against the pin -- so a thirteenth selected name has no header entry and refuses.
+fn v41_engram_population_observed_of(reading: V41IndexEngramSelectionReading) -> SafetensorsPopulationStanding {
+  match reading {
+    V41IndexEngramSelectionUnread { obligation: _ } => deepseek_v4_1_flash_engram_population
+    V41IndexEngramSelectionRead { index_sha256_hex: h, index_bytes: b, name_count: n, members: ms, observed: _ } => {
+      let selection = deepseek_v4_1_flash_index_engram_selection_of(
+        index: deepseek_v4_1_flash_published_file_row(path: deepseek_v4_1_flash_safetensors_index_path, file_bytes: b, sha256_hex: h),
+        name_count: n,
+        selector: v41_index_engram_selector,
+        members: ms,
+      )
+      safetensors_population_standing(
+        members: ms,
+        shards: deepseek_v4_1_flash_engram_shard_files,
+        closure: deepseek_v4_1_flash_engram_membership_closure_of(selection: selection, index: deepseek_v4_1_flash_safetensors_index_file, index_count: deepseek_v4_1_flash_index_tensor_count),
+        reading: deepseek_v4_1_flash_engram_population_reading,
+      )
+    }
+  }
+}
+
+fn v41_engram_population_observed() -> SafetensorsPopulationStanding {
+  v41_engram_population_observed_of(reading: v41_index_engram_selection_reading)
+}

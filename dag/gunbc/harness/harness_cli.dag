@@ -2,6 +2,7 @@ module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
@@ -439,13 +440,27 @@ fn harness_place_receipt_failed(binding: HarnessSeatBinding, cause: String) -> P
 // class there is no single ceiling this entry could assume, and assuming one would rebuild the
 // wrong pool and refuse a valid release. It travels the same way the generation does -- written on
 // the receipt by the placement that granted the seat, handed back by whoever holds it.
+// The ceiling and generation arrive as argv Ints; a negative one names no pool and no fence, so it
+// refuses here rather than being asserted `as Nat` (std.coercion refinement_cast_rules).
 fn harness_release_cli(partition: String, reference: String, grant: String, generation: Int, ceiling: Int, reason: String) -> ProcessExit {
+  match checked_int_to_nat(n: ceiling) {
+    Absent => ExitFailure { code: 2, reason: join(["harness release refused: ceiling ", to_string(ceiling), " is negative"], "") }
+    Present { value: ceiling_nat } =>
+      match checked_int_to_nat(n: generation) {
+        Absent => ExitFailure { code: 2, reason: join(["harness release refused: generation ", to_string(generation), " is negative"], "") }
+        Present { value: generation_nat } =>
+          harness_release_admitted(partition: partition, reference: reference, grant: grant, generation: generation_nat, ceiling: ceiling_nat, reason: reason)
+      }
+  }
+}
+
+fn harness_release_admitted(partition: String, reference: String, grant: String, generation: Nat, ceiling: Nat, reason: String) -> ProcessExit {
   let capability = HarnessReleaseCapability {
     partition: partition as PartitionId,
-    ceiling: ceiling as Nat,
+    ceiling: ceiling,
     reference: reference as NonEmptyStr,
     grant: grant as GrantIdentity,
-    generation: generation as Nat,
+    generation: generation,
   }
   match harness_release_held(short_hostname: harness_executor_short_hostname(), capability: capability, reason: reason as NonEmptyStr) {
     HarnessSeatReleased { partition: _ } => ExitSuccess

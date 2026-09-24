@@ -2,6 +2,7 @@ module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
@@ -644,7 +645,6 @@ fn mtcollins1_redfish_url(path: String) -> NonEmptyStr {
 }
 
 fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptyStr) -> SelSnapshotReading
-  uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
   let r = diagnostic.ipmi.Tool.SelListAuthenticated(
@@ -808,7 +808,6 @@ type RedfishGet
   | RedfishGetFailed { cause: BmcReadCause, left: Int }
 
 fn redfish_get(netrc: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: String) -> RedfishGet
-  uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
   match redfish_budget_refusal(url: mtcollins1_redfish_url(path: path as String), at: at, left: left, not_reached: not_reached) {
@@ -840,7 +839,6 @@ fn fetch_collection_pages(
   left: Int,
   read: List<RedfishCollectionPage>,
 ) -> CollectionFetch
-  uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
   if pages_left <= 0 {
@@ -871,7 +869,6 @@ fn fetch_collection_pages(
 }
 
 fn fetch_collection(netrc: NonEmptyStr, collection: NonEmptyStr, left: Int) -> CollectionFetch
-  uses net: std.resources.Network
 {
   fetch_collection_pages(netrc: netrc, collection: collection, page: collection, pages_left: mtcollins1_boot_collection_page_bound, left: left, read: [])
 }
@@ -889,7 +886,6 @@ type MemberBodiesFetch
   | MemberBodiesFailed { cause: BmcReadCause, left: Int }
 
 fn fetch_member_bodies(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemberBodiesFetch
-  uses net: std.resources.Network
 {
   let empty: List<MemberBody> = []
   fold(links, init: MemberBodiesFetched { bodies: empty, left: left }, f: (acc, link) => match acc {
@@ -903,7 +899,6 @@ fn fetch_member_bodies(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) 
 }
 
 fn read_memory_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
-  uses net: std.resources.Network
 {
   match fetch_member_bodies(netrc: netrc, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
@@ -912,7 +907,6 @@ fn read_memory_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<
 }
 
 fn read_processor_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
-  uses net: std.resources.Network
 {
   match fetch_member_bodies(netrc: netrc, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
@@ -935,7 +929,6 @@ fn same_origin_or_none(link: String?) -> NonEmptyStr? {
 }
 
 fn read_processors(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> ProcessorFold
-  uses net: std.resources.Network
 {
   match same_origin_or_none(link: link) {
     Absent => ProcessorFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Processors") }, left: left }
@@ -948,7 +941,6 @@ fn read_processors(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left:
 }
 
 fn read_memory(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> MemoryFold
-  uses net: std.resources.Network
 {
   match same_origin_or_none(link: link) {
     Absent => MemoryFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Memory") }, left: left }
@@ -986,7 +978,6 @@ data mtcollins1_redfish_systems_path: NonEmptyStr = "/redfish/v1/Systems"
 // Memory and Processors links name the collections read next. Zero or several systems is a typed
 // reading, since picking one would be a guess about which system the attempt booted.
 fn read_inventory_with_netrc(netrc: NonEmptyStr) -> InventoryReading
-  uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
   match fetch_collection(netrc: netrc, collection: mtcollins1_redfish_systems_path, left: mtcollins1_boot_redfish_read_budget) {
@@ -1016,7 +1007,6 @@ fn read_inventory_with_netrc(netrc: NonEmptyStr) -> InventoryReading
 }
 
 fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> InventoryReading
-  uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
   let endpoint = mtcollins1_redfish_url(path: mtcollins1_redfish_systems_path as String)
@@ -1041,7 +1031,11 @@ fn console_path_retained(path: String) -> Bool {
 fn console_size_of_stat(size_text: String) -> ByteSize? {
   match parse_int(s: trim(size_text)) {
     Absent => none
-    Present { value: n } => if n < 0 { none } else { Present { value: byte_size(count: n as Nat) } }
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => none
+        Present { value: count } => Present { value: byte_size(count: count) }
+      }
   }
 }
 

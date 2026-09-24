@@ -1,4 +1,4 @@
-module v2.test.manual.normalize_fn_body_cost_probe
+module test.claim.parse_test_fn_decl_return_clause
 
 import v2.compiler.body_lowering_fold {
   body_lower_fn_decl_to_arrow,
@@ -22,16 +22,18 @@ import v2.std.optional { Absent, Optional, Present, optional_present }
 // ---------------------------------------------------------------------------
 // THE ENROLLED REDS AND FALSIFIERS FOR THE POSITIONAL RETURN-TYPE READ.
 //
-// THE NAME IS HISTORICAL AND THE FILE NO LONGER HOLDS A COST PROBE. It began as the cost
-// decomposition that located the fn-body normalize charge; those twelve plain `fn`
-// declarations were DELETED (review 70132) because nothing in the closure called them and
-// their only route to execution was a recipe inside a comment -- which DESIGN section 3c reds
-// as a dangling declaration, and section 6 disposes of outright: a measurement worth
-// re-deriving is worth an entry point, and one that is not is a one-off rather than an
-// instrument. That decomposition was a one-off. It derived the cost-shape reading and
-// falsified two of its own predictions, and the reading it produced is recorded on the
-// carriers it concerns. The file and the claim identities keep their names so that ten floor
-// identities are not churned for a cosmetic rename.
+// WHERE THESE EXECUTE IS PART OF WHAT THEY ARE. This file began as
+// v2.test.manual.normalize_fn_body_cost_probe, the cost decomposition that located the fn-body
+// normalize charge; its twelve dangling cost fns were deleted (review 70132) and what remained
+// are the reds and falsifiers below. Under that name the module matched neither
+// v2.workflow.required_floor `required_gate_prefixes` nor `required_gate_authored_modules`, so
+// the required floor dispositioned every identity here DeclinedOutsideRequiredGate: a wall that
+// never ran on the merge path. THE REPAIR IS A MOVE, NOT A ROSTER EDIT (the rosters are closed to
+// growth without operator sign-off; the precedent is
+// test.claim.infer_record_field_completeness_zero_field_witness_test): the module name now
+// matches the admitted `test.claim.parse_test` family, whose subject -- the fn_decl production's
+// spine as the parser emits it -- is the contract these claims hold for the positional reader.
+// The identities were renamed with the module; nothing else cites them.
 // ---------------------------------------------------------------------------
 
 // FALSIFIERS FOR THE POSITIONAL READ ITSELF. The spine read relies on opt(generic_params)
@@ -70,6 +72,8 @@ data nfbcp_no_return_type_source: String = "module m\nfn g(h: fn(Int) -> Int) { 
 // preparation -- outside every per-claim budget -- and a claim here pays the lookup rather
 // than the construction. Building dag_language_model() per claim instead charged ~107k eval
 // steps to every probe below, which is the parse subject and not this claim's.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 fn nfbcp_parsed(text: String) -> Optional<Node> {
   match tokenize(text: text, file: ^nfbcp_probe_file, rules: dag_lex()) {
     Rejected { diagnostics: _ } => Absent

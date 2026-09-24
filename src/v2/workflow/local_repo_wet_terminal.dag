@@ -708,6 +708,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.srv3_seeded_install_media_real_execution", function: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution" },
+      entry: "dag/test/claim/srv3/srv3_seeded_install_media_real_execution_witness_test.dag",
+      function: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_attempt_three_capture_binds_and_reads_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
       function: "the_attempt_three_capture_binds_and_reads_by_real_execution",
@@ -1392,6 +1398,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "an_established_empty_root_reads_the_slot_absent_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "an_established_empty_root_reads_the_slot_absent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "an_absent_slot_acquires_at_generation_one_by_real_execution" },
       entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
       function: "an_absent_slot_acquires_at_generation_one_by_real_execution",
@@ -1602,6 +1620,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_row_store_encode_witness", function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships" },
+      entry: "dag/test/claim/spark/v41_row_store_encode_witness_test.dag",
+      function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "a_reading_of_exactly_the_planned_spans_keys" },
       entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
       function: "a_reading_of_exactly_the_planned_spans_keys",
@@ -1635,6 +1659,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "nonzero_exit_is_not_a_spawn_refusal" },
       entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
       function: "nonzero_exit_is_not_a_spawn_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
+      function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_missing_snapshot_stops_before_the_grant_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
+      function: "a_missing_snapshot_stops_before_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_missing_ancestor_stops_before_the_grant_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
+      function: "a_missing_ancestor_stops_before_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_writable_entry_stops_before_the_grant_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
+      function: "a_writable_entry_stops_before_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
+      function: "a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
+      function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution",
       expectation: ExpectedToHold {}
     }
   ]

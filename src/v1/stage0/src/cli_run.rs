@@ -529,6 +529,44 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 /// Single authority for workspace-root discovery (.git ancestor walk).
 /// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
 pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    workspace_root_resolve(spawn_workspace_root_env().as_deref(), start_cwd)
+}
+
+/// THE CHECKOUT ROOT RECEIVED AT SPAWN, the dissolution this scaffold named from the start
+/// (`release bins receive checkout-root at spawn (env/argv)`), landed for the one population that
+/// needs it: a release locus (`gunbc.live_deploy.emit` `release_locus_install_steps` — the approval
+/// broker's and the microVM slot controller's) is dag/ + src/v2 + the binary + a tree receipt and
+/// is NOT a git checkout, so the walk below refused it and neither unit could start (parent ruling
+/// 2026-09-21, measured on srv1: `gunbc-microvm-slot@srv1-13` exit 101, `gunbc-approval-broker`
+/// dead). Authority for the name and the marker: `gunbc.cli_run_workspace_root_scaffold`
+/// `gunbc_workspace_root_env_name` / `release_locus_tree_receipt_name`, projected into the seed by
+/// `gunbc.release_locus_seed_constants_emit` and re-exported below. The seed does NOT transcribe
+/// them: a spelling that moves on the .dag side moves here at the next regen, and a hand edit of
+/// the generated file is refused by the generated-artifact drift wall.
+///
+/// ONE ENV, READ AT ONE SITE, CONSUMED BY BOTH ROOTS: `workspace_root()` and
+/// `process_workspace_root()` are the only readers, through this function, and no caller re-reads
+/// it. WHEN SET IT IS THE AUTHORITY: the git / Cargo.toml walk is not consulted, and a value that
+/// does not name a locus (no `dag/`, or no tree receipt) refuses naming the path and the missing
+/// member rather than falling back to the walk — a wrong root silently replaced by a walked one is
+/// the class the walk itself was written against. WHEN UNSET nothing changes.
+pub(crate) use crate::release_locus_seed_constants_generated::{
+    GUNBC_WORKSPACE_ROOT_ENV, RELEASE_LOCUS_TREE_RECEIPT_NAME,
+};
+
+fn spawn_workspace_root_env() -> Option<String> {
+    std::env::var(GUNBC_WORKSPACE_ROOT_ENV)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+}
+
+/// The resolver over supplied values, so a test can drive the env arm without touching the
+/// process environment: `spawn` set → the locus or a refusal, never the walk; `spawn` unset → the
+/// `.git`-ancestor walk exactly as before.
+pub(crate) fn workspace_root_resolve(spawn: Option<&str>, start_cwd: &Path) -> PathBuf {
+    if let Some(named) = spawn {
+        return spawn_workspace_root_admitted(Path::new(named));
+    }
     for dir in start_cwd.ancestors() {
         if dir.join(".git").exists() {
             return dir.to_path_buf();
@@ -541,6 +579,34 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
          path is not a runtime fact)",
         start_cwd.display()
     )
+}
+
+fn spawn_workspace_root_admitted(named: &Path) -> PathBuf {
+    spawn_workspace_root_locus(named).unwrap_or_else(|refusal| panic!("{refusal}"))
+}
+
+/// The locus check as a typed refusal, so `bind_process_workspace_root` reports it through its
+/// own exit contract; `spawn_workspace_root_admitted` is the same check for the readers that
+/// still answer an absent root with a panic.
+fn spawn_workspace_root_locus(named: &Path) -> Result<PathBuf, String> {
+    if !named.join("dag").is_dir() {
+        return Err(format!(
+            "workspace_root: {}={} names no release locus: missing member dag/ (the walk is not \
+             consulted when the root is received at spawn)",
+            GUNBC_WORKSPACE_ROOT_ENV,
+            named.display()
+        ));
+    }
+    if !named.join(RELEASE_LOCUS_TREE_RECEIPT_NAME).is_file() {
+        return Err(format!(
+            "workspace_root: {}={} names no release locus: missing member {} (the tree receipt \
+             the locus install writes last; a locus without one was interrupted)",
+            GUNBC_WORKSPACE_ROOT_ENV,
+            named.display(),
+            RELEASE_LOCUS_TREE_RECEIPT_NAME
+        ));
+    }
+    Ok(named.to_path_buf())
 }
 
 /// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
@@ -2087,12 +2153,7 @@ pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
 /// to cwd-relative or absolute spellings as index keys.
 fn process_workspace_root() -> PathBuf {
     PROCESS_WORKSPACE_ROOT
-        .get_or_init(|| {
-            (
-                resolve_process_workspace_root(),
-                WorkspaceRootBasis::Discovered,
-            )
-        })
+        .get_or_init(resolve_process_workspace_root)
         .0
         .clone()
 }
@@ -2236,6 +2297,9 @@ pub enum WorkspaceRootBasis {
     Declared,
     /// The request named no base, so the checkout walk answered.
     Discovered,
+    /// The spawning unit named it through `GUNBC_WORKSPACE_ROOT`: a release locus, which is not a
+    /// checkout, so neither rule above is consulted and a locus that is not one refuses.
+    Spawned,
 }
 
 impl WorkspaceRootBasis {
@@ -2243,6 +2307,7 @@ impl WorkspaceRootBasis {
         match self {
             WorkspaceRootBasis::Declared => "declared",
             WorkspaceRootBasis::Discovered => "discovered",
+            WorkspaceRootBasis::Spawned => "spawned",
         }
     }
 }
@@ -2256,35 +2321,45 @@ pub fn bind_process_workspace_root(
     let cwd = std::env::current_dir().map_err(|e| {
         format!("no workspace root: the process working directory is unavailable ({e})")
     })?;
-    let (root, basis) = match try_resolve_process_workspace_root() {
-        Some(discovered) => (discovered, WorkspaceRootBasis::Discovered),
-        None => match declared_workspace_root_from(&cwd, source_roots) {
-            DeclaredBase::Named(declared) => (declared, WorkspaceRootBasis::Declared),
-            // THE TWO REFUSALS BELOW ARE THE POINT OF THE SPLIT. A caller whose root is misspelled
-            // is told which root; a caller who named no base at all is told that, and neither is
-            // told the other's story.
-            DeclaredBase::RootAbsent { root } => {
-                return Err(format!(
-                    "no workspace root: there is no checkout to discover one from, and the \
+    // THE SPAWN ROOT IS ASKED FIRST AND ANSWERS ALONE: a release locus is not a checkout, so when
+    // the spawning unit names one, discovery and the declared rule are not consulted, and a named
+    // path that is not a locus refuses here rather than falling through to either of them.
+    let spawned = match spawn_workspace_root_env() {
+        Some(named) => Some(spawn_workspace_root_locus(Path::new(&named))?),
+        None => None,
+    };
+    let (root, basis) = match spawned {
+        Some(locus) => (locus, WorkspaceRootBasis::Spawned),
+        None => match try_resolve_process_workspace_root() {
+            Some(discovered) => (discovered, WorkspaceRootBasis::Discovered),
+            None => match declared_workspace_root_from(&cwd, source_roots) {
+                DeclaredBase::Named(declared) => (declared, WorkspaceRootBasis::Declared),
+                // THE TWO REFUSALS BELOW ARE THE POINT OF THE SPLIT. A caller whose root is misspelled
+                // is told which root; a caller who named no base at all is told that, and neither is
+                // told the other's story.
+                DeclaredBase::RootAbsent { root } => {
+                    return Err(format!(
+                        "no workspace root: there is no checkout to discover one from, and the \
                      declared source root {root} does not resolve under the current directory \
                      {}.\n  cause: with no checkout, the request is the only thing that can name \
                      a base, and a root that is not there cannot name one.\n  remedy: correct the \
                      spelling, or run from the directory the roots are named relative to.",
-                    cwd.display()
-                ));
-            }
-            DeclaredBase::NotNamed => {
-                return Err(format!(
-                    "no workspace root: none of the current directory {}'s ancestors is a git \
+                        cwd.display()
+                    ));
+                }
+                DeclaredBase::NotNamed => {
+                    return Err(format!(
+                        "no workspace root: none of the current directory {}'s ancestors is a git \
                      checkout carrying Cargo.toml beside dag/, and the request names no base \
                      either -- every --source-root would have to be a relative path of ordinary \
                      components.\n  cause: the root is the base every repo-relative module key is \
                      spelled against, so a run without one would key its module graph and its \
                      content indices differently.\n  remedy: name the source roots relative to the \
                      directory the run starts in.",
-                    cwd.display()
-                ));
-            }
+                        cwd.display()
+                    ));
+                }
+            },
         },
     };
     relative_roots_resolve_under(&root, source_roots)?;
@@ -2321,8 +2396,14 @@ fn try_resolve_process_workspace_root() -> Option<PathBuf> {
     }
 }
 
-fn resolve_process_workspace_root() -> PathBuf {
-    try_resolve_process_workspace_root().unwrap_or_else(|| {
+fn resolve_process_workspace_root() -> (PathBuf, WorkspaceRootBasis) {
+    if let Some(named) = spawn_workspace_root_env() {
+        return (
+            spawn_workspace_root_admitted(Path::new(&named)),
+            WorkspaceRootBasis::Spawned,
+        );
+    }
+    let discovered = try_resolve_process_workspace_root().unwrap_or_else(|| {
         let cwd = std::env::current_dir()
             .map(|d| d.display().to_string())
             .unwrap_or_else(|_| "<unavailable>".into());
@@ -2332,7 +2413,8 @@ fn resolve_process_workspace_root() -> PathBuf {
              was {}",
             workspace_root().display()
         )
-    })
+    });
+    (discovered, WorkspaceRootBasis::Discovered)
 }
 
 /// Repo-relative path under [`process_workspace_root`]. Fail-closed: returns a typed refusal
@@ -3054,6 +3136,50 @@ mod workspace_root_discovery_tests {
         assert!(sub.is_dir(), "dag/ must exist under checkout");
         let got = workspace_root_from(&sub);
         assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// THE ROOT RECEIVED AT SPAWN IS THE AUTHORITY AND THE WALK IS NOT REACHED: the start path
+    /// is a real checkout subdirectory the walk would resolve, and the answer is the locus anyway.
+    #[test]
+    fn spawn_root_is_authority_and_the_walk_is_not_consulted() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let locus = fixture_root("locus");
+        std::fs::create_dir_all(locus.join("dag")).expect("dag dir");
+        std::fs::write(
+            locus.join(super::RELEASE_LOCUS_TREE_RECEIPT_NAME),
+            "candidate_revision=x\n",
+        )
+        .expect("receipt");
+        let got = super::workspace_root_resolve(Some(locus.to_str().unwrap()), &top.join("dag"));
+        let _ = std::fs::remove_dir_all(&locus);
+        assert_eq!(canonical(&got), canonical(&locus));
+        assert_ne!(canonical(&got), canonical(&top));
+    }
+
+    /// A SPAWN ROOT THAT IS NOT A LOCUS REFUSES NAMING THE MISSING MEMBER, and does not fall back
+    /// to the walk even though the start path is inside a checkout.
+    #[test]
+    fn spawn_root_without_receipt_refuses_instead_of_walking() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let locus = fixture_root("locus-no-receipt");
+        std::fs::create_dir_all(locus.join("dag")).expect("dag dir");
+        let result = std::panic::catch_unwind(|| {
+            super::workspace_root_resolve(Some(locus.to_str().unwrap()), &top.join("dag"))
+        });
+        let _ = std::fs::remove_dir_all(&locus);
+        assert!(
+            result.is_err(),
+            "a spawn root without the tree receipt must refuse, not walk"
+        );
     }
 
     /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.
@@ -44879,7 +45005,7 @@ pub use emitted_closure_compile_host::{
     emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
     local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
     required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
-    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict, PrivateProbeRoot,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE

@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_append, list_snoc_item }
+import v2.std.algebra { any, fold_list, length, list_append, list_snoc_item }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -80,6 +80,9 @@ import v2.std.symbol_index {
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
   symbol_index_absolute_candidates,
+  RecordTypePayload,
+  VariantArmPayload,
+  symbol_index_declared_payload_at,
   symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup
 }
@@ -91,6 +94,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  Match,
   Named,
   Node,
   NodeFold,
@@ -99,8 +103,16 @@ import v2.std.node {
   Transform,
   TypeNode,
   fold_node,
+  match_arm_body,
+  match_arm_pattern,
   node_with_occurrence_id,
   well_formed,
+}
+import v2.std.node_query {
+  construct_field_edges,
+  construct_tag_optional,
+  find_named_child,
+  pattern_wildcard_name
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
@@ -434,7 +446,7 @@ fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> Non
         },
         tail: [fatal]
       }
-    GlobalBareLookupAmbiguous =>
+    GlobalBareLookupAmbiguous { paths: _ } =>
       NonEmptyDiagnostics {
         head: Diagnostic {
           reason: ^resolve_unbound_name_is_declared_in_several_modules,
@@ -1161,6 +1173,216 @@ fn resolve_transform_children(
   }))
 }
 
+
+// A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
+// over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
+// names the constructor and one edge per field the pat names, whose target is the
+// sub-pat -- a binder atom, `_`, a literal, or a nested construct. The arm's BODY resolves
+// under one ScopeFrame holding those binders (name -> name, as add_arrow_domain_named_params
+// does); the scrutinee and the sibling arms keep the outer scope, so a binder neither leaks to a
+// sibling nor past the match. lookup_chain answers a frame local BoundInFrame before it reaches the
+// root or the symbol index, so a binder that spells an outer name shadows it -- a lexical frame,
+// deliberately not a namespace binding: a namespace claimant at the same position would be the
+// located ambiguity the namespace chain refuses (docs/plans/namespace-resolution-design.md section
+// 13), which is right for containment positions and wrong for binders. WHICH FIELD-TARGET ATOMS
+// ARE BINDERS: the seed's rule (v1.compiler.04_patterns) -- an atom the symbol index binds to a
+// declared payload is a nullary constructor and stays a reference, a canonical symbol is a
+// constant; any other atom is a binder (a fn or data of the same name does not make it one); `_`
+// binds nothing. The constructor TAG is never a binder: it resolves as
+// an ordinary reference, so a misspelled variant in a pat refuses instead of quietly becoming
+// a binder that matches everything. A pat that is not a construct (a bare atom, a literal)
+// binds nothing and resolves as before.
+// WHAT THE NAME DENOTES IS ASKED OF THE INDEX, NOT OF THE NODE (Pkg16). Three shape predicates stood
+// here in turn -- the bare Conj connective, the construct tag with an `Absent => true` default, and
+// declared-field coverage -- and each classified a MODULE container as a constructor, because a
+// declared payload, a module container and a declaration parse-rest node are all Conj with Named
+// edges: the shape does not carry the fact.
+//
+// WHAT THE FILED SPECIMEN CLAIMED, AND WHAT MEASUREMENT SAYS, because this package was filed on a
+// route that does not execute and the correction belongs beside the code rather than in a PR body.
+// The claim was that `Present { value: node } =>` in v2.std.symbol_index reaches the MODULE
+// v2.std.node by lexical ascent and reads it -- Accepted, wrong, silent. Ascent cannot reach a
+// module: v2.compiler.symbol_index_fill symbol_index_fill_containment_node DESCENDS module spine
+// segments (namespace_graft_spine_segment_edge_optional) without inserting a path, so a module name
+// is never an index entry and never a LexicalHit. Measured at fixture scale beside a live control
+// (v2.test.claim.match_arm_binder_frame): the reachable route for that spelling is the global-bare
+// lookup, which answers Ambiguous and REFUSES, located, rather than accepting a wrong value. The
+// specimen itself has not been observed on the native route -- that needs the emitted compiler,
+// which does not build on main -- so this states what the corpus shows and not more.
+//
+// The fact is held by the writers that know what they inserted: v2.compiler.symbol_index_fill marks
+// a variant arm and its unique alias as it inserts them, and marks a record from the carrier
+// normalize captured before the record rehome erased the distinction (v2.compiler.normalized_tree
+// NormalizedTree record_declarations). Both are keyed by DECLARING path, which is the path a lexical
+// or global-unique hit returns (for an import binding, the declaration's own path). So a module, a
+// data row, a fn and an alias are never constructors here -- not because a predicate excludes them,
+// but because nothing marks them.
+
+// The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
+// index binds it to a declared payload (a variant arm, module.Type.Variant or its unique alias,
+// resolves to its payload Conj; so does a record type), or when it is a canonical symbol (`true`,
+// `false`). A fn or data declaration of the same name does NOT make it a constructor: the seed
+// binds `x` in `A(x)` even when a fn x exists, and so does this frame.
+//
+// THE LexicalUnbound BRANCH IS NOT A BRIDGE ANY MORE, AND WHY IT STAYS. It was first written as
+// DISSOLVE-ON gunbc#12009: before imports were bindings on the lexical chain, an imported
+// constructor in pattern position was reachable only through the corpus-wide spelling census.
+// #12009 closed unmerged, but its content landed on main inside gunbc#12048 (stacked on it), so
+// imports ARE chain bindings now and an imported constructor hits lexically. That trigger has
+// fired. What survives it is a different job: the census here never CHOOSES a meaning that
+// succeeds. A LexicalUnbound atom it classifies as a constructor is resolved as a reference by
+// resolve_pattern_node, finds nothing on the chain, and REFUSES as unbound, carrying main's
+// declared-elsewhere advisory (unbound_symbol_diagnostics). So the census only decides between
+// "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md
+// section 13 keeps for global_bare -- explaining an absence -- and not the resolution mechanism
+// #12048 deleted. EXECUTED, not only read: gunbc#12082's v2.test.claim.match_arm_binder_frame
+// mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding (`None` declared in one
+// module, not imported, `A(None) => None` in another) refuses resolve_reason_unbound_symbol. The
+// route is GlobalBareLookupAmbiguous (a variant's containment path plus its unique alias), not
+// GlobalBareHit: the claim reds with the Ambiguous arm forced to binder and stays green with the
+// payload fact forced false.
+//
+// DELETING IT, the retirement this marker used to promise, would be the wrong move: with
+// `LexicalUnbound => namespace_has_canonical_symbol(..)`, an unimported constructor spelling
+// (`None` with no import of it) becomes a fresh binder that matches every value. That is Accepted,
+// wrong, and silent, which DESIGN section 5 forbids. The cost of keeping it is an
+// over-prohibition, stated so it can be priced (DESIGN section 4d): a genuinely fresh binder whose
+// spelling is a variant declared somewhere in the corpus refuses, loudly, and the author renames
+// it. The branch retires when an unbound pattern atom that spells a declared constructor has its
+// own typed refusal that does not consult the corpus-wide census.
+// ONE QUESTION PER DECLARING PATH, AND AMBIGUITY ASKS IT OF EVERY CLAIMANT. An ambiguous spelling is
+// a constructor when ANY of its candidates is a declared payload -- the fail-closed direction for a
+// real payload ambiguity (`None` as a variant and as its unique alias, the mab_* claims), where
+// binding would be the silent wrong answer -- and a binder when NONE is. Reading every ambiguity as
+// a constructor, as this did before, refused an ordinary binder `d` in
+// `Rejected { diagnostics: d }` because several unrelated modules declare non-payloads named `d`:
+// an over-prohibition the paragraph above did not price, since it priced only a binder spelled like
+// a VARIANT.
+fn resolve_path_is_declared_payload(ctx: ResolveContext, path: QualifiedName) -> Bool {
+  match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: VariantArmPayload } => true
+    Present { value: RecordTypePayload } => true
+    Absent => false
+  }
+}
+
+fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: id
+  ) {
+    LexicalHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
+    LexicalAmbiguous { candidates: candidates } =>
+      any(xs: candidates, predicate: fn(c) { resolve_path_is_declared_payload(ctx: ctx, path: c.path) })
+    LexicalUnbound =>
+      match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: id) {
+        GlobalBareHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
+        GlobalBareLookupAmbiguous { paths: paths } =>
+          any(xs: paths, predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) })
+        GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
+      }
+  }
+}
+
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match construct_tag_optional(n: pat) {
+    Absent => acc
+    Present { value: _ } =>
+      fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if id == pattern_wildcard_name() {
+              m
+            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
+              m
+            } else {
+              map_insert(m, id, id)
+            }
+          _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+        }
+      })
+  }
+}
+
+// The pat resolves under the ARM frame: the tag and any nested constructor resolve as
+// references, a binder answers BoundInFrame and stays itself, and `_` is kept as it is.
+//
+// THESE ARE WALKS, ON gunbc#12116's CHILD WALK (XL-2 P4). A pattern, an arm and a match each fold
+// their children through child_walk_step and close with child_walk_node, so every independent
+// refusal under a match -- a misspelled tag in one arm, an unbound reference in another arm's body
+// -- is its own chain in the population, in walk order, and the node is never reported accepted
+// while any chain stands. No scope here is built from a resolved child: the arm frame's binders
+// come from resolve_pattern_binders over the pattern's SYNTAX and the symbol index, before the
+// fold runs, so a refused pattern does not leave the body under an invented scope and no site is
+// marked unobservable (P4's one exception, a Bind's binder, has no counterpart here).
+fn resolve_pattern_field_target_walk(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
+  match target.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == pattern_wildcard_name() {
+        ResolveWalkAccepted { value: target, diagnostics: None }
+      } else {
+        resolve_node_walk(ctx: ctx, n: target)
+      }
+    _ => resolve_pattern_node_walk(ctx: ctx, pat: target)
+  }
+}
+
+fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
+  match construct_tag_optional(n: pat) {
+    Absent => resolve_node_walk(ctx: ctx, n: pat)
+    Present { value: _ } =>
+      child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(w: acc, e: e, r: resolve_pattern_field_target_walk(ctx: ctx, target: e.target))
+      }))
+  }
+}
+
+fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
+    Accepted { value: pat, diagnostics: _ } =>
+      let arm_ctx = resolve_ctx_with_scope(
+        ctx: ctx,
+        scope: ScopeFrame {
+          locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
+          outer: ctx.scope
+        }
+      )
+      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: match e.label {
+            Named { name: label } =>
+              if label == match_arm_pattern {
+                resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+              } else {
+                resolve_node_walk(ctx: arm_ctx, n: e.target)
+              }
+            Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
+          }
+        )
+      }))
+  }
+}
+
+// children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
+// every child, refused or not, so a refused scrutinee never promotes the first arm into its place.
+fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: if acc.ordinal == 0 {
+        resolve_node_walk(ctx: ctx, n: e.target)
+      } else {
+        resolve_match_arm_walk(ctx: ctx, arm: e.target)
+      }
+    )
+  }))
+}
+
 // THE LEGACY ENTRY: one node, one chain. Every caller that asks for an Outcome keeps the answer
 // the short-circuiting walk gave; the population is resolve_node_walk.
 fn resolve_node(
@@ -1189,6 +1411,8 @@ fn resolve_node_walk(
       ))
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(ctx: ctx, n: n)
+    ComputationNode { behavior: Match } =>
+      resolve_match_node_walk(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>

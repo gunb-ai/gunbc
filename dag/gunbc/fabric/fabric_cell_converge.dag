@@ -18,7 +18,7 @@ import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_owne
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_instance_name_prefix, runner_slot_identity_equal }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
-  gunbc_runner_slot_desired,
+  gunbc_runner_slot_desired_for,
   RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
   runner_slot_membership,
   SlotMembershipWidthUnresolved,
@@ -215,8 +215,12 @@ fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership>
 // THE BOUNDARY'S DESIRED STATE CONSUMES THE EXISTING SLOT AUTHORITY RATHER THAN RE-SPELLING IT, so
 // a change to the fleet's per-slot resource row shows up here as MemberChanged at exactly one
 // address instead of drifting silently. The digest is over the values the boundary will carry.
-fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
-  let desired = gunbc_runner_slot_desired()
+// THE DIGEST IS PER SLOT BECAUSE THE ENVELOPE IS: gunbc.runner_slot_allocation
+// gunbc_runner_slot_desired_for answers the shakedown slot's 28 GiB row and the fleet row for
+// every other slot, and a digest rendered from the fleet row alone would report the converged
+// shakedown cell as drifted on every observation (or, worse, converge it to the wrong ceiling).
+fn fabric_cell_resource_boundary_state_digest(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  let desired = gunbc_runner_slot_desired_for(slot: slot)
   fabric_cell_boundary_state_digest_of(
     memory_max: to_string(byte_size_count(b: desired.memory_max)),
     memory_high: to_string(byte_size_count(b: desired.memory_high)),
@@ -293,7 +297,7 @@ fn fabric_cell_desired_state_digest(slot: RunnerSlotIdentity, address: FabricCel
     FabricCellResourceBoundaryAddress =>
       fabric_cell_boundary_address_digest_of(
         slice_name: fabric_cell_slice_name(slot: slot),
-        state: fabric_cell_resource_boundary_state_digest(),
+        state: fabric_cell_resource_boundary_state_digest(slot: slot),
       )
   }
 }

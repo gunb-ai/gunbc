@@ -105,7 +105,7 @@ fn xl2_verdict_of(outcome: NativeCensusModuleOutcome) -> Xl2Verdict {
   match outcome {
     NativeCensusModuleResolved => Xl2Resolved
     NativeCensusModuleFileRefused => Xl2FileRefused
-    NativeCensusModuleResolveRefused { diagnostics: d } =>
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
       Xl2Refused {
         reason: d.head.reason,
         at_atom: match d.head.at {

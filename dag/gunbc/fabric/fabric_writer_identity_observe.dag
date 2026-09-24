@@ -3,7 +3,6 @@ module gunbc.fabric_writer_identity_observe
 import std.types { String, NonEmptyStr, List, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.fabric_storage { fabric_storage_fault_wire }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -149,7 +148,6 @@ fn local_kernel_hostname() -> String {
 }
 
 fn fabric_writer_identity_observe_wet() -> ProcessExit
-  uses net: Network
 {
   let dispatched = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariablePresent { value: v } => v
