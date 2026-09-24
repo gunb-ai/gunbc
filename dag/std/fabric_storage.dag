@@ -244,6 +244,7 @@ fn fabric_storage_fault_wire(fault: FabricStorageFault) -> String {
     FabricStoreRefused { cause: c } => match c {
       CasSlotObservationRefused { cause: u } => join(["store could not read the head: ", cas_unreadable_slot_detail(cause: u)], "")
       CasGenerationPublicationRefused { detail: d } => join(["store refused publication: ", d as String], "")
+      CasGenerationSpaceExhausted { head: h } => join(["store generation space exhausted at head ", to_string(h)], "")
     }
     FabricObjectMissing { object: o } => join(["object missing: ", fabric_object_ref_wire(object: o) as String], "")
     FabricObjectCorrupt { object: o, detail: d } => join(["object corrupt: ", fabric_object_ref_wire(object: o) as String, " ", d as String], "")
