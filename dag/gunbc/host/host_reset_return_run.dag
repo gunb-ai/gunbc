@@ -84,8 +84,11 @@ import gunbc.machine_intake_oob_boot_handoff {
   BootSelectionRefused,
   BootSelectionUnverifiable,
   OobBootHandoffOutcome,
-  PowerCycleRefused,
+  PowerCommandAcceptedNoTransition,
+  PowerCommandRefused,
+  PowerStateReadFailed,
 }
+import extdeps.bmc.ipmi_chassis_control { chassis_observation_text, ipmi_chassis_control_verb }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is
@@ -303,9 +306,9 @@ fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
 // keeps them apart in the first place.
 fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
   match outcome {
-    BootControlIssued { selected: d } =>
+    BootControlIssued { selected: d, power: _ } =>
       ResetAccepted {
-        controller_response: join(["boot source override verified for '", d as String, "' and the power action was accepted; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
+        controller_response: join(["boot source override verified for '", d as String, "' and the chassis power transition was observed; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
         issued_at: issued_at,
       }
     BootSelectionRefused =>
@@ -330,9 +333,17 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
       ResetRefusedByController {
         diagnostic: join(["boot parameter 5 did not read back, so the override for '", d as String, "' is unverified; output: ", r], "") as NonEmptyStr,
       }
-    PowerCycleRefused { selected: d } =>
+    PowerStateReadFailed { selected: d, observed_state: o } =>
       ResetRefusedByController {
-        diagnostic: join(["the override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+        diagnostic: join(["the override for '", d as String, "' APPLIED but chassis power read ", chassis_observation_text(observation: o) as String, ", so no power action was selected; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    PowerCommandRefused { selected: d, action: a } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED but chassis power ", ipmi_chassis_control_verb(action: a) as String, " was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    PowerCommandAcceptedNoTransition { selected: d, action: a, observed_state: o } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED and chassis power ", ipmi_chassis_control_verb(action: a) as String, " exited 0 but no power transition was observed within the bound; last chassis power ", chassis_observation_text(observation: o) as String], "") as NonEmptyStr,
       }
     BootHandoffNotAdmitted { admission: _ } =>
       ResetNotAttempted { cause: "the controller was not admitted for out-of-band drive; no write was attempted" }
@@ -455,7 +466,7 @@ fn host_reset_return_issue_and_watch(
     username: candidate.username,
     password_file: password_file,
     selection: candidate.boot_selection,
-    power_action: candidate.power_action,
+    running_restart: candidate.power_action,
   )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
   let observation = observe_reset_return(

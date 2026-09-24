@@ -16,6 +16,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_intent_network { operator_host_srv2 }
+import extdeps.bmc.ipmi_chassis_control { IpmiChassisControlAction, ipmi_chassis_control_verb }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection,
   ipmi_boot_selection_label,
@@ -35,7 +36,7 @@ type MtCollins1BootSubject {
   export_host: NonEmptyStr
   export_dir: NonEmptyStr
   selection: IpmiBootSelection
-  power_action: NonEmptyStr
+  power_action: IpmiChassisControlAction
   execution_revision: NonEmptyStr
 }
 
@@ -147,7 +148,7 @@ data mtcollins1_ipmi_power_resource: NamespacePosition = NamespacePosition {
 data mtcollins1_ipmi_power_scope: AuthorizationScope = AuthorizationScope {
   verb: Write,
   resource: mtcollins1_ipmi_power_resource,
-  action: "ipmi.chassis.power.cycle" as AuthorizedAction,
+  action: "ipmi.chassis.power.on-or-cycle" as AuthorizedAction,
 }
 
 data mtcollins1_boot_required_scopes: List<AuthorizationScope> = [
@@ -167,13 +168,13 @@ fn mtcollins1_boot_intent_hash(subject: MtCollins1BootSubject) -> ContentHash {
       subject.export_dir as String,
       architecture_diagnostic_name(arch: subject.selection.architecture) as String,
       ipmi_boot_selection_label(selection: subject.selection) as String,
-      subject.power_action as String,
+      ipmi_chassis_control_verb(action: subject.power_action) as String,
       subject.execution_revision as String,
     ], "|") as NonEmptyStr,
   )
 }
 
-data mtcollins1_boot_purpose: NonEmptyStr = "Attach the diskless Ubuntu live image already exported on srv2 to Mt. Collins unit 1 over BMC virtual media, set one-shot CD boot, and power-cycle the host. This interrupts anything the unit is currently running." as NonEmptyStr
+data mtcollins1_boot_purpose: NonEmptyStr = "Attach the diskless Ubuntu live image already exported on srv2 to Mt. Collins unit 1 over BMC virtual media, set one-shot CD boot, then power the host on if chassis status reads it off, or power-cycle it if it reads on. A running unit is interrupted." as NonEmptyStr
 
 // THE GATE IS THE SHARED ONE. The operator's decision over this subject is read through
 // gunbc.auth.approval_gate, generic over the subject: ApprovalGate<MtCollins1BootSubject> and

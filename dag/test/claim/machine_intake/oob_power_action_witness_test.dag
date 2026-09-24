@@ -1,0 +1,107 @@
+module test.claim.machine_intake.oob_power_action_witness
+
+import std.types { Bool, List }
+import extdeps.bmc.ipmi_chassis_control {
+  ChassisPowerObservation,
+  ChassisPowerRead,
+  ChassisStatusUndecodable,
+  ChassisUnreadable,
+  IpmiChassisControlAction,
+  IpmiChassisHardReset,
+  IpmiChassisPowerCycle,
+  IpmiChassisPowerUp,
+  chassis_observation,
+  ipmi_chassis_control_verb,
+}
+import gunbc.machine_intake_oob_boot_handoff {
+  PowerActionSelected,
+  PowerActionUnselectable,
+  PowerReadbackExpectation,
+  PowerTransitionObserved,
+  PowerTransitionPending,
+  oob_power_action_selection,
+  power_readback_expectation,
+  power_readback_step,
+}
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action }
+import gunbc.machine_intake_mtcollins1_platform_observation {
+  SupplyUncabledOperatorReported,
+  mtcollins1_psu2_ac_loss_cause,
+}
+
+// THE CONTROLS FOR THE MT. COLLINS OFF-HOST DEFECT (run 36023602469). Each decides through the
+// production folds the handoff calls: oob_power_action_selection picks the verb from the §28.2 read,
+// power_readback_step judges each post-actuation sample. The effectful poll is those steps with a
+// ChassisStatus read and a sleep between them, so folding a supplied sample sequence here exercises
+// the same decision the poll makes, sample by sample.
+
+fn off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
+
+fn on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : on\n") }
+
+fn observed_within(action: IpmiChassisControlAction, samples: List<ChassisPowerObservation>) -> Bool {
+  let decided = fold(samples, init: PowerTransitionPending { expectation: power_readback_expectation(action: action) }, f: (acc, s) => match acc {
+    PowerTransitionObserved => PowerTransitionObserved
+    PowerTransitionPending { expectation: e } => power_readback_step(expectation: e, sample: s)
+  })
+  match decided {
+    PowerTransitionObserved => true
+    PowerTransitionPending { expectation: _ } => false
+  }
+}
+
+test fn an_off_host_selects_power_up_not_the_restart_verb() -> Bool {
+  match oob_power_action_selection(observed: off(), running_restart: mtcollins1_power_action) {
+    PowerActionSelected { action: a } => ipmi_chassis_control_verb(action: a) == "on"
+    PowerActionUnselectable { observed_state: _ } => false
+  }
+}
+
+test fn an_on_host_selects_the_running_restart_verb() -> Bool {
+  match oob_power_action_selection(observed: on(), running_restart: mtcollins1_power_action) {
+    PowerActionSelected { action: a } => ipmi_chassis_control_verb(action: a) == "cycle"
+    PowerActionUnselectable { observed_state: _ } => false
+  }
+}
+
+test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
+  let unread = match oob_power_action_selection(observed: ChassisUnreadable, running_restart: IpmiChassisPowerCycle) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  }
+  let unknown = match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : unknown\n"), running_restart: IpmiChassisPowerCycle) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  }
+  unread && unknown
+}
+
+// THE INCIDENT ITSELF: a cycle at an off host, exit 0, the chassis never moves. Every sample reads
+// off, so the off-then-on transition is never completed and the read-back refuses.
+test fn an_off_host_cycled_with_no_transition_is_not_observed() -> Bool {
+  !observed_within(action: IpmiChassisPowerCycle, samples: [off(), off(), off(), off()])
+}
+
+test fn a_cycle_that_never_leaves_on_is_not_observed() -> Bool {
+  !observed_within(action: IpmiChassisPowerCycle, samples: [on(), on(), on()])
+}
+
+test fn a_cycle_observed_off_then_on_within_the_bound_passes() -> Bool {
+  observed_within(action: IpmiChassisPowerCycle, samples: [on(), off(), ChassisUnreadable, on()])
+}
+
+test fn a_power_up_observed_on_within_the_bound_passes() -> Bool {
+  observed_within(action: IpmiChassisPowerUp, samples: [off(), off(), on()])
+    && !observed_within(action: IpmiChassisPowerUp, samples: [off(), ChassisUnreadable, off()])
+}
+
+test fn a_hard_reset_is_never_witnessed_by_power_state() -> Bool {
+  !observed_within(action: IpmiChassisHardReset, samples: [on(), off(), on()])
+}
+
+test fn the_psu2_ac_loss_carries_the_operator_report() -> Bool {
+  match mtcollins1_psu2_ac_loss_cause {
+    SupplyUncabledOperatorReported { reported_at: at, statement: _ } => at == "2026-09-24"
+    _ => false
+  }
+}

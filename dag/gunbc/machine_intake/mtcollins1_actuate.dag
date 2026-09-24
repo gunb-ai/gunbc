@@ -24,8 +24,16 @@ import gunbc.machine_intake_oob_boot_handoff {
   BootSelectionRefused,
   BootSelectionUnverifiable,
   OobBootHandoffOutcome,
-  PowerCycleRefused,
+  PowerCommandAcceptedNoTransition,
+  PowerCommandRefused,
+  PowerStateReadFailed,
   oob_boot_handoff,
+}
+import extdeps.bmc.ipmi_chassis_control {
+  IpmiChassisControlAction,
+  IpmiChassisPowerCycle,
+  chassis_observation_text,
+  ipmi_chassis_control_verb,
 }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom,
@@ -48,12 +56,15 @@ data mtcollins1_netboot_selection: IpmiBootSelection = aarch64_uefi_once_boot_se
 
 data mtcollins1_cdrom_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
 
-// A CYCLE AND NOT A RESET, because the unit's own SEL is the evidence that a cycle takes effect
+// THE VERB THAT RESTARTS THIS UNIT WHILE IT IS RUNNING, and only that. The handoff reads chassis
+// power first and powers an OFF unit up instead (IPMI §28.3 makes a cycle at S4/S5 a no-op, and this
+// controller exits 0 while doing nothing: run 36023602469), so this row is consulted only for an ON
+// host. A CYCLE AND NOT A RESET, because the unit's own SEL is the evidence that a cycle takes effect
 // here: driving `chassis power cycle` produced "Power Unit — Power cycle | Asserted" and "System
 // Boot Initiated — Initiated by power up". Nothing has established the same for `reset` on this
 // controller, and picking the unmeasured verb would assert a capability this repository does not
 // hold evidence for.
-data mtcollins1_power_action: NonEmptyStr = "cycle"
+data mtcollins1_power_action: IpmiChassisControlAction = IpmiChassisPowerCycle
 
 // THE USERNAME IS THE MANAGED ACCOUNT ON BmcSecured, never the published factory literal
 // "admin" and never a second spelling of "gunbc". Password remains a caller file-path argument
@@ -94,7 +105,7 @@ fn mtcollins1_password_file(raw: String) -> CredentialPathStanding {
 // DRIVES THE REAL CONTROLLER. Every outcome arm is rendered as its own failure reason, because the
 // four refusals leave the host in materially different states and a caller retrying needs to know
 // which: BootSelectionNotApplied means the override never took and must be re-applied, while
-// PowerCycleRefused means it DID take and the controller is holding a next-boot override nothing
+// a power arm means it DID take and the controller is holding a next-boot override nothing
 // has consumed. Collapsing them into one "handoff failed" would be the state-space conflation
 // DESIGN's failure-mode list names.
 // ONE RENDERER FOR BOTH ROUTES. Each outcome arm gets its own reason because the refusals leave the
@@ -102,12 +113,12 @@ fn mtcollins1_password_file(raw: String) -> CredentialPathStanding {
 // must be re-applied; BootSelectionFlagInvalid means the controller reported the selector WHILE
 // declaring its boot flags invalid, so the override is present and will not be honoured;
 // BootSelectionUnverifiable means the read itself failed and establishes nothing about the
-// controller either way; PowerCycleRefused means the override APPLIED and the controller now holds
+// controller either way; the power arms mean the override APPLIED and the controller now holds
 // an unconsumed next-boot override. Collapsing these into one failure would be the state-space
 // conflation DESIGN's failure-mode list names.
 fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome) -> ProcessExit {
   match outcome {
-    BootControlIssued { selected: _ } => ExitSuccess
+    BootControlIssued { selected: _, power: _ } => ExitSuccess
     BootSelectionRefused =>
       exit_failure(reason: concat(label as String, ": controller refused the boot source override"))
     BootSelectionNotApplied { requested: d, readback: r } =>
@@ -120,8 +131,12 @@ fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome)
       exit_failure(reason: concat(label as String, ": override for '", d as String, "' does not match the required firmware mode; boot parameter 5 read back: ", r))
     BootSelectionUnverifiable { requested: d, readback: r } =>
       exit_failure(reason: concat(label as String, ": boot parameter 5 read did not succeed, so the override for '", d as String, "' is unverified; output: ", r))
-    PowerCycleRefused { selected: d } =>
-      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"))
+    PowerStateReadFailed { selected: d, observed_state: o } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but chassis power state read ", chassis_observation_text(observation: o) as String, ", so no power action was selected or written; the controller holds an unconsumed next-boot override"))
+    PowerCommandRefused { selected: d, action: a } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but chassis power ", ipmi_chassis_control_verb(action: a) as String, " was refused; the controller holds an unconsumed next-boot override"))
+    PowerCommandAcceptedNoTransition { selected: d, action: a, observed_state: o } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED and chassis power ", ipmi_chassis_control_verb(action: a) as String, " exited 0, but the power transition was not observed within the read-back bound; last chassis power state ", chassis_observation_text(observation: o) as String))
     BootHandoffNotAdmitted { admission: _ } =>
       exit_failure(reason: concat(label as String, ": controller not admitted for out-of-band drive; no write was attempted"))
   }
@@ -150,7 +165,7 @@ fn mtcollins1_drive_handoff(
               username: username,
               password_file: pw,
               selection: selection,
-              power_action: mtcollins1_power_action,
+              running_restart: mtcollins1_power_action,
             ),
           )
       }

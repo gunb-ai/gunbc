@@ -10,6 +10,7 @@ import gunbc.machine_intake_oob_boot_handoff {
   oob_handoff_is_admitted,
 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import extdeps.bmc.ipmi_chassis_control { IpmiChassisControlAction }
 import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
@@ -54,7 +55,7 @@ type ResetSubjectCandidate {
   capability_row: BmcFirmwareReleaseCapabilityRow
   username: NonEmptyStr
   boot_selection: IpmiBootSelection
-  power_action: NonEmptyStr
+  power_action: IpmiChassisControlAction
 }
 
 // THE CANDIDATE SET IS EVERY HOST THAT HAS LANDED THE EVIDENCE, ADMITTED OR NOT. It is stated as

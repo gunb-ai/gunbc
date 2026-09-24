@@ -1,0 +1,109 @@
+module extdeps.bmc.ipmi_chassis_control
+
+import std.algebra { trim }
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// IPMI v2.0 rev1.1 §28.3 CHASSIS CONTROL AND §28.2 GET CHASSIS STATUS, modeled as the spec names
+// them. The anchor is the specification; the verbs below are ipmitool's `chassis power` spellings of
+// those request-data values (lib/ipmi_chassis.c), which is the transport extdeps.bmc.ipmi binds.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html"
+  }
+}
+
+// THE CHASSIS CONTROL ACTION IS A CLOSED CHOICE, NOT A STRING. §28.3 request byte 1 bits [3:0]:
+// 0h power down, 1h power up, 2h power cycle, 3h hard reset, 4h pulse diagnostic interrupt, 5h soft
+// shutdown via ACPI overtemperature emulation. Only the four a boot workflow can mean are carried;
+// the diagnostic-interrupt and soft-shutdown arms are absent because nothing here issues them, and
+// adding one is a row, not a string nobody checks.
+//
+// §28.3 IS WHY THE CHOICE MUST BE STATE-DEPENDENT. For power cycle the spec says: "no action should
+// occur if chassis power is in S4/S5 state, and it is recommended that this command return a D5h
+// completion code." A controller that follows the recommendation refuses; one that does not (the Mt.
+// Collins AMI MegaRAC, run 36023602469) answers success and does nothing. Either way a cycle issued
+// at an OFF host cannot power it, so the verb is a function of observed power state, never a constant.
+type IpmiChassisControlAction
+  = IpmiChassisPowerDown
+  | IpmiChassisPowerUp
+  | IpmiChassisPowerCycle
+  | IpmiChassisHardReset
+
+fn ipmi_chassis_control_verb(action: IpmiChassisControlAction) -> NonEmptyStr {
+  match action {
+    IpmiChassisPowerDown => "off"
+    IpmiChassisPowerUp => "on"
+    IpmiChassisPowerCycle => "cycle"
+    IpmiChassisHardReset => "reset"
+  }
+}
+
+// §28.2 GET CHASSIS STATUS, response byte 2 bit 0: "Power is on". ipmitool renders it as the line
+// "System Power         : on". An unreadable status is NOT read as powered-off, and THE ABSENCE OF
+// THE LINE IS NOT THE WORD "off": only the literal words are believed, everything else carries its
+// text out (review 69156 caught a revision that turned `unknown` and a truncated line into Off).
+type ChassisPowerLine
+  = ChassisPowerLineOn
+  | ChassisPowerLineOff
+  | ChassisPowerLineUnrecognised { text: String }
+  | ChassisPowerLineAbsent
+
+fn chassis_power_line(stdout: String) -> ChassisPowerLine {
+  fold(split(s: stdout, delimiter: "\n"), init: ChassisPowerLineAbsent, f: (acc, line) => {
+    let fields = split(s: line, delimiter: ":") |> map(f => trim(f))
+    if fields.length() < 2 {
+      acc
+    } else {
+      match fields.first() {
+        Absent => acc
+        Present { value: key } => if trim(key) == "System Power" {
+          match fields.skip(n: 1).first() {
+            Absent => acc
+            Present { value: v } => if trim(v) == "on" {
+              ChassisPowerLineOn
+            } else if trim(v) == "off" {
+              ChassisPowerLineOff
+            } else {
+              ChassisPowerLineUnrecognised { text: v }
+            }
+          }
+        } else {
+          acc
+        }
+      }
+    }
+  })
+}
+
+// THE OBSERVATION OF ONE ChassisStatus READ, three-stated so a failed or undecodable read can never
+// be read as a power state: a controller that did not answer is a host we know nothing about.
+type ChassisPowerObservation
+  = ChassisPowerRead { power_on: Bool }
+  | ChassisStatusUndecodable { cause: NonEmptyStr }
+  | ChassisUnreadable
+
+fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation {
+  if success {
+    match chassis_power_line(stdout: stdout) {
+      ChassisPowerLineOn => ChassisPowerRead { power_on: true }
+      ChassisPowerLineOff => ChassisPowerRead { power_on: false }
+      ChassisPowerLineUnrecognised { text: t } =>
+        ChassisStatusUndecodable { cause: join(["the System Power line carried a value this decoder does not recognise: ", t], "") as NonEmptyStr }
+      ChassisPowerLineAbsent =>
+        ChassisStatusUndecodable { cause: "the chassis status read succeeded and printed no System Power line" as NonEmptyStr }
+    }
+  } else {
+    ChassisUnreadable
+  }
+}
+
+fn chassis_observation_text(observation: ChassisPowerObservation) -> NonEmptyStr {
+  match observation {
+    ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }
+    ChassisStatusUndecodable { cause: c } => join(["undecodable (", c as String, ")"], "") as NonEmptyStr
+    ChassisUnreadable => "unreadable (chassis status read did not succeed)"
+  }
+}

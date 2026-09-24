@@ -93,11 +93,17 @@ import product.fan_policy_standing {
   fan_policy_standing_label,
   fan_policy_standing_of_sample,
 }
-import gunbc.machine_intake_bmc_fan_observation {
+import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerRead,
   ChassisStatusUndecodable,
   chassis_observation,
   ChassisUnreadable,
+  ChassisPowerLineAbsent,
+  ChassisPowerLineOff,
+  ChassisPowerLineOn,
+  chassis_power_line,
+}
+import gunbc.machine_intake_bmc_fan_observation {
   FanObservationRound,
   FanSensorObservation,
   FanSensorsRead,
@@ -105,10 +111,6 @@ import gunbc.machine_intake_bmc_fan_observation {
   ThermalRead,
   ThermalUnreadable,
   round_fan_lines,
-  ChassisPowerLineAbsent,
-  ChassisPowerLineOff,
-  ChassisPowerLineOn,
-  chassis_power_line,
   elapsed_at_round,
   post_state_of_round,
   first_posted_round_index,
