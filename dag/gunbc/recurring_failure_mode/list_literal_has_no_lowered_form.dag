@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.list_literal_has_no_lowered_form
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data list_literal_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
@@ -9,8 +10,14 @@ data list_literal_has_no_lowered_form: RecurringFailureMode = RecurringFailureMo
   receipts: [
     "a list literal `[e1, .., en]` has no lowered form in v2 body lowering, on ANY route: `v2.compiler.body_lowering_fold` `body_lower_primary_expr` answered it with `body_lower_pattern_first_atom_optional`, its first atom, the `[` token, so every element reached no reference site -- a silent drop in data initializers, let values, and call arguments alike (DESIGN section 5)",
     "HOW IT SURFACED, 2026-09-23. gunbc#12145 stopped the operand reader narrowing a sequence to its left element; a list-literal call argument then answered Absent and refused its whole module as `body_lowering_reason_call_argument_unread`. gunbc#12173 kept that refusal but LOCATED it: a list literal anywhere in a call argument value refuses at the list with `body_lowering_reason_list_literal_unlowered` (ruling C of the XL-2 lane) -- reading the argument would otherwise have traded a loud refusal for the silent drop above. Four modules main accepted then refused, because main's data-initializer route had been dropping a list inside a call argument silently. Witness: `v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal`.",
+    "EXPOSED, NOT INTRODUCED: the parent of gunbc#12145 (2de78893dfe) accepted this shape only by SILENT NARROWING -- the operand reader answered a sequence with its left element -- so the refusal on main after gunbc#12173 is a pre-existing defect made visible, not a new regression. Found by the XL-2 three-baseline identity census on gunbc#12194 (321 paths: 18 refusing at 2de78893dfe, 167 at ada85b9452, 101 after gunbc#12173).",
     "RUNG FOUND AT: below the floor on the routes that drop silently; mitigated (a located refusal) on the call-argument route since gunbc#12173. CEILING: structurally guaranteed -- a list literal lowers whole to the existing `std.algebra` FreeMonoid concept or refuses, with no first-atom reading. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: list literals lower on EVERY route (call arguments, data initializers, let values) to a form whose elements reach the reference-site collector, so that no route answers a list with a proper part of it. The preferred form is the `Cons`/`Empty` construct chain through `v2.std.node_query` `construct_node`, pending a measurement of whether those tags resolve without an import on the census route.",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_named_list_argument_refuses_at_normalize_at_the_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_positional_list_argument_refuses_at_normalize_at_the_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_list_inside_a_nested_call_argument_refuses_at_normalize_at_the_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_list_inside_a_record_literal_argument_refuses_at_normalize_at_the_list", field: WholeDeclaration },
+  ],
 }
