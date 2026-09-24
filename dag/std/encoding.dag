@@ -221,8 +221,10 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
 // encode side was retyped first (fed by `qualified_octet_members`, whose sealed carrier says `Int`).
 // The decode side -- `base64_decode_values`, `base64_decode`, `utf8_admit_octet`,
 // `utf8_decode_octets` -- was left spelled `UInt8` as a separate producer whose retype was to be
-// decided when a retained closure first emitted it. The App Attest native program
-// (gunbc.instruments.native_app_attest) is that closure, and the decision is `List<Int>`: every
+// decided when a retained closure first emitted it. That closure is the App Attest native program,
+// not on main when this was written (gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int records where it was observed), and the
+// decision is `List<Int>`: every
 // decoded value leaves word_to_octets as a Width8 word, so its range is established by the operation
 // that produced it and the element type states what it holds (gunbc.recurring_failure_mode
 // bounded_natural_arithmetic_evaluated_as_unbounded_int, receipt of that date). Consumers that still
