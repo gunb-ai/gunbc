@@ -37,6 +37,7 @@ pub use crate::std_coercion::{
     TypeCheckpoint, TypeDeclarationProvenance, TypeRealizationDecision,
 };
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_nat::Nat;
 pub use crate::std_target_representation::ExactBindingResolution;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,

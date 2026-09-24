@@ -59,6 +59,7 @@ pub use crate::std_literal_elaboration::{
 pub use crate::std_literal_elaboration::{
     LiteralElaboration, LiteralElaborationOutcome, LiteralHomomorphism, LiteralUnfolding,
 };
+pub use crate::std_nat::Nat;
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
