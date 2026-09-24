@@ -17,7 +17,10 @@ import v2.compiler.resolution_provenance {
   resolve_reference_provenance
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
-import v2.test.compiler.pipeline.stage_bridge { pipeline_parse_source }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
 import v2.std.namespace_alias { ModuleBindingSource }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.node_query { find_arrow_body_child }
@@ -32,61 +35,65 @@ import std.algebra { Cons, Empty, FreeMonoid }
 // CENSUS MODE'S CONTROLS (gen-two door, PR-b). A module outside the compiled closure is normalized to
 // census grade -- every declaration, no fn body -- so a body the lowering cannot yet read cannot
 // refuse a module nobody compiles, while a closure member's reference into it still answers with the
-// identity whole-root ingest gives. The provider below carries the refusing body: an else-less `if`,
-// which the full fold refuses with body_lowering_reason_else_less_if_unlowered. Its TWIN differs
-// only in that body, so whole-root ingest can run over the twin and census mode over the refusing
-// original, and the two answers are compared at identity grain.
+// identity whole-root ingest gives. The refusing body is an else-less `if`, which the full fold
+// refuses with body_lowering_reason_else_less_if_unlowered; the TWIN differs only in that body, so
+// whole-root ingest runs over the twin and census mode over the refusing original.
+//
+// COST SHAPE (DESIGN section 3, a witness discriminates at one interface). Each claim parses ONE
+// small provider and nothing else: the referencing closure member is named by the site's position
+// alone, since a bare reference that no lexical scope binds answers from the global unique lookup,
+// and the census and whole-root answers are each pinned to the same literal declaring path in their
+// own claim -- equal to one literal is equal to each other -- rather than one claim paying for both
+// parses. Providers enter as supplied token streams, each paired with a fidelity claim against the
+// real tokenizer, and are parsed for real: census mode's input IS a parse tree. The unparseable
+// provider alone goes through the real tokenizer inside its claim, which is cheap because the parse
+// stops at the missing brace.
 
-data census_provider_refusing: String = "module v2.test.census.provider\n\ntype Point {\n  x: Int\n}\n\ntype Shape = Circle | Square\n\nfn guard(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n"
+data census_record_refusing: String = "module c.p\ntype Point {\n  x: Int\n}\nfn guard(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n"
 
-data census_provider_twin: String = "module v2.test.census.provider\n\ntype Point {\n  x: Int\n}\n\ntype Shape = Circle | Square\n\nfn guard(x: Bool) -> Int {\n  2\n}\n"
+data census_record_twin: String = "module c.p\ntype Point {\n  x: Int\n}\nfn guard(x: Bool) -> Int {\n  2\n}\n"
 
-data census_consumer: String = "module v2.test.census.consumer\n\nfn use_it(p: Point) -> Shape {\n  Circle\n}\n"
+data census_variant: String = "module c.v\ntype Shape = Circle | Square\n"
+
+data census_fn_only_refusing: String = "module c.f\nfn guard(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n"
 
 // The declaration census never admits what did not parse: an unterminated type block.
-data census_provider_unparseable: String = "module v2.test.census.provider\n\ntype Point {\n  x: Int\n"
+data census_provider_unparseable: String = "module c.p\ntype Point {\n  x: Int\n"
 
-data census_consumer_qn: QualifiedName = qualified_name_from_dotted_string(dotted: "v2.test.census.consumer")
+data census_member_qn: QualifiedName = qualified_name_from_dotted_string(dotted: "c.member")
+
+fn census_parse(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: tokenize(text: source, file: ^census_mode_probe, rules: dag_lex()),
+    f: fn(tokens) { supplied_stream_parse(tokens: tokens) }
+  )
+}
+
+fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize_census(parse_tree: tree) })
+}
+
+fn full_of_stream(tokens: TokenStream) -> Outcome<NormalizedTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize(parse_tree: tree) })
+}
 
 fn census_of(source: String) -> Outcome<CensusTree> {
   bind_outcome(
-    o: pipeline_parse_source(source: source, file: ^census_mode_probe),
+    o: census_parse(source: source),
     f: fn(tree) { normalize_census(parse_tree: tree) }
   )
 }
 
-fn full_of(source: String) -> Outcome<NormalizedTree> {
-  bind_outcome(
-    o: pipeline_parse_source(source: source, file: ^census_mode_probe),
-    f: fn(tree) { normalize(parse_tree: tree) }
-  )
+fn index_of(sources: FreeMonoid<ModuleBindingSource>) -> SymbolIndex {
+  symbol_index_fill_module_roots(index: empty_symbol_index(), roots: sources)
 }
 
-fn census_index(consumer: NormalizedTree, provider: CensusTree) -> SymbolIndex {
-  symbol_index_fill_module_roots(
-    index: empty_symbol_index(),
-    roots: Cons {
-      head: census_tree_binding_source(t: provider),
-      tail: normalized_tree_roots_to_binding_sources(roots: Cons { head: consumer, tail: Empty })
-    }
-  )
-}
-
-fn whole_root_index(consumer: NormalizedTree, provider: NormalizedTree) -> SymbolIndex {
-  symbol_index_fill_module_roots(
-    index: empty_symbol_index(),
-    roots: normalized_tree_roots_to_binding_sources(
-      roots: Cons { head: provider, tail: Cons { head: consumer, tail: Empty } }
-    )
-  )
-}
-
-fn census_answer(index: SymbolIndex, roster_roots: FreeMonoid<Node>, spelling: String) -> Optional<QualifiedName> {
+fn member_answer(index: SymbolIndex, provider_root: Node, spelling: String) -> Optional<QualifiedName> {
   match resolve_reference_provenance(
     index: index,
-    roster: module_roster_from_roots(roots: roster_roots),
+    roster: module_roster_from_roots(roots: Cons { head: provider_root, tail: Empty }),
     site: ReferenceSite {
-      position: census_consumer_qn,
+      position: census_member_qn,
       spelling: qualified_name_from_dotted_string(dotted: spelling)
     }
   ) {
@@ -97,148 +104,76 @@ fn census_answer(index: SymbolIndex, roster_roots: FreeMonoid<Node>, spelling: S
   }
 }
 
-fn same_present_answer(a: Optional<QualifiedName>, b: Optional<QualifiedName>, expected: String) -> Bool {
+fn answers(a: Optional<QualifiedName>, expected: String) -> Bool {
   match a {
     Absent => false
-    Present { value: x } =>
-      match b {
-        Absent => false
-        Present { value: y } => (x == y) && (x == qualified_name_from_dotted_string(dotted: expected))
-      }
+    Present { value: x } => x == qualified_name_from_dotted_string(dotted: expected)
   }
 }
 
-// ROUTE PRECONDITION: the full fold really refuses the provider, and for the cause the census arm
-// exists to avoid -- otherwise the census claims below would pass for a provider nothing refuses.
+fn declares(index: SymbolIndex, path: String) -> Bool {
+  match symbol_index_lookup(index: index, qualified_path: qualified_name_from_dotted_string(dotted: path)) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// A bare record reference and a bare fn reference, asked of one index.
+fn record_identities_hold(index: SymbolIndex, provider_root: Node) -> Bool {
+  answers(a: member_answer(index: index, provider_root: provider_root, spelling: "Point"), expected: "c.p.Point")
+    && answers(a: member_answer(index: index, provider_root: provider_root, spelling: "guard"), expected: "c.p.guard")
+}
+
+// A bare variant-type reference and both variant-arm paths. An arm is indexed twice -- at its Disj
+// path and, being unique in the module, at its alias path -- so its identity is asserted at index
+// grain; a bare arm spelling hits both and answers without a single target in either mode.
+fn variant_identities_hold(index: SymbolIndex, provider_root: Node) -> Bool {
+  answers(a: member_answer(index: index, provider_root: provider_root, spelling: "Shape"), expected: "c.v.Shape")
+    && declares(index: index, path: "c.v.Shape.Circle")
+    && declares(index: index, path: "c.v.Circle")
+}
+
+fn census_identities(tokens: TokenStream, holds: fn(SymbolIndex, Node) -> Bool) -> Bool {
+  match census_of_stream(tokens: tokens) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: provider, diagnostics: _ } =>
+      holds(
+        index_of(sources: Cons { head: census_tree_binding_source(t: provider), tail: Empty }),
+        provider.root
+      )
+  }
+}
+
+fn whole_root_identities(tokens: TokenStream, holds: fn(SymbolIndex, Node) -> Bool) -> Bool {
+  match full_of_stream(tokens: tokens) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: twin, diagnostics: _ } =>
+      holds(
+        index_of(sources: normalized_tree_roots_to_binding_sources(roots: Cons { head: twin, tail: Empty })),
+        twin.root
+      )
+  }
+}
+
+// ROUTE PRECONDITION: the full fold really refuses this body, and for the cause the census arm exists
+// to avoid -- otherwise the census claims would pass over a body nothing refuses.
 test fn full_fold_refuses_the_provider_body_holds() -> Bool {
-  match full_of(source: census_provider_refusing) {
+  match full_of_stream(tokens: census_fn_only_refusing_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
   }
 }
 
-test fn census_admits_the_module_whose_body_refuses_holds() -> Bool {
-  match census_of(source: census_provider_refusing) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// CONTROL 2: a module whose declarations failed to parse is never admitted at census grade.
-test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
-  match census_of(source: census_provider_unparseable) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-// A variant arm is indexed twice -- at its Disj path and, when unique in the module, at its alias
-// path -- so its identity is compared at index grain; a bare arm spelling hits both entries and
-// answers without a single target in EITHER mode, so for it the claim is that the two modes agree.
-fn both_declare(census: SymbolIndex, whole: SymbolIndex, path: String) -> Bool {
-  let qn = qualified_name_from_dotted_string(dotted: path)
-  match symbol_index_lookup(index: census, qualified_path: qn) {
-    Absent => false
-    Present { value: _ } =>
-      match symbol_index_lookup(index: whole, qualified_path: qn) {
-        Absent => false
-        Present { value: _ } => true
-      }
-  }
-}
-
-fn same_answer(a: Optional<QualifiedName>, b: Optional<QualifiedName>) -> Bool {
-  match a {
-    Absent =>
-      match b {
-        Absent => true
-        Present { value: _ } => false
-      }
-    Present { value: x } =>
-      match b {
-        Absent => false
-        Present { value: y } => x == y
-      }
-  }
-}
-
-// CONTROL 1, COMPLETENESS: a bare record, variant-type and fn reference, and a variant arm, from the closure
-// member resolves to the SAME declaring path under census mode (refusing provider) as under
-// whole-root ingest (its lowerable twin). The RED arm below it removes the provider from the census
-// index and must lose the answer, so the agreement is the census root's doing.
-test fn bare_references_resolve_to_the_whole_root_identity_under_census_holds() -> Bool {
-  match full_of(source: census_consumer) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: consumer, diagnostics: _ } =>
-      match census_of(source: census_provider_refusing) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: census_provider, diagnostics: _ } =>
-          match full_of(source: census_provider_twin) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: twin, diagnostics: _ } =>
-              let roster = Cons { head: twin.root, tail: Cons { head: consumer.root, tail: Empty } }
-              let census = census_index(consumer: consumer, provider: census_provider)
-              let whole = whole_root_index(consumer: consumer, provider: twin)
-              same_present_answer(
-                a: census_answer(index: census, roster_roots: roster, spelling: "Point"),
-                b: census_answer(index: whole, roster_roots: roster, spelling: "Point"),
-                expected: "v2.test.census.provider.Point"
-              )
-                && same_present_answer(
-                     a: census_answer(index: census, roster_roots: roster, spelling: "Shape"),
-                     b: census_answer(index: whole, roster_roots: roster, spelling: "Shape"),
-                     expected: "v2.test.census.provider.Shape"
-                   )
-                && both_declare(census: census, whole: whole, path: "v2.test.census.provider.Shape.Circle")
-                && both_declare(census: census, whole: whole, path: "v2.test.census.provider.Circle")
-                && same_answer(
-                     a: census_answer(index: census, roster_roots: roster, spelling: "Circle"),
-                     b: census_answer(index: whole, roster_roots: roster, spelling: "Circle")
-                   )
-                && same_present_answer(
-                     a: census_answer(index: census, roster_roots: roster, spelling: "guard"),
-                     b: census_answer(index: whole, roster_roots: roster, spelling: "guard"),
-                     expected: "v2.test.census.provider.guard"
-                   )
-          }
-      }
-  }
-}
-
-test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
-  match full_of(source: census_consumer) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: consumer, diagnostics: _ } =>
-      let alone = symbol_index_fill_module_roots(
-        index: empty_symbol_index(),
-        roots: normalized_tree_roots_to_binding_sources(roots: Cons { head: consumer, tail: Empty })
-      )
-      match census_answer(
-        index: alone,
-        roster_roots: Cons { head: consumer.root, tail: Empty },
-        spelling: "Point"
-      ) {
-        Present { value: _ } => false
-        Absent => true
-      }
-  }
-}
-
-// CENSUS GRADE CARRIES THE SIGNATURE AND NOT THE BODY: the Arrow the index stores at the fn's path
-// has no body edge, which is what keeps a non-member's body out of the Disj and alias scans and out
-// of the stored index entry.
-test fn census_fn_entry_carries_no_body_holds() -> Bool {
-  match census_of(source: census_provider_refusing) {
+// Census admits the same source, and the fn's index entry is its signature with no body: which is
+// what keeps a non-member's body out of the Disj and alias scans and out of the stored entry.
+test fn census_admits_the_refusing_body_and_stores_no_body_holds() -> Bool {
+  match census_of_stream(tokens: census_fn_only_refusing_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: provider, diagnostics: _ } =>
-      let index = symbol_index_fill_module_roots(
-        index: empty_symbol_index(),
-        roots: Cons { head: census_tree_binding_source(t: provider), tail: Empty }
-      )
       match symbol_index_lookup(
-        index: index,
-        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.census.provider.guard")
+        index: index_of(sources: Cons { head: census_tree_binding_source(t: provider), tail: Empty }),
+        qualified_path: qualified_name_from_dotted_string(dotted: "c.f.guard")
       ) {
         Absent => false
         Present { value: entry } =>
@@ -250,3 +185,174 @@ test fn census_fn_entry_carries_no_body_holds() -> Bool {
   }
 }
 
+// CONTROL 2: a module whose declarations failed to parse is never admitted at census grade.
+test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
+  match census_of(source: census_provider_unparseable) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// CONTROL 1, COMPLETENESS. The record claims run census mode over a provider whose fn body the full
+// fold refuses, and whole-root ingest over its twin that differs only in that body. Both halves are
+// pinned to the SAME literal declaring paths, so the two modes agree at identity grain. The variant
+// claims run both modes over ONE fn-free provider: census mode departs from the full fold only at
+// fn, data and test-fn declarations, so a refusing body beside the variant would add parse cost
+// (DESIGN section 3) and exercise nothing the record claims do not.
+test fn census_record_references_answer_with_the_declaring_paths_holds() -> Bool {
+  census_identities(tokens: census_record_refusing_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
+}
+
+test fn whole_root_record_references_answer_with_the_same_paths_holds() -> Bool {
+  whole_root_identities(tokens: census_record_twin_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
+}
+
+test fn census_variant_references_answer_with_the_declaring_paths_holds() -> Bool {
+  census_identities(tokens: census_variant_stream(), holds: fn(i, r) { variant_identities_hold(index: i, provider_root: r) })
+}
+
+test fn whole_root_variant_references_answer_with_the_same_paths_holds() -> Bool {
+  whole_root_identities(tokens: census_variant_stream(), holds: fn(i, r) { variant_identities_hold(index: i, provider_root: r) })
+}
+
+// The discriminating RED: with no census root in the index the same reference is unbound, so the
+// census answer is the census root's doing. Supplies an empty index -- no parse at all.
+test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
+  match resolve_reference_provenance(
+    index: empty_symbol_index(),
+    roster: Empty,
+    site: ReferenceSite {
+      position: census_member_qn,
+      spelling: qualified_name_from_dotted_string(dotted: "Point")
+    }
+  ) {
+    ProvenanceUnbound { site: _ } => true
+    ProvenanceResolved { site: _, target: _, owner: _ } => false
+    ProvenanceOwnerless { site: _, target: _ } => false
+    ProvenanceAmbiguous { site: _ } => false
+  }
+}
+
+// SUPPLIED TOKEN STREAMS (the v2.test.parse.supplied_token_stream_support pattern): tokenizing each
+// provider inside every claim cost a third of its budget. Each stream is paired with a fidelity claim
+// below that the real tokenizer produces exactly it, so supplying it removes no execution of the
+// real path (DESIGN section 3 pairing obligation).
+fn census_fn_only_refusing_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^census_mode_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 11, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "guard", file: ^census_mode_probe, start: 14, end: 19 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^census_mode_probe, start: 23, end: 27 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 29, end: 31 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 32, end: 35 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^census_mode_probe, start: 40, end: 42 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 45, end: 46 },
+    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^census_mode_probe, start: 51, end: 57 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 58, end: 59 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 62, end: 63 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 66, end: 67 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 68, end: 69 }
+  ])
+}
+
+test fn census_fn_only_refusing_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: census_fn_only_refusing, file: ^census_mode_probe, supplied: census_fn_only_refusing_stream())
+}
+
+fn census_record_refusing_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "p", file: ^census_mode_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^census_mode_probe, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "Point", file: ^census_mode_probe, start: 16, end: 21 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 29, end: 32 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 35, end: 37 },
+    Token { class: ^dag_token_ident, lexeme: "guard", file: ^census_mode_probe, start: 38, end: 43 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 44, end: 45 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 45, end: 46 },
+    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^census_mode_probe, start: 47, end: 51 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 53, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 56, end: 59 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 60, end: 61 },
+    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^census_mode_probe, start: 64, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 67, end: 68 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^census_mode_probe, start: 75, end: 81 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 86, end: 87 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 90, end: 91 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 92, end: 93 }
+  ])
+}
+
+test fn census_record_refusing_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: census_record_refusing, file: ^census_mode_probe, supplied: census_record_refusing_stream())
+}
+
+fn census_record_twin_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "p", file: ^census_mode_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^census_mode_probe, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "Point", file: ^census_mode_probe, start: 16, end: 21 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 29, end: 32 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 35, end: 37 },
+    Token { class: ^dag_token_ident, lexeme: "guard", file: ^census_mode_probe, start: 38, end: 43 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 44, end: 45 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 45, end: 46 },
+    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^census_mode_probe, start: 47, end: 51 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 53, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 56, end: 59 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 60, end: 61 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 64, end: 65 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 66, end: 67 }
+  ])
+}
+
+test fn census_record_twin_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: census_record_twin, file: ^census_mode_probe, supplied: census_record_twin_stream())
+}
+
+fn census_variant_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^census_mode_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^census_mode_probe, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "Shape", file: ^census_mode_probe, start: 16, end: 21 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^census_mode_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Circle", file: ^census_mode_probe, start: 24, end: 30 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^census_mode_probe, start: 31, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Square", file: ^census_mode_probe, start: 33, end: 39 }
+  ])
+}
+
+test fn census_variant_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: census_variant, file: ^census_mode_probe, supplied: census_variant_stream())
+}
