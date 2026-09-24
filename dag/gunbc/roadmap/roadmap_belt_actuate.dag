@@ -1899,12 +1899,37 @@ fn belt_actuate_spawn_exec_for_instance(
 // guess. Worktree, branch and attempt evidence are retained for diagnosis and user work. The
 // located failure plus cleanup receipt is persisted under the published attempt before SpawnFailed
 // returns.
-// The tmux creation boundary is explicit: worktree/state publication first; tmux new-session alone;
-// only after its success do session configuration, pipe attachment and provider respawn run. A
-// later staging failure reaps exactly the session this request created, no name-only ownership
-// guess. Worktree, branch and attempt evidence are retained for diagnosis and user work. The
-// located failure plus cleanup receipt is persisted under the published attempt before SpawnFailed
-// returns.
+// THE SPAWN ROUTE IS A PURE FUNCTION OF THE DECISION, factored so the law "an unresolved lineage
+// never reaches a spawn command" is witnessable without the actuator: only SpawnFresh and
+// SpawnFromPrior carry an origin (a worker spawn), and only Escalate carries a supervisor record.
+// Hold, Complete, Refused, PlanDefect and Stuck are SpawnRouteNone -- no spawn command is
+// reachable from them.
+type BeltSpawnRoute
+  = SpawnRouteWorker { origin: AttemptOrigin }
+  | SpawnRouteSupervisor { escalation: SupervisorEscalation }
+  | SpawnRouteNone { step: String, detail: String }
+
+fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRoute {
+  match decision {
+    ContinuationSpawnFresh { reason: _ } => SpawnRouteWorker { origin: FreshFromBase }
+    ContinuationSpawnFromPrior { origin } => SpawnRouteWorker { origin: origin }
+    ContinuationEscalate { escalation } => SpawnRouteSupervisor { escalation: escalation }
+    ContinuationRefused { reason } => SpawnRouteNone { step: "continuation", detail: reason }
+    ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
+    ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
+    ContinuationPlanDefect { defect } =>
+      SpawnRouteNone {
+        step: "supervisor-plan-defect",
+        detail: join(["the supervisor adjudicated this lineage a plan defect, routed to the node's owner -- no worker is re-dispatched against a known-bad plan: ", defect], ""),
+      }
+    ContinuationStuck { cause } =>
+      SpawnRouteNone {
+        step: "supervisor-stuck",
+        detail: join(["the supervisor adjudicated this lineage stuck; the task cannot advance: ", cause], ""),
+      }
+  }
+}
+
 fn belt_actuate_spawn_exec_modeled(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -1920,24 +1945,16 @@ fn belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
   )
   let session_name = dispatch_tmux_session_name(node_id: node.node)
-  match belt_continuation_decision_for_instance(instance: instance, node: node) {
-    ContinuationRefused { reason } =>
+  match belt_spawn_route_for_decision(decision: belt_continuation_decision_for_instance(instance: instance, node: node)) {
+    SpawnRouteNone { step, detail } =>
       SpawnFailed {
         node_id: node.node as String,
-        step: "continuation",
-        detail: reason,
+        step: step,
+        detail: detail,
         provider: provider_wire_label,
         launch: launch,
       }
-    ContinuationHold { reason } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: "continuation-hold",
-        detail: reason,
-        provider: provider_wire_label,
-        launch: launch,
-      }
-    ContinuationEscalate { escalation } =>
+    SpawnRouteSupervisor { escalation } =>
       belt_supervisor_convene(
         instance: instance,
         node: node,
@@ -1945,44 +1962,13 @@ fn belt_actuate_spawn_exec_modeled(
         provider_wire_label: provider_wire_label,
         launch: launch,
       )
-    ContinuationPlanDefect { defect } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: "supervisor-plan-defect",
-        detail: join(["the supervisor adjudicated this lineage a plan defect, routed to the node's owner -- no worker is re-dispatched against a known-bad plan: ", defect], ""),
-        provider: provider_wire_label,
-        launch: launch,
-      }
-    ContinuationStuck { cause } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: "supervisor-stuck",
-        detail: join(["the supervisor adjudicated this lineage stuck; the task cannot advance: ", cause], ""),
-        provider: provider_wire_label,
-        launch: launch,
-      }
-    ContinuationSpawnFresh { reason: _ } =>
-      belt_actuate_spawn_with_origin(
-        instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
-        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
-        attempt_key: attempt_key, session_name: session_name, origin: FreshFromBase,
-        selection: selection,
-      )
-    ContinuationSpawnFromPrior { origin } =>
+    SpawnRouteWorker { origin } =>
       belt_actuate_spawn_with_origin(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: origin,
         selection: selection,
       )
-    ContinuationComplete { reason } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: "continuation-complete",
-        detail: reason,
-        provider: provider_wire_label,
-        launch: launch,
-      }
   }
 }
 

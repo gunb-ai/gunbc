@@ -176,6 +176,7 @@ import gunbc.roadmap_belt_actuate {
   SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneLivenessUnobserved,
   belt_supervisor_convene_gate, belt_supervisor_checkpoint_lines, belt_supervisor_convene_brief,
   SupervisorConvened,
+  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteSupervisor, SpawnRouteNone, belt_spawn_route_for_decision,
   VerifyOneReceiptObservation, VerifyOneReceiptAbsent, VerifyOneReceiptRecorded, VerifyOneReceiptUnreadable,
   VerifyOneGate, VerifyOneRun, VerifyOneNoOp, VerifyOneRefuse,
   belt_verify_one_gate,
@@ -2769,3 +2770,79 @@ test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
       .contains("\"status\": \"unreadable\"")
 }
 
+// ------------------------------------------------------------------------------------------------
+// Blocker 2's load-bearing control, composed: an active systemd-held worker flows occurrence ->
+// census -> decision -> spawn route, and NO spawn command is reachable.
+// ------------------------------------------------------------------------------------------------
+
+// THE SPAWN ROUTE OF EVERY NON-SPAWN DECISION IS NONE. Hold (worker running, verification owed),
+// Complete (fully approved), Refused, PlanDefect and Stuck carry no origin and no escalation
+// record, so the spawn fold has no spawn command to reach for; only the two spawn arms carry one.
+test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
+  let hold = belt_spawn_route_for_decision(decision: ContinuationHold { reason: "the prior attempt's worker has not ended" })
+  let complete = belt_spawn_route_for_decision(decision: ContinuationComplete { reason: "the lineage is complete" })
+  let refused = belt_spawn_route_for_decision(decision: ContinuationRefused { reason: "x" })
+  let defect = belt_spawn_route_for_decision(decision: ContinuationPlanDefect { defect: "d" })
+  let stuck = belt_spawn_route_for_decision(decision: ContinuationStuck { cause: "c" })
+  let fresh = belt_spawn_route_for_decision(decision: ContinuationSpawnFresh { reason: "no prior" })
+  let prior = belt_spawn_route_for_decision(decision: ContinuationSpawnFromPrior { origin: ContinueFromAttempt { parent_attempt_key: "a1", branch: "b", turn: 2, verdict_detail: "v" } })
+  (match hold { SpawnRouteNone { step, detail: _ } => step == "continuation-hold"  _ => false })
+    && (match complete { SpawnRouteNone { step, detail: _ } => step == "continuation-complete"  _ => false })
+    && (match refused { SpawnRouteNone { step, detail: _ } => step == "continuation"  _ => false })
+    && (match defect { SpawnRouteNone { step, detail: _ } => step == "supervisor-plan-defect"  _ => false })
+    && (match stuck { SpawnRouteNone { step, detail: _ } => step == "supervisor-stuck"  _ => false })
+    && (match fresh { SpawnRouteWorker { origin } => attempt_origin_turn(origin: origin) == 1  _ => false })
+    && (match prior { SpawnRouteWorker { origin } => attempt_origin_turn(origin: origin) == 2  _ => false })
+}
+
+// THE COMPOSITION, END TO END OVER THE REAL PRODUCER: an active systemd attempt unit for node-a
+// classifies through the occurrence population, occupies and refuses the node's launch at the
+// census (AlreadyLive), and the same lineage's continuation decision (worker not terminal) is a
+// Hold whose spawn route is None -- no worker spawn command is reachable anywhere in the chain.
+test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool {
+  let population = occurrence_population(
+    containers: [ObservedContainerRow {
+      container: AttemptContainerSystemdUnit { unit: "gunbc-attempt-node-a-cd172fe81b806160.service" },
+      process: WorkerProcessRunning { command: "gunbc-harness" as NonEmptyStr },
+    }],
+    records: [DurableAttemptRecord { node: "node-a", attempt: "cd172fe81b806160", spawn_identity: "cause=timer" }],
+  )
+  let rows = fold(population, init: [], f: fn(acc, o) {
+    match occurrence_census_row(o: o) {
+      Absent => acc
+      Present { value: row } => concat(acc, [row])
+    }
+  })
+  let live_refusal = match launch_gate_live(sessions: LaunchSessionsObserved { live: rows }, node_id: "node-a") {
+    GateRefused { refusal } =>
+      match refusal {
+        LaunchAlreadyLive { session_name: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  let decision = continuation_decision(
+    prior: Present { value: PriorAttemptFacts {
+      node_id: "node-a",
+      edges: [],
+      attempt_key: "cd172fe81b806160",
+      branch: "dispatch/node-a-acd172fe81b806160",
+      worker_terminal: false,
+      capture: CaptureAbsent,
+      supervisor_verdict: SupervisorVerdictAbsent,
+      verification: none,
+      review: none,
+      goal_audit: none,
+    } },
+    prior_turn: ContinuationTurnKnown { turn: 1 },
+  )
+  live_refusal
+    && (match decision {
+      ContinuationHold { reason: _ } =>
+        match belt_spawn_route_for_decision(decision: decision) {
+          SpawnRouteNone { step, detail: _ } => step == "continuation-hold"
+          _ => false
+        }
+      _ => false
+    })
+}
