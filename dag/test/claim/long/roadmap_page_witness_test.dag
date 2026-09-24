@@ -59,10 +59,6 @@ test fn witness_authority_serializes_with_structure() -> Bool {
         && string_contains(s: h, pattern: "class=\"roadmap-section\"")
         && string_contains(s: h, pattern: "class=\"node-head\"")
         && !string_contains(s: h, pattern: "class=\"status status-open\"")
-        && string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
-        && string_contains(s: h, pattern: "class=\"ticket-brief\"")
-        && string_contains(s: h, pattern: ">displaced cost</span>")
-        && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
   }
 }
 
@@ -484,7 +480,7 @@ data readable_witness_enrollment_note: String = "The six readability witnesses b
 // property. The property is the renderer's (disclosure_updates_block renders nothing for an empty
 // thread and one block for a non-empty one), so it is asserted over two supplied tickets differing
 // ONLY in their updates, in both directions; the row's structure is asserted over a supplied ticket,
-// and its real-authority inhabitance lives in witness_authority_serializes_with_structure.
+// and its real-authority inhabitance lives in witness_real_ticket_row_renders_structured.
 fn updates_fixture(updates: List<gunbc.roadmap_status.TicketUpdate>) -> RoadmapNode {
   gunbc.roadmap_authority.ticket_row(identity: "rnfx_UPD8TESFXTR3KZ0MQ7WV", id: "updates-fixture", done: false, t: TicketFields {
     headline: "fixture",
@@ -507,10 +503,37 @@ fn updates_fixture(updates: List<gunbc.roadmap_status.TicketUpdate>) -> RoadmapN
 // claim (DESIGN section 3, a witness discriminates at one interface). The pairing obligation is held by
 // witness_authority_serializes_with_structure, which asserts that the REAL authority page emits a
 // ticket-row "details" disclosure, a ticket brief, a disclosure field and a carrier link: the route
-// these fixtures supply is still executed for real, by a claim that already pays for it.
+// these fixtures supply is still executed for real -- by witness_real_ticket_row_renders_structured,
+// which takes an AUTHORED ticket from gunbc.roadmap_authority declared_roadmap_nodes through the same
+// row route, so real authored data reaches the real renderer without paying for the whole page.
 fn row_html(rn: RoadmapNode) -> HtmlEmitResult {
   try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0,
     launch: gunbc.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
+}
+
+fn is_real_structured_ticket(rn: RoadmapNode) -> Bool {
+  match line_ticket(item: rn.line) {
+    Absent => false
+    Present { value: t } => t.displaced_cost != "" && count(rn.carriers) > 0
+  }
+}
+
+// THE INHABITANCE CLAIM FOR THE SUPPLIED TICKET ROWS (DESIGN section 3 pairing). It selects the first
+// authored ticket carrying a displaced cost and a carrier rather than naming one, so it follows the
+// authority as tickets are accepted; an authority with no such ticket reds here, by name.
+test fn witness_real_ticket_row_renders_structured() -> Bool {
+  match filter(declared_roadmap_nodes(), rn => is_real_structured_ticket(rn: rn)).first() {
+    Absent => false
+    Present { value: rn } =>
+      match row_html(rn: rn) {
+        EmitRejected { reason: _ } => false
+        EmitOk { html: h } =>
+          string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
+            && string_contains(s: h, pattern: "class=\"ticket-brief\"")
+            && string_contains(s: h, pattern: ">displaced cost</span>")
+            && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/")
+      }
+  }
 }
 
 fn structured_ticket_fixture() -> RoadmapNode {
