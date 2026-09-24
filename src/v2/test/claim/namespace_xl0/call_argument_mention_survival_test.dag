@@ -245,10 +245,9 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // tree or the collector; one surviving atom answers it green however much of the surrounding
 // expression was dropped, so none of them establishes that a call, operator or match was lowered
 // WHOLE. Four rows were renamed from "reaches the denominator" / "is in the tree" to "is reachable"
-// for that reason, and they are not to be cited as shape coverage. The whole-shape contracts --
-// exact arity, every operand in order at its authored occurrence, refusing on a partial read -- are
-// v2.test.claim.namespace_xl0.body_shape_contract, read through the admitted views in
-// v2.std.compilers.body_lowering.
+// for that reason, and they are not to be cited as shape coverage. The shape contracts -- exact
+// arity and every operand in order at its authored occurrence, compared against the authored
+// source -- are v2.test.claim.namespace_xl0.body_shape_contract.
 
 test fn the_call_argument_fixture_ingests_holds() -> Bool {
   fixture_ingest_accepted()

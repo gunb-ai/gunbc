@@ -44,16 +44,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // PRODUCTION-FED SHAPE CONTRACTS FOR THE LOWERED BODY (MQ-3). Each claim below starts from SOURCE
 // TEXT, runs it through the real front end -- dag_prepared_grammar, tokenize, parse_module_prepared,
 // normalize, which is where v2.compiler.body_lowering_fold runs -- and then asks an admitted view
-// in v2.std.compilers.body_lowering for the WHOLE shape of one lowered body. No Node below is built
+// in v2.std.compilers.body_lowering to read one lowered body. No Node below is built
 // by hand, so a claim cannot stay green over a shape the real producer no longer emits (DESIGN
 // section 3, the pairing obligation: these ARE the inhabitance claims for the views).
 //
 // WHAT "WHOLE" MEANS HERE, AND WHY THE OLDER ROWS NEARBY ARE NOT IT. The rows in
 // call_argument_mention_survival_test ask whether a spelling REACHES the tree or the collector --
 // a presence question, answered green by one surviving atom however much of the expression around
-// it was dropped. These claims ask for the exact arity, every operand in authored order, each
-// operand at its authored occurrence, and nothing extra, through a view that refuses on any
-// partial shape; a truncated read fails the view instead of answering with fewer parts.
+// it was dropped. These claims compare the lowered body against the AUTHORED SOURCE: the exact
+// arity, every operand in authored order, each operand at its authored occurrence, and nothing
+// extra. That comparison is where completeness is established. The views only read the Node
+// consistently; a view alone would admit `f(x)` lowered to Transform[f] as a valid nullary
+// application, and it is the arity and operand assertions here that go red on it.
 //
 // THE CALL SHAPE IS ASKED ONCE, AS A CONTROL, NOT AS THE CALL CONTRACT. The full production-fed
 // call contract (callee, arity, argument at its authored atom, carried lambda arguments) is
