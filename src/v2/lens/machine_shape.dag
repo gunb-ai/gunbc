@@ -35,12 +35,12 @@ import v2.std.node {
 }
 import v2.std.node_query { construct_tag_optional }
 import v2.std.compilers.body_lowering {
-  ApplicationSlotsFound,
-  ApplicationSlotsRefused,
+  ApplicationHeadFound,
+  ApplicationHeadRefused,
   ArrowHead,
   AtomHead,
-  NotApplicationSlots,
-  application_slots
+  NotApplicationHead,
+  application_head_read
 }
 import std.algebra { Cons, Empty }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -115,8 +115,8 @@ fn machine_shape_unsanctioned_construction_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-// WHAT THIS NODE CONSTRUCTS, IF ANYTHING. The application is read through the base read
-// application_slots: the question is the head, never an operand, and a refused application is a
+// WHAT THIS NODE CONSTRUCTS, IF ANYTHING. The application is read through the head layer
+// application_head_read: the question is the head, never an operand, and a refused application is a
 // finding in its own right. An Arrow head is a resolved function reference, never a constructor.
 type ConstructedTag
   = NoConstruction
@@ -127,11 +127,11 @@ fn constructed_tag(n: Node) -> ConstructedTag {
   match construct_tag_optional(n: n) {
     Present { value: tag } => Constructs { tag: tag }
     Absent =>
-      match application_slots(site: n) {
-        NotApplicationSlots => NoConstruction
-        ApplicationSlotsRefused { diagnostics: d } => ConstructionUnreadable { diagnostics: d }
-        ApplicationSlotsFound { slots: v } =>
-          match v.head_identity {
+      match application_head_read(site: n) {
+        NotApplicationHead => NoConstruction
+        ApplicationHeadRefused { diagnostics: d } => ConstructionUnreadable { diagnostics: d }
+        ApplicationHeadFound { head: _, head_identity: identity, operands: _ } =>
+          match identity {
             AtomHead { identity: sym } => Constructs { tag: sym }
             ArrowHead => NoConstruction
           }

@@ -21,12 +21,12 @@ import v2.std.algebra {
 import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.body_lowering {
-  ApplicationSlotsFound,
-  ApplicationSlotsRefused,
+  ApplicationHeadFound,
+  ApplicationHeadRefused,
   ArrowHead,
   AtomHead,
-  NotApplicationSlots,
-  application_slots,
+  NotApplicationHead,
+  application_head_read,
   body_lowering_diagnostic
 }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_singleton }
@@ -67,7 +67,7 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // A CONSUMER THAT GUESSES WRONG GETS A GREEN. A skeleton node is `TypeNode { connective: Conj }`,
 // EXCEPT a named call, which carries `ComputationNode { behavior: Transform }` with the callee
 // identity leaf as its first positional child -- the same carrier `v2.compiler.body_lowering_fold`
-// produces for a lowered body, so `v2.std.compilers.body_lowering` `application_slots` is the
+// produces for a lowered body, so `v2.std.compilers.body_lowering` `application_head_read` is the
 // authority over this substrate and a consumer needs no predicate of its own. UNTIL gunbc#10282 THE MARSHAL SPELLED CALLS `Conj` TOO, and the cost of leaving that
 // undocumented is measured rather than hypothetical: every call-shaped lens folding these skeletons
 // was green with no authorable red, and `v2.lens.no_dual_representation_test.scan` grew a private
@@ -273,7 +273,7 @@ fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
 }
 
 // THREE ANSWERS PER NODE, NOT TWO. A node is not an application, or it is one whose callee is
-// named, or it is one this reader cannot read -- a partial Transform (application_slots refused
+// named, or it is one this reader cannot read -- a partial Transform (application_head_read refused
 // it), or a resolved Arrow head, which carries no lexeme to match against a declaration name. The
 // last two used to answer "no callee here" and drop the call out of every reachability walk
 // silently; they are carried as located diagnostics instead (DESIGN §5).
@@ -282,8 +282,8 @@ type CalleeTextRead
   | CalleeText { text: String }
   | CalleeUnreadable { diagnostics: NonEmptyDiagnostics }
 
-// THE QUESTION IS THE CALLEE, so this reads the head through the base read
-// v2.std.compilers.body_lowering application_slots and never judges operands: whether an argument
+// THE QUESTION IS THE CALLEE, so this reads the head through the head layer
+// v2.std.compilers.body_lowering application_head_read and never judges operands: whether an argument
 // is whole is not what the walk asks, and paying application_read's per-operand residue checks on
 // every call of every reached body is work no consumer of the walk demands (DESIGN §2). A named
 // edge or a missing, residue or non-callee head still refuses, located. Skeleton arguments are
@@ -291,16 +291,16 @@ type CalleeTextRead
 // v2.test.claim.enforcement.skeleton_call_route_witness holds application_read over the real
 // marshal's output separately.
 fn callee_text_read(node: Node) -> CalleeTextRead {
-  match application_slots(site: node) {
-    NotApplicationSlots => NoCallee
-    ApplicationSlotsRefused { diagnostics: d } => CalleeUnreadable { diagnostics: d }
-    ApplicationSlotsFound { slots: a } =>
-      match a.head_identity {
+  match application_head_read(site: node) {
+    NotApplicationHead => NoCallee
+    ApplicationHeadRefused { diagnostics: d } => CalleeUnreadable { diagnostics: d }
+    ApplicationHeadFound { head: head, head_identity: identity, operands: _ } =>
+      match identity {
         AtomHead { identity: sym } => CalleeText { text: symbol_lexeme(sym: sym) }
         ArrowHead =>
           CalleeUnreadable {
             diagnostics: diagnostics_singleton(
-              d: body_lowering_diagnostic(reason: ^fn_index_callee_head_unnamed, n: a.head)
+              d: body_lowering_diagnostic(reason: ^fn_index_callee_head_unnamed, n: head)
             )
           }
       }

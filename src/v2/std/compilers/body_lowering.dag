@@ -306,9 +306,9 @@ fn application_refused(reason: Symbol, at: Node) -> ApplicationRead {
 
 // THE ONE BASE READ under application_read. It decides everything about an application except
 // whether its OPERANDS are whole: a residue operand is marked here rather than refused. That split
-// exists for the readers whose question is the head alone -- the determinism and machine_shape
-// gates and the no_dual_representation scan -- so an operand they never read cannot decide their
-// answer; application_read refuses the first residue operand. Every other defect -- a named edge,
+// exists for the no_dual_representation scan, which reads the first operand and must tell residue
+// from a value; readers whose question is the head alone take the head layer below and classify
+// nothing; application_read refuses the first residue operand. Every other defect -- a named edge,
 // a missing or non-callee head, a residue head -- refuses here.
 type OperandSlot
   = WholeOperand { node: Node }
@@ -325,8 +325,6 @@ type ApplicationSlotsRead
   | ApplicationSlotsFound { slots: ApplicationSlots }
   | ApplicationSlotsRefused { diagnostics: NonEmptyDiagnostics }
 
-fn application_slots_refused(reason: Symbol, at: Node) -> ApplicationSlotsRead {
-  ApplicationSlotsRefused { diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: reason, n: at)) }
 }
 
 fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
@@ -346,33 +344,65 @@ fn operand_slot_of(n: Node) -> OperandSlot {
   if view_is_surface_residue(n: n) { ResidueOperand { node: n } } else { WholeOperand { node: n } }
 }
 
-fn application_slots(site: Node) -> ApplicationSlotsRead {
+// THE HEAD LAYER of the base read: the edges are all positional and the first is a callee. An Atom
+// head is admitted only childless (view_atom_identity_optional), so it cannot be residue and skips
+// that check; an Arrow or a rejected head is still checked, so a residue head keeps its reason. It
+// does not classify operands at all -- their residue check costs a sequence probe and a named-child
+// search per operand -- so a reader whose question is the head alone (the determinism and
+// machine_shape gates, the v2.std.fn_index call walk) pays nothing for operands it never reads.
+type ApplicationHeadRead
+  = NotApplicationHead
+  | ApplicationHeadFound { head: Node, head_identity: ApplicationHead, operands: List<Node> }
+  | ApplicationHeadRefused { diagnostics: NonEmptyDiagnostics }
+
+fn application_head_refused(reason: Symbol, at: Node) -> ApplicationHeadRead {
+  ApplicationHeadRefused { diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: reason, n: at)) }
+}
+
+fn application_head_read(site: Node) -> ApplicationHeadRead {
   match site.kind {
     ComputationNode { behavior: Transform } =>
       match application_positional_targets(site: site) {
-        Rejected { diagnostics: r } => ApplicationSlotsRefused { diagnostics: r }
+        Rejected { diagnostics: r } => ApplicationHeadRefused { diagnostics: r }
         Accepted { value: children, diagnostics: _ } =>
           match children {
-            Empty => application_slots_refused(reason: ^body_view_transform_head_absent, at: site)
+            Empty => application_head_refused(reason: ^body_view_transform_head_absent, at: site)
             Cons { head: head, tail: rest } =>
-              if view_is_surface_residue(n: head) {
-                application_slots_refused(reason: ^body_view_operand_residue, at: head)
-              } else {
-                match application_head_optional(n: head) {
-                  Absent => application_slots_refused(reason: ^body_view_transform_head_not_callee, at: head)
-                  Present { value: identity } =>
-                    ApplicationSlotsFound {
-                      slots: ApplicationSlots {
-                        head: head,
-                        head_identity: identity,
-                        operands: fold(rest, init: Empty, f: fn(xs, n) { list_snoc_item(xs: xs, item: operand_slot_of(n: n)) })
-                      }
-                    }
-                }
+              match application_head_optional(n: head) {
+                Present { value: AtomHead { identity: id } } =>
+                  ApplicationHeadFound { head: head, head_identity: AtomHead { identity: id }, operands: rest }
+                Present { value: ArrowHead } =>
+                  if view_is_surface_residue(n: head) {
+                    application_head_refused(reason: ^body_view_operand_residue, at: head)
+                  } else {
+                    ApplicationHeadFound { head: head, head_identity: ArrowHead, operands: rest }
+                  }
+                Absent =>
+                  if view_is_surface_residue(n: head) {
+                    application_head_refused(reason: ^body_view_operand_residue, at: head)
+                  } else {
+                    application_head_refused(reason: ^body_view_transform_head_not_callee, at: head)
+                  }
               }
           }
       }
-    _ => NotApplicationSlots
+    _ => NotApplicationHead
+  }
+}
+
+// The slots layer: the head layer, then each operand classified whole or residue.
+fn application_slots(site: Node) -> ApplicationSlotsRead {
+  match application_head_read(site: site) {
+    NotApplicationHead => NotApplicationSlots
+    ApplicationHeadRefused { diagnostics: d } => ApplicationSlotsRefused { diagnostics: d }
+    ApplicationHeadFound { head: head, head_identity: identity, operands: rest } =>
+      ApplicationSlotsFound {
+        slots: ApplicationSlots {
+          head: head,
+          head_identity: identity,
+          operands: fold(rest, init: Empty, f: fn(xs, n) { list_snoc_item(xs: xs, item: operand_slot_of(n: n)) })
+        }
+      }
   }
 }
 
