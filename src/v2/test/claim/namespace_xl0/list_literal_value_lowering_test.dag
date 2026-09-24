@@ -28,7 +28,8 @@ import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import std.process { ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -372,4 +373,24 @@ test fn std_algebra_without_freemonoid_refuses_its_own_list_literal_at_resolve()
     LlvSelfResolveRefused { reason: _, at_atom: _ } => true
     _ => false
   }
+}
+
+// A REPORT, NOT A CLAIM: the self-reference verdict rendered through the process exit, so a run of
+// this entry names what refused (gunbc run maps only ProcessExit to an exit code).
+fn llv_self_verdict_text(v: LlvSelfVerdict) -> String {
+  match v {
+    LlvSelfResolved => "resolved"
+    LlvSelfResolveRefused { reason: r, at_atom: a } =>
+      "resolve-refused reason=" + symbol_lexeme(sym: r) + " at=" + (match a {
+        Present { value: id } => symbol_lexeme(sym: id)
+        Absent => "(no atom)"
+      })
+    LlvSelfFileRefused => "file-refused at normalize"
+    LlvSelfAbsent => "module absent from the census"
+    LlvSelfContextRefused => "native test context refused"
+  }
+}
+
+fn llv_self_report() -> ProcessExit {
+  exit_failure(reason: "whole: " + llv_self_verdict_text(v: llv_self_outcome()) + " | missing: " + llv_self_verdict_text(v: llv_self_missing_outcome()))
 }
