@@ -138,14 +138,16 @@ fn bmc_read_cause_kind(cause: BmcReadCause) -> String {
 // THE AGGREGATE OVER BMC READS THAT ALL FAILED. "The BMC did not answer" is said only when EVERY
 // cause is a definitive no-answer; otherwise each distinct kind is named, so an ambiguous IPMI
 // session failure beside a Redfish timeout reads as exactly that and not as a verdict on the BMC.
-fn bmc_all_failed_text(causes: List<BmcReadCause>) -> String {
+fn bmc_all_failed_text(failed: List<BmcChannelRead>) -> String {
+  let causes = flat_map(failed, r => match channel_cause(r: r) { Present { value: c } => [c] Absent => [] })
+  let channels = concat("; failed channels: ", join(map(failed, r => r.channel as String), ", "))
   let empty: List<String> = []
   let kinds = fold(map(causes, c => bmc_read_cause_kind(cause: c)), init: empty, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
   let first = match causes.first() { Absent => "" Present { value: c } => bmc_read_cause_text(cause: c) }
   if all(causes, c => bmc_read_cause_is_definitive_no_answer(cause: c)) {
-    concat("every BMC read failed and the BMC did not answer; first: ", first)
+    concat("every BMC read failed and the BMC did not answer; first: ", first, channels)
   } else {
-    concat("every BMC read failed (", join(kinds, "; "), "); first: ", first)
+    concat("every BMC read failed (", join(kinds, "; "), "); first: ", first, channels)
   }
 }
 
@@ -482,39 +484,78 @@ fn sel_findings(delta: SelDeltaReading) -> List<String> {
   }
 }
 
-fn sel_snapshot_cause(s: SelSnapshotReading) -> BmcReadCause? {
-  match s {
-    SelSnapshotUnread { cause: c } => Present { value: c }
-    _ => none
-  }
+// WHAT EACH BMC CHANNEL DID ON THIS ATTEMPT, one standing per read, derived from the sections
+// themselves so no channel can be left out of the aggregate by omission. A read that answered on
+// ANY channel means the BMC answered; a read not attempted (the attempt ended first, or the sensor
+// read had no SDR cache to read through) is neither.
+type BmcChannelStanding
+  = BmcChannelAnswered
+  | BmcChannelFailed { cause: BmcReadCause }
+  | BmcChannelNotAttempted
+
+type BmcChannelRead {
+  channel: NonEmptyStr
+  standing: BmcChannelStanding
 }
 
-fn members_cause(m: MembersReading<T>) -> BmcReadCause? {
-  match m {
-    MembersUnread { cause: c } => Present { value: c }
-    _ => none
-  }
+fn sel_channel(channel: NonEmptyStr, s: SelSnapshotReading) -> BmcChannelRead {
+  BmcChannelRead { channel: channel, standing: match s {
+    SelSnapshotRead { raw: _, at: _ } => BmcChannelAnswered
+    SelSnapshotUnread { cause: c } => BmcChannelFailed { cause: c }
+    SelSnapshotNotTaken { reason: _ } => BmcChannelNotAttempted
+  } }
 }
 
-// EVERY BMC READ WAS ATTEMPTED AND EVERY ONE FAILED. A section that was never attempted does not
-// count toward this: an attempt that refused before reading the credential says so separately.
-fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcReadCause> {
-  let causes = [
-    sel_snapshot_cause(s: bundle.sel_before),
-    sel_snapshot_cause(s: bundle.sel_after),
-    members_cause(m: bundle.inventory.memory),
-    members_cause(m: bundle.inventory.processors),
+fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
+  BmcChannelRead { channel: channel, standing: match m {
+    MembersRead { members: _ } => BmcChannelAnswered
+    MembersUnread { cause: c } => BmcChannelFailed { cause: c }
+    MembersNotTaken { reason: _ } => BmcChannelNotAttempted
+  } }
+}
+
+fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelRead> {
+  [
+    sel_channel(channel: "ipmi sel before", s: bundle.sel_before),
+    sel_channel(channel: "ipmi sel after", s: bundle.sel_after),
+    BmcChannelRead { channel: "ipmi sdr dump", standing: match bundle.sdr_cache {
+      SdrCacheDumped { path: _, at: _ } => BmcChannelAnswered
+      SdrCacheUnread { cause: c } => BmcChannelFailed { cause: c }
+      SdrCacheNotTaken { reason: _ } => BmcChannelNotAttempted
+    } },
+    BmcChannelRead { channel: "ipmi sdr elist", standing: match bundle.sensors {
+      SensorsRead { lines: _, at: _ } => BmcChannelAnswered
+      SensorsUnread { cause: c } => BmcChannelFailed { cause: c }
+      SensorsNotTaken { reason: _ } => BmcChannelNotAttempted
+    } },
+    members_channel(channel: "redfish memory", m: bundle.inventory.memory),
+    members_channel(channel: "redfish processors", m: bundle.inventory.processors),
   ]
-  let empty: List<BmcReadCause> = []
-  if all(causes, c => match c { Absent => false Present { value: _ } => true }) {
-    fold(causes, init: empty, f: (acc, c) => match c { Absent => acc Present { value: v } => concat(acc, [v]) })
-  } else { empty }
+}
+
+fn channel_answered(r: BmcChannelRead) -> Bool {
+  match r.standing { BmcChannelAnswered => true _ => false }
+}
+
+fn channel_cause(r: BmcChannelRead) -> BmcReadCause? {
+  match r.standing { BmcChannelFailed { cause: c } => Present { value: c } _ => none }
+}
+
+// EVERY BMC READ THAT WAS ATTEMPTED FAILED, AND NONE ANSWERED: the failed channels, in read order.
+// Empty when any channel answered, and empty when nothing was attempted (an attempt that refused
+// before reading the credential says so in every section separately).
+fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelRead> {
+  let reads = bmc_channel_reads(bundle: bundle)
+  let empty: List<BmcChannelRead> = []
+  if any(reads, r => channel_answered(r: r)) { empty } else {
+    filter(reads, r => match channel_cause(r: r) { Present { value: _ } => true Absent => false })
+  }
 }
 
 fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> List<String> {
   let nothing: List<String> = []
   let failed = bmc_all_reads_failed(bundle: bundle)
-  let unreachable = if count(failed) == 0 { nothing } else { [bmc_all_failed_text(causes: failed)] }
+  let unreachable = if count(failed) == 0 { nothing } else { [bmc_all_failed_text(failed: failed)] }
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),

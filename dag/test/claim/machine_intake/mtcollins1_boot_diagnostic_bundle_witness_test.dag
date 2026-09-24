@@ -347,8 +347,30 @@ test fn an_ambiguous_ipmi_failure_is_not_rendered_as_did_not_answer() -> Bool {
 test fn only_definitive_no_answers_say_the_bmc_did_not_answer() -> Bool {
   let b = bundle_bmc_silent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T00:59:00Z", exit_code: 124, stderr: "")
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, sensors: b.sensors, inventory: b.inventory, console: b.console }
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: SdrCacheUnread { cause: timeout }, sensors: b.sensors, inventory: b.inventory, console: b.console }
   any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "every BMC read failed and the BMC did not answer; first: BMC timed out at ipmi lanplus 192.168.1.228")
+}
+
+// THE DISCRIMINATING CONTROL for the aggregate: the SDR dump and the sensor read answer while
+// both SEL reads and both Redfish reads fail. The BMC answered, so this is not "every read failed",
+// and each failed section still carries its own cause.
+test fn a_bmc_that_answered_on_the_sensor_channel_is_not_all_failed() -> Bool {
+  let b = bundle_bmc_silent()
+  let good = bundle_socket1_absent()
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after,
+    sdr_cache: good.sdr_cache, sensors: good.sensors, inventory: b.inventory, console: b.console }
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  !any_contains(xs: findings, pattern: "every BMC read failed")
+    && any_contains(xs: findings, pattern: "bmc sensor CPU1_CPU_VCORE status ns")
+    && contains(mtcollins1_boot_bundle_text(bundle: bundle), "before: UNREAD: no IPMI session")
+}
+
+// The same bundle with the sensor channel failing too is all-failed, and names every failed channel;
+// the sensor read that was never attempted (no cache) is not listed as failed.
+test fn the_all_failed_finding_names_its_channels() -> Bool {
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle_bmc_silent())
+  any_contains(xs: findings, pattern: "; failed channels: ipmi sel before, ipmi sel after, ipmi sdr dump, redfish memory, redfish processors")
+    && !any_contains(xs: findings, pattern: "ipmi sdr elist")
 }
 
 test fn a_silent_bmc_still_renders_every_section_with_its_cause() -> Bool {
