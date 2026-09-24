@@ -42,8 +42,22 @@ import std.layout {
   doc_text,
   render
 }
-import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
-import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  EnsureSystemAccount,
+  RunGunbcEntryAs,
+  executor_privileged_operation_shell_command,
+  executor_privileged_operation_converge_command,
+  executor_privileged_operation_elevated_argv,
+  executor_privileged_operation_sudoers_line,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
+import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
+import gunbc.auth.approval_ntfy_runtime_observe {
+  approval_ntfy_runtime_observe_entry_rel,
+  approval_ntfy_runtime_observe_function,
+  approval_ntfy_runtime_observe_run_as,
+}
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
@@ -61,7 +75,25 @@ import gunbc.live_deploy.member_identity {
   DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
-import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program }
+import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program, sha256_digest }
+import extdeps.virtualization.firecracker {
+  firecracker_release_tarball_filename, firecracker_release_download_url,
+  firecracker_release_binary_path_in_tarball, firecracker_release_jailer_path_in_tarball,
+  firecracker_release_aarch64_tarball_sha256,
+}
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.exec.command { argv_words }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
+import gunbc.runner_microvm_slot_unit {
+  microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
+  microvm_controller_vmm_binary, microvm_controller_jailer_binary,
+  microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
+  microvm_slot_unit_timeout_stop_sec,
+  microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
+  microvm_slot_controller_receipt_dir,
+}
 import extdeps.tools.findutils { find_program, xargs_program }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
 import gunbc.live_deploy.slice_bounds {
@@ -120,7 +152,7 @@ import gunbc.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import v2.std.algebra { list_tail, TailFound, TailAbsent }
+import v2.std.algebra { list_tail, TailFound, TailAbsent, any }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -136,6 +168,14 @@ import gunbc.live_deploy.operations {
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
+  deploy_stage_install_owned_command,
+  deploy_stage_visudo_check_command,
+  installed_visudo_policy_check_command,
+  deploy_stage_install_from_command,
+  deploy_stage_cmp_stages_command,
+  rename_no_target_directory_command,
+  pwd_tree_copy_privileged_command,
+  pwd_file_install_privileged_command,
   install_directory_command,
   rm_force_command,
   rm_empty_directory_command,
@@ -161,6 +201,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_cmdsubst,
   bash_build_word_lit,
   bash_build_word_var,
+  bash_build_command_with_words,
+  bash_build_word_concat_from_nodes,
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
@@ -626,6 +668,7 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
+      release_locus_workspace_root_environment(release_dir: release_dir),
       ExecStart { command: join([
         approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
         " serve --source-root dag --source-root src/v2",
@@ -1664,7 +1707,16 @@ fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBi
 }
 
 fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([approval_broker_release_dir(root: root, revision: revision), "/.gunbc-tree-receipt"], "")
+  join([approval_broker_release_dir(root: root, revision: revision), "/", release_locus_tree_receipt_name], "")
+}
+
+// EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
+// (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name): the seed refuses to run
+// from a directory that is not a git checkout, and a locus is not one -- measured on srv1
+// 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
+// workspace_root before any stage ran. One row feeds both units.
+fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
+  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
 }
 
 data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
@@ -1787,29 +1839,673 @@ fn approval_broker_binary_install_command(release_dir: String) -> String {
 }
 
 fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let base_root = spec.approval_broker.repo_root as String
+  release_locus_install_steps(
+    owner: spec.service.service_user,
+    copy: LocusCopiedByJobUser,
+    base_root: spec.approval_broker.repo_root as String,
+    revision: revision,
+  )
+}
+
+// HOW THE TREE AND BINARY REACH THE LOCUS IS THE OWNER'S CONSEQUENCE, AND THE FIRST srv1 RUN OF THE
+// ROOT-OWNED LOCUS IS WHAT SAID SO (fleet-converge run 35655377521: rsync as the job user into
+// root-owned directories, `Permission denied`). The broker's locus is owned by the service user and
+// the job user's unprivileged rsync populates it. A root-owned locus can only be populated by a
+// privileged mover, and gunbc.ci_deploy_sudoers REFUSES the generic movers (rsync, chown) as sudo
+// grants by design -- so the privileged copy is install(1), the one granted mover, ONE FILE AT A
+// TIME: every directory `install -d -o root`, every file `install -m 0644 -o root` from the job's
+// checkout, driven by find over the same subdirectories and never by a recursive tool root would
+// have to trust. Slower than rsync by the sudo per file.
+//
+// WHAT THAT PRICE ACTUALLY BUYS ON srv1 TODAY, stated at the rung the evidence supports rather than
+// the one the shape suggests (review 70080, DESIGN §4b(1): a class's rung is the MINIMUM across its
+// in-scope paths, and citing the strongest while another stays silent is inflation). It removes the
+// UNPRIVILEGED-BY-DEFAULT write path: nothing reaches the locus without going through a granted
+// privileged mover, so an ordinary job step, a stray tool, or a mistaken relative path cannot land
+// bytes there, and the VMM the unit execs is this tree's rather than the job user's HOME copy.
+//
+// WHAT IT DOES NOT BUY, AND MUST NOT BE CITED AS: a tree the job user cannot write. ghrunner holds
+// NOPASSWD over a PATH-UNRESTRICTED /usr/bin/install on every host carrying
+// /etc/sudoers.d/gunbc-deploy -- install(1) being the very mover this step elevates with -- so the
+// same principal can write this locus by the same route. That is the standing drop
+// gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant, and the class is rostered at
+// gunbc.recurring_failure_mode the_grant_a_frontier_refuses_is_already_held_from_another_authority.
+// This change adds no grant and removes none; the stronger claim becomes true when that drop is
+// retired, not when this locus lands.
+type ReleaseLocusCopy
+  = LocusCopiedByJobUser
+  | LocusInstalledPrivilegedPerFile { owner: NonEmptyStr }
+
+fn release_locus_tree_copy_steps(copy: ReleaseLocusCopy, root: String) -> List<PipelineStep> {
+  match copy {
+    LocusCopiedByJobUser =>
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
+      )
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      flat_map(approval_broker_tree_subdirs, sub => [
+        deploy_raw(command: privileged_tree_directories_install_command(src_sub: sub, root: root, owner: o)),
+        deploy_raw(command: privileged_tree_files_install_command(src_sub: sub, root: root, owner: o)),
+      ])
+  }
+}
+
+// 🟡 dissolve-on: the two commands below assemble a find | xargs pipeline as a string, the same
+// medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
+fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+  join([
+    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type d -print0) | ",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+      install_program as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
+    ]), " "), " ", root, "/{}",
+  ], "")
+}
+
+fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+  join([
+    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+      install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+    ]), " "), " \"$PWD\"/{} ", root, "/{}",
+  ], "")
+}
+
+// THE PRIVILEGED BINARY SOURCE IS RELATIVE TO THE JOB'S WORKING DIRECTORY, not "$PWD": the argv
+// renderer single-quotes every word, so a variable there is a literal (run 35657588530: install
+// cannot stat '"$PWD"/target/release/gunbc').
+fn release_locus_binary_install_step(copy: ReleaseLocusCopy, root: String) -> PipelineStep {
+  match copy {
+    LocusCopiedByJobUser => deploy_raw(command: approval_broker_binary_install_command(release_dir: root))
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      deploy_raw(command: install_file_owned_command(
+        mode: install_executable_shared_mode,
+        owner: o,
+        group: o,
+        source: join(["target/release/", gunbc_release_bin_name], ""),
+        dest: join([root, "/", gunbc_release_bin_name], ""),
+      ))
+  }
+}
+
+// THE RELEASE LOCUS INSTALL, PARAMETERIZED BY OWNER AND BY ROOT AND BY NOTHING ELSE. The approval
+// broker's per-candidate locus (releases/<sha>/ holding binary + sources + digest receipt, ExecStart
+// pinned to it, requested-equals-installed decidable) and the microVM slot controller's are ONE
+// concept -- the same download -> verify -> copy pair feeds both from the same verified artifact in
+// the same job -- so the second consumer reuses these steps rather than mirroring them (parent
+// ruling on the microVM lane, 2026-09-21: a second locus with the same shape is the section 3
+// fork; 'the controller is root' is a difference in OWNER and CONSUMER, not in the locus). What
+// differs is exactly the two parameters: who owns the directories, and which root they hang under.
+// approval_broker_release_retention_note applies to every root this installs under; the microVM
+// controller inherits that named obligation rather than re-declaring it.
+fn release_locus_install_steps(owner: NonEmptyStr, copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let root = approval_broker_release_dir(root: base_root, revision: revision)
   concat(
     concat(
       [
         deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
-        deploy_raw(command: install_d_owned_command(spec: spec, path: base_root)),
-        deploy_raw(command: install_d_owned_command(spec: spec, path: approval_broker_releases_dir(root: base_root))),
-        deploy_raw(command: install_d_owned_command(spec: spec, path: root)),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: base_root)),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: approval_broker_releases_dir(root: base_root))),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: root)),
       ],
       map(approval_broker_tree_subdirs, sub =>
-        deploy_raw(command: install_d_owned_command(spec: spec, path: join([root, "/", sub], "")))
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: join([root, "/", sub], "")))
       ),
     ),
     concat(
-      map(approval_broker_tree_subdirs, sub =>
-        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
-      ),
+      release_locus_tree_copy_steps(copy: copy, root: root),
       [
-        deploy_raw(command: approval_broker_binary_install_command(release_dir: root)),
-        deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision)),
+        release_locus_binary_install_step(copy: copy, root: root),
+        release_locus_tree_receipt_step(copy: copy, base_root: base_root, revision: revision),
       ],
     ),
+  )
+}
+
+// 🟡 dissolve-on: the privileged arm below assembles a `printf … | sudo install /dev/stdin` pipeline
+// as a string (medium-as-string, the same class approval_broker_tree_digest_expr marks); it
+// dissolves when v2.workflow.bash_emit can render a piped command from modeled parts.
+// THE RECEIPT IS WRITTEN BY THE SAME PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
+// into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
+fn release_locus_tree_receipt_step(copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
+  match copy {
+    LocusCopiedByJobUser => deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision))
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      deploy_raw(command: join([
+        printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+        "\\ninstalled_digest=%s\\n' ",
+        "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+        " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", o as String, "-g", o as String, "/dev/stdin",
+          approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
+      ], ""))
+  }
+}
+
+// ── THE microVM SLOT CONTROLLER'S RELEASE LOCUS AND UNIT ──────────────────────────────────────
+//
+// THE SAME LOCUS, OWNED BY root, PLUS THE VMM AND THE JAILER. gunbc.runner_microvm_slot_unit owns
+// the root, the owner and the unit's shape; this module owns the install because the locus is the
+// live_deploy one. The two binaries the controller execs beside gunbc -- Firecracker and its jailer
+// -- are installed INTO the locus from the upstream release tarball, digest-verified against
+// extdeps.virtualization.firecracker's cited sha256 before extraction, as root-owned 0755 files.
+// They were previously installed under the job user's HOME by gunbc.runner_microvm_host_ready
+// (firecracker only; the jailer was never copied out of the archive), which is a job-user-writable
+// binary that a root controller would exec -- the same class the slot-network frontier names for
+// staged sources -- so the controller reads them from here and from nowhere else.
+//
+// THE RECEIPT NAMES BOTH DIGESTS beside the tree digest, so requested-equals-installed is decidable
+// for the VMM as it is for the sources: a locus whose firecracker hashes differently from the
+// cited release is not the release, whatever `--version` prints.
+fn microvm_controller_release_dir(revision: ReleaseRevisionBinding) -> String {
+  approval_broker_release_dir(root: microvm_controller_root, revision: revision)
+}
+
+// THE TARBALL IS STAGED UNDER THE JOB'S OWN CHECKOUT, beside the verified release bins it copies
+// from, because the fetch and the extraction run as the job user and the locus is root's: the only
+// privileged steps are the two installs into the locus, exactly as the gunbc binary's install is.
+// The path is RELATIVE to the job's working directory (the checkout root, as "$PWD" is for the
+// tree copy) and carries no variable, because digest_shell_verify_line single-quotes the path it
+// checks and a "$PWD" inside single quotes would be verified as a literal.
+data microvm_controller_stage_dir: String = "target/microvm-controller-stage"
+
+fn microvm_controller_tarball_stage_path() -> String {
+  join([microvm_controller_stage_dir, "/", firecracker_release_tarball_filename(rel: microvm_controller_firecracker_release)], "")
+}
+
+fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> String {
+  join([microvm_controller_release_dir(revision: revision), "/.gunbc-vmm-receipt"], "")
+}
+
+// 🟡 dissolve-on: the last step below assembles `sha256sum … | sudo install /dev/stdin` as a string
+// (medium-as-string); it dissolves when v2.workflow.bash_emit can render a piped command from
+// modeled parts, exactly as approval_broker_tree_digest_expr's marker says.
+fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let rel = microvm_controller_firecracker_release
+  let dir = microvm_controller_release_dir(revision: revision)
+  let stage = microvm_controller_tarball_stage_path()
+  let extracted = microvm_controller_stage_dir
+  [
+    deploy_raw(command: join(argv_words(command: mkdir_parents_command(path: extracted)), " ")),
+    deploy_raw(command: join(argv_words(command: curl_download_command(url: firecracker_release_download_url(rel: rel), destination: stage)), " ")),
+    deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: firecracker_release_aarch64_tarball_sha256), file_path: stage as NonEmptyStr)),
+    deploy_raw(command: join(argv_words(command: tar_extract_command(archive: stage, into_directory: extracted, strip_components: 0)), " ")),
+    deploy_raw(command: install_file_owned_command(
+      mode: install_executable_shared_mode,
+      owner: microvm_controller_owner,
+      group: microvm_controller_owner,
+      source: join([extracted, "/", firecracker_release_binary_path_in_tarball(rel: rel)], ""),
+      dest: microvm_controller_vmm_binary(release_dir: dir),
+    )),
+    deploy_raw(command: install_file_owned_command(
+      mode: install_executable_shared_mode,
+      owner: microvm_controller_owner,
+      group: microvm_controller_owner,
+      source: join([extracted, "/", firecracker_release_jailer_path_in_tarball(rel: rel)], ""),
+      dest: microvm_controller_jailer_binary(release_dir: dir),
+    )),
+    deploy_raw(command: join([
+      sha256sum_program as String, " ",
+      microvm_controller_vmm_binary(release_dir: dir), " ",
+      microvm_controller_jailer_binary(release_dir: dir),
+      " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
+        microvm_controller_vmm_receipt_path(revision: revision)]), " "),
+    ], "")),
+  ]
+}
+
+// THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
+// belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
+// service section is that module's list plus one directive, inserted rather than re-authored.
+fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
+  match microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()) {
+    ServiceUnitFile { unit: u, service: s, install: i } =>
+      ServiceUnitFile {
+        unit: u,
+        service: concat([release_locus_workspace_root_environment(release_dir: release_dir)], s),
+        install: i,
+      }
+    other => other
+  }
+}
+
+fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_controller_slice_unit_name as String,
+      content: serialize_systemd_unit_file(file: microvm_controller_slice_unit_file()),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_controller_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_controller_slice_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_slot_unit_template_name as String,
+      content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
+        release_dir: microvm_controller_release_dir(revision: revision),
+      )),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_slot_unit_template_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_slot_unit_path() as String,
+    )),
+  ]
+}
+
+// THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
+// the manager. An instance is started by the shakedown's own dispatch (systemctl start
+// gunbc-microvm-slot@srv1-13), never by the deploy, because starting the controller IS running an
+// attempt and an attempt is admitted by the readiness store and a reservation, not by a deploy.
+fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      concat(
+        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
+        concat(
+          release_locus_install_steps(
+            owner: microvm_controller_owner,
+            copy: LocusInstalledPrivilegedPerFile { owner: microvm_controller_owner },
+            base_root: microvm_controller_root,
+            revision: revision,
+          ),
+          microvm_controller_vmm_install_steps(revision: revision),
+        ),
+      ),
+      concat(
+        [deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir))],
+        concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+      ),
+    ),
+    on_failure: FailFast,
+  }
+}
+
+data microvm_controller_install_emit_refused_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the microVM slot controller install pipeline did not emit; the stage refuses rather than running a partial script (DESIGN section 5)."
+
+fn microvm_controller_install_script(revision: ReleaseRevisionBinding) -> String {
+  emit_pipeline_or_poison(
+    p: microvm_controller_install_intent(revision: revision),
+    refused: microvm_controller_install_emit_refused_poison,
+  )
+}
+
+// ── THE RELEASE'S HELPER GRANT: ONE EXACT SUDOERS LINE OVER A ROOT-OWNED SNAPSHOT ───────────
+// The enrolment-code verb must read the live ntfy process as gunbc-ntfy
+// (gunbc.auth.approval_ntfy_runtime_observe). It does that by running ONE entry of a released gunbc
+// through sudo. There is deliberately no `current` symlink (see approval_broker_release_retention_note),
+// so a fixed grant names the release sha.
+//
+// THE GRANT NAMES A ROOT-OWNED SNAPSHOT, NOT THE RELEASE DIRECTORY (side-chat HOLD wall 1 on
+// fbf351ecd9). A fixed argv is no wall when the grantee can author its payload, and for `gunbc run`
+// the payload is the binary PLUS every .dag the run interprets. The release directory is owned by the
+// broker's service user, and that is the same account as the grantee (both are briansrls). So the
+// grantee could replace the binary or a source there and run the granted argv as gunbc-ntfy. The
+// grant therefore names /opt/gunbc/approval-broker-helpers/<sha>, a copy made at install by root from
+// the deploying checkout. The binary, both source roots, the entry, and every ancestor directory are
+// root-owned and not group- or world-writable, and the copy contains no symlink. The install reads
+// that back before any grant is written. approval_broker_helper_grant_admission refuses outright a
+// locus whose owner is the grantee, so pointing the grant back at the release directory emits no grant.
+//
+// ONE OPERATION, TWO RENDERINGS. The grant line and the argv the verb runs are both projections of
+// approval_broker_ntfy_runtime_observe_operation, through gunbc.executor_privileged_operation (the seam
+// every runner-host grant renders through). So the grant cannot authorize a command other than the
+// one the verb runs.
+//
+// THE DROP-IN IS REPLACED ATOMICALLY, AND ITS IDENTITY IS CHECKED (wall 2). The file holds exactly one
+// grant line, the one for this release. It is written root:root 0440 to a temp name inside
+// sudoers.d that contains a `.`. sudoers(5), "Including other files from within sudoers": files
+// in an @includedir/#includedir directory "that end in the '~' character or contain a '.' character"
+// are skipped. So sudo never reads the temp file. It is checked with `visudo -c -O -P -f` (syntax,
+// owner, group and mode), then renamed over the final path with `mv -T` (one rename(2)). The final
+// path is checked again the same way. Its bytes are read back through a privileged fixed-path copy
+// into the stage and compared. An interruption at any step before the rename leaves the previous
+// release's valid file in place. A partial file only ever exists under the ignored name. The
+// previous release's line disappears in the rename, so nothing sweeps for "other" lines.
+data approval_broker_helper_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers"
+data approval_broker_helper_sudoers_temp_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers.new"
+data approval_broker_helper_sudoers_stage_name: String = "gunbc-approval-broker-helpers.sudoers"
+data approval_broker_helper_sudoers_readback_stage_name: String = "gunbc-approval-broker-helpers.readback"
+data approval_broker_helper_sudoers_mode: NonEmptyStr = "0440"
+data approval_broker_helper_root_principal: NonEmptyStr = "root"
+data approval_broker_helper_snapshot_base: String = "/opt/gunbc/approval-broker-helpers"
+
+// WHERE A HELPER RUNS FROM, AND WHO CAN WRITE IT. The owner is the principal that owns every entry in
+// the locus (the install makes it so, and the snapshot readback checks it).
+type HelperLocus {
+  base: String
+  owner: NonEmptyStr
+}
+
+fn approval_broker_helper_snapshot_locus() -> HelperLocus {
+  HelperLocus { base: approval_broker_helper_snapshot_base, owner: approval_broker_helper_root_principal }
+}
+
+// The release locus, named only so its refusal is a control: it is owned by the broker's service
+// user.
+fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
+  HelperLocus {
+    base: approval_broker_releases_dir(root: spec.approval_broker.repo_root as String),
+    owner: spec.approval_broker.service_user,
+  }
+}
+
+fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {
+  match revision {
+    RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
+    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+  }
+}
+
+fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
+  RunGunbcEntryAs {
+    run_as: approval_ntfy_runtime_observe_run_as(),
+    binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+    source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+    entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
+    function: approval_ntfy_runtime_observe_function,
+  }
+}
+
+fn approval_broker_ntfy_runtime_observe_operation(revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  approval_broker_ntfy_runtime_observe_operation_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy /opt/gunbc/approval-broker-helpers/<sha>/gunbc run ...`.
+// It is pure and exported so the verb (#12077) builds its invocation from this value, and a claim can
+// pin it.
+fn approval_ntfy_runtime_observe_helper_argv(revision: ReleaseRevisionBinding) -> List<String> {
+  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
+}
+
+// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
+// runs as fleet_posix_operator_user, which owns the device store and reads the publisher token).
+fn approval_broker_helper_grantee() -> NonEmptyStr {
+  fleet_posix_operator_user.name
+}
+
+fn approval_broker_helper_sudoers_line_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> NonEmptyStr {
+  executor_privileged_operation_sudoers_line(
+    grantee: approval_broker_helper_grantee(),
+    op: approval_broker_ntfy_runtime_observe_operation_at(locus: locus, revision: revision),
+  )
+}
+
+fn approval_broker_helper_sudoers_line(revision: ReleaseRevisionBinding) -> NonEmptyStr {
+  approval_broker_helper_sudoers_line_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+fn approval_broker_helper_sudoers_content(revision: ReleaseRevisionBinding) -> String {
+  join([
+    "# GENERATED by gunbc.live_deploy.emit approval_broker_helper_sudoers_content for release ",
+    release_revision_execstart_text(binding: revision),
+    ". Replaced whole by each broker release install; do not hand-edit.\n",
+    approval_broker_helper_sudoers_line(revision: revision) as String,
+    "\n",
+  ], "")
+}
+
+// THE GRANT'S WORDS MUST BE PLAIN, OR THE GRANT IS NOT EMITTED. A sudoers Cmnd_Spec treats these
+// characters specially: `,` and `:` separate list items, `=`, `!`, `(` and `)` are grammar, `\`
+// escapes, whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob
+// metacharacters that would turn an exact match into a pattern. The poisoned RevisionNotInstalled
+// path contains spaces, so an unbound revision is refused here too. The rest are shell quoting and
+// expansion characters, which no path this module names verbatim contains.
+data sudoers_command_word_refused_characters: List<String> = [
+  ",", ":", "=", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
+]
+
+type HelperGrantAdmission
+  = HelperGrantAdmitted
+  | HelperGrantWordRefused { word: String }
+  | HelperGrantLocusWritableByGrantee { owner: NonEmptyStr }
+
+fn approval_broker_helper_grant_admission_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
+  if locus.owner == approval_broker_helper_grantee() {
+    HelperGrantLocusWritableByGrantee { owner: locus.owner }
+  } else {
+    fold(
+      executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation_at(locus: locus, revision: revision)),
+      init: HelperGrantAdmitted,
+      f: (acc, w) =>
+        match acc {
+          HelperGrantWordRefused { word: x } => HelperGrantWordRefused { word: x }
+          HelperGrantLocusWritableByGrantee { owner: o } => HelperGrantLocusWritableByGrantee { owner: o }
+          HelperGrantAdmitted =>
+            if any(sudoers_command_word_refused_characters, c => string_contains(s: w, pattern: c)) {
+              HelperGrantWordRefused { word: w }
+            } else {
+              HelperGrantAdmitted
+            }
+        },
+    )
+  }
+}
+
+fn approval_broker_helper_grant_admission(revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
+  approval_broker_helper_grant_admission_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+data approval_broker_helper_grant_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker helper grant NOT EMITTED: "
+
+fn approval_broker_helper_grant_refusal_text(a: HelperGrantAdmission) -> String {
+  match a {
+    HelperGrantAdmitted => ""
+    HelperGrantWordRefused { word: w } => concat("a word of the helper argv carries a sudoers-special character, so its sudoers line would not mean that argv. word=", w)
+    HelperGrantLocusWritableByGrantee { owner: o } => concat("the helper locus is owned by the grantee, who could replace the code the grant executes. owner=", o as String)
+  }
+}
+
+// ── THE ROOT-OWNED SNAPSHOT ──────────────────────────────────────────────────────────────────
+// Every path from / down to the snapshot base, so the readback covers the ancestors too.
+fn path_ancestors_inclusive(path: String) -> List<String> {
+  fold(split(s: path, delimiter: "/"), init: ["/"], f: (acc, seg) =>
+    if seg == "" {
+      acc
+    } else {
+      match acc |> last {
+        Present { value: prev } => concat(acc, [if prev == "/" { concat("/", seg) } else { join([prev, "/", seg], "") }])
+        Absent => acc
+      }
+    })
+}
+
+// THE READBACK THAT MAKES "A SOURCE BYTE REPLACED AFTER INSTALL" IMPOSSIBLE RATHER THAN UNLIKELY.
+// It fails the stage if any entry in the snapshot, or any ancestor of it, is not root-owned, is
+// group- or world-writable, or is a symlink. Owned by root and writable only by root means the
+// grantee cannot change a byte the grant executes.
+//
+// THREE OUTCOMES, AND ONLY ONE OF THEM PASSES: the observation failed (a path missing, unreadable,
+// or an I/O error), it found a violation, or it is clean. Each find is captured into its OWN
+// assignment. The status of `v="$(cmd)"` is cmd's status, so bash's -e stops the stage on a find that
+// failed. A find nested inside `test -z "$(...)"` would lose its status to test's, and a failed
+// observation prints nothing, so it would read as clean (side-chat HOLD on f8beaa6f63). A negated
+// pipeline is no better: -e ignores a command whose status is inverted with `!`. Only after both
+// observations succeed does test decide between violation and clean. That is the same fail-fast
+// assignment shape systemctl_load_state_assignment_intent uses, built from the same grammar rows, so
+// none of it is shell assembled as a string.
+//
+// The ancestors are checked for being a symlink explicitly (-type l), not only through their
+// permission bits. find's default -P does not follow a starting point, so a symlinked ancestor is
+// seen as a link. The finds run BARE, as the deploy principal: every directory they read is
+// root-owned 0755, and an entry they cannot read is an observation failure, which stops the stage.
+//
+// The owner is a WORD, so the same statements can be executed against a scratch tree owned by
+// whoever runs the check (test.claim.live_deploy.approval_broker_helper_readback_real_execution
+// passes `$(id -un)`). Production passes the literal root.
+fn helper_snapshot_find_intent(roots: List<String>, top_only: Bool, owner: Node) -> Node {
+  bash_build_command_with_words(words: concat(
+    concat(
+      [bash_build_word_lit(text: find_program as String)],
+      map(roots, r => bash_build_word_lit(text: r)),
+    ),
+    concat(
+      if top_only { [bash_build_word_lit(text: "-maxdepth"), bash_build_word_lit(text: "0")] } else { [] },
+      [
+        bash_build_word_lit(text: "("), bash_build_word_lit(text: "!"), bash_build_word_lit(text: "-user"), owner,
+        bash_build_word_lit(text: "-o"), bash_build_word_lit(text: "-perm"), bash_build_word_lit(text: "/022"),
+        bash_build_word_lit(text: "-o"), bash_build_word_lit(text: "-type"), bash_build_word_lit(text: "l"),
+        bash_build_word_lit(text: ")"), bash_build_word_lit(text: "-print"),
+      ],
+    ),
+  ))
+}
+
+data helper_snapshot_ancestors_var: String = "_gunbc_helper_ancestors"
+data helper_snapshot_entries_var: String = "_gunbc_helper_snapshot"
+
+fn helper_snapshot_readback_intents(ancestors: List<String>, dir: String, owner: Node) -> List<Node> {
+  [
+    bash_build_assign(
+      name: helper_snapshot_ancestors_var,
+      value: bash_build_word_cmdsubst(body: helper_snapshot_find_intent(roots: ancestors, top_only: true, owner: owner)),
+    ),
+    bash_build_assign(
+      name: helper_snapshot_entries_var,
+      value: bash_build_word_cmdsubst(body: helper_snapshot_find_intent(roots: [dir], top_only: false, owner: owner)),
+    ),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "test"),
+      bash_build_word_lit(text: "-z"),
+      bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_var(name: helper_snapshot_ancestors_var),
+        bash_build_word_var(name: helper_snapshot_entries_var),
+      ]),
+    ]),
+  ]
+}
+
+data helper_snapshot_readback_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker helper snapshot readback: the bash grammar refused a statement; this marker is not valid shell, so the stage fails before any grant is written (DESIGN section 5: refuse, never widen)"
+
+fn helper_snapshot_intent_text(intent: Node) -> String {
+  match bash_fold_serialize_node(stmt: intent) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => helper_snapshot_readback_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => helper_snapshot_readback_emit_refused_poison
+  }
+}
+
+// ONE STATEMENT PER LINE, each serialized by the grammar. A statement the grammar refuses renders as
+// the poison, which fails the stage.
+fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, owner: Node) -> String {
+  join(map(helper_snapshot_readback_intents(ancestors: ancestors, dir: dir, owner: owner), n => helper_snapshot_intent_text(intent: n)), "\n")
+}
+
+fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
+  helper_snapshot_readback_command_at(
+    ancestors: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base),
+    dir: dir,
+    owner: bash_build_word_lit(text: approval_broker_helper_root_principal as String),
+  )
+}
+
+// RETIREMENT: the previous release's snapshot is removed in the same converge, after the rename has
+// taken its grant away. The sweep is confined to the root-owned snapshot base and keeps exactly this
+// release's directory. It is one argv, rendered by the same argv authority as every other deploy
+// command. find receives `!`, `{}` and `+` as words; the renderer quotes them and the shell strips
+// the quotes.
+fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
+  shell_command_text_of_argv(argv: concat(
+    [
+      find_program as String, approval_broker_helper_snapshot_base,
+      "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
+      "-exec",
+    ],
+    concat(sudo_elevate_argv(command: [fleet_rm_binary_path as String, "-rf", "--"]), ["{}", "+"]),
+  ))
+}
+
+fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+  concat(
+    [
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: approval_broker_helper_snapshot_base, privileged: true)),
+      deploy_raw(command: rm_force_recursive_command(path: dir)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: dir, privileged: true)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: join([dir, "/src"], ""), privileged: true)),
+    ],
+    concat(
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: pwd_tree_copy_privileged_command(rel: sub, dest: join([dir, "/", sub], "")))),
+      [
+        deploy_raw(command: pwd_file_install_privileged_command(
+          rel: join(["target/release/", gunbc_release_bin_name], ""),
+          mode: install_executable_shared_mode,
+          owner: approval_broker_helper_root_principal,
+          group: approval_broker_helper_root_principal,
+          dest: join([dir, "/", gunbc_release_bin_name], ""),
+        )),
+        deploy_raw(command: approval_broker_helper_snapshot_readback_command(dir: dir)),
+      ],
+    ),
+  )
+}
+
+fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  match approval_broker_helper_grant_admission(revision: revision) {
+    HelperGrantAdmitted => concat(
+      approval_broker_helper_snapshot_steps(revision: revision),
+      concat(
+        approval_broker_helper_grant_admitted_steps(revision: revision),
+        [deploy_raw(command: approval_broker_helper_snapshot_retire_command(revision: revision))],
+      ),
+    )
+    HelperGrantWordRefused { word: w } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })))]
+    HelperGrantLocusWritableByGrantee { owner: o } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })))]
+  }
+}
+
+fn approval_broker_helper_grant_admitted_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let final_path = approval_broker_helper_sudoers_path as String
+  let temp_path = approval_broker_helper_sudoers_temp_path as String
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: approval_broker_helper_sudoers_stage_name,
+      content: approval_broker_helper_sudoers_content(revision: revision),
+    )),
+    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: approval_broker_helper_sudoers_stage_name)),
+    deploy_raw(command: deploy_stage_install_owned_command(
+      stage_name: approval_broker_helper_sudoers_stage_name,
+      mode: approval_broker_helper_sudoers_mode,
+      owner: approval_broker_helper_root_principal,
+      group: approval_broker_helper_root_principal,
+      dest: temp_path,
+    )),
+    deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
+    deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
+    deploy_raw(command: deploy_stage_install_from_command(
+      source: final_path,
+      mode: "0400" as NonEmptyStr,
+      owner: fleet_posix_ci_runner_user.name,
+      group: fleet_posix_ci_runner_user.name,
+      stage_name: approval_broker_helper_sudoers_readback_stage_name,
+    )),
+    deploy_raw(command: deploy_stage_cmp_stages_command(
+      left: approval_broker_helper_sudoers_stage_name,
+      right: approval_broker_helper_sudoers_readback_stage_name,
+    )),
+  ]
+}
+
+// THE ISSUING VERB LEARNS ITS OWN RELEASE FROM THE STEP THAT RUNS IT. The verb is invoked with
+// `gunbc run` from the release directory, and nothing in a run tells the function which release
+// that is. It cannot name its helper without that. The deployment step already binds the revision
+// (it selects the release directory by it), so it passes the same binding as `--arg
+// release_revision=<sha>`. The verb rebuilds the helper argv from it with
+// approval_ntfy_runtime_observe_helper_argv. A wrong or stale revision names a binary that is not
+// installed, or a command no grant matches. Both fail as a read failure (refuse), never as a
+// widened answer. Consumed by #12077's enrolment_code_issue_remote_argv, a declared frontier with
+// that PR as its trigger.
+data approval_broker_release_revision_argument_name: String = "release_revision"
+
+fn approval_broker_release_revision_argument(revision: ReleaseRevisionBinding) -> NamedArgumentAdmission {
+  admit_named_argument(
+    name: approval_broker_release_revision_argument_name,
+    value: release_revision_execstart_text(binding: revision),
   )
 }
 
@@ -2442,6 +3138,16 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
+// THE RELEASE HALF OF THE DARK INSTALL, NAMED: the release tree, then the helper snapshot and its
+// grant. The intent below consumes it, and a claim inspects the composition at this one interface
+// rather than rendering the whole orchestrated script (DESIGN section 3).
+fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  concat(
+    approval_broker_tree_copy_steps(spec: spec, revision: revision),
+    approval_broker_helper_grant_steps(spec: spec, revision: revision),
+  )
+}
+
 // ── THE ADDITIVE BROKER INSTALL: STAGE 1 OF THE CUTOVER ─────────────────────────────────────
 // IT TOUCHES gunbc-roadmap.service AND NOTHING IT DEPENDS ON, WHICH IS THE WHOLE REQUIREMENT
 // (operator directive 2026-09-19: roadmap redeploys are FROZEN at the current release until the
@@ -2475,7 +3181,7 @@ fn approval_broker_dark_install_intent(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
         concat(
-          approval_broker_tree_copy_steps(spec: spec, revision: revision),
+          approval_broker_dark_install_release_steps(spec: spec, revision: revision),
           apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
         ),
       ),

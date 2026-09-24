@@ -367,6 +367,24 @@ fn guest_console_observations(console: String) -> List<GuestObservationKind> {
   })
 }
 
+// THE LABELS A READER OUTSIDE THIS MODULE JOINS ON, DERIVED HERE FROM THE CONSTRUCTORS. The host's
+// bring-up progression (gunbc.runner_microvm_lifecycle) names its own phases GuestBooted and
+// RunnerListening, and a closure cannot hold two types with the same variant names, so that module
+// cannot import GuestObservationKind. It reads these instead: the ordered labels of the console's
+// observations, and the label of each kind it maps -- all three computed by this module's own
+// guest_observation_kind_label, so the join has one spelling and no second author.
+fn guest_console_observation_labels(console: String) -> List<String> {
+  map(guest_console_observations(console: console), k => guest_observation_kind_label(kind: k))
+}
+
+fn guest_booted_observation_label() -> String {
+  guest_observation_kind_label(kind: GuestEmitted { event: GuestBooted })
+}
+
+fn runner_listening_observation_label() -> String {
+  guest_observation_kind_label(kind: RunnerListening)
+}
+
 fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
   any(xs: guest_console_observations(console: console), predicate: fn(k) {
     guest_observation_kind_label(kind: k) == guest_observation_kind_label(kind: kind)

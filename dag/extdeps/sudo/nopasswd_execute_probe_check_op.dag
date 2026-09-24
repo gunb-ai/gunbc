@@ -9,6 +9,7 @@ import extdeps.sudo.nopasswd_execute_probe {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { any, length }
+import extdeps.posix.shell_command_language { posix_single_quote }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -53,6 +54,41 @@ fn sudo_nopasswd_grant_list_admits_probe(
       sudo_nopasswd_grant_list_line_admits_probe(line: line, probe: probe)
     }
   )
+}
+
+// THE SAME TWO READINGS, BOUND TO A POSIX SHELL CONDITION rather than to a typed observation --
+// one probe shape with two handlers, both homed here so neither is a re-authoring of the other.
+// A deploy script that must decide a grant INSIDE the script (after it installs the drop-in that
+// grants it, gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell) renders its
+// condition from these, never spells its own.
+//
+// Execute: the argv of sudo_nopasswd_execute_probe_argv, each word single-quoted; exit zero only
+// when sudo ran the command without a password.
+fn sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeShape) -> String {
+  concat(
+    join(map(sudo_nopasswd_execute_probe_argv(probe: probe), w => posix_single_quote(spelling: w)), " "),
+    " >/dev/null 2>&1"
+  )
+}
+
+// Grant list: the listing of sudo_nopasswd_grant_list_argv, admitted exactly as
+// sudo_nopasswd_grant_list_line_admits_probe admits a line. That reading refuses a line that does
+// not split on the tag into exactly two parts, so a line carrying the tag twice is dropped FIRST;
+// only then is the text after the tag trimmed and compared for whole-line equality with the path.
+// The order is the point: stripping to the last tag without that drop would admit a line the typed
+// reading refuses. No `-l <command>` form is used, because sudo resolves that command's path and a
+// binary not yet installed would read as a grant miss (the reason this probe kind exists).
+data sudo_nopasswd_grant_list_tag: String = "NOPASSWD:"
+
+fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> String {
+  let tag = sudo_nopasswd_grant_list_tag
+  join([
+    join(map(sudo_nopasswd_grant_list_argv(), w => posix_single_quote(spelling: w)), " "),
+    " 2>/dev/null | grep -v -- ", posix_single_quote(spelling: concat(concat(tag, ".*"), tag)),
+    " | sed -n ", posix_single_quote(spelling: concat(concat("s/^.*", tag), "//p")),
+    " | sed ", posix_single_quote(spelling: "s/^[[:space:]]*//;s/[[:space:]]*$//"),
+    " | grep -Fqx -- ", posix_single_quote(spelling: probe as String),
+  ], "")
 }
 
 service sudo.NopasswdExecuteProbe {

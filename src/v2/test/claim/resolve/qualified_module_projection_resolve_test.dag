@@ -9,6 +9,7 @@ import v2.compiler.resolve {
   resolve_node,
   scope_from_namespace
 }
+import v2.compiler.normalized_tree { no_record_declarations }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
@@ -79,7 +80,8 @@ data qmpr_provider_root: Node = Node {
 
 data qmpr_provider_index: SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
-  root: qmpr_provider_root
+  root: qmpr_provider_root,
+  record_declarations: no_record_declarations()
 )
 
 data qmpr_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(

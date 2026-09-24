@@ -842,7 +842,7 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
 }
 
 data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_network_converge.dag",
+  entry: "dag/gunbc/runner/runner_microvm_network_observe.dag",
   function: "runner_microvm_network_observe_wet",
 }
 
@@ -1003,6 +1003,13 @@ data gunbc_ci_spark_v41_checkpoint_materialize_target: GunbcRunStepTarget = Gunb
   function: "v41_checkpoint_materialize_ci_wet",
 }
 
+// ITS SECOND STEP, THE .engram. SELECTION OVER THE PINNED INDEX, run in its own process so a parse
+// stopped for memory cannot take the fetch's receipts with it.
+data gunbc_ci_spark_v41_index_selection_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
+  function: "v41_index_selection_ci_wet",
+}
+
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -1061,6 +1068,13 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
 data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "approval_broker_dark_install_srv1_wet",
+}
+
+// THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
+// under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
+data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "microvm_controller_install_srv1_wet",
 }
 
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1190,6 +1204,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
     gunbc_ci_approval_broker_dark_install_target,
+    gunbc_ci_microvm_controller_install_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1250,6 +1265,16 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_approval_broker_dark_install_target.entry,
     function: gunbc_ci_approval_broker_dark_install_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_microvm_controller_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_controller_install_target.entry,
+    function: gunbc_ci_microvm_controller_install_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -2527,6 +2552,17 @@ fn gunbc_ci_spark_v41_checkpoint_materialize_invoke() -> String {
     function: gunbc_ci_spark_v41_checkpoint_materialize_target.function,
     claim_run: false,
     receipt_rel: "target/v41-checkpoint-materialize-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_v41_index_selection_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_index_selection_target.entry,
+    function: gunbc_ci_spark_v41_index_selection_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-index-selection-receipt.txt"
   )
 }
 
