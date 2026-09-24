@@ -262,6 +262,11 @@ pub enum TargetProducer {
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
+    /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
+    /// shape is a registry row naming its entry, never another variant.
+    NativeClaimProgram {
+        entry: &'static str,
+    },
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -314,6 +319,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-cli"),
             TargetProducer::V2NativeCli,
+        ),
+        (
+            instrument_label("native-crypto-vectors"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
+            },
         ),
         (
             instrument_label("evaluation-store-address-exact-head"),
@@ -710,6 +721,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
@@ -1036,6 +1048,100 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
+    }
+}
+
+/// THE NATIVE CLAIM PROGRAM PRODUCER: emit, build and run a `NativeClaimDriver` entry, then let the
+/// `.dag` reader decide what the run established. The host decides nothing about the cases -- it
+/// hands the program's stdout and status to `gunbc.native_claim_program`
+/// `native_claim_program_standing` and maps that fold's `ProcessExit` through the one classifier
+/// (`cli_run::classify_exit`): success is held, code 1 is an observation that did not hold, and code
+/// 2 -- a roster/row join that breaks, a status the rows do not support, a signal -- is no
+/// observation. The source roots are the instrument's own fact, as for every sibling here.
+fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
+    let label_name = "native-claim";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let run = match cli_run::run_native_claim_program(&v2_native_cli_source_roots(), entry) {
+        Ok(run) => run,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    const READER: &str = "dag/gunbc/native_claim_program.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let status = i64::from(run.status.unwrap_or(-1));
+    let args = [
+        (
+            Some("stdout".to_string()),
+            crate::v1_interpreter::Value::Str(run.stdout.clone().into()),
+        ),
+        (
+            Some("status".to_string()),
+            crate::v1_interpreter::Value::Int(status),
+        ),
+    ];
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_claim_program_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the report reader failed: {cause}"),
+            }
+        }
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the report reader returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} -- {verdict}\n{}",
+            run.stdout,
+            run.closure_identity,
+            run.binary_identity,
+            run.seed_identity,
+            run.warning_count,
+            run.stderr.trim_end(),
+        ),
     }
 }
 

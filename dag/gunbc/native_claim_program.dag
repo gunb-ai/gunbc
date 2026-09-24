@@ -1,0 +1,115 @@
+module gunbc.native_claim_program
+
+import std.types { Int, List, String, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// HOW A NativeClaimDriver PROGRAM'S RUN IS READ, decided here rather than in the host that spawned
+// it. std.compiler_entry NativeClaimDriver fixes the program's side of the contract: a first line
+// `roster <id>,<id>,...` naming every case it will report, then one `case <id> held|not_held
+// observed=<text>` line per case, and exit 0 when every case held or 1 when one did not. This fold
+// is the reader's side, and it answers in gunbc test's own termination vocabulary (DESIGN
+// "Building & checks"): ExitSuccess is 0, held; ExitFailure code 1 is an observation that did not
+// hold; ExitFailure code 2 is NO OBSERVATION.
+//
+// COMPLETENESS IS AN IDENTITY JOIN (DESIGN section 5). Every roster identity must appear in exactly
+// one row and every row must name a roster identity, so a case that crashed, was skipped or was
+// reported twice leaves the run with no observation rather than a pass. A status the rows do not
+// support -- 0 beside a not_held row, 1 with every row held, a signal (the host passes a negative
+// status), or any other code -- is also no observation: the program and its own rows disagree, and
+// neither may be believed over the other.
+
+data native_claim_no_observation_code: Int = 2
+data native_claim_not_held_code: Int = 1
+
+type NativeClaimRow {
+  identity: String
+  held: Bool
+}
+
+fn native_claim_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n") |> filter(l => l != "")
+}
+
+fn roster_of(ids: List<String>) -> List<String>? {
+  Present { value: ids }
+}
+
+fn no_roster() -> List<String>? {
+  Absent
+}
+
+fn row_of(r: NativeClaimRow) -> NativeClaimRow? {
+  Present { value: r }
+}
+
+fn no_row() -> NativeClaimRow? {
+  Absent
+}
+
+fn native_claim_roster(lines: List<String>) -> List<String>? {
+  match lines {
+    Cons { head: first, tail: _ } =>
+      if starts_with(s: first, prefix: "roster ") {
+        roster_of(ids: split(s: substring(s: first, start: 7, end: string_length(s: first)), delimiter: ",") |> filter(i => i != ""))
+      } else { no_roster() }
+    Empty => no_roster()
+  }
+}
+
+// A row is `case <id> <verdict> ...`; any other line after the roster is not a row, and a line
+// that starts like a row but does not carry a readable verdict is refused by leaving it out of the
+// join, which then fails on the missing identity.
+fn native_claim_row(line: String) -> NativeClaimRow? {
+  let parts = split(s: line, delimiter: " ")
+  if (parts |> count) >= 3 && starts_with(s: line, prefix: "case ") {
+    let verdict = parts |> drop(n: 2) |> take(n: 1) |> join(separator: "")
+    let identity = parts |> drop(n: 1) |> take(n: 1) |> join(separator: "")
+    if verdict == "held" { row_of(r: NativeClaimRow { identity: identity, held: true }) }
+    else if verdict == "not_held" { row_of(r: NativeClaimRow { identity: identity, held: false }) }
+    else { no_row() }
+  } else { no_row() }
+}
+
+fn native_claim_rows(lines: List<String>) -> List<NativeClaimRow> {
+  lines |> flat_map(l => match native_claim_row(line: l) { Present { value: r } => [r] Absent => [] })
+}
+
+fn occurrences(xs: List<String>, x: String) -> Int {
+  xs |> filter(y => y == x) |> count
+}
+
+// The join, as the list of identities that break it: a roster identity reported zero or several
+// times, a row naming an identity the roster does not, and a roster naming one identity twice.
+fn native_claim_join_breaks(roster: List<String>, rows: List<NativeClaimRow>) -> List<String> {
+  let row_ids = rows |> map(r => r.identity)
+  concat(
+    roster |> filter(id => occurrences(xs: row_ids, x: id) != 1 || occurrences(xs: roster, x: id) != 1),
+    row_ids |> filter(id => occurrences(xs: roster, x: id) == 0)
+  )
+}
+
+fn no_observation(reason: String) -> ProcessExit {
+  ExitFailure { code: native_claim_no_observation_code, reason: concat("no observation: ", reason) }
+}
+
+fn native_claim_program_standing(stdout: String, status: Int) -> ProcessExit {
+  let lines = native_claim_lines(stdout: stdout)
+  match native_claim_roster(lines: lines) {
+    Absent => no_observation(reason: "the report has no roster line, so no case can be joined")
+    Present { value: roster } =>
+      let rows = native_claim_rows(lines: lines)
+      let breaks = native_claim_join_breaks(roster: roster, rows: rows)
+      let failed = rows |> filter(r => !r.held) |> map(r => r.identity)
+      if (roster |> count) == 0 {
+        no_observation(reason: "the roster names no case")
+      } else if (breaks |> count) > 0 {
+        no_observation(reason: concat("rows do not join the roster one-for-one at: ", breaks |> join(separator: ",")))
+      } else if status == 0 && (failed |> count) == 0 {
+        ExitSuccess
+      } else if status == 1 && (failed |> count) > 0 {
+        ExitFailure { code: native_claim_not_held_code, reason: concat("not held: ", failed |> join(separator: ",")) }
+      } else {
+        no_observation(reason: concat("exit status ", concat(to_string(value: status), concat(" disagrees with the rows (", concat(to_string(value: failed |> count), " not held)")))))
+      }
+  }
+}

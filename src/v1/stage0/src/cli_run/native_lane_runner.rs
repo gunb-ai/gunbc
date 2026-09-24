@@ -1849,6 +1849,52 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
+/// ONE RUN OF A `std.compiler_entry` `NativeClaimDriver` PROGRAM, as the observation the reader
+/// needs and nothing it decides. `gunbc.native_claim_program` `native_claim_program_standing` reads
+/// `stdout` and `status` and answers held / not held / no observation; this struct carries them
+/// there unjudged. `status` is `None` when the process ended on a signal, which the reader receives
+/// as a negative status and treats as no observation.
+pub struct NativeClaimProgramRun {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub warning_count: i64,
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// EMIT, BUILD AND RUN ONE `NativeClaimDriver` ENTRY. The emission and build are the preparation
+/// every native route already uses (`prepare_emitted_compiler_for_entry`), so there is one answer to
+/// what "the emitted program" is; the one thing added is spawning it and keeping what it wrote.
+/// A refusal here -- emission refused, build failed, spawn failed -- is the subject never having
+/// been reached, and the caller reports it as such rather than as a case that did not hold.
+pub fn run_native_claim_program(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<NativeClaimProgramRun, String> {
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
+    eprintln!(
+        "native-claim: {entry} built (closure {}) -- running {}",
+        prepared.closure_identity,
+        prepared.binary_path.display()
+    );
+    let output = std::process::Command::new(&prepared.binary_path)
+        .output()
+        .map_err(|cause| {
+            format!("NATIVE-CLAIM REFUSAL cause=SpawnFailed entry={entry} — {cause}")
+        })?;
+    Ok(NativeClaimProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        status: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
 /// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
 ///
 /// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
