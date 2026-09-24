@@ -990,7 +990,6 @@ then read at these decision sites in `src/v1/05_emit_rust.dag` — named by symb
 | `rust_seed_host_numeric_alias` | `Nat`/`Int` → `i64`, or stay modeled | B3, and via `std.nat Nat = CommutativeSemiring<Magnitude>`, **B1** |
 | `rust_zero_value` | `String` zero is `"".to_string()` or `v1_rt::freemonoid_empty::<i64>()` | T2 |
 | `emit_fn_def` (`host_text_op` via `rust_host_string_op_fn_emit`) | emit a host string-op fn at all | T2 |
-| `module_needs_faithful_carrier_imports` / `module_renders_faithful_text_carrier` | faithful carrier imports | T2 |
 | `emit_v2_std_text_closure_stub_module`, `v2_std_integer_stub` gates | whether stub modules exist in the crate | B3/T2 |
 | `emit_module_full`'s `reference_derived_use_lines` arm | whether import-bearing modules get synthesized use-lines | **K** |
 

@@ -6,6 +6,7 @@ use self::CensusModuleRetention::*;
 use self::CorpusScope::*;
 use self::TestReferenceRowScope::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
+pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
 pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
@@ -157,6 +158,7 @@ pub struct PipelineResult {
     pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
     pub artifact_plan: Rc<ArtifactPlan>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub emitted_edges: Rc<Vec<Rc<EmittedEdge>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1346,6 +1348,7 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: unmodeled_transports.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         match artifact.target.clone() {
@@ -3266,6 +3269,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: collected.collision_errors.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let order = collected.order.clone();
@@ -3275,6 +3279,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: ref_errors.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let source_indices = dag_graph_source_indices(typed.clone());
@@ -3341,6 +3346,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 content: json.clone(),
             })]),
             diagnostics: Rc::new(vec![]),
+            emitted_edges: Rc::new(vec![]),
         })
     }
 }
@@ -3446,6 +3452,7 @@ pub fn emit_from_artifact_plan(
                 diagnostics: Rc::new(vec![compile_bundle_error(
                     "compile_sources planned no artifacts".to_string(),
                 )]),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let boundary_diags = validate_boundaries(artifact_plan.clone());
@@ -3453,6 +3460,7 @@ pub fn emit_from_artifact_plan(
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: boundary_diags.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let results = Rc::new({
@@ -3479,6 +3487,13 @@ pub fn emit_from_artifact_plan(
         Rc::new(EmitResult {
             files: all_files.clone(),
             diagnostics: all_diags.clone(),
+            emitted_edges: Rc::new({
+                let mut __result = Vec::new();
+                for r in results.iter().cloned() {
+                    __result.extend((*r.emitted_edges.clone()).iter().cloned());
+                }
+                __result
+            }),
         })
     }
 }
@@ -4191,6 +4206,7 @@ pub fn emit_resolved_for_target_selected(
             ownership: resolved.ownership.clone(),
             artifact_plan: empty_artifact_plan(),
             newline_indices: resolved.newline_indices.clone(),
+            emitted_edges: Rc::new(vec![]),
         }),
         Some(emittable) => {
             let typed = emittable.graph();
@@ -4234,6 +4250,11 @@ pub fn emit_resolved_for_target_selected(
                 ownership: resolved.ownership.clone(),
                 artifact_plan: artifact_plan.clone(),
                 newline_indices: resolved.newline_indices.clone(),
+                emitted_edges: if ((emit_errors.clone().len() as i64) > 0) {
+                    Rc::new(vec![])
+                } else {
+                    emit_result.emitted_edges.clone()
+                },
             })
         }
     }

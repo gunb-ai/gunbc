@@ -6,7 +6,7 @@ import std.measure { byte_size }
 import extdeps.apple.apns { ApnsStatusUnlisted, apns_refusal_class }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
-  SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, signature_verification_from_implementation,
+  SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, signature_verification_from_implementation, signature_carrier_refusal,
 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_device_wire {
@@ -43,16 +43,17 @@ test fn witness_framing_counts_code_points() -> Bool {
 }
 
 // ── Signature seam ───────────────────────────────────────────────────────────────────────────
+// The size refusals are the suite facts alone, asked before any verdict exists (signature_carrier_refusal).
 test fn witness_malformed_signature_refuses_despite_a_true_verdict() -> Bool {
-  match signature_verification_from_implementation(key: key_a, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 71), message: "m", implementation_verified: true) {
-    SignatureMalformed { declared: _, expected: _ } => true
+  match signature_carrier_refusal(key: key_a, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 71)) {
+    Present { value: SignatureMalformed { declared: _, expected: _ } } => true
     _ => false
   }
 }
 
 test fn witness_malformed_key_refuses_despite_a_true_verdict() -> Bool {
-  match signature_verification_from_implementation(key: key_a, key_size: byte_size(count: 33), signature: sig, signature_size: byte_size(count: 64), message: "m", implementation_verified: true) {
-    VerifyingKeyMalformed { declared: _, expected: _ } => true
+  match signature_carrier_refusal(key: key_a, key_size: byte_size(count: 33), signature: sig, signature_size: byte_size(count: 64)) {
+    Present { value: VerifyingKeyMalformed { declared: _, expected: _ } } => true
     _ => false
   }
 }

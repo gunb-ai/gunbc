@@ -91,6 +91,29 @@ import gunbc.compiler_frontend_program_status {
   RehearsalProducerAvailable,
   xl2_stage_standing,
   rehearsal_producer_standing,
+  Xl2Prerequisite,
+  PlainCallArgumentReferenceVisibility,
+  IfArmCallArgumentReferenceVisibility,
+  BareFieldTypeVisibility,
+  WholeTreeResolveCensus,
+  ResolveOccurrenceCompleteness,
+  OperatorExpressionLoweredWhole,
+  OptionalAccessorLocatedRefusal,
+  MatchOnCallScrutineeNavigation,
+  CompoundCallArgumentValueLowering,
+  StrippedTreeRehearsalComposition,
+  BlockStatementReferenceVisibility,
+  LoweringOccurrenceProjection,
+  ListLiteralElementVisibility,
+  PrerequisiteDelivered,
+  PrerequisiteOutstanding,
+  xl2_prerequisites,
+  xl2_prerequisite_label,
+  xl2_prerequisite_standing,
+  xl2_prerequisite_is_delivered,
+  xl2_prerequisites_outstanding,
+  render_xl2_prerequisite,
+  missing_instrument_label,
   needs,
   all_missing_instruments,
   conditionally_awaited_instruments,
@@ -632,9 +655,8 @@ test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base
 }
 
 // XL-2 stays NotDerivable while the rehearsal residual has no honest producer on the v2
-// route: calls (callee and arguments) and bare field-position types never reach resolve, and the
-// whole-tree native census resolves nothing, so a failure roster taken after the strip is an
-// undercount by construction rather than the census. The delivery-kind fold below still keys on
+// route: its prerequisites are the typed list xl2_prerequisites, one of which (the stripped-tree
+// rehearsal composition) is still outstanding, and the producer itself is a separate deliverable. The delivery-kind fold below still keys on
 // RehearsalInstrumentDelivered; what this arm pins is that the empty roster is NOT read as
 // ordinary Outstanding work, which is the reading that dispatched a builder against it.
 test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> Bool {
@@ -645,6 +667,77 @@ test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> B
          RehearsalProducerUnavailable { why: _, cause: _ } => true
          RehearsalProducerAvailable => false
        }
+}
+
+// THE XL-2 PREREQUISITE PARTITION, AT IDENTITY GRAIN. Delivered and outstanding are decided by
+// each arm's standing, and this pins WHICH arms sit on each side, with the PR each delivery
+// cites -- so flipping an arm's standing, or re-attributing it, reddens a conjunct rather than
+// leaving a label check green. The roster is also checked exact: every arm, each once.
+fn xl2_delivered_by(p: Xl2Prerequisite, pr: Int, merge_sha: String) -> Bool {
+  match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
+    PrerequisiteOutstanding { tracked_by: _, why: _ } => false
+  }
+}
+
+fn xl2_outstanding_tracked_by(p: Xl2Prerequisite, decl_name: String) -> Bool {
+  match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
+    PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
+  }
+}
+
+fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
+  xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
+}
+
+test fn xl2_prerequisites_partition_into_six_delivered_and_seven_outstanding() -> Bool {
+  count(xl2_prerequisites) == 13
+    && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
+    && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
+    && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
+    && xl2_delivered_by(p: ResolveOccurrenceCompleteness, pr: 12116, merge_sha: "d759da1c50")
+    && xl2_delivered_by(p: OperatorExpressionLoweredWhole, pr: 12145, merge_sha: "ada85b9452")
+    && xl2_delivered_by(p: StrippedTreeRehearsalComposition, pr: 12097, merge_sha: "1d4fa51a3d")
+    && xl2_outstanding_tracked_by(p: IfArmCallArgumentReferenceVisibility, decl_name: "the_if_arm_call_argument_is_reported_dropped_holds")
+    && xl2_outstanding_tracked_by(p: OptionalAccessorLocatedRefusal, decl_name: "lowering_accessor_collapses_a_sequence_operand")
+    && xl2_outstanding_tracked_by(p: BlockStatementReferenceVisibility, decl_name: "unbound_statement_prefix_refuses_holds")
+    && xl2_outstanding_tracked_by(p: LoweringOccurrenceProjection, decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence")
+    && xl2_outstanding_tracked_by(p: ListLiteralElementVisibility, decl_name: "list_literal_elements_dropped_at_v2_body_lowering")
+    && xl2_outstanding_tracked_by(p: MatchOnCallScrutineeNavigation, decl_name: "match_on_a_call_scrutinee_refused_as_arm_navigation")
+    && xl2_outstanding_tracked_by(p: CompoundCallArgumentValueLowering, decl_name: "compound_call_argument_value_refused_as_unread")
+    && count(xl2_prerequisites_outstanding()) == 7
+    && all(xl2_prerequisites_outstanding(),
+         p => xl2_label_is(p: p, want: IfArmCallArgumentReferenceVisibility)
+           || xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
+           || xl2_label_is(p: p, want: BlockStatementReferenceVisibility)
+           || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
+           || xl2_label_is(p: p, want: ListLiteralElementVisibility)
+           || xl2_label_is(p: p, want: MatchOnCallScrutineeNavigation)
+           || xl2_label_is(p: p, want: CompoundCallArgumentValueLowering))
+    && all(xl2_prerequisites,
+         p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
+}
+
+// THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
+// XL-2 stays NotDerivable and the producer literal stays Unavailable with six of thirteen delivered
+// -- and would stay so with thirteen of thirteen, because the producer is its own deliverable.
+test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
+  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 6
+    && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
+    && match rehearsal_producer_standing() {
+         RehearsalProducerUnavailable { why: _, cause: _ } => true
+         RehearsalProducerAvailable => false
+       }
+}
+
+// THE REPORT IS RENDERED FROM THE LIST, not authored beside it: the instrument label carries each
+// arm's own rendering, and each rendering carries its standing's class.
+test fn the_residual_census_label_renders_every_prerequisite_standing() -> Bool {
+  all(xl2_prerequisites,
+      p => string_contains(s: missing_instrument_label(i: ExactOccurrenceResidualCensus), pattern: render_xl2_prerequisite(p: p)))
+    && all(xl2_prerequisites,
+      p => string_contains(s: render_xl2_prerequisite(p: p), pattern: "[DELIVERED ") == xl2_prerequisite_is_delivered(p: p))
 }
 
 // THE RECOVERY CONTROL AT THE HELPER'S BOUNDARY: with the producer supplied Available, delivery

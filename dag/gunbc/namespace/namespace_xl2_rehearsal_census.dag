@@ -42,6 +42,7 @@ import v2.std.optional { Absent, Present }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import std.algebra { Cons, Empty }
+import gunbc.compiler_frontend_program_status { Xl2Prerequisite, xl2_prerequisites_outstanding }
 
 // XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
 // PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
@@ -92,28 +93,25 @@ type Xl2UnobservedScope
   | Xl2MemberPathDuplicated { path: Symbol }
   | Xl2BaseJoinMissingFor { module: String, path: Symbol }
 
-// WHY COMPLETENESS IS REFUSED. P1 (gunbc#12108) made call arguments reach resolve, so the arm that
-// refused on call-argument visibility is gone. What P1's own sibling audit left open is one lowering
-// that still NARROWS an operand: body_lower_operand_ref_optional answers the left atom of a sequence
-// operand (`a + b` lowers as `a`), so a reference on the right of such an operand never reaches
-// resolve and no refusal roster can report it. It heads every roster, because no observation in
-// this run can tell whether the tree contains one. RETIRED BY exactly one capability: the trigger
-// of gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand (a sequence operand
-// lowers to every reference it carries). It is kept a REFUSAL rather than an excluded population by
-// the namespace-cut manager's ruling of 2026-09-23: those references depend on imports and XL-5
-// must rewrite them, so omitting them undercounts the cut's own population.
-// TODO(rebind to gunbc.compiler_frontend_program_status Xl2Prerequisite): this arm names ONE
-// lowering undercount; two more are known (call arguments inside if-arms are unread, and a block
-// `{ 1 \n 2 }` drops its second expression) and are not minted as causes here. The carrier's
-// Xl2Prerequisite arms, landed by the namespace-cut manager's prerequisite-truth change, are their
-// one home; this refusal is rebound to them then. Completeness stays unreachable either way.
+// WHY COMPLETENESS IS REFUSED: ONE CAUSE PER OUTSTANDING XL-2 PREREQUISITE. The lowering
+// undercounts that keep this census from being complete are not minted here; their one home is
+// gunbc.compiler_frontend_program_status Xl2Prerequisite, and every arm that carrier types
+// OUTSTANDING heads this roster as its own cause (xl2_prerequisites_outstanding). An arm leaving
+// that list is the only thing that removes its cause, so this module cannot drift from the carrier.
+// They stay REFUSALS rather than excluded populations by the namespace-cut manager's ruling of
+// 2026-09-23: those references depend on imports and XL-5 must rewrite them, so omitting them
+// undercounts the cut's own population.
+// Xl2CompleteArmNotAdmitted is the refusal for the state with NO outstanding prerequisite: the
+// Complete arm is a separate change that must discriminate it by execution, and until it lands no
+// input constructs Xl2CensusComplete.
 type Xl2CompletenessRefusal
-  = Xl2SequenceOperandReferencesUnobservable
+  = Xl2PrerequisiteOutstanding { prerequisite: Xl2Prerequisite }
   | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
+  | Xl2CompleteArmNotAdmitted
 
 // COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. Only xl2_completeness decides it, and
-// today that decision has no complete arm at all (the sequence-operand refusal is unconditional), so
-// a complete census is unconstructible until that lowering is repaired and the arm is added there.
+// today that decision has no complete arm at all, so a complete census is unconstructible until the
+// change that admits it adds the arm there.
 type Xl2CensusCompleteness
   = Xl2CensusComplete
   | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
@@ -322,15 +320,18 @@ fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: Li
   )
 }
 
-// THE ONLY COMPLETENESS DECISION, AND TODAY IT HAS NO COMPLETE ARM. The sequence-operand refusal
-// heads the roster unconditionally (see Xl2CompletenessRefusal), so this answers refused on every
-// input and Xl2CensusComplete has no constructor anywhere. The change that repairs that lowering
-// must ADD the arm here: Xl2CensusComplete exactly when the unobserved roster is empty, refused with
-// the first unobserved scope at its head otherwise.
+// THE ONLY COMPLETENESS DECISION, AND TODAY IT HAS NO COMPLETE ARM. Every outstanding XL-2
+// prerequisite heads the roster in the carrier's order, then every unobserved scope. With neither,
+// the answer is still refused, as Xl2CompleteArmNotAdmitted: Xl2CensusComplete has no constructor
+// anywhere, and the change that adds one adds it here.
 fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
-  Xl2CensusCompletenessRefused {
-    first: Xl2SequenceOperandReferencesUnobservable,
-    rest: fold(unobserved, init: [], f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
+  let prerequisites = fold(xl2_prerequisites_outstanding(), init: [], f: fn(acc, p) {
+    acc |> list_push(Xl2PrerequisiteOutstanding { prerequisite: p })
+  })
+  let roster = fold(unobserved, init: prerequisites, f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
+  match roster {
+    Cons { head: first, tail: rest } => Xl2CensusCompletenessRefused { first: first, rest: rest }
+    Empty => Xl2CensusCompletenessRefused { first: Xl2CompleteArmNotAdmitted, rest: [] }
   }
 }
 
@@ -370,13 +371,18 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
 // the RehearsalInstrumentDelivered StageDeliveryReceipt read by gunbc.compiler_frontend_program_status
 // xl2_stage_standing. Its first trigger, P1 and P4 delivered (gunbc#12108, gunbc#12116), HAS FIRED.
 // Execution is deferred by the namespace-cut manager's ruling of 2026-09-23 to ONE further
-// capability: the trigger of gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand.
-// Until it lands every run can only answer Xl2SequenceOperandReferencesUnobservable, a refusal
-// already known, so a whole-tree run today buys nothing; after it, a run can reach Xl2CensusComplete.
+// state: gunbc.compiler_frontend_program_status xl2_prerequisites_outstanding empty. Until then every
+// run can only answer refusals already known, so a whole-tree run today buys nothing.
 // The run itself is a one-shot `gunbc run --function` on a host with an enforceable cgroup limit
 // (never a shared session container; the whole-tree resolve is tens of GB), receipt on the delivering
 // change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
 // and the collector's live half carries the route deficit its own module states.
+// NO INHABITANCE CLAIM OVER A PINNED FIXTURE, AND WHY: the collector's subject IS the repository's
+// tree at the ref, and gunbc.namespace_step0_subject_collector states that a mocked revision would let
+// a collector reading the WRONG tree pass -- the one defect it exists to make unrepresentable. So
+// the collector-to-census link executes for the first time in the one-shot run above, whose trigger
+// is the same state, and that run's receipt is the link's executing evidence (DESIGN section 3c: a
+// declared frontier, consumer and trigger named).
 fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
   match collect_step0_subject_vector_at(ref: ref) {
     Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }

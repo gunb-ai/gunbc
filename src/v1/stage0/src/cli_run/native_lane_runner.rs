@@ -88,20 +88,23 @@ const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-contr
 /// their authors add next, so what the door compiled would stop being a fact this harness states.
 /// The subject is the module that directory's one file declares.
 ///
-/// `CLI_DOOR_EMITTED_WITNESS` IS NOT READ BY ANY CONTROL TODAY, and an earlier version of this
-/// paragraph said it was — that it made "the positive control an assertion about THIS subject's
-/// emission". There is no such control: the door cannot emit, so the admitting arm is
-/// `PinnedRefusalHeld`, which requires stdout to be EMPTY. The constant is held for the FLIP
-/// INSTRUCTION only, as the assertion a future regression control must make once the door emits.
-/// Describing a control no code runs is the rung inflation DESIGN section 4b(1) forbids, and it is
-/// the same defect this file's own annotations were corrected for once already (review 69621).
+/// `CLI_DOOR_EMITTED_WITNESS` IS THE POSITIVE CONTROL'S ASSERTION. Until 2026-09-23 the door could
+/// not emit, the admitting arm was a pinned refusal that required stdout to be EMPTY, and this
+/// constant was held only for the flip instruction. The door now emits the fixture, so the probe was
+/// flipped as that instruction said: the admitting arm is `EmittedWitnessHeld`, which requires exit 0
+/// AND the emitted text to name this declaration.
 const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
 const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 
-/// THE EMIT PROBE'S EXPECTED REFUSAL, AND WHY THIS CONSTANT IS THE PROBE'S WHOLE POINT.
+/// THE LIMITATION THE EMIT PROBE USED TO PIN, NOW THE REGRESSION IT NAMES.
 ///
-/// The built door CANNOT EMIT A CLOSURE TODAY. Measured on the artifact this preparation produces:
+/// FLIPPED 2026-09-23 (DESIGN section 4b(4)): the door emits the fixture, so this probe is a
+/// regression control asserting that it does, and a refusal with this determining reason is
+/// reported as `NativeCliDoorGroundingLimitationReturned`. What the rest of this paragraph records
+/// is why the constant exists and what the refusal looked like while it held.
+///
+/// The built door COULD NOT EMIT A CLOSURE. Measured on the artifact this preparation produced:
 /// over the fixture root it refuses with a chain of `infer_grounding_not_derived` ADVISORIES whose
 /// LAST link -- the fatal -- is `translate_rejected_grounding_not_derived`; over
 /// the real corpus it answers a LOCATED `parse_g0_tokens_remain` at
@@ -1320,22 +1323,11 @@ pub struct V2NativeCliHeld {
     /// held" cannot be read afterwards for what the door actually did — the flattening
     /// `run_native_binary`'s annotation records paying for once already.
     ///
-    /// `door_emitted_bytes` IS ZERO BY CONSTRUCTION, AND AN EARLIER VERSION OF THIS DOC CLAIMED
-    /// OTHERWISE. It said a nonzero value would become "visible in the receipt on the day the door
-    /// starts emitting". No path produces that: `adjudicate_cli_emit_probe` returns `StdoutNotEmpty`
-    /// before `PinnedRefusalHeld` whenever stdout is non-empty, `walk_cli_door` binds this field only
-    /// in the admitting arm, and an emitting door answers `ProbeGreened`, which is an `Err` — so the
-    /// receipt is never built at all. The field records the probe's stdout length, which the
-    /// admitting arm requires to be zero, and that is all it records. Describing an observation the
-    /// code cannot make is the inflation DESIGN section 4b(1) forbids, and this file has now carried
-    /// that shape four times (reviews 69621, 69654, 69673, and the `CLI_DOOR_EMITTED_WITNESS`
-    /// paragraph).
-    ///
-    /// AND BOTH STATUSES ARE CONFIRMATIONS RATHER THAN VARIABLES, said here so the next reader does
-    /// not mistake them for measurements either. `door_exit_status` and `door_refusal_exit_status`
-    /// are each required to equal `CLI_DOOR_REFUSAL_EXIT`, so a written receipt always shows 1 in
-    /// both. They are recorded because the receipt should state what the door was OBSERVED to do
-    /// rather than assert it silently — not because either can differ in a receipt that exists.
+    /// SINCE THE FLIP (2026-09-23) THE ADMITTING ARM IS AN EMISSION. `door_exit_status` is 0 in any
+    /// receipt that exists, because `walk_cli_door` builds one only from `EmittedWitnessHeld`, and
+    /// `door_emitted_bytes` is the length of the emitted text that named the fixture's declaration.
+    /// Before the flip both fields were confirmations of a pinned refusal (1 and 0). They are
+    /// recorded so the receipt states what the door was OBSERVED to do.
     pub door_exit_status: i64,
     pub door_emitted_bytes: i64,
     /// The status the same binary took when `--entry` was removed from the emit probe's argv.
@@ -1443,24 +1435,25 @@ fn run_cli_door(binary: &Path, args: &[String]) -> Result<CliDoorRun, String> {
 /// practice, which is how the first cut of this probe shipped with a hole in it.
 #[derive(Debug)]
 enum CliEmitProbeVerdict {
-    /// The one admitting arm: a normal termination, the CLI's own refusal status, no stdout, and a
-    /// fully rendered refusal whose DETERMINING reason equals the pinned limitation. The locus is
-    /// carried because the located chain supplies it and a reader needs where the fatal sat.
-    PinnedRefusalHeld {
-        exit_status: i64,
-        determining_locus: String,
-    },
+    /// The one admitting arm: exit 0, and the emitted text on stdout names the fixture's one
+    /// declaration (`CLI_DOOR_EMITTED_WITNESS`). This arm was `ProbeGreened`, the instruction to flip.
+    /// It is the regression control that instruction asked for.
+    EmittedWitnessHeld { stdout_bytes: usize },
+    /// Exit 0, but the emitted text does not name the declaration. Emitting SOMETHING is not
+    /// emitting this subject: an empty program also exits 0.
+    EmittedWithoutWitness { stdout_bytes: usize },
+    /// The door refused with the limitation this probe used to pin. The grounding frontier is back
+    /// in front of the fixture.
+    GroundingLimitationReturned { locus: String },
     /// A non-zero status that is not the one a CLI refusal takes -- 101 for a panic, say.
     UnexpectedExitCode { status: i32 },
-    /// The door emitted. The probe has outlived its subject and must be flipped, not relaxed.
-    ProbeGreened { stdout_bytes: usize },
     /// No exit status at all: killed by a signal. NOT a refusal, and the reason this partition
     /// exists -- the previous cut compared `status == Some(0)`, so a signal fell through to the
     /// stderr test, and `unwrap_or_default()` then recorded the run as `exit 0`. A process killed
     /// after printing its diagnostic would have been admitted as the expected red AND filed under a
     /// status it never took.
     TerminatedBySignal,
-    /// A refusal was rendered, but the DETERMINING diagnostic is not the pinned one.
+    /// A fully rendered refusal for any other determining reason.
     DeterminingReasonDiffers { determining: String, locus: String },
     /// Non-zero, but nothing matching the CLI's refusal contract reached stderr.
     RefusalNotRendered,
@@ -1560,8 +1553,16 @@ fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
         return CliEmitProbeVerdict::TerminatedBySignal;
     };
     if status == 0 {
-        return CliEmitProbeVerdict::ProbeGreened {
-            stdout_bytes: run.stdout.len(),
+        // THE WITNESS IS READ FROM WHAT THE DOOR EMITTED, which is the only thing that distinguishes
+        // "compiled this subject" from "exited 0". An empty or unrelated emission does not name it.
+        return if run.stdout.contains(CLI_DOOR_EMITTED_WITNESS) {
+            CliEmitProbeVerdict::EmittedWitnessHeld {
+                stdout_bytes: run.stdout.len(),
+            }
+        } else {
+            CliEmitProbeVerdict::EmittedWithoutWitness {
+                stdout_bytes: run.stdout.len(),
+            }
         };
     }
     // THE STATUS IS THE ONE THE CLI'S OWN EXIT AUTHORITY PRODUCES, not merely "not success". A
@@ -1578,9 +1579,8 @@ fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
     match cli_refusal_determining_reason(&run.stderr) {
         None => CliEmitProbeVerdict::RefusalNotRendered,
         Some(rendering) if rendering.determining_reason == CLI_DOOR_EMIT_LIMITATION => {
-            CliEmitProbeVerdict::PinnedRefusalHeld {
-                exit_status: i64::from(status),
-                determining_locus: rendering.determining_locus,
+            CliEmitProbeVerdict::GroundingLimitationReturned {
+                locus: rendering.determining_locus,
             }
         }
         Some(rendering) => CliEmitProbeVerdict::DeterminingReasonDiffers {
@@ -1593,7 +1593,22 @@ fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
 /// One refusal sentence per non-admitting arm, so the operator is told which distinction failed.
 fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> String {
     match verdict {
-        CliEmitProbeVerdict::PinnedRefusalHeld { .. } => String::new(),
+        CliEmitProbeVerdict::EmittedWitnessHeld { .. } => String::new(),
+        CliEmitProbeVerdict::EmittedWithoutWitness { stdout_bytes } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorEmittedWithoutWitness — the built CLI exited 0 and \
+             wrote {stdout_bytes} byte(s), none of which name `{CLI_DOOR_EMITTED_WITNESS}`, the one \
+             declaration `{CLI_DOOR_ENTRY_MODULE}` holds. Exiting 0 is not emitting this subject. \
+             stdout: {}",
+            run.stdout.trim()
+        ),
+        CliEmitProbeVerdict::GroundingLimitationReturned { locus } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorGroundingLimitationReturned — the built CLI refused \
+             the fixture with `{CLI_DOOR_EMIT_LIMITATION}` at {locus}. It emitted this fixture once \
+             v2 lowered a `data` declaration to a named member and infer grounded its literal \
+             payload and empty domain, so the grounding frontier has come back in front of it. \
+             stderr: {}",
+            run.stderr.trim()
+        ),
         CliEmitProbeVerdict::UnexpectedExitCode { status } => format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorUnexpectedExitCode — the built CLI exited \
              {status}, and a refusal from this door exits {CLI_DOOR_REFUSAL_EXIT}: `v2_cli_exit` \
@@ -1601,14 +1616,6 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
              `exit_code_general_error`. A different non-zero status is a crash or another \
              convention wearing a refusal's clothes. stderr: {}",
             run.stderr.trim()
-        ),
-        CliEmitProbeVerdict::ProbeGreened { stdout_bytes } => format!(
-            "V2-NATIVE REFUSAL cause=NativeCliDoorEmitProbeGreened — the built CLI EMITTED {stdout_bytes} \
-             byte(s) and exited 0. This probe expects the determining reason \
-             `{CLI_DOOR_EMIT_LIMITATION}` because the emitted front end could not ground a closure; \
-             that limitation is gone. FLIP THIS PROBE into a regression control that requires exit 0 \
-             and requires the emitted text to name `{CLI_DOOR_EMITTED_WITNESS}` — do not delete it, \
-             and do not relax this arm."
         ),
         CliEmitProbeVerdict::TerminatedBySignal => format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorTerminatedBySignal — the built CLI produced NO EXIT \
@@ -1618,10 +1625,8 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
         ),
         CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnUnpinnedReason — the built CLI's \
-             DETERMINING diagnostic is `{determining}` at {locus}, not `{CLI_DOOR_EMIT_LIMITATION}`. \
-             This probe pins ONE limitation by the LAST link of the located chain, so a different \
-             fatal — even one whose chain also mentions the pinned word — is a change in the subject \
-             and is read rather than absorbed. stderr: {}",
+             DETERMINING diagnostic is `{determining}` at {locus}: the door refused a fixture it \
+             emits. stderr: {}",
             run.stderr.trim()
         ),
         CliEmitProbeVerdict::RefusalNotRendered => format!(
@@ -1650,6 +1655,10 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
 /// is not this one; the inhabitance obligation beside them is that the REAL PATH runs, and the real
 /// path is the built process reading real argv and real files.
+///
+/// FLIPPED 2026-09-23: THE EMIT ARM NOW REQUIRES THE DOOR TO EMIT THE FIXTURE. The paragraphs below
+/// record why the probe was a pinned refusal until then; `CliEmitProbeVerdict` carries the current
+/// partition.
 ///
 /// AND THE FIRST THING IT ESTABLISHED WAS THAT THE DOOR DOES NOT EMIT, which is the point rather
 /// than a disappointment. An entrypoint-execution control exists to find out what the program
@@ -1701,16 +1710,12 @@ fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), S
         ],
     )?;
     let (door_exit_status, emitted_bytes) = match adjudicate_cli_emit_probe(&emitted) {
-        CliEmitProbeVerdict::PinnedRefusalHeld {
-            exit_status,
-            ref determining_locus,
-        } => {
+        CliEmitProbeVerdict::EmittedWitnessHeld { stdout_bytes } => {
             eprintln!(
-                "v2-native-cli: door refused the emit as expected — determining reason \
-                 {CLI_DOOR_EMIT_LIMITATION} @ {determining_locus}, exit {exit_status}, stdout {} byte(s)",
-                emitted.stdout.len()
+                "v2-native-cli: door emitted the fixture — exit 0, stdout {stdout_bytes} byte(s) \
+                 naming {CLI_DOOR_EMITTED_WITNESS}"
             );
-            (exit_status, emitted.stdout.len())
+            (0, stdout_bytes)
         }
         other => return Err(cli_emit_probe_refusal(&other, &emitted)),
     };
@@ -2371,18 +2376,42 @@ mod cli_emit_probe_tests {
             .to_string()
     }
 
-    /// ACCEPTED: current chain + exit 1 + empty stdout.
+    /// ACCEPTED: exit 0 and emitted text naming the fixture's declaration. This is the flipped arm.
     #[test]
-    fn the_current_located_refusal_at_exit_one_passes() {
-        match adjudicate_cli_emit_probe(&run(Some(1), "", &located_pinned_refusal())) {
-            CliEmitProbeVerdict::PinnedRefusalHeld {
-                exit_status,
-                determining_locus,
-            } => {
-                assert_eq!(exit_status, 1);
-                assert_eq!(determining_locus, "<synthetic node occurrence>");
+    fn an_emission_naming_the_witness_passes() {
+        let emitted = format!(
+            "{{ door_probe: {{ {CLI_DOOR_EMITTED_WITNESS}: ( {{  }}) -> (i32) -> i32 }} }}"
+        );
+        match adjudicate_cli_emit_probe(&run(Some(0), &emitted, "")) {
+            CliEmitProbeVerdict::EmittedWitnessHeld { stdout_bytes } => {
+                assert_eq!(stdout_bytes, emitted.len());
             }
-            other => panic!("expected PinnedRefusalHeld, got {other:?}"),
+            other => panic!("expected EmittedWitnessHeld, got {other:?}"),
+        }
+    }
+
+    /// REFUSED: exit 0 with an emission that does not name the declaration. An empty program also
+    /// exits 0.
+    #[test]
+    fn an_emission_without_the_witness_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(0), "", "")),
+            CliEmitProbeVerdict::EmittedWithoutWitness { stdout_bytes: 0 }
+        ));
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(0), "pub const x: i64 = 1;", "")),
+            CliEmitProbeVerdict::EmittedWithoutWitness { .. }
+        ));
+    }
+
+    /// REFUSED: the refusal the probe used to admit. It is now the regression it names.
+    #[test]
+    fn the_old_pinned_refusal_is_the_regression() {
+        match adjudicate_cli_emit_probe(&run(Some(1), "", &located_pinned_refusal())) {
+            CliEmitProbeVerdict::GroundingLimitationReturned { locus } => {
+                assert_eq!(locus, "<synthetic node occurrence>");
+            }
+            other => panic!("expected GroundingLimitationReturned, got {other:?}"),
         }
     }
 
@@ -2485,15 +2514,6 @@ mod cli_emit_probe_tests {
         assert!(matches!(
             adjudicate_cli_emit_probe(&run(Some(1), "", "thread 'main' panicked at src/main.rs")),
             CliEmitProbeVerdict::RefusalNotRendered
-        ));
-    }
-
-    /// SUCCESS TRIGGERS THE FLIP: the door emitting fails the PROBE, not the door.
-    #[test]
-    fn an_emitting_door_triggers_the_flip() {
-        assert!(matches!(
-            adjudicate_cli_emit_probe(&run(Some(0), "pub const x: i64 = 1;", "")),
-            CliEmitProbeVerdict::ProbeGreened { .. }
         ));
     }
 
