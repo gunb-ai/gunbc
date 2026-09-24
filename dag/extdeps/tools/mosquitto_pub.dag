@@ -7,7 +7,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_mosquitto_clients }
+import extdeps.apt { apt_bin_dir, package_mosquitto_clients }
 import extdeps.oasis.mqtt { MqttQos, mqtt_qos_wire_level, MqttEndpoint }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -53,7 +53,7 @@ data mosquitto_pub_pinned_version: VersionConstraint = ">= 2.0"
 data mosquitto_pub_cli_tool: CliTool = CliTool {
   name: "mosquitto_pub",
   min_version: Present { value: mosquitto_pub_pinned_version },
-  installable_via: [SourceApt { package: package_mosquitto_clients }],
+  installable_via: [SourceApt { package: package_mosquitto_clients, bin_dir: apt_bin_dir }],
 }
 
 data mosquitto_pub_program: NonEmptyStr = "mosquitto_pub"

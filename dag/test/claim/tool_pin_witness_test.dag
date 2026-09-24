@@ -25,7 +25,7 @@ import extdeps.pin {
   pin_value_eq,
 }
 import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
-import extdeps.apt { package_cargo, package_jq }
+import extdeps.apt { apt_bin_dir, package_cargo, package_jq }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,13 +36,13 @@ data other_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-19
 data cargo_tool: CliTool = CliTool {
   name: "cargo",
   min_version: Absent,
-  installable_via: [SourceApt { package: package_cargo }],
+  installable_via: [SourceApt { package: package_cargo, bin_dir: apt_bin_dir }],
 }
 
 data jq_tool: CliTool = CliTool {
   name: "jq",
   min_version: Absent,
-  installable_via: [SourceApt { package: package_jq }],
+  installable_via: [SourceApt { package: package_jq, bin_dir: apt_bin_dir }],
 }
 
 data authored_pin: Pin<CliTool> = Pin {
@@ -133,13 +133,13 @@ test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
 data legacy_ranged_tool: CliTool = CliTool {
   name: "curl",
   min_version: Present { value: ">= 7.68" as VersionConstraint },
-  installable_via: [SourceApt { package: "curl" }],
+  installable_via: [SourceApt { package: "curl", bin_dir: apt_bin_dir }],
 }
 
 data legacy_unversioned_tool: CliTool = CliTool {
   name: "jq",
   min_version: Absent,
-  installable_via: [SourceApt { package: "jq" }],
+  installable_via: [SourceApt { package: "jq", bin_dir: apt_bin_dir }],
 }
 
 // Migration-frontier family, and the load-bearing RED for P1: EVERY CliTool row in the corpus today

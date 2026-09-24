@@ -3,7 +3,7 @@ module extdeps.tools.sshpass
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_sshpass }
+import extdeps.apt { apt_bin_dir, package_sshpass }
 import extdeps.exec.command { sshpass_authority, sshpass_binary_name }
 
 // THE TOOL ROW FOR SSHPASS, and its one job is to make the binary this repository EXECS and the
@@ -33,7 +33,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = sshpass_authority
 data sshpass_cli_tool: CliTool = CliTool {
   name: sshpass_binary_name,
   min_version: none,
-  installable_via: [SourceApt { package: package_sshpass }],
+  installable_via: [SourceApt { package: package_sshpass, bin_dir: apt_bin_dir }],
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

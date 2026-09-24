@@ -602,6 +602,9 @@ import v2.std.collection { List }
 // THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
 // v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
 // over five inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
+// v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
+// over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -666,6 +669,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
   "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
+  "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
