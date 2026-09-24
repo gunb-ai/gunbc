@@ -9534,7 +9534,7 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored = param_node_type_expr(n: param)
-  let ty = if authored.params |> count > 0 {
+  let ty = if rust_type_node_is_arrow(n: authored) {
     emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: false)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -9627,8 +9627,17 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
 // `enclosing_returns_arrow`, which described cause one and was correct while cause one was the only
 // one; carrying that spelling with two causes behind it would make the name a nickname for a
 // property it only partly describes (DESIGN section 3).
+//
+// AN ARROW IS DECIDED BY ITS CONNECTIVE, NOT BY ITS ARITY. This renderer and its callers
+// (emit_param, emit_tco_param, and the two closure-parameter sites) once asked `params |> count > 0`,
+// so a NULLARY arrow `fn() -> Int` fell to the value renderer as `Rc<dyn Fn() -> i64>` while the
+// named function passed to it arrived bare -- rustc E0308, an emitted crate the interpreter's run of
+// the same source does not share (DESIGN section 7). The same arity-for-arrow conflation was repaired
+// in the checker by gunbc#12143 (v1.compiler.infer type_node_is_arrow); this is its emission twin.
+// Evidence: src/v1/stage0/tests/nullary_fn_value_emitted_rust.rs builds and runs the emitted probe
+// against the interpreter's answer.
 fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
-  if n.params |> count > 0 {
+  if rust_type_node_is_arrow(n: n) {
     let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
@@ -9645,7 +9654,7 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
-  let ty = if authored.params |> count > 0 {
+  let ty = if rust_type_node_is_arrow(n: authored) {
     emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
