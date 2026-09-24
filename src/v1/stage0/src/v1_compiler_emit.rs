@@ -17,7 +17,6 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
-pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -67,7 +66,6 @@ pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::item_is_effectful_callee;
-pub use crate::v1_compiler_infer_items::item_resource_names;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
@@ -1354,8 +1352,7 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
             Some(dir) => dir.clone(),
             std::option::Option::None => "".to_string(),
         };
-        let filename =
-            crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
+        let filename = crate::gunbc_rust_emitted_edge::module_to_filename(module_name.clone());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(

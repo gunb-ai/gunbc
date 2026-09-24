@@ -12,7 +12,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -3594,15 +3594,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges) }
 }
 
-// THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
-// population-denominated aggregate that must name a module it did not render. `main` collides
-// with the crate's own entry file, so it renders as `main_mod`; that rename used to live inside
-// `emit_module_full` alone, where a second reader of the same fact had no way to reach it.
-fn rust_module_emit_filename(module_name: String) -> String {
-  let raw = module_to_filename(name: module_name)
-  if raw == "main" { "main_mod" } else { raw }
-}
-
+// A MODULE'S EMITTED PATH, read by the renderer and by every population-denominated aggregate that
+// must name a module it did not render. The basename is decided once, in gunbc.rust_emitted_edge
+// rust_module_emit_filename, because the emitter's edge rows name their endpoints by it and a
+// partition over dotted module names maps onto those endpoints with the same function.
 fn rust_module_emit_path(module_name: String) -> String {
   concat(rust_source_root(), rust_module_emit_filename(module_name: module_name), rust_source_ext())
 }
@@ -4691,6 +4686,34 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
 // UNREFUTED rather than proven: the two-arm measurement below moved 20 use-lines and every one is
 // explained by the GATE, so nothing in it exhibits a producer-side change -- but nothing in it
 // positively rules one out either.
+// THE EMITTED-TEXT ATTESTATION READS CODE, NOT STRING CONTENTS. A candidate use-line is admitted
+// only when its name is spelled in the module's own emitted text, and that gate exists to reject a
+// misproposed candidate -- but a name inside a string literal is prose the program carries as data,
+// not a path the emitted code takes. Measured: std.content_hash's grounding note mentions
+// `v2.std.node.Hash`, so a proposed `Hash` passed the gate and the module emitted
+// `pub use crate::v2_std_node::{Hash};`, an import nothing uses and a reverse edge the crate
+// partition refuses (v2.std.node imports std.content_hash). Escaped backslashes and quotes are
+// removed first, so the quote characters left delimit literals; the odd segments are their bodies.
+fn rust_code_outside_string_literals(s: String) -> String {
+  replace(replace(s, "\\\\", " "), "\\\"", " ")
+    |> split(delimiter: "\"")
+    |> enumerate
+    |> filter(pair => pair.first % 2 == 0)
+    |> map(pair => pair.second)
+    |> join(separator: " ")
+}
+
+// A SEGMENT AFTER `::` IS PART OF A PATH, NOT A BARE REFERENCE. The emitted-text attestation asks
+// whether the code spells a name that a bare use-line would have to bind; `std::hash::Hash` in a
+// derive attribute spells the std trait by full path and binds nothing, yet the tokenizer split it
+// into `std`, `hash`, `Hash` and so attested a proposed `Hash`, emitting
+// `pub use crate::v2_std_node::\{Hash\};` into std_content_hash over the v2.compiler.compile closure.
+// Each segment that follows `::` is prefixed with `@`, which no identifier carries, so it never equals
+// a candidate; a path HEAD stays a token, so `Parent::Variant` still attests `Parent`.
+fn rust_qualified_segments_marked(s: String) -> String {
+  replace(s, "::", " @")
+}
+
 fn rust_identifier_tokens(s: String) -> List<String> {
   let spaced = replace(replace(replace(replace(replace(replace(replace(replace(replace(s,
     "<", " "), ">", " "), ",", " "), "(", " "), ")", " "), "[", " "), "]", " "), "&", " "), ":", " ")
@@ -5235,7 +5258,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
-    let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
+    let emitted_source_tokens = rust_identifier_tokens(s: rust_qualified_segments_marked(s: rust_code_outside_string_literals(s: emitted_source)))
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
     let origin_candidates = repair_input_origin_candidates(
@@ -9506,7 +9529,7 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored = param_node_type_expr(n: param)
-  let ty = if authored.params |> count > 0 {
+  let ty = if rust_type_node_is_arrow(n: authored) {
     emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: false)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -9599,8 +9622,17 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
 // `enclosing_returns_arrow`, which described cause one and was correct while cause one was the only
 // one; carrying that spelling with two causes behind it would make the name a nickname for a
 // property it only partly describes (DESIGN section 3).
+//
+// AN ARROW IS DECIDED BY ITS CONNECTIVE, NOT BY ITS ARITY. This renderer and its two guarded
+// callers (emit_param, emit_tco_param) once asked `params |> count > 0`,
+// so a NULLARY arrow `fn() -> Int` fell to the value renderer as `Rc<dyn Fn() -> i64>` while the
+// named function passed to it arrived bare -- rustc E0308, an emitted crate the interpreter's run of
+// the same source does not share (DESIGN section 7). The same arity-for-arrow conflation was repaired
+// in the checker by gunbc#12143 (v1.compiler.infer type_node_is_arrow); this is its emission twin.
+// Evidence: src/v1/stage0/tests/nullary_fn_value_emitted_rust.rs builds and runs the emitted probe
+// against the interpreter's answer.
 fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
-  if n.params |> count > 0 {
+  if rust_type_node_is_arrow(n: n) {
     let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
@@ -9617,7 +9649,7 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
-  let ty = if authored.params |> count > 0 {
+  let ty = if rust_type_node_is_arrow(n: authored) {
     emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)

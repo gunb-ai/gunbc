@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.as_cast_has_no_lowered_form
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data as_cast_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
+  identity: "as_cast_has_no_lowered_form" as NonEmptyStr,
+
+  receipts: [
+    "no lowered form for an `as` cast `e as T` in v2 body lowering: `as` is not an operator of the precedence tower `v2.compiler.body_lowering_fold` `body_lower_read_operator_expression` reads, and no other reader lowers the cast. As an operator operand -- usually parenthesised, `(e as T) == ..` -- it refuses as `body_lowering_reason_operator_operand_unread`; on the value route the target type `T` does not reach the reference-site collector.",
+    "SPECIMENS AND PINNED LOCUS: `dag/test/claim/extdeps/apt_package_of_witness_test.dag` `apt_installed_bin_path_is_apt_bin_dir_plus_the_binary_name` (`(apt_installed_bin_path(..) as String) == ..`), `dag/gunbc/host/host_resource.dag` (`(left.host as T)`), `dag/test/claim/data_reference_kind_from_resolved_node_witness_test.dag` (`(gigabyte.legal_name as T)`); each refuses at the parenthesised operand. A parenthesised CALL operand without a cast is read (control: `a_parenthesised_call_operand_resolves`), so the group is not the cause.",
+    "EXPOSED, NOT INTRODUCED: the parent of gunbc#12145 (2de78893dfe) accepted this shape only by SILENT NARROWING -- the operand reader answered a sequence with its left element -- so the refusal on main after gunbc#12173 is a pre-existing defect made visible, not a new regression. Found by the XL-2 three-baseline identity census on gunbc#12194 (321 paths: 18 refusing at 2de78893dfe, 167 at ada85b9452, 101 after gunbc#12173).",
+    "RUNG FOUND AT: mitigated on the operator route; below the floor on the value route (the cast's type is dropped). CEILING: structurally guaranteed -- a cast lowers to a value carrying its operand and its target type, or refuses. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 body lowering has a lowered form for `e as T` on every route, whose operand and target type both reach the reference-site collector.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_as_cast_operand_refuses_at_normalize", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_parenthesised_call_operand_resolves", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_parenthesised_call_operand_refuses_at_resolve_at_its_atom", field: WholeDeclaration },
+  ],
+}

@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
+mod emitted_crate_workspace_host;
 mod native_lane_runner;
 pub mod required_ci_measurement;
 mod required_floor_runner;
@@ -96,6 +97,7 @@ mod required_lane_roster;
 pub mod rostered_row_join;
 pub mod scope_rank_view;
 mod serve_budget_refusal;
+pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
     run_required_v2_native, run_self_host, run_v2_native_cli, NativeMemberTermination,
     NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
@@ -9576,10 +9578,6 @@ fn visit_bare_reference_providers(
     // This does not under-pull. A module that uses a kernel type's CONSTRUCTORS references
     // those names (`True`, `False`) directly, and they resolve on their own; what is skipped
     // here is only the type spelling, which needs no declaring module.
-    let substrate_vocabulary = |name: &str| -> bool {
-        crate::std_types::kernel_type_set().contains_key(name)
-            || crate::std_types::container_type_arity().contains_key(name)
-    };
     let resolve_loop_started = std::time::Instant::now();
     let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
@@ -9594,7 +9592,7 @@ fn visit_bare_reference_providers(
         if !service_head && explicit_imports.contains(&name) {
             continue;
         }
-        if !service_head && substrate_vocabulary(&name) {
+        if !service_head && is_substrate_vocabulary(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
@@ -32645,9 +32643,17 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
     names
 }
 
-/// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
-/// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
-/// value field access, not a module-qualified name).
+/// SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER: the kernel type names
+/// (`std_types::kernel_type_set`) and the container carrier spellings
+/// (`std_types::container_type_arity`) are resolved by the type env as primitives and pull no
+/// declaring module. ONE rule, read by every producer that turns a bare name into a module edge --
+/// the census pull and the reference-derived dependency producer -- so neither can bind `String`
+/// to whichever module happens to declare the spelling nearest the reader.
+pub(crate) fn is_substrate_vocabulary(name: &str) -> bool {
+    crate::std_types::kernel_type_set().contains_key(name)
+        || crate::std_types::container_type_arity().contains_key(name)
+}
+
 /// The head `ExprVar` of a dotted chain: the node `ref_field_chain` stops at, along the same
 /// receiver spine.
 fn ref_field_chain_head(
@@ -32664,6 +32670,9 @@ fn ref_field_chain_head(
     }
 }
 
+/// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
+/// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
+/// value field access, not a module-qualified name).
 fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
     use crate::v1_std_core::ExprData;
     let mut segs: Vec<String> = vec![node.name.clone()];
