@@ -20,6 +20,9 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.communication.medium { Medium }
 import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list }
+import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
+import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
+import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.node {
   Arrow,
@@ -593,4 +596,28 @@ fn tpb_type_decl_generic_alias() -> Outcome<Node> {
 // uncarried-member reason rather than dropping its binders.
 test fn tpb_generic_alias_without_a_member_refuses() -> Bool {
   tpb_refuses_with(o: tpb_type_decl_generic_alias(), reason: ^body_lowering_reason_generic_type_decl_member_uncarried)
+}
+
+fn tpb_type_decl_nullary_tag() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Tag<T> = A | B\n")
+}
+
+fn tpb_member_is_nullary_enum(m: Node) -> Bool {
+  coproduct_all_variants_nullary(edges: m.children)
+    && match repr_grounding_derive_elem_shape(elem: m) {
+      ReprDeriveElemNullaryEnumCopy => true
+      _ => false
+    }
+}
+
+// (26) THE VARIANT-SHAPE CLASSIFIER READS AUTHORED VARIANTS ONLY. A generic all-nullary coproduct is
+// all-nullary through v2.std.compilers.coproduct_variant_shape coproduct_all_variants_nullary and
+// classifies as a nullary Copy enum through the derive classifier
+// (v2.compiler.trait_derive_completeness repr_grounding_derive_elem_shape), fed the REAL lowered
+// member. Its own discriminating control: with only coproduct_variant_shape restored to its raw
+// fold, the binder Conj reads as a payload-bearing variant and this row is red, which changes the
+// Rust derive.
+test fn tpb_generic_nullary_coproduct_classifies_as_nullary() -> Bool {
+  count(tpb_generic_member(o: tpb_type_decl_nullary_tag())) == 1
+    && fold(tpb_generic_member(o: tpb_type_decl_nullary_tag()), init: true, f: fn(acc, m) { acc && tpb_member_is_nullary_enum(m: m) })
 }
