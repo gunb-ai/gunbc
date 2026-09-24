@@ -38,6 +38,10 @@ import gunbc.spark.collective_transport_plan {
 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.arm_memory_fit {
+  arm_memory_fit_verdict_for_launch,
+  arm_memory_launch_gate,
+}
 import gunbc.spark.serving_arm {
   ServingCheckpoint,
   ServingRuntime,
@@ -558,6 +562,25 @@ fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEm
   }
 }
 
+// ── THE MEMORY WALL IS THE LAST WALL BEFORE A RENDER, AND IT REQUIRES A PROOF ──────────────────
+//
+// WHY IT SITS BELOW THE EXECUTION WALLS. The measured walls answer what EXECUTION has already
+// established -- this exact tuple, refused or served -- and an unrun subject's first repair is the
+// bounded experiment that mints BOTH the execution receipt and the component memory receipts. The
+// memory wall is where the proof obligation binds, and it refuses the subject that passes every
+// execution wall with its missing terms named: the initial-profile Group B arm carries an
+// ExecutionCompatible receipt and no memory receipt for any term but the checkpoint's own bytes,
+// so its normal-serving plan now refuses with the fit obligations where the retired weights-only
+// heuristic rendered lines. FitProved is the only verdict that renders; FitRefused and
+// FitUnestablished both refuse normal serving -- they name different repairs -- and a bounded
+// experiment is admitted on any verdict because the experiment is how the open terms earn their
+// bounds (gunbc.spark.arm_memory_fit arm_memory_launch_gate owns the intent split).
+//
+// THE PROOF IS REQUIRED, NOT ADVISORY: no normal-serving ArmLaunchPlanned exists that did not
+// pass a FitProved gate. The 5/4 aggregate heuristic this replaces admitted the tuple that has
+// been OOM-crash-looping since 2026-09-18; the verdict this gate consumes is compositional,
+// per-rank, per-phase, and derives its KV demand from the workload intent over the resolved
+// layout rather than from any previous run's observed pool.
 fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
   if measured_subject_refuses(subject: subject) {
@@ -569,6 +592,12 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   match serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
+      match arm_memory_fit_verdict_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: profile) {
+        Absent => ArmLaunchRefused { cause: "no memory-fit subject could be assembled for this arm: unreachable behind serving_arm_admits, which refuses unmodelled checkpoint rows first" as NonEmptyStr }
+        Present { value: verdict } =>
+          match arm_memory_launch_gate(intent: intent, verdict: verdict) {
+            Present { value: c } => ArmLaunchRefused { cause: c }
+            Absent =>
       match serving_checkpoint_row(c: checkpoint) {
         Absent => ArmLaunchRefused { cause: "no checkpoint row: unreachable behind serving_arm_admits, which refuses first" as NonEmptyStr }
         Present { value: crow } =>
@@ -582,6 +611,8 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
                   master: m,
                 },
               }
+          }
+      }
           }
       }
   }

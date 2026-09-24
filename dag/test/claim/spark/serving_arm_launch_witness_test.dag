@@ -11,7 +11,7 @@ import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOv
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_arm {
-  ServingLaunchProfile, glm_native_concurrent_profile,
+  ServingLaunchProfile, glm_native_concurrent_profile, glm_native_serving_profile_2026_09_19,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
   GunbcSparkrunVllmDs4Gb10,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
@@ -19,12 +19,22 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch {
   ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
-  plan_arm_launch, plan_arm_launch_for, arm_node, arm_container_spec,
+  plan_arm_launch_for, arm_node, arm_container_spec,
+}
+import gunbc.spark.arm_memory_fit {
+  arm_memory_fit_verdict_for_launch,
+  ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
 }
 
 // THE FIXTURE IS THE REAL GROUP B ARM, because the property under test is a property of THIS
 // deployment: the four ranks that were found serving on TCP sockets. A synthetic group would test
 // the renderer and say nothing about the arm that was wrong.
+//
+// THE RENDER ROWS ASK FOR THE BOUNDED-EXPERIMENT INTENT, which is what this module's own header
+// names as the plan's production consumer (the bounded transport-only relaunch), and which is now
+// the only intent the memory wall admits for this subject: the arm carries an execution receipt
+// and no memory receipt, so normal serving refuses at the memory wall (rows below) while the
+// experiment -- the thing that mints the missing receipts -- still renders.
 fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
   planned_lines_for(profile: glm_native_initial_profile, f: f)
 }
@@ -34,11 +44,12 @@ fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
 // and a profile that only ever appears inside an equality check is a row nothing produces a launch
 // from. Planning it is what makes its subject reachable.
 fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
-  match plan_arm_launch(
+  match plan_arm_launch_for(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     group: FabricGroupB,
+    intent: ArmBoundedExperiment,
     profile: profile,
   ) {
     ArmLaunchRefused { cause: _ } => false
@@ -189,6 +200,69 @@ test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_ans
        != plan_refusal_cause(p: plan_unrun_subject(intent: ArmBoundedExperiment))
 }
 
+// ── THE MEASURED ARM REFUSES NORMAL SERVING AT THE MEMORY WALL, WITH THE MISSING TERMS NAMED ────
+//
+// THE PAIR THAT MAKES THE WALL VISIBLE. The render rows above plan the same tuple as a bounded
+// experiment and pass; this row asks for normal serving on the measured subject -- the Group B arm
+// WITH its execution receipt, the tuple that served 2026-09-13 -- and must refuse at the memory
+// wall, because no memory receipt exists for any term but the checkpoint's own bytes. Before the
+// wall, this tuple planned normal serving on the retired weights-only heuristic; the crash loop
+// since 2026-09-18 is that plan running.
+fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    intent: intent,
+    profile: glm_native_initial_profile,
+  )
+}
+
+test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
+  match plan_measured_subject(intent: ArmNormalServing) {
+    ArmLaunchRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "UNESTABLISHED")
+        && string_contains(s: c as String, pattern: "kv-cache")
+        && string_contains(s: c as String, pattern: "foreign-residency")
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+    && (match plan_measured_subject(intent: ArmBoundedExperiment) {
+      ArmLaunchRefused { cause: _ } => false
+      ArmLaunchPlanned { lines: ls, master: _ } => length(ls) == 4
+    })
+}
+
+// ── THE PRODUCTION SERVING PROFILE'S VERDICT IS CARRIED BY THE PROOF, NOT BY A POOL READING ─────
+//
+// The 2026-09-19 serving profile (262144 tokens, sixteen sequences, fp8 KV, 8400 basis points) is
+// the tuple whose live units have been crash-looping. The proof's verdict for it is
+// FitUnestablished and the obligations NAME the missing bounds -- the KV layout derivation, the
+// component receipts, the host reserve -- which is the repair program, not "run it and see". A
+// normal-serving plan for the exact tuple additionally refuses at the intent wall (no execution
+// receipt for this profile exists yet); the verdict row is what tells the operator what has to
+// exist BEFORE such a receipt can mean the arm is safe to serve on.
+test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool {
+  match arm_memory_fit_verdict_for_launch(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    profile: glm_native_serving_profile_2026_09_19,
+  ) {
+    Absent => false
+    Present { value: verdict } =>
+      match verdict {
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) > 0
+            && any(os, o => string_contains(s: o as String, pattern: "kv-cache"))
+            && any(os, o => string_contains(s: o as String, pattern: "activation-workspace"))
+            && any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve"))
+      }
+  }
+}
+
 // ── THE UTILISATION REACHES THE ARGV AT FULL PRECISION, AND IT COMES FROM THE PROFILE ─────────
 //
 // TWO DEFECTS IN ONE ROW, BOTH FOUND AGAINST THE LIVE ARM. This module carried its own
@@ -244,4 +318,6 @@ test fn w_all_serving_arm_launch_claims_hold() -> Bool {
     && w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory()
     && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
     && w_the_utilisation_argv_is_the_profiles_value_at_full_precision()
+    && w_the_measured_arm_refuses_normal_serving_at_the_memory_wall()
+    && w_the_serving_profiles_verdict_is_unestablished_with_named_obligations()
 }

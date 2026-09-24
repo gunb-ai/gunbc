@@ -1,0 +1,150 @@
+module gunbc.spark.serving_capacity_intent
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { TokenCount, token_count, token_count_value }
+import gunbc.spark.serving_arm { ServingLaunchProfile }
+
+// ── THE SERVICE OBLIGATION IS A SEAT POPULATION, NOT A POOL SIZE ────────────────────────────────
+//
+// WHAT NOT TO DECLARE. "54 GiB of KV" and "three concurrent sessions" are one requirement said
+// twice, and once both are written down they drift: a change to the sequence budget moves the
+// second and leaves the first standing, and nothing detects that the pair no longer describes one
+// intent. Exactly one is declared -- the operational one, because it is the one anybody can argue
+// about -- and the bytes are DERIVED from it against the engine's own resolved layout.
+//
+// THIS MODULE GENERALIZES gunbc.spark.pair_serving_capacity_floor, in the direction the import
+// graph allows: the floor's MinimumColdSessions is the uniform case of what this type carries --
+// one cold sequence budget per seat, with the seat count explicit -- and the floor module owns
+// the projection forward (minimum_cold_sessions_intent there), because the floor already sits
+// below the harness seat authority and importing it here would close a cycle through the serving
+// enrollment chain. The native arm consumes THIS type: its KV demand is derived from the seat
+// population over the group-aware layout (extdeps.vllm.kv_layout cold_admission_bytes per
+// budget), its max_model_len derives from the LARGEST seat budget, and its required concurrency
+// from the seat population. Sizing a serving arm is answering "what service is owed" first; the
+// memory fit is then a verdict ABOUT that answer, not a tuning loop around it.
+//
+// COLD, meaning no prefix-cache credit. A prospective cache hit is not capacity: it belongs to a
+// prefix whose blocks another request may release at any moment, and reserving against it would be
+// spending a discount that has not been granted. Every seat is charged its full budget.
+type ServingCapacityIntent {
+  cold_sequence_budgets: List<TokenCount>
+  max_batched_tokens: TokenCount
+}
+
+// THE MINT REFUSES WHAT WOULD READ AS A SERVICE WITH NO SEATS, because the derived envelope
+// projections below are folds over the seat population and an empty population would derive
+// max_active_sequences 0, max_total_resident_tokens 0 -- a plausible zero standing in for "nobody
+// asked for anything", which is the absorbing fallback a fit proof must not take.
+type ServingCapacityIntentAdmission
+  = ServingCapacityIntentAdmitted { intent: ServingCapacityIntent }
+  | ServingCapacityIntentRefused { cause: NonEmptyStr }
+
+fn serving_capacity_intent(
+  cold_sequence_budgets: List<TokenCount>,
+  max_batched_tokens: TokenCount,
+) -> ServingCapacityIntentAdmission {
+  if length(cold_sequence_budgets) == 0 {
+    ServingCapacityIntentRefused { cause: "a capacity intent with no cold sequence budgets names no service: there is no seat population to derive concurrency or resident tokens from" as NonEmptyStr }
+  } else if token_count_value(t: max_batched_tokens) == 0 {
+    ServingCapacityIntentRefused { cause: "a zero batched-token ceiling names no admission shape: the scheduler cannot run even one token through the batch" as NonEmptyStr }
+  } else {
+    ServingCapacityIntentAdmitted { intent: ServingCapacityIntent {
+      cold_sequence_budgets: cold_sequence_budgets,
+      max_batched_tokens: max_batched_tokens,
+    } }
+  }
+}
+
+// THE UNIFORM SEAT POPULATION IS THE FLOOR MODULE'S SHAPE, carried here so a floor row projects
+// into the native vocabulary without a second derivation: n seats of one budget m is the compact
+// envelope {max_single m, max_total n*m, seats n}.
+fn uniform_cold_seats(
+  each: TokenCount,
+  seats: Nat,
+  max_batched_tokens: TokenCount,
+) -> ServingCapacityIntentAdmission {
+  if seats == 0 {
+    ServingCapacityIntentRefused { cause: "a zero-seat population names no service" as NonEmptyStr }
+  } else {
+    serving_capacity_intent(
+      cold_sequence_budgets: map(nat_range_inclusive(lo: 1, hi: seats), _ => each),
+      max_batched_tokens: max_batched_tokens)
+  }
+}
+
+// ── THE ENVELOPE PROJECTIONS, DERIVED FROM THE SEAT POPULATION ──────────────────────────────────
+//
+// WHY THESE ARE FUNCTIONS AND NOT FIELDS: the compact envelope {max_single_sequence_tokens,
+// max_total_resident_tokens, max_active_sequences, max_batched_tokens} is one population read three
+// ways, and storing the projections beside the population would be two authorities for each -- a
+// seat edit that failed to update the envelope would leave a row that disagrees with itself, which
+// is precisely the drift this module exists to remove.
+fn intent_max_active_sequences(i: ServingCapacityIntent) -> Nat {
+  length(i.cold_sequence_budgets)
+}
+
+fn intent_max_single_sequence_tokens(i: ServingCapacityIntent) -> TokenCount {
+  fold(i.cold_sequence_budgets, init: token_count(count: 0), f: (acc, b) =>
+    if token_count_value(t: b) > token_count_value(t: acc) { b } else { acc })
+}
+
+fn intent_max_total_resident_tokens(i: ServingCapacityIntent) -> TokenCount {
+  fold(i.cold_sequence_budgets, init: token_count(count: 0), f: (acc, b) =>
+    token_count(count: token_count_value(t: acc) + token_count_value(t: b)))
+}
+
+fn intent_batched_tokens(i: ServingCapacityIntent) -> TokenCount {
+  i.max_batched_tokens
+}
+
+// ── THE WORKLOAD A LAUNCH PROFILE ADMITS, DERIVED THE SAME WAY ──────────────────────────────────
+//
+// THE PROFILE'S CONCURRENCY CAP IS POLICY, NOT AN ACCIDENTAL RESOURCE CLAIM. max_num_seqs is the
+// number of sequences the engine will ADMIT; the seat population is the number the service OWES.
+// Deriving the intent from the profile therefore charges the worst case the profile permits --
+// every admitted sequence at the full model length, cold -- because a fit proof about the launch
+// must cover what the launch can be asked for, not what the operator hopes is typical. When the
+// service obligation is smaller (gunbc.spark.serving_capacity_intent seats), authoring the intent
+// from the SEATS and checking the profile against it is the tighter, preferred derivation; this
+// projection exists so the launch wall can always obtain A defensible workload from the launch it
+// is asked to plan.
+fn intent_for_launch_profile(p: ServingLaunchProfile) -> ServingCapacityIntentAdmission {
+  if p.max_num_seqs == 0 {
+    ServingCapacityIntentRefused { cause: "a launch profile admitting zero sequences derives no seat population: --max-num-seqs 0 is a launch that serves nothing" as NonEmptyStr }
+  } else {
+    serving_capacity_intent(
+      cold_sequence_budgets: map(nat_range_inclusive(lo: 1, hi: p.max_num_seqs), _ => p.max_model_len),
+      max_batched_tokens: p.max_num_batched_tokens)
+  }
+}
+
+// THE PROFILE MUST COVER THE SEATS IT SERVES, AND THE SEAT BUDGET MUST FIT THE PROFILE'S WINDOW.
+// This is the explicit-policy check the concurrent profile row anticipated: a profile whose
+// max_num_seqs is below the seat population cannot seat the service however much memory it has,
+// and a seat whose budget exceeds max_model_len is a seat the engine cannot admit at full length.
+type IntentProfileCoverage
+  = IntentCoversProfile
+  | IntentExceedsProfile { cause: NonEmptyStr }
+
+fn intent_covers_profile(i: ServingCapacityIntent, p: ServingLaunchProfile) -> IntentProfileCoverage {
+  if intent_max_active_sequences(i: i) > p.max_num_seqs {
+    IntentExceedsProfile {
+      cause: join([
+        "the service owes ", to_string(intent_max_active_sequences(i: i)),
+        " cold seats but the profile admits only ", to_string(p.max_num_seqs),
+        " sequences: max_num_seqs is the admission cap and the seat population exceeds it",
+      ], "") as NonEmptyStr,
+    }
+  } else if token_count_value(t: intent_max_single_sequence_tokens(i: i)) > token_count_value(t: p.max_model_len) {
+    IntentExceedsProfile {
+      cause: join([
+        "the largest seat budget is ", to_string(token_count_value(t: intent_max_single_sequence_tokens(i: i))),
+        " tokens against a profile whose max_model_len is ", to_string(token_count_value(t: p.max_model_len)),
+        ": the engine cannot admit that seat at full length",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    IntentCoversProfile
+  }
+}

@@ -125,6 +125,7 @@ type SystemdUnitDirective
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
+  | StartLimitBurst { count: NonEmptyStr }
 
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
@@ -216,6 +217,9 @@ type SystemdIoSchedulingClass
 // built on would be broken by putting it where the restart policy reads more naturally. A unit whose
 // normal operation is to exit after each unit of work and be restarted will trip the default limit
 // (five starts in ten seconds) and be left FAILED, so a service of that shape has to say so.
+// `StartLimitBurst=` is the other half of that limiter -- the interval says how long the rate
+// window is, and the burst says how many starts the window admits -- and a one-shot unit states
+// burst one so that even an operator hammering `systemctl start` cannot turn it into a retry loop.
 //
 // `RestartSec=` is the delay before the restart and `TimeoutStopSec=` is how long a stop is given
 // before systemd escalates to SIGKILL. They are two durations at opposite ends of a unit's life and
@@ -532,6 +536,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
+    StartLimitBurst { count: v } => join(["StartLimitBurst=", v as String], "")
   }
 }
 

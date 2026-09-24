@@ -24,7 +24,10 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, FabricLan
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.model_snapshot_acquisition { glm_5_3_flash_snapshot, spark_hub_cache_root, ModelSnapshotPinned, ModelSnapshotUnpinned }
-import gunbc.spark.serving_arm { glm_native_initial_profile, glm_native_serving_profile_2026_09_19 }
+import gunbc.spark.serving_arm {
+  glm_native_initial_profile, glm_native_serving_profile_2026_09_19,
+  ArmIntent, ArmNormalServing, ArmBoundedExperiment,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -52,6 +55,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // because the DeepSeek image's distributed executor is ray; this arm launches with
 // `--distributed-executor-backend mp` over the hosts' own rail addresses, so a rank unit is one
 // container lifecycle and one engine line and nothing else.
+//
+// INTENT DECIDES REALIZATION (glm_native_unit_directives and its two neighbours below): the
+// normal-serving render is unchanged -- Restart=always, enrolled, and admissible only behind a
+// proved memory fit -- and a bounded experiment renders one-shot, rate-limited to a single start,
+// and carrying no [Install] section, so it cannot become an indefinitely restarting service.
 
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_head_unit_name: NonEmptyStr = "gunbc-glm-native-head.service" as NonEmptyStr
@@ -205,7 +213,71 @@ type GlmNativeUnitRender
 // three places: the unit's name, the node rank in the engine argv, and the rail address the
 // container publishes as VLLM_HOST_IP. Everything else -- image, mounts, environment, engine flags
 // -- is the arm's profile and is rendered once.
-fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: Ipv4Address) -> GlmNativeUnitRender {
+//
+// INTENT DECIDES REALIZATION, and the two intents render two DIFFERENT systemd objects. A normal
+// serving unit is a service: Restart=always, enrolled via [Install]/WantedBy so the multi-user
+// target pulls it up, and admissible only behind a proved memory fit (gunbc.spark.arm_memory_fit,
+// consumed at gunbc.spark.serving_arm_launch plan_arm_launch_for). A bounded experiment is a
+// one-shot: Restart=no, a start-rate limit of one attempt per ten minutes, and NO [Install]
+// section at all, so nothing enrolls it and a failed experiment cannot become an indefinitely
+// restarting service by accident of packaging. The arm's crash loop since 2026-09-18 is what a
+// bounded experiment looks like when it renders with Restart=always; the split below is the
+// realization half of the intent wall.
+fn glm_native_unit_directives(intent: ArmIntent, rank: Nat, is_head: Bool) -> List<SystemdUnitDirective> {
+  match intent {
+    ArmNormalServing => [
+      Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(rank), " (", glm_native_initial_profile.served_alias as String, ")"], "") as NonEmptyStr },
+      After { target: "docker.service network-online.target" as NonEmptyStr },
+      Requires { target: "docker.service" as NonEmptyStr },
+    ]
+    ArmBoundedExperiment => [
+      Description { text: join(["gunbc GLM native four-rank arm BOUNDED EXPERIMENT, rank ", to_string(rank), " (", glm_native_initial_profile.served_alias as String, "): one attempt, no enrollment, no restart"], "") as NonEmptyStr },
+      After { target: "docker.service network-online.target" as NonEmptyStr },
+      Requires { target: "docker.service" as NonEmptyStr },
+      StartLimitIntervalSec { duration: "600" as NonEmptyStr },
+      StartLimitBurst { count: "1" as NonEmptyStr },
+    ]
+  }
+}
+
+fn glm_native_service_directives(intent: ArmIntent, run_line: NonEmptyStr, is_head: Bool) -> List<SystemdServiceDirective> {
+  let log_path = if is_head { glm_native_head_log_path } else { glm_native_rank_log_path }
+  match intent {
+    ArmNormalServing => [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ExecStartPre { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
+      ExecStart { command: run_line },
+      ExecStop { command: join(["/usr/bin/docker stop ", glm_native_container_name as String], "") as NonEmptyStr },
+      Restart { policy: "always" as NonEmptyStr },
+      RestartSec { duration: "30" as NonEmptyStr },
+      TimeoutStartSec { duration: "0" as NonEmptyStr },
+      ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
+      ServiceStandardError { stream: OutputAppendFile { path: log_path } },
+    ]
+    ArmBoundedExperiment => [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ExecStartPre { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
+      ExecStart { command: run_line },
+      ExecStop { command: join(["/usr/bin/docker stop ", glm_native_container_name as String], "") as NonEmptyStr },
+      Restart { policy: "no" as NonEmptyStr },
+      TimeoutStartSec { duration: "0" as NonEmptyStr },
+      ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
+      ServiceStandardError { stream: OutputAppendFile { path: log_path } },
+    ]
+  }
+}
+
+// THE EXPERIMENT IS NOT ENROLLED, which is the property that keeps a bounded experiment from
+// becoming a service: NotInstallable renders no [Install] section at all, so no target pulls it
+// up, and starting it is an explicit act that the start-rate limit then bounds.
+fn glm_native_install_section(intent: ArmIntent) -> SystemdInstallSection {
+  match intent {
+    ArmNormalServing => Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] }
+    ArmBoundedExperiment => NotInstallable
+  }
+}
+
+fn glm_native_host_unit_file_for(intent: ArmIntent, host: HostIdentity, rank: Nat, ranks: Nat, master: Ipv4Address) -> GlmNativeUnitRender {
   let is_head = rank == 0
   let unit_name = if is_head { glm_native_head_unit_name } else { glm_native_rank_unit_name }
   match fabric_lane_for_host(host: host) {
@@ -217,27 +289,17 @@ fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: 
           GlmNativeUnitRendered {
             unit_name: unit_name,
             text: serialize_systemd_unit_file(file: ServiceUnitFile {
-              unit: [
-                Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(rank), " (", glm_native_initial_profile.served_alias as String, ")"], "") as NonEmptyStr },
-                After { target: "docker.service network-online.target" as NonEmptyStr },
-                Requires { target: "docker.service" as NonEmptyStr },
-              ],
-              service: [
-                ServiceType { mode: "simple" as NonEmptyStr },
-                ExecStartPre { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
-                ExecStart { command: run_line },
-                ExecStop { command: join(["/usr/bin/docker stop ", glm_native_container_name as String], "") as NonEmptyStr },
-                Restart { policy: "always" as NonEmptyStr },
-                RestartSec { duration: "30" as NonEmptyStr },
-                TimeoutStartSec { duration: "0" as NonEmptyStr },
-                ServiceStandardOutput { stream: OutputAppendFile { path: if is_head { glm_native_head_log_path } else { glm_native_rank_log_path } } },
-                ServiceStandardError { stream: OutputAppendFile { path: if is_head { glm_native_head_log_path } else { glm_native_rank_log_path } } },
-              ],
-              install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+              unit: glm_native_unit_directives(intent: intent, rank: rank, is_head: is_head),
+              service: glm_native_service_directives(intent: intent, run_line: run_line, is_head: is_head),
+              install: glm_native_install_section(intent: intent),
             }),
           }
       }
   }
+}
+
+fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: Ipv4Address) -> GlmNativeUnitRender {
+  glm_native_host_unit_file_for(intent: ArmNormalServing, host: host, rank: rank, ranks: ranks, master: master)
 }
 
 // THE HEAD UNIT IS THE ONE THE HARNESS DIGESTS. The incarnation observer reads the head's unit
@@ -273,6 +335,21 @@ fn glm_native_all_unit_renders() -> List<GlmNativeUnitRender> {
   }
 }
 
+// THE EXPERIMENT RENDERS THE SAME ROSTER UNDER THE EXPERIMENT INTENT, one-shot and unenrolled.
+// This is the unit set a bounded relaunch installs: identical engine line, different lifetime
+// contract, so the receipt the run mints cannot be produced by a service that restarted itself
+// into a different configuration than the one the experiment measured.
+fn glm_native_experiment_all_unit_renders() -> List<GlmNativeUnitRender> {
+  let hosts = glm_native_ranked_hosts()
+  match fabric_lane_for_host(host: spark_pair_serving_head(group: FabricGroupB)) {
+    Absent => [GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: "the serving head has no observed fabric lane, so the master rail address is unknown" as NonEmptyStr }]
+    Present { value: head_lane } => {
+      let master = fabric_rail_address_of(o: head_lane)
+      zip_map(a: hosts, b: glm_native_rank_indices_from(next: 0, xs: hosts), f: fn(h, i) { glm_native_host_unit_file_for(intent: ArmBoundedExperiment, host: h, rank: i, ranks: count(hosts), master: master) })
+    }
+  }
+}
+
 // THE WET RENDER THE CONVERGENCE RUNS. The unit texts are pure; this entry writes each to a
 // host-keyed scratch path so an actuation can install them, failing closed on any leg.
 fn glm_native_units_render_wet() -> ProcessExit {
@@ -292,6 +369,30 @@ fn glm_native_units_render_wet() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: join(["glm_native_units_render_wet: ", join(writes, "; ")], ""))
+  }
+}
+
+// THE WET RENDER FOR THE EXPERIMENT ROSTER, the twin of glm_native_units_render_wet with the
+// bounded-experiment intent: the actuation that installs an experiment's units writes THESE texts,
+// and a text carrying Restart=always or an [Install] section would mean the experiment had the
+// service's lifetime contract after all.
+fn glm_native_experiment_units_render_wet() -> ProcessExit {
+  let renders = glm_native_experiment_all_unit_renders()
+  let hosts = glm_native_ranked_hosts()
+  let writes = zip_map(a: renders, b: hosts, f: fn(r, h) {
+    match r {
+      GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
+        join(["REFUSED ", c as String], "")
+      GlmNativeUnitRendered { unit_name: name, text: text } => {
+        let w = Filesystem.Write(path: join(["/tmp/experiment.", name as String, ".", h as String], ""), content: text)
+        if w.success { "ok" } else { join(["WRITE-FAILED ", w.error], "") }
+      }
+    }
+  })
+  if all(writes, w => w == "ok") {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["glm_native_experiment_units_render_wet: ", join(writes, "; ")], ""))
   }
 }
 

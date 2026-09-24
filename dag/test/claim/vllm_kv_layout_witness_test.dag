@@ -8,6 +8,7 @@ import std.measure {
   ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   AttentionLayerCount, attention_layer_count,
+  ByteSize, byte_size,
 }
 import extdeps.vllm.server { vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
@@ -27,6 +28,7 @@ import extdeps.vllm.kv_layout {
   AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
   AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage,
   group_blocks_for,
+  AdmissionByteCost, AdmissionByteCostBytes, AdmissionByteCostUnestablished, cold_admission_bytes,
 }
 
 // The group A head's own two startup lines, 2026-09-05T20:43:56Z. A refused admission is a red
@@ -236,12 +238,14 @@ test fn a_concurrency_reading_from_another_revision_is_refused() -> Bool {
   }
 }
 
+data w_page_bytes: ByteSize = byte_size(count: 65536)
+
 fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block), page_size_bytes: w_page_bytes }
 }
 
 fn w_window(layers: Nat, block: Nat, window: Int) -> KvGroupLayout {
-  KvGroupLayout { kind: SlidingWindowAttention { window: token_count(count: window) }, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
+  KvGroupLayout { kind: SlidingWindowAttention { window: token_count(count: window) }, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block), page_size_bytes: w_page_bytes }
 }
 
 // THE DISCRIMINATING ROW FOR THE WHOLE MODULE: two layouts with the SAME allocator inventory and the
@@ -328,4 +332,70 @@ test fn a_zero_layer_group_refuses_rather_than_looking_free() -> Bool {
     AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "zero layer count")
     AdmissionCostBlocks { blocks: _ } => false
   }
+}
+
+// ── THE BYTE-LEVEL TWIN: page_size_bytes RETURNS WITH ITS CONSUMER ──────────────────────────────
+//
+// cold_admission_bytes is the byte projection the unified-memory admission prices against, and it
+// carries the block fold's own walls: a group is its block cost times ITS OWN page size, the
+// windowed group caps at its window, the mamba group is one state per sequence regardless of
+// length, and the refusal arms are the same arms the block fold refuses -- an unobserved group
+// population, an empty budget, a budget past the cap, a zero block size. page_size_bytes was
+// removed while nothing read it; it returns here WITH this fold, which is the only shape a
+// restored field should return in.
+test fn a_groups_byte_cost_is_its_block_cost_times_its_page() -> Bool {
+  match cold_admission_bytes(layout: w_layout(groups: [w_full(layers: 40, block: 16)]), sequence_budget: token_count(count: 500000)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 81920000000
+    AdmissionByteCostUnestablished { cause: _ } => false
+  }
+}
+
+test fn a_windowed_groups_bytes_cap_at_its_window() -> Bool {
+  (match cold_admission_bytes(layout: w_layout(groups: [w_window(layers: 4, block: 16, window: 128)]), sequence_budget: token_count(count: 500000)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 2097152
+    AdmissionByteCostUnestablished { cause: _ } => false
+  })
+    && (match cold_admission_bytes(layout: w_layout(groups: [w_full(layers: 4, block: 16)]), sequence_budget: token_count(count: 500000)) {
+      AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 8192000000
+      AdmissionByteCostUnestablished { cause: _ } => false
+    })
+}
+
+test fn a_mamba_groups_bytes_are_one_state_per_sequence_at_any_length() -> Bool {
+  let mamba = KvGroupLayout { kind: MambaState, layer_count: attention_layer_count(count: 3), block_size: token_count(count: 16), page_size_bytes: w_page_bytes }
+  (match cold_admission_bytes(layout: w_layout(groups: [mamba]), sequence_budget: token_count(count: 500000)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 196608
+    AdmissionByteCostUnestablished { cause: _ } => false
+  })
+    && (match cold_admission_bytes(layout: w_layout(groups: [mamba]), sequence_budget: token_count(count: 4096)) {
+      AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 196608
+      AdmissionByteCostUnestablished { cause: _ } => false
+    })
+}
+
+test fn a_hybrid_layout_sums_each_groups_own_page_cost() -> Bool {
+  let hybrid = [
+    w_full(layers: 2, block: 16),
+    w_window(layers: 2, block: 16, window: 128),
+    KvGroupLayout { kind: MambaState, layer_count: attention_layer_count(count: 3), block_size: token_count(count: 16), page_size_bytes: w_page_bytes },
+  ]
+  match cold_admission_bytes(layout: w_layout(groups: hybrid), sequence_budget: token_count(count: 500000)) {
+    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 4097245184
+    AdmissionByteCostUnestablished { cause: _ } => false
+  }
+}
+
+test fn the_byte_fold_refuses_where_the_block_fold_refuses() -> Bool {
+  (match cold_admission_bytes(layout: w_layout(groups: []), sequence_budget: token_count(count: 500000)) {
+    AdmissionByteCostBytes { bytes: _ } => false
+    AdmissionByteCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "unobserved")
+  })
+    && (match cold_admission_bytes(layout: w_layout(groups: [w_full(layers: 40, block: 0)]), sequence_budget: token_count(count: 500000)) {
+      AdmissionByteCostBytes { bytes: _ } => false
+      AdmissionByteCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "zero block size")
+    })
+    && (match cold_admission_bytes(layout: w_layout(groups: [w_full(layers: 40, block: 16)]), sequence_budget: token_count(count: 0)) {
+      AdmissionByteCostBytes { bytes: _ } => false
+      AdmissionByteCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "empty sequence budget")
+    })
 }

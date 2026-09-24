@@ -2,7 +2,7 @@ module gunbc.spark.serving_arm
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, BasisPoint, basis_point, basis_point_count }
+import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_checkpoint_manifest_gibibytes }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit,
@@ -594,27 +594,18 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
 
 // ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────
 //
-// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. Two independent walls,
-// both measured rather than assumed, and either alone is disqualifying -- which is exactly the state
-// the branch was in when it pinned native FP8 against the DeepSeek image.
+// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. The walls here are
+// presence, currency and registry membership -- what the image provably CANNOT load. Whether the
+// tuple FITS the memory pool is NOT decided here anymore: the aggregate weights-only heuristic
+// (pool x4 >= weights x5) that used to stand in this fold admitted the native FP8 tp4 tuple that
+// has been OOM-crash-looping since 2026-09-18, because it took no profile, no utilization and no
+// KV. Fit is now a proof obligation at the only producer of a native launch plan
+// (gunbc.spark.serving_arm_launch plan_arm_launch_for, through
+// gunbc.spark.arm_memory_fit), where it is compositional, per-rank and per-phase; this fold's
+// admitted arm means "plausible", and the planner's memory wall means "proved".
 type ServingArmVerdict
   = ServingArmAdmitted
   | ServingArmRefused { cause: NonEmptyStr }
-
-
-
-// THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
-// requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
-// minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
-// the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
-// tuned away.
-data serving_arm_headroom_numerator: Nat = 5
-data serving_arm_headroom_denominator: Nat = 4
-
-fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
-  serving_topology_aggregate_pool_gib(t: t) * serving_arm_headroom_denominator
-    >= gibibyte_count(c.weight_gib) * serving_arm_headroom_numerator
-}
 
 // A CHECKPOINT LOADS WHEN THE RUNTIME REGISTERS ITS ARCHITECTURE, WHICH IS A MEMBERSHIP QUESTION.
 // The field this replaced was `registers_glm5_next: Bool`, and the shape of that name is the whole
@@ -710,13 +701,6 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
                 " and this is not one of them); no amount of weight transfer makes this tuple start",
               ], "") as NonEmptyStr }
             }
-          } else if !serving_arm_fits(c: crow, t: topology) {
-            ServingArmRefused { cause: join([
-              "the checkpoint does not fit the topology: ", to_string(gibibyte_count(crow.weight_gib)),
-              " GiB of weights against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
-              " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
-              " rank(s), before KV and activations",
-            ], "") as NonEmptyStr }
           } else {
             ServingArmAdmitted
           }

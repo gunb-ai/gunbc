@@ -8,6 +8,7 @@ import std.measure {
   TokenCount, token_count, concurrent_request_hundredths,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   attention_layer_count,
+  ByteSize, byte_size,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
@@ -145,8 +146,10 @@ fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
   w_layout_with(blocks: 54475, groups: groups, revision: vllm_source_revision_read)
 }
 
+data w_page_bytes: ByteSize = byte_size(count: 65536)
+
 fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block), page_size_bytes: w_page_bytes }
 }
 
 // TODAY'S REAL EVIDENCE LANDS UNREADABLE, WHICH IS THE POINT. The group A head's own two startup

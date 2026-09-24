@@ -1,0 +1,103 @@
+module test.claim.spark.native_serving_realization_witness_test
+
+import std.types { Bool, String, List }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.native_serving_realization {
+  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
+  glm_native_all_unit_renders, glm_native_experiment_all_unit_renders,
+}
+
+// ── INTENT DECIDES REALIZATION: A BOUNDED EXPERIMENT CANNOT RENDER AS AN INDEFINITELY RESTARTING ──
+//
+// THE DEFECT THIS WITNESS LOCKS OUT. The unit renderer used to spell Restart=always and an
+// [Install]/WantedBy enrollment unconditionally, so a bounded experiment -- the thing that mints
+// the memory receipts the fit proof consumes -- installed as a service that would restart forever
+// on failure. That is the lifetime contract the crash-looping arm actually ran under. The split
+// below is the realization half of the intent wall: normal serving is persistent and enrolled
+// (and admissible only behind a proved fit); a bounded experiment is one-shot, start-rate-limited,
+// and not enrolled at all.
+fn unit_text(r: GlmNativeUnitRender) -> String {
+  match r {
+    GlmNativeUnitRendered { unit_name: _, text: t } => t
+    GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => ""
+  }
+}
+
+fn all_four_rendered(rs: List<GlmNativeUnitRender>) -> Bool {
+  length(rs) == 4
+    && all(rs, r => match r {
+      GlmNativeUnitRendered { unit_name: _, text: _ } => true
+      GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
+    })
+}
+
+test fn w_normal_serving_units_are_persistent_and_enrolled() -> Bool {
+  let rs = glm_native_all_unit_renders()
+  all_four_rendered(rs: rs)
+    && all(rs, r => {
+      let t = unit_text(r: r)
+      string_contains(s: t, pattern: "Restart=always")
+        && string_contains(s: t, pattern: "RestartSec=30")
+        && string_contains(s: t, pattern: "[Install]")
+        && string_contains(s: t, pattern: "WantedBy=multi-user.target")
+        && !string_contains(s: t, pattern: "StartLimitBurst")
+        && !string_contains(s: t, pattern: "BOUNDED EXPERIMENT")
+    })
+}
+
+test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool {
+  let rs = glm_native_experiment_all_unit_renders()
+  all_four_rendered(rs: rs)
+    && all(rs, r => {
+      let t = unit_text(r: r)
+      string_contains(s: t, pattern: "Restart=no")
+        && string_contains(s: t, pattern: "StartLimitIntervalSec=600")
+        && string_contains(s: t, pattern: "StartLimitBurst=1")
+        && string_contains(s: t, pattern: "BOUNDED EXPERIMENT")
+        && !string_contains(s: t, pattern: "Restart=always")
+        && !string_contains(s: t, pattern: "[Install]")
+        && !string_contains(s: t, pattern: "WantedBy")
+    })
+}
+
+// THE EXPERIMENT MEASURES THE SAME ENGINE, which is the point of rendering it from the same arm:
+// a different engine line would make the receipt the experiment mints evidence about a different
+// unit than the one the arm would serve.
+test fn w_the_experiment_runs_the_same_engine_line_as_the_service() -> Bool {
+  let normal = glm_native_all_unit_renders()
+  let experiment = glm_native_experiment_all_unit_renders()
+  all_four_rendered(rs: normal)
+    && all_four_rendered(rs: experiment)
+    && all(normal, rn => {
+      let tn = unit_text(r: rn)
+      any(experiment, re => same_engine_line(a: tn, b: unit_text(r: re)))
+    })
+}
+
+// THE UNIT TEXTS DIFFER BY THEIR LIFETIME DIRECTIVES, not by the engine line: stripping the
+// lifetime markers from both texts leaves the same bytes. Comparing whole texts would pass only
+// if the units were identical, which is the defect's shape; comparing engine lines alone would
+// ignore the lifetime contract, which is the thing under test. The discriminator is: same
+// ExecStart, different Restart/Install.
+fn same_engine_line(a: String, b: String) -> Bool {
+  let ea = engine_line_of(text: a)
+  let eb = engine_line_of(text: b)
+  ea == eb && ea != ""
+}
+
+fn engine_line_of(text: String) -> String {
+  first_matching_line(lines: split(s: text, delimiter: "\n"), prefix: "ExecStart=/usr/bin/docker run")
+}
+
+fn first_matching_line(lines: List<String>, prefix: String) -> String {
+  match first(filter(lines, l => string_contains(s: l, pattern: prefix))) {
+    Present { value: l } => l
+    Absent => ""
+  }
+}
+
+test fn w_all_native_serving_realization_claims_hold() -> Bool {
+  w_normal_serving_units_are_persistent_and_enrolled()
+    && w_bounded_experiment_units_are_one_shot_and_not_enrolled()
+    && w_the_experiment_runs_the_same_engine_line_as_the_service()
+}

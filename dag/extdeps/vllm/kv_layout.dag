@@ -7,6 +7,7 @@ import std.measure {
   ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   AttentionLayerCount, attention_layer_count_value,
+  ByteSize, byte_size, byte_size_count, measure_add,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat, nat_min }
@@ -98,14 +99,17 @@ fn kv_group_kind_wire(k: KvGroupKind) -> String {
 // only the minimum of; `sliding_window` is present exactly on the windowed kind and is what caps
 // that group's per-request cost.
 //
-// page_size_bytes IS DELIBERATELY ABSENT. It was carried here and read by nothing -- the recorded
-// field that no operation consumes, which reads as coverage of a byte-level accounting that does
-// not exist. It returns when the unified-memory admission needs bytes rather than blocks, and it
-// returns with the consumer that reads it.
+// page_size_bytes IS THE BYTE-LEVEL PROJECTION OF THIS GROUP'S BLOCK, and it is present because its
+// consumer now exists: gunbc.spark.arm_memory_fit cold-admission demand is bytes, not blocks -- the
+// unified-memory arm must charge KV residency against the same byte pool as the weights, and a
+// block count alone cannot be priced without it. It was removed when nothing read it (the recorded
+// field that no operation consumes reads as coverage of an accounting that does not exist); it
+// returns WITH the fold that reads it, cold_admission_bytes below, and with the same walls.
 type KvGroupLayout {
   kind: KvGroupKind
   layer_count: AttentionLayerCount
   block_size: TokenCount
+  page_size_bytes: ByteSize
 }
 
 // THE RESOLVED LAYOUT OF ONE ENGINE. It carries no incarnation: this is the upstream SHAPE, and
@@ -339,6 +343,67 @@ fn cold_admission_blocks(layout: ResolvedKvLayout, sequence_budget: TokenCount) 
       Present { value: n } =>
         AdmissionCostBlocks { blocks: allocator_block_count(count: n) }
     }
+  }
+}
+
+// ── THE BYTE-LEVEL COST OF ONE ADMITTED SEQUENCE, FOR THE UNIFIED-MEMORY ADMISSION ─────────────
+//
+// cold_admission_blocks answers the SCHEDULER's question -- how many allocator blocks one cold
+// sequence holds. The arm's memory fit answers a different one -- how many BYTES of the unified
+// pool that sequence keeps resident -- and the two are projections of one structure: each group
+// contributes its block cost times ITS OWN page size. A hybrid layout's groups do not in general
+// share a page size, so the byte cost is summed per group rather than derived from the global
+// block_size, exactly the ratio error the module header warns about.
+//
+// THE WALLS ARE THE BLOCK FOLD'S OWN, because a byte cost built on a broken block cost would be a
+// plausible number standing on a refused one: groups unobserved, an empty budget, a budget past
+// the context cap, and a group with a zero block size or zero layer count all refuse here exactly
+// as they refuse there. required_kv_bytes is workload x layout; no function here reads a previous
+// run's current_kv -- that figure is a readback, and the admission derives its demand from the
+// layout and the seat budgets alone.
+type AdmissionByteCost
+  = AdmissionByteCostBytes { bytes: ByteSize }
+  | AdmissionByteCostUnestablished { cause: NonEmptyStr }
+
+fn cold_admission_bytes(layout: ResolvedKvLayout, sequence_budget: TokenCount) -> AdmissionByteCost {
+  if length(layout.groups) == 0 {
+    AdmissionByteCostUnestablished {
+      cause: "the resolved cache groups are unobserved, so the per-request byte cost cannot be computed from the layout; the engine's group metadata does not currently emit layer count, page size or its calculated blocks-per-max-request" as NonEmptyStr,
+    }
+  } else if token_count_value(t: sequence_budget) == 0 {
+    AdmissionByteCostUnestablished { cause: "an empty sequence budget names no admission" as NonEmptyStr }
+  } else if token_count_value(t: sequence_budget) > token_count_value(t: layout.max_model_len) {
+    AdmissionByteCostUnestablished { cause: "the sequence budget exceeds the engine's context cap, so no admission of it is representable" as NonEmptyStr }
+  } else {
+    match fold(layout.groups, init: Present { value: byte_size(count: 0) }, f: (acc, g) =>
+      match acc {
+        Absent => none
+        Present { value: n } =>
+          match group_bytes_for(group: g, sequence: sequence_budget) {
+            Absent => none
+            Present { value: c } => Present { value: measure_add(a: n, b: c) }
+          }
+      }
+    ) {
+      Absent =>
+        AdmissionByteCostUnestablished {
+          cause: "a cache group with a zero block size or zero layer count is not a group, so the per-request byte cost cannot be computed" as NonEmptyStr,
+        }
+      Present { value: n } =>
+        AdmissionByteCostBytes { bytes: n }
+    }
+  }
+}
+
+// PER-GROUP BYTE COST, the block fold times the group's own page size. The windowed kind caps at
+// its window and the mamba group is one state per sequence, for the same reason the block fold
+// says above: halving the sequence does not halve a capped or fixed cost, and a byte-level scaling
+// of the full-context figure would understate what a shorter request holds.
+fn group_bytes_for(group: KvGroupLayout, sequence: TokenCount) -> ByteSize? {
+  match group_blocks_for(group: group, sequence: sequence) {
+    Absent => none
+    Present { value: blocks } =>
+      Present { value: byte_size(count: blocks * byte_size_count(b: group.page_size_bytes)) }
   }
 }
 

@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count }
+import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count, ByteSize, byte_size }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
@@ -60,8 +60,10 @@ fn w_pool(tokens: Int) -> VllmObservedKvPool? {
   }
 }
 
+data w_page_bytes: ByteSize = byte_size(count: 65536)
+
 fn w_full(layers: Nat) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: 16) }
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: 16), page_size_bytes: w_page_bytes }
 }
 
 fn w_layout(blocks: Nat, groups: List<KvGroupLayout>) -> ResolvedKvLayout {
