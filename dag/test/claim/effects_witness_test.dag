@@ -284,7 +284,6 @@ test fn effects_derivation_witnesses() -> Bool {
           DerivedEffect { effect: effect } => true
           MalformedPathInput => false
           MethodHasNoOperationEffect => false
-        MethodHasNoOperationEffect => false
         }
       MalformedPathTemplate => false
     }
