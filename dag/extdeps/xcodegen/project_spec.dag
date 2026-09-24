@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.apple.property_list { PlistEntry, PlistValue, PlistString, PlistBoolean, PlistArray, PlistDictionary }
+import extdeps.apple.xcode { XcodeRelease, xcode_release_text }
 import extdeps.apple.build_settings { BuildSetting, build_setting_name_token }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, kv, yaml_string, yaml_bool, yaml_mapping, yaml_sequence }
 
@@ -63,10 +64,7 @@ fn xcodegen_product_type_token(t: XcodeGenProductType) -> String {
   }
 }
 
-// A dotted `major.minor` version, the spelling Options.deploymentTarget and Options.xcodeVersion
-// accept. XcodeGen turns an xcodeVersion into the project's LastUpgradeCheck (major padded to two
-// digits, then minor and patch: 26.0 -> 2600), which is what Xcode compares against its own version
-// to decide whether to offer "Update to recommended settings".
+// A dotted `major.minor` version, the spelling Options.deploymentTarget accepts.
 type DottedVersion {
   major: Int
   minor: Int
@@ -74,6 +72,16 @@ type DottedVersion {
 
 fn dotted_version_text(v: DottedVersion) -> String {
   join([to_string(v.major), ".", to_string(v.minor)], "")
+}
+
+// Options.xcodeVersion is an Xcode release, written `major.minor`. XcodeGen stamps it as the
+// project's LastUpgradeCheck (and each scheme's LastUpgradeVersion) through XCodeVersion.parse
+// (Sources/XcodeGenKit/Version.swift at 2.46.0): the major padded to two digits, then the minor,
+// then the patch or "0" -- so 26.0 -> 2600 and 26.6 -> 2660. This is that function, for the releases
+// this model writes (no patch).
+fn xcodegen_last_upgrade_check(r: XcodeRelease) -> String {
+  let major = to_string(r.major)
+  join([if major.length() == 1 { concat("0", major) } else { major }, to_string(r.minor), "0"], "")
 }
 
 type PlatformDeploymentTarget {
@@ -84,7 +92,7 @@ type PlatformDeploymentTarget {
 type ProjectOptions {
   bundle_id_prefix: String
   deployment_targets: List<PlatformDeploymentTarget>
-  xcode_version: DottedVersion
+  xcode_version: XcodeRelease
   create_intermediate_groups: Bool
 }
 
@@ -155,7 +163,7 @@ fn options_yaml(o: ProjectOptions) -> YamlValue {
   yaml_mapping(entries: [
     kv(key: "bundleIdPrefix", value: yaml_string(s: o.bundle_id_prefix)),
     kv(key: "deploymentTarget", value: yaml_mapping(entries: map(o.deployment_targets, d => kv(key: xcodegen_platform_token(p: d.platform), value: yaml_string(s: dotted_version_text(v: d.version)))))),
-    kv(key: "xcodeVersion", value: yaml_string(s: dotted_version_text(v: o.xcode_version))),
+    kv(key: "xcodeVersion", value: yaml_string(s: xcode_release_text(r: o.xcode_version))),
     kv(key: "createIntermediateGroups", value: yaml_bool(b: o.create_intermediate_groups))
   ])
 }

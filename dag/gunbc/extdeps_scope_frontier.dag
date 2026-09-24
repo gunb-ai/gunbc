@@ -216,6 +216,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/apple/property_list.dag",
   "dag/extdeps/apple/info_plist.dag",
   "dag/extdeps/apple/build_settings.dag",
+  "dag/extdeps/apple/xcode.dag",
   "dag/extdeps/xcodegen/project_spec.dag",
   "dag/extdeps/iproute2/ip_address.dag",
   "dag/extdeps/iputils/arping.dag",

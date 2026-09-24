@@ -81,6 +81,7 @@ type InfoPlistKey
   | NSFaceIDUsageDescriptionKey
   | CFBundleDisplayNameKey
   | UIBackgroundModesKey
+  | UISupportedInterfaceOrientationsKey
   | AppDefinedKey { name: String }
 
 fn info_plist_key_token(k: InfoPlistKey) -> String {
@@ -89,6 +90,7 @@ fn info_plist_key_token(k: InfoPlistKey) -> String {
     NSFaceIDUsageDescriptionKey => "NSFaceIDUsageDescription"
     CFBundleDisplayNameKey => "CFBundleDisplayName"
     UIBackgroundModesKey => "UIBackgroundModes"
+    UISupportedInterfaceOrientationsKey => "UISupportedInterfaceOrientations"
     AppDefinedKey { name: n } => n
   }
 }
@@ -103,6 +105,7 @@ fn info_plist_key_reference(k: InfoPlistKey) -> Uri {
     NSFaceIDUsageDescriptionKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/nsfaceidusagedescription")
     CFBundleDisplayNameKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/cfbundledisplayname")
     UIBackgroundModesKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uibackgroundmodes")
+    UISupportedInterfaceOrientationsKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uisupportedinterfaceorientations")
     AppDefinedKey { name: _ } => extdeps_external_authority_anchor.uri
   }
 }
@@ -127,4 +130,28 @@ fn display_name_entry(name: String) -> PlistEntry {
 
 fn background_modes_entry(modes: List<BackgroundMode>) -> PlistEntry {
   info_entry(k: UIBackgroundModesKey, value: PlistArray { elements: map(modes, m => PlistString { value: background_mode_token(m: m) }) })
+}
+
+// UISupportedInterfaceOrientations values (UIInterfaceOrientation). An iPhone app that supports
+// every screen size (UILaunchScreen) and declares no orientations is warned by Xcode that "All
+// interface orientations must be supported" unless it requires full screen.
+type InterfaceOrientation
+  = PortraitOrientation
+  | PortraitUpsideDownOrientation
+  | LandscapeLeftOrientation
+  | LandscapeRightOrientation
+
+fn interface_orientation_token(o: InterfaceOrientation) -> String {
+  match o {
+    PortraitOrientation => "UIInterfaceOrientationPortrait"
+    PortraitUpsideDownOrientation => "UIInterfaceOrientationPortraitUpsideDown"
+    LandscapeLeftOrientation => "UIInterfaceOrientationLandscapeLeft"
+    LandscapeRightOrientation => "UIInterfaceOrientationLandscapeRight"
+  }
+}
+
+data all_interface_orientations: List<InterfaceOrientation> = [PortraitOrientation, PortraitUpsideDownOrientation, LandscapeLeftOrientation, LandscapeRightOrientation]
+
+fn supported_orientations_entry(orientations: List<InterfaceOrientation>) -> PlistEntry {
+  info_entry(k: UISupportedInterfaceOrientationsKey, value: PlistArray { elements: map(orientations, o => PlistString { value: interface_orientation_token(o: o) }) })
 }

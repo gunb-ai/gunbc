@@ -32,8 +32,18 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // settings" check offers to turn on for a project last upgraded before them; setting them explicitly
 // is what satisfies the check.
 //
+// SWIFT_TREAT_WARNINGS_AS_ERRORS ("Treat Warnings as Errors", Swift compiler) and
+// GCC_TREAT_WARNINGS_AS_ERRORS ("Treat Warnings as Errors", Apple Clang): a warning fails the build.
+// SWIFT_STRICT_CONCURRENCY ("Strict Concurrency Checking"): `complete` checks Sendable and actor
+// isolation everywhere -- the checking the Swift 6 language mode enforces -- as diagnostics in the
+// Swift 5 mode.
+//
+// GENERATE_INFOPLIST_FILE ("Generate Info.plist File"): Xcode synthesizes the target's Info.plist
+// (and only then reads INFOPLIST_KEY_*); a target with neither it nor an INFOPLIST_FILE has no
+// Info.plist and does not build.
+//
 // NO INFOPLIST_KEY_* ARM EXISTS, deliberately: the INFOPLIST_KEY_*
-// settings are read only when Xcode generates the Info.plist, so a project that supplies its own
+// settings are read only when Xcode generates the Info.plist, so a target that supplies its own
 // Info.plist (INFOPLIST_FILE, as XcodeGen does for a target with `info`) must carry those keys in
 // the file instead (extdeps.apple.info_plist); a setting it would ignore is not modeled.
 type BuildSettingName
@@ -44,6 +54,9 @@ type BuildSettingName
   | AssetCatalogCompilerAppIconName
   | EnableUserScriptSandboxing
   | StringCatalogGenerateSymbols
+  | SwiftTreatWarningsAsErrors
+  | GccTreatWarningsAsErrors
+  | GenerateInfoPlistFile
 
 fn build_setting_name_token(n: BuildSettingName) -> String {
   match n {
@@ -54,6 +67,9 @@ fn build_setting_name_token(n: BuildSettingName) -> String {
     AssetCatalogCompilerAppIconName => "ASSETCATALOG_COMPILER_APPICON_NAME"
     EnableUserScriptSandboxing => "ENABLE_USER_SCRIPT_SANDBOXING"
     StringCatalogGenerateSymbols => "STRING_CATALOG_GENERATE_SYMBOLS"
+    SwiftTreatWarningsAsErrors => "SWIFT_TREAT_WARNINGS_AS_ERRORS"
+    GccTreatWarningsAsErrors => "GCC_TREAT_WARNINGS_AS_ERRORS"
+    GenerateInfoPlistFile => "GENERATE_INFOPLIST_FILE"
   }
 }
 

@@ -1,6 +1,9 @@
 module gunbc.approve_ios_app
 
+import std.types { NonEmptyStr, Timestamp, Int, List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.optional { Optional, Present, Absent }
+import extdeps.apple.xcode { XcodeRelease }
 
 // THE iOS APPROVAL APP IS SEED-RETAINED HAND-AUTHORED SWIFT (operator ruling: apps/approve-ios/ in
 // this repository, SwiftUI, iOS 17+). It is a realization of gunbc.auth.approval_device_wire (the
@@ -31,4 +34,69 @@ data approve_ios_vector_check_unenrolled_frontier: DissolutionCondition = unboun
 
 data approve_ios_hand_authored_swift_frontier: DissolutionCondition = unbound_dissolution(
   description: "apps/approve-ios is hand-authored Swift realizing gunbc.auth.approval_device_wire because extdeps.languages.swift has a subject citation and no emit transforms. DISSOLVES WHEN the Swift target gains emit transforms SUFFICIENT FOR emitting the app's protocol layer (the two byte builders, the wire records and the enclave/App Attest bindings) from the .dag authority, so that the Swift under apps/approve-ios/Approve is a generated artifact drift-gated like every other and the XCTest vector check becomes redundant with the emitter's own equivalence evidence",
+)
+
+// WHAT IS DERIVED AND WHAT IS HAND-AUTHORED, at file grain (operator ruling 2026-09-24: model it durably):
+//   DERIVED, drift-gated: apps/approve-ios/project.yml (gunbc.approve_ios_project, which also fixes
+//     every Info.plist key and build setting -- XcodeGen writes Approve/Info.plist from it, so the
+//     plist is derived one step further, on the Mac), and
+//     dag/test/fixture/approval_device_redemption/vectors.json (gunbc.auth.approval_device_redemption_fixtures).
+//   HAND-AUTHORED REALIZATION: every .swift file under apps/approve-ios/Approve and ApproveTests,
+//     and the operator-local Config/Team.xcconfig. The Swift is named by
+//     approve_ios_hand_authored_swift_frontier above; the xcconfig is operator identity, not a model fact.
+//
+// THE iOS BUILD'S STANDING. The derived settings make warnings errors (SWIFT_TREAT_WARNINGS_AS_ERRORS,
+// GCC_TREAT_WARNINGS_AS_ERRORS, SWIFT_STRICT_CONCURRENCY complete), so a build that EXECUTES cannot
+// pass with a warning reintroduced. But nothing on the merge path executes it: the runners are Linux.
+// So the build is evidenced only by operator-run receipts, carried below as OBSERVATIONS with
+// provenance -- a row is the output of one run (the xcresult bundle it came from, the commit it
+// built), never a figure retyped from a chat. A receipt is evidence for the commit it names and no
+// other; it does not green a later change.
+
+type IosTestOutcome
+  = IosTestsPassed { passed: Int }
+  | IosTestsFailed { failed: Int, total: Int }
+  | IosTestsNotRun
+
+type IosDeviceInstallOutcome
+  = InstalledOnDevice { device_model: NonEmptyStr }
+  | DeviceInstallFailed { reason: NonEmptyStr }
+  | DeviceInstallNotAttempted
+
+type IosBuildObservationProvenance {
+  observer: NonEmptyStr
+  built_commit: NonEmptyStr
+  result_bundle_sha256: NonEmptyStr
+}
+
+type ApproveIosBuildReceipt {
+  xcode: XcodeRelease
+  xcode_build_number: NonEmptyStr
+  sdk: NonEmptyStr
+  configuration: NonEmptyStr
+  warnings: Int
+  tests: IosTestOutcome
+  device_install: IosDeviceInstallOutcome
+  observed_at: Timestamp
+  provenance: IosBuildObservationProvenance
+}
+
+// EMPTY UNTIL THE FIRST RECEIPT IS OBSERVED. The Mac verification of 2026-09-24 (0 warnings,
+// ApproveTests 18/18 on a simulator) reached this lane as a relayed sentence, without its result
+// bundle, SDK, build number or commit -- so it is not entered: a row without its provenance would be
+// exactly the transcription this carrier exists to refuse.
+data approve_ios_build_receipts: List<ApproveIosBuildReceipt> = []
+
+type ApproveIosBuildStanding
+  = NotExecutedByAnyRequiredLane { latest_receipt: Optional<ApproveIosBuildReceipt>, trigger: DissolutionCondition }
+
+fn approve_ios_build_standing() -> ApproveIosBuildStanding {
+  NotExecutedByAnyRequiredLane {
+    latest_receipt: fold(approve_ios_build_receipts, init: Absent, f: (acc, r) => Present { value: r }),
+    trigger: approve_ios_build_unexecuted_frontier,
+  }
+}
+
+data approve_ios_build_unexecuted_frontier: DissolutionCondition = unbound_dissolution(
+  description: "the iOS build is not executed by any required lane: apps/approve-ios builds only on an operator's Mac, so a Swift or project change can land without ever compiling, and approve_ios_build_receipts evidences only the commits it names. DISSOLVES WHEN a macOS runner executes the derived project build (xcodegen generate over gunbc.approve_ios_project, then xcodebuild build and test with the derived warnings-as-errors settings) on the required gate, SUFFICIENT FOR a warning, a compile error or a failing ApproveTests case to red the merge path; this also discharges arm (a) of approve_ios_vector_check_unenrolled_frontier",
 )

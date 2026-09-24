@@ -4,13 +4,15 @@ import std.types { String, List }
 import extdeps.apple.property_list { PlistEntry, plist_entry, plist_string }
 import extdeps.apple.info_plist {
   LaunchScreen, system_default_launch_screen, BackgroundMode, RemoteNotificationMode,
-  launch_screen_entry, face_id_usage_entry, display_name_entry, background_modes_entry
+  launch_screen_entry, face_id_usage_entry, display_name_entry, background_modes_entry,
+  InterfaceOrientation, all_interface_orientations, supported_orientations_entry
 }
 import extdeps.apple.build_settings {
   BuildSetting, build_setting_bool,
   SwiftVersion, SwiftStrictConcurrency, CodeSignStyle, ProductBundleIdentifier, AssetCatalogCompilerAppIconName,
-  EnableUserScriptSandboxing, StringCatalogGenerateSymbols
+  EnableUserScriptSandboxing, StringCatalogGenerateSymbols, SwiftTreatWarningsAsErrors, GccTreatWarningsAsErrors, GenerateInfoPlistFile
 }
+import extdeps.apple.xcode { xcode_26_6 }
 import extdeps.xcodegen.project_spec {
   ProjectSpec, ProjectOptions, ConfigFile, XcodeGenTarget, XcodeGenPlist, PlatformDeploymentTarget, DottedVersion,
   IosPlatform, ApplicationProduct, UnitTestBundleProduct, SourcePath, ResourcePath, NoPlist, WritesPlist, project_spec_yaml
@@ -33,6 +35,8 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 //   face_id_purpose    NSFaceIDUsageDescription -- without it the first Face ID prompt (the enclave
 //                      key's access control, extdeps.apple.secure_enclave) terminates the app.
 //   display_name       CFBundleDisplayName -- the home-screen name.
+//   orientations       UISupportedInterfaceOrientations -- without it Xcode warns "All interface
+//                      orientations must be supported", which warnings-as-errors makes fatal.
 //   background_modes   UIBackgroundModes -- remote-notification, so an approval push wakes the app.
 //   server_host        ApproveServerHost -- read by ServerConfig at launch.
 //   apns_environment   ApproveApnsEnvironment -- read by ServerConfig at launch.
@@ -41,6 +45,7 @@ type ApproveAppInfo {
   launch_screen: LaunchScreen
   face_id_purpose: String
   display_name: String
+  orientations: List<InterfaceOrientation>
   background_modes: List<BackgroundMode>
   server_host: String
   apns_environment: String
@@ -50,6 +55,7 @@ data approve_app_info: ApproveAppInfo = ApproveAppInfo {
   launch_screen: system_default_launch_screen,
   face_id_purpose: "Approving a request signs it with a key that only unlocks with Face ID.",
   display_name: "Approve",
+  orientations: all_interface_orientations,
   background_modes: [RemoteNotificationMode],
   server_host: "$(APPROVE_SERVER_HOST)",
   apns_environment: "$(APNS_ENVIRONMENT)",
@@ -60,6 +66,7 @@ fn approve_info_properties(i: ApproveAppInfo) -> List<PlistEntry> {
     launch_screen_entry(s: i.launch_screen),
     face_id_usage_entry(purpose: i.face_id_purpose),
     display_name_entry(name: i.display_name),
+    supported_orientations_entry(orientations: i.orientations),
     background_modes_entry(modes: i.background_modes),
     plist_entry(key: "ApproveServerHost", value: plist_string(s: i.server_host)),
     plist_entry(key: "ApproveApnsEnvironment", value: plist_string(s: i.apns_environment))
@@ -74,27 +81,33 @@ data approve_entitlements: List<PlistEntry> = [
   plist_entry(key: "com.apple.developer.devicecheck.appattest-environment", value: plist_string(s: "$(APP_ATTEST_ENVIRONMENT)"))
 ]
 
-// XCODE VERSION 26.0: the operator builds with Xcode 26 (26.6 on 2026-09-24). XcodeGen stamps this
-// as LastUpgradeCheck 2600, so Xcode 26 finds nothing newer to offer; with 16.0 it offered "Update
-// to recommended settings" on every regeneration. The two settings that check proposes are set
-// explicitly at the project level below, so the prompt has nothing left to ask for.
+// XCODE RELEASE: the one the operator builds with (extdeps.apple.xcode xcode_26_6), so XcodeGen
+// stamps LastUpgradeCheck 2660 and Xcode 26.6 finds nothing newer to offer. Stamped 16.0, then
+// 26.0 (2600), Xcode offered "Update to recommended settings" on every regeneration. The settings
+// that check proposes are set explicitly at the project level below.
 // DEPLOYMENT TARGET iOS 17.0: kept, the operator's ruling for this app (gunbc.approve_ios_app:
 // SwiftUI, iOS 17+). Raising the toolchain does not raise it; nothing in the app needs a newer OS.
 data approve_project_options: ProjectOptions = ProjectOptions {
   bundle_id_prefix: "ai.gunb",
   deployment_targets: [PlatformDeploymentTarget { platform: IosPlatform, version: DottedVersion { major: 17, minor: 0 } }],
-  xcode_version: DottedVersion { major: 26, minor: 0 },
+  xcode_version: xcode_26_6,
   create_intermediate_groups: true,
 }
 
 // DEVELOPMENT_TEAM, APPROVE_SERVER_HOST, APNS_ENVIRONMENT and APP_ATTEST_ENVIRONMENT come from
 // Config/Team.xcconfig (operator-local, not generated).
+// LANGUAGE MODE: Swift 5 (SWIFT_VERSION 5.10) with SWIFT_STRICT_CONCURRENCY complete, i.e. the Swift 6
+// mode's data-race checking reported as diagnostics; with warnings as errors (operator ruling,
+// 2026-09-24: -D warnings) each of those diagnostics fails the build, which is the Swift 6 bar
+// without the mode switch.
 data approve_project_settings: List<BuildSetting> = [
   BuildSetting { name: SwiftVersion, value: "5.10" },
   BuildSetting { name: SwiftStrictConcurrency, value: "complete" },
   BuildSetting { name: CodeSignStyle, value: "Automatic" },
   build_setting_bool(name: EnableUserScriptSandboxing, on: true),
-  build_setting_bool(name: StringCatalogGenerateSymbols, on: true)
+  build_setting_bool(name: StringCatalogGenerateSymbols, on: true),
+  build_setting_bool(name: SwiftTreatWarningsAsErrors, on: true),
+  build_setting_bool(name: GccTreatWarningsAsErrors, on: true)
 ]
 
 data approve_app_target: XcodeGenTarget = XcodeGenTarget {
@@ -118,7 +131,8 @@ data approve_tests_target: XcodeGenTarget = XcodeGenTarget {
   product_type: UnitTestBundleProduct,
   platform: IosPlatform,
   sources: [SourcePath { path: "ApproveTests" }, ResourcePath { path: "../../dag/test/fixture/approval_device_redemption/vectors.json" }],
-  settings: [],
+  // A test bundle needs an Info.plist and declares no key of its own, so Xcode synthesizes it.
+  settings: [build_setting_bool(name: GenerateInfoPlistFile, on: true)],
   info: NoPlist,
   entitlements: NoPlist,
   dependencies: ["Approve"],
