@@ -34,6 +34,12 @@ import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.heal_workflow { job_permissions_carry_write }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import v2.std.orchestration {
+  Pipeline, PipelineStep, Do, Comment, Exit, If, Run, FailFast,
+  ExitZero, Not, DiscardOut, ToFile
+}
+import v2.std.optional { optional_present, optional_absent }
+import v2.workflow.ci_workflow_run_emit { ci_workflow_run_emit_pipeline, ci_workflow_do }
 
 // THE NIGHTLY NATIVE FRONTIER RUN (operator-approved 2026-09-23 as one additional job, on a nightly
 // cadence only). It runs `//gunbc/instruments:v2-native-frontier` once a night on the srv
@@ -130,18 +136,39 @@ data native_frontier_preflight_shell_emit_dissolution_trigger: DissolutionCondit
 
 data native_frontier_publish_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: native_frontier_publish_step -- orch-emitted foreign-executor step copying the [native-frontier] and [native-frontier-roster] lines the emitted binary already rendered (gunbc.native_frontier_ratchet native_frontier_report_lines, native_frontier_proposal_file_lines) into the job summary and the proposal file; the sed/echo/redirect strings remain until the emitted driver writes those two files itself, which is the capability gunbc.source_root_eval_driver_seed_growth names for its whole rendered main (a .dag driver receiving host effects as values, v2.cli.compile_cli NativeCliDriver). Adding the writes to the rendered main now instead would grow hand-written seed Rust to retire hand-written shell, which the 2026-09-23 seed policy refuses")
 
+// THE PREFLIGHT AS A PIPELINE, NOT AS SHELL TEXT (review 70721). The branch, the refusal and the
+// exit are v2.std.orchestration structure, rendered by the same bash emitter as the prelude steps.
+// Only the leaf commands are strings, which is the same level the prelude sits at.
+fn native_frontier_preflight_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      Comment { text: dissolution_description(condition: native_frontier_preflight_shell_emit_dissolution_trigger) },
+      If {
+        cond: Not { inner: ExitZero { run: Run {
+          command: shell_command_render(command: systemctl_user_manager_probe_command()),
+          env: [],
+          redirect: optional_present(value: DiscardOut),
+          capture: optional_absent()
+        } } },
+        then_: Pipeline {
+          steps: [
+            ci_workflow_do(command: "echo \"::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict.\""),
+            Exit { status: "1" }
+          ],
+          on_failure: FailFast
+        },
+        else_: optional_absent()
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
 fn native_frontier_preflight_step() -> Step {
   RunStep {
     name: Present { value: "Assert the runner user's systemd manager is reachable (the memory bound needs it)" },
     id: none,
-    run: join([
-      concat("# ", dissolution_description(condition: native_frontier_preflight_shell_emit_dissolution_trigger)),
-      join(["if ! ", shell_command_render(command: systemctl_user_manager_probe_command()), " > /dev/null; then"], ""),
-      "  echo \"::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict.\"",
-      "  exit 1",
-      "fi",
-      ""
-    ], "\n"),
+    run: ci_workflow_run_emit_pipeline(p: native_frontier_preflight_pipeline()),
     shell: none,
     env: none,
     working_directory: none,
@@ -190,20 +217,49 @@ fn native_frontier_run_step() -> Step {
 // THE READ-BACK IS A PREFIX STRIP AND NOTHING ELSE. Every line it copies was rendered by
 // gunbc.native_frontier_ratchet (`native_frontier_report_lines`, `native_frontier_proposal_file_lines`),
 // so this step decides no fact. It runs whatever the verdict was, because a lost or unminted run
-// is exactly the run whose lines a reader needs.
+// is exactly the run whose lines a reader needs. The proposal file is a typed redirect (ToFile).
+// The summary appends stay inside leaf commands, as the prelude's `>> "$GITHUB_ENV"` rows do,
+// because v2.std.orchestration RedirectSpec has no append arm.
+fn native_frontier_prefix_strip_command(prefix: String) -> String {
+  join(["sed -n 's/^\\[", prefix, "\\] //p' ", floor_attempt_command_log_filename], "")
+}
+
+fn native_frontier_summary_append_command(command: String) -> String {
+  join([command, " >> \"$GITHUB_STEP_SUMMARY\""], "")
+}
+
+fn native_frontier_publish_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      Comment { text: dissolution_description(condition: native_frontier_publish_shell_emit_dissolution_trigger) },
+      Do { run: Run {
+        command: native_frontier_prefix_strip_command(prefix: "native-frontier-roster"),
+        env: [],
+        redirect: optional_present(value: ToFile { path: native_frontier_proposal_path }),
+        capture: optional_absent()
+      } },
+      ci_workflow_do(command: native_frontier_summary_append_command(command: "echo '## native frontier'")),
+      ci_workflow_do(command: native_frontier_summary_append_command(command: "echo '```'")),
+      ci_workflow_do(command: native_frontier_summary_append_command(command: native_frontier_prefix_strip_command(prefix: "native-frontier"))),
+      ci_workflow_do(command: native_frontier_summary_append_command(command: "echo '```'")),
+      If {
+        cond: ExitZero { run: Run { command: join(["test -s ", native_frontier_proposal_path], ""), env: [], redirect: optional_absent(), capture: optional_absent() } },
+        then_: Pipeline {
+          steps: [ci_workflow_do(command: native_frontier_summary_append_command(command: join(["echo 'A proposed roster is attached as the ", native_frontier_proposal_artifact_name, " artifact. It is NOT applied: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it.'"], "")))],
+          on_failure: FailFast
+        },
+        else_: optional_absent()
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
 fn native_frontier_publish_step() -> Step {
   RunStep {
     name: Present { value: "Publish the frontier lines and the proposed roster" },
     id: none,
-    run: join([
-      concat("# ", dissolution_description(condition: native_frontier_publish_shell_emit_dissolution_trigger)),
-      join(["sed -n 's/^\\[native-frontier-roster\\] //p' ", floor_attempt_command_log_filename, " > ", native_frontier_proposal_path], ""),
-      "{ echo '## native frontier'; echo; echo '```';",
-      join(["  sed -n 's/^\\[native-frontier\\] //p' ", floor_attempt_command_log_filename, ";"], ""),
-      "  echo '```'; } >> \"$GITHUB_STEP_SUMMARY\"",
-      join(["if [ -s ", native_frontier_proposal_path, " ]; then echo 'A proposed roster is attached as the ", native_frontier_proposal_artifact_name, " artifact. It is NOT applied: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it.' >> \"$GITHUB_STEP_SUMMARY\"; fi"], ""),
-      ""
-    ], "\n"),
+    run: ci_workflow_run_emit_pipeline(p: native_frontier_publish_pipeline()),
     shell: none,
     env: none,
     working_directory: none,
