@@ -1,0 +1,63 @@
+module test.claim.native_claim_program_standing_witness
+
+import std.types { Int, String, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_claim_program { native_claim_program_standing }
+
+// gunbc.native_claim_program native_claim_program_standing, at ITS interface: reports are SUPPLIED
+// here, because the claim is what the reader decides for a report of each shape, not whether some
+// program produces one (DESIGN section 3, a witness discriminates at one interface). THE REAL PATH
+// IS RUN ELSEWHERE, as the pairing obligation requires: `gunbc test
+// //gunbc/instruments:native-crypto-vectors` emits, builds and runs the NativeClaimDriver program
+// and hands its actual stdout and status to this same fold.
+//
+// Each arm below is a way a run can go wrong that must NOT read as a pass: a missing row, a
+// duplicated row, a row the roster never named, a status the rows contradict, a signal, and a report
+// with no roster at all. The two positive arms (held, not held) are what makes the refusals
+// evidence: a reader that refused everything would fail them.
+
+fn code_of(e: ProcessExit) -> Int {
+  match e {
+    ExitSuccess => 0
+    ExitFailure { code: c, reason: _ } => c
+  }
+}
+
+data two_held: String = "roster a,b\ncase a held observed=x\ncase b held observed=y\n"
+data one_not_held: String = "roster a,b\ncase a held observed=x\ncase b not_held observed=y\n"
+
+test fn every_row_held_with_status_zero_is_held() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: two_held, status: 0)) == 0
+}
+
+test fn a_not_held_row_with_status_one_is_an_observation_that_did_not_hold() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: one_not_held, status: 1)) == 1
+}
+
+test fn a_roster_case_with_no_row_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a,b\ncase a held observed=x\n", status: 0)) == 2
+}
+
+test fn a_case_reported_twice_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a,b\ncase a held observed=x\ncase a held observed=x\ncase b held observed=y\n", status: 0)) == 2
+}
+
+test fn a_row_the_roster_never_named_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a\ncase a held observed=x\ncase z held observed=q\n", status: 0)) == 2
+}
+
+test fn status_zero_beside_a_not_held_row_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: one_not_held, status: 0)) == 2
+}
+
+test fn status_one_with_every_row_held_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: two_held, status: 1)) == 2
+}
+
+test fn a_signal_is_no_observation_even_with_every_row_held() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: two_held, status: -1)) == 2
+}
+
+test fn a_report_with_no_roster_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "case a held observed=x\n", status: 0)) == 2
+}

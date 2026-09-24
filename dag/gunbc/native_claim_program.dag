@@ -59,15 +59,27 @@ fn native_claim_roster(lines: List<String>) -> List<String>? {
 // A row is `case <id> <verdict> ...`; any other line after the roster is not a row, and a line
 // that starts like a row but does not carry a readable verdict is refused by leaving it out of the
 // join, which then fails on the missing identity.
+fn native_claim_row_of(identity: String, verdict: String) -> NativeClaimRow? {
+  if verdict == "held" { row_of(r: NativeClaimRow { identity: identity, held: true }) }
+  else if verdict == "not_held" { row_of(r: NativeClaimRow { identity: identity, held: false }) }
+  else { no_row() }
+}
+
 fn native_claim_row(line: String) -> NativeClaimRow? {
-  let parts = split(s: line, delimiter: " ")
-  if (parts |> count) >= 3 && starts_with(s: line, prefix: "case ") {
-    let verdict = parts |> drop(n: 2) |> take(n: 1) |> join(separator: "")
-    let identity = parts |> drop(n: 1) |> take(n: 1) |> join(separator: "")
-    if verdict == "held" { row_of(r: NativeClaimRow { identity: identity, held: true }) }
-    else if verdict == "not_held" { row_of(r: NativeClaimRow { identity: identity, held: false }) }
-    else { no_row() }
-  } else { no_row() }
+  match split(s: line, delimiter: " ") {
+    Cons { head: tag, tail: rest } =>
+      if tag == "case" {
+        match rest {
+          Cons { head: identity, tail: after } =>
+            match after {
+              Cons { head: verdict, tail: _ } => native_claim_row_of(identity: identity, verdict: verdict)
+              Empty => no_row()
+            }
+          Empty => no_row()
+        }
+      } else { no_row() }
+    Empty => no_row()
+  }
 }
 
 fn native_claim_rows(lines: List<String>) -> List<NativeClaimRow> {
