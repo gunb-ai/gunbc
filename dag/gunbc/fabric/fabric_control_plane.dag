@@ -462,7 +462,8 @@ fn broker_reserve_for_demand(
       NoCellAdmissible { considered: c, refused: partition.refused }
     EqualCostTieUnresolved { digest: d, cause: _, considered: c } =>
       CellSelectionTieUnresolved { digest: d, considered: c }
-    OfferSelected { candidate: winner, cost: k, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+    OfferSelected { candidate: selected, cost: k, basis: _, horizon: _, considered: _, tie_policy: _ } => {
+      let winner = selected.candidate
       match permit_standing(
         permit: winner.permit,
         offer: winner.offer.id,
@@ -489,6 +490,7 @@ fn broker_reserve_for_demand(
           account: account,
         )
       }
+    }
   }
 }
 
