@@ -107,6 +107,68 @@ fn admit_normalized_tree(
   }
 }
 
+// A MODULE OUTSIDE THE COMPILED CLOSURE, AT CENSUS GRADE (v2.compiler.normalize normalize_census):
+// every declaration, no fn body. It is a separate sealed carrier rather than a NormalizedTree with a
+// flag because what distinguishes it is what may consume it: resolution reads a non-member's
+// declaration paths and payload kinds through the symbol index, and nothing else may read it at all.
+// So its ONE projection is census_tree_binding_source, and no emission or body-resolution consumer
+// (all of which take NormalizedTree) can be handed one. Rung: structurally impossible to emit a
+// census-grade module -- the carrier has no route to the emitter. It carries no test-marker channel:
+// census mode leaves test fn declarations unlowered and runs none of a non-member's tests.
+// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). Production callers land in the gen-two door's
+// two sibling changes, both owned by the self-host closure frontier lane: PR-a's reference-derived
+// closure producer builds ONE SymbolIndex with symbol_index_fill_module_roots over the members'
+// normalized_tree_roots_to_binding_sources ++ census_tree_binding_source of every non-member, and
+// PR-c's door wiring (program_assembly / compiler_closure_emit / compile_cli) calls normalize_census
+// for each parsed file outside the closure. TRIGGER: the gen-one emission of v2.compiler.compile
+// ingests a non-member through normalize_census -- until then this carrier is exercised only by
+// v2.test.claim.normalize.census_mode, and if that trigger is abandoned this carrier deletes.
+type CensusTree sole_constructor {
+  root: Node,
+  import_bindings: FreeMonoid<AliasBindingRow>,
+  record_declarations: FreeMonoid<Symbol>,
+}
+
+// The census door refuses on the same evidence the full door does. Census mode never visits a fn
+// body, so retention here can only be DECLARATION-level -- a signature, type or spine the lowering
+// could not read -- and a declaration census that silently dropped one would answer resolution with
+// a confident "not declared" (DESIGN section 5). A declaration that failed to PARSE never reaches
+// this door: the census entry takes a ParseTree.
+fn admit_census_tree(
+  root: Node,
+  import_bindings: FreeMonoid<AliasBindingRow>,
+  record_declarations: FreeMonoid<Symbol>,
+  diagnostics: Diagnostics
+) -> Outcome<CensusTree> {
+  if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
+    Rejected {
+      diagnostics: rejected_with_pending(
+        pending: diagnostics,
+        rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
+      )
+    }
+  } else {
+    Accepted {
+      value: CensusTree {
+        root: root,
+        import_bindings: import_bindings,
+        record_declarations: record_declarations
+      },
+      diagnostics: diagnostics
+    }
+  }
+}
+
+// The one reader of a census-grade module: the symbol-index fill, over the same ModuleBindingSource a
+// closure member projects to, so members and non-members enter one index by one route.
+fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
+  ModuleBindingSource {
+    root: t.root,
+    import_bindings: t.import_bindings,
+    record_declarations: t.record_declarations
+  }
+}
+
 // Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
 // module binds and can import neither this carrier nor the stages beneath it. Order-preserving for
 // the same reason the Node projection is.
