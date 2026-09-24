@@ -1017,6 +1017,21 @@ pub fn local_coproduct_owner_from_locals(scope: Rc<InferScope>, name: String) ->
 }
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
+    match local_coproduct_owner_from_locals(scope.clone(), name.clone()) {
+        Some(owner) => Some(crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            owner.clone(),
+        )),
+        std::option::Option::None => {
+            lookup_variant_parent_enum_by_owner_name(scope.clone(), name.clone())
+        }
+    }
+}
+
+pub fn lookup_variant_parent_enum_by_owner_name(
+    scope: Rc<InferScope>,
+    name: String,
+) -> Option<String> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
             scope.type_env.clone(),
