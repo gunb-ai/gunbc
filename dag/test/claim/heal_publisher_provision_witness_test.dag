@@ -236,7 +236,11 @@ fn decoded_providers() -> ProvidersReading {
     subject: fn(_scope) { test.RestReplay.WifProvidersPage() }
   )
   match result {
-    WitnessReturned { value } => ProvidersObserved { providers: match value.providers { Present { value: ps } => ps  Absent => [] } }
+    WitnessReturned { value } => {
+      // The witness frame's return is generic, so the Optional is re-typed here as the operation declares it.
+      let providers: List<WifProviderWire>? = value.providers
+      ProvidersObserved { providers: match providers { Present { value: ps } => ps  Absent => [] } }
+    }
     WitnessRefused { diagnostic: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
   }
 }
