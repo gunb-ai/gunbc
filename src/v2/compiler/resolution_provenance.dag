@@ -168,7 +168,7 @@ fn resolve_reference_provenance(
             match symbol_index_global_unique_lookup(index: index, name: name) {
               GlobalBareHit { node: _, path: path } =>
                 provenance_from_target(site: site, roster: roster, target: path)
-              GlobalBareLookupAmbiguous => ProvenanceAmbiguous { site: site }
+              GlobalBareLookupAmbiguous { paths: _ } => ProvenanceAmbiguous { site: site }
               GlobalBareLookupUnbound => ProvenanceUnbound { site: site }
             }
         }

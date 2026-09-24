@@ -1,0 +1,3 @@
+module test.fixture.unit_variant_binding.second_provider
+
+type Other = Alpha | Gamma
