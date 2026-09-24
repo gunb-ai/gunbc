@@ -1,0 +1,72 @@
+module test.claim.refinement_cast_wall_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import v2.std.optional { Present }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT `Int as Nat` HAS ONE AUTHORITY, on the source -> .dag-acceptance path.
+// Before std.coercion refinement_cast_rules, validate_cast abstained on it (Nat was outside the
+// dag_cast_rules domain) and the seed's eval_cast refused it at runtime, so a checked program
+// crashed on a cast its checker blessed -- gunbc.recurring_failure_mode
+// the_checker_admits_a_cast_the_evaluator_refuses. The RED is the mtcollins1 specimen's shape: an
+// arbitrary Int asserted into Nat. The GREEN arms keep the wall from being a wrecking ball: the
+// sanctioned checked crossing, a nonnegative literal in a Nat position (no cast needed), a value
+// already typed Nat cast by identity, and a non-refinement Int cast (`as Float`) all still compile.
+//
+// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only. The interpreter arm that
+// refuses the same rows is unreachable from an Accepted program; it is not a second measurement.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data unguarded_int_as_nat_source: String = "module probe_refinement_cast_red\nimport std.types { Int }\nimport std.nat { Nat }\nfn size_of(n: Int) -> Nat { n as Nat }\n"
+
+data checked_crossing_source: String = "module probe_refinement_cast_checked\nimport std.types { Int }\nimport std.nat { Nat }\nimport std.checked_arithmetic { checked_int_to_nat }\nfn size_of(n: Int) -> Nat? { checked_int_to_nat(n: n) }\n"
+
+data literal_source: String = "module probe_refinement_cast_literal\nimport std.nat { Nat }\nfn size_of() -> Nat { 5 }\n"
+
+data nat_identity_source: String = "module probe_refinement_cast_identity\nimport std.nat { Nat }\nfn size_of(k: Nat) -> Nat { k as Nat }\n"
+
+data non_refinement_cast_source: String = "module probe_refinement_cast_float\nimport std.types { Int, Float }\nfn widen(n: Int) -> Float { n as Float }\n"
+
+test fn w_unguarded_int_as_nat_is_refused() -> Bool {
+  blocking_count(source: unguarded_int_as_nat_source) >= 1
+}
+
+test fn w_checked_crossing_is_accepted() -> Bool {
+  blocking_count(source: checked_crossing_source) == 0
+}
+
+test fn w_nonnegative_literal_needs_no_cast() -> Bool {
+  blocking_count(source: literal_source) == 0
+}
+
+test fn w_nat_typed_value_casts_by_identity() -> Bool {
+  blocking_count(source: nat_identity_source) == 0
+}
+
+test fn w_non_refinement_int_cast_is_still_accepted() -> Bool {
+  blocking_count(source: non_refinement_cast_source) == 0
+}
+
+// The sanctioned crossing's own semantics, executed: a negative is absent, never clamped.
+test fn w_checked_int_to_nat_refuses_a_negative_and_keeps_a_nonnegative() -> Bool {
+  let neg = match checked_int_to_nat(n: 0 - 3) { Absent => true  Present { value: _ } => false }
+  let pos = match checked_int_to_nat(n: 7) { Absent => false  Present { value: v } => v == 7 }
+  neg && pos
+}

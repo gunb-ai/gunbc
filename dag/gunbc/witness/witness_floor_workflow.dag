@@ -18,7 +18,7 @@ import gunbc.workflow_capability_closure {
   capability_closure_is_closed,
 }
 import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
 import v2.workflow.ci_heal_revalidation_preflight_emit { ci_heal_revalidation_preflight_script }
@@ -2780,9 +2780,10 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
           if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
-            WitnessFloorGenerated {
-              content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
-            }
+            match emit_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) {
+          EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
+          YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness_floor_workflow", path: p, reason: r) }
+        }
           } else {
             WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
           }
