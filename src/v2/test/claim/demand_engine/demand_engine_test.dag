@@ -27,7 +27,7 @@ import v2.std.demand_engine {
   demand_engine_entry,
   demand_engine_next,
   demand_engine_ready_queue,
-  demand_engine_reevaluate,
+  demand_engine_seal,
   demand_engine_relate,
   demand_engine_request,
   demand_engine_settle,
@@ -119,20 +119,24 @@ fn g_cause_eq(a: DemandBlockedCause, b: DemandBlockedCause) -> Bool {
 // once BOTH its prerequisites are available, and is still WAITING after the first one lands. A
 // join that released on its first prerequisite would pass a "D ran" assertion and be wrong.
 fn g_diamond() -> DemandEngine<Int> {
-  demand_engine_relate(
+  let requested = demand_engine_request(
+    e: demand_engine_request(
+      e: demand_engine_request(
+        e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+        id: g_b(),
+        nature: PureComputation
+      ),
+      id: g_c(),
+      nature: PureComputation
+    ),
+    id: g_d(),
+    nature: PureComputation
+  )
+  let related = demand_engine_relate(
     e: demand_engine_relate(
       e: demand_engine_relate(
         e: demand_engine_relate(
-          e: demand_engine_request(
-            e: demand_engine_request(
-              e: demand_engine_request(
-                e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
-                id: g_b(), nature: PureComputation
-              ),
-              id: g_c(), nature: PureComputation
-            ),
-            id: g_d(), nature: PureComputation
-          ),
+          e: requested,
           relation: g_edge(prerequisite: g_a(), dependent: g_b())
         ),
         relation: g_edge(prerequisite: g_a(), dependent: g_c())
@@ -141,6 +145,7 @@ fn g_diamond() -> DemandEngine<Int> {
     ),
     relation: g_edge(prerequisite: g_c(), dependent: g_d())
   )
+  demand_engine_seal(e: related)
 }
 
 test fn diamond_join_waits_for_both_prerequisites_holds() -> Bool {
@@ -159,15 +164,20 @@ test fn diamond_join_waits_for_both_prerequisites_holds() -> Bool {
 // batched scheduler passes every other claim in this file and fails this one, which is why it is
 // written separately rather than folded into the diamond.
 fn g_independent_peer() -> DemandEngine<Int> {
-  demand_engine_relate(
+  let requested = demand_engine_request(
     e: demand_engine_request(
-      e: demand_engine_request(
-        e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
-        id: g_e(), nature: PureComputation
-      ),
-      id: g_b(), nature: PureComputation
+      e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+      id: g_e(),
+      nature: PureComputation
     ),
-    relation: g_edge(prerequisite: g_a(), dependent: g_b())
+    id: g_b(),
+    nature: PureComputation
+  )
+  demand_engine_seal(
+    e: demand_engine_relate(
+      e: requested,
+      relation: g_edge(prerequisite: g_a(), dependent: g_b())
+    )
   )
 }
 
@@ -204,7 +214,7 @@ fn g_cycle() -> DemandEngine<Int> {
 }
 
 test fn cycle_is_reported_as_a_cycle_holds() -> Bool {
-  let e = demand_engine_reevaluate(e: g_cycle())
+  let e = demand_engine_seal(e: g_cycle())
   g_state_is(e: e, id: g_a(), want: DemandBlocked { cause: BlockedByCycle { members: [g_a()] } })
     && g_state_is(e: e, id: g_b(), want: DemandBlocked { cause: BlockedByCycle { members: [g_b()] } })
 }
@@ -214,7 +224,7 @@ test fn cycle_is_reported_as_a_cycle_holds() -> Bool {
 // the absorbing fallback DESIGN section 5 forbids: it would make a dropped edge look like a
 // schedulable program.
 test fn missing_edge_is_reported_holds() -> Bool {
-  let e = demand_engine_reevaluate(
+  let e = demand_engine_seal(
     e: demand_engine_relate(
       e: demand_engine_request(e: demand_engine_empty(), id: g_b(), nature: PureComputation),
       relation: g_edge(prerequisite: g_a(), dependent: g_b())
@@ -259,7 +269,7 @@ test fn fresh_effect_is_never_attached_holds() -> Bool {
 // and not run anyway: it stays ready and the REFUSAL TO ADMIT carries the cause. An engine that
 // marked it blocked would need a second mechanism to un-block it when a seat freed.
 test fn no_seat_leaves_the_demand_ready_holds() -> Bool {
-  let e = demand_engine_reevaluate(
+  let e = demand_engine_seal(
     e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation)
   )
   let none_offered = demand_engine_next(e: e, offer: DemandLeaseOffer { seats: 0 })
@@ -279,7 +289,7 @@ test fn no_seat_leaves_the_demand_ready_holds() -> Bool {
 // demands in opposite request order must present one queue, or a completion-order receipt cannot
 // discriminate a behaviour change from a walk-order change.
 test fn ready_queue_order_is_canonical_holds() -> Bool {
-  let forward = demand_engine_reevaluate(
+  let forward = demand_engine_seal(
     e: demand_engine_request(
       e: demand_engine_request(
         e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
@@ -288,7 +298,7 @@ test fn ready_queue_order_is_canonical_holds() -> Bool {
       id: g_c(), nature: PureComputation
     )
   )
-  let backward = demand_engine_reevaluate(
+  let backward = demand_engine_seal(
     e: demand_engine_request(
       e: demand_engine_request(
         e: demand_engine_request(e: demand_engine_empty(), id: g_c(), nature: PureComputation),
@@ -365,4 +375,66 @@ test fn completion_order_records_what_settled_holds() -> Bool {
   )
   demand_engine_completion_keys(e: e)
     == [demand_identity_key(id: g_a()), demand_identity_key(id: g_b())]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE COMPLETION LAW, AND THE ONLY THING THAT CAN OBSERVE IT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// A completion re-derives readiness for its DIRECT DEPENDENTS and for nothing else. That is not a
+// performance note -- it is what makes the engine's cost per completion a function of the settling
+// demand's out-degree rather than of the graph, which is the difference between a live queue and a
+// scheduler that walks everything whenever anything happens.
+//
+// IT CANNOT BE WITNESSED OVER STATES. A rescanning engine reaches exactly the same final states by
+// exactly the same rules; it is only slower, and a witness over values cannot see slower. So the
+// subject here is the derivation COUNT, which is the one place the two designs differ observably.
+//
+// The fixture is deliberately lopsided: A has ONE dependent, and there are three further demands
+// that depend on nothing and that nothing depends on. Settling A must cost 1. A rescan costs 5.
+fn g_lopsided() -> DemandEngine<Int> {
+  demand_engine_seal(
+    e: demand_engine_relate(
+      e: demand_engine_request(
+        e: demand_engine_request(
+          e: demand_engine_request(
+            e: demand_engine_request(
+              e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+              id: g_b(), nature: PureComputation
+            ),
+            id: g_c(), nature: PureComputation
+          ),
+          id: g_d(), nature: PureComputation
+        ),
+        id: g_e(), nature: PureComputation
+      ),
+      relation: g_edge(prerequisite: g_a(), dependent: g_b())
+    )
+  )
+}
+
+test fn a_completion_costs_its_out_degree_not_the_graph_holds() -> Bool {
+  let sealed = g_lopsided()
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  (after.readiness_computations - sealed.readiness_computations) == 1
+    && length(xs: sealed.entries) == 5
+    && g_state_is(e: after, id: g_b(), want: DemandReady)
+}
+
+// THE SEAL IS THE ONE WHOLE-POPULATION PASS. Stating its cost here pins the other half of the law:
+// if sealing were free the settle count above would be meaningless, because the work would simply
+// have moved. One derivation per demand, once.
+test fn sealing_derives_readiness_once_per_demand_holds() -> Bool {
+  g_lopsided().readiness_computations == 5
+}
+
+// A CYCLE IS DECIDED AT SEAL AND CARRIED, not re-walked on every completion. The verdict must
+// survive an unrelated demand settling -- if it were recomputed, this would still pass, but if it
+// were DROPPED on re-derivation the cycle would silently become Waiting.
+test fn a_sealed_cycle_verdict_survives_unrelated_completions_holds() -> Bool {
+  let sealed = demand_engine_seal(
+    e: demand_engine_request(e: g_cycle(), id: g_e(), nature: PureComputation)
+  )
+  let after = demand_engine_settle(e: sealed, id: g_e(), state: DemandAvailable { value: 9 })
+  g_state_is(e: after, id: g_a(), want: DemandBlocked { cause: BlockedByCycle { members: [g_a()] } })
 }
