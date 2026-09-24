@@ -76,9 +76,16 @@ pub enum Stage0EmittedEdgeAdmission {
 }
 
 pub fn stage0_partition_module_owner_packages(module_basename: String) -> Rc<Vec<String>> {
+    partition_module_owner_packages_over(module_basename.clone(), generated_partition_crate_rows())
+}
+
+pub fn partition_module_owner_packages_over(
+    module_basename: String,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in Rc::new({ let mut __result = Vec::new(); for row in generated_partition_crate_rows().iter().cloned() { if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); } } __result }).iter().cloned() { __result.push(row.package_name.clone()); }
+        for row in Rc::new({ let mut __result = Vec::new(); for row in rows.iter().cloned() { if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); } } __result }).iter().cloned() { __result.push(row.package_name.clone()); }
         __result
     })
 }
