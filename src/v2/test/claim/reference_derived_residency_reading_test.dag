@@ -360,7 +360,11 @@ fn live_fixture_lookup(segment: Symbol) -> Bool {
             Rejected { diagnostics: _ } => false
             Accepted { value: mqn, diagnostics: _ } =>
               match symbol_index_lookup(
-                index: symbol_index_fill_module_root(index: empty_symbol_index(), root: item.root),
+                index: symbol_index_fill_module_root(
+                  index: empty_symbol_index(),
+                  root: item.root,
+                  record_declarations: item.record_declarations
+                ),
                 qualified_path: qualified_name_snoc(qn: mqn, segment: segment),
               ) {
                 Absent => false

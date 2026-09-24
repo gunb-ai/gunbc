@@ -5,7 +5,7 @@ import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Http }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_socat }
+import extdeps.apt { apt_bin_dir, package_socat }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -19,5 +19,5 @@ data socat_pinned_version: VersionConstraint = ">= 1.7.4"
 data socat_cli_tool: CliTool = CliTool {
   name: "socat",
   min_version: Present { value: socat_pinned_version },
-  installable_via: [SourceApt { package: package_socat }],
+  installable_via: [SourceApt { package: package_socat, bin_dir: apt_bin_dir }],
 }

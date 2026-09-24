@@ -5,7 +5,9 @@ import extdeps.git.object_store { git_sha1_object_id }
 import gunbc.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
 import tools.multi_module_compile_fixture { FixtureSource }
 import gunbc.namespace_xl2_rehearsal_census {
-  Xl2SequenceOperandReferencesUnobservable,
+  Xl2PrerequisiteOutstanding,
+  Xl2ScopeUnobserved,
+  Xl2CompleteArmNotAdmitted,
   Xl2CensusCompletenessRefused,
   Xl2MemberPathDuplicated,
   Xl2ModuleObservationIncomplete,
@@ -19,6 +21,7 @@ import gunbc.namespace_xl2_rehearsal_census {
   xl2_rehearse_stripped,
   xl2_strip_members
 }
+import gunbc.compiler_frontend_program_status { xl2_prerequisites_outstanding }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic { None, Some, diagnostics_eq }
 
@@ -135,14 +138,19 @@ test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
   }
 }
 
-// COMPLETENESS IS REFUSED, AND FOR THE NAMED REASON ONLY: the sequence-operand arm heads the roster,
+// COMPLETENESS IS REFUSED, AND FOR THE NAMED REASONS ONLY: every outstanding XL-2 prerequisite, one each,
 // and P4 observed the residual module completely, so NO incomplete-observation scope is raised for
 // it. The previous cut raised an abandonment scope for every refused module, which would have kept
 // the rehearsal incomplete for a reason P4 has since discharged.
 test fn xl2_control_completeness_is_refused_holds() -> Bool {
   match xl2_control_runs().cut {
-    Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2SequenceOperandReferencesUnobservable, rest: rest } } =>
-      count(rest) == 0
+    Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2PrerequisiteOutstanding { prerequisite: _ }, rest: rest } } =>
+      count(rest) + 1 == count(xl2_prerequisites_outstanding())
+        && all(rest, r => match r {
+             Xl2PrerequisiteOutstanding { prerequisite: _ } => true
+             Xl2ScopeUnobserved { scope: _ } => false
+             Xl2CompleteArmNotAdmitted => false
+           })
     _ => false
   }
 }

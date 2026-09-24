@@ -237,6 +237,24 @@ data grounded_primitive_coproduct_identities: List<CastRule> = [
   { from_type: "String", to_type: "FreeMonoid" },
 ]
 
+// REFINEMENT CASTS: an explicit `as` whose target is a PROPER SUBSET of its source. The grounded
+// identity above says every Nat IS an Int; it says nothing about the converse, and `n as Nat` over
+// an arbitrary Int asserts the converse without evidence. It has exactly two honest meanings and
+// neither is a re-typing: a checked conversion that refuses a negative (std.checked_arithmetic
+// checked_int_to_nat is the sanctioned crossing), or a clamp -- which that module already names
+// as the section 5 absorbing fallback. So an `as` cast over one of these rows is REFUSED BY THE
+// CHECKER (v1.compiler.infer validate_cast) and is unreachable at eval (the seed interpreter's
+// eval_cast refuses it for the same row, now as the unreachable echo of this refusal rather than a
+// second authority that only fired at runtime). A nonnegative literal needs no cast -- the grounded
+// identity already admits it in a Nat position -- and a value already typed Nat is an identity cast.
+data refinement_cast_rules: List<CastRule> = [
+  { from_type: "Int", to_type: "Nat" },
+]
+
+fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
+  refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+}
+
 fn dag_can_cast(source_type: String, target_type: String) -> Bool {
   (dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type))
     || (grounded_primitive_coproduct_identities |> any(r => r.from_type == source_type && r.to_type == target_type))

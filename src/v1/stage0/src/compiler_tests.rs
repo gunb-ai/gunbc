@@ -4329,6 +4329,85 @@ mod compiler_tests {
         );
     }
 
+    // White-box witnesses for gunbc#12132: the measured compile's binding authority consumes the
+    // resolver's exact-one judgment (lookup_unit_variant_phantom_type), not bare key presence.
+    // str_bindings and ancestry_str_bindings are EMPTY, so the first arm cannot intercept and only the
+    // contribution map decides. One test per case, so each reading fails on its own. The census claims
+    // beside these cannot discriminate the two readings: the resolver and emitter refuse those leaves
+    // before the measure runs.
+    fn measure_binds_alpha(
+        by_parent: std::rc::Rc<
+            HashMap<String, std::rc::Rc<crate::v1_compiler_infer_env::UnitVariantContribution>>,
+        >,
+        observed: bool,
+    ) -> bool {
+        let mut env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
+        env_value.unit_variant_index = crate::v1_rt::rc_map_insert(
+            crate::v1_rt::rc_empty_map(),
+            "Alpha".to_string(),
+            by_parent,
+        );
+        env_value.unit_variant_index_observed = observed;
+        crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
+            std::rc::Rc::new(env_value),
+            "Alpha".to_string(),
+        )
+    }
+
+    fn alpha_contributions(
+        parents: &[(&str, i64)],
+    ) -> std::rc::Rc<
+        HashMap<String, std::rc::Rc<crate::v1_compiler_infer_env::UnitVariantContribution>>,
+    > {
+        let mut by_parent = crate::v1_rt::rc_empty_map();
+        for (parent, count) in parents {
+            let contribution =
+                std::rc::Rc::new(crate::v1_compiler_infer_env::UnitVariantContribution {
+                    count: *count,
+                    variant: named_type_node("Alpha"),
+                });
+            by_parent = crate::v1_rt::rc_map_insert(by_parent, parent.to_string(), contribution);
+        }
+        by_parent
+    }
+
+    #[test]
+    fn measure_binds_a_unit_variant_with_exactly_one_visible_contribution() {
+        assert!(measure_binds_alpha(
+            alpha_contributions(&[("Marker", 1)]),
+            true
+        ));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_contributed_once_by_each_of_two_parents() {
+        assert!(!measure_binds_alpha(
+            alpha_contributions(&[("Marker", 1), ("Other", 1)]),
+            true
+        ));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_contributed_twice_by_one_parent() {
+        assert!(!measure_binds_alpha(
+            alpha_contributions(&[("Twice", 2)]),
+            true
+        ));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_whose_outer_key_holds_no_contribution() {
+        assert!(!measure_binds_alpha(alpha_contributions(&[]), true));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_when_the_index_is_unobserved() {
+        assert!(!measure_binds_alpha(
+            alpha_contributions(&[("Marker", 1)]),
+            false
+        ));
+    }
+
     #[test]
     fn renderer_hop_decides_realization_from_declaration_identity_without_an_env() {
         // A type-expression renderer that is handed a Node and source_indices and NO env still
@@ -4448,7 +4527,7 @@ mod compiler_tests {
             module_name: "v2.std.diagnostic".to_string(),
             kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
             service_names: std::rc::Rc::new(im::Vector::new()),
-            resource_names: std::rc::Rc::new(im::Vector::new()),
+            resource_requirements: std::rc::Rc::new(im::Vector::new()),
             params: std::rc::Rc::new(vec![param].into()),
             is_self_recursive: false,
             has_non_tail_self_call: false,

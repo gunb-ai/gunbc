@@ -11,7 +11,7 @@ on:
         type: string
 jobs:
   shakedown:
-    runs-on: [self-hosted, ${{ inputs.attempt }}]
+    runs-on: [self-hosted, "${{ inputs.attempt }}"]
     timeout-minutes: 10
     permissions:
       contents: read

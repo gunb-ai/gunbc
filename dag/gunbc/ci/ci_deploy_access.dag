@@ -17,6 +17,9 @@ import gunbc.fleet_posix_accounts {
   DeployRunnerPrincipal,
   FleetAccountCiRunner,
   FleetAccountOperator,
+  ci_runner_sudoers_install_binaries,
+  ci_runner_sudo_binary_path,
+  ci_runner_sudo_binary_probe,
   srv1_ci_deploy_runner_principal,
   fleet_posix_principal,
   fleet_deploy_job_principal,
@@ -110,6 +113,29 @@ fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
 
 fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
   PrivilegedCommand { grant: g }
+}
+
+// THE PRE-INSTALL SCOPE OF A DEPLOY WHOSE SCRIPT INSTALLS THE DROP-IN FIRST. The principal, host and
+// transport are unchanged; only the demanded commands narrow, to exactly what the install spends
+// (gunbc.fleet_posix_accounts ci_runner_sudoers_install_binaries). They are built from that list
+// rather than filtered from the principal's roster, so a principal whose roster lacks visudo or
+// install still has them demanded and still refuses before mutation -- a filter would have answered
+// an empty demand, and an empty demand is a permit.
+fn deploy_access_sudoers_install_scope(access: DeployAccess) -> DeployAccess {
+  DeployAccess {
+    principal: access.principal,
+    host: access.host,
+    transport: access.transport,
+    privileged_commands: map(
+      ci_runner_sudoers_install_binaries,
+      b => PrivilegedCommand {
+        grant: PosixSudoGrant {
+          command_path: ci_runner_sudo_binary_path(b: b),
+          probe: ci_runner_sudo_binary_probe(b: b),
+        }
+      }
+    ),
+  }
 }
 
 fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<PrivilegedCommand> {
