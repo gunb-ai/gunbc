@@ -165,8 +165,9 @@ fn body_lowering_forward_fold_surface_identities_agree() -> Bool {
 // that function is its one call site here), and a retained result is the BodyWrapperRetained arm of
 // BodyLowering, so no reader can take the lowered Node without matching the arm that is not one.
 // That is the drop guarantee, stated at its honest rung: .dag has no module-private declarations,
-// so a match arm that discards a retention is still WRITABLE, but it is an authored arm naming the
-// variant, never a silent `diagnostics: _`. The arms that exist are exactly three: the value-position
+// so a discard is still WRITABLE -- by a match arm that names BodyWrapperRetained and drops it, or
+// by any reader that projects BodyLoweredTree.node and ignores .retained -- but never by a silent
+// `diagnostics: _`. The arms that exist are exactly three: the value-position
 // unwrap below REFUSES, the frontier classifier REPORTS, and v2.compiler.normalize threads the
 // retention into its accumulator (BodyLoweredTree) for v2.compiler.normalized_tree to refuse at the
 // retained shell's own locus.
@@ -195,14 +196,7 @@ fn wrapper_retention_diagnostic(r: WrapperRetention) -> Diagnostic {
   body_lower_diagnostic(reason: ^normalized_tree_reason_wrapper_retention_not_normalized, n: r.shell)
 }
 
-fn wrapper_retention_diagnostics(first: WrapperRetention, rest: FreeMonoid<WrapperRetention>) -> NonEmptyDiagnostics {
-  NonEmptyDiagnostics {
-    head: wrapper_retention_diagnostic(r: first),
-    tail: list_map(xs: rest, f: fn(r) { wrapper_retention_diagnostic(r: r) })
-  }
-}
-
-// Earlier retentions first, so the refusal lists them in source order; an empty later list, the
+// Earlier retentions first, so the typed population stays in structural order; an empty later list, the
 // common case, costs nothing.
 fn wrapper_retentions_concat(
   earlier: FreeMonoid<WrapperRetention>,
@@ -240,7 +234,7 @@ fn body_lowering_refuse_retained(o: Outcome<BodyLowering>) -> Outcome<Node> {
           Rejected {
             diagnostics: rejected_with_pending(
               pending: d,
-              rejected: wrapper_retention_diagnostics(first: r, rest: no_wrapper_retentions())
+              rejected: diagnostics_singleton(d: wrapper_retention_diagnostic(r: r))
             )
           }
       }

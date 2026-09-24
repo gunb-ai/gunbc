@@ -6,7 +6,9 @@ import v2.compiler.body_lowering_fold {
   body_lower_wrapper_retained_shell,
   body_lowered_tree_of,
   body_lowered_tree_over,
+  WrapperRetention,
   body_lowered_tree_retained,
+  no_wrapper_retentions,
   wrapper_retentions_concat
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -23,17 +25,20 @@ import v2.std.diagnostic {
   Some,
   Unavailable,
   diagnostics_eq,
+  diagnostics_fatal,
+  diagnostics_singleton,
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, TypeNode, node_synthetic }
+import v2.std.node { Atom, Conj, Node, TypeNode, content_hash, node_synthetic }
+import v2.std.algebra { fold_list }
 
 // THE RETENTION DOOR, EXECUTED (MQ-4). Retention is a typed variant of the body lowering's result
 // (v2.compiler.body_lowering_fold WrapperRetention); v2.compiler.normalize gathers it into a
 // BodyLoweredTree and v2.compiler.normalized_tree admit_retention_free consumes it. These rows
 // replace BL-1's reason-scan controls, which fed the door diagnostics carrying the retention REASON:
 // that reason is deleted, and the last row below is the proof that no reason reaches admission.
-// Deleting the door's Cons arm -- admitting every tree -- reds the first three rows.
+// Deleting the door's Cons arm -- admitting every tree -- reds every refusal row below.
 
 fn probe_shell() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
@@ -87,23 +92,75 @@ test fn a_retained_shell_is_refused_at_its_own_locus() -> Bool {
   )
 }
 
-// One refusal PER retention, in source order -- the pre-MQ-4 door refused once, at the module root.
-test fn every_retention_refuses_once_in_order() -> Bool {
-  let two = body_lowered_tree_over(
-    node: probe_shell(),
-    retained: wrapper_retentions_concat(
-      earlier: body_lowered_tree_retained(t: retained_tree(shell: probe_shell())),
-      later: body_lowered_tree_retained(t: retained_tree(shell: probe_other_shell()))
-    )
-  )
-  diagnostics_eq(
-    a: refusal_of(o: admit_retention_free(tree: two, diagnostics: None)),
-    b: Some {
-      diagnostics: NonEmptyDiagnostics {
-        head: door_diagnostic_at(shell: probe_shell()),
-        tail: [door_diagnostic_at(shell: probe_other_shell())]
-      }
+// A third distinguishable shell, the independent LATER retention the fatal policy must ignore.
+fn probe_third_shell() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^normalized_tree_probe_third_shell } }, children: [])
+}
+
+fn retentions_of(shells: FreeMonoid<Node>) -> FreeMonoid<WrapperRetention> {
+  fold_list(
+    xs: shells,
+    empty: no_wrapper_retentions(),
+    cons: fn(acc, shell) {
+      wrapper_retentions_concat(earlier: acc, later: body_lowered_tree_retained(t: retained_tree(shell: shell)))
     }
+  )
+}
+
+fn tree_retaining(shells: FreeMonoid<Node>) -> BodyLoweredTree {
+  body_lowered_tree_over(node: probe_shell(), retained: retentions_of(shells: shells))
+}
+
+fn a_then_b() -> FreeMonoid<Node> {
+  Cons { head: probe_shell(), tail: Cons { head: probe_other_shell(), tail: Empty } }
+}
+
+fn a_then_b_then_c() -> FreeMonoid<Node> {
+  Cons { head: probe_shell(), tail: Cons { head: probe_other_shell(), tail: Cons { head: probe_third_shell(), tail: Empty } } }
+}
+
+fn fatal_of(o: Outcome<Node>) -> Diagnostics {
+  match o {
+    Rejected { diagnostics: r } => Some { diagnostics: diagnostics_singleton(d: diagnostics_fatal(d: r)) }
+    Accepted { value: _, diagnostics: _ } => None
+  }
+}
+
+fn door_fatal_at(shell: Node) -> Diagnostics {
+  Some { diagnostics: diagnostics_singleton(d: door_diagnostic_at(shell: shell)) }
+}
+
+// THE TYPED POPULATION keeps every retention, in order: A then B. This is the carrier a census reads;
+// the refusal below is a projection of it, not a copy.
+test fn the_typed_population_holds_every_retention_in_order() -> Bool {
+  match retentions_of(shells: a_then_b()) {
+    Cons { head: a, tail: Cons { head: b, tail: Empty } } =>
+      (content_hash(n: a.shell) == content_hash(n: probe_shell()))
+        && (content_hash(n: b.shell) == content_hash(n: probe_other_shell()))
+    _ => false
+  }
+}
+
+// THE FATAL IS THE FIRST RETENTION, BY STATED POLICY (v2.compiler.normalized_tree admit_retention_free),
+// and it is the WHOLE refusal: no second retention rides in front of it as a pending advisory. Red
+// against the first MQ-4 revision, which packed A then B into one NonEmptyDiagnostics, so the
+// carrier's fatal (its LAST element, v2.std.diagnostic diagnostics_fatal) was B.
+test fn the_fatal_is_the_first_retention() -> Bool {
+  diagnostics_eq(
+    a: refusal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b()), diagnostics: None)),
+    b: door_fatal_at(shell: probe_shell())
+  )
+}
+
+// An independent LATER retention does not move the primary cause. Red against the packed encoding,
+// whose fatal moved from B to C.
+test fn a_later_retention_does_not_change_the_fatal() -> Bool {
+  diagnostics_eq(
+    a: fatal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b_then_c()), diagnostics: None)),
+    b: fatal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b()), diagnostics: None))
+  ) && diagnostics_eq(
+    a: fatal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b_then_c()), diagnostics: None)),
+    b: door_fatal_at(shell: probe_shell())
   )
 }
 

@@ -2,10 +2,11 @@ module v2.compiler.normalized_tree
 
 import v2.compiler.body_lowering_fold {
   BodyLoweredTree,
-  wrapper_retention_diagnostics
+  wrapper_retention_diagnostic
 }
 import v2.std.diagnostic {
   Accepted,
+  diagnostics_singleton,
   Diagnostics,
   Outcome,
   Rejected,
@@ -52,26 +53,36 @@ type NormalizedTree sole_constructor {
 // THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
 // (v2.compiler.body_lowering_fold WrapperRetention), gathered by v2.compiler.normalize into the
 // BodyLoweredTree it hands here. This is where that list is CONSUMED: an empty list releases the
-// Node; any retention refuses, once per retained shell and located AT that shell, rather than once at
-// the module root. Before MQ-4 this door decided by scanning diagnostic REASONS for the retention
+// Node; any retention refuses, located AT a retained shell rather than at the module root. Before MQ-4 this door decided by scanning diagnostic REASONS for the retention
 // reason -- a classifier over an encoding that a single `diagnostics: _` anywhere upstream could
 // empty. There is no reason to scan now: the retention is a value, and it has no arm that reaches
 // NormalizedTree except through this refusal.
+//
+// ONE FATAL, CHOSEN BY A STATED POLICY: THE FIRST RETENTION IN STRUCTURAL ORDER. A NonEmptyDiagnostics
+// is pending-then-one-fatal (v2.std.diagnostic diagnostics_fatal reads the LAST), so packing every
+// retention into the refusal would make the last one the cause and the rest read as pending
+// advisories -- appending an unrelated later retention would change the module's primary cause, and
+// traversal order would become policy without anyone choosing it. So the refusal carries exactly one
+// retention, the head of the retained list, which normalize builds in post-order (siblings in source
+// order, a node's own retention after its children's): the first retained shell that post-order
+// reaches. A retention appended after it never changes it. The full typed population is BodyLoweredTree.retained; it is
+// not re-encoded as diagnostics.
 //
 // Rung, stated honestly: the refusal is structural along the production route (normalize and
 // normalize_census cannot build a NormalizedTree or CensusTree without passing here), and
 // admit_normalized_tree / admit_census_tree take a bare Node, which a hand-built fixture supplies
 // and which by construction carries no retention. What is not structural is the absence of an
-// authored drop inside v2.compiler.body_lowering_fold: .dag has no module-private declarations, so a
-// match arm there that discards BodyWrapperRetained stays writable; every such arm names the variant.
+// authored drop: .dag has no module-private declarations, so a discard stays writable wherever
+// BodyLoweredTree.node can be projected without .retained, and wherever a match arm names
+// BodyWrapperRetained and drops it -- never through a silent `diagnostics: _`.
 fn admit_retention_free(tree: BodyLoweredTree, diagnostics: Diagnostics) -> Outcome<Node> {
   match tree.retained {
     Empty => Accepted { value: tree.node, diagnostics: diagnostics }
-    Cons { head: first, tail: rest } =>
+    Cons { head: first, tail: _ } =>
       Rejected {
         diagnostics: rejected_with_pending(
           pending: diagnostics,
-          rejected: wrapper_retention_diagnostics(first: first, rest: rest)
+          rejected: diagnostics_singleton(d: wrapper_retention_diagnostic(r: first))
         )
       }
   }

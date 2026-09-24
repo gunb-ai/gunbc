@@ -43,11 +43,21 @@ import v2.std.optional { Absent, Optional, Present }
 
 // WHY THIS IS NOT "COUNT THE WRAPPER-RETAINED DIAGNOSTICS".
 //
-// WHAT IT READS (MQ-4): the normalized-tree door's refusal, one diagnostic per retained shell,
-// located AT that shell (v2.compiler.normalized_tree admit_retention_free, cause
+// WHAT IT READS (MQ-4): the normalized-tree door's refusal, located AT a retained shell
+// (v2.compiler.normalized_tree admit_retention_free, cause
 // normalized_tree_reason_wrapper_retention_not_normalized). Retention itself is no longer a
 // diagnostic -- it is the body lowering's BodyWrapperRetained variant -- so this census reads the
 // refusal the door mints from it, which is a report over refusals, not an admission decision.
+//
+// ITS GRAIN IS ONE RETENTION PER REFUSED MODULE, AND THAT IS A STATED LOSS. The door's refusal carries
+// exactly one fatal, the first retention in structural order, because a NonEmptyDiagnostics is
+// pending-then-one-fatal and packing every retention into it made the last one the cause. Before
+// MQ-4 every retained shell rode the refusal as a pending advisory, so this census counted all of
+// them; now it counts the first retained shell of each refused module. The full population is
+// BodyLoweredTree.retained (v2.compiler.body_lowering_fold), which does not survive into the
+// closure-level Rejected this census is handed (v2.workflow.product_receipt_stage). TRIGGER for
+// restoring full grain: the refused compile carrying each module's typed retention population
+// beside its diagnostics, so this census folds WrapperRetention values instead of refusal rows.
 //
 // The refusal cause is ONE reason standing over
 // SEVERAL distinct absent producers: the fold's own note says an out-of-scope
