@@ -27,11 +27,13 @@ import gunbc.machine_intake_mtcollins1_physical_orientation {
   Socket1TrainedNothing, Socket1TrainedIn, MaskMatchedTrainedControllers, MaskDiverged,
   socket1_standing, mask_correlation, placement_readbacks, mtcollins1_placement_readbacks,
   PlacementReadbackMatches, PlacementReadbackDiffers, PlacementReadbackUnevaluable, mtcollins1_socket1_standing, mtcollins1_mask_correlation,
+  hypothesis_text, stick_swap_verdict, StickCleared, StickNotCleared,
 }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1Socket1InvestigationBoot, MtCollins1TrainedSlot, IntendedAtPhysicalConnectors,
   MtCollins1Viewpoint, FirmwareTrainedFact, OperatorByEyeReport, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
   mtcollins1_operator_front_report, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
+  MtCollins1DiagnosisHypothesis, HypothesisRefutedByStickSwap, MtCollins1StickSwapReport, MtCollins1StickPlacement, mtcollins1_j1_j17_stick_swap,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -235,7 +237,7 @@ test fn w_slot_map_renders_left_to_right_for_a_tech() -> Bool {
       && string_contains(s: t, pattern: "Expected firmware roster for this population: SK0 MC0 S0, SK0 MC1 S0, SK0 MC4 S0, SK0 MC5 S0, SK1 MC0 S0, SK1 MC1 S0, SK1 MC4 S0, SK1 MC5 S0\n")
       && string_contains(s: t, pattern: "\nrun 35808203121: drawing 'J1','J17' = physical J25, J9 -> trained SK0 MC4 S0; DRAM 16 GiB; mcu_enable_mask = 00000010 [default: 000000ff]\n")
       && string_contains(s: t, pattern: "\nrun 35805796492: drawing 'J1','J17','J25' = physical J25, J9, J1 -> trained SK0 MC0 S0, SK0 MC4 S0; DRAM 32 GiB;")
-      && string_contains(s: t, pattern: "Socket 1 trained no DIMM in 5 boots, including the J9+J25 placement (run 35805796492, run 35808203121).\n")
+      && string_contains(s: t, pattern: "Socket 1 trained no DIMM in 6 boots, including the J9+J25 placement (run 35805796492, run 35808203121).\n")
     SlotMapRefused { refusal: _ } => false
   }
 }
@@ -310,11 +312,11 @@ test fn w_commanded_install_carries_its_expected_readback() -> Bool {
 // red: a boot that trained SK1, or a boot whose printed mask is not its controller bitmap.
 test fn w_socket1_silence_and_mask_correlation_are_derived() -> Bool {
   let silent = match mtcollins1_socket1_standing() {
-    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => list_length(items: rs) == 5 && sy == [35805796492, 35808203121]
+    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => list_length(items: rs) == 6 && sy == [35805796492, 35808203121]
     Socket1TrainedIn { runs: _ } => false
   }
   let correlated = match mtcollins1_mask_correlation() {
-    MaskMatchedTrainedControllers { runs: rs, not_printed: np } => rs == [35801475989, 35805796492, 35808203121, 35810323032] && np == [35793279839]
+    MaskMatchedTrainedControllers { runs: rs, not_printed: np } => rs == [35801475989, 35805796492, 35808203121, 35810323032, 35871654468] && np == [35793279839]
     MaskDiverged { run_id: _, mask: _, bitmap: _ } => false
   }
   let b = mtcollins1_socket1_boot_two_sticks
@@ -336,7 +338,7 @@ test fn w_socket1_silence_and_mask_correlation_are_derived() -> Bool {
       PlacementReadbackUnevaluable { run_id: _ } => false
     }
     Absent => false
-  } && list_length(items: mtcollins1_placement_readbacks()) == 1
+  } && list_length(items: mtcollins1_placement_readbacks()) == 2
   let readback_red = match placement_readbacks(boots: [MtCollins1Socket1InvestigationBoot { run_id: 7, capture_sha256: b.capture_sha256, intended: IntendedAtPhysicalConnectors { connectors: [5] }, operator_frame: b.operator_frame, roster_lines: b.roster_lines,
     trained: b.trained, dram_total: b.dram_total, mcu_enable_mask: b.mcu_enable_mask, mcu_enable_mask_line: b.mcu_enable_mask_line, host: b.host, live_sockets: b.live_sockets, findings: b.findings }], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs).first() {
     Present { value: r } => match r { PlacementReadbackDiffers { run_id: i, expected: _ } => i == 7  PlacementReadbackMatches { run_id: _ } => false  PlacementReadbackUnevaluable { run_id: _ } => false }
@@ -406,4 +408,52 @@ test fn w_no_install_plan_beside_unresolved_or_used_damage() -> Bool {
     SlotMapRefused { refusal: _ } => false
   }
   unframed && sixteen && eight
+}
+
+// The map carries today's standing: the firmware socket count, the CPU reports, the operator's
+// boot quote without a socket count, six open layer bets plus the open CPU-pairing bet, and
+// the stick refutation DERIVED from the swap report joined to the receipts. Reds: with no
+// exchange (the same stick in J17 both runs) or a run with no receipt, nothing is cleared.
+test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
+  let shown = match rendered_today() {
+    SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: t } =>
+      string_contains(s: t, pattern: "\nEstablished (run 35871654468): SCP reports 'Number of active sockets    : 1' of the board's sockets - firmware does not expose them all.")
+      && !string_contains(s: t, pattern: "Socket[1] block")
+      && string_contains(s: t, pattern: "\nCPU0 (socket 0): engineering sample - ")
+      && string_contains(s: t, pattern: "\nCPU1 (socket 1): production part - The machine's original production CPU.\n")
+      && string_contains(s: t, pattern: "\nOperator: \"the machine has booted since i swapped the CPU - so it's probably not that\" (a boot since the swap, no socket count and no date given).\n")
+      && string_contains(s: t, pattern: "\nSpares on hand: about 45 Ampere Altra processors (operator report).\n")
+      && !string_contains(s: t, pattern: "Leading") && !string_contains(s: t, pattern: "Weakened")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Physical presence: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Power and rails: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Reset and firmware-ready: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): SCP/SMpro boot stage: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): DDR init and training: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): UEFI enumeration: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): The engineering-sample CPU0 with the production CPU1")
+      && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: a stick placed in J17 is bad. By the operator's swap report: stick B was silent in J17 (run 35810323032) and trained in J1 (run 35871654468). The J17 slot is not cleared.")
+      && string_contains(s: t, pattern: "\nrun 35871654468: placed by the resolved mapping = physical J1, J17 -> trained SK0 MC0 S0; DRAM 16 GiB; mcu_enable_mask = 00000001")
+    SlotMapRefused { refusal: _ } => false
+  }
+  let sw = mtcollins1_j1_j17_stick_swap
+  let no_exchange = MtCollins1StickSwapReport { placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick B", connector: 17 },
+  ], report: sw.report }
+  let unreceipted = MtCollins1StickSwapReport { placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 7, stick: "stick B", connector: 1 },
+  ], report: sw.report }
+  let red_no_exchange = match stick_swap_verdict(swap: no_exchange, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    StickNotCleared => true
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => false
+  }
+  let red_unreceipted = match stick_swap_verdict(swap: unreceipted, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    StickNotCleared => true
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => false
+  }
+  let unheld = hypothesis_text(h: MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefutedByStickSwap { swap: no_exchange } }, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  shown && red_no_exchange && red_unreceipted && string_contains(s: unheld, pattern: "unverified") && !string_contains(s: unheld, pattern: "Refuted hypothesis")
 }

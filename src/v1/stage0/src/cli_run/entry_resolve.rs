@@ -2640,6 +2640,8 @@ pub fn reference_resolution_facts(
             let mut scratch_unclassified: Vec<String> = Vec::new();
             let mut classify = ExprVarClassification {
                 decl_index: None,
+                module_names: Some(&module_names),
+                module_path_heads: std::collections::HashSet::new(),
                 tally: &mut scratch_tally,
                 unclassified: &mut scratch_unclassified,
                 module: self_module.clone(),

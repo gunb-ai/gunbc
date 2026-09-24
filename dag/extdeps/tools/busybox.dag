@@ -6,7 +6,7 @@ import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_busybox }
+import extdeps.apt { apt_bin_dir, package_busybox }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,7 +21,7 @@ data busybox_pinned_version: VersionConstraint = ">= 1.36"
 data busybox_cli_tool: CliTool = CliTool {
   name: "busybox",
   min_version: Present { value: busybox_pinned_version },
-  installable_via: [SourceApt { package: package_busybox }],
+  installable_via: [SourceApt { package: package_busybox, bin_dir: apt_bin_dir }],
 }
 
 data busybox_source_1_36_1_url: Uri = Uri {

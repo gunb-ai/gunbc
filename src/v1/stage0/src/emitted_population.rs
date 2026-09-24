@@ -7,7 +7,6 @@
 // src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
 // src/extdeps_filesystem_rust_realization.rs
-// src/extdeps_ietf_http_semantics.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
 // src/extdeps_languages_dag_types.rs

@@ -1,0 +1,55 @@
+module extdeps.linux.proc_mountinfo
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// /proc/[pid]/mountinfo, proc_pid_mountinfo(5): one line per mount in the process's mount namespace,
+// space-separated, whose FIFTH field is the mount point "relative to the process's root directory".
+// Fields 1-6 precede an optional-fields list terminated by a single "-", so the mount point's
+// position is fixed even when optional fields are present. (man7.org, read 2026-09-23.)
+//
+// THE KERNEL ESCAPES SPACE, TAB, NEWLINE AND BACKSLASH IN PATH FIELDS AS OCTAL (\040, \011, \012,
+// \134). This model does not decode them; a mount-point field carrying a backslash is reported as
+// undecodable, so a consumer that must know every mount under a path refuses on it rather than
+// comparing an escaped spelling against a real path and missing the mount.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc_pid_mountinfo.5.html"
+  }
+}
+
+data mountinfo_mount_point_field_index: Int = 4
+
+type MountinfoMountPoints
+  = MountPointsRead { mount_points: List<String> }
+  | MountPointsUndecodable { line: String, cause: NonEmptyStr }
+
+type MountinfoFold { points: List<String>, refusal: MountinfoMountPoints? }
+
+fn mountinfo_mount_points(content: String) -> MountinfoMountPoints {
+  let folded = fold(
+    filter(map(split(s: content, delimiter: "\n"), l => trim(l)), l => l != ""),
+    init: MountinfoFold { points: [], refusal: none },
+    f: (acc, line) => match acc.refusal {
+      Present { value: _ } => acc
+      Absent => {
+        let fields = split(s: line, delimiter: " ")
+        if length(fields) <= mountinfo_mount_point_field_index {
+          MountinfoFold { points: acc.points, refusal: Present { value: MountPointsUndecodable { line: line, cause: "the line has fewer than five fields, so it names no mount point" as NonEmptyStr } } }
+        } else if string_contains(s: fields[mountinfo_mount_point_field_index], pattern: "\\") {
+          MountinfoFold { points: acc.points, refusal: Present { value: MountPointsUndecodable { line: line, cause: "the mount point carries a kernel octal escape, which this model does not decode" as NonEmptyStr } } }
+        } else {
+          MountinfoFold { points: list_push(acc.points, fields[mountinfo_mount_point_field_index]), refusal: none }
+        }
+      }
+    },
+  )
+  match folded.refusal {
+    Present { value: r } => r
+    Absent => MountPointsRead { mount_points: folded.points }
+  }
+}

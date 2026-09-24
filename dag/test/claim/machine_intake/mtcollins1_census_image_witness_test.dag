@@ -38,11 +38,16 @@ import gunbc.machine_intake_host_capture_historical_binding {
   census_stages_with_mutated_command,
   roster_matches_bindings,
 }
+import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_capture_program,
   mtcollins1_census_console_device,
   mtcollins1_census_console_tty,
-  mtcollins1_census_image_input,
+  mtcollins1_census_image,
+  Mtcollins1CensusImage,
+  Mtcollins1CensusImageDerived,
+  Mtcollins1CensusImageRefused,
+  mtcollins1_census_live_commands,
   mtcollins1_census_machine,
   mtcollins1_census_image_stem,
   mtcollins1_census_program_file,
@@ -289,26 +294,51 @@ test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Boo
 // THE SEED RUNS THE PROGRAM BEFORE ANY INSTALLER SECTION AND LEAVES EVERY SECTION TO A HUMAN, so a
 // failed power-off parks the unit at the installer rather than letting an unattended install touch
 // storage. No storage or identity key is present for subiquity to act on.
+// This is also THE INHABITANCE CLAIM FOR THE REAL ROUTE: the derived input's body is what the
+// renderer emitted for the census live commands, and a refusal from the YAML writer is a red here.
 test fn the_seed_runs_the_census_early_and_leaves_every_section_interactive() -> Bool {
-  let ud = mtcollins1_census_image_input.user_data_body as String
-  string_contains(s: ud, pattern: "#cloud-config")
-    && string_contains(s: ud, pattern: "early-commands:")
-    && string_contains(s: ud, pattern: "sh /cdrom/gunbc-census/capture.sh")
-    && string_contains(s: ud, pattern: "interactive-sections:")
-    && string_contains(s: ud, pattern: "*")
-    && string_contains(s: ud, pattern: "storage") == false
-    && string_contains(s: ud, pattern: "identity") == false
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: _ } => false
+    Mtcollins1CensusImageDerived { input: i } => {
+      let ud = i.user_data_body as String
+      string_contains(s: ud, pattern: "#cloud-config")
+        && string_contains(s: ud, pattern: "early-commands:")
+        && string_contains(s: ud, pattern: "sh /cdrom/gunbc-census/capture.sh")
+        && string_contains(s: ud, pattern: "interactive-sections:")
+        && string_contains(s: ud, pattern: "*")
+        && string_contains(s: ud, pattern: "storage") == false
+        && string_contains(s: ud, pattern: "identity") == false
+        && match autoinstall_live_commands_user_data(payload: mtcollins1_census_live_commands) {
+          AutoinstallUserDataRendered { content: c } => ud == c
+          AutoinstallUserDataRefused { reason: _ } => false
+        }
+    }
+  }
 }
 
 // ONE TTY, BOTH SPELLINGS. The device the program writes to and the console the kernel is told to
 // use derive from the same row, so they cannot be edited apart.
 test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> Bool {
-  let cmdline = mtcollins1_census_image_input.grub_kernel_cmdline as String
+  let cmdline = census_input_supplied().grub_kernel_cmdline as String
   string_contains(s: cmdline, pattern: "autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\"")
     && string_contains(s: cmdline, pattern: concat("console=", mtcollins1_census_console_tty as String, ","))
     && (mtcollins1_census_console_device as String) == concat("/dev/", mtcollins1_census_console_tty as String)
-    && mtcollins1_census_image_input.seed_files.length() == 1
-    && (mtcollins1_census_image_input.volume_id as String).length() <= 32
+    && census_input_supplied().seed_files.length() == 1
+    && (census_input_supplied().volume_id as String).length() <= 32
+}
+
+// A SUPPLIED user-data body: the key and name claims below need the input's shape, not the
+// renderer's output (DESIGN §3, a witness discriminates at one interface); the real rendering route
+// is the inhabitance claim above.
+data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  version: 1\n  interactive-sections:\n    - \"*\"\n  early-commands:\n    - sh /cdrom/gunbc-census/capture.sh\n" as NonEmptyStr
+
+fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
+  mtcollins1_seeded_image_input(
+    stages: host_capture_census_stages,
+    image_stem: mtcollins1_census_image_stem,
+    volume_id: mtcollins1_census_volume_id,
+    user_data_body: census_user_data_fixture,
+  )
 }
 
 fn census_input_varying(
@@ -318,7 +348,7 @@ fn census_input_varying(
   pinned_dates: SeededInstallMediaPinnedDates,
   builder_revision: NonEmptyStr,
 ) -> UbuntuSeededInstallMediaBuildInput {
-  let base = mtcollins1_census_image_input
+  let base = census_input_supplied()
   UbuntuSeededInstallMediaBuildInput {
     stock_artifact: base.stock_artifact,
     nocloud_dir_on_iso: base.nocloud_dir_on_iso,
@@ -352,9 +382,10 @@ fn census_key_varying(
 // (the positive control), and one byte of the capture program, the boot configuration, the label,
 // either pinned date or the builder revision each move it, as does a roster with a stage appended.
 // The key names the derivation; the image's identity is its measured bytes (next claim), and whether
-// one changed input byte changes THOSE bytes is the wet build's control on srv2.
+// one changed input byte changes THOSE bytes is the wet build's control on srv2. The user-data body
+// is varied too: it is the one rendered input, and the key must move when the document does.
 test fn every_build_input_reaches_the_derivation_key() -> Bool {
-  let base = mtcollins1_census_image_input
+  let base = census_input_supplied()
   let program = mtcollins1_census_capture_program(stages: host_capture_census_stages)
   let cmdline = base.grub_kernel_cmdline
   let volid = base.volume_id
@@ -372,16 +403,23 @@ test fn every_build_input_reaches_the_derivation_key() -> Bool {
       stages: append(host_capture_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }]),
       image_stem: mtcollins1_census_image_stem,
       volume_id: mtcollins1_census_volume_id,
+      user_data_body: census_user_data_fixture,
+    ))
+    && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
+      stages: host_capture_census_stages,
+      image_stem: mtcollins1_census_image_stem,
+      volume_id: mtcollins1_census_volume_id,
+      user_data_body: concat(census_user_data_fixture as String, "\n") as NonEmptyStr,
     ))
 }
 
 test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
   let a = ubuntu_seeded_install_media_built(
-    input: mtcollins1_census_image_input,
+    input: census_input_supplied(),
     output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   )
   let b = ubuntu_seeded_install_media_built(
-    input: mtcollins1_census_image_input,
+    input: census_input_supplied(),
     output_digest: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
   )
   a.image_name == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0123456789abcdef.iso"
