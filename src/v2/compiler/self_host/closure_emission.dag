@@ -358,7 +358,8 @@ fn closure_member_emission(
     f: fn(resolved) {
       match reference_closure_neighbours(
         member: ReferenceClosureMember { resolved: resolved, import_targets: visit.member.import_targets, payload: true },
-        roster: roster
+        roster: roster,
+        index: emission_index
       ) {
         ReferenceClosureTargetOwnerless { target: _, at: at } =>
           outcome_rejected(d: closure_emission_diagnostic(reason: ^reference_closure_target_ownerless, at: at))
@@ -413,6 +414,7 @@ fn emit_closure_from_ingest_located(
             entry: entry,
             entry_locus: entry_locus,
             roster: roster,
+            index: census_index,
             resolve_member: fn(member_module) {
               closure_member_for_fold(
                 lm: lm,
