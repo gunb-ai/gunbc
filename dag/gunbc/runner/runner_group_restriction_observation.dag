@@ -20,8 +20,9 @@ import gunbc.fleet.org_actions_inspection {
 // wants the authorized arm has to hand this observer a body GitHub could have sent.
 //
 // The reading is GitHub's own runner-group shape (extdeps.github.org_actions OrgRunnerGroup,
-// restricted_to_workflows and selected_workflows), decoded by gunbc.fleet.org_actions_inspection
-// decode_runner_groups_json -- the same decode the org-actions inspection runs, not a second one.
+// restricted_to_workflows and selected_workflows), read by gunbc.fleet.org_actions_inspection
+// read_runner_groups -- the one read the org-actions inspection, the ensure run and the controller
+// all go through, not a second one.
 
 // THE WORKFLOW IDENTIFIER THE GROUP MUST SELECT, derived rather than spelled. GitHub identifies a
 // workflow in selected_workflows as `<owner>/<repo>/<path>@<ref>` (docs.github.com/en/rest/actions/

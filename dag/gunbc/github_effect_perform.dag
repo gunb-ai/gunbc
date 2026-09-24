@@ -14,16 +14,16 @@ import extdeps.auth.jws {
 import gunbc.jws_signer_realize { jws_rs256_sign }
 import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
+import extdeps.github.effect { GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
+  JitRunnerConfigRequest,
   JitConfigCreatedBody, jit_config_mint_outcome, jit_config_created_status, jit_runner_label_wire,
 }
 import extdeps.transports.rest {
   RestOutcome, RestMutationExchange, classify_rest_outcome, RestExchangePerformance,
   RestExchangeSucceeded, RestExchangeStatusRefused,
-  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
-import extdeps.github.org_actions
-import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, RunnerGroupListDecodeRefused, runner_groups_from_wire }
+import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, read_runner_groups }
 import extdeps.github.app
 import extdeps.github.actions_jit_runner
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
@@ -209,67 +209,60 @@ fn mint_controller_installation_token(installation: GitHubAppInstallationId) -> 
   }
 }
 
-// WHAT A DISPATCH ANSWERS BEFORE ANY TOKEN IS PRESENTED, decided without I/O: a refused plan comes
-// back as its refusal, and an authorized dispatch for an App whose key this controller does not
-// custody is refused as its own arm. Absent means the dispatch may proceed to the generate step.
-fn jit_mint_performance_before_generate(dispatch: JitMintDispatch) -> JitMintPerformance? {
+// WHAT A DISPATCH ANSWERS BEFORE ANY TOKEN IS PRESENTED, decided without I/O and decided ONCE: a
+// refused plan comes back as its refusal, an authorized dispatch for an App whose key this
+// controller does not custody is refused as its own arm, and only the remaining case carries what
+// the generate step needs. perform_organization_jit_mint matches on this and nothing else, so it
+// has no second copy of these arms and no unreachable one (review 70883).
+type JitMintGenerateGate
+  = JitMintDecidedBeforeGenerate { performance: JitMintPerformance }
+  | JitMintProceedsToGenerate {
+      app: DeclaredGitHubApp
+      installation: GitHubAppInstallationId
+      organization: GitHubOrganizationRef
+      request: JitRunnerConfigRequest
+    }
+
+fn jit_mint_generate_gate(dispatch: JitMintDispatch) -> JitMintGenerateGate {
   match dispatch {
     JitMintDispatchRefused { refusal: r } =>
-      Present { value: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: r } } }
-    JitMintDispatchAuthorized { attempt: _, app: app, installation: _, organization: _, request: _ } =>
-      if app != lifecycle_controller_app { Present { value: JitMintAppKeyNotCustodied { app: app } } } else { none }
+      JitMintDecidedBeforeGenerate { performance: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: r } } }
+    JitMintDispatchAuthorized { attempt: _, app: app, installation: i, organization: o, request: req } =>
+      if app != lifecycle_controller_app {
+        JitMintDecidedBeforeGenerate { performance: JitMintAppKeyNotCustodied { app: app } }
+      } else {
+        JitMintProceedsToGenerate { app: app, installation: i, organization: o, request: req }
+      }
   }
 }
 
 fn perform_organization_jit_mint(dispatch: JitMintDispatch, token: ControllerInstallationToken) -> JitMintPerformance uses net: Network {
-  match jit_mint_performance_before_generate(dispatch: dispatch) {
-    Present { value: p } => p
-    Absent => match dispatch {
-      JitMintDispatchRefused { refusal: r } => JitMintReceived { delivery: JitCredentialNotDispatched { refusal: r } }
-      JitMintDispatchAuthorized {
-        attempt: _,
-        app: app,
-        installation: installation,
-        organization: organization,
-        request: request,
-      } =>
-        if app != token.app || installation != token.installation {
-          JitMintTokenForAnotherInstallation { app: token.app, installation: token.installation }
-        } else {
-          let minted = github.ActionsJitRunners.GenerateOrganizationJitConfig(
-            installation_token: token.token,
-            org: organization.login,
-            name: request.name.value,
-            runner_group_id: request.runner_group_id.value,
-            labels: map(request.labels, l => jit_runner_label_wire(l: l)),
-            work_folder: request.work_folder.value,
-          )
-          jit_mint_performance_of_generate(
-            dispatch: dispatch,
-            outcome: minted.outcome,
-            created: minted.result,
-          )
-        }
-    }
+  match jit_mint_generate_gate(dispatch: dispatch) {
+    JitMintDecidedBeforeGenerate { performance: p } => p
+    JitMintProceedsToGenerate { app: app, installation: installation, organization: organization, request: request } =>
+      if app != token.app || installation != token.installation {
+        JitMintTokenForAnotherInstallation { app: token.app, installation: token.installation }
+      } else {
+        let minted = github.ActionsJitRunners.GenerateOrganizationJitConfig(
+          installation_token: token.token,
+          org: organization.login,
+          name: request.name.value,
+          runner_group_id: request.runner_group_id.value,
+          labels: map(request.labels, l => jit_runner_label_wire(l: l)),
+          work_folder: request.work_folder.value,
+        )
+        jit_mint_performance_of_generate(
+          dispatch: dispatch,
+          outcome: minted.outcome,
+          created: minted.result,
+        )
+      }
   }
 }
 
-// THE CONTROLLER'S READ OF THE ORGANIZATION'S RUNNER GROUPS, under the same installation token the
-// generate step will use. The body is projected by gunbc.fleet.org_actions_inspection
-// runner_groups_from_wire into the rows the sealed observer reads; a refused or undecodable read is
-// a refused list, never an empty one.
+// THE CONTROLLER'S READ OF THE ORGANIZATION'S RUNNER GROUPS is the one read every consumer shares
+// (gunbc.fleet.org_actions_inspection read_runner_groups), under the same installation token the
+// generate step will use.
 fn read_runner_groups_with(token: ControllerInstallationToken, organization: NonEmptyStr) -> RunnerGroupListDecode uses net: Network {
-  let listed = github.OrgRunnerGroupsRest.ListOrganizationRunnerGroups(
-    installation_token: token.token,
-    org: organization,
-  )
-  match listed.outcome {
-    RestOk => runner_groups_from_wire(body: listed.result)
-    RestStatusRefused { status: s, body: b } =>
-      RunnerGroupListDecodeRefused { reason: join(["GET /orgs/\{org\}/actions/runner-groups answered ", to_string(s), ": ", b], "") as NonEmptyStr }
-    RestTransportRefused { cause: c } =>
-      RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
-    RestBodyUndecodable { status: s, cause: c } =>
-      RunnerGroupListDecodeRefused { reason: join(["runner-groups body undecodable at ", to_string(s), ": ", c as String], "") as NonEmptyStr }
-  }
+  read_runner_groups(token: token.token, organization: organization)
 }

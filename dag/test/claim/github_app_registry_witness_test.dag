@@ -37,7 +37,9 @@ import gunbc.runner_jit_mint {
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted,
   plan_jit_mint,
 }
-import gunbc.fleet.org_actions_inspection { decode_runner_groups_json }
+import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
+import extdeps.transports.rest { RestOk }
+import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
   observe_shakedown_runner_group_restriction, runner_group_restriction_not_yet_observed,
@@ -1019,11 +1021,18 @@ fn jit_binding(owned: Bool) -> MicroVmCellBinding {
 fn restricted_group_1() -> MicrovmRunnerGroupStanding {
   observe_shakedown_runner_group_restriction(
     name: microvm_shakedown_runner_group_name,
-    listed: decode_runner_groups_json(body: join([
-      "\{\"total_count\":1,\"runner_groups\":[\{\"id\":1,\"name\":\"microvm-shakedown\",\"visibility\":\"selected\",\"allows_public_repositories\":false,\"restricted_to_workflows\":true,\"selected_workflows\":[\"",
-      microvm_shakedown_selected_workflow() as String,
-      "\"],\"workflow_restrictions_read_only\":false}]}",
-    ], "")),
+    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+      total_count: 1,
+      runner_groups: [OrgRunnerGroupWire {
+        id: 1,
+        name: microvm_shakedown_runner_group_name as String,
+        visibility: "selected",
+        allows_public_repositories: false,
+        restricted_to_workflows: true,
+        selected_workflows: [microvm_shakedown_selected_workflow() as String],
+        workflow_restrictions_read_only: false,
+      }],
+    }),
   )
 }
 

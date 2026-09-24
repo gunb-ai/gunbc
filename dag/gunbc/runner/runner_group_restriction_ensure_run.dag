@@ -14,7 +14,8 @@ import extdeps.github.actions_environment { github_run_id_variable_name, github_
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.fleet.org_actions_inspection { decode_runner_groups_json, org_admin_token_env_name, RunnerGroupListDecode, RunnerGroupListDecodeRefused }
+import gunbc.fleet.org_actions_inspection { read_runner_groups, org_admin_token_env_name, RunnerGroupListDecode, RunnerGroupListDecodeRefused }
+import extdeps.shell.credentials { env_credential }
 import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, approval_refusal_text,
   approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
@@ -129,12 +130,13 @@ fn microvm_runner_group_create_request(
 
 // ── The reads and the POST ────────────────────────────────────────────────────────────────────
 
-fn read_org_runner_groups(organization: NonEmptyStr) -> RunnerGroupListDecode {
-  let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: organization)
-  if !listed.success {
-    RunnerGroupListDecodeRefused { reason: concat("runner-groups read refused: ", listed.stderr) as NonEmptyStr }
-  } else {
-    decode_runner_groups_json(body: listed.stdout)
+// The step prelude mints the org-admin installation token into GUNBC_ORG_ADMIN_TOKEN; the read is
+// the one runner-groups read every consumer shares (gunbc.fleet.org_actions_inspection
+// read_runner_groups), so this run and the microVM controller cannot disagree about the group.
+fn read_org_runner_groups(organization: NonEmptyStr) -> RunnerGroupListDecode uses net: std.resources.Network {
+  match env_credential(env_var: org_admin_token_env_name).token {
+    Absent => RunnerGroupListDecodeRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent; no bearer token to read the runner groups with" }
+    Present { value: token } => read_runner_groups(token: token, organization: organization)
   }
 }
 
