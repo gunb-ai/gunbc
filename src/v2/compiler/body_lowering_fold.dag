@@ -2849,13 +2849,127 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<Node> {
+// THE SIGNATURE OF A FN DECLARATION, READ ONCE FOR BOTH GRADES. The full arm and the census arm build
+// one Arrow from one set of reads; only whether a body edge follows differs. So the reads live here
+// and the Arrow is built by body_lower_fn_decl_arrow -- its ONE child list, with the body edge
+// present or absent -- and "census grade is the same signature" holds
+// by construction rather than by two copies staying in step. Absent means a signature this lowering
+// cannot read, which both arms retain as the shell.
+type BodyLowerFnSignature {
+  domain: Node,
+  return_type: Node,
+  fn_name: Symbol,
+  type_params: FnDeclTypeParams,
+}
+
+fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSignature> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-    ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+    ParseSubtreeAbsent => Absent
     ParseSubtreeFound { captured: param_list } =>
       match body_lower_domain_from_param_list(param_list: param_list) {
-        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Absent => Absent
         Present { value: domain } =>
+          match body_lower_return_type_from_fn_captured(captured: captured) {
+            Absent => Absent
+            Present { value: return_type } =>
+              match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                Absent => Absent
+                Present { value: fn_name } =>
+                  Present {
+                    value: BodyLowerFnSignature {
+                      domain: domain,
+                      return_type: return_type,
+                      fn_name: fn_name,
+                      type_params: body_lower_fn_decl_type_params(captured: captured)
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The type-parameter edge is part of the SIGNATURE, so the census grade carries it exactly as the
+// full grade does. A sig whose type parameters are TypeParamsUnreadable never reaches this builder:
+// both arms refuse it first (body_lower_fn_signature_type_params_refusal).
+fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge> {
+  match sig.type_params {
+    TypeParams { conj: c } => [Edge { label: Named { name: ^arrow_type_params_edge }, target: c }]
+    NoTypeParams => body_lower_no_type_param_edges()
+    TypeParamsUnreadable => body_lower_no_type_param_edges()
+  }
+}
+
+fn body_lower_fn_signature_type_params_refusal(shell: Node, sig: BodyLowerFnSignature) -> Optional<Outcome<Node>> {
+  match sig.type_params {
+    TypeParamsUnreadable =>
+      optional_present(value: Rejected {
+        diagnostics: diagnostics_singleton(d: body_lower_type_params_unreadable_diagnostic(shell: shell))
+      })
+    NoTypeParams => optional_absent()
+    TypeParams { conj: _ } => optional_absent()
+  }
+}
+
+fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
+  let signature = list_append(
+    left: [
+      Edge { label: Positional, target: sig.domain },
+      Edge { label: Positional, target: sig.return_type },
+      Edge { label: Positional, target: sig.return_type }
+    ],
+    right: body_lower_fn_decl_type_params_edges(sig: sig)
+  )
+  body_lower_fn_decl_named_member_wrap(
+    arrow: node_lowered_from(
+      source: shell,
+      kind: TypeNode { connective: Arrow },
+      children: match body {
+        Absent => signature
+        Present { value: b } =>
+          list_append(left: signature, right: [Edge { label: Named { name: ^arrow_body_edge }, target: b }])
+      }
+    ),
+    fn_name: sig.fn_name,
+    source: shell
+  )
+}
+
+// CENSUS GRADE: THE SIGNATURE, NEVER THE BODY. A module outside the compiled closure is read only for
+// what resolution asks of it -- declaration paths and payload kinds -- and the symbol-index fill
+// descends into an Arrow's domain alone. So the census arm builds the full arm's Arrow from the same
+// signature and omits the ^arrow_body_edge: the body subtree is never lowered, so a body the
+// lowering cannot yet read cannot refuse a module nobody compiles. What it does NOT relax: a
+// signature this arm cannot read still retains, which the census door
+// (v2.compiler.normalized_tree admit_census_tree) refuses exactly as the full door does. Omitting the
+// edge rather than lowering the body tolerantly also removes the three incidental body reads a
+// census root would otherwise feed: the subtree-wide Disj count, the alias scan, and the Arrow the
+// index stores at the fn's path.
+fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_fn_signature_optional(captured: captured) {
+        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Present { value: sig } =>
+          match body_lower_fn_signature_type_params_refusal(shell: shell, sig: sig) {
+            Present { value: refused } => refused
+            Absent => outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
+          }
+      }
+  }
+}
+
+// The signature is read before the body is lowered. A declaration whose signature cannot be read
+// AND whose body refuses therefore now reports retention rather than the body's cause; both refuse,
+// and the signature is the earlier fact.
+fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<Node> {
+  match body_lower_fn_signature_optional(captured: captured) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: sig } =>
+      match body_lower_fn_signature_type_params_refusal(shell: shell, sig: sig) {
+        Present { value: refused } => refused
+        Absent =>
           match body_lower_body_from_fn_captured(captured: captured) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: body_opt, diagnostics: bd0 } =>
@@ -2865,66 +2979,14 @@ fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<
                   match body_lower_reify_arrow_body(body: body) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: reified_body, diagnostics: bd } =>
-                      match body_lower_return_type_from_fn_captured(captured: captured) {
-                        Absent => body_lower_wrapper_retained_shell(shell: shell)
-                        Present { value: return_type } =>
-                          match dag_surface_kw_then_ident_from_captured(captured: captured) {
-                            Absent => body_lower_wrapper_retained_shell(shell: shell)
-                            Present { value: fn_name } =>
-                              let signature = [
-                                Edge { label: Positional, target: domain },
-                                Edge { label: Positional, target: return_type },
-                                Edge { label: Positional, target: return_type }
-                              ]
-                              let body_edge = Edge {
-                                label: Named { name: ^arrow_body_edge },
-                                target: reified_body
-                              }
-                              match body_lower_fn_decl_type_params(captured: captured) {
-                                TypeParamsUnreadable =>
-                                  Rejected {
-                                    diagnostics: diagnostics_singleton(
-                                      d: body_lower_type_params_unreadable_diagnostic(shell: shell)
-                                    )
-                                  }
-                                NoTypeParams =>
-                                  outcome_with_diagnostics(
-                                    value: body_lower_fn_decl_named_member_wrap(
-                                      arrow: node_lowered_from(
-                                        source: shell,
-                                        kind: TypeNode { connective: Arrow },
-                                        children: list_append(left: signature, right: [body_edge])
-                                      ),
-                                      fn_name: fn_name,
-                                      source: shell
-                                    ),
-                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                                  )
-                                TypeParams { conj: type_params } =>
-                                  outcome_with_diagnostics(
-                                    value: body_lower_fn_decl_named_member_wrap(
-                                      arrow: node_lowered_from(
-                                        source: shell,
-                                        kind: TypeNode { connective: Arrow },
-                                        children: list_append(
-                                          left: signature,
-                                          right: [
-                                            Edge {
-                                              label: Named { name: ^arrow_type_params_edge },
-                                              target: type_params
-                                            },
-                                            body_edge
-                                          ]
-                                        )
-                                      ),
-                                      fn_name: fn_name,
-                                      source: shell
-                                    ),
-                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                                  )
-                              }
-                          }
-                      }
+                      outcome_with_diagnostics(
+                        value: body_lower_fn_decl_arrow(
+                          shell: shell,
+                          sig: sig,
+                          body: Present { value: reified_body }
+                        ),
+                        diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                      )
                   }
               }
           }
