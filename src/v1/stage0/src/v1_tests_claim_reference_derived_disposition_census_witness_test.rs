@@ -27,7 +27,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
 use crate::v1_std_core::LeafOwner::*;
 pub use crate::v1_std_core::{diagnostic_to_message, is_error_diagnostic, no_span};
-pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex, Node};
+pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

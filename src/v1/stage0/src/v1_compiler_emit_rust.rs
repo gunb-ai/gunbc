@@ -65,22 +65,18 @@ pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::AlgebraFieldTemplate;
-pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_algebra::{is_collection_filter_template, trim};
-pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
-pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_measure::millisecond_count;
-pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
@@ -138,7 +134,6 @@ pub use crate::v1_compiler_coercion::{
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
-pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -9394,6 +9389,51 @@ pub fn reference_derived_candidate_authored(
         ))
 }
 
+pub fn rust_code_outside_string_literals(s: String) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                Rc::new(
+                    v1_rt::replace(
+                        v1_rt::replace(s.clone(), "\\\\".to_string(), " ".to_string()),
+                        "\\\"".to_string(),
+                        " ".to_string(),
+                    )
+                    .split(&"\"".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if ((pair.0.clone() % 2) == 0) {
+                    __result.push(pair);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(pair.1.clone());
+        }
+        __result
+    })
+    .join(&" ".to_string())
+}
+
+pub fn rust_qualified_segments_marked(s: String) -> String {
+    v1_rt::replace(s.clone(), "::".to_string(), " @".to_string())
+}
+
 pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
     {
         let spaced = v1_rt::replace(
@@ -10077,7 +10117,9 @@ pub fn reference_derived_use_line_plan(
                 }
                 __result
             }));
-        let emitted_source_tokens = rust_identifier_tokens(emitted_source.clone());
+        let emitted_source_tokens = rust_identifier_tokens(rust_qualified_segments_marked(
+            rust_code_outside_string_literals(emitted_source.clone()),
+        ));
         let emitted_source_token_set = emitted_source_tokens.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, t: String| v1_rt::rc_map_insert(acc, t.clone(), true),
