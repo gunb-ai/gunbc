@@ -18,6 +18,20 @@ fn nat_min(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
 
+// CEILING DIVISION, WITHOUT LEAVING THE NATURALS. The usual spelling `(a + b - 1) / b` subtracts,
+// and a difference of Nats is an Int (std.coercion dag_subtraction_result_type), so it cannot
+// return a Nat without a proof it does not have. Carrying the remainder instead stays in + and /,
+// which a Nat is closed under. A zero divisor has no quotient, so it is absent rather than
+// answered: each caller says what a zero divisor means in its own domain.
+fn nat_ceil_div(a: Nat, b: Nat) -> Nat? {
+  if b == 0 {
+    none
+  } else {
+    let carry = if a % b == 0 { 0 } else { 1 }
+    Present { value: a / b + carry }
+  }
+}
+
 // AN ASCENDING RUN OF NATURALS IS ONE CONCEPT AND THIS IS ITS ONLY AUTHORITY. It lives beside Nat
 // rather than beside any consumer because the run is a fact about the naturals, not about runner
 // slots or DRAM channels; two consumers had each open-coded it as a bucket over hardcoded literal
