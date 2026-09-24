@@ -599,9 +599,9 @@ import v2.std.collection { List }
 // THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
 // v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
 // over five inline modules and stores one verdict arm per module, portable for the same reason.
-// THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
+// THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
-// over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
+// over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -682,6 +682,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
   "v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_specimen_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_data_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_fn_eq_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_fn_brace_resolved",
   "v2.test.parse.variant_field_lowering.vfs_normalized_0",
   "v2.test.parse.variant_field_lowering.vfs_normalized_1",
   "v2.test.parse.variant_field_lowering.vfs_normalized_2",
@@ -818,6 +821,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_b",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_relay_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_imported_param_type_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_unimported_param_type_consumer",
   "v2.test.claim.reference_closure.rc_fixture_normalized",
   "v2.test.claim.reference_closure.rc_resolved_entry",
   "v2.test.claim.reference_closure.rc_resolved_imported",

@@ -445,7 +445,8 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
 // It reaches the collector not at all. That is the fact that retires an explanation I gave earlier
 // in this file and told two sibling lanes -- that a type-position row of mine had been green on an
 // `import ... { Bool }` line. It could not have been: import statements are consumed before the
-// normalized tree this collector walks, so the `Bool` mentions in `sites` are real type positions.
+// normalized tree this collector walks. (The `Bool` mentions that were in `sites` came from
+// unlowered `data` declarations, not type positions; see below.)
 //
 // WHAT WAS REMOVED, AND IT IS THE SAME RULE THIS FILE APPLIES ELSEWHERE. The row used to also
 // assert `is_empty(xs: fixture_import_sites())` against a second classified arm on the collector.
@@ -456,14 +457,21 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
 // arm is gone from v2.compiler.reference_site_collector, so what remains here is the measurement
 // that actually discriminates: a spelling that exists ONLY on an import line reaches the collector
 // in no form at all, and that row reds the moment imports begin surviving into this tree.
+//
+// THE POSITIVE HALF WAS `Bool` UNTIL 2026-09-23, AND IT WAS NOT A TYPE POSITION. v2 kept every `data`
+// declaration as surface syntax, so `data xl0_call_only: Bool = true` put a raw `Bool` atom in the
+// tree, and that atom was the only `Bool` this collector saw. A kernel type name in a lowered
+// position is not spelled `Bool` (its parameter and return positions never reached here). Once
+// `data` lowered to a named member (v2.compiler.body_lowering_fold body_lower_data_decl_to_member),
+// the mention went with the surface. The positive half is now `Xl0UserType`, a parameter-position
+// mention of a user-declared type, so the row still proves the collector is not empty.
 test fn an_import_only_spelling_does_not_reach_this_route_holds() -> Bool {
   !sites_mention(sites: fixture_sites(), spelling: "Absent")
-    && sites_mention(sites: fixture_sites(), spelling: "Bool")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
 test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
-  sites_mention(sites: fixture_sites(), spelling: "Bool")
-    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
+  sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
 // IS A BARE FIELD TYPE ITS OWN MISSING CLASS? The three-class rule this PR states -- bare reaches,

@@ -60,6 +60,7 @@ import gunbc.fabric_cell_converge {
   FabricCellAttemptRootAddress,
   FabricCellResourceBoundaryAddress,
   fabric_cell_desired_members,
+  fabric_cell_desired_members_for_slot,
   fabric_cell_id_for_slot,
   fabric_cell_member_key,
   fabric_cell_resource_address_equal,
@@ -153,7 +154,12 @@ import gunbc.fleet_converge_plan {
   fleet_converge_slot_lines,
   fleet_converge_slot_refusal_count,
 }
-import gunbc.fabric_cell_effect { fabric_cell_realization, CellPlanRealizable, CellPlanRefused }
+import gunbc.fabric_cell_effect {
+  fabric_cell_realization, CellPlanRealizable, CellPlanRefused, fabric_cell_slice_desired_directives_for_slot,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, gunbc_runner_slot_desired, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_width_transition { required_retirees_for_host, RetireesKnown, RetireesUnresolved }
+import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.runner_host_deploy {
   admitted_deploy_for,
   RunnerHostDeploy }
@@ -984,6 +990,39 @@ fn fabric_witness_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
 }
 
+// THE WITNESS SLOT IS ONE MEMBER OF srv3'S EXPECTED CELLS, NOT ALL OF THEM, AND THE FIXTURES BELOW
+// ONCE ASSUMED OTHERWISE. They were written while srv3 carried a single fabric cell, so a probe that
+// read srv3-06 alone was a complete observation of the host. #11625 gave srv3 a second cell
+// (srv3-07); from then on every such probe left srv3-07 present-in-the-roster and never read, so the
+// "converged" population planned an ADD for srv3-07, and every refusal fixture carried three extra
+// unobserved-address refusals -- 17 claims red, none of them about the property it names. The
+// fixtures now read the companions CONVERGED, derived from the same slot authority the kernel reads
+// (fabric_cell_expected_slots), so a third cell is covered the day it lands and the witness slot
+// stays the only cell whose state each row varies.
+fn fabric_witness_companion_slots() -> List<RunnerSlotIdentity> {
+  filter(fabric_cell_expected_slots(host: operator_host_srv3), s => s.slot_index != fabric_witness_slot().slot_index)
+}
+
+fn fabric_converged_address_entries(slot: RunnerSlotIdentity) -> List<FabricCellAddressProbeEntry> {
+  map(
+    fabric_cell_resource_addresses(),
+    a => FabricCellAddressProbeEntry {
+      slot: slot,
+      address: a,
+      probe: AddressStateRead { state_digest: fabric_cell_desired_state_digest(slot: slot, address: a) },
+    },
+  )
+}
+
+// AN INDEX THAT IS NOT AN EXPECTED srv3 CELL, derived rather than written. The unexpected-evidence
+// rows used srv3-07 as their "unexpected" cell; #11625 made srv3-07 EXPECTED, so it stopped being
+// evidence the kernel refuses and those rows went red. The index is now one past the highest
+// expected cell, so growing the roster can never again turn the fixture into a member.
+fn unexpected_srv3_slot(offset: Int) -> RunnerSlotIdentity {
+  let top = fold(fabric_cell_expected_slots(host: operator_host_srv3), init: 0, f: (acc, s) => if (s.slot_index as Int) > acc { s.slot_index as Int } else { acc })
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: top + 1 + offset }
+}
+
 // THESE POPULATIONS ARE MINTED FROM A PROBE, NOT ASSERTED BY LITERAL, AND EACH TIGHTENING HERE WAS
 // FORCED BY A DEFECT RATHER THAN CHOSEN. An early cut wrote the admitted variant directly -- a
 // witness claiming the host was read and holds nothing, with no observation behind it, which is the
@@ -991,14 +1030,14 @@ fn fabric_witness_slot() -> RunnerSlotIdentity {
 // that. A later cut built a readback by hand and folded it, which was honest about the expected
 // side and silent about discovery. Now there is one route for everyone: a probe goes in, and what
 // comes out is what a production caller would get from the same bytes.
-fn fabric_cell_readback_all_present() -> FabricCellReadback {
-  FabricCellReadback {
-    slot: fabric_witness_slot(),
+fn fabric_cell_readbacks_all_present() -> List<FabricCellReadback> {
+  map(fabric_cell_expected_slots(host: operator_host_srv3), slot => FabricCellReadback {
+    slot: slot,
     observations: map(
-      fabric_cell_desired_members(host: operator_host_srv3),
+      fabric_cell_desired_members_for_slot(slot: slot),
       m => AddressObserved { member: m },
     ),
-  }
+  })
 }
 
 fn fabric_probe_of(entries: List<String>, addresses: List<FabricCellAddressProbeEntry>) -> FabricCellHostProbe {
@@ -1014,23 +1053,26 @@ fn fabric_probe_with_slice(
   slice_entries: List<String>,
   addresses: List<FabricCellAddressProbeEntry>,
 ) -> FabricCellHostProbe {
+  let companions = fabric_witness_companion_slots()
   FabricCellHostProbe {
     host: operator_host_srv3,
-    namespaces: [
-      FabricCellNamespaceProbeEntry {
-        namespace: FabricCellsRootNamespace,
-        probe: NamespaceEnumerated { entries: entries },
-      },
-      FabricCellNamespaceProbeEntry {
-        namespace: FabricCellChildNamespace { slot: fabric_witness_slot() },
+    namespaces: concat(
+      [
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellsRootNamespace,
+          probe: NamespaceEnumerated { entries: concat(entries, map(companions, c => runner_slot_instance_name(slot: c))) },
+        },
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellSliceNamespace,
+          probe: NamespaceEnumerated { entries: concat(slice_entries, map(companions, c => fabric_cell_slice_name(slot: c))) },
+        },
+      ],
+      map(concat([fabric_witness_slot()], companions), c => FabricCellNamespaceProbeEntry {
+        namespace: FabricCellChildNamespace { slot: c },
         probe: NamespaceEnumerated { entries: ["attempts"] },
-      },
-      FabricCellNamespaceProbeEntry {
-        namespace: FabricCellSliceNamespace,
-        probe: NamespaceEnumerated { entries: slice_entries },
-      },
-    ],
-    addresses: addresses,
+      }),
+    ),
+    addresses: concat(addresses, fold(companions, init: [], f: (acc, c) => concat(acc, fabric_converged_address_entries(slot: c)))),
   }
 }
 
@@ -1247,7 +1289,7 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
   list_length(items: refused_lines) == 1
-    && list_length(items: empty_lines) == 4
+    && list_length(items: empty_lines) == list_length(items: fabric_cell_desired_members(host: operator_host_srv3)) + 1
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
@@ -1312,13 +1354,32 @@ test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
 // absent and srv4's three as extras, so the plan was a full install plus a full teardown against a
 // host nobody read, with nothing refused and a refusal count that counted the actions as ordinary
 // work. The count assertion below is what separates "refused" from "planned six things".
+// IT MUST BE A COMPLETE OBSERVATION OF srv4, OR THE ROW TESTS srv4's ADMISSION INSTEAD OF THE JOIN.
+// Written while srv4 expected no cells, a bare empty root enumeration WAS complete. #11625 gave srv4
+// two cells, and from then on this probe left their child namespaces and slice unread, so admission
+// refused it on srv4's own terms (three srv4 refusals) and the srv3 plan never reached the host
+// comparison at all -- red, and for a reason unrelated to the row. It is now read-and-empty over
+// srv4's expected slots, derived from the same authority, the shape fabric_cells_observed_empty
+// uses for srv3.
 fn fabric_cells_observed_on_srv4() -> FabricCellObservationDecision {
   admit_fabric_cell_probe(probe: FabricCellHostProbe {
     host: operator_host_srv4,
-    namespaces: [FabricCellNamespaceProbeEntry {
-      namespace: FabricCellsRootNamespace,
-      probe: NamespaceEnumerated { entries: [] },
-    }],
+    namespaces: concat(
+      [
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellsRootNamespace,
+          probe: NamespaceEnumerated { entries: [] },
+        },
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellSliceNamespace,
+          probe: NamespaceEnumerated { entries: [] },
+        },
+      ],
+      map(fabric_cell_expected_slots(host: operator_host_srv4), c => FabricCellNamespaceProbeEntry {
+        namespace: FabricCellChildNamespace { slot: c },
+        probe: NamespaceObservedAbsent,
+      }),
+    ),
     addresses: [],
   })
 }
@@ -1478,7 +1539,7 @@ fn fabric_cell_readback_boundary_drifted() -> FabricCellReadback {
   FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: map(
-      fabric_cell_desired_members(host: operator_host_srv3),
+      fabric_cell_desired_members_for_slot(slot: fabric_witness_slot()),
       m =>
         if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
           AddressObserved {
@@ -1497,7 +1558,7 @@ fn fabric_cell_readback_boundary_absent() -> FabricCellReadback {
   FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: map(
-      fabric_cell_desired_members(host: operator_host_srv3),
+      fabric_cell_desired_members_for_slot(slot: fabric_witness_slot()),
       m =>
         if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
           AddressAbsent { slot: fabric_witness_slot(), address: m.address }
@@ -1512,7 +1573,11 @@ fn fabric_boundary_realize_line() -> String {
   join([
     "REALIZE fabric-cell ensure-slice ",
     fabric_cell_slice_name(slot: fabric_witness_slot()),
-    " directives=5",
+    " directives=",
+    to_string(value: list_length(items: fabric_cell_slice_desired_directives_for_slot(
+      slot: fabric_witness_slot(),
+      quota: gunbc_runner_slot_desired().cpu_quota,
+    ))),
   ], "")
 }
 
@@ -1666,13 +1731,13 @@ test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> 
 // is supplied and REFUSED when one unexpected cell is. If the two agreed, the evidence would be
 // being ignored exactly as it was before.
 test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() -> Bool {
-  let with_unexpected = [
-    fabric_cell_readback_all_present(),
-    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }),
-  ]
-  fabric_refusal_count_of(entries: [fabric_cell_readback_all_present()]) == 0
+  let with_unexpected = concat(fabric_cell_readbacks_all_present(), [unexpected_readback_at(offset: 0)])
+  fabric_refusal_count_of(entries: fabric_cell_readbacks_all_present()) == 0
     && fabric_refusal_count_of(entries: with_unexpected) == 1
-    && string_contains(s: fabric_refusal_lines(entries: with_unexpected), pattern: "unexpected-cell srv3-07")
+    && string_contains(
+        s: fabric_refusal_lines(entries: with_unexpected),
+        pattern: join(["unexpected-cell ", runner_slot_instance_name(slot: unexpected_srv3_slot(offset: 0))], ""),
+      )
 }
 
 // ONE UNEXPECTED CELL REPORTED TWICE IS ONE UNEXPECTED CELL. The subject is the cell; the readback
@@ -1685,17 +1750,15 @@ test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() 
 // order independence (reversed is the same), and NON-degeneracy -- two DISTINCT unexpected slots
 // must still count two, or a kernel that collapsed everything to one would satisfy the first two
 // perfectly.
-fn unexpected_readback_at(index: Int) -> FabricCellReadback {
-  synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: index })
+fn unexpected_readback_at(offset: Int) -> FabricCellReadback {
+  synthetic_absent_readback_for(slot: unexpected_srv3_slot(offset: offset))
 }
 
 test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> Bool {
-  let once = [fabric_cell_readback_all_present(), unexpected_readback_at(index: 7)]
-  let twice = [
-    fabric_cell_readback_all_present(),
-    unexpected_readback_at(index: 7),
-    unexpected_readback_at(index: 7),
-  ]
+  let once = concat(fabric_cell_readbacks_all_present(), [unexpected_readback_at(offset: 0)])
+  let twice = concat(fabric_cell_readbacks_all_present(), [unexpected_readback_at(offset: 0),
+    unexpected_readback_at(offset: 0),
+  ])
   fabric_refusal_count_of(entries: once) == 1
     && fabric_refusal_count_of(entries: twice) == 1
     && fabric_refusal_lines(entries: once) == fabric_refusal_lines(entries: twice)
@@ -1703,12 +1766,11 @@ test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> 
 
 
 test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
-  let forward = [
-    fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
-  ]
-  let reversed = [
-    unexpected_readback_at(index: 8), unexpected_readback_at(index: 7), fabric_cell_readback_all_present(),
-  ]
+  let forward = concat(fabric_cell_readbacks_all_present(), [unexpected_readback_at(offset: 0), unexpected_readback_at(offset: 1),
+  ])
+  let reversed = concat([
+    unexpected_readback_at(offset: 1), unexpected_readback_at(offset: 0),
+  ], fabric_cell_readbacks_all_present())
   fabric_refusal_count_of(entries: forward) == 2
     && fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
 }
@@ -1722,10 +1784,8 @@ test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
 // subject that leaves every counted population without appearing in a refusal would be the silent
 // exclusion this carrier exists to end, reintroduced by the repair for a different one.
 test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_unexpected() -> Bool {
-  let mixed = [
-    fabric_cell_readback_all_present(),
-    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
-  ]
+  let mixed = concat(fabric_cell_readbacks_all_present(), [synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
+  ])
   let lines = fabric_refusal_lines(entries: mixed)
   fabric_refusal_count_of(entries: mixed) == 1
     && string_contains(s: lines, pattern: "host-mismatched-readback srv4-07")
@@ -1739,18 +1799,17 @@ test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_une
 // host and index alone decides. This row reds if the routing is removed even though the sort is
 // untouched, which is the point -- the defect was a denominator, not a comparator.
 test fn witness_fabric_cell_cross_host_pair_is_order_independent() -> Bool {
-  let same_index_srv3 = unexpected_readback_at(index: 7)
-  let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let forward = [fabric_cell_readback_all_present(), same_index_srv3, same_index_srv4]
-  let reversed = [fabric_cell_readback_all_present(), same_index_srv4, same_index_srv3]
+  let same_index_srv3 = unexpected_readback_at(offset: 0)
+  let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: unexpected_srv3_slot(offset: 0).slot_index })
+  let forward = concat(fabric_cell_readbacks_all_present(), [same_index_srv3, same_index_srv4])
+  let reversed = concat(fabric_cell_readbacks_all_present(), [same_index_srv4, same_index_srv3])
   fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
     && fabric_refusal_count_of(entries: forward) == 2
 }
 
 test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -> Bool {
-  fabric_refusal_count_of(entries: [
-    fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
-  ]) == 2
+  fabric_refusal_count_of(entries: concat(fabric_cell_readbacks_all_present(), [unexpected_readback_at(offset: 0), unexpected_readback_at(offset: 1),
+  ])) == 2
 }
 
 // TWO HOST MISMATCHES REORDERED ARE ONE POPULATION, and the row above cannot see this. It pairs
@@ -1767,8 +1826,8 @@ test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -
 test fn witness_fabric_cell_host_mismatches_are_order_independent() -> Bool {
   let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 8 })
   let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let forward = [fabric_cell_readback_all_present(), a, b]
-  let reversed = [fabric_cell_readback_all_present(), b, a]
+  let forward = concat(fabric_cell_readbacks_all_present(), [a, b])
+  let reversed = concat(fabric_cell_readbacks_all_present(), [b, a])
   fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
     && fabric_refusal_count_of(entries: forward) == 2
 }
@@ -1776,8 +1835,8 @@ test fn witness_fabric_cell_host_mismatches_are_order_independent() -> Bool {
 test fn witness_fabric_cell_host_mismatches_sharing_an_index_are_order_independent() -> Bool {
   let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 })
   let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let forward = [fabric_cell_readback_all_present(), a, b]
-  let reversed = [fabric_cell_readback_all_present(), b, a]
+  let forward = concat(fabric_cell_readbacks_all_present(), [a, b])
+  let reversed = concat(fabric_cell_readbacks_all_present(), [b, a])
   fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
     && fabric_refusal_count_of(entries: forward) == 2
 }
@@ -1786,8 +1845,8 @@ test fn witness_fabric_cell_host_mismatches_sharing_an_index_are_order_independe
 // cannot be satisfied by a fold that collapses the list to one member.
 test fn witness_fabric_cell_duplicate_host_mismatches_are_one_subject() -> Bool {
   let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let once = [fabric_cell_readback_all_present(), a]
-  let twice = [fabric_cell_readback_all_present(), a, a]
+  let once = concat(fabric_cell_readbacks_all_present(), [a])
+  let twice = concat(fabric_cell_readbacks_all_present(), [a, a])
   fabric_refusal_count_of(entries: once) == 1
     && fabric_refusal_count_of(entries: twice) == 1
     && fabric_refusal_lines(entries: once) == fabric_refusal_lines(entries: twice)
@@ -1879,10 +1938,8 @@ test fn witness_fabric_cell_foreign_expected_slot_is_its_own_refusal_subject() -
 // readback produces are rendered as refusals, one line per subject. The action side is now
 // unreachable by construction rather than by assertion, which is the stronger place for it.
 test fn witness_fabric_cell_supplied_refusals_render_as_refusals() -> Bool {
-  let entries = [
-    fabric_cell_readback_all_present(),
-    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
-  ]
+  let entries = concat(fabric_cell_readbacks_all_present(), [synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
+  ])
   fabric_refusal_count_of(entries: entries) == 1
     && string_contains(s: fabric_refusal_lines(entries: entries), pattern: "host-mismatched-readback ")
 }
@@ -2306,6 +2363,33 @@ test fn deploy_branch_policy_compares_and_never_admits_any_branch() -> Bool {
 // it emits is what fleet apply executes after reobserving the same subject. So these rows drive it
 // rather than the helpers beneath it: a control that proved the realization and left the renderer
 // unexamined is how this branch previously shipped a teardown that never consulted retirement at all.
+// THE SURPLUS SLOT IS DERIVED FROM srv4'S COMMITTED WIDTH, NOT NAMED. These rows named srv4-13
+// while srv4's committed width was 12. #11625 derived the width from the host's memory envelope and
+// srv4's rose to 17, so srv4-13 became a committed member: the planner correctly saw nothing to
+// retire, and the first- and second-pass rows went red while the three negative rows around them
+// kept passing VACUOUSLY -- "removes no tree" is true of a slot that was never a retiree. The
+// fixture is now the first slot past the committed width, and the first-pass row additionally
+// asserts that its unit IS a required retiree, so the next width change reds on the fixture's
+// premise, by name, rather than on the planner. An unresolved width names slot 0, which is never a
+// retiree, so that arm reds too rather than passing.
+fn witness_srv4_surplus_slot(offset: Int) -> RunnerSlotIdentity {
+  match gunbc_runner_committed_width(host: operator_host_srv4) {
+    RunnerWidthDerived { slots: w } => RunnerSlotIdentity { host: operator_host_srv4, slot_index: w + 1 + offset }
+    RunnerWidthUnresolved { cause: _ } => RunnerSlotIdentity { host: operator_host_srv4, slot_index: 0 }
+  }
+}
+
+fn witness_srv4_surplus_unit(offset: Int) -> NonEmptyStr {
+  runner_slot_unit_name(slot: witness_srv4_surplus_slot(offset: offset))
+}
+
+fn witness_srv4_surplus_is_a_required_retiree() -> Bool {
+  match required_retirees_for_host(host: operator_host_srv4) {
+    RetireesKnown { units: us } => any(us, u => (u as String) == (witness_srv4_surplus_unit(offset: 0) as String))
+    RetireesUnresolved { host: _, cause: _ } => false
+  }
+}
+
 fn witness_no_retirement_evidence() -> SlotRetirementEvidence {
   SlotRetirementEvidenceAbsent { cause: "this control binds no observation" }
 }
@@ -2319,7 +2403,7 @@ fn witness_srv4_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetir
 
 fn witness_srv4_surplus() -> List<RunnerSlotMember> {
   [runner_slot_member_observed(
-    instance_name: "srv4-13",
+    instance_name: runner_slot_instance_name(slot: witness_srv4_surplus_slot(offset: 0)),
     provenance: SlotProvenanceObserved {
       in_host_grammar: true,
       registration: SlotUnregistered,
@@ -2332,7 +2416,7 @@ fn witness_srv4_surplus() -> List<RunnerSlotMember> {
 fn witness_srv4_complete_standing() -> RunnerRetirementStanding {
   runner_retirement_standing(
     o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit: witness_srv4_surplus_unit(offset: 0),
       unit_file_state: "masked",
       active_state: "inactive",
       occupancy: CgroupAbsent,
@@ -2355,7 +2439,7 @@ fn emits_mask_command(lines: List<String>) -> Bool {
 }
 
 fn removes_retired_tree(lines: List<String>) -> Bool {
-  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: join(["/opt/actions-runner/", runner_slot_instance_name(slot: witness_srv4_surplus_slot(offset: 0))], "")))
 }
 
 fn witness_srv4_apply(standings: List<RunnerRetirementStanding>) -> List<String> {
@@ -2370,7 +2454,8 @@ fn witness_srv4_apply(standings: List<RunnerRetirementStanding>) -> List<String>
 // and no removal -- a pass that did both would establish its own postcondition.
 test fn the_first_pass_masks_the_surplus_slot_and_removes_no_tree() -> Bool {
   let lines = witness_srv4_apply(standings: [])
-  emits_mask_command(lines: lines)
+  witness_srv4_surplus_is_a_required_retiree()
+    && emits_mask_command(lines: lines)
     && !removes_retired_tree(lines: lines)
 }
 
@@ -2388,7 +2473,7 @@ test fn a_populated_cgroup_removes_no_tree_at_the_renderer() -> Bool {
   let lines = witness_srv4_apply(standings: [
     runner_retirement_standing(
       o: retirement_observation_from_readings(
-        unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+        unit: witness_srv4_surplus_unit(offset: 0),
         unit_file_state: "masked",
         active_state: "inactive",
         occupancy: cgroup_occupancy_from_reads(
@@ -2407,7 +2492,7 @@ test fn another_slots_completion_removes_nothing_at_the_renderer() -> Bool {
   let lines = witness_srv4_apply(standings: [
     runner_retirement_standing(
       o: retirement_observation_from_readings(
-        unit: "actions-runner@srv4-14.service" as NonEmptyStr,
+        unit: witness_srv4_surplus_unit(offset: 1),
         unit_file_state: "masked",
         active_state: "inactive",
         occupancy: CgroupAbsent,
@@ -2472,7 +2557,7 @@ fn drift_request(standings: List<RunnerRetirementStanding>) -> FleetConvergeRequ
 fn drift_populated_standing() -> RunnerRetirementStanding {
   runner_retirement_standing(
     o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit: witness_srv4_surplus_unit(offset: 0),
       unit_file_state: "masked",
       active_state: "inactive",
       occupancy: cgroup_occupancy_from_reads(
