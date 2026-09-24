@@ -32671,22 +32671,6 @@ fn ref_field_chain_head(
 /// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
 /// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
 /// value field access, not a module-qualified name).
-/// The head `ExprVar` of a dotted chain: the node `ref_field_chain` stops at, along the same
-/// receiver spine.
-fn ref_field_chain_head(
-    node: &Rc<crate::v1_std_core::Node>,
-) -> Option<Rc<crate::v1_std_core::Node>> {
-    use crate::v1_std_core::ExprData;
-    let mut cur = node.children.get(0).cloned()?;
-    loop {
-        match &*cur.expr_data {
-            ExprData::ExprFieldAccess { .. } => cur = cur.children.get(0).cloned()?,
-            ExprData::ExprVar { .. } => return Some(cur),
-            _ => return None,
-        }
-    }
-}
-
 fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
     use crate::v1_std_core::ExprData;
     let mut segs: Vec<String> = vec![node.name.clone()];
