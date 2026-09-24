@@ -466,7 +466,7 @@ import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_contin
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
-  ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationSpawnFromPrior, ContinuationRefused, ContinuationHold, ContinuationComplete,
   ContinuationEscalate, ContinuationPlanDefect, ContinuationStuck,
   continuation_decision, attempt_origin_turn,
 }
@@ -1961,20 +1961,28 @@ fn belt_actuate_spawn_exec_modeled(
         provider: provider_wire_label,
         launch: launch,
       }
-    ContinuationFresh { reason: _ } =>
+    ContinuationSpawnFresh { reason: _ } =>
       belt_actuate_spawn_with_origin(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: FreshFromBase,
         selection: selection,
       )
-    ContinuationContinue { origin } =>
+    ContinuationSpawnFromPrior { origin } =>
       belt_actuate_spawn_with_origin(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: origin,
         selection: selection,
       )
+    ContinuationComplete { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "continuation-complete",
+        detail: reason,
+        provider: provider_wire_label,
+        launch: launch,
+      }
   }
 }
 
@@ -7481,13 +7489,14 @@ type EscalateOneRoute
 fn belt_escalate_one_route(decision: ContinuationDecision) -> EscalateOneRoute {
   match decision {
     ContinuationEscalate { escalation } => EscalateRouteConvene { escalation: escalation }
-    ContinuationContinue { origin: _ } =>
+    ContinuationSpawnFromPrior { origin: _ } =>
       EscalateRouteNotDue { detail: "the lineage's supervisor verdict was already consumed and the renewed continuation is the spawn lane's to issue" }
     ContinuationPlanDefect { defect } =>
       EscalateRouteNotDue { detail: join(["the supervisor adjudicated this lineage a plan defect: ", defect], "") }
     ContinuationStuck { cause } =>
       EscalateRouteNotDue { detail: join(["the supervisor adjudicated this lineage stuck: ", cause], "") }
-    ContinuationFresh { reason } => EscalateRouteNotDue { detail: join(["no escalation is due: ", reason], "") }
+    ContinuationComplete { reason } => EscalateRouteNotDue { detail: join(["the lineage is complete: ", reason], "") }
+    ContinuationSpawnFresh { reason } => EscalateRouteNotDue { detail: join(["no escalation is due: ", reason], "") }
     ContinuationHold { reason } => EscalateRouteNotDue { detail: join(["the lineage holds: ", reason], "") }
     ContinuationRefused { reason } => EscalateRouteRefuse { reason: reason }
   }

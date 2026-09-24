@@ -186,8 +186,8 @@ import gunbc.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  ContinuationFresh, ContinuationHold, ContinuationRefused, ContinuationPlanDefect, ContinuationStuck,
-  ContinuationContinue,
+  ContinuationSpawnFresh, ContinuationHold, ContinuationRefused, ContinuationPlanDefect, ContinuationStuck,
+  ContinuationComplete, ContinuationSpawnFromPrior,
   ContinueFromAttempt,
 }
 import gunbc.roadmap_belt_tick_cli {
@@ -2730,7 +2730,7 @@ test fn the_escalate_one_route_convenes_only_an_escalation_record() -> Bool {
       EscalateRouteNotDue { detail } => detail.contains("stuck")
       _ => false
     })
-    && (match belt_escalate_one_route(decision: ContinuationFresh { reason: "no prior attempt of this node" }) {
+    && (match belt_escalate_one_route(decision: ContinuationSpawnFresh { reason: "no prior attempt of this node" }) {
       EscalateRouteNotDue { detail } => detail.contains("no escalation is due")
       _ => false
     })
@@ -2742,7 +2742,7 @@ test fn the_escalate_one_route_convenes_only_an_escalation_record() -> Bool {
       EscalateRouteRefuse { reason } => reason == "the verdict does not decode"
       _ => false
     })
-    && (match belt_escalate_one_route(decision: ContinuationContinue { origin: ContinueFromAttempt { parent_attempt_key: "a1", branch: "roadmap/n1/a1", turn: 4, verdict_detail: "nominal" } }) {
+    && (match belt_escalate_one_route(decision: ContinuationSpawnFromPrior { origin: ContinueFromAttempt { parent_attempt_key: "a1", branch: "roadmap/n1/a1", turn: 4, verdict_detail: "nominal" } }) {
       EscalateRouteNotDue { detail } => detail.contains("already consumed")
       _ => false
     })

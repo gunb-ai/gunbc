@@ -5,7 +5,7 @@ import gunbc.roadmap_model { RoadmapEdge, RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
-  ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationSpawnFromPrior, ContinuationRefused, ContinuationHold, ContinuationComplete,
   ContinuationEscalate, ContinuationPlanDefect, ContinuationStuck,
   continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
   continuation_alignment_l0_pointer, continuation_alignment_ask,
@@ -24,7 +24,9 @@ import gunbc.roadmap.roadmap_supervisor {
   supervisor_verdict_schema,
 }
 import gunbc.roadmap_workflow_stage {
-  WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment, WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
+  WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
+  WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
 fn te(child: String, parent: String) -> RoadmapEdge {
@@ -84,7 +86,7 @@ fn failed_prior() -> PriorAttemptFacts {
 
 test fn no_prior_attempt_starts_fresh() -> Bool {
   match continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent) {
-    ContinuationFresh { reason: _ } => true
+    ContinuationSpawnFresh { reason: _ } => true
     _ => false
   }
 }
@@ -93,7 +95,7 @@ test fn no_prior_attempt_starts_fresh() -> Bool {
 // the brief prefix carries the verdict; a green verdict on the same prior starts fresh.
 test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief() -> Bool {
   match continuation_decision(prior: Present { value: failed_prior() }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationContinue { origin } =>
+    ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == 2
         && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
         && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "sandbox render red")
@@ -102,7 +104,7 @@ test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_b
   }
 }
 
-test fn a_green_verdict_starts_fresh() -> Bool {
+test fn a_fully_approved_lineage_is_complete_and_spawns_nothing() -> Bool {
   let green = pri(
     capture: ready_capture(),
     verdict: SupervisorVerdictAbsent,
@@ -111,7 +113,7 @@ test fn a_green_verdict_starts_fresh() -> Bool {
     goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
   )
   match continuation_decision(prior: Present { value: green }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationFresh { reason: _ } => attempt_origin_base_ref(origin: FreshFromBase, instance_base_ref: "origin/main") == "origin/main"
+    ContinuationComplete { reason } => string_contains(s: reason, pattern: "the lineage is complete")
     _ => false
   }
 }
@@ -125,7 +127,7 @@ test fn a_green_verification_with_changes_requested_continues_and_a_pending_revi
   let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified,
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, goal_audit: none)
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "review requested changes: dag/a.dag: the arm is missing")
+    ContinuationSpawnFromPrior { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "review requested changes: dag/a.dag: the arm is missing")
     _ => false
   }
   let b = match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
@@ -170,7 +172,7 @@ test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_hold
   let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified, review: approved,
     goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } })
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "goal audit requested changes: the check could pass with the goal unmet")
+    ContinuationSpawnFromPrior { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "goal audit requested changes: the check could pass with the goal unmet")
     _ => false
   }
   let b = match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
@@ -205,7 +207,7 @@ fn blocked_prior() -> PriorAttemptFacts {
 // the next turn with the worker's explanation leading the brief -- never a fresh start from base.
 test fn a_blocked_submission_continues_with_its_explanation_carried() -> Bool {
   match continuation_decision(prior: Present { value: blocked_prior() }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationContinue { origin } =>
+    ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == 2
         && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
         && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "declared blocked: the acceptance run was still in flight when the budget died")
@@ -223,7 +225,7 @@ test fn a_needs_context_submission_continues_with_its_explanation_carried() -> B
     limitations: "",
   })
   match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnKnown { turn: 1 }) {
-    ContinuationContinue { origin } =>
+    ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == 2
         && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
         && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "declared needs-context: the contract does not say which artifact the lane renders")
@@ -242,7 +244,7 @@ test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
     goal_audit: none,
   )
   match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationContinue { origin } =>
+    ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == 2
         && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
         && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "preservation only")
@@ -251,16 +253,17 @@ test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
 }
 
 // RED CONTROL: a ready capture is a candidate, and a candidate is verification's to judge -- the
-// decision starts fresh with the standing reason and NEVER continues past an unjudged candidate,
-// so a fabricated ready submission cannot route a lineage around the verify gate.
-test fn a_ready_candidate_starts_fresh_and_never_continues() -> Bool {
+// decision HOLDS (the belt owes the verification, no spawn of any kind) and NEVER routes to
+// SpawnFromPrior past an unjudged candidate, so a fabricated ready submission cannot route a
+// lineage around the verify gate.
+test fn a_ready_candidate_holds_for_verification_and_never_continues() -> Bool {
   let p = declared_prior(readiness_explanation: WorkerSubmission {
     readiness: SubmissionReady,
     explanation: "implemented the change and ran the acceptance route",
     limitations: "",
   })
   match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationFresh { reason } => string_contains(s: reason, pattern: "has not been verified yet")
+    ContinuationHold { reason } => string_contains(s: reason, pattern: "verification is owed and still pending")
     _ => false
   }
 }
@@ -390,7 +393,7 @@ test fn a_nominal_verdict_for_this_turn_issues_the_renewed_continuation() -> Boo
     prior: Present { value: capped_prior(verdict: nominal_receipt(turn: continuation_turn_cap)) },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
   ) {
-    ContinuationContinue { origin } =>
+    ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == continuation_turn_cap + 1
         && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
         && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "adjudicated this lineage Nominal")
@@ -470,4 +473,67 @@ test fn the_verdict_receipt_round_trips_and_the_schema_wall_holds() -> Bool {
           VerdictDecoded { receipt: _ } => false
         })
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The vocabulary repair (branch review 2026-09-23, blocker 2): SpawnFresh means exactly "no prior
+// owned lineage exists" -- every unresolved-but-present lineage state is a Hold (or the named
+// Refused), never a fresh spawn beside live work.
+// ------------------------------------------------------------------------------------------------
+
+fn running_prior() -> PriorAttemptFacts {
+  let p = failed_prior()
+  PriorAttemptFacts {
+    node_id: p.node_id,
+    edges: p.edges,
+    attempt_key: p.attempt_key,
+    branch: p.branch,
+    worker_terminal: false,
+    capture: p.capture,
+    supervisor_verdict: p.supervisor_verdict,
+    verification: p.verification,
+    review: p.review,
+    goal_audit: p.goal_audit,
+  }
+}
+
+// AN ACTIVE WORKER IS A HOLD, the repair's core: before it answered Fresh and the belt spawned a
+// second lineage beside the live one. No spawn arm is reachable from a running worker.
+test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
+  match continuation_decision(prior: Present { value: running_prior() }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationHold { reason } => string_contains(s: reason, pattern: "has not ended")
+    _ => false
+  }
+}
+
+// VERIFICATION OWNED BY THE BELT HOLDS THE LINEAGE: absent, pending, and active segments are the
+// belt's outstanding obligation, not a spawn's business; a refused verification is an environment
+// fact and the obligation stays outstanding with the retry named; a stopped segment is a state
+// verification does not inhabit and refuses.
+test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool {
+  let owed = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: none, review: none, goal_audit: none)
+  let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, review: none, goal_audit: none)
+  let active = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentActive, detail: "running" } }, review: none, goal_audit: none)
+  let refused = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "sandbox image missing" } }, review: none, goal_audit: none)
+  let stopped = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "x" } }, review: none, goal_audit: none)
+  (match continuation_decision(prior: Present { value: owed }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationHold { reason } => reason.contains("verification is owed")
+    _ => false
+  })
+    && (match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
+      ContinuationHold { reason } => reason.contains("still pending")
+      _ => false
+    })
+    && (match continuation_decision(prior: Present { value: active }, prior_turn: ContinuationTurnAbsent) {
+      ContinuationHold { reason } => reason.contains("running")
+      _ => false
+    })
+    && (match continuation_decision(prior: Present { value: refused }, prior_turn: ContinuationTurnAbsent) {
+      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("retries")
+      _ => false
+    })
+    && (match continuation_decision(prior: Present { value: stopped }, prior_turn: ContinuationTurnAbsent) {
+      ContinuationRefused { reason } => reason.contains("does not inhabit")
+      _ => false
+    })
 }
