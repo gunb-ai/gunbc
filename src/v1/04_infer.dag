@@ -5319,7 +5319,8 @@ fn type_node_positively_not_callable(n: Node, type_env: TypeEnv) -> Bool {
 // formal (dag/std/materialization_ladder.dag first_provider_where callers, the std.algebra
 // fold_list callers). The lambda's value is the arrow over its own parameters and body type, minted
 // by the same constructor a named function value's arrow is. Every other expression's value type is
-// its resolved type.
+// its resolved type. An unannotated `let` binds its local at this value type too, so a let-bound
+// lambda's local is its ARROW and every argument seam judges it like any other function value.
 //
 // A LAMBDA'S PARAMETERS ARE ITS CHILDREN AFTER THE BODY (lambda_body, lambda_param_names_at), each
 // carrying its type in `inferred`, and its `params` is empty -- so the arrow is minted over those
@@ -8248,8 +8249,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
-      // A let-bound lambda's value is its ARROW, not its body (expression_value_type), so the local
-      // is bound at the type a caller of it, and every argument seam judging it, must see.
       let val_type = expression_value_type(e: val_typed)
       let val_annotation_diags = match declared_let_type {
         Present { value: declared } =>

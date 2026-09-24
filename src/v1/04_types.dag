@@ -532,6 +532,9 @@ fn enrich_kernel_type(name: String, base: Node, source_indices: Map<String, Newl
   }
 }
 
+// A CallableOf return variable binds to what a CALL of the argument produces: a lambda argument is
+// typed as its body, a function value (named, or a let-bound lambda) as its arrow, so an arrow is
+// read at its return.
 fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   match template {
     AlgebraTypeVariable { id: var_id } =>
@@ -557,9 +560,6 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
     ReceiverElement =>
       if map_get(subst, "__element__") != none { subst }
       else { map_insert(subst, "__element__", concrete) }
-    // A lambda argument is typed as its body, a function value (named, or a let-bound lambda) as its
-    // arrow; the return variable binds to what a CALL of the argument produces, so an arrow is read
-    // at its return.
     CallableOf { params: _, return_type: ret_template } =>
       let produced = match concrete.connective {
         Arrow => match concrete.inferred { Present { value: Resolved { node: r } } => r  _ => concrete }
