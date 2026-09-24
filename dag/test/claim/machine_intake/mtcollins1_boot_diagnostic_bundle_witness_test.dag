@@ -546,7 +546,7 @@ test fn a_supplied_reference_renders_its_differences() -> Bool {
 // Supplied ipmitool raw renderings; no SMpro exchange with this BMC is in the corpus yet.
 
 fn smpro_raw(socket: Int, register: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> SmproProbeRaw {
-  SmproProbeRaw { socket: socket, register: register, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-24T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
+  SmproProbeRaw { sequence: 0, socket: socket, register: register, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-24T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
 }
 
 test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
@@ -560,7 +560,7 @@ test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
     smpro: SmproProbed { outcomes: outcomes }, inventory: b.inventory, console: b.console }
   (match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "q"), findings: mtcollins1_boot_bundle_findings(bundle: bundle)) {
-    ExitFailure { code: _, reason: r } => contains(r, "SMpro socket 1: BOOTSTAGE DDR initialization, failed")
+    ExitFailure { code: _, reason: r } => contains(r, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE (CUR_BOOTSTAGE was not probed); BOOTSTAGE DDR initialization, failed")
     ExitSuccess => false
   }) && contains(mtcollins1_boot_bundle_text(bundle: bundle), "== smpro boot stage (ipmi master write-read) ==")
 }
@@ -574,6 +574,19 @@ test fn an_smpro_nak_means_the_bmc_answered() -> Bool {
     smpro: SmproProbed { outcomes: [nak] }, inventory: b.inventory, console: b.console }
   !any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "every BMC read failed")
     && any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle_bmc_silent()), pattern: "every BMC read failed")
+}
+
+// AN EXIT-ZERO RESPONSE THAT DID NOT PARSE IS STILL THE BMC ANSWERING: with SEL, SDR and Redfish all
+// failed and the SMpro returning one byte, neither 'every BMC read failed' nor 'did not answer' is
+// rendered, and the probe keeps its MALFORMED standing in the dossier.
+test fn a_malformed_smpro_answer_means_the_bmc_answered() -> Bool {
+  let b = bundle_bmc_silent()
+  let bad = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: " cd\n", stderr: ""))
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: SmproProbed { outcomes: [bad] }, inventory: b.inventory, console: b.console }
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  !any_contains(xs: findings, pattern: "every BMC read failed") && !any_contains(xs: findings, pattern: "did not answer")
+    && contains(mtcollins1_boot_bundle_text(bundle: bundle), "MANUFACTURER_ID_REG: MALFORMED")
 }
 
 // ── IDENTITY COMPLETENESS ────────────────────────────────────────────────────────────────────

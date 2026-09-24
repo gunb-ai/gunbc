@@ -73,7 +73,11 @@ fn mtcollins1_smpro_probe_count() -> Int {
 
 // ── the raw observation and its typed outcome ───────────────────────────────────────────────────
 
+// sequence IS THE PROBE'S POSITION IN THE PASS, and it is the read's own input: each read is handed
+// the number of outcomes already folded, so it cannot be issued before every earlier probe has an
+// outcome (see mtcollins1_smpro_sequenced).
 type SmproProbeRaw {
+  sequence: Int
   socket: Int
   register: NonEmptyStr
   request: NonEmptyStr
@@ -143,7 +147,7 @@ fn smpro_request_text(bus: Int, slave: Int, reg: Int) -> NonEmptyStr {
   concat("raw 0x06 0x52 ", hex_byte_text(n: bus), " ", hex_byte_text(n: slave), " ", hex_byte_text(n: smpro_value_size_bytes), " ", hex_byte_text(n: reg), " ", hex_byte_text(n: smpro_value_size_bytes)) as NonEmptyStr
 }
 
-fn mtcollins1_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, deadline: Second, kill_after: Second) -> SmproProbeOutcome
+fn mtcollins1_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second) -> SmproProbeOutcome
 {
   match master_write_read_bus_byte(bus: mtcollins1_smpro_bus) {
     Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the bus fields do not fit the request's byte 1" }
@@ -164,7 +168,7 @@ fn mtcollins1_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr, targ
           kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
         )
         smpro_probe_outcome(raw: SmproProbeRaw {
-          socket: target.socket, register: reg.name, request: smpro_request_text(bus: bus, slave: slave, reg: reg.offset),
+          sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(bus: bus, slave: slave, reg: reg.offset),
           at: at, exit_code: r.exit_code, stdout: r.stdout, stderr: r.transport_stderr,
         })
       }
@@ -172,41 +176,65 @@ fn mtcollins1_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr, targ
   }
 }
 
-fn not_sent_all(target: SmproTarget, reason: String) -> List<SmproProbeOutcome> {
-  map(mtcollins1_smpro_read_order, reg => SmproNotSent { socket: target.socket, register: reg.name, reason: reason as NonEmptyStr })
+// THE ORDER IS A DATA DEPENDENCE, NOT A SOURCE POSITION. The plan is one ordered list of (socket,
+// register), and one fold walks it: each step decides from the outcomes ALREADY FOLDED whether to
+// read at all (the controls gate what follows) and hands the read its sequence, count(acc). A read
+// therefore consumes every earlier probe's outcome, so no evaluation strategy can issue BOOTSTAGE
+// before the reads the plan puts ahead of it. Independent `let` bindings carried no such
+// dependence, which is the defect this replaces. The read itself is a parameter, so a witness can
+// run this exact fold with a supplied read and observe the order.
+type SmproPlannedProbe {
+  target: SmproTarget
+  register: SmproRegister
 }
 
-// ONE SOCKET: the control, then (only if it established the transport) the four boot-progress reads.
-fn mtcollins1_smpro_socket(username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, deadline: Second, kill_after: Second) -> List<SmproProbeOutcome>
-{
-  let control = mtcollins1_smpro_read(username: username, password_file: password_file, target: target, reg: smpro_manufacturer_id_reg, deadline: deadline, kill_after: kill_after)
-  match smpro_control_refusal(o: control) {
-    Present { value: why } =>
-      concat([control], map(mtcollins1_smpro_read_order.skip(n: 1), reg => SmproNotSent { socket: target.socket, register: reg.name, reason: concat("socket ", to_string(target.socket), " control: ", why) as NonEmptyStr }))
-    Absent => {
-      let cur = mtcollins1_smpro_read(username: username, password_file: password_file, target: target, reg: smpro_cur_bootstage_reg, deadline: deadline, kill_after: kill_after)
-      let lo = mtcollins1_smpro_read(username: username, password_file: password_file, target: target, reg: smpro_bootstage_lo_reg, deadline: deadline, kill_after: kill_after)
-      let hi = mtcollins1_smpro_read(username: username, password_file: password_file, target: target, reg: smpro_bootstage_hi_reg, deadline: deadline, kill_after: kill_after)
-      let stage = mtcollins1_smpro_read(username: username, password_file: password_file, target: target, reg: smpro_bootstage_reg, deadline: deadline, kill_after: kill_after)
-      [control, cur, lo, hi, stage]
+fn mtcollins1_smpro_plan() -> List<SmproPlannedProbe> {
+  flat_map(mtcollins1_smpro_targets, t => map(mtcollins1_smpro_read_order, reg => SmproPlannedProbe { target: t, register: reg }))
+}
+
+fn is_control(reg: SmproRegister) -> Bool {
+  reg.offset == smpro_manufacturer_id_reg.offset
+}
+
+// The control outcome already folded for a socket, if its control has been probed.
+fn folded_control(acc: List<SmproProbeOutcome>, socket: Int) -> SmproProbeOutcome? {
+  filter(acc, o => outcome_socket(o: o) == socket && outcome_register(o: o) == (smpro_manufacturer_id_reg.name as String)).first()
+}
+
+// Why this step must not be sent, from what is already folded: socket 0's control gates every
+// later socket, and a socket's own control gates its boot-progress reads.
+fn smpro_step_block(acc: List<SmproProbeOutcome>, probe: SmproPlannedProbe) -> String? {
+  let first_socket = match mtcollins1_smpro_targets.first() { Absent => 0 Present { value: t } => t.socket }
+  let gate0 = if probe.target.socket == first_socket { none } else {
+    match folded_control(acc: acc, socket: first_socket) {
+      Absent => Present { value: "socket 0 control was not probed before this socket" }
+      Present { value: c } => match smpro_control_refusal(o: c) { Absent => none Present { value: why } => Present { value: concat("socket 0 control did not establish the transport: ", why) } }
+    }
+  }
+  match gate0 {
+    Present { value: why } => Present { value: why }
+    Absent => if is_control(reg: probe.register) { none } else {
+      match folded_control(acc: acc, socket: probe.target.socket) {
+        Absent => Present { value: concat("socket ", to_string(probe.target.socket), " control was not probed before this register") }
+        Present { value: c } => match smpro_control_refusal(o: c) { Absent => none Present { value: why } => Present { value: concat("socket ", to_string(probe.target.socket), " control: ", why) } }
+      }
     }
   }
 }
 
-// BOTH SOCKETS, socket 0 first; a socket-0 control that did not establish the transport sends
-// nothing to socket 1.
+fn mtcollins1_smpro_sequenced(plan: List<SmproPlannedProbe>, read: fn(SmproTarget, SmproRegister, Int) -> SmproProbeOutcome) -> List<SmproProbeOutcome> {
+  let empty: List<SmproProbeOutcome> = []
+  fold(plan, init: empty, f: (acc, probe) => concat(acc, [
+    match smpro_step_block(acc: acc, probe: probe) {
+      Present { value: why } => SmproNotSent { socket: probe.target.socket, register: probe.register.name, reason: why as NonEmptyStr }
+      Absent => read(probe.target, probe.register, count(acc))
+    }
+  ]))
+}
+
 fn mtcollins1_smpro_probes(username: NonEmptyStr, password_file: NonEmptyStr, deadline: Second, kill_after: Second) -> List<SmproProbeOutcome>
 {
-  let first = match mtcollins1_smpro_targets.first() { Absent => SmproTarget { socket: 0, seven_bit_address: 79 } Present { value: t } => t }
-  let socket0 = mtcollins1_smpro_socket(username: username, password_file: password_file, target: first, deadline: deadline, kill_after: kill_after)
-  let rest = mtcollins1_smpro_targets.skip(n: 1)
-  match socket0.first() {
-    Absent => socket0
-    Present { value: control } => match smpro_control_refusal(o: control) {
-      Present { value: why } => concat(socket0, flat_map(rest, t => not_sent_all(target: t, reason: concat("socket 0 control did not establish the transport: ", why))))
-      Absent => concat(socket0, flat_map(rest, t => mtcollins1_smpro_socket(username: username, password_file: password_file, target: t, deadline: deadline, kill_after: kill_after)))
-    }
-  }
+  mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => mtcollins1_smpro_read(username: username, password_file: password_file, target: t, reg: reg, sequence: n, deadline: deadline, kill_after: kill_after))
 }
 
 // ── what each socket's reads establish ──────────────────────────────────────────────────────────
@@ -233,43 +261,71 @@ fn outcome_register(o: SmproProbeOutcome) -> String {
   }
 }
 
-type SmproSocketStage
-  = SmproStageEstablished { socket: Int, bootstage: SmproBootStage, current: SmproStageReading? }
-  | SmproStageNotEstablished { socket: Int, reason: String }
+// TWO INDEPENDENT READINGS PER SOCKET. CUR_BOOTSTAGE is where the SMpro says the socket IS;
+// BOOTSTAGE is the stage and status it REPORTS, which the driver advances only by the write this
+// pass never makes, so the two may differ by design. Neither is derived from the other, and a
+// failure reading one leaves the other standing.
+type SmproCurrentStage
+  = CurrentStageEstablished { stage: SmproStageReading }
+  | CurrentStageUnavailable { reason: String }
+
+type SmproReportedStage
+  = ReportedStageEstablished { bootstage: SmproBootStage }
+  | ReportedStageUnavailable { reason: String }
+
+type SmproSocketStage {
+  socket: Int
+  current: SmproCurrentStage
+  reported: SmproReportedStage
+}
 
 fn smpro_socket_word(outcomes: List<SmproProbeOutcome>, socket: Int, register: NonEmptyStr) -> SmproProbeOutcome? {
   filter(outcomes, o => outcome_socket(o: o) == socket && outcome_register(o: o) == (register as String)).first()
 }
 
+fn register_unavailable_reason(o: SmproProbeOutcome?, name: NonEmptyStr) -> String {
+  match o {
+    Absent => concat(name as String, " was not probed")
+    Present { value: x } => concat(name as String, " ", smpro_outcome_text(o: x))
+  }
+}
+
 fn mtcollins1_smpro_socket_stage(outcomes: List<SmproProbeOutcome>, socket: Int) -> SmproSocketStage {
-  match smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_bootstage_reg.name) {
-    Absent => SmproStageNotEstablished { socket: socket, reason: "BOOTSTAGE was not probed" }
-    Present { value: o } => match smpro_outcome_word(o: o) {
-      Absent => SmproStageNotEstablished { socket: socket, reason: concat("BOOTSTAGE ", smpro_outcome_text(o: o)) }
-      Present { value: w } => SmproStageEstablished {
-        socket: socket,
-        bootstage: smpro_bootstage_of(word: w),
-        current: match smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_cur_bootstage_reg.name) {
-          Absent => none
-          Present { value: c } => match smpro_outcome_word(o: c) { Absent => none Present { value: cw } => Present { value: smpro_cur_bootstage_of(word: cw) } }
-        },
-      }
-    }
+  let cur = smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_cur_bootstage_reg.name)
+  let rep = smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_bootstage_reg.name)
+  SmproSocketStage {
+    socket: socket,
+    current: match match cur { Absent => none Present { value: o } => smpro_outcome_word(o: o) } {
+      Present { value: w } => CurrentStageEstablished { stage: smpro_cur_bootstage_of(word: w) }
+      Absent => CurrentStageUnavailable { reason: register_unavailable_reason(o: cur, name: smpro_cur_bootstage_reg.name) }
+    },
+    reported: match match rep { Absent => none Present { value: o } => smpro_outcome_word(o: o) } {
+      Present { value: w } => ReportedStageEstablished { bootstage: smpro_bootstage_of(word: w) }
+      Absent => ReportedStageUnavailable { reason: register_unavailable_reason(o: rep, name: smpro_bootstage_reg.name) }
+    },
+  }
+}
+
+fn current_text(c: SmproCurrentStage) -> String {
+  match c {
+    CurrentStageEstablished { stage: st } => smpro_stage_text(r: st)
+    CurrentStageUnavailable { reason: why } => concat("UNAVAILABLE (", why, ")")
+  }
+}
+
+fn reported_text(r: SmproReportedStage) -> String {
+  match r {
+    ReportedStageEstablished { bootstage: b } => concat(smpro_stage_text(r: b.stage), ", ", smpro_status_text(r: b.status))
+    ReportedStageUnavailable { reason: why } => concat("UNAVAILABLE (", why, ")")
   }
 }
 
 fn mtcollins1_smpro_stage_text(s: SmproSocketStage) -> String {
-  match s {
-    SmproStageEstablished { socket: k, bootstage: b, current: c } => concat(
-      "SMpro socket ", to_string(k), ": BOOTSTAGE ", smpro_stage_text(r: b.stage), ", ", smpro_status_text(r: b.status),
-      match c { Absent => "" Present { value: cur } => concat("; CUR_BOOTSTAGE ", smpro_stage_text(r: cur)) },
-    )
-    SmproStageNotEstablished { socket: k, reason: why } => concat("SMpro socket ", to_string(k), ": stage NOT ESTABLISHED: ", why)
-  }
+  concat("SMpro socket ", to_string(s.socket), ": CUR_BOOTSTAGE ", current_text(c: s.current), "; BOOTSTAGE ", reported_text(r: s.reported))
 }
 
 fn raw_text(r: SmproProbeRaw) -> String {
-  concat("    ", r.request as String, " at ", r.at as String, " exit=", to_string(r.exit_code), " stdout=[", trim(r.stdout), "] stderr=[", trim(r.stderr), "]")
+  concat("    #", to_string(r.sequence), " ", r.request as String, " at ", r.at as String, " exit=", to_string(r.exit_code), " stdout=[", trim(r.stdout), "] stderr=[", trim(r.stderr), "]")
 }
 
 fn outcome_raw_text(o: SmproProbeOutcome) -> String {
@@ -293,23 +349,35 @@ fn mtcollins1_smpro_dossier_text(outcomes: List<SmproProbeOutcome>) -> String {
   ], "\n")
 }
 
-// FINDINGS: each socket's established stage is a finding when the sockets DIFFER or a status is
-// FAILED, and a socket whose stage could not be established is one when another socket's was. A
-// run where every socket reached the same stage without failure adds nothing to the refusal line.
+// FINDINGS: every socket's line, when the sockets DIFFER on either reading (an unavailable reading
+// beside an established one is a difference), or a reported status is FAILED. Nothing when no
+// reading was established anywhere (the dossier says why), or when every socket agrees.
+fn reported_failed(s: SmproSocketStage) -> Bool {
+  match s.reported {
+    ReportedStageEstablished { bootstage: b } => match b.status { SmproStatusDefined { status: Failed } => true _ => false }
+    ReportedStageUnavailable { reason: _ } => false
+  }
+}
+
+fn established_any(s: SmproSocketStage) -> Bool {
+  (match s.current { CurrentStageEstablished { stage: _ } => true _ => false }) || (match s.reported { ReportedStageEstablished { bootstage: _ } => true _ => false })
+}
+
+// The comparison key is the readings alone: an unavailable reading keys as UNAVAILABLE whatever its
+// reason, whose text names its own socket and would make every pair differ.
+fn socket_key(s: SmproSocketStage) -> String {
+  concat(
+    match s.current { CurrentStageEstablished { stage: st } => smpro_stage_text(r: st) CurrentStageUnavailable { reason: _ } => "UNAVAILABLE" },
+    "|",
+    match s.reported { ReportedStageEstablished { bootstage: _ } => reported_text(r: s.reported) ReportedStageUnavailable { reason: _ } => "UNAVAILABLE" },
+  )
+}
+
 fn mtcollins1_smpro_findings(outcomes: List<SmproProbeOutcome>) -> List<String> {
   let stages = map(mtcollins1_smpro_targets, t => mtcollins1_smpro_socket_stage(outcomes: outcomes, socket: t.socket))
-  let established = filter(stages, s => match s { SmproStageEstablished { socket: _, bootstage: _, current: _ } => true _ => false })
-  let texts = map(established, s => match s {
-    SmproStageEstablished { socket: _, bootstage: b, current: _ } => concat(smpro_stage_text(r: b.stage), "/", smpro_status_text(r: b.status))
-    _ => ""
-  })
-  let first = match texts.first() { Absent => "" Present { value: t } => t }
-  let differ = any(texts, t => t != first)
-  let failed = any(established, s => match s {
-    SmproStageEstablished { socket: _, bootstage: b, current: _ } => match b.status { SmproStatusDefined { status: Failed } => true _ => false }
-    _ => false
-  })
-  if count(established) == 0 { [] }
-  else if differ || failed || count(established) < count(stages) { map(stages, s => mtcollins1_smpro_stage_text(s: s)) }
+  let first = match stages.first() { Absent => "" Present { value: s } => socket_key(s: s) }
+  let differ = any(stages, s => socket_key(s: s) != first)
+  if !any(stages, s => established_any(s: s)) { [] }
+  else if differ || any(stages, s => reported_failed(s: s)) { map(stages, s => mtcollins1_smpro_stage_text(s: s)) }
   else { [] }
 }
