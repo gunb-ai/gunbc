@@ -1525,7 +1525,8 @@ fn issue_detail_fixture_html() -> HtmlEmitResult {
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
-    attempts: []))
+    attempts: [],
+    events: []))
 }
 
 test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
@@ -1664,7 +1665,8 @@ test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
-    attempts: attempts)) {
+    attempts: attempts,
+    events: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
@@ -1712,13 +1714,16 @@ test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
       let table = table_region(html: h)
       occurrence_count(s: table, pattern: "dispatch-btn") == 0
         && occurrence_count(s: table, pattern: "<button class=\"issue-action issue-action-contained-primary is-disabled\"") == 3
-        && occurrence_count(s: table, pattern: "disabled=\"\">Assign</button>") == 3
-        && string_contains(s: table, pattern: "data-action=\"Assign\"")
+        && occurrence_count(s: table, pattern: "disabled=\"\">Start Work</button>") == 3
+        && string_contains(s: table, pattern: "data-action=\"Start Work\"")
         && string_contains(s: table, pattern: "data-idiom=\"contained-primary\"")
         && string_contains(s: table, pattern: "data-action-state=\"disabled\"")
+        && !string_contains(s: table, pattern: "data-action=\"Assign\"")
   }
 }
 
+// The table row carries EXECUTION ONLY: the durable Assign action lives on the detail page's
+// action bar, never on the dense row — assignment and start-work stay distinct affordances.
 test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
@@ -1728,9 +1733,26 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         Absent => h
       }
       occurrence_count(s: body, pattern: "dispatch-btn") == 0
-        && string_contains(s: body, pattern: "<button class=\"issue-action issue-action-contained-primary\" type=\"button\" data-action=\"Assign\" data-idiom=\"contained-primary\" data-action-state=\"enabled\"")
+        && string_contains(s: body, pattern: "<button class=\"issue-action issue-action-text\" type=\"button\" data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"")
+        && string_contains(s: body, pattern: "<button class=\"issue-action issue-action-contained-primary\" type=\"button\" data-action=\"Start Work\" data-idiom=\"contained-primary\" data-action-route=\"dispatch\" data-action-state=\"enabled\"")
         && !string_contains(s: body, pattern: "is-disabled")
-        && !string_contains(s: body, pattern: "disabled=\"\">Assign</button>")
+        && string_contains(s: body, pattern: "class=\"issue-action-bar\"")
+  }
+}
+
+// PARENT AND BLOCKING RENDER SEPARATELY (owner ruling 2026-09-24): the detail field panel carries
+// the decomposition link in its own "parent" row, beside the dependency rows "blocking" and
+// "blocked by" — three distinct fields, never one merged list. The fixture: specimen's primary
+// parent is the parent issue; it blocks the child; the parent blocks it.
+test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<span class=\"issue-field-label\">parent</span>") == 1
+        && occurrence_count(s: h, pattern: "<span class=\"issue-field-label\">blocking</span>") == 1
+        && occurrence_count(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span>") == 1
+        && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-parent\"") == 2
+        && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-child\"") == 1
   }
 }
 
@@ -1743,10 +1765,78 @@ test fn witness_issue_detail_assignee_shows_attempt_identity() -> Bool {
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
-    attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ])) {
+    attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ],
+    events: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<span class=\"issue-field-value\">feedface…</span>") == 1
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
+  }
+}
+
+
+// THE WORK TAB'S EVENT HISTORY (owner ruling 2026-09-24): the issue's durable execution history
+// renders one row per event-log envelope, NEWEST FIRST by recorded_at — the envelope written at
+// 03:00 heads the 02:00 and the 01:00, each row naming its author, kind, and payload.
+fn fx_event_envelope(id: String, at: String, kind: gunbc.roadmap.roadmap_event_log.RoadmapEventKind) -> gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+  gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+    id: id as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
+    event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
+      node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
+      author: "agent-35" as NonEmptyStr,
+      parent: none,
+      kind: kind,
+      recorded_at: at,
+    },
+  }
+}
+
+test fn witness_issue_work_tab_renders_event_history_newest_first() -> Bool {
+  let events = [
+    fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed),
+    fx_event_envelope(id: "evt-two", at: "2026-09-24T03:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "kv receipts joined" as NonEmptyStr }),
+    fx_event_envelope(id: "evt-three", at: "2026-09-24T02:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "ranks realized" as NonEmptyStr }),
+  ]
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: events)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
+      count(work_parts) == 2
+        && occurrence_count(s: string_at(parts: work_parts, index: 1), pattern: "class=\"issue-event-row\"") == 3
+        && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "data-event-kind=\"progress\">")
+        && (match (split(s: string_at(parts: work_parts, index: 1), delimiter: "2026-09-24T03:00:00Z")).first() {
+          Absent => false
+          Present { value: _ } =>
+            let after_three = string_at(parts: split(s: string_at(parts: work_parts, index: 1), delimiter: "2026-09-24T03:00:00Z"), index: 1)
+            occurrence_count(s: after_three, pattern: "2026-09-24T02:00:00Z") == 1
+              && (match (split(s: after_three, delimiter: "2026-09-24T02:00:00Z")).skip(n: 1).first() {
+                Absent => false
+                Present { value: after_two } => occurrence_count(s: after_two, pattern: "2026-09-24T01:00:00Z") == 1
+              })
+        })
+  }
+}
+
+// THE FIRST LIVE PROJECT ISSUE (owner ruling 2026-09-24): 'Restore Group B serving' is declared
+// in the authority and renders on the daily issue table — as a project row (the serving arc
+// depends on it, so the tree nests the arc beneath it), with its acceptance headline and its
+// fleet owner. The authority admission shape (unique id, acyclic edges, complete ticket) is the
+// authority suite's subject; this pin is the render.
+test fn witness_restore_group_b_serving_renders_on_the_issue_table() -> Bool {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let table = table_region(html: h)
+      string_contains(s: table, pattern: "restore-group-b-serving")
+        && string_contains(s: table, pattern: "Restore Group B serving")
+        // The id rides twice: the row's own data-node and its Start Work button's — the row
+        // renders exactly once (one li).
+        && occurrence_count(s: table, pattern: "<li class=\"node node-open\" data-band=\"upcoming\" data-node=\"restore-group-b-serving\"") == 1
+        && string_contains(s: table, pattern: "<span class=\"issue-component\">@fleet</span>")
   }
 }

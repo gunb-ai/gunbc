@@ -6,7 +6,8 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
-  roadmap_parent_ids,
+  roadmap_parent_ids, roadmap_primary_parent,
+  RoadmapParent, TopLevel, UnderParent,
   NodeSizing, Unsized, Sized,
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
   Volume, VolumeSmall, VolumeMedium, VolumeLarge,
@@ -29,6 +30,7 @@ import gunbc.roadmap_provider_events {
   provider_execution_activity,
   ProviderEventsRefused,
 }
+import extdeps.google.issue_tracker { fleet_component_hosts }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -465,8 +467,26 @@ fn carrier_facts(carriers: List<Pointer>) -> List<SupportingFact> {
   map(carriers, p => SupportingFact { label: "carrier", value: p.label, href: p.path })
 }
 
+// THE COMPONENT PLACEMENT (owner ruling 2026-09-24: fleet issues carry a real component
+// placement, the srvN tree in extdeps.google.issue_tracker): a carrier under dag/gunbc/spark/ is
+// the Spark lane's work, placed on the Spark hosts — derived from the component tree, never a
+// hand-listed string. Finer arm placement (group A vs B) is authored content knowledge, not
+// carrier-derivable; the browse tree carries the arms, the issue's field names the hosts its lane
+// touches.
+fn spark_host_component_paths() -> List<String> {
+  map(filter(fleet_component_hosts, c => c.id >= 5), c => join(c.path, "/"))
+}
+
+fn component_fact(carriers: List<Pointer>) -> List<SupportingFact> {
+  if any(carriers, p => starts_with(s: p.path, prefix: "dag/gunbc/spark/")) {
+    [ SupportingFact { label: "component", value: join(spark_host_component_paths(), " · "), href: "" } ]
+  } else {
+    []
+  }
+}
+
 fn row_supporting_facts(rn: RoadmapNode) -> List<SupportingFact> {
-  concat(owner_fact(owner: rn.owner), concat(sizing_fact(s: rn.sizing), carrier_facts(carriers: rn.carriers)))
+  concat(owner_fact(owner: rn.owner), concat(sizing_fact(s: rn.sizing), concat(carrier_facts(carriers: rn.carriers), component_fact(carriers: rn.carriers))))
 }
 
 // The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown
@@ -2000,7 +2020,16 @@ type IssueLinkView {
   headline: String
 }
 
+// PARENT AND BLOCKING STAY SEPARATE (owner ruling 2026-09-24): the panel carries DECOMPOSITION
+// (parent — where the issue nests) and DEPENDENCY (blocking / blocked-by — what it obstructs and
+// what obstructs it) as distinct fields, never one merged list. THE NAMED GAP, not papered over:
+// the roadmap graph carries ONLY dependency edges today (the chain-ambiguity finding), so the
+// decomposition side rides the tree derivation's primary-parent rule — the first edge target read
+// as the display parent — which is a presentation approximation, not a modeled decomposition
+// relation. When decomposition edges land, the parent field rebinds to them and the blocking
+// fields stay exactly as they are.
 type IssueLinkPanel {
+  parent: IssueLinkView?
   blocking: List<IssueLinkView>
   blocked_by: List<IssueLinkView>
 }
@@ -2018,6 +2047,13 @@ fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Ro
 
 fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> IssueLinkPanel {
   IssueLinkPanel {
+    parent: match roadmap_primary_parent(edges: edges, node: rn.node) {
+      TopLevel => none
+      UnderParent { parent: pid } => match find_node(nodes: nodes, node_id: pid as String) {
+        Present { value: p } => Present { value: issue_link_view_of(rn: p) }
+        Absent => none
+      }
+    },
     blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),
     blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
       match find_node(nodes: nodes, node_id: pid) {

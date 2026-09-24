@@ -453,12 +453,20 @@ type IssueActionKind
   = IssueActionAssign
   | IssueActionCreate
   | IssueActionMarkDuplicate
+  | IssueActionStartWork
 
+// THE ACTIONS' SEMANTICS (owner ruling 2026-09-24): Assign and Start Work are DISTINCT — Assign
+// is DURABLE ASSIGNMENT, a recorded fact on the issue (who it is assigned to); Start Work is
+// EXECUTION (dispatch), the workflow launching an attempt. Never one affordance doing both. Start
+// Work is our execution verb on the tracker surface, owner-directed 2026-09-24 — the product's
+// own execution verbs are not part of the captured session; the Assign/Create/MarkDuplicate
+// labels remain the product's UI spellings.
 fn issue_action_wire(kind: IssueActionKind) -> String {
   match kind {
     IssueActionAssign => "Assign"
     IssueActionCreate => "Create Issue"
     IssueActionMarkDuplicate => "Mark as duplicate"
+    IssueActionStartWork => "Start Work"
   }
 }
 
@@ -500,3 +508,74 @@ fn issue_action_availability_wire(a: IssueActionAvailability) -> String {
 type IssueActionBar {
   actions: List<IssueActionKind>
 }
+
+// THE FLEET COMPONENT TREE (owner directive 2026-09-24: srvN as the component/asset hierarchy so
+// fleet issues carry a real component placement). SOURCES, stated honestly: the host roster and
+// the group placement are the fleet's own modeled facts — srv1..srv4 the runner fleet, srv5..srv12
+// the Sparks, and the serving arms per the fabric observation's cages (cage 1 = group A on
+// srv5..srv8, cage 2 = group B on srv9..srv12; gunbc.spark.fabric_switch_observed
+// fabric_group_hosts) — carried here as OWNER-DIRECTED interface rows citing the fleet modules,
+// not re-derived at read time. Component ids are stable table keys, not derived from the path.
+data fleet_component_hosts: List<Component> = [
+  Component { id: 1, path: ["srv1"] },
+  Component { id: 2, path: ["srv2"] },
+  Component { id: 3, path: ["srv3"] },
+  Component { id: 4, path: ["srv4"] },
+  Component { id: 5, path: ["srv5"] },
+  Component { id: 6, path: ["srv6"] },
+  Component { id: 7, path: ["srv7"] },
+  Component { id: 8, path: ["srv8"] },
+  Component { id: 9, path: ["srv9"] },
+  Component { id: 10, path: ["srv10"] },
+  Component { id: 11, path: ["srv11"] },
+  Component { id: 12, path: ["srv12"] },
+]
+
+// THE SERVING-ARM SUB-COMPONENTS: each Spark host carries its serving arm as a sub-component
+// (path = host path + the arm), so an issue's component placement names the arm it touches.
+data fleet_component_serving_arms: List<Component> = [
+  Component { id: 105, path: ["srv5", "serving", "group-a"] },
+  Component { id: 106, path: ["srv6", "serving", "group-a"] },
+  Component { id: 107, path: ["srv7", "serving", "group-a"] },
+  Component { id: 108, path: ["srv8", "serving", "group-a"] },
+  Component { id: 109, path: ["srv9", "serving", "group-b"] },
+  Component { id: 110, path: ["srv10", "serving", "group-b"] },
+  Component { id: 111, path: ["srv11", "serving", "group-b"] },
+  Component { id: 112, path: ["srv12", "serving", "group-b"] },
+]
+
+fn fleet_components() -> List<Component> {
+  concat(fleet_component_hosts, fleet_component_serving_arms)
+}
+
+// A COMPONENT'S PLACEMENT IS ITS PATH (the type's own law): the browse tree derives from the
+// paths, never a second spelling. "Browse components" is one of the four navigation/curation
+// sidebar surfaces (stock_sidebar_roster) — the tree it renders is THIS derivation over the
+// component set: one node per distinct path prefix, parents before children, each exactly once —
+// the sidebar's ordered walk. Depth recurses while ANY component sits deeper — a level may be
+// empty (a host's arm nests at depth 3 with nothing at depth 2) and the walk still reaches the
+// deeper level; it stops only when no component's path extends past the current depth.
+type ComponentTreeEntry {
+  component: Component
+  depth: Int
+}
+
+fn component_is_at_depth(path: List<String>, depth: Int) -> Bool {
+  count(path) == depth
+}
+
+fn browse_component_tree(components: List<Component>) -> List<ComponentTreeEntry> {
+  browse_component_tree_from(components: components, depth: 1)
+}
+
+fn browse_component_tree_from(components: List<Component>, depth: Int) -> List<ComponentTreeEntry> {
+  let at = map(filter(components, c => component_is_at_depth(path: c.path, depth: depth)), c =>
+    ComponentTreeEntry { component: c, depth: depth })
+  let deeper = filter(components, c => count(c.path) > depth)
+  if count(deeper) == 0 {
+    at
+  } else {
+    concat(at, browse_component_tree_from(components: components, depth: depth + 1))
+  }
+}
+

@@ -3591,7 +3591,7 @@ fn dispatch_client_program_for(
           concat(
           dispatch_bind_statements(selector: selector, url_expr: url_expr),
           concat(
-            issue_action_bind_statements(url_expr: url_expr),
+            issue_action_bind_statements(),
             concat(
             sound_toggle_bind_statements(),
             concat(
@@ -3612,11 +3612,30 @@ fn dispatch_client_program_for(
   }
 }
 
-// THE MODELED ACTION'S CLICK (owner directive 2026-09-24): the product's Assign action POSTs the
-// same dispatch route with the same data-node binding, but it does NOT wear the old button's
-// acknowledgement captions — the model's label stays. Success re-enables (the row repaints from
-// the next observation); failure re-enables and carries the located reason on the title.
-fn issue_action_click_handler_body(url_expr: TsExpr) -> TsStmt {
+// THE MODELED ACTION'S URL (owner ruling 2026-09-24): the button's data-action-route decides the
+// POST target — "assign" posts the durable-assign route, anything else (the dispatch default)
+// posts the dispatch route. One bind, two distinct effects, never one affordance doing both.
+fn issue_action_url_expr() -> TsExpr {
+  ts_cond(
+    test: ts_binop(
+      left: ts_call(callee: js_b_member(name: "getAttribute"), args: [ts_lit_str(value: "data-action-route")]),
+      op: "===",
+      right: ts_lit_str(value: "assign")),
+    consequent: ts_binop(
+      left: ts_binop(
+        left: ts_lit_str(value: "/issue/"),
+        op: "+",
+        right: ts_call(callee: ts_ident(name: "encodeURIComponent"), args: [ts_call(callee: js_b_member(name: "getAttribute"), args: [ts_lit_str(value: "data-node")])])),
+      op: "+",
+      right: ts_lit_str(value: "/assign")),
+    alternate: dispatch_fetch_url_expr())
+}
+
+// THE MODELED ACTION'S CLICK (owner directive 2026-09-24): the product's action POSTs its decided
+// route with the same data-node binding, but it does NOT wear the old button's acknowledgement
+// captions — the model's label stays. Success re-enables (the row repaints from the next
+// observation); failure re-enables and carries the located reason on the title.
+fn issue_action_click_handler_body() -> TsStmt {
   ts_block(stmts: [
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
     ts_expr_stmt(expr: ts_call(
@@ -3627,7 +3646,7 @@ fn issue_action_click_handler_body(url_expr: TsExpr) -> TsStmt {
               callee: ts_member(
                 object: ts_call(
                   callee: ts_ident(name: "fetch"),
-                  args: [url_expr, ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
+                  args: [issue_action_url_expr(), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
                 ),
                 property: "then",
               ),
@@ -3653,7 +3672,7 @@ fn issue_action_click_handler_body(url_expr: TsExpr) -> TsStmt {
   ])
 }
 
-fn issue_action_bind_statements(url_expr: TsExpr) -> List<TsStmt> {
+fn issue_action_bind_statements() -> List<TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -3671,7 +3690,7 @@ fn issue_action_bind_statements(url_expr: TsExpr) -> List<TsStmt> {
         )),
         ts_expr_stmt(expr: ts_call(
           callee: js_b_member(name: "addEventListener"),
-          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: issue_action_click_handler_body(url_expr: url_expr))],
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: issue_action_click_handler_body())],
         )),
       ]))],
     )),

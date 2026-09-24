@@ -1112,6 +1112,48 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: BorderColor, value: "var(--issue-border)"),
       decl(prop: Cursor, value: "default"),
     ] },
+    StaticRule { selector: RawSelector { text: ".issue-action-text" }, decls: [
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Background, value: "transparent"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-action-text:hover" }, decls: [
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-action-bar" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: MarginLeft, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-event-history" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-event-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-event-author" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: MinWidth, value: scale_var(t: width_status)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-event-text" }, decls: [
+      decl(prop: Color, value: "var(--issue-text)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-event-at" }, decls: [
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-not-found" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
     StaticRule { selector: ClassSelector { name: "frontier-bucket" }, decls: [
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),

@@ -2902,6 +2902,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    active_large(
+      identity: "rn_K4X8Q2W7C9V1B3N6M0Z5L8D2F",
+      id: "restore-group-b-serving",
+      owner: "fleet",
+      path: "dag/gunbc/spark/arm_memory_fit.dag",
+      t: fields(
+        headline: "Restore Group B serving",
+        boundary: "Group B's serving is restored through the same convergence path every serving member takes: the declared capacity intent is established before actuation (the memory proof reaches FitProved for the declared intent), every rank runs the exact derived profile, the endpoint and its route are read back independently of the actuation that produced them, and a second convergence is stable and effect-free. The restoration is tracked here; the serving lane executes it — this issue does not dispatch a worker of its own.",
+        displaced_cost: "Group B dark means the fleet's dispatch selection, placement, and the judgment lane's serving consumers run on one arm's evidence while the other arm can be offered nothing — the pair model's attributable-heads promise is silently half-kept, and no surface can say when the half became whole again.",
+        first_slice: "The serving lane's vertical, in order: typed experiment plan, exact per-rank realization, bounded actuation, KV-layout and component receipts, receipt join, FitProved capacity intent, persistent convergence with exact readback. The tracker issue follows that vertical on its Work tab: attempts as they land, receipts by reference, and the four acceptance clauses as the closing check.",
+        red_control: "'Restored' means EXACTLY: the declared capacity intent is proved (FitProved, never a weights-only heuristic), all ranks run the exact derived profile, the endpoint and route are read back, and a second convergence is stable and effect-free. Any weaker claim — one rank, an approximated profile, a single convergence, a readback skipped — refuses; the refusal names which clause is unmet rather than restating the goal.",
+        out_of_scope: "No training or tuning (that is judgment-model-selection-and-specialization), no routing of real work onto the restored arm before the reopening gate's conjunctive verdict, and no relabeling of a provisional experimental route as restored. Group A's program and the v41 runtime candidate stay untouched.",
+        handback: "The declared capacity intent proved; all ranks run the exact derived profile; the endpoint and route read back; a second convergence stable and effect-free — the four clauses stated as facts with their receipts, one per clause."
+      )
+    ),
+
     ticket_row(
       identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
       id: "confidence-semantic-impact-query",
@@ -3240,6 +3256,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "serving-liveness-route-withdrawal", parent: "fleet-spark-inference-serving"),
     edge(child: "serving-v41-first-party-runtime", parent: "fleet-spark-inference-serving"),
     edge(child: "serving-v41-first-party-runtime", parent: "serving-liveness-route-withdrawal"),
+    edge(child: "fleet-spark-inference-serving", parent: "restore-group-b-serving"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),

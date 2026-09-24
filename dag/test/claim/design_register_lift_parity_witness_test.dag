@@ -346,7 +346,14 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "b745c54bffb53c94"
+data roadmap_css_lift_parity_digest: String = "2db467c49868bcc6"
+// Re-pinned 2026-09-24 for the tracker-ruling slice: the detail action bar (Assign text idiom
+// beside Start Work), the Work tab's event history, and the not-found document land as
+// .issue-action-bar / .issue-event-* / .issue-not-found rules, all routing the issue vars or the
+// scale. Behavioral receipts: witness_issue_detail_renders_enabled_modeled_action_and_attempt_
+// assignee, witness_issue_work_tab_renders_event_history_newest_first, the register censuses
+// unchanged. Derived by execution (roadmap_css_derived_digest on this tree); this digest only
+// pins bytes.
 // Re-pinned 2026-09-24 for the modeled action surface: the issue-tracker's action button lands
 // as the product's contained-primary idiom (.issue-action family, painted from the --issue-action
 // tokens, both schemes) — the old dispatch button's styling is untouched (the tree view's taskbar

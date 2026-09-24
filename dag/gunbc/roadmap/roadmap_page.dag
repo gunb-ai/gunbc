@@ -1,6 +1,6 @@
 module gunbc.roadmap_page
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap_component { standing_chip_class }
 import std.types { list_length }
 import gunbc.harness.harness_throughput {
@@ -89,8 +89,8 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
-  IssueActionKind, issue_action_wire,
-  IssueActionButtonIdiom, IssueButtonContainedPrimary, issue_button_idiom_wire,
+  IssueActionKind, IssueActionAssign, IssueActionStartWork, issue_action_wire,
+  IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonText, issue_button_idiom_wire,
   IssueActionAvailability, issue_action_availability_wire,
 }
 import gunbc.roadmap_workflow_stage {
@@ -512,12 +512,19 @@ fn issue_action_button_class(a: WorkAction) -> String {
   ], "")
 }
 
+// THE MODELED ACTIONS (owner ruling 2026-09-24): dispatch IS execution — the surface that POSTs
+// /dispatch/<node> wears the product's Start Work verb, its availability reading the SAME launch
+// admission it always has. ASSIGNMENT IS SEPARATE AND DURABLE: the Assign action records who the
+// issue is assigned to (a Claimed event on the issue's state, served by its own route) — never
+// one affordance doing both. Start Work renders in the contained-primary idiom; Assign, the
+// secondary action, in the flat text idiom — the product's two button shapes.
 fn issue_action_attributes(view: WorkRowView, a: WorkAction) -> List<Attribute> {
   let base = [
     attr(name: "class", value: issue_action_button_class(a: a) ),
     attr(name: "type", value: "button" ),
-    attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
+    attr(name: "data-action", value: issue_action_wire(kind: IssueActionStartWork) ),
     attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonContainedPrimary) ),
+    attr(name: "data-action-route", value: "dispatch" ),
     attr(name: "data-action-state", value: issue_action_availability_wire(a: issue_action_availability_of(a: a)) ),
     attr(name: "data-node", value: view.node_id ),
     attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
@@ -541,13 +548,35 @@ fn issue_action_attributes(view: WorkRowView, a: WorkAction) -> List<Attribute> 
 
 fn issue_action_nodes(view: WorkRowView) -> List<Fragment> {
   map(view_dispatch_actions(view: view), a =>
-    el_attrs("button", issue_action_attributes(view: view, a: a), [ txt(issue_action_wire(kind: IssueActionAssign)) ]))
+    el_attrs("button", issue_action_attributes(view: view, a: a), [ txt(issue_action_wire(kind: IssueActionStartWork)) ]))
+}
+
+// THE DURABLE ASSIGN ACTION: always available (any issue can be assigned), flat text idiom, POSTs
+// the assign route which records the Claimed event. The assignment is a recorded fact read back
+// through the standing — the assignee field shows the holder the record names.
+fn issue_assign_action_nodes(view: WorkRowView) -> List<Fragment> {
+  [ el_attrs("button", [
+      attr(name: "class", value: "issue-action issue-action-text" ),
+      attr(name: "type", value: "button" ),
+      attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
+      attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
+      attr(name: "data-action-route", value: "assign" ),
+      attr(name: "data-action-state", value: issue_action_availability_wire(a: IssueActionEnabled) ),
+      attr(name: "data-node", value: view.node_id ),
+      attr(name: "title", value: "record an assignment: who this issue is assigned to" ),
+    ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]) ]
 }
 
 // The actuator cell for the issue-tracker surfaces: the same always-present wrapper the taskbar
-// face keeps (a stable actuator home), carrying the modeled action instead of the old button.
+// face keeps (a stable actuator home), carrying the modeled actions instead of the old button.
 fn workflow_issue_action_nodes(view: WorkRowView) -> List<Fragment> {
   [ el_class("div", workflow_controls_class, issue_action_nodes(view: view)) ]
+}
+
+// THE DETAIL ACTION BAR: both modeled actions, durable Assign beside execution Start Work —
+// distinct affordances, distinct effects, never merged.
+fn issue_detail_action_bar_nodes(view: WorkRowView) -> List<Fragment> {
+  concat(issue_assign_action_nodes(view: view), issue_action_nodes(view: view))
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -1307,6 +1336,26 @@ fn issue_owner_value(view: WorkRowView) -> String {
     if f.label == "owner" { f.value } else { acc })
 }
 
+// THE COMPONENT FIELD reads the modeled component placement when the row carries one (the
+// presentation seam derives it from the srvN component tree), and falls back to the owner lane
+// otherwise — a real placement when one exists, never an empty field.
+fn issue_component_value(view: WorkRowView) -> String {
+  let component = fold(view.supporting_facts, init: "", f: (acc, f) =>
+    if f.label == "component" { f.value } else { acc })
+  if component == "" { issue_owner_value(view: view) } else { component }
+}
+
+// THE PARENT FIELD renders DECOMPOSITION separately from dependency (owner ruling 2026-09-24):
+// the panel's parent is the tree derivation's display link; top-level reads honestly as such.
+// The named modeling gap — decomposition rides the primary-parent rule over dependency edges
+// until decomposition edges land — is stated on the panel type, not papered over here.
+fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
+  match panel.parent {
+    Present { value: p } => issue_link_value(links: [ p ])
+    Absent => [ txt("top-level") ]
+  }
+}
+
 // THE ASSIGNEE IS THE WORK'S HOLDER: when an attempt exists, the assignee surface shows the
 // attempt's session identity (its short key — who holds the work now); with no attempt, the
 // event-log standing's holder (who claimed the node); open / forked / incomplete standings name
@@ -1493,9 +1542,64 @@ fn issue_attempt_history_row_node(progress: WorkflowAttemptProgress) -> Fragment
   ])
 }
 
-fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> List<Fragment> {
+// THE EVENT HISTORY (owner ruling 2026-09-24: the Work tab carries the issue's execution
+// history): one row per event-log envelope, NEWEST FIRST by recorded_at, each naming the author,
+// the event kind, and its payload — the durable facts a session stated on the issue (assignment
+// among them: a Claimed event IS the assignment record). Events whose recorded_at is empty (an
+// unprobed clock at write) sort oldest, honestly — absence is not a timestamp.
+fn issue_event_row_node(env: RoadmapEventEnvelope) -> Fragment {
+  let e = env.event
+  el_attrs("div", [
+    attr(name: "class", value: "issue-event-row" ),
+    attr(name: "data-event-kind", value: roadmap_event_kind_word(k: e.kind) ),
+  ], [
+    el_class("span", "issue-event-author", [ txt(e.author as String) ]),
+    el_class("span", "issue-event-text", [ txt(issue_event_text(env: env)) ]),
+    el_class("span", "issue-event-at", [ txt(e.recorded_at) ]),
+  ])
+}
+
+fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
+  match env.event.kind {
+    Claimed => "claimed the issue"
+    Released => "released the issue"
+    Progress { note } => join(["progress: ", note as String], "")
+    Blocked { reason } => join(["blocked: ", reason as String], "")
+    HandedBack { reason } => join(["handed back: ", reason as String], "")
+    ReceiptReferenced { obligation, address, verdict } =>
+      join(["receipt ", obligation as String, " at ", address as String, ": ", verdict as String], "")
+  }
+}
+
+fn issue_event_text(env: RoadmapEventEnvelope) -> String {
+  issue_event_payload(env: env)
+}
+
+// Insertion sort by recorded_at, descending — event histories are small (a node's durable facts),
+// and the sort keeps the newest turn at the head without a general ordering substrate.
+fn issue_events_newest_first(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
+  fold(envs, init: [], f: (acc, env) => issue_event_insert_sorted(sorted: acc, env: env))
+}
+
+fn issue_event_insert_sorted(sorted: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope) -> List<RoadmapEventEnvelope> {
+  match sorted.first() {
+    Absent => [ env ]
+    Present { value: head } =>
+      if head.event.recorded_at <= env.event.recorded_at {
+        concat([env], sorted)
+      } else {
+        concat([head], issue_event_insert_sorted(sorted: sorted.skip(n: 1), env: env))
+      }
+  }
+}
+
+fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
+    if count(events) == 0 { [] } else {
+      [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), issue_event_row_node)) ]
+    },
+    concat(
     if count(attempts) == 0 { [] } else {
       [ el_class("div", "issue-attempt-history", map(attempts, issue_attempt_history_row_node)) ]
     },
@@ -1516,7 +1620,7 @@ fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgres
             located_reason: located_reason)
         CompletedWork { outcome: _, evidence, obligations } =>
           issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
-      }))
+      })))
 }
 
 fn issue_work_ledger_row_node(s: WorkflowSegment, wait_target: String) -> Fragment {
@@ -1553,7 +1657,7 @@ fn issue_tab_chip(label: String, tab: String) -> Fragment {
   ], [ txt(label) ])
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>) -> Fragment {
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> Fragment {
   let bar = task_bar_view_of(view: view, observation: observation)
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
@@ -1571,7 +1675,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
               [ el_attrs("span", [
                   attr(name: "class", value: join(["issue-status ", activity_line_prefix_class, bar.signal_class], "") ),
                 ], [ txt(bar.signal) ]) ],
-              workflow_issue_action_nodes(view: view))))))),
+              el_class("div", "issue-action-bar", issue_detail_action_bar_nodes(view: view))))))))
     el_class("div", "issue-tabs", [
       issue_tab_chip(label: "issue", tab: "issue"),
       issue_tab_chip(label: "work", tab: "work"),
@@ -1583,8 +1687,10 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
             concat(
               [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view, attempts: attempts)) ],
               concat(
-                [ issue_field_text_row(label: "component", value: issue_owner_value(view: view)) ],
+                [ issue_field_text_row(label: "component", value: issue_component_value(view: view)) ],
                 concat(
+                  [ issue_field_row(label: "parent", value: issue_parent_value(panel: panel)) ],
+                  concat(
                   if count(panel.blocking) == 0 { [] } else {
                     [ issue_field_row(label: "blocking", value: issue_link_value(links: panel.blocking)) ]
                   },
@@ -1595,14 +1701,14 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
                     [ issue_field_text_row(label: "standing", value: match view.standing {
                         Present { value: s } => roadmap_node_standing_text(s: s)
                         Absent => ""
-                      }) ])))))) ],
+                      }) ]))))))) ],
         disclosure_body_nodes(d: view.disclosure))),
-      el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts)),
+      el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
     ]),
   ])
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
@@ -1615,8 +1721,84 @@ fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observatio
       ]),
       el("body", [
         roadmap_header(page: "issue"),
-        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts),
+        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events),
         dispatch_client_script(),
+      ]),
+    ],
+  }
+}
+
+// THE DETAIL ROUTE'S RENDER ENTRY (owner ruling 2026-09-24: the detail page is a real served
+// route): one issue's decided row view, link panel, and Work-tab history rendered from the SAME
+// authorities the daily page reads — the plan for the ticket and links, the standings observation
+// for the holder, the node's event log for the durable execution history. Attempts ride the same
+// list the static render takes; the live attempt feed is the belt-side observation-storage
+// decision (deferred with the reason carried in the handoff), and the events keep the Work tab
+// honest until it lands. Unknown ids render the not-found document; the route answers 404 for it.
+fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -> Bool {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
+      any(doc_all_nodes(doc: doc), n => (n.node as String) == node_id)
+  }
+}
+
+fn issue_detail_page_for(
+  proj: RoadmapAuthorityProjection,
+  node_id: String,
+  attempts: List<WorkflowAttemptProgress>,
+  attempts_refused: String?,
+  standings: RoadmapStandings,
+  launch: LaunchHostStanding,
+  stale_nodes: List<String>,
+  events: List<RoadmapEventEnvelope>,
+) -> Fragment {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      roadmap_daily_workspace_page_for_projection_observed_stale(
+        proj: proj, attempts: attempts, attempts_refused: attempts_refused,
+        standings: standings, launch: launch, stale_nodes: stale_nodes)
+    RoadmapAuthorityProjected { doc, accepted: accepted, withheld: withheld } =>
+      let nodes = doc_all_nodes(doc: doc)
+      let edges = doc_all_edges(doc: doc)
+      let ctx = page_launch_context(doc: doc, merged: authored_merged_prs(), launch: launch)
+      let observation = observation_impact_view(workflow_refused: attempts_refused)
+      match (filter(nodes, n => (n.node as String) == node_id)).first() {
+        Absent =>
+          issue_detail_not_found_page(node_id: node_id)
+        Present { value: rn } =>
+          issue_detail_page_launch(
+            view: work_row_view(
+              rn: rn, nodes: nodes, edges: edges, merged: authored_merged_prs(),
+              activity: daily_row_activity(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
+              rounds: daily_row_rounds(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
+              worker_alive: daily_row_worker_alive(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
+              standing: standing_for_node(standings: standings, node_id: node_id),
+              launch: ctx,
+              attempt_stale: any(stale_nodes, s => s == node_id)),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
+            observation: observation,
+            attempts: attempts,
+            events: events)
+      }
+  }
+}
+
+fn issue_detail_not_found_page(node_id: String) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en" ) ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt("gunbc — issue not found") ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "issue"),
+        el_class("main", "issue-detail", [
+          el_class("p", "issue-not-found", [ txt(join(["no issue named ", node_id, " is declared in the roadmap authority"], "")) ]),
+        ]),
       ]),
     ],
   }

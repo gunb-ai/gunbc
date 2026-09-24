@@ -1,7 +1,8 @@
 module test.claim.extdeps.issue_tracker_witness
 
 import extdeps.google.issue_tracker {
-  IssueActionAssign, IssueActionCreate, IssueActionMarkDuplicate,
+  IssueActionAssign, IssueActionCreate, IssueActionMarkDuplicate, IssueActionStartWork,
+  Component, fleet_component_hosts, fleet_components, browse_component_tree,
   IssueActionEnabled, IssueActionDisabled,
   IssueButtonContainedPrimary, IssueButtonText,
   issue_action_availability_wire,
@@ -621,3 +622,39 @@ test fn w_issue_action_availability_wires() -> Bool {
   issue_action_availability_wire(a: IssueActionEnabled) == "enabled"
     && issue_action_availability_wire(a: IssueActionDisabled) == "disabled"
 }
+
+// THE FLEET COMPONENT TREE (owner ruling 2026-09-24): srv1..srv12 as component paths, the spark
+// group A/B arms as sub-components — group A on srv5..srv8, group B on srv9..srv12 per the fleet
+// observation's cages. The browse-components view derives its walk from the paths: parents before
+// children, each component exactly once, sub-components at their depth.
+test fn w_issue_action_start_work_wire() -> Bool {
+  issue_action_wire(kind: IssueActionStartWork) == "Start Work"
+}
+
+test fn w_fleet_component_tree_hosts_and_arms() -> Bool {
+  count(fleet_components()) == 20
+    && count(fleet_component_hosts) == 12
+    && (match (filter(fleet_components(), c => c.path == ["srv11", "serving", "group-b"])).first() {
+      Present { value: c } => c.id == 111
+      Absent => false
+    })
+    && count(filter(fleet_components(), c => count(c.path) == 3)) == 8
+}
+
+test fn w_browse_components_derives_the_tree() -> Bool {
+  let tree = browse_component_tree(components: fleet_components())
+  count(tree) == 20
+    && (match tree.first() {
+      Present { value: e } => e.component.path == ["srv1"] && e.depth == 1
+      Absent => false
+    })
+    && (match tree.skip(n: 12).first() {
+      Present { value: e } => e.component.path == ["srv5", "serving", "group-a"] && e.depth == 3
+      Absent => false
+    })
+    && (match tree.skip(n: 19).first() {
+      Present { value: e } => e.component.path == ["srv12", "serving", "group-b"]
+      Absent => false
+    })
+}
+

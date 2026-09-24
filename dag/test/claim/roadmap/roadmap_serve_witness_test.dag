@@ -11,6 +11,7 @@ import gunbc.roadmap_serve {
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
+  IssueDetailPageHandler, IssueAssignHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -604,4 +605,12 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
   md.status == 200
     && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
     && !string_contains(s: md.body, pattern: public_plan_section_title())
+}
+
+// THE ISSUE DETAIL ROUTES (owner ruling 2026-09-24): the issue's detail page is a real served
+// route — GET /issue/<node-id> selects the detail handler, POST /issue/<node-id>/assign selects
+// the durable-assign handler. Same table, same selection idiom as every other route.
+test fn witness_issue_detail_route_selects() -> Bool {
+  selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
+    && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
 }

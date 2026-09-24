@@ -59,7 +59,10 @@ import gunbc.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
 }
-import gunbc.roadmap_page { roadmap_page_for_projection_launch, roadmap_fleet_page }
+import gunbc.roadmap_page {
+  roadmap_page_for_projection_launch, roadmap_fleet_page,
+  issue_detail_page_for, issue_detail_node_exists,
+}
 import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
@@ -91,6 +94,16 @@ import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
   served_observation_standing_response_for_instance,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout_for_instance,
+  roadmap_events_read,
+  roadmap_event_append,
+  EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventId, Claimed,
+  roadmap_node_standing, roadmap_node_standing_key,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
@@ -224,6 +237,8 @@ type RoadmapServeHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
+  | IssueDetailPageHandler
+  | IssueAssignHandler
 
 // Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -309,6 +324,8 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/approvals/\{escalation_id\}", handler: ApprovalStatusHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
@@ -698,6 +715,88 @@ fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse
   serve_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body)
 }
 
+// THE ISSUE DETAIL ROUTE (owner ruling 2026-09-24: the detail page is a real served route). ONE
+// issue rendered live from the same authorities the daily page reads: the plan for the ticket and
+// the parent/blocking links, the standings observation for the holder, the node's event log for
+// the Work tab's durable execution history — a local read per request, the same grain the tick's
+// standings read pays. Attempts ride the render entry's parameter (the live attempt feed is the
+// belt-side observation-storage decision, deferred with its reason in the report); the events
+// keep the Work tab honest until it lands. Unknown ids render the not-found document at 404.
+fn serve_issue_detail_response_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+  let standings = roadmap_standings_read(layout: layout)
+  let envelopes = match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+    EventsRead { node: _, envelopes } => envelopes
+    EventsReadRefused { node: _, step: _, reason: _ } => []
+  }
+  let page = issue_detail_page_for(
+    proj: plan,
+    node_id: node_id,
+    attempts: [],
+    attempts_refused: none,
+    standings: standings,
+    launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
+    stale_nodes: [],
+    events: envelopes)
+  serve_page_response_with_status(
+    page: page,
+    status: if issue_detail_node_exists(proj: plan, node_id: node_id) { 200 } else { 404 })
+}
+
+// THE DURABLE ASSIGN ROUTE (owner ruling 2026-09-24: Assign is a recorded fact, never execution):
+// POST /issue/<id>/assign appends a Claimed event to the issue's event log — the event-CLI's
+// exact chaining idiom (read, refuse on forked/incomplete history, parent = the single head,
+// probed clock, append through the carrier), so the standing derives 'claimed by <who>' and the
+// assignee surface reads it back. The author is the request's AUTHENTICATED identity — absent is
+// a deployment fault, not a person the backend may act for; the durable record must name who
+// assigned. Not one button doing both: Start Work keeps its own dispatch route.
+fn serve_issue_assign_response_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  request: ServeHttpRequest,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) {
+    serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
+  } else {
+    match request.identity {
+      TailnetIdentityAbsent =>
+        serve_text_response(status: 403, content_type: text_plain_utf8, body: "assignment refused: the request carries no authenticated identity, and the durable record must name who assigned\n")
+      TailnetUser { login } =>
+        let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+        let nid = node_id as NonEmptyStr as RoadmapNodeId
+        match roadmap_events_read(layout: layout, node: nid) {
+          EventsReadRefused { node: _, step, reason } =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused: could not read the issue's history (", step, "): ", reason, "\n"], ""))
+          EventsRead { node: _, envelopes } =>
+            let standing = roadmap_node_standing(envs: envelopes)
+            let key = roadmap_node_standing_key(s: standing)
+            if key == "forked" || key == "history_incomplete" {
+              serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue's history is ", key, ": ", roadmap_node_standing_text(s: standing), "\n"], ""))
+            } else {
+              let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
+              let parent = match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }
+              let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+              match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: login, parent: parent, kind: Claimed, recorded_at: at }) {
+                EventAppended { id } =>
+                  serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", login as String, " (event ", id as String, ")\n"], ""))
+                EventAlreadyPresent { id } =>
+                  serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned (already recorded): ", node_id, " → ", login as String, "\n"], ""))
+                EventAppendRefused { id: _, step, reason } =>
+                  serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused at ", step, ": ", reason, "\n"], ""))
+              }
+            }
+        }
+    }
+  }
+}
+
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -862,6 +961,8 @@ fn roadmap_serve_invoke_over(
     ApprovalSubmitHandler => approval_submit_response(request: request)
     ApprovalStatusHandler => approval_status_response(params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
+    IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params)
+    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
