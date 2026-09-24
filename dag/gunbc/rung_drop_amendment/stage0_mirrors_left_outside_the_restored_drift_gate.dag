@@ -1,0 +1,23 @@
+module gunbc.rung_drop_amendment.stage0_mirrors_left_outside_the_restored_drift_gate
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// WHY THIS ROW EXISTS. The drop's population names "the generated-artifact phase" as one line, and
+// gunbc#11791 later put a generated-artifact drift gate back on the fleet lane. The obvious reading
+// is that the line is restored. Only half of it is. The phase the drop lost also owned the stage0
+// mirror population (src/v1/stage0/src/*.rs regenerated from src/v1/*.dag by
+// claim_executor --required-regen). The restored step checks only the registry-rostered artifacts
+// (gunbc.generated_artifact), and its own step name says the mirrors are not checked. No job passes
+// --required-lane build, so both the mirror adjudication and the regen fixed-point phase still run
+// nowhere. The receipt below is a mirror drift that landed green.
+
+data stage0_mirrors_left_outside_the_restored_drift_gate: RungDropAmendment = RungDropAmendment {
+  drop_identity: "witness_floor_off_the_required_gate" as NonEmptyStr,
+
+  amended: "2026-09-24",
+
+  later_event: "gunbc#11791 restored a generated-artifact drift gate on the fleet lane, but only over the gunbc.generated_artifact registry roster; the stage0 mirror population stayed with the build lane, which no job runs. gunbc#12034 then changed src/v1/04_infer.dag so that emission of v1.compiler.emit_rust calls item_is_effectful_callee, without reinstalling v1_compiler_emit_rust.rs; its pull_request run and its merge_group run 35946451520 both passed, and --required-regen on main reported FAIL generated surface drift: v1_compiler_emit_rust.rs" as NonEmptyStr,
+
+  bearing: "the generated-artifact line of this drop is HALF restored, not restored: committed stage0 mirrors can drift from their .dag authority and land with every required check green, and the drift surfaces only when the next author runs --required-regen by hand and finds a hunk they did not write. The restoration trigger still names the whole capability, so the fleet lane's registry gate does not retire this row" as NonEmptyStr,
+}
