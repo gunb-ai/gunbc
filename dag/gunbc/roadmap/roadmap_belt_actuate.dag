@@ -1677,21 +1677,24 @@ fn belt_footprint_admission_decision(
 }
 
 fn belt_footprint_observe(root: BeltFootprintRoot) -> BeltFootprintObservation {
+  let present = shell.Test.IsDirectory(
+    path: root.path as FilePath,
+    expect: OutcomeIsData,
+  ).is_directory
+  let writable = shell.Test.IsWritable(
+    path: root.path as FilePath,
+    expect: OutcomeIsData,
+  ).writable
+  let searchable = shell.Test.IsExecutable(
+    path: root.path as FilePath,
+    expect: OutcomeIsData,
+  ).executable
   BeltFootprintObservation {
     member: root.member,
     path: root.path,
-    present: shell.Test.IsDirectory(
-      path: root.path as FilePath,
-      expect: OutcomeIsData,
-    ).is_directory,
-    writable: shell.Test.IsWritable(
-      path: root.path as FilePath,
-      expect: OutcomeIsData,
-    ).writable,
-    searchable: shell.Test.IsExecutable(
-      path: root.path as FilePath,
-      expect: OutcomeIsData,
-    ).executable,
+    present: present,
+    writable: writable,
+    searchable: searchable,
   }
 }
 

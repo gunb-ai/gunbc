@@ -78,7 +78,6 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_measure::millisecond_count;
-pub use crate::std_measure::second;
 pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -120,7 +119,6 @@ pub use crate::std_target_representation::ExactBindingResolution;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
-pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 use crate::v1_compiler_artifact::RenderTarget::Rust;
@@ -130,7 +128,6 @@ use crate::v1_compiler_artifact::RustModuleRenderSelection::{
 pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
-pub use crate::v1_compiler_coercion::literal_suffix;
 pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
     provenance_declares_structurally, realization_host_numeric_spelling,
@@ -212,8 +209,9 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, type_reference_declaration_ref,
+    authored_name, binding_declares_span, empty_symbol_index, lookup_binding_by_name,
+    lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type,
+    type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
@@ -13504,6 +13502,80 @@ pub fn import_name_resolves_to_host_realized_kernel_scalar(
     }
 }
 
+pub fn authored_import_binds_provider_declaration(
+    name: String,
+    import_module: String,
+    module_env: Option<Rc<TypeEnv>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> bool {
+    match module_env.clone() {
+        std::option::Option::None => false,
+        Some(env) => {
+            match crate::v1_compiler_infer_env::lookup_binding_by_name(env.clone(), name.clone()) {
+                std::option::Option::None => false,
+                Some(binding) => {
+                    let defining_module = match reexport_source_module_name(
+                        name.clone(),
+                        import_module.clone(),
+                        typed_modules.clone(),
+                        export_sets.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Some(src) => src.clone(),
+                        std::option::Option::None => import_module.clone(),
+                    };
+                    match typed_module_by_name(
+                        defining_module.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        std::option::Option::None => false,
+                        Some(tm) => {
+                            let mut __found = false;
+                            for item in tm.items.clone().iter().cloned() {
+                                if (((crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                ) == name.clone())
+                                    && ((crate::v1_compiler_emit_core_support::is_type_def_item(
+                                        item.clone(),
+                                    )
+                                        || crate::v1_compiler_emit_core_support::is_type_alias_item(
+                                            item.clone(),
+                                            source_indices.clone(),
+                                        ))
+                                        || crate::v1_compiler_emit_core_support::is_type_decl_item(
+                                            item.clone(),
+                                            source_indices.clone(),
+                                        )))
+                                    && match item.ident_span.clone() {
+                                        Some(sp) => {
+                                            crate::v1_compiler_infer_env::binding_declares_span(
+                                                binding.clone(),
+                                                sp.clone(),
+                                            )
+                                        }
+                                        std::option::Option::None => false,
+                                    })
+                                {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_specific_import_block(
     import_module: String,
     mod_name: String,
@@ -13725,10 +13797,19 @@ pub fn emit_specific_import_block(
                         {
                             false
                         } else {
-                            if crate::v1_compiler_infer_emit_info::is_known_variant(
+                            if (crate::v1_compiler_infer_emit_info::is_known_variant(
                                 type_summaries.clone(),
                                 n.clone(),
-                            ) {
+                            ) && (authored_import_binds_provider_declaration(
+                                n.clone(),
+                                import_module.clone(),
+                                module_env.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ) == false))
+                            {
                                 {
                                     let mut __found = false;
                                     for e in import_module_enums.iter().cloned() {
