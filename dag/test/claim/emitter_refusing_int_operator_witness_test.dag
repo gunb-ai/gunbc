@@ -1,13 +1,16 @@
 module test.claim.emitter_refusing_int_operator_witness_test
 
-// Regression control for gunbc.recurring_failure_mode
-// emitted_int_arithmetic_wraps_where_the_interpreter_refuses. The interpreter refuses every
-// overflowing Int operator; release-profile i64 infix operators wrap. This asserts the ROUTE: each
-// Int operator reaches the refusing helper named by extdeps.languages.rust.emit
-// rust_refusing_int_operator_helper, and the wrapping infix spelling is absent. The executed
-// behaviour of those helpers (refusal text equal to the interpreter's) was measured by building the
-// emitted crate in release; this witness is what keeps the emitter from quietly splicing the token
-// again. Before the repair the red spelling below was exactly what the emitter wrote.
+// ROUTE-SELECTION control for gunbc.recurring_failure_mode
+// emitted_int_arithmetic_wraps_where_the_interpreter_refuses, and ONLY that. It asserts that every
+// Int operator is SPELLED as the refusing helper named by extdeps.languages.rust.emit
+// rust_refusing_int_operator_helper, and that the pre-repair infix spelling is absent -- the exact
+// bytes the emitter wrote before the repair, for both partitions: + - * and unary - (which wrapped
+// in the emitted release build) and / % (which were already terminal, but under rustc's text and
+// classification). It reads emitted TEXT and executes nothing: it cannot tell a helper that refuses
+// correctly from one that does not, cannot distinguish % by zero from MIN % -1, and compares no
+// message. Runtime equivalence of the helpers with the interpreter is a separate fact, evidenced
+// by the executed matrix the row records and by no enrolled witness; the row names the
+// build-and-run witness its climb requires.
 
 fn w_int_binary_operators_route_through_refusing_helpers() -> Bool {
   compile_dag_rust_emit_check(
