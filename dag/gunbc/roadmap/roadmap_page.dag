@@ -88,6 +88,11 @@ import gunbc.roadmap_presentation {
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
+import extdeps.google.issue_tracker {
+  IssueActionKind, issue_action_wire,
+  IssueActionButtonIdiom, IssueButtonContainedPrimary, issue_button_idiom_wire,
+  IssueActionAvailability, issue_action_availability_wire,
+}
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
   workflow_segment_detail_bounded,
@@ -481,6 +486,68 @@ fn dispatch_button_attributes(view: WorkRowView, a: WorkAction) -> List<Attribut
 fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
   map(view_dispatch_actions(view: view), a =>
     el_attrs("button", dispatch_button_attributes(view: view, a: a), [ txt("dispatch") ]))
+}
+
+// THE MODELED ACTION (owner directive 2026-09-24: the issue-tracker's action surfaces come FROM
+// the extdeps model, never bespoke markup). Dispatch IS assignment, so the surface that POSTs
+// /dispatch/<node> wears the product's Assign action: the contained-primary idiom in the
+// product's action tokens, labeled by the model's wire spelling, its availability reading the
+// SAME launch admission the seam already decided (admitted → enabled; any refusal → the model's
+// disabled idiom: visible but non-interactive, never hidden). The launch identity evidence rides
+// the same data-launch-* attributes the route binds. This renderer serves the issue table and the
+// issue detail page; the tree view's taskbar keeps its own control (a different surface, owned
+// by the tactile lanes).
+fn issue_action_availability_of(a: WorkAction) -> IssueActionAvailability {
+  match a.availability {
+    ActionAvailable => IssueActionEnabled
+    ActionUnavailable => IssueActionDisabled
+  }
+}
+
+fn issue_action_button_class(a: WorkAction) -> String {
+  join([
+    "issue-action issue-action-",
+    issue_button_idiom_wire(idiom: IssueButtonContainedPrimary),
+    if a.availability == ActionAvailable { "" } else { " is-disabled" },
+  ], "")
+}
+
+fn issue_action_attributes(view: WorkRowView, a: WorkAction) -> List<Attribute> {
+  let base = [
+    attr(name: "class", value: issue_action_button_class(a: a) ),
+    attr(name: "type", value: "button" ),
+    attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
+    attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonContainedPrimary) ),
+    attr(name: "data-action-state", value: issue_action_availability_wire(a: issue_action_availability_of(a: a)) ),
+    attr(name: "data-node", value: view.node_id ),
+    attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
+    attr(name: "data-launch", value: a.label ),
+    attr(name: "title", value: a.detail ),
+  ]
+  let with_identity = match a.launch {
+    Absent => base
+    Present { value: id } => concat(base, [
+      attr(name: "data-launch-cause", value: launch_cause_label(c: id.cause) ),
+      attr(name: "data-launch-mode", value: spawn_mode_label(m: id.mode) ),
+      attr(name: "data-launch-instance", value: launch_identity_instance_text(id: id) ),
+      attr(name: "data-launch-revision", value: launch_identity_revision_hex(id: id) ),
+    ])
+  }
+  match a.availability {
+    ActionAvailable => with_identity
+    ActionUnavailable => concat(with_identity, [ attr(name: "disabled", value: "" ) ])
+  }
+}
+
+fn issue_action_nodes(view: WorkRowView) -> List<Fragment> {
+  map(view_dispatch_actions(view: view), a =>
+    el_attrs("button", issue_action_attributes(view: view, a: a), [ txt(issue_action_wire(kind: IssueActionAssign)) ]))
+}
+
+// The actuator cell for the issue-tracker surfaces: the same always-present wrapper the taskbar
+// face keeps (a stable actuator home), carrying the modeled action instead of the old button.
+fn workflow_issue_action_nodes(view: WorkRowView) -> List<Fragment> {
+  [ el_class("div", workflow_controls_class, issue_action_nodes(view: view)) ]
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -1240,22 +1307,27 @@ fn issue_owner_value(view: WorkRowView) -> String {
     if f.label == "owner" { f.value } else { acc })
 }
 
-// THE ASSIGNEE IS THE STANDING'S HOLDER, not the domain owner: the event log records who claimed
-// the node, and that holder is the issue tracker's assignee. Open / forked / incomplete standings
-// name no holder — the field renders empty (unassigned), never the owner relabeled. Changing the
-// assignee is the follow-on intake slice; this is the decided holder read as a field.
-fn issue_assignee_value(view: WorkRowView) -> String {
-  match view.standing {
-    Absent => ""
-    Present { value: s } => match s {
-      NodeClaimed { by, since: _ } => by as String
-      NodeInProgress { by, last_note: _ } => by as String
-      NodeBlocked { by, reason: _ } => by as String
-      NodeHandedBack { by, reason: _ } => by as String
-      NodeOpen => ""
-      NodeForked { heads: _ } => ""
-      NodeHistoryIncomplete { missing_parents: _ } => ""
-    }
+// THE ASSIGNEE IS THE WORK'S HOLDER: when an attempt exists, the assignee surface shows the
+// attempt's session identity (its short key — who holds the work now); with no attempt, the
+// event-log standing's holder (who claimed the node); open / forked / incomplete standings name
+// no holder — the field renders empty (unassigned), never the owner relabeled. Changing the
+// assignee is the follow-on intake slice; this is the decided identity read as a field.
+fn issue_assignee_value(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> String {
+  match attempts.first() {
+    Present { value: p } => attempt_key_short_form(key: p.attempt_key)
+    Absent =>
+      match view.standing {
+        Absent => ""
+        Present { value: s } => match s {
+          NodeClaimed { by, since: _ } => by as String
+          NodeInProgress { by, last_note: _ } => by as String
+          NodeBlocked { by, reason: _ } => by as String
+          NodeHandedBack { by, reason: _ } => by as String
+          NodeOpen => ""
+          NodeForked { heads: _ } => ""
+          NodeHistoryIncomplete { missing_parents: _ } => ""
+        }
+      }
   }
 }
 
@@ -1344,7 +1416,7 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Frag
                 Present { value: p } =>
                   [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
               },
-              workflow_controls_nodes(view: view))))))) ],
+              workflow_issue_action_nodes(view: view))))))) ],
   }
 }
 
@@ -1499,7 +1571,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
               [ el_attrs("span", [
                   attr(name: "class", value: join(["issue-status ", activity_line_prefix_class, bar.signal_class], "") ),
                 ], [ txt(bar.signal) ]) ],
-              workflow_controls_nodes(view: view))))))),
+              workflow_issue_action_nodes(view: view))))))),
     el_class("div", "issue-tabs", [
       issue_tab_chip(label: "issue", tab: "issue"),
       issue_tab_chip(label: "work", tab: "work"),
@@ -1509,7 +1581,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
         [ el_class("div", "issue-fields", concat(
             [ issue_field_text_row(label: "status", value: issue_explanation(view: view)) ],
             concat(
-              [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view)) ],
+              [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view, attempts: attempts)) ],
               concat(
                 [ issue_field_text_row(label: "component", value: issue_owner_value(view: view)) ],
                 concat(

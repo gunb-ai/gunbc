@@ -66,8 +66,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // Versioned by the capture date of the cited session: this interface model states what was
 // publicly visible to the owner's signed-in session on 2026-09-22; a re-capture that changes any
-// vocabulary fact or view semantics bumps this row.
-data issue_tracker_interface_version: NonEmptyStr = "2026-09-22"
+// vocabulary fact or view semantics bumps this row. Bumped 2026-09-24: the action vocabulary
+// below is owner-directed (the capture left the issue actions implicit beyond the shell's
+// "Create Issue"), which the version row records.
+data issue_tracker_interface_version: NonEmptyStr = "2026-09-24"
 
 // The stock sidebar roster, verbatim from the owner's logged-in session (2026-09-22). The first
 // seven entries each have exactly one derivation fn below; the last four are navigation and
@@ -428,4 +430,73 @@ data issue_tracker_visual_tokens_dark: IssueTrackerVisualTokens = IssueTrackerVi
   error: Srgb8 { r: 242, g: 139, b: 130 },
   font_body: "Roboto, Arial, sans-serif",
   font_heading: "Google Sans, Roboto, Arial, sans-serif",
+}
+
+// THE ISSUE'S ACTIONS AND THE PRODUCT'S BUTTON IDIOMS (owner directive 2026-09-24: the
+// issue-tracker's action surfaces must come from THIS model, never bespoke page markup). SOURCES,
+// stated honestly per the module's citation discipline: (a) VERIFIED from the capture
+// (docs/plans/buganizer-visual-contract.md, the app shell): the header's "Create Issue" button is
+// a CONTAINED PRIMARY button, and the action blue is the token set above; (b) OWNER-DIRECTED
+// 2026-09-24: Assign is the product's first-class issue action (assignment is the operation our
+// workflow calls dispatch — the mapping is a workflow fact, stated in the consumer, not here),
+// and the issue detail header carries an action bar with an overflow (the capture's 'action
+// overflow'); the duplicate/mark actions the contract names ride that bar; (c) the flat TEXT
+// button is the product's Material secondary idiom (the capture's builder/save affordances are
+// text-style). What an organization's configured action matrix holds BEYOND these names is
+// configuration, not interface — declared here rather than fabricated. The wire labels are the UI
+// spellings.
+
+// THE ACTION NAMES: the actions the product exposes on an issue. Assign claims the issue for a
+// user; Create Issue mints a new issue (the shell's primary button); Mark as duplicate closes the
+// issue into another.
+type IssueActionKind
+  = IssueActionAssign
+  | IssueActionCreate
+  | IssueActionMarkDuplicate
+
+fn issue_action_wire(kind: IssueActionKind) -> String {
+  match kind {
+    IssueActionAssign => "Assign"
+    IssueActionCreate => "Create Issue"
+    IssueActionMarkDuplicate => "Mark as duplicate"
+  }
+}
+
+// THE BUTTON IDIOMS: a contained primary button (filled action blue, the "Create Issue" shape)
+// for the surface's primary action, or a flat text button (action-blue label, no fill) for
+// secondary actions.
+type IssueActionButtonIdiom
+  = IssueButtonContainedPrimary
+  | IssueButtonText
+
+fn issue_button_idiom_wire(idiom: IssueActionButtonIdiom) -> String {
+  match idiom {
+    IssueButtonContainedPrimary => "contained-primary"
+    IssueButtonText => "text"
+  }
+}
+
+// THE UNAVAILABLE-ACTION IDIOM: the product RESTS an unavailable action — it stays visible but
+// non-interactive, never disappears (owner directive 2026-09-24: the disabled idiom, checked
+// against the contract's builder surfaces, which stay visible at rest). Availability itself is a
+// workflow fact (for our surface, the launch admission verdict); this row is the product's
+// RENDERING answer for an unavailable action.
+type IssueActionAvailability
+  = IssueActionEnabled
+  | IssueActionDisabled
+
+fn issue_action_availability_wire(a: IssueActionAvailability) -> String {
+  match a {
+    IssueActionEnabled => "enabled"
+    IssueActionDisabled => "disabled"
+  }
+}
+
+// THE DETAIL-PAGE ACTION BAR: the issue header's action surface — an ordered row of the issue's
+// actions beside the overflow. The caller decides which of the modeled actions its surface
+// renders (our detail page renders Assign — the dispatch mapping — today; create-issue and the
+// duplicate/mark actions land with the intake slice); the bar carries no stock roster here
+// because the product's per-organization action matrix is configuration, not interface.
+type IssueActionBar {
+  actions: List<IssueActionKind>
 }

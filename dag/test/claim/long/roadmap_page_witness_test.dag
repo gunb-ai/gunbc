@@ -917,7 +917,8 @@ test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
         && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 2
         && occurrence_count(s: h, pattern: "class=\"taskbar-face\"") == 3
         && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 6
-        && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 6
+        && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 3
+        && occurrence_count(s: h, pattern: "<button class=\"issue-action issue-action-contained") == 3
         && !string_contains(s: h, pattern: "class=\"project-chain\"")
   }
 }
@@ -1691,5 +1692,61 @@ test fn witness_issue_tokens_resolve_in_both_themes() -> Bool {
     && string_contains(s: css, pattern: "--issue-action: #8ab4f8")
     && string_contains(s: css, pattern: "--issue-error: #c5221f")
     && string_contains(s: css, pattern: "--issue-error: #f28b82")
+    && string_contains(s: css, pattern: ".issue-action-contained { background: var(--issue-action)")
+    && string_contains(s: css, pattern: ".issue-action.is-disabled, .issue-action:disabled { background: transparent")
     && all(names, n => occurrence_count(s: css, pattern: join(["--issue-", n, ":"], "")) == 3)
+}
+
+// THE MODELED ACTION (owner directive 2026-09-24): the issue table and the issue detail page
+// render the product's Assign action FROM the extdeps model — the contained-primary idiom, the
+// model's wire label, the model's availability idiom — and the OLD dispatch button markup is GONE
+// from those surfaces (a census control: zero dispatch-btn in the view-table region and the
+// detail body; the tree view's taskbar keeps its own control). The availability reads the same
+// launch admission: the fixture's nodes carry no execution contract, so the modeled action
+// renders the model's DISABLED idiom (visible, non-interactive, never hidden); the detail
+// fixture's admitted action renders ENABLED.
+test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
+  match fx_summary_only_page_html(stale: false) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let table = table_region(html: h)
+      occurrence_count(s: table, pattern: "dispatch-btn") == 0
+        && occurrence_count(s: table, pattern: "<button class=\"issue-action issue-action-contained-primary is-disabled\"") == 3
+        && occurrence_count(s: table, pattern: "disabled=\"\">Assign</button>") == 3
+        && string_contains(s: table, pattern: "data-action=\"Assign\"")
+        && string_contains(s: table, pattern: "data-idiom=\"contained-primary\"")
+        && string_contains(s: table, pattern: "data-action-state=\"disabled\"")
+  }
+}
+
+test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() {
+        Present { value: b } => b
+        Absent => h
+      }
+      occurrence_count(s: body, pattern: "dispatch-btn") == 0
+        && string_contains(s: body, pattern: "<button class=\"issue-action issue-action-contained-primary\" type=\"button\" data-action=\"Assign\" data-idiom=\"contained-primary\" data-action-state=\"enabled\"")
+        && !string_contains(s: body, pattern: "is-disabled")
+        && !string_contains(s: body, pattern: "disabled=\"\">Assign</button>")
+  }
+}
+
+// The assignment mapping stays honest: when an attempt exists, the assignee field shows the
+// attempt's session identity (its short key); with no attempt it falls back to the standing's
+// holder. The fixture view carries a claimed standing AND one supplied attempt here, so the
+// attempt identity wins.
+test fn witness_issue_detail_assignee_shows_attempt_identity() -> Bool {
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ])) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<span class=\"issue-field-value\">feedface…</span>") == 1
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
+  }
 }

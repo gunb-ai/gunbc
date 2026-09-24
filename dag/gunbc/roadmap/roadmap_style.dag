@@ -1088,6 +1088,30 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-action)"),
       decl(prop: MinWidth, value: scale_var(t: width_status)),
     ] },
+    StaticRule { selector: ClassSelector { name: "issue-action" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "transparent")),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-action-contained" }, decls: [
+      decl(prop: Background, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-bg-subtle)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-action-contained:hover" }, decls: [
+      decl(prop: Background, value: "var(--issue-action-hover)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-action.is-disabled, .issue-action:disabled" }, decls: [
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: BorderColor, value: "var(--issue-border)"),
+      decl(prop: Cursor, value: "default"),
+    ] },
     StaticRule { selector: ClassSelector { name: "frontier-bucket" }, decls: [
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),

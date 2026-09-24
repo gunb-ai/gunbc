@@ -346,7 +346,15 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "6e9627b70dd3c731"
+data roadmap_css_lift_parity_digest: String = "b745c54bffb53c94"
+// Re-pinned 2026-09-24 for the modeled action surface: the issue-tracker's action button lands
+// as the product's contained-primary idiom (.issue-action family, painted from the --issue-action
+// tokens, both schemes) — the old dispatch button's styling is untouched (the tree view's taskbar
+// keeps it; other lanes' tactile suites pin those bytes). Behavioral receipts:
+// witness_issue_table_renders_modeled_action_and_census, witness_issue_detail_renders_enabled_
+// modeled_action_and_attempt_assignee, witness_issue_tokens_resolve_in_both_themes, the register
+// censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree); this digest
+// only pins bytes.
 // Re-pinned 2026-09-23 for the issue-surface production-defect fixes: the dark-scheme token
 // mapping lands (the issue vars now resolve under [data-theme="night"] and the
 // prefers-color-scheme fallback in the theme machinery's three-block grammar, from

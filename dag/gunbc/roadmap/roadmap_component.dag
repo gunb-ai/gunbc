@@ -274,7 +274,7 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
                       callee: ts_member(
                         object: ts_ident(name: "document"),
                         property: "querySelectorAll"),
-                      args: [ts_lit_str(value: ".dispatch-btn")]),
+                      args: [ts_lit_str(value: ".dispatch-btn, .issue-action")]),
                     property: "forEach"),
                   args: [ts_arrow(params: ["db"], body: ts_block(stmts: [
                     ts_expr_stmt(expr: ts_binop(
@@ -3591,6 +3591,8 @@ fn dispatch_client_program_for(
           concat(
           dispatch_bind_statements(selector: selector, url_expr: url_expr),
           concat(
+            issue_action_bind_statements(url_expr: url_expr),
+            concat(
             sound_toggle_bind_statements(),
             concat(
               theme_toggle_bind_statements(),
@@ -3606,8 +3608,74 @@ fn dispatch_client_program_for(
                         row_selection_bind_statements(),
                         concat(
                           issue_view_bind_statements(),
-                          instance_statements)))))))))))),
+                          instance_statements))))))))))))),
   }
+}
+
+// THE MODELED ACTION'S CLICK (owner directive 2026-09-24): the product's Assign action POSTs the
+// same dispatch route with the same data-node binding, but it does NOT wear the old button's
+// acknowledgement captions — the model's label stays. Success re-enables (the row repaints from
+// the next observation); failure re-enables and carries the located reason on the title.
+fn issue_action_click_handler_body(url_expr: TsExpr) -> TsStmt {
+  ts_block(stmts: [
+    ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(
+                  callee: ts_ident(name: "fetch"),
+                  args: [url_expr, ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
+                ),
+                property: "then",
+              ),
+              args: [ts_arrow(params: ["r"], body: ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: [])))],
+            ),
+            property: "then",
+          ),
+          args: [ts_arrow(params: ["j"], body: ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))))],
+        ),
+        property: "catch",
+      ),
+      args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: js_b_member(name: "title"),
+          op: "=",
+          right: ts_binop(
+            left: ts_lit_str(value: concat(dispatch_unreadable_answer_phrase, ": ")),
+            op: "+",
+            right: ts_ident(name: "e")))),
+      ]))],
+    )),
+  ])
+}
+
+fn issue_action_bind_statements(url_expr: TsExpr) -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: ".issue-action")]),
+        property: "forEach"),
+      args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: js_b_member(name: "addEventListener"),
+          args: [
+            ts_lit_str(value: "pointerdown"),
+            ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: []))),
+          ],
+        )),
+        ts_expr_stmt(expr: ts_call(
+          callee: js_b_member(name: "addEventListener"),
+          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: issue_action_click_handler_body(url_expr: url_expr))],
+        )),
+      ]))],
+    )),
+  ]
 }
 
 fn dispatch_client_program() -> TsProgram {
