@@ -144,14 +144,10 @@ fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
 // is still open is the Engram membership closure: the index's names at this revision are not enumerated
 // (extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_engram_membership_closure), so the Engram axis
 // is Unestablished on that alone and the candidate is not yet keyed.
-test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
+test fn the_live_candidate_is_keyed_end_to_end() -> Bool {
   match v41_candidate().standing {
-    V41CandidateUnestablished { obligations: o } =>
-      !any(o, x => (x as String).contains("weight manifest"))
-        && !any(o, x => (x as String).contains("tokenizer"))
-        && !any(o, x => (x as String).contains("published-shard row-store"))
-        && any(o, x => (x as String).contains("not enumerated"))
-    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => true
+    V41CandidateUnestablished { obligations: _ } => false
     V41CandidateRefused { defects: _ } => false
   }
 }
