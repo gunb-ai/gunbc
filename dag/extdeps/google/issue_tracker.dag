@@ -631,10 +631,12 @@ fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
   }
 }
 
-// THE ROW GRID TEMPLATE derives from the roster: the header and every row share ONE template by
-// construction — a row whose cells don't share the template is a derivation defect, never a
-// styling choice (owner complaint 2026-09-24, the column-alignment fix). The actions slot is the
-// workflow's furniture on the row (the project count and the dispatch actuator), the last track.
+// THE ROW GRID TEMPLATE derives from the roster: the template lands ONCE, on the issue-table
+// container — the header and every row are display: contents wrappers, so their cells share the
+// one grid by construction — and a second grid-template-columns spelling anywhere is a derivation
+// defect, never a styling choice (owner complaint 2026-09-24, the column-alignment fix). The
+// actions slot is the workflow's furniture on the row (the project count and the dispatch
+// actuator), the last track.
 fn issue_results_row_tracks() -> String {
   join(concat(map(issue_results_columns, c => c.track as String), ["max-content"]), " ")
 }

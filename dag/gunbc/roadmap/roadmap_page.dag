@@ -1431,16 +1431,20 @@ fn issue_controls_markup() -> Fragment {
 // THE DENSE ISSUE LINE derives its anatomy FROM the extdeps model (owner ruling 2026-09-24, the
 // derivation law): one cell per declared results column, in roster order — P · TYPE · TITLE ·
 // ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED — then the workflow's trailing actions region
-// (the last grid track). The header and every row share the model's ONE grid template, so a row
-// whose cells don't share the template is a derivation defect, never a styling choice (owner
-// column-alignment fix 2026-09-24). Cells the domain has no fact for render EMPTY and keep their
-// track — emptiness never re-orders a row. The cells: TITLE reads the headline; ASSIGNEE reads
-// the standing's holder (who holds the work now — the attempt identity lives on the Work tab);
-// STATUS reads the decided bar signal; the ID cell links the issue's detail route (the capture's
-// ID-links-to-detail). The table's row is NOT the taskbar — the taskbar is the tree's component;
-// the table reads the SAME decided bar view (one authority) onto the contract's dense line. No id
-// anchor on the row's li: the forest's rows own the #node-* ids. The row's li keeps li.node so
-// selection and the band chips apply uniformly.
+// (the last grid track). The template lands ONCE, on the .issue-table container (the stylesheet's
+// law), and this markup stays a flat list on purpose: the header div and the row div are
+// display: contents wrappers, so these cells parent DIRECTLY into the table's one grid and every
+// row's tracks ARE the header's by construction — a second grid spelling, here or in the sheet,
+// is a derivation defect, never a styling choice (owner column-alignment fix 2026-09-24). Cells
+// the domain has no fact for render EMPTY and keep their track — emptiness never re-orders a row.
+// The cells: TITLE reads the headline; ASSIGNEE reads the standing's holder (who holds the work
+// now — the attempt identity lives on the Work tab); STATUS reads the decided bar signal; the ID
+// cell links the issue's detail route (the capture's ID-links-to-detail). The table's row is NOT
+// the taskbar — the taskbar is the tree's component; the table reads the SAME decided bar view
+// (one authority) onto the contract's dense line. No id anchor on the row's li: the forest's rows
+// own the #node-* ids. The row's li keeps li.node so selection and the band chips apply uniformly
+// — the li stays in the DOM as the filter/selection subject; only its box is contents.
+
 // THE TABLE ROW SHOWS ONLY THE LATEST ATTEMPT'S SUMMARY, AND ONLY WHEN IT IS RECENT OR LIVE
 // (owner defect fix 2026-09-23): a stale attempt — launched against a revision that is no longer
 // the deployed head — is evidence for a superseded question, and its summary does not belong on
@@ -1512,8 +1516,9 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Frag
 }
 
 // THE TABLE HEADER derives from the SAME roster as the rows: one header cell per declared column
-// in roster order, then the actions slot's (empty) header cell — the header and every row are one
-// grid derivation, by construction.
+// in roster order, then the actions slot's (empty) header cell. The header div is a display:
+// contents wrapper like the row divs, so these cells land in the table's one grid beside the
+// rows' cells — same tracks, by construction.
 fn issue_table_header_nodes() -> Fragment {
   el_class("div", "issue-table-header", concat(
     map(issue_results_columns, c =>

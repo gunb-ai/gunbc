@@ -1788,16 +1788,95 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
   }
 }
 
-// THE SERVED TEMPLATE'S PROVENANCE (owner ruling 2026-09-24): the rendered grid tracks come FROM
-// the model's roster derivation — the served CSS carries the model's bytes on BOTH the header
-// and the rows, and the rows' display is grid, never per-row flex sizing.
+// THE SERVED TEMPLATE'S PROVENANCE (owner ruling 2026-09-24, amended by the shared-grid fix):
+// the roster-derived tracks render ONCE — on .issue-table, the one grid container — with the
+// header and the rows reaching them through display: contents, never a second
+// grid-template-columns spelling. The old shape gave the header and each row its OWN grid:
+// max-content tracks measure per container, so every row sized its columns independently of the
+// header, and long cells ran off the page. The census counts the rendered template bytes: exactly
+// one spelling of the tracks anywhere in the sheet.
 test fn witness_issue_table_grid_template_comes_from_the_model() -> Bool {
   let css = roadmap_css()
   let tracks = issue_results_row_tracks()
-  string_contains(s: css, pattern: join([".issue-table-header { display: grid; grid-template-columns: ", tracks], ""))
-    && string_contains(s: css, pattern: join([".issue-line { display: grid; grid-template-columns: ", tracks], ""))
-    && !string_contains(s: css, pattern: ".issue-line { display: flex")
+  string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", tracks], ""))
+    && occurrence_count(s: css, pattern: join(["grid-template-columns: ", tracks], "")) == 1
+    && string_contains(s: css, pattern: ".issue-table-header { display: contents")
+    && string_contains(s: css, pattern: ".issue-line { display: contents")
+    && !string_contains(s: css, pattern: ".issue-table-header { display: grid")
+    && !string_contains(s: css, pattern: ".issue-line { display: grid")
 }
+
+// THE HEADER AND A ROW'S CELLS OCCUPY THE SAME GRID TRACKS (owner ruling 2026-09-24, the
+// structural half of the column-alignment fix): every wrapper between the table element and the
+// cells — the list, the list item, the header div, the row div — is display: contents, so the
+// header's and each row's cells box-tree into the table's ONE grid as direct children, nine per
+// source row filling the template's nine tracks; the heading and the empty state span every track
+// (grid-column: 1 / -1) so they break the cell flow instead of displacing a column. Filtering is
+// untouched: the band-filter hide rules out-specificity the contents rules, and the search
+// filter's inline display outranks the sheet altogether.
+test fn witness_issue_table_cells_are_direct_grid_children() -> Bool {
+  let css = roadmap_css()
+  string_contains(s: css, pattern: ".issue-table ul { display: contents }")
+    && string_contains(s: css, pattern: ".issue-table li { display: contents }")
+    && string_contains(s: css, pattern: ".issue-table-heading { font-family: var(--issue-font-heading); font-size: var(--text-15); font-weight: 500; margin-bottom: var(--space-8); grid-column: 1 / -1 }")
+    && string_contains(s: css, pattern: ".issue-empty { display: none; color: var(--text-dim); font-size: var(--text-13); padding: var(--space-12) var(--space-8); grid-column: 1 / -1 }")
+    && string_contains(s: css, pattern: ".issue-line:hover .issue-cell, .issue-line:hover .issue-row-actions { background: var(--issue-bg-hover) }")
+}
+
+// OVERFLOW CONTROL (owner complaint 2026-09-24: rows ran entirely off the page): a deliberately
+// long title is served IN FULL — the markup carries the truth, the sheet paints the clip — inside
+// the title cell, and the containment chain that keeps the row's right edge at the container's
+// edge is present on the shared grid: the title track is the roster's minmax(0, 1fr), which takes
+// only the space the fixed tracks leave, and .issue-cell's min-width: 0 lets that track shrink
+// below the content while overflow: hidden + nowrap + text-overflow: ellipsis paint the ellipsis.
+// The status cell wears the same issue-cell class, so status text rides the same chain; the
+// container bound is structural — .roadmap's max-width sizes the table's grid, and one grid's
+// tracks never extend past their container.
+fn fx_long_title_doc(long: String) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [ RoadmapSection {
+      title: "Projects",
+      elements: [ section_group(label: "", nodes: [
+        gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGELONGTITLE00000000001", id: "page-long-title",
+          done: false, content: long, intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      ], edges: []) ],
+    } ],
+  }
+}
+
+fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
+  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted(
+    doc: fx_long_title_doc(long: long),
+    merged: [],
+    accepted_ids: [],
+    withheld: [],
+    main_prefix: [],
+    attempts: [],
+    attempts_refused: none,
+    standings: StandingsObserved { rows: [] },
+    launch: dispatch_doc_standing(),
+    stale_nodes: []))
+}
+
+test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
+  let long_title = "an deliberately enormous issue title that would run the row entirely off the page when its track sized to the content the way the old per-row grids did"
+  let css = roadmap_css()
+  match fx_long_title_page_html(long: long_title) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let table = table_region(html: h)
+      string_contains(s: table, pattern: join(["<span class=\"issue-cell issue-cell-title\" data-col=\"title\">", long_title], ""))
+        && string_contains(s: table, pattern: "class=\"issue-cell issue-cell-status\"")
+        && occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 8
+        && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 2
+        && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
+        && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", issue_results_row_tracks()], ""))
+        && string_contains(s: css, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
+  }
+}
+
 
 // The table row carries EXECUTION ONLY: the durable Assign action lives on the detail page's
 // action bar, never on the dense row — assignment and start-work stay distinct affordances.

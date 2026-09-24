@@ -346,7 +346,20 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "51c7bb991f057d9d"
+data roadmap_css_lift_parity_digest: String = "da96935903bfe1f1"
+// Re-pinned 2026-09-24 for the shared-grid fix (owner column-alignment complaint): the issue
+// table becomes ONE grid container — .issue-table carries the roster-derived
+// grid-template-columns (extdeps.google.issue_tracker issue_results_row_tracks) alone; the header
+// and the rows (and the ul/li wrappers) become display: contents, so their cells are direct grid
+// children and every track aligns by construction; the row chrome (padding, border-bottom,
+// min-height, hover background) moves onto .issue-col/.issue-cell/.issue-row-actions, the
+// heading and empty state take grid-column: 1 / -1, and the issue-cell containment chain
+// (min-width 0, overflow hidden, nowrap, ellipsis) is unchanged. Behavioral receipts:
+// witness_issue_table_grid_template_comes_from_the_model (rewired to the single spelling),
+// witness_issue_table_cells_are_direct_grid_children,
+// witness_issue_table_long_cells_clip_within_their_tracks, the extdeps derivation pins
+// unchanged, the token witness unchanged. Derived by execution (roadmap_css_derived_digest on
+// this tree); this digest only pins bytes.
 // Re-pinned 2026-09-24 for the derivation-law slice: the issue table's header and rows become ONE
 // grid derivation — .issue-table-header and .issue-line carry grid-template-columns from the
 // extdeps model's declared column roster (extdeps.google.issue_tracker issue_results_row_tracks),
