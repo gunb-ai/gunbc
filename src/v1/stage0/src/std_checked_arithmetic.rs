@@ -274,6 +274,17 @@ pub fn checked_int_magnitude(a: i64) -> Rc<CheckedNat> {
     }
 }
 
+pub fn checked_int_to_nat(n: i64) -> Option<Nat> {
+    if (n.clone() < 0) {
+        std::option::Option::None
+    } else {
+        match (*checked_int_magnitude(n.clone())).clone() {
+            CheckedNat::CheckedNatOverflow { cause: _, .. } => std::option::Option::None,
+            CheckedNat::CheckedNatReady { value: v, .. } => Some(v.clone()),
+        }
+    }
+}
+
 pub fn nat_magnitude(a: i64) -> Nat {
     if (a.clone() < 0) {
         (0 - a.clone())
