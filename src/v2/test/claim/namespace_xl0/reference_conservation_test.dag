@@ -254,3 +254,43 @@ test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> 
   let r = repeated_spelling_report()
   report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
 }
+
+// ---- a measured drop found by admission: the where-refinement predicate -----------------------
+
+// Found when v2.test.claim.body_lowering.declaration_structure_preserved was routed through
+// v2.compiler.reference_conservation_admission conserved_normalize (MQ-6): normalize ACCEPTS a
+// `where` refinement alias, and the predicate's name reaches no node and no edge of the normalized
+// tree. Stated as today's measurement; it reds when lowering carries the predicate, and the
+// explanation that fixture declares reds with it (conservation_reason_explanation_stale).
+data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = String where rc_pred\n"
+
+fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "where_refinement_predicate", source: where_refinement_predicate_source)
+}
+
+test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
+  let r = conservation_report_of(subject: where_refinement_predicate_subject())
+  report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
+}
+
+// ---- measured drops found by admission: a later match arm, a statement-let binder -------------
+
+// Found when v2.test.claim.body_lowering.single_arm_match was routed through the admitted
+// normalize (MQ-6): normalize ACCEPTS a three-arm match and the THIRD arm -- its pattern and its
+// body -- reaches no node of the normalized tree. A two-arm match keeps both arms. The arm's body
+// spelling is used nowhere else in the declaration, so the red names it.
+data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
+
+test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
+  report_drops_identity(report: conservation_report_of(subject: conservation_subject(id_tail: "match_later_arm", source: match_later_arm_source)), wanted: ^rc_third)
+}
+
+// Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
+// binder keeps neither its occurrence nor an unconsumed copy of its spelling, while the later use
+// of the name is conserved at its own occurrence.
+data statement_let_binder_source: String = "module v2.test.reference_conservation_let\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
+
+test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
+  let r = conservation_report_of(subject: conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source))
+  report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
+}

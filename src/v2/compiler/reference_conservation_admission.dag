@@ -1,0 +1,391 @@
+module v2.compiler.reference_conservation_admission
+
+import v2.compiler.normalize { import_binding_capture }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { ParseArtifact }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.node { node_subtree_nodes }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  DroppedReference,
+  ReferenceConservationReport,
+  ReferenceConservationSubject,
+  dag_declared_token_classes,
+  reference_conservation_of_subject,
+  reference_conservation_subject_of_read
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  DeclarationLocus,
+  None,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+// REFERENCE CONSERVATION AS AN ADMISSION PROPERTY (MQ-6), at the two grains a change can be held
+// to without a new CI job.
+//
+// THE FIXTURE GRAIN IS A ROUTE, NOT A REPORT. v2.compiler.reference_conservation measures; nothing
+// before this module was admitted BY it, so a body-lowering fixture could reach a green verdict over
+// a normalized tree that had lost half its source and never know. conserved_normalize is the
+// production normalize (the same tokenize / parse / normalize phases v2.compiler.program_assembly
+// composes) with the conservation verdict standing in its acceptance path: a tree that does not
+// account for every authored atom is Rejected, located at each atom it lost, and a fixture whose
+// assertions read that tree cannot run them. A fixture that keeps its own hand-rolled
+// normalize call is outside this admission; the body-lowering fixtures are routed here.
+//
+// AN EXPECTED DROP IS DECLARED, NEVER ABSORBED. Lowering loses some shapes today, each pinned by its
+// own discriminating fixture in v2.test.claim.namespace_xl0.reference_conservation. A fixture whose
+// source necessarily contains one of those shapes names it in `explained`, one row per lost atom;
+// each row consumes exactly one DroppedReference of that identity. An explanation that consumes
+// nothing is itself a refusal (conservation_reason_explanation_stale): when lowering is repaired the
+// fixture reds and the row is deleted, so an explanation cannot outlive the drop it excused
+// (DESIGN section 5: no escape hatch that outlives its refusal).
+
+// The shapes lowering is known to lose THAT A FIXTURE NEEDS TO EXCUSE, each pinned by its own
+// discriminating claim in v2.test.claim.namespace_xl0.reference_conservation. Closed on purpose: a
+// new shape is a new pinned claim first, then a row here, and a row enters only with the fixture
+// that consumes it (the block-later-statement and if-arm-argument drops are pinned there too, and
+// no admitted fixture's source contains them yet).
+type KnownDropShape
+  = NamedArgumentLabel
+  | WhereRefinementPredicate
+  | MatchLaterArm
+  | StatementLetBinder
+
+// EACH SHAPE IS A DECLARED, BOUNDED DROP, NOT A STANDING ALLOWANCE. The match is exhaustive, so a
+// shape cannot enter without naming the capability whose landing retires it and the lane that owns
+// that capability. Retirement is mechanical, not remembered: once the capability lands, the drop
+// stops happening, every explanation of it consumes nothing and refuses
+// (conservation_reason_explanation_stale), and the arm and its explanations are deleted. The bound
+// is the same in the other direction: deleting an explanation while the drop still happens reds its
+// fixture with conservation_reason_dropped_reference.
+type DropRestorationTrigger {
+  capability: String
+  owner: String
+}
+
+fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestorationTrigger {
+  match shape {
+    NamedArgumentLabel => DropRestorationTrigger {
+      capability: "call lowering carries a named argument's label to the node it binds",
+      owner: "XL-2 follow-up (v2.test.claim.namespace_xl0.reference_conservation a_named_argument_label_is_reported_dropped_holds)"
+    }
+    WhereRefinementPredicate => DropRestorationTrigger {
+      capability: "type-alias lowering carries a where-refinement predicate into the normalized declaration",
+      owner: "MQ-1-completion fold slice (gentle-koi-724)"
+    }
+    MatchLaterArm => DropRestorationTrigger {
+      capability: "match lowering keeps every arm of an n-arm match, pattern and body",
+      owner: "MQ-1-completion fold slice (gentle-koi-724)"
+    }
+    StatementLetBinder => DropRestorationTrigger {
+      capability: "statement-let lowering keeps the binder's occurrence and its type annotation in the Bind",
+      owner: "bind fold slice (deep-bear-733)"
+    }
+  }
+}
+
+type ExplainedDrop {
+  identity: Symbol
+  shape: KnownDropShape
+}
+
+fn no_explained_drops() -> FreeMonoid<ExplainedDrop> {
+  Empty
+}
+
+// ---- the read (shared with v2.compiler.reference_conservation_census) --------------------------
+
+fn conservation_read_of(path: String, text: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: "reference_conservation:" + path),
+      file_path: path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: DagTree
+  }
+}
+
+// THE GRAMMAR'S VALIDATION RESIDUE IS NOT CARRIED INTO A FIXTURE'S OUTCOME. It is a fact about the
+// prepared grammar, reported where the grammar is prepared (dag_prepared_grammar's own Accepted
+// diagnostics), and threaded into a module's parse it stands at the HEAD of every refusal, so a
+// fixture asserting its refusal's cause would read the grammar's residue instead of its own. The
+// parse is the same prepared parse either way; only that one module-independent diagnostic is not
+// attached.
+fn conservation_subject_of_text(path: String, text: String) -> ReferenceConservationSubject {
+  match dag_prepared_grammar() {
+    Accepted { value: prepared, diagnostics: _grammar_residue } =>
+      reference_conservation_subject_of_read(
+        read: conservation_read_of(path: path, text: text),
+        lm: dag_language_model(),
+        prepared: prepared,
+        residue: None
+      )
+    Rejected { diagnostics: d } =>
+      ReferenceConservationSubject { path: path, parsed: Rejected { diagnostics: d }, normalized: Rejected { diagnostics: d } }
+  }
+}
+
+// ---- the explanation join ----------------------------------------------------------------------
+
+type ExplanationJoin {
+  remaining: Map<Symbol, Int>
+  unexplained: FreeMonoid<DroppedReference>
+}
+
+fn explanation_count(m: Map<Symbol, Int>, key: Symbol) -> Int {
+  match map_lookup(m: m, key: key) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn explanation_counts(explained: FreeMonoid<ExplainedDrop>) -> Map<Symbol, Int> {
+  fold_list(
+    xs: explained,
+    empty: empty_map(),
+    cons: fn(acc, row) { map_insert(m: acc, key: row.identity, value: explanation_count(m: acc, key: row.identity) + 1) }
+  )
+}
+
+fn explanation_join(report: ReferenceConservationReport, explained: FreeMonoid<ExplainedDrop>) -> ExplanationJoin {
+  fold_list(
+    xs: report.dropped,
+    empty: ExplanationJoin { remaining: explanation_counts(explained: explained), unexplained: Empty },
+    cons: fn(acc, row) {
+      let n = explanation_count(m: acc.remaining, key: row.atom.identity)
+      if n > 0 {
+        ExplanationJoin { remaining: map_insert(m: acc.remaining, key: row.atom.identity, value: n - 1), unexplained: acc.unexplained }
+      } else {
+        ExplanationJoin { remaining: acc.remaining, unexplained: list_snoc_item(xs: acc.unexplained, item: row) }
+      }
+    }
+  )
+}
+
+// ---- the refusal -------------------------------------------------------------------------------
+
+fn dropped_reference_diagnostic(row: DroppedReference) -> Diagnostic {
+  Diagnostic {
+    reason: ^conservation_reason_dropped_reference,
+    at: row.atom.locus,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn module_diagnostic(path: String, reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: DeclarationLocus { declaration: Cons { head: symbol_intern_lexeme(lexeme: path), tail: Empty } },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+type StaleWalk {
+  remaining: Map<Symbol, Int>
+  stale: FreeMonoid<Diagnostic>
+}
+
+// An explanation left unconsumed after the join names a drop that no longer happens.
+fn stale_explanation_diagnostics(path: String, join: ExplanationJoin, explained: FreeMonoid<ExplainedDrop>) -> FreeMonoid<Diagnostic> {
+  fold_list(
+    xs: explained,
+    empty: StaleWalk { remaining: join.remaining, stale: Empty },
+    cons: fn(acc, row) {
+      let n = explanation_count(m: acc.remaining, key: row.identity)
+      if n > 0 {
+        StaleWalk {
+          remaining: map_insert(m: acc.remaining, key: row.identity, value: n - 1),
+          stale: list_snoc_item(xs: acc.stale, item: module_diagnostic(path: path, reason: ^conservation_reason_explanation_stale))
+        }
+      } else {
+        acc
+      }
+    }
+  ).stale
+}
+
+fn conservation_refusals(report: ReferenceConservationReport, explained: FreeMonoid<ExplainedDrop>) -> FreeMonoid<Diagnostic> {
+  let join = explanation_join(report: report, explained: explained)
+  let unmeasured = fold_list(
+    xs: report.unmeasured,
+    empty: Empty,
+    cons: fn(acc, _u) { list_snoc_item(xs: acc, item: module_diagnostic(path: report.path, reason: ^conservation_reason_unmeasured)) }
+  )
+  let dropped = fold_list(
+    xs: join.unexplained,
+    empty: unmeasured,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_diagnostic(row: row)) }
+  )
+  fold_list(
+    xs: stale_explanation_diagnostics(path: report.path, join: join, explained: explained),
+    empty: dropped,
+    cons: fn(acc, d) { list_snoc_item(xs: acc, item: d) }
+  )
+}
+
+// ---- the fixture-grain route -------------------------------------------------------------------
+
+// THE ADMITTED NORMALIZE. A parse or normalize refusal passes through unchanged (it is already a
+// refusal, and conservation_against_refusal only relocates what it lost); an accepted tree is
+// admitted only when the conservation verdict over the same subject holds after the declared
+// explanations are consumed.
+fn conserved_normalize(subject: ReferenceConservationSubject, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
+  match subject.normalized {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: residue } =>
+      match conservation_refusals(report: reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes()), explained: explained) {
+        Empty => Accepted { value: tree, diagnostics: residue }
+        Cons { head: first, tail: rest } => Rejected { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
+      }
+  }
+}
+
+// The route a production-fed body-lowering fixture calls with its inline source.
+fn conserved_normalize_of_text(path: String, text: String, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
+  conserved_normalize(subject: conservation_subject_of_text(path: path, text: text), explained: explained)
+}
+
+// ---- the changed-scope grain -------------------------------------------------------------------
+
+// THE SCOPE IS DERIVED FROM THE MODULES, NOT LISTED. A changed file is in the body-lowering scope
+// when it IS v2.compiler.body_lowering_fold or its own import declarations import from that module.
+// Both are read off the PARSE, by the same authorities normalize reads them with --
+// v2.compiler.normalize import_binding_capture and qualified_name_from_module_node -- because a real
+// corpus module usually does not yet normalize natively, and a membership that waited on normalize
+// would be unreadable for exactly the files a change touches. An import row targets the imported
+// symbol, so its module is the row target without its leaf. A file whose membership still cannot
+// be read (it does not parse, or an import decl refuses) is its own arm and the receipt does not
+// admit; it is never dropped from the scope.
+data body_lowering_root_module: String = "v2.compiler.body_lowering_fold"
+
+type ScopeMembership
+  = InBodyLoweringScope
+  | OutsideBodyLoweringScope
+  | MembershipUnreadable { diagnostics: NonEmptyDiagnostics }
+
+fn parse_module_is_body_lowering_root(artifact: ParseArtifact) -> Bool {
+  match qualified_name_from_module_node(root: artifact.tree) {
+    Accepted { value: qn, diagnostics: _ } => qualified_name_to_dotted_string(qn: qn) == body_lowering_root_module
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn imports_reach_body_lowering_root(rows: FreeMonoid<AliasBindingRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) { acc || qualified_name_to_dotted_string(qn: qualified_name_init(qn: row.target)) == body_lowering_root_module }
+  )
+}
+
+fn subject_scope_membership(subject: ReferenceConservationSubject) -> ScopeMembership {
+  match subject.parsed {
+    Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
+    Accepted { value: artifact, diagnostics: _ } =>
+      match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree)) {
+        Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
+        Accepted { value: rows, diagnostics: _ } =>
+          if parse_module_is_body_lowering_root(artifact: artifact) || imports_reach_body_lowering_root(rows: rows) {
+            InBodyLoweringScope
+          } else {
+            OutsideBodyLoweringScope
+          }
+      }
+  }
+}
+
+// One changed file's standing in the receipt.
+type ChangedScopeRow
+  = ScopeConserved { path: String, report: ReferenceConservationReport }
+  | ScopeDropped { path: String, report: ReferenceConservationReport, refusals: NonEmptyDiagnostics }
+  | ScopeMembershipUnreadable { path: String, diagnostics: NonEmptyDiagnostics }
+  | ScopeOutside { path: String }
+
+type ChangedScopeReadInput {
+  path: String
+  text: String
+}
+
+// THE TYPED RECEIPT. `NoBodyLoweringChange` is a positive statement that the change reaches no
+// body-lowering module, never an empty green: it still lists every path it looked at.
+type ChangedScopeConservationReceipt
+  = NoBodyLoweringChange { rows: FreeMonoid<ChangedScopeRow> }
+  | ChangedScopeAdmitted { rows: FreeMonoid<ChangedScopeRow>, in_scope: Int }
+  | ChangedScopeRefused { rows: FreeMonoid<ChangedScopeRow>, in_scope: Int, refused: Int }
+
+fn changed_scope_row(changed: ChangedScopeReadInput) -> ChangedScopeRow {
+  let subject = conservation_subject_of_text(path: changed.path, text: changed.text)
+  match subject_scope_membership(subject: subject) {
+    OutsideBodyLoweringScope => ScopeOutside { path: changed.path }
+    MembershipUnreadable { diagnostics: d } => ScopeMembershipUnreadable { path: changed.path, diagnostics: d }
+    InBodyLoweringScope =>
+      let report = reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes())
+      match conservation_refusals(report: report, explained: no_explained_drops()) {
+        Empty => ScopeConserved { path: changed.path, report: report }
+        Cons { head: first, tail: rest } =>
+          ScopeDropped { path: changed.path, report: report, refusals: NonEmptyDiagnostics { head: first, tail: rest } }
+      }
+  }
+}
+
+type ChangedScopeTally {
+  rows: FreeMonoid<ChangedScopeRow>
+  in_scope: Int
+  refused: Int
+}
+
+fn changed_scope_receipt(inputs: FreeMonoid<ChangedScopeReadInput>) -> ChangedScopeConservationReceipt {
+  let tally = fold_list(
+    xs: inputs,
+    empty: ChangedScopeTally { rows: Empty, in_scope: 0, refused: 0 },
+    cons: fn(acc, changed) {
+      let row = changed_scope_row(changed: changed)
+      match row {
+        ScopeOutside { path: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope, refused: acc.refused }
+        ScopeConserved { path: _, report: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused }
+        _ => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
+      }
+    }
+  )
+  if tally.in_scope == 0 {
+    NoBodyLoweringChange { rows: tally.rows }
+  } else {
+    if tally.refused == 0 {
+      ChangedScopeAdmitted { rows: tally.rows, in_scope: tally.in_scope }
+    } else {
+      ChangedScopeRefused { rows: tally.rows, in_scope: tally.in_scope, refused: tally.refused }
+    }
+  }
+}
+
+fn changed_scope_receipt_admits(receipt: ChangedScopeConservationReceipt) -> Bool {
+  match receipt {
+    NoBodyLoweringChange { rows: _ } => true
+    ChangedScopeAdmitted { rows: _, in_scope: _ } => true
+    ChangedScopeRefused { rows: _, in_scope: _, refused: _ } => false
+  }
+}

@@ -1,5 +1,15 @@
 module v2.test.claim.body_lowering.statement_let_bind
 
+import v2.compiler.reference_conservation_admission {
+  ExplainedDrop,
+  StatementLetBinder,
+  conserved_normalize_of_text,
+  no_explained_drops
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.algebra { fold_list, list_snoc_item }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, and they are written as invariants
@@ -20,20 +30,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not
 // retire when the capability lands; it is the standing control that the capability stayed honest.
 
-fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^statement_let_bind_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-          }
-      }
+fn normalize_outcome_explained(src: String, explained: FreeMonoid<ExplainedDrop>) -> String {
+  match conserved_normalize_of_text(path: "statement_let_bind_subject", text: src, explained: explained) {
+    Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
   }
+}
+
+fn normalize_outcome(src: String) -> String {
+  normalize_outcome_explained(src: src, explained: no_explained_drops())
+}
+
+// A statement-form let's binder -- and, when it has one, its type annotation -- is lost by
+// lowering today, pinned by
+// v2.test.claim.namespace_xl0.reference_conservation a_statement_let_binder_is_reported_dropped_holds.
+fn let_binders_lost(names: FreeMonoid<String>) -> FreeMonoid<ExplainedDrop> {
+  fold_list(
+    xs: names,
+    empty: Empty,
+    cons: fn(acc, name) { list_snoc_item(xs: acc, item: ExplainedDrop { identity: symbol_intern_lexeme(lexeme: name), shape: StatementLetBinder }) }
+  )
 }
 
 data statement_let_then_reference_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
@@ -55,11 +71,11 @@ data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x
 data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
 
 test fn statement_let_then_reference_lowers_holds() -> Bool {
-  normalize_outcome(src: statement_let_then_reference_source) == "ACCEPTED"
+  normalize_outcome_explained(src: statement_let_then_reference_source, explained: let_binders_lost(names: Cons { head: "x", tail: Empty })) == "ACCEPTED"
 }
 
 test fn statement_let_chain_lowers_holds() -> Bool {
-  normalize_outcome(src: statement_let_chain_source) == "ACCEPTED"
+  normalize_outcome_explained(src: statement_let_chain_source, explained: let_binders_lost(names: Cons { head: "x", tail: Cons { head: "y", tail: Empty } })) == "ACCEPTED"
 }
 
 test fn unbound_statement_prefix_refuses_holds() -> Bool {
@@ -72,9 +88,9 @@ test fn single_statement_body_unchanged_holds() -> Bool {
 }
 
 test fn let_in_form_unchanged_holds() -> Bool {
-  normalize_outcome(src: let_in_form_source) == "ACCEPTED"
+  normalize_outcome_explained(src: let_in_form_source, explained: let_binders_lost(names: Cons { head: "x", tail: Empty })) == "ACCEPTED"
 }
 
 test fn typed_statement_let_lowers_holds() -> Bool {
-  normalize_outcome(src: typed_statement_let_source) == "ACCEPTED"
+  normalize_outcome_explained(src: typed_statement_let_source, explained: let_binders_lost(names: Cons { head: "x", tail: Cons { head: "Int", tail: Empty } })) == "ACCEPTED"
 }

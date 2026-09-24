@@ -4,8 +4,9 @@ import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
+  program_assembly_measured_outcome,
   program_assembly_phase_normalize,
-  program_assembly_phase_parse,
+  program_assembly_phase_parse_measured_seeded,
   program_assembly_phase_tokenize
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -41,7 +42,7 @@ import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, occurrence_id_allocator_initial }
 
 // REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
 //
@@ -731,6 +732,11 @@ type TreeConservationState {
   pools: ItemPools
 }
 
+// A TYPE ATOM KEEPS ITS OCCURRENCE AND IS RESPELLED CANONICALLY. v2.compiler.body_lowering_fold
+// body_lower_type_atom_node lowers a type atom FROM its source, so its occurrence survives, and
+// spells it by lowering's canonical binding (`Bool` becomes its bool binding). The same single
+// authority the pool consults, body_lower_resolved_type_binding, decides whether the spelling
+// found at a preserved occurrence is this atom's; any other spelling is RespelledInNormalizedTree.
 fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree) -> ReferenceConservationReport {
   let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
   let declarations = declaration_pools(tree: tree)
@@ -744,7 +750,7 @@ fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, t
     cons: fn(state, atom) {
       match map_lookup(m: index, key: atom.occurrence) {
         Present { value: found } =>
-          if found == atom.identity {
+          if found == atom.identity || found == body_lower_resolved_type_binding(sym: atom.identity) {
             TreeConservationState { report: report_count_conserved(report: state.report), pools: state.pools }
           } else {
             TreeConservationState {
@@ -821,16 +827,21 @@ type ReferenceConservationSubject {
   normalized: Outcome<NormalizedTree>
 }
 
+// One module per subject, so the parse allocator starts at its seed: the ids are minted within
+// this parse and joined only against this parse's own normalized tree.
 fn reference_conservation_subject_of_read(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationSubject {
-  let parsed = program_assembly_phase_parse(
-    tokens: program_assembly_phase_tokenize(read: read, lm: lm),
-    prepared: prepared,
-    residue: residue
+  let parsed = program_assembly_measured_outcome(
+    measured: program_assembly_phase_parse_measured_seeded(
+      tokens: program_assembly_phase_tokenize(read: read, lm: lm),
+      prepared: prepared,
+      residue: residue,
+      seed: occurrence_id_allocator_initial()
+    )
   )
   ReferenceConservationSubject {
     path: read.artifact.file_path,

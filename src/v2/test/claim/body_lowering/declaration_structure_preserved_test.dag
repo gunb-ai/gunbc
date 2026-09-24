@@ -1,5 +1,13 @@
 module v2.test.claim.body_lowering.declaration_structure_preserved
 
+import v2.compiler.reference_conservation_admission {
+  ExplainedDrop,
+  WhereRefinementPredicate,
+  conserved_normalize_of_text,
+  no_explained_drops
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, one node class on from the
@@ -31,28 +39,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body_lower_production_emitted and re-running the same binary over these same three sources,
 // whereupon all three return body_lowering_reason_wrapper_retained_emitted.
 
-fn normalize_outcome(src: String) -> String {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => "PREPARE_REFUSED"
-    Accepted { value: prepared, diagnostics: residue } =>
-      match tokenize(text: src, file: ^declaration_structure_preserved_subject, rules: dag_lex()) {
-        Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-        Accepted { value: ts, diagnostics: _ } =>
-          match parse_module_prepared(
-            tokens: ts,
-            prepared: prepared,
-            validation_residue: residue
-          ) {
-            Rejected { diagnostics: _ } => "PARSE_REFUSED"
-            Accepted { value: artifact, diagnostics: _ } =>
-              match normalize(parse_tree: artifact.tree) {
-                Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-                Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-              }
-          }
-      }
+fn normalize_outcome_explained(src: String, explained: FreeMonoid<ExplainedDrop>) -> String {
+  match conserved_normalize_of_text(path: "declaration_structure_preserved_subject", text: src, explained: explained) {
+    Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
   }
 }
+
+fn normalize_outcome(src: String) -> String {
+  normalize_outcome_explained(src: src, explained: no_explained_drops())
+}
+
+// The refinement predicate is lost by lowering today, pinned by
+// v2.test.claim.namespace_xl0.reference_conservation the_where_refinement_predicate_is_reported_dropped_holds.
+data where_predicate_explained: ExplainedDrop = ExplainedDrop { identity: ^non_empty, shape: WhereRefinementPredicate }
 
 data coproduct_with_field_block_source: String = "module m.t\ntype T = A { x: Int } | B\nfn f() -> Int {\n  1\n}\n"
 
@@ -81,5 +81,5 @@ test fn record_literal_field_init_is_not_retained_holds() -> Bool {
 }
 
 test fn where_refinement_clause_interior_is_not_retained_holds() -> Bool {
-  normalize_outcome(src: where_refinement_alias_source) == "ACCEPTED"
+  normalize_outcome_explained(src: where_refinement_alias_source, explained: Cons { head: where_predicate_explained, tail: Empty }) == "ACCEPTED"
 }
