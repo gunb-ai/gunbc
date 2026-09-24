@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
-import std.occurrence_identity { NodeOccurrenceIdentity }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq }
 import v2.std.text { String }
 
@@ -322,14 +322,15 @@ fn declaration_reference_marker() -> Symbol {
 }
 
 // THE ONE PRODUCER OF THE MARKED CARRIER (consumed by v2.compiler.resolve resolved_reference_node).
-// The occurrence stays on the marker node, which is the node that stands where the reference stood.
+// The occurrence stays on the marker node alone, which is the node that stands where the reference
+// stood; the spine under it is synthetic, so one source occurrence is carried by exactly one node.
 fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
         label: Named { name: declaration_reference_marker() },
-        target: qualified_name_spine_node(qn: qn, occurrence_id: occurrence_id)
+        target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
     occurrence_id: occurrence_id
