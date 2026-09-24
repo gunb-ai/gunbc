@@ -604,6 +604,9 @@ fn issue_tracker_root_css() -> String {
   ], "\n")
 }
 
+// THE TABLE HEADER AND THE ROWS ARE ONE GRID DERIVATION (owner ruling 2026-09-24, the derivation
+// law): both templates in the issue-table rules below come FROM the extdeps model's declared column
+// roster — never a per-row spelling — so the header and every row share the template by construction.
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
@@ -947,9 +950,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_6)),
     ] },
-    // THE TABLE HEADER AND THE ROWS ARE ONE GRID DERIVATION (owner ruling 2026-09-24, the
-    // derivation law): both templates come FROM the extdeps model's declared column roster —
-    // never a per-row spelling — so the header and every row share the template by construction.
     StaticRule { selector: ClassSelector { name: "issue-table-header" }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: issue_results_row_tracks()),
