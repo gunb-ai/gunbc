@@ -20,7 +20,7 @@ import gunbc.runner.runner_jit_admission { JitAdmissionAxisStanding }
 import gunbc.runner_microvm_attempt { MicroVmAttempt, MicroVmCellBinding }
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
-  JitMintRefusedAttemptUnbound, JitMintRefusedLabelsUnresolved, plan_jit_mint,
+  JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, MicrovmRunnerGroupStanding, plan_jit_mint,
 }
 
 data runner_jit_perform_disposition: Disposition = SingleAuthority
@@ -72,7 +72,7 @@ type JitDispatchRefusal
       unsatisfied: List<CredentialCapability>
     }
   | DispatchRefusedAttemptUnbound { cause: String }
-  | DispatchRefusedLabelsUnresolved { cause: String }
+  | DispatchRefusedRunnerGroupUnrestricted { group: Int }
   | DispatchRefusedNoInstallationCredential { cause: String }
 
 // THE FOURTH REFUSAL IS A TOTALITY ARM AND IS DELIBERATELY NOT ENROLLED AS COVERAGE.
@@ -119,7 +119,7 @@ fn dispatch_jit_mint(
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
-  runner_group_id: JitRunnerGroupId,
+  runner_group: MicrovmRunnerGroupStanding,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintDispatch {
   match plan_jit_mint(
@@ -127,15 +127,15 @@ fn dispatch_jit_mint(
     authority: authority,
     control_plane: control_plane,
     organization: organization,
-    runner_group_id: runner_group_id,
+    runner_group: runner_group,
     attempt_binding: attempt_binding,
   ) {
     JitMintRefusedCellNotOwned { cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedCellNotOwned { cause: c } }
     JitMintRefusedAttemptUnbound { cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: c } }
-    JitMintRefusedLabelsUnresolved { cause: c } =>
-      JitMintDispatchRefused { refusal: DispatchRefusedLabelsUnresolved { cause: c } }
+    JitMintRefusedRunnerGroupUnrestricted { group: g } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedRunnerGroupUnrestricted { group: g } }
     JitMintRefusedCredential { organization: org, unsatisfied: u } =>
       JitMintDispatchRefused {
         refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },

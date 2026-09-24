@@ -1,0 +1,134 @@
+module extdeps.bmc.ipmi_master_write_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.optional { Present }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.parse { json_hex_nibble }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html"
+  }
+}
+
+data ipmitool_raw_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "linux.die.net/man/1/ipmitool"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi_master_write_read",
+      decl_name: "MasterWriteReadBus",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ipmitool_raw_authority]
+}
+
+// THE SUBJECT IS THE IPMI "Master Write-Read" COMMAND (IPMI v2.0 rev1.1 §22.11, NetFn App 06h,
+// command 52h) and how ipmitool's `raw` subcommand renders its answer. The command asks the BMC to
+// act as an I2C master: write the given bytes to a device on one of its buses, then read a given
+// number of bytes back. It is how a remote reader reaches a device the BMC can see and no other
+// interface exposes. Which device sits at which address on which bus is a fact about a BOARD, never
+// about this command, so no address or bus value is declared here.
+//
+// THE REQUEST, byte by byte (§22.11 Table 22-14):
+//   1  bus: [7:4] channel number, [3:1] bus ID, [0] bus type (0 = public/IPMB, 1 = private)
+//   2  slave address: [7:1] the 7-bit address, [0] reserved 0 -- the 8-bit "write address" form
+//   3  read count
+//   4+ data to write
+// THE RESPONSE: completion code, then the bytes read. Besides the generic codes, the command defines
+// 81h lost arbitration, 82h bus error, 83h NAK on write and 84h truncated read.
+//
+// HOW ipmitool RENDERS IT (ipmitool(1), raw): on completion code 00h the read bytes are printed on
+// stdout as space-separated two-digit hex ("cd 3a"); on any other code nothing is printed on stdout
+// and stderr carries "Unable to send RAW command (... rsp=0xNN): <text>". Both renderings are the
+// TOOL's, which is why a rendering that does not parse is a malformed response and not a zero.
+
+type MasterWriteReadBusType = PublicBus | PrivateBus
+
+type MasterWriteReadBus {
+  channel: Int
+  bus_id: Int
+  bus_type: MasterWriteReadBusType
+}
+
+// Byte 1, refused outside the field widths rather than masked into range.
+fn master_write_read_bus_byte(bus: MasterWriteReadBus) -> Int? {
+  if bus.channel < 0 || bus.channel > 15 || bus.bus_id < 0 || bus.bus_id > 7 { none } else {
+    Present { value: bus.channel * 16 + bus.bus_id * 2 + (match bus.bus_type { PublicBus => 0 PrivateBus => 1 }) }
+  }
+}
+
+// Byte 2 from a 7-bit address.
+fn master_write_read_slave_byte(seven_bit_address: Int) -> Int? {
+  if seven_bit_address < 0 || seven_bit_address > 127 { none } else { Present { value: seven_bit_address * 2 } }
+}
+
+fn hex_byte_text(n: Int) -> String {
+  let digits = "0123456789abcdef"
+  concat("0x", char_at(s: digits, pos: n / 16), char_at(s: digits, pos: n % 16))
+}
+
+// The command-specific completion codes and the generic ones a reader of this command meets. A code
+// with no row is carried as its number.
+type MasterWriteReadCompletion
+  = CompletionLostArbitration
+  | CompletionBusError
+  | CompletionNakOnWrite
+  | CompletionTruncatedRead
+  | CompletionOtherCode { code: Int }
+
+fn master_write_read_completion_of(code: Int) -> MasterWriteReadCompletion {
+  if code == 129 { CompletionLostArbitration }
+  else if code == 130 { CompletionBusError }
+  else if code == 131 { CompletionNakOnWrite }
+  else if code == 132 { CompletionTruncatedRead }
+  else { CompletionOtherCode { code: code } }
+}
+
+fn master_write_read_completion_text(c: MasterWriteReadCompletion) -> String {
+  match c {
+    CompletionLostArbitration => "81h lost arbitration"
+    CompletionBusError => "82h bus error"
+    CompletionNakOnWrite => "83h NAK on write (no device acknowledged the address or the data)"
+    CompletionTruncatedRead => "84h truncated read"
+    CompletionOtherCode { code: n } => concat("completion code ", hex_byte_text(n: n))
+  }
+}
+
+fn hex_pair_value(t: String) -> Int? {
+  if t.length() != 2 { none } else {
+    let hi = json_hex_nibble(c: char_at(s: t, pos: 0))
+    let lo = json_hex_nibble(c: char_at(s: t, pos: 1))
+    if hi < 0 || lo < 0 { none } else { Present { value: hi * 16 + lo } }
+  }
+}
+
+// The bytes of a successful answer, in wire order. Every token must be a two-digit hex byte and the
+// count must be the count requested; otherwise the rendering is refused whole.
+fn master_write_read_bytes_of(stdout: String, expected: Int) -> List<Int>? {
+  let tokens = filter(split(s: join(split(s: trim(stdout), delimiter: "\n"), " "), delimiter: " "), t => t != "")
+  let values = map(tokens, t => hex_pair_value(t: t))
+  if count(tokens) != expected || any(values, v => match v { Absent => true Present { value: _ } => false }) { none } else {
+    Present { value: flat_map(values, v => match v { Absent => [] Present { value: x } => [x] }) }
+  }
+}
+
+// The completion code ipmitool names on stderr ("rsp=0x83"), when it names one.
+fn master_write_read_stderr_completion(stderr: String) -> Int? {
+  let parts = split(s: stderr, delimiter: "rsp=0x")
+  if count(parts) < 2 { none } else {
+    let rest = match parts.skip(n: 1).first() { Absent => "" Present { value: r } => r }
+    if rest.length() < 2 { none } else { hex_pair_value(t: substring(s: rest, start: 0, end: 2)) }
+  }
+}
