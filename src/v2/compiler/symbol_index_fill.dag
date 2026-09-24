@@ -68,6 +68,9 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
   }
 }
 
+// A TYPE DECLARATION'S BINDERS ARE ITS FRAME, NOT ITS MEMBERS. The edge v2.std.type_binder
+// type_params_edge puts on a record's Conj or a coproduct's Disj is skipped here and in the Disj arm
+// below: `T` is scoped by v2.compiler.resolve over the declaration, never a declared identity `R.T`.
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -88,8 +91,6 @@ fn symbol_index_fill_containment_edge(
           node: edge.target
         )
       } else if edge_is_type_params(e: edge) {
-        // A type declaration's binders (v2.std.type_binder) are its frame, not its members: `T` is
-        // scoped by v2.compiler.resolve over the declaration, never a declared identity `R.T`.
         index
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
