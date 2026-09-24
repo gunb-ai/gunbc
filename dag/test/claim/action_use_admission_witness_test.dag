@@ -280,7 +280,7 @@ fn census_holds(c: RealizedCensus) -> Bool {
 // eval-step budget. This join is what makes the per-file claims the census: a workflow added without
 // a claim, or a claim naming a file that is gone, refuses here, by name.
 data realized_workflow_files: List<String> = [
-  "fleet-converge.yml", "fleet-desired.yml", "heal-publish.yml", "heal.yml", "mtcollins-canary.yml", "witnesses.yml"
+  "fleet-converge.yml", "fleet-desired.yml", "heal-publish.yml", "heal.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "witnesses.yml"
 ]
 
 fn listed_workflow_files() -> List<String> {
@@ -343,6 +343,17 @@ test fn census_heal_uses_are_modeled_and_executed_exactly() -> Bool {
   let c = census_file(name: "heal.yml")
   census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
+}
+
+// THE SHAKEDOWN WORKFLOW USES NO ACTION, AND ZERO IS THE READING, NOT AN EMPTY FILE. Its one job is a
+// run step by design (gunbc.runner_microvm_shakedown_workflow: no checkout and no action, so a proof
+// about whether the guest can run a step does not depend on the action-download path). census_file
+// turns an unreadable file into a refusal, so no refusals and zero uses is the modeled reader's
+// reading of a real file; and the claim is a wall, not a vacuous pass: a `uses:` added to that
+// workflow reds it, because the job's no-action shape is what the workflow's own proof relies on.
+test fn census_microvm_shakedown_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "microvm-shakedown.yml")
+  ((c.refused |> count) == 0) && (c.uses == 0)
 }
 
 // The hand-authored canary: its checkout and github-script steps are among the admitted uses, so
