@@ -37,7 +37,7 @@ import std.primitive_projection {
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live, primitive_bytes_octets,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1240,6 +1240,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "symbol_intern_lexeme",
   "data_init_decl_facts_live",
   "bytes_octets",
+  "utf8_encode_bytes",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1600,10 +1601,12 @@ data primitive_symbol_intern_lexeme_traversal: PrimitiveTraversalOrderFact = Pri
 // SourcePreservingOrder is the executed reading, not CanonicalOrder.
 data primitive_data_init_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_init_decl_facts_live, order: SourcePreservingOrder }
 
-// bytes_octets yields the carrier's octets in index order -- the interpreter's free_call.bytes_octets
-// arm and v1_rt::bytes_octets both map over the byte vector in place -- so the result's order is the
-// input's own, SourcePreservingOrder, and no host order is consulted.
+// bytes_octets and utf8_encode_bytes yield octets in index order -- the interpreter's arms and the
+// v1_rt realizations both map over the byte vector (or the string's UTF-8 bytes) in place -- so the
+// result's order is the input's own, SourcePreservingOrder, and no host order is consulted.
 data primitive_bytes_octets_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_bytes_octets, order: SourcePreservingOrder }
+
+data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_utf8_encode_bytes, order: SourcePreservingOrder }
 
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
@@ -1622,6 +1625,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_symbol_intern_lexeme_traversal,
   primitive_data_init_decl_facts_live_traversal,
   primitive_bytes_octets_traversal,
+  primitive_utf8_encode_bytes_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

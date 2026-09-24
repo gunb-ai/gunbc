@@ -1,0 +1,64 @@
+module test.fixture.emitted_interpreted_parity.string_order_octets_present_binding
+
+import std.types { Timestamp, Bytes }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// ONE PROGRAM, RUN TWICE: interpreted (`gunbc run`) and emitted (`gunbc compile --target rust`, then
+// the crate built and executed). The two outputs must be byte-identical, and the expected line is
+// `T F T F T 6 2962370309 97 0`. Each field discriminates one emitter defect the native App Attest
+// closure hit (stern-raven-24, gunbc#12251):
+//   1-5  String ordering over the Timestamp alias (extdeps.standards.rfc_5280 x509_validity_at).
+//        `"Z" < "a"` is T and `"é" < "z"` is F only under byte-lexicographic UTF-8 order, which is
+//        the interpreter's (Value::Str, Value::Str) arm; a case-folding or char-count ordering, or a
+//        refusal, answers differently.
+//   6-7  std.bytes bytes_octets over "aé€": six octets 61 C3 A9 E2 82 AC, folded positionally. The
+//        former emitted body was a one-element list holding `1 / 0`; a char-per-member reading
+//        answers 3.
+//   8-9  A binding arm after an unguarded absent arm binds the PRESENT value (v1.compiler.infer
+//        match_unguarded_absent_arm_index); the emitted `o => o` bound the whole Option<i64>.
+fn ts_before(a: Timestamp, b: Timestamp) -> Bool {
+  a < b
+}
+
+fn ts_not_after(a: Timestamp, b: Timestamp) -> Bool {
+  a <= b
+}
+
+fn first_or_zero(xs: List<Int>) -> Int {
+  match xs |> first {
+    null => 0
+    o => o
+  }
+}
+
+fn verdict(b: Bool) -> String {
+  if b { "T" } else { "F" }
+}
+
+fn positional_fold(xs: List<Int>) -> Int {
+  xs |> fold(init: 0, f: (acc, x) => acc * 31 + x)
+}
+
+fn observed_line() -> String {
+  let o = bytes_octets(b: utf8_encode_bytes(s: "aé€"))
+  let parts = [
+    verdict(b: ts_before(a: "2026-01-02T00:00:00Z", b: "2026-01-10T00:00:00Z")),
+    verdict(b: ts_before(a: "b", b: "a")),
+    verdict(b: ts_before(a: "Z", b: "a")),
+    verdict(b: ts_before(a: "é", b: "z")),
+    verdict(b: ts_not_after(a: "x", b: "x")),
+    to_string(value: count(o)),
+    to_string(value: positional_fold(xs: o)),
+    to_string(value: first_or_zero(xs: o)),
+    to_string(value: first_or_zero(xs: []))
+  ]
+  join(parts, separator: " ")
+}
+
+data expected_line: String = "T F T F T 6 2962370309 97 0"
+
+fn main() -> ProcessExit {
+  let line = observed_line()
+  if line == expected_line { ExitSuccess } else { ExitFailure { code: 1, reason: line } }
+}

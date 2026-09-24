@@ -3812,7 +3812,18 @@ data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
 // written by hand. So the crate-root block is emitted only for a root whose modules are ALL
 // generated, and where hand-maintained siblings share the root each generated item carries the
 // relaxation as an outer attribute instead.
+//
+// unconditional_panic IS A REACHABILITY DISAGREEMENT, NOT A STYLE LINT, and it is relaxed because the
+// interpreter is the semantics the emitted crate owes. `1 / 0` in an ACCEPTED program is a refusal
+// only IF REACHED: the interpreter evaluates it lazily and refuses with a typed division-by-zero
+// error at that moment, and the emitted host division panics at exactly the same moment. rustc's
+// deny-by-default lint instead refuses the WHOLE crate at compile time because a constant operand
+// makes the panic statically certain -- so std.bytes pure_dag_seam_unreachable, the corpus's
+// declared divergent seam, took down every crate whose closure reached std.bytes although no
+// execution calls it (native App Attest, stern-raven-24). Relaxing the lint changes no behaviour
+// that runs: the refusal still fires, loudly, where the interpreter's does.
 data generated_rust_lint_relaxations: List<String> = [
+  "unconditional_panic",
   "unused_imports",
   "unused_variables",
   "unused_mut",
@@ -9157,6 +9168,20 @@ fn rust_seam_primitive_name(module_path: String, name: String) -> String {
   }
 }
 
+// A REALIZED SEAM IS NOT RECURSION. Its self-call resolves through the roster to the runtime
+// bridge, so the body's one call is to v1_rt, never to this function -- but the tail-call and
+// stack-growth lowerings key recursion on the callee's NAME, so they read the self-call as a tail
+// self-call and lowered std.bytes bytes_octets to `loop { __tco_loop_b = b; continue; }`, a body
+// that compiles and never returns (the class gunbc.recurring_failure_mode
+// host_seam_self_call_diverges_when_its_arm_is_absent names, reached with the arm PRESENT). The
+// call-target authority already answers which declaration the call reaches; this asks the same
+// registry as the unrealized arm so the two cannot disagree, and a realized seam's body is emitted
+// as the ordinary routed call.
+fn rust_host_seam_is_realized(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices)
+    && rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name))
+}
+
 fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices)
     && rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) == false
@@ -9267,8 +9292,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
-  let use_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
-  let needs_stacker = is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
+  let realized_seam = rust_host_seam_is_realized(module_path: scope.module_name, name: name, body: body, source_indices: si)
+  let use_tco = !realized_seam && is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
+  let needs_stacker = !realized_seam && is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
   if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
     let kw = rust_items().func_keyword
     return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",

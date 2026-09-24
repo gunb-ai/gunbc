@@ -117,8 +117,14 @@ fn octets_bytes(o: List<UInt8>) -> Bytes {
   o as Bytes
 }
 
+// A HOST SEAM for the same reason bytes_octets is one, and rostered beside it: the interpreter's
+// free_call.utf8_encode_bytes arm intercepts every call, so the former body `s as Bytes` was never
+// what ran -- and on the Rust target no cast row realizes String -> Vec<u8> (a cast template is
+// `{expr} as {type}`, which cannot spell an encoding), so it emitted as a runtime panic. The
+// realization is the host's UTF-8 encoding (v1_rt::utf8_encode_bytes, String::into_bytes), the
+// inverse of the utf8_decode_bytes realization already in that runtime.
 fn utf8_encode_bytes(s: String) -> Bytes {
-  s as Bytes
+  utf8_encode_bytes(s: s)
 }
 
 data bytes_seam_host_realization_marker: Disposition = Scaffold {

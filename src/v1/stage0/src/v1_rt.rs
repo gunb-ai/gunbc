@@ -323,6 +323,17 @@ pub fn symbol_intern_lexeme(lexeme: String) -> String {
     lexeme
 }
 
+/// std.bytes bytes_octets: the octets of a Bytes carrier (Vec<u8> on this target), each as
+/// the List<Int> member the interpreter's free_call.bytes_octets arm answers.
+pub fn bytes_octets(b: Vec<u8>) -> Rc<Vec<i64>> {
+    Rc::new(b.iter().map(|octet| *octet as i64).collect())
+}
+
+/// std.bytes utf8_encode_bytes: RFC 3629 UTF-8 encoding, the inverse of utf8_decode_bytes.
+pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
+    s.into_bytes().into_iter().collect()
+}
+
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
 pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;

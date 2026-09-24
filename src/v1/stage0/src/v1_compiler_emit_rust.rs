@@ -81,7 +81,7 @@ pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
-    GenericTypeParameter, HostContainer, KernelMintedType, UnnamedSynthesizedType,
+    GenericTypeParameter, HostContainer, HostTextCarrier, KernelMintedType, UnnamedSynthesizedType,
 };
 use crate::std_operator_realization::OperandDemand::{
     DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
@@ -186,7 +186,8 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_emit_graph_info, build_params_scope, call_args_by_name, caller_resource_requirements,
     declared_return_type_node, established_resource_binding, expand_type_for_field_access,
-    expr_span, extend_scope, is_where_refinement_type, resolved_type_name,
+    expr_span, extend_scope, is_where_refinement_type, match_unguarded_absent_arm_index,
+    optional_scrutinee_binding_is_present, resolved_type_name,
 };
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
@@ -7480,7 +7481,7 @@ pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
 pub fn generated_rust_lint_relaxations() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
+            Rc::new(vec!["unconditional_panic".to_string(), "unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -19045,6 +19046,19 @@ pub fn rust_seam_primitive_name(module_path: String, name: String) -> String {
     }
 }
 
+pub fn rust_host_seam_is_realized(
+    module_path: String,
+    name: String,
+    body: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (rust_body_is_bare_self_call(name.clone(), body.clone(), source_indices.clone())
+        && rust_runtime_primitive_has_bridge(rust_seam_primitive_name(
+            module_path.clone(),
+            name.clone(),
+        )))
+}
+
 pub fn rust_host_seam_is_unrealized(
     module_path: String,
     name: String,
@@ -19239,24 +19253,33 @@ pub fn emit_fn_def(
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), value_params.clone());
         let depth = 0;
-        let use_tco = crate::v1_compiler_emit::is_tco_eligible(
-            Rc::new(DeclaredCallableIdentity {
-                owner_module_path: scope.module_name.clone(),
-                decl_name: name.clone(),
-            }),
+        let realized_seam = rust_host_seam_is_realized(
+            scope.module_name.clone(),
+            name.clone(),
             body.clone(),
-            registry.clone(),
             si.clone(),
         );
-        let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
-            Rc::new(DeclaredCallableIdentity {
-                owner_module_path: scope.module_name.clone(),
-                decl_name: name.clone(),
-            }),
-            body.clone(),
-            registry.clone(),
-            si.clone(),
-        ) && (use_tco.clone() == false));
+        let use_tco = (!realized_seam.clone()
+            && crate::v1_compiler_emit::is_tco_eligible(
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: scope.module_name.clone(),
+                    decl_name: name.clone(),
+                }),
+                body.clone(),
+                registry.clone(),
+                si.clone(),
+            ));
+        let needs_stacker = ((!realized_seam.clone()
+            && crate::v1_compiler_emit::is_self_recursive(
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: scope.module_name.clone(),
+                    decl_name: name.clone(),
+                }),
+                body.clone(),
+                registry.clone(),
+                si.clone(),
+            ))
+            && (use_tco.clone() == false));
         if rust_host_seam_is_unrealized(
             scope.module_name.clone(),
             name.clone(),
@@ -29761,6 +29784,7 @@ pub fn emit_typed_match_arm_strs(
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
     match_result_type: Rc<Node>,
+    scrut_rt: Rc<Node>,
 ) -> Rc<Vec<String>> {
     {
         let has_irrefutable = {
@@ -29776,23 +29800,43 @@ pub fn emit_typed_match_arm_strs(
             __found
         };
         if has_irrefutable.clone() {
-            Rc::new({
-                let mut __result = Vec::new();
-                for arm in arms.iter().cloned() {
-                    __result.push(emit_typed_match_arm(
-                        arm.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        scrut_type.clone(),
-                        match_result_type.clone(),
-                        false,
-                    ));
-                }
-                __result
-            })
+            {
+                let absent_arm_index =
+                    crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for pair in Rc::new(
+                        arms.clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(emit_typed_match_arm(
+                            pair.1.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            scrut_type.clone(),
+                            match_result_type.clone(),
+                            false,
+                            crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                                scrut_rt.clone(),
+                                crate::v1_std_core::arm_pattern(pair.1.clone()),
+                                pair.0.clone(),
+                                absent_arm_index.clone(),
+                            ),
+                        ));
+                    }
+                    __result
+                })
+            }
         } else {
             {
                 let entries = Rc::new({
@@ -29873,6 +29917,7 @@ pub fn emit_typed_match_arm_strs(
                                         emit_info.clone(),
                                         scrut_type.clone(),
                                         match_result_type.clone(),
+                                        false,
                                         false,
                                     ),
                                 ),
@@ -29960,6 +30005,7 @@ pub fn emit_typed_match(
             emit_info.clone(),
             scrut_type.clone(),
             match_result_type.clone(),
+            crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()),
         );
         let arms_str = arm_strs.clone().join(&"\n".to_string());
         let needs_as_str =
@@ -30046,6 +30092,7 @@ pub fn emit_typed_match(
                                             scrut_type.clone(),
                                             match_result_type.clone(),
                                             true,
+                                            false,
                                         ));
                                     }
                                     __result
@@ -30149,6 +30196,7 @@ pub fn emit_typed_match_arm(
     scrut_type: String,
     match_result_type: Rc<Node>,
     string_from_mode: bool,
+    present_binding: bool,
 ) -> String {
     {
         let arm_pat = crate::v1_std_core::arm_pattern(arm.clone());
@@ -30204,14 +30252,31 @@ pub fn emit_typed_match_arm(
                     emit_info.clone(),
                 )
             } else {
-                emit_pattern(
-                    arm_pat.clone(),
-                    Rc::new(vec![]),
-                    shared_types.clone(),
-                    scrut_type.clone(),
-                    si.clone(),
-                    emit_info.clone(),
-                )
+                if present_binding.clone() {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "Some(".to_string(),
+                            emit_pattern(
+                                arm_pat.clone(),
+                                Rc::new(vec![]),
+                                shared_types.clone(),
+                                scrut_type.clone(),
+                                si.clone(),
+                                emit_info.clone(),
+                            ),
+                        ),
+                        ")".to_string(),
+                    )
+                } else {
+                    emit_pattern(
+                        arm_pat.clone(),
+                        Rc::new(vec![]),
+                        shared_types.clone(),
+                        scrut_type.clone(),
+                        si.clone(),
+                        emit_info.clone(),
+                    )
+                }
             }
         };
         let field_guards =
@@ -32666,7 +32731,15 @@ pub fn rust_operand_realization_of_type(
                                 reason: HostRealizationReason::UnnamedSynthesizedType,
                             });
                         } else {
-                            match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
+                            if is_host_text_carrier_type(
+                                rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                break Rc::new(OperandRealization::HostRealizedOperand {
+                                    reason: HostRealizationReason::HostTextCarrier,
+                                });
+                            } else {
+                                match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
     std::option::Option::None => { break Rc::new(OperandRealization::OperandIdentityUnavailable {
     facts: Rc::new(OperandShapeFacts {
     authored_name: authored.clone(),
@@ -32677,20 +32750,20 @@ pub fn rust_operand_realization_of_type(
 }),
 }); },
     Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_realization_decision(RenderTarget::Rust, d.decl_name.clone(), provenance.clone())) {
-                        break Rc::new(OperandRealization::HostNumericOperand);
+                            break Rc::new(OperandRealization::HostNumericOperand);
 } else {
-                        let decl = match rt.inferred.clone().as_deref().cloned() {
+                            let decl = match rt.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
     _ => rt.clone(),
 };
 if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.clone())) {
-                            match rt.children.clone().first().cloned() {
+                                match rt.children.clone().first().cloned() {
     Some(base) => { let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), base.clone()) {
     Some(r) => r.clone(),
     std::option::Option::None => base.clone(),
 };
 {
-                                let __tco_0 = base_resolved.clone();
+                                    let __tco_0 = base_resolved.clone();
 let __tco_1 = scope;
 let __tco_2 = (fuel - 1);
 __tco_loop_rt = __tco_0;
@@ -32703,9 +32776,9 @@ continue;
 }); },
 }
 } else {
-                            if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
-                                {
-                                    let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
+                                if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
+                                    {
+                                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
 let __tco_1 = scope;
 let __tco_2 = (fuel - 1);
 __tco_loop_rt = __tco_0;
@@ -32714,13 +32787,14 @@ __tco_loop_fuel = __tco_2;
 continue;
 }
 } else {
-                                break Rc::new(OperandRealization::StructuralOperand {
+                                    break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 });
 }
 }
 } },
 }
+                            }
                         }
                     }
                 }
@@ -32940,49 +33014,59 @@ pub fn emit_rust_host_bin_op(
                 }
             }
         } else {
-            {
-                let both_string = (is_string_typed_expr(
-                    left.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ) && is_string_typed_expr(
-                    right.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ));
-                let is_str_concat = ((op_str.clone() == "+".to_string()) && both_string.clone());
-                if is_str_concat.clone() {
-                    v1_rt::concat(
+            if is_optional_string_ordering(
+                op.clone(),
+                left.clone(),
+                right.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                v1_rt::concat(v1_rt::concat("compile_error!(\"operator realization: `".to_string(), op_str.clone()), "` over an optional String has no interpreter ordering (Null against Str refuses there), so it has no faithful Rust realization\")".to_string())
+            } else {
+                {
+                    let both_string = (is_string_typed_expr(
+                        left.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) && is_string_typed_expr(
+                        right.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ));
+                    let is_str_concat =
+                        ((op_str.clone() == "+".to_string()) && both_string.clone());
+                    if is_str_concat.clone() {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat("(".to_string(), l_str.clone()),
-                                        " ".to_string(),
+                                        v1_rt::concat(
+                                            v1_rt::concat("(".to_string(), l_str.clone()),
+                                            " ".to_string(),
+                                        ),
+                                        op_str.clone(),
                                     ),
-                                    op_str.clone(),
+                                    " &".to_string(),
                                 ),
-                                " &".to_string(),
+                                r_str.clone(),
                             ),
-                            r_str.clone(),
-                        ),
-                        ")".to_string(),
-                    )
-                } else {
-                    v1_rt::concat(
+                            ")".to_string(),
+                        )
+                    } else {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat("(".to_string(), l_str.clone()),
-                                        " ".to_string(),
+                                        v1_rt::concat(
+                                            v1_rt::concat("(".to_string(), l_str.clone()),
+                                            " ".to_string(),
+                                        ),
+                                        op_str.clone(),
                                     ),
-                                    op_str.clone(),
+                                    " ".to_string(),
                                 ),
-                                " ".to_string(),
+                                r_str.clone(),
                             ),
-                            r_str.clone(),
-                        ),
-                        ")".to_string(),
-                    )
+                            ")".to_string(),
+                        )
+                    }
                 }
             }
         }
@@ -33055,16 +33139,50 @@ pub fn is_string_comparison(
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match op.clone() {
-        BinOp::Eq => {
-            (is_string_typed_expr(left.clone(), source_indices.clone())
-                && is_string_typed_expr(right.clone(), source_indices.clone()))
+    {
+        let both = (is_string_typed_expr(left.clone(), source_indices.clone())
+            && is_string_typed_expr(right.clone(), source_indices.clone()));
+        match op.clone() {
+            BinOp::Eq => both.clone(),
+            BinOp::Ne => both.clone(),
+            BinOp::Lt => {
+                ((both.clone() && !is_optional_typed_expr(left.clone()))
+                    && !is_optional_typed_expr(right.clone()))
+            }
+            BinOp::Gt => {
+                ((both.clone() && !is_optional_typed_expr(left.clone()))
+                    && !is_optional_typed_expr(right.clone()))
+            }
+            BinOp::Le => {
+                ((both.clone() && !is_optional_typed_expr(left.clone()))
+                    && !is_optional_typed_expr(right.clone()))
+            }
+            BinOp::Ge => {
+                ((both.clone() && !is_optional_typed_expr(left.clone()))
+                    && !is_optional_typed_expr(right.clone()))
+            }
+            _ => false,
         }
-        BinOp::Ne => {
-            (is_string_typed_expr(left.clone(), source_indices.clone())
-                && is_string_typed_expr(right.clone(), source_indices.clone()))
-        }
-        _ => false,
+    }
+}
+
+pub fn is_optional_string_ordering(
+    op: BinOp,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let ordering = match op.clone() {
+            BinOp::Lt => true,
+            BinOp::Gt => true,
+            BinOp::Le => true,
+            BinOp::Ge => true,
+            _ => false,
+        };
+        (((ordering.clone() && is_string_typed_expr(left.clone(), source_indices.clone()))
+            && is_string_typed_expr(right.clone(), source_indices.clone()))
+            && (is_optional_typed_expr(left.clone()) || is_optional_typed_expr(right.clone())))
     }
 }
 
