@@ -1,0 +1,308 @@
+module extdeps.vllm.kv_group_metadata
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  TokenCount, token_count_value,
+  AttentionLayerCount, attention_layer_count_value,
+  ByteSize, byte_size_count,
+}
+import v2.std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.kv_layout { KvGroupLayout, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState }
+
+// ── THE ENGINE'S PER-GROUP METADATA EMISSION, READ AT ONE REVISION ───────────────────────────────
+//
+// WHY THIS MODULE EXISTS. extdeps.vllm.kv_layout prices a ResolvedKvLayout whose per-group rows
+// carry kind, layer count, block size and page bytes, and its header records the load-bearing
+// absence: no engine this repository can observe emits those rows. That absence lived as prose in
+// a comment, and prose is not evidence a machine claim holds (DESIGN section 4c) -- so the emission
+// surface is modeled here as types, and the refusal that keeps the arm's KV term open is derived
+// from the modeled shape rather than restated in words.
+//
+// THE EMISSION POINT IS EngineCore.get_kv_cache_group_metadata IN vllm/v1/engine/core.py, NOT a
+// startup stdout line. It returns one msgspec-serializable dict per scheduler KV cache group, each
+// carrying exactly group_idx, kind, block_size and sliding_window; kind is the KVCacheSpecKind
+// value and sliding_window is getattr(spec, "sliding_window", None), so it is present exactly on
+// the kinds that carry one. This repository's capture routes read captured startup stdout (the
+// extdeps.vllm.log_lines vocabulary), and an engine-core method is not on that surface: no capture
+// route sees the emission today, and a capture that someday does must name THIS surface rather than
+// being read as a stdout line by hope.
+//
+// WHAT THE EMISSION DOES NOT CARRY, which is the reason the KV term stays open: the group's layer
+// names (hence its layer count) and its page size in bytes. KvGroupLayout prices exactly those two
+// beside kind and block size, so a layout constructed from the emission alone would have to invent
+// them -- and an invented layer count or page size is the fixture-fake the arm's obligation refuses.
+// The two ride as OPTIONAL fields on the record below: absent at the modelled revision, populated
+// only by an emission that actually vouches for them. The shape the emission would reveal for the
+// GLM-5.3-Flash arm is MLA-family -- the engine reported the fp8_ds_mla cache format for this
+// checkpoint on 2026-09-08 (gunbc.spark.serving_arm) -- so the kind mapping below carries the MLA
+// kinds even though no capture of the emission exists yet.
+//
+// THE REVISION IS PART OF THE FACT, for the reason extdeps.vllm.log_lines states on its reading
+// carrier: a prefix is an upstream surface, and a surface read at one revision is not evidence
+// about another. The record carries the revision its capture was taken from; the layout mint
+// refuses a foreign one rather than trusting a shape nobody read.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/vllm-project/vllm/blob/1967a5627bc3710b680bbec24ecb99aaddedf22b/vllm/v1/engine/core.py",
+  },
+}
+
+// THE REVISION THE EMISSION SHAPE BELOW WAS READ AT (pinned: vllm_source_revision_read).
+data kv_group_metadata_modeled_revision: VllmSourceRevision = vllm_source_revision_read
+
+// ── THE KIND VOCABULARY, MIRRORING KVCacheSpecKind AT THE MODELLED REVISION ─────────────────────
+//
+// Upstream's own closed enum, one variant per value, spelled as upstream spells it. The corpus's
+// KvGroupKind is a GROWTH-SHAPE taxonomy (what a sequence costs), not a copy of upstream's kind
+// list; the mapping between the two vocabularies is the separate fold below, and it is deliberately
+// partial -- a kind whose growth shape KvGroupKind has no arm for refuses there rather than being
+// squeezed into a wrong arm.
+
+type VllmKvCacheSpecKind
+  = VllmSpecKindFullAttention
+  | VllmSpecKindMlaAttention
+  | VllmSpecKindSlidingWindow
+  | VllmSpecKindSlidingWindowMla
+  | VllmSpecKindMamba
+  | VllmSpecKindChunkedLocalAttention
+  | VllmSpecKindSinkFullAttention
+  | VllmSpecKindEncoderOnlyAttention
+  | VllmSpecKindCrossAttention
+  | VllmSpecKindUnknown
+
+fn vllm_kv_cache_spec_kind_wire(k: VllmKvCacheSpecKind) -> NonEmptyStr {
+  match k {
+    VllmSpecKindFullAttention => "full_attention" as NonEmptyStr
+    VllmSpecKindMlaAttention => "mla_attention" as NonEmptyStr
+    VllmSpecKindSlidingWindow => "sliding_window" as NonEmptyStr
+    VllmSpecKindSlidingWindowMla => "sliding_window_mla" as NonEmptyStr
+    VllmSpecKindMamba => "mamba" as NonEmptyStr
+    VllmSpecKindChunkedLocalAttention => "chunked_local_attention" as NonEmptyStr
+    VllmSpecKindSinkFullAttention => "sink_full_attention" as NonEmptyStr
+    VllmSpecKindEncoderOnlyAttention => "encoder_only_attention" as NonEmptyStr
+    VllmSpecKindCrossAttention => "cross_attention" as NonEmptyStr
+    VllmSpecKindUnknown => "unknown" as NonEmptyStr
+  }
+}
+
+// ── THE EMITTED RECORD ───────────────────────────────────────────────────────────────────────────
+//
+// One scheduler KV cache group, as the emission carries it. `sliding_window` is present exactly
+// when the emitted dict's sliding_window was not None; `layer_count` and `page_size_bytes` are
+// present only when the emission vouches for them -- absent at the modelled revision, where the
+// method emits neither the group's layer names nor its page size. An optional that is absent is
+// the typed spelling of "the emission does not carry this", which is what keeps the inference
+// unwritable: the layout mint below cannot mint a group whose unvouched fields it would have to
+// invent.
+type VllmKvGroupMetadata {
+  observed_at_revision: VllmSourceRevision
+  group_idx: Nat
+  kind: VllmKvCacheSpecKind
+  block_size: TokenCount
+  sliding_window: TokenCount?
+  layer_count: AttentionLayerCount?
+  page_size_bytes: ByteSize?
+}
+
+// ── THE REVISION GUARD ───────────────────────────────────────────────────────────────────────────
+//
+// THE MINT REFUSES A FOREIGN REVISION RATHER THAN TRUSTING AN UNREAD SHAPE. The emission's field
+// set is a property of the upstream revision that produced it; a capture stamped with a revision
+// this module did not read is not evidence the shape below still holds, exactly the lesson
+// extdeps.vllm.log_lines records where a constructor that stamped the modelled revision onto every
+// reading made every downstream comparison permanently green.
+fn kv_group_metadata_revision_is_modeled(r: VllmSourceRevision) -> Bool {
+  (r.repository as String) == (kv_group_metadata_modeled_revision.repository as String)
+    && (r.full_revision as String) == (kv_group_metadata_modeled_revision.full_revision as String)
+}
+
+// ── THE KIND MAPPING: UPSTREAM'S KINDS ONTO THE GROWTH-SHAPE TAXONOMY ────────────────────────────
+//
+// THE MAPPING IS PARTIAL ON PURPOSE. KvGroupKind answers "how does one sequence's cost grow", and
+// an upstream kind whose growth shape the taxonomy has no arm for is REFUSED, not approximated:
+//   full_attention            grows with the sequence at a per-token page cost -> FullAttention.
+//   mla_attention             the MLA latent is a constant byte count per token and the cache
+//                             still holds one entry per token to the context cap: full-context
+//                             growth shape -> FullAttention. (The corpus measured the engine
+//                             select the MLA storage format for the GLM-5.3-Flash checkpoint,
+//                             gunbc.spark.serving_arm, 2026-09-08.)
+//   sliding_window /          hold the last window tokens: the windowed arm, and the emission's
+//   sliding_window_mla        sliding_window field is what the variant carries.
+//   mamba                     one fixed state per sequence -> MambaState.
+//   chunked_local_attention   chunked growth with a batch-shaped cap: no arm here yet.
+//   sink_full_attention       sink prefix plus full growth: no arm here yet.
+//   encoder_only_attention    holds no request KV at all: not a priced group.
+//   cross_attention           encoder-side state, not request growth: no arm here yet.
+//   unknown                   upstream itself named no kind: nothing to map.
+//
+// WINDOW CONSISTENCY IS CHECKED, NOT ASSUMED. A windowed kind with no window is the malformed row
+// the cost fold would meet as full-attention cost in a wig; a full-attention kind carrying a window
+// is the hybrid-allocator-disabled shape upstream documents, whose residency the FullAttention arm
+// would overstate for the windowed computation it shadows -- both refuse rather than guess.
+
+type KvGroupKindFromEmission
+  = KvGroupKindFromEmissionReady { kind: KvGroupKind }
+  | KvGroupKindFromEmissionRefused { cause: NonEmptyStr }
+
+fn kv_group_kind_from_emission(kind: VllmKvCacheSpecKind, window: TokenCount?) -> KvGroupKindFromEmission {
+  match kind {
+    VllmSpecKindFullAttention =>
+      match window {
+        Absent => KvGroupKindFromEmissionReady { kind: FullAttention }
+        Present { value: _ } =>
+          KvGroupKindFromEmissionRefused {
+            cause: "the emission names a full-attention kind carrying a sliding window -- the hybrid-allocator-disabled shape upstream documents, whose windowed computation the FullAttention arm would misprice; model the shape before pricing it" as NonEmptyStr,
+          }
+      }
+    VllmSpecKindMlaAttention =>
+      match window {
+        Absent => KvGroupKindFromEmissionReady { kind: FullAttention }
+        Present { value: _ } =>
+          KvGroupKindFromEmissionRefused {
+            cause: "the emission names an MLA kind carrying a sliding window, a combination upstream's spec families do not produce; the capture and the shape disagree somewhere" as NonEmptyStr,
+          }
+      }
+    VllmSpecKindSlidingWindow =>
+      match window {
+        Present { value: w } => KvGroupKindFromEmissionReady { kind: SlidingWindowAttention { window: w } }
+        Absent =>
+          KvGroupKindFromEmissionRefused {
+            cause: "the emission names a windowed kind but carries no window: the cost fold would meet the malformed row as full-attention cost, so the kind refuses instead" as NonEmptyStr,
+          }
+      }
+    VllmSpecKindSlidingWindowMla =>
+      match window {
+        Present { value: w } => KvGroupKindFromEmissionReady { kind: SlidingWindowAttention { window: w } }
+        Absent =>
+          KvGroupKindFromEmissionRefused {
+            cause: "the emission names a windowed kind but carries no window: the cost fold would meet the malformed row as full-attention cost, so the kind refuses instead" as NonEmptyStr,
+          }
+      }
+    VllmSpecKindMamba =>
+      match window {
+        Absent => KvGroupKindFromEmissionReady { kind: MambaState }
+        Present { value: _ } =>
+          KvGroupKindFromEmissionRefused {
+            cause: "the emission names a mamba kind carrying a sliding window, which a mamba spec does not have; the capture and the shape disagree somewhere" as NonEmptyStr,
+          }
+      }
+    VllmSpecKindChunkedLocalAttention =>
+      KvGroupKindFromEmissionRefused {
+        cause: "chunked_local_attention grows in chunk-shaped admissions with a batch-dependent cap, and KvGroupKind has no arm for that growth shape; modeling it is a separate act, not an approximation" as NonEmptyStr,
+      }
+    VllmSpecKindSinkFullAttention =>
+      KvGroupKindFromEmissionRefused {
+        cause: "sink_full_attention is a sink prefix plus full-context growth, and KvGroupKind has no arm that carries both; modeling it is a separate act, not an approximation" as NonEmptyStr,
+      }
+    VllmSpecKindEncoderOnlyAttention =>
+      KvGroupKindFromEmissionRefused {
+        cause: "encoder_only_attention holds no request KV at all -- upstream prices its cache at zero -- so it is not a priced group and this fold will not invent a cost for it" as NonEmptyStr,
+      }
+    VllmSpecKindCrossAttention =>
+      KvGroupKindFromEmissionRefused {
+        cause: "cross_attention is encoder-side state whose size is bounded by the encoder, not by the request's growth, and KvGroupKind has no arm for it" as NonEmptyStr,
+      }
+    VllmSpecKindUnknown =>
+      KvGroupKindFromEmissionRefused {
+        cause: "upstream's own kind dispatch answered unknown, so the emission names no growth shape to map" as NonEmptyStr,
+      }
+  }
+}
+
+// ── THE LAYOUT MINT: WHAT THE EMISSION ALONE CAN AND CANNOT PRICE ────────────────────────────────
+//
+// THE MINT USES EMISSION-CARRIED FIELDS ONLY. layer_count and page_size_bytes enter the layout
+// from the record's own optionals -- never from a caller-supplied value -- so the two fields the
+// pinned emission does not carry cannot be smuggled in beside a real capture, and the arm's KV
+// term stays open BY CONSTRUCTION until an emission vouches for them (or the modeled revision
+// advances to one that does). THIS IS THE TYPED HALF OF THE KV_LAYOUT TRIGGER: what the observe
+// layer's capture leg would fold, and what it must refuse while the emission is silent.
+//
+// THE ZERO WALLS ARE kv_layout's OWN: a group with a zero block size, a zero layer count or a
+// zero-byte page is not a group, and the cost fold's refusal vocabulary travels with the row so a
+// byte cost is never built standing on a refused block cost.
+type KvGroupLayoutFromEmission
+  = KvGroupLayoutFromEmissionReady { layout: KvGroupLayout }
+  | KvGroupLayoutFromEmissionRefused { cause: NonEmptyStr }
+
+fn kv_group_layout_missing_emission_fields(m: VllmKvGroupMetadata) -> List<NonEmptyStr> {
+  concat(
+    match m.layer_count {
+      Absent => ["layer_count" as NonEmptyStr]
+      Present { value: _ } => [] as List<NonEmptyStr>
+    },
+    match m.page_size_bytes {
+      Absent => ["page_size_bytes" as NonEmptyStr]
+      Present { value: _ } => [] as List<NonEmptyStr>
+    },
+  )
+}
+
+fn kv_group_layout_from_emission(m: VllmKvGroupMetadata) -> KvGroupLayoutFromEmission {
+  if !kv_group_metadata_revision_is_modeled(r: m.observed_at_revision) {
+    KvGroupLayoutFromEmissionRefused {
+      cause: join([
+        "the emission was captured at ", m.observed_at_revision.repository as String, "@", m.observed_at_revision.full_revision as String,
+        " but the emission shape modelled here was read at ", kv_group_metadata_modeled_revision.repository as String, "@", kv_group_metadata_modeled_revision.full_revision as String,
+        ": the field set an upstream revision emits is a property of that revision, and an unread revision is not trusted",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match kv_group_kind_from_emission(kind: m.kind, window: m.sliding_window) {
+      KvGroupKindFromEmissionRefused { cause: c } => KvGroupLayoutFromEmissionRefused { cause: c }
+      KvGroupKindFromEmissionReady { kind: k } =>
+        let missing = kv_group_layout_missing_emission_fields(m: m)
+        if length(missing) > 0 {
+          KvGroupLayoutFromEmissionRefused {
+            cause: join([
+              "the emission does not vouch for every field KvGroupLayout prices: missing ",
+              join(map(missing, f => f as String), ", "),
+              ". At the modelled revision the engine's per-group emission carries group_idx, kind, block_size and sliding_window only; the layout is unconstructable from the emission alone rather than padded with invented fields",
+            ], "") as NonEmptyStr,
+          }
+        } else {
+          match m.layer_count {
+            Absent =>
+              KvGroupLayoutFromEmissionRefused { cause: "unreachable: the missing-field refusal above already named the absent layer count" as NonEmptyStr }
+            Present { value: layers } =>
+              match m.page_size_bytes {
+                Absent =>
+                  KvGroupLayoutFromEmissionRefused { cause: "unreachable: the missing-field refusal above already named the absent page size" as NonEmptyStr }
+                Present { value: page } =>
+                  if token_count_value(t: m.block_size) == 0
+                    || attention_layer_count_value(c: layers) == 0
+                    || byte_size_count(b: page) == 0 {
+                    KvGroupLayoutFromEmissionRefused {
+                      cause: "a cache group with a zero block size, a zero layer count or a zero-byte page is not a group, so the layout refuses rather than pricing a free or broken one" as NonEmptyStr,
+                    }
+                  } else {
+                    KvGroupLayoutFromEmissionReady {
+                      layout: KvGroupLayout {
+                        kind: k,
+                        layer_count: layers,
+                        block_size: m.block_size,
+                        page_size_bytes: page,
+                      }
+                    }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+// THE DECLARED CONSUMER, STATED FOR THE CONSUMPTION REVIEW. Today's typed consumers are this
+// module's witness and the arm's KV obligation, which names this module as the emission authority;
+// the executing consumer is the bounded-experiment observer's capture leg, which folds a real
+// emission through kv_group_layout_from_emission when the wet run is authorized -- and refuses via
+// the missing-field arm while the pinned emission stays silent. The trigger below states what
+// discharges the open state.
+data kv_group_metadata_capture_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a capture of EngineCore.get_kv_cache_group_metadata's reply from a live launch of this arm is recorded against the launch (the bounded-experiment observer's capture leg, gated on the owner's go for the wet run of gunbc.spark.native_experiment_apply), and the emission vouches for layer counts and page bytes -- either because the engine revision's emission grew those fields and kv_group_metadata_modeled_revision advanced to it, or because another authority this repository can cite vouches for them beside the emission. SUFFICIENT FOR: kv_group_layout_from_emission's Ready arm executes against real captured bytes, the KV term of gunbc.spark.arm_memory_fit derives from the workload intent over the group-aware layout, and the missing-field refusal arm flips to a permanent regression control. WHAT REMAINS OPEN UNTIL THEN: every capture through the emission route lands on the missing-field arm, and the arm's KV-cache obligation stands." as NonEmptyStr)

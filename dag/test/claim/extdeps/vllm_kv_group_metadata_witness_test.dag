@@ -1,0 +1,224 @@
+module test.claim.extdeps.vllm_kv_group_metadata_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  AttentionLayerCount, attention_layer_count, attention_layer_count_value,
+  ByteSize, byte_size, byte_size_count,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import extdeps.vllm.kv_layout {
+  KvGroupLayout, FullAttention, SlidingWindowAttention, MambaState,
+}
+import extdeps.vllm.kv_group_metadata {
+  VllmKvCacheSpecKind,
+  VllmSpecKindFullAttention, VllmSpecKindMlaAttention, VllmSpecKindSlidingWindow,
+  VllmSpecKindSlidingWindowMla, VllmSpecKindMamba, VllmSpecKindChunkedLocalAttention,
+  VllmSpecKindSinkFullAttention, VllmSpecKindEncoderOnlyAttention, VllmSpecKindCrossAttention,
+  VllmSpecKindUnknown,
+  vllm_kv_cache_spec_kind_wire,
+  VllmKvGroupMetadata,
+  kv_group_metadata_modeled_revision,
+  KvGroupLayoutFromEmission, KvGroupLayoutFromEmissionReady, KvGroupLayoutFromEmissionRefused,
+  kv_group_layout_from_emission,
+}
+
+// ── THE KV_LAYOUT TRIGGER, TYPED: WHAT THE ENGINE'S PER-GROUP EMISSION CARRIES ───────────────────
+//
+// These claims pin the emission surface extdeps.vllm.kv_group_metadata models, read at the pinned
+// revision: the shape binds to the modeled revision; the pinned emission -- kind, block size and
+// window, no layer count, no page bytes -- refuses layout construction naming exactly the two
+// fields it does not vouch for; a complete emission constructs; and the guards (revision, kind,
+// window, zero walls) refuse their malformed rows. The positive arms execute against designed
+// emissions of the modeled shape; no claim here asserts that a real capture exists -- the
+// bounded-experiment observer's capture leg is the executing consumer, gated on the owner's go.
+
+fn w_foreign_revision() -> VllmSourceRevision {
+  vllm_source_revision(
+    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+    full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  )
+}
+
+fn fx_emission(
+  revision: VllmSourceRevision,
+  kind: VllmKvCacheSpecKind,
+  window: TokenCount?,
+  layers: AttentionLayerCount?,
+  page: ByteSize?,
+) -> VllmKvGroupMetadata {
+  VllmKvGroupMetadata {
+    observed_at_revision: revision,
+    group_idx: 0,
+    kind: kind,
+    block_size: token_count(count: 16),
+    sliding_window: window,
+    layer_count: layers,
+    page_size_bytes: page,
+  }
+}
+
+// THE PINNED REVISION'S SHAPE: layer count and page size are what the emission does not carry,
+// so they stay absent exactly as a real capture at this revision would leave them.
+fn fx_pinned_emission(kind: VllmKvCacheSpecKind, window: TokenCount?) -> VllmKvGroupMetadata {
+  fx_emission(
+    revision: vllm_source_revision_read,
+    kind: kind,
+    window: window,
+    layers: Absent,
+    page: Absent,
+  )
+}
+
+test fn w_the_modeled_shape_binds_to_the_pinned_revision() -> Bool {
+  (kv_group_metadata_modeled_revision.repository as String) == "github.com/vllm-project/vllm"
+    && (kv_group_metadata_modeled_revision.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+    && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindFullAttention) as String) == "full_attention"
+    && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindMlaAttention) as String) == "mla_attention"
+    && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindSlidingWindowMla) as String) == "sliding_window_mla"
+    && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindMamba) as String) == "mamba"
+    && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindUnknown) as String) == "unknown"
+}
+
+test fn w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fields() -> Bool {
+  match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindMlaAttention, window: Absent)) {
+    KvGroupLayoutFromEmissionRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "does not vouch")
+        && string_contains(s: c as String, pattern: "layer_count")
+        && string_contains(s: c as String, pattern: "page_size_bytes")
+        && string_contains(s: c as String, pattern: "group_idx, kind, block_size and sliding_window")
+    KvGroupLayoutFromEmissionReady { layout: _ } => false
+  }
+}
+
+test fn w_a_complete_emission_constructs_the_layout() -> Bool {
+  let window = token_count(count: 131072)
+  match kv_group_layout_from_emission(m: fx_emission(
+    revision: vllm_source_revision_read,
+    kind: VllmSpecKindSlidingWindowMla,
+    window: Present { value: window },
+    layers: Present { value: attention_layer_count(count: 30) },
+    page: Present { value: byte_size(count: 1048576) },
+  )) {
+    KvGroupLayoutFromEmissionRefused { cause: _ } => false
+    KvGroupLayoutFromEmissionReady { layout: l } =>
+      match l.kind {
+        SlidingWindowAttention { window: w } =>
+          token_count_value(t: w) == 131072
+            && attention_layer_count_value(c: l.layer_count) == 30
+            && token_count_value(t: l.block_size) == 16
+            && byte_size_count(b: l.page_size_bytes) == 1048576
+        _ => false
+      }
+  }
+}
+
+test fn w_the_full_and_mamba_kinds_map_onto_the_growth_shape() -> Bool {
+  (match kv_group_layout_from_emission(m: fx_emission(
+    revision: vllm_source_revision_read,
+    kind: VllmSpecKindMlaAttention,
+    window: Absent,
+    layers: Present { value: attention_layer_count(count: 6) },
+    page: Present { value: byte_size(count: 393216) },
+  )) {
+    KvGroupLayoutFromEmissionRefused { cause: _ } => false
+    KvGroupLayoutFromEmissionReady { layout: l } => match l.kind { FullAttention => true  _ => false }
+  })
+    && (match kv_group_layout_from_emission(m: fx_emission(
+      revision: vllm_source_revision_read,
+      kind: VllmSpecKindMamba,
+      window: Absent,
+      layers: Present { value: attention_layer_count(count: 1) },
+      page: Present { value: byte_size(count: 262144) },
+    )) {
+      KvGroupLayoutFromEmissionRefused { cause: _ } => false
+      KvGroupLayoutFromEmissionReady { layout: l } => match l.kind { MambaState => true  _ => false }
+    })
+}
+
+test fn w_the_revision_guard_refuses_a_foreign_capture() -> Bool {
+  match kv_group_layout_from_emission(m: fx_emission(
+    revision: w_foreign_revision(),
+    kind: VllmSpecKindSlidingWindow,
+    window: Present { value: token_count(count: 131072) },
+    layers: Present { value: attention_layer_count(count: 30) },
+    page: Present { value: byte_size(count: 1048576) },
+  )) {
+    KvGroupLayoutFromEmissionRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "0000000000000000000000000000000000000000")
+        && string_contains(s: c as String, pattern: "unread revision")
+    KvGroupLayoutFromEmissionReady { layout: _ } => false
+  }
+}
+
+test fn w_unmapped_kinds_refuse_naming_the_kind() -> Bool {
+  (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindChunkedLocalAttention, window: Absent)) {
+    KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "chunked_local_attention")
+    KvGroupLayoutFromEmissionReady { layout: _ } => false
+  })
+    && (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindSinkFullAttention, window: Absent)) {
+      KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "sink_full_attention")
+      KvGroupLayoutFromEmissionReady { layout: _ } => false
+    })
+    && (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindEncoderOnlyAttention, window: Absent)) {
+      KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "encoder_only_attention")
+      KvGroupLayoutFromEmissionReady { layout: _ } => false
+    })
+    && (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindCrossAttention, window: Absent)) {
+      KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "cross_attention")
+      KvGroupLayoutFromEmissionReady { layout: _ } => false
+    })
+    && (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindUnknown, window: Absent)) {
+      KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "unknown")
+      KvGroupLayoutFromEmissionReady { layout: _ } => false
+    })
+}
+
+test fn w_window_inconsistency_refuses_in_both_directions() -> Bool {
+  (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindSlidingWindow, window: Absent)) {
+    KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "carries no window")
+    KvGroupLayoutFromEmissionReady { layout: _ } => false
+  })
+    && (match kv_group_layout_from_emission(m: fx_pinned_emission(
+      kind: VllmSpecKindFullAttention,
+      window: Present { value: token_count(count: 131072) },
+    )) {
+      KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "hybrid-allocator-disabled")
+      KvGroupLayoutFromEmissionReady { layout: _ } => false
+    })
+}
+
+test fn w_zero_walls_refuse_the_same_group() -> Bool {
+  (match kv_group_layout_from_emission(m: fx_emission(
+    revision: vllm_source_revision_read,
+    kind: VllmSpecKindMlaAttention,
+    window: Absent,
+    layers: Present { value: attention_layer_count(count: 0) },
+    page: Present { value: byte_size(count: 1048576) },
+  )) {
+    KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "is not a group")
+    KvGroupLayoutFromEmissionReady { layout: _ } => false
+  })
+    && (match kv_group_layout_from_emission(m: fx_emission(
+      revision: vllm_source_revision_read,
+      kind: VllmSpecKindMlaAttention,
+      window: Absent,
+      layers: Present { value: attention_layer_count(count: 6) },
+      page: Present { value: byte_size(count: 0) },
+    )) {
+      KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "is not a group")
+      KvGroupLayoutFromEmissionReady { layout: _ } => false
+    })
+}
+
+test fn w_all_kv_group_metadata_claims_hold() -> Bool {
+  w_the_modeled_shape_binds_to_the_pinned_revision()
+    && w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fields()
+    && w_a_complete_emission_constructs_the_layout()
+    && w_the_full_and_mamba_kinds_map_onto_the_growth_shape()
+    && w_the_revision_guard_refuses_a_foreign_capture()
+    && w_unmapped_kinds_refuse_naming_the_kind()
+    && w_window_inconsistency_refuses_in_both_directions()
+    && w_zero_walls_refuse_the_same_group()
+}

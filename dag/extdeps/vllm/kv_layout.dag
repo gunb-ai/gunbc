@@ -64,10 +64,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // counts. That is precisely why no function here converts an inventory into tokens.
 //
 // WHAT IS NOT OBSERVABLE YET, stated so the refusal below is not read as a defect in the caller.
-// The engine's own get_kv_cache_group_metadata emits kind, block size and sliding window, and does
-// NOT emit layer count, page size, the admission cap, or its calculated blocks-per-max-request. So
-// `groups` is empty for every incarnation this repository can currently observe, and every function
-// that needs per-group structure refuses. The trigger is one JSON launch line carrying those fields.
+// The engine's per-group emission is modelled as types at extdeps.vllm.kv_group_metadata: at the
+// pinned revision EngineCore.get_kv_cache_group_metadata (vllm/v1/engine/core.py) carries each
+// group's kind, block size and sliding window, and does NOT carry layer count, page size, the
+// admission cap, or its calculated blocks-per-max-request. So `groups` is empty for every
+// incarnation this repository can currently observe, and every function that needs per-group
+// structure refuses. The trigger is a capture that vouches for layer counts and page bytes -- a
+// richer engine emission, or another cited authority beside the emission -- at which point
+// extdeps.vllm.kv_group_metadata's layout mint constructs from real captured bytes and this
+// module's folds stop refusing.
 
 // A CACHE GROUP WITH A ZERO BLOCK SIZE IS NOT A DEGENERATE GROUP, IT IS NOT A GROUP. The seed's
 // `where range` checker only decides an int literal, not a Measure constructed by `token_count`,
