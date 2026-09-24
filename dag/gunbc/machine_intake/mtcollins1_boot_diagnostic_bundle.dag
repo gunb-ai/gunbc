@@ -1229,8 +1229,9 @@ fn console_path_retained(path: String) -> Bool {
 // 35871654468 the first attempt that reached this read aborted the whole evaluation after the SEL
 // and Redfish reads had already been typed, and neither the bundle nor the receipt was written
 // (gunbc.recurring_failure_mode a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry; the
-// sibling repair is gunbc.runner_microvm_cell_readiness_store decode_attempt). checked_int_to_nat
-// refuses a negative size rather than taking its magnitude: a negative size is no size.
+// sibling repair is gunbc.runner_microvm_cell_readiness_store decode_attempt). The crossing is
+// std.checked_arithmetic checked_int_to_nat, the one Int->Nat authority since #12166: a negative
+// size is absent, never clamped and never its absolute value.
 fn console_size_of_stat(size_text: String) -> ByteSize? {
   match parse_int(s: trim(size_text)) {
     Absent => none
