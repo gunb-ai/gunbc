@@ -371,13 +371,14 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
             projection.clone(),
             RenderTarget::Python,
         );
-        let indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let indent =
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
         let mock_setup = Rc::new({
             let mut __result = Vec::new();
             for mp in projection.mock_field_inits.clone().iter().cloned() {
                 __result.push(emit_py_mock_prop_setup(
                     mp.clone(),
-                    (depth.clone() + 1),
+                    v1_rt::int_add(depth.clone(), 1),
                     projection.source_indices.clone(),
                 ));
             }
@@ -1042,7 +1043,7 @@ pub fn emit_py_fn_def(
                     RenderTarget::Python,
                     registry.clone(),
                     body_scope.clone(),
-                    (depth.clone() + 1),
+                    v1_rt::int_add(depth.clone(), 1),
                     |pat| {
                         crate::v1_compiler_emit::emit_unified_pattern(
                             pat.clone(),
@@ -1080,7 +1081,10 @@ pub fn emit_py_fn_def(
                             ),
                             ":\n".to_string(),
                         ),
-                        crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                        crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                            depth.clone(),
+                            1,
+                        )),
                     ),
                     body_str.clone(),
                 )
@@ -1091,7 +1095,7 @@ pub fn emit_py_fn_def(
                     body.clone(),
                     registry.clone(),
                     body_scope.clone(),
-                    (depth.clone() + 1),
+                    v1_rt::int_add(depth.clone(), 1),
                     1024,
                 );
                 let kw = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Python)
@@ -1124,7 +1128,10 @@ pub fn emit_py_fn_def(
                                 ),
                                 ":\n".to_string(),
                             ),
-                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                                depth.clone(),
+                                1,
+                            )),
                         ),
                         "return ".to_string(),
                     ),
@@ -1186,7 +1193,7 @@ pub fn emit_py_func_def(
             RenderTarget::Python,
             registry.clone(),
             body_scope.clone(),
-            (depth.clone() + 1),
+            v1_rt::int_add(depth.clone(), 1),
         );
         let items = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Python)
             .items
@@ -1221,7 +1228,7 @@ pub fn emit_py_func_def(
                     ),
                     ":\n".to_string(),
                 ),
-                crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)),
             ),
             body_str.clone(),
         )
@@ -1616,7 +1623,7 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
                 ),
                 "(ABC):\n".to_string(),
             ),
-            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)),
         );
         if ((cap_children.clone().len() as i64) == 0) {
             v1_rt::concat(header.clone(), "pass".to_string())

@@ -183,12 +183,16 @@ pub fn kahn_cycle_drain(
                                 Some(d) => d.clone(),
                                 std::option::Option::None => 0,
                             };
-                            v1_rt::rc_map_insert(deg_acc.clone(), dep.clone(), (old.clone() - 1))
+                            v1_rt::rc_map_insert(
+                                deg_acc.clone(),
+                                dep.clone(),
+                                v1_rt::int_sub(old.clone(), 1),
+                            )
                         },
                     );
                     Rc::new(KahnState {
                         in_degree: new_deg.clone(),
-                        removed_count: (state.removed_count + 1),
+                        removed_count: v1_rt::int_add(state.removed_count, 1),
                     })
                 }
             },
@@ -222,7 +226,7 @@ pub fn kahn_cycle_drain(
             let __tco_1 = result.in_degree.clone();
             let __tco_2 = reverse_adj;
             let __tco_3 = result.removed_count.clone();
-            let __tco_4 = (fuel - 1);
+            let __tco_4 = v1_rt::int_sub(fuel, 1);
             __tco_loop_queue = __tco_0;
             __tco_loop_in_degree = __tco_1;
             __tco_loop_reverse_adj = __tco_2;
