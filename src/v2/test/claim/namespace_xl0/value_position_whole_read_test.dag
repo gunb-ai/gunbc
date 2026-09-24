@@ -14,16 +14,16 @@ import v2.compiler.compile {
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Node, Symbol, Transform }
-import v2.std.algebra { length }
-import v2.std.integer { Int }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node_query { call_argument_targets, call_callee_target }
+import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -233,31 +233,20 @@ fn vpw_roots() -> FreeMonoid<Node> {
   }
 }
 
-fn vpw_first_child_atom_is(n: Node, callee: Symbol) -> Bool {
-  match n.children {
-    Cons { head: e, tail: _ } =>
-      match node_atom_identity_optional(node: e.target) {
-        Present { value: id } => id == callee
-        Absent => false
-      }
-    Empty => false
-  }
-}
-
+// The call shape is read through v2.std.node_query's call readers -- node_is_call, call_callee_target,
+// call_argument_targets -- the authority for "what a lowered call is", not a reader of this claim's own.
 fn vpw_is_call_to(n: Node, callee: Symbol) -> Bool {
-  match n.kind {
-    ComputationNode { behavior: Transform } => vpw_first_child_atom_is(n: n, callee: callee)
-    _ => false
+  match call_callee_target(node: n) {
+    Accepted { value: c, diagnostics: _ } => vpw_is_atom(n: c, id: callee)
+    Rejected { diagnostics: _ } => false
   }
 }
 
-// The single argument of a one-argument call: the second child.
+// The single argument of a one-argument call.
 fn vpw_sole_argument(n: Node) -> Optional<Node> {
-  if length(xs: n.children) == 2 {
-    match n.children {
-      Cons { head: _, tail: Cons { head: a, tail: _ } } => optional_present(value: a.target)
-      _ => optional_absent()
-    }
+  let args = call_argument_targets(node: n)
+  if length(xs: args) == 1 {
+    list_at_optional(xs: args, index: 0)
   } else {
     optional_absent()
   }
@@ -282,33 +271,43 @@ fn vpw_nested_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
   })
 }
 
-fn vpw_tree_has(n: Node, callee: Symbol, inner: Symbol) -> Bool {
-  vpw_nested_call_shape(n: n, callee: callee, inner: inner)
-    || fold_list(xs: n.children, empty: false, cons: fn(acc, e) { acc || vpw_tree_has(n: e.target, callee: callee, inner: inner) })
+// The two shapes the claims below look for.
+type VpwShape
+  = VpwNestedCall { callee: Symbol, inner: Symbol }
+  | VpwSingleCall { callee: Symbol, inner: Symbol }
+
+fn vpw_node_has_shape(n: Node, shape: VpwShape) -> Bool {
+  match shape {
+    VpwNestedCall { callee: c, inner: i } => vpw_nested_call_shape(n: n, callee: c, inner: i)
+    VpwSingleCall { callee: c, inner: i } => vpw_single_call_shape(n: n, callee: c, inner: i)
+  }
 }
 
-fn vpw_any_root_has(callee: Symbol, inner: Symbol) -> Bool {
-  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) { acc || vpw_tree_has(n: r, callee: callee, inner: inner) })
+fn vpw_nodes_have_shape(xs: List<Node>, shape: VpwShape) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, n) { acc || vpw_node_has_shape(n: n, shape: shape) })
+}
+
+// Whether any node of any lowered root has the shape; the subtree is enumerated by v2.std.node
+// node_subtree_nodes, so this claim walks no edges of its own.
+fn vpw_any_node(shape: VpwShape) -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || vpw_nodes_have_shape(xs: node_subtree_nodes(root: r), shape: shape)
+  })
 }
 
 test fn a_call_argument_lowers_to_the_authored_nested_call_with_arity_one() -> Bool {
-  vpw_any_root_has(callee: ^vpw_id, inner: ^vpw_undeclared_argument)
+  vpw_any_node(shape: VpwNestedCall { callee: ^vpw_id, inner: ^vpw_undeclared_argument })
 }
 
 test fn a_call_scrutinee_lowers_whole_to_the_authored_call() -> Bool {
-  vpw_scrutinee_call_present()
+  vpw_any_node(shape: VpwSingleCall { callee: ^vpw_id, inner: ^vpw_undeclared_scrutinee })
 }
 
 // The scrutinee fixture is one level deep -- vpw_id(p: vpw_undeclared_scrutinee) -- so it is read as
 // a call to vpw_id whose sole argument is that atom.
-fn vpw_scrutinee_call_present() -> Bool {
-  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) { acc || vpw_tree_has_single(n: r) })
-}
-
-fn vpw_tree_has_single(n: Node) -> Bool {
-  (vpw_is_call_to(n: n, callee: ^vpw_id) && (match vpw_sole_argument(n: n) {
-    Present { value: a } => vpw_is_atom(n: a, id: ^vpw_undeclared_scrutinee)
+fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee) && (match vpw_sole_argument(n: n) {
+    Present { value: a } => vpw_is_atom(n: a, id: inner)
     Absent => false
-  }))
-    || fold_list(xs: n.children, empty: false, cons: fn(acc, e) { acc || vpw_tree_has_single(n: e.target) })
+  })
 }
