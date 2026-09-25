@@ -1,8 +1,10 @@
 module std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.algebra { any, filter }
+import v2.std.collection { List }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Optional, optional_absent, optional_present }
 
 // THE KIND OF A TYPE-LEVEL NODE, AT ONE LEVEL (Type_0 only, no universe tower). A node that DENOTES
@@ -46,47 +48,31 @@ fn kind_node(kind: Kind) -> Node {
 //     composites built from records (e.g. a fn Arrow whose positions are records).
 // A node that is not a member of the roster has no kind here (Absent).
 
-fn kind_record_edge_is_subject(edge: Edge, subject_field: Symbol) -> Bool {
-  match edge.label {
-    Named { name: name } => name == subject_field
-    _ => false
-  }
-}
+// LINEAR IN THE ROSTER. A record's facts are its subtree minus the record and its subject, and only
+// a RECORD (a member carrying the subject field) walks a subtree -- every other member answers at
+// the named-child lookup -- so a classification visits each record's subtree once, never a subtree
+// per member and never through a copied accumulator (DESIGN section 6, bare minimum cost). A record is
+// found through the canonical accessor v2.std.node_query named_child_lookup, which already requires
+// a Conj; an ambiguous subject field is not a record (the language authorities declare one subject
+// edge per record).
 
-fn kind_is_type_denotation_record(record: Node, subject_field: Symbol) -> Bool {
-  match record.kind {
-    TypeNode { connective: Conj } =>
-      any(
-        xs: record.children,
-        predicate: fn(edge) { kind_record_edge_is_subject(edge: edge, subject_field: subject_field) }
+fn kind_record_fact_nodes(record: Node, subject_field: Symbol) -> List<Node> {
+  match named_child_lookup(root: record, name: subject_field) {
+    NamedChildFound { target: subject } =>
+      filter(
+        xs: node_subtree_nodes(root: record),
+        predicate: fn(member) { !(member == record) && !(member == subject) }
       )
-    _ => false
-  }
-}
-
-fn kind_node_is_in_subtree(root: Node, n: Node) -> Bool {
-  any(xs: node_subtree_nodes(root: root), predicate: fn(member) { member == n })
-}
-
-fn kind_node_is_fact_under_record_edge(edge: Edge, subject_field: Symbol, n: Node) -> Bool {
-  if kind_record_edge_is_subject(edge: edge, subject_field: subject_field) {
-    false
-  } else {
-    kind_node_is_in_subtree(root: edge.target, n: n)
+    NamedChildMissing => []
+    NamedChildAmbiguous => []
   }
 }
 
 fn kind_node_is_fact_of_record(record: Node, subject_field: Symbol, n: Node) -> Bool {
-  if kind_is_type_denotation_record(record: record, subject_field: subject_field) {
-    any(
-      xs: record.children,
-      predicate: fn(edge) {
-        kind_node_is_fact_under_record_edge(edge: edge, subject_field: subject_field, n: n)
-      }
-    )
-  } else {
-    false
-  }
+  any(
+    xs: kind_record_fact_nodes(record: record, subject_field: subject_field),
+    predicate: fn(fact) { fact == n }
+  )
 }
 
 fn roster_member_kind(roster: Node, subject_field: Symbol, n: Node) -> Optional<Kind> {
