@@ -86,11 +86,44 @@ import std.measure {
 // them. It is the v2 -> v2 boundary's door -- the second generation the self-host instrument stops
 // short of -- and what it can do is exactly what its `.dag` entry declares.
 
+// NativeClaimDriver -- a PROGRAM WHOSE WHOLE JOB IS ONE DECIDED EXIT, and the smallest rendered main
+// this partition admits. Its `.dag` entry declares one fold, `native_claim_report() ->
+// NativeClaimReport`, which computes every case, renders one row per case identity and decides the
+// terminal;
+// the rendered main performs only the two operations no fold can -- writing stdout and setting the
+// status -- and reads no argv and no file. It exists because a claim that must EXECUTE natively has
+// no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
+// evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
+// is the compile CLI's (source-root walk and plan folds), so reusing it would give one arm two
+// meanings (DESIGN section 3). First consumer: gunbc.instruments.native_crypto_vectors, run by
+// `gunbc test //gunbc/instruments:native-crypto-vectors`, which executes the emitted .dag verifiers
+// over their published vectors.
+// WHAT A NativeClaimDriver ENTRY HANDS ITS RENDERED MAIN: the text to write and the decided terminal,
+// as one value. They are one fact -- the rows ARE the observation the terminal summarizes -- so they
+// cross the host boundary together rather than through two calls that could disagree.
+//
+// THE TERMINAL IS CLOSED, NOT A ProcessExit (review 5311497200 of gunbc#12250). A ProcessExit
+// admits ExitFailure { code: 0 }, which crosses the process boundary as status 0 and would read as
+// held, and any other code, which bypasses gunbc test's 0/1/2 vocabulary. So the program chooses
+// among exactly the three outcomes the reader distinguishes, and the rendered main owns the one
+// mapping to a status: held 0, not held 1, no observation 2. There is no arm a program can write
+// that reaches a fourth status.
+type NativeClaimTerminal
+  = NativeClaimHeld
+  | NativeClaimNotHeld { reason: String }
+  | NativeClaimNoObservation { reason: String }
+
+type NativeClaimReport {
+  stdout: String
+  terminal: NativeClaimTerminal
+}
+
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
   | NativeCliDriver
+  | NativeClaimDriver
 
 // MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
 // loop closed its prepare span and then let the module's resolved tree fall out of scope at the end

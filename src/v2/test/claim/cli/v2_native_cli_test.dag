@@ -2,6 +2,8 @@ module v2.test.cli.v2_native_cli
 
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitFailure, ExitSuccess }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
+import extdeps.process.posix_exit { exit_code_general_error }
 import v2.cli.compile_cli {
   CliEmitClosure,
   CliEmitted,
@@ -10,6 +12,12 @@ import v2.cli.compile_cli {
   CliPlanRefused,
   CliRunOutcome,
   CliRunRefused,
+  CliEmitTarget,
+  CliTargetC,
+  CliTargetRust,
+  CliTargetSwift,
+  CliUsageRefused,
+  cli_emit_target_spelling,
   v2_cli_exit,
   v2_cli_parse,
   v2_cli_plan_source_roots,
@@ -54,7 +62,7 @@ fn plan_first_root(plan: CliPlan) -> String {
     CliPlanRefused { reason: _, detail: _ } => ""
     CliPlanParsed { verb: verb } =>
       match verb {
-        CliEmitClosure { entry: _, source_roots: roots } =>
+        CliEmitClosure { entry: _, source_roots: roots, target: _ } =>
           match list_head(xs: roots) {
             HeadAbsent => ""
             HeadFound { value: first } => first
@@ -66,6 +74,7 @@ fn plan_first_root(plan: CliPlan) -> String {
 fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
   match outcome {
     CliRunRefused { reason: reason, detail: _ } => reason
+    CliUsageRefused { reason: reason, detail: _ } => reason
     CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } =>
       ^cli_outcome_was_not_refused
   }
@@ -74,6 +83,7 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
 fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
   match outcome {
     CliRunRefused { reason: _, detail: _ } => false
+    CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => true
   }
 }
@@ -128,7 +138,7 @@ data argv_unknown_verb: FreeMonoid<String> = Cons {
 
 data argv_unknown_option: FreeMonoid<String> = Cons {
   head: "emit",
-  tail: Cons { head: "--target", tail: Cons { head: "rust", tail: Empty } }
+  tail: Cons { head: "--output", tail: Cons { head: "out.rs", tail: Empty } }
 }
 
 test fn the_emit_verb_with_one_root_parses_holds() -> Bool {
@@ -210,6 +220,75 @@ test fn an_option_in_the_entry_value_position_refuses_holds() -> Bool {
 test fn an_unknown_verb_refuses_holds() -> Bool {
   plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_unknown_verb)))
     == ^cli_unknown_verb
+}
+
+fn argv_emit_with_target(target: String) -> FreeMonoid<String> {
+  Cons {
+    head: "emit",
+    tail: Cons {
+      head: "--entry",
+      tail: Cons {
+        head: "cli_probe",
+        tail: Cons {
+          head: "--source-root",
+          tail: Cons { head: "dag", tail: Cons { head: "--target", tail: Cons { head: target, tail: Empty } } }
+        }
+      }
+    }
+  }
+}
+
+// `kotlin` is the discriminating unknown: a real target with a model, not rostered in this door.
+data argv_emit_unknown_target: FreeMonoid<String> = argv_emit_with_target(target: "kotlin")
+
+data argv_emit_dangling_target: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons { head: "cli_probe", tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Cons { head: "--target", tail: Empty } } } }
+  }
+}
+
+fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => false
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: _, source_roots: _, target: target } =>
+          cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
+      }
+  }
+}
+
+// EACH ROSTERED SPELLING SELECTS ITS OWN ARM. Three rows rather than one because a parser that
+// mapped every known spelling to the first arm would pass any single one of them.
+test fn the_rust_target_spelling_selects_rust_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "rust")), expected: CliTargetRust)
+}
+
+test fn the_c_target_spelling_selects_c_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "c")), expected: CliTargetC)
+}
+
+test fn the_swift_target_spelling_selects_swift_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "swift")), expected: CliTargetSwift)
+}
+
+// NO --target IS THE PLAN'S DECLARED DEFAULT, which is the argv every existing caller spawns.
+test fn an_emit_without_a_target_plans_the_declared_default_holds() -> Bool {
+  plan_is_target(plan: v2_cli_parse(argv: argv_of(items: argv_emit_one_root)), expected: CliTargetRust)
+}
+
+// A TARGET OUTSIDE THE ROSTER REFUSES AT THE PARSE, before any root is walked -- it never reaches
+// the emitter as a name the emitter has no model for.
+test fn an_unknown_target_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_unknown_target)))
+    == ^cli_unknown_target
+}
+
+test fn a_dangling_target_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_dangling_target)))
+    == ^cli_target_missing_value
 }
 
 test fn an_unknown_option_refuses_holds() -> Bool {
@@ -295,12 +374,33 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 // emits and compiles this module's whole closure -- that is compilation of the emit arm and not
 // execution of it, and the difference is exactly what this frontier records.
 
-test fn a_refused_outcome_exits_failure_holds() -> Bool {
+// A COMMAND LINE THAT WAS NOT USABLE EXITS 2, WORK THAT RAN AND REFUSED EXITS 1. The two are
+// different terminations for the caller -- one means "fix the invocation", the other "the subject
+// did not emit" -- so each row pins its exact code rather than any non-zero.
+test fn a_refused_plan_exits_misuse_holds() -> Bool {
   match v2_cli_exit(
     outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_empty)), ingest: Empty)
   ) {
     ExitSuccess => false
-    ExitFailure { code: code, reason: _ } => code != 0
+    ExitFailure { code: code, reason: _ } => code == exit_code_misuse
+  }
+}
+
+test fn an_unknown_target_exits_misuse_holds() -> Bool {
+  match v2_cli_exit(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_emit_unknown_target)), ingest: Empty)
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code == exit_code_misuse
+  }
+}
+
+test fn an_emit_refusal_exits_general_error_holds() -> Bool {
+  match v2_cli_exit(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_emit_one_root)), ingest: Empty)
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code == exit_code_general_error
   }
 }
 
@@ -362,6 +462,7 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
     CliRunRefused { reason: _, detail: detail } =>
       string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
+    CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => false
   }
 }

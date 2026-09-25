@@ -9,7 +9,7 @@ import gunbc.auth.approval_gate { ApprovalGateRefusal, ApprovalRecorded, Approva
 import gunbc.auth.approval_request_client { ApprovalPollStanding }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
-import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
+import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41DerivationEvidence, v41_derivation_obligations, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
 import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, parse_d0_frozen_filing, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
 
 // ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
@@ -39,17 +39,23 @@ type D0SubjectStanding
 // settles. Declared here as the one term every D0 consent names.
 data d0_consent_term: Second = second(count: 3600)
 
-fn d0_subject_of_candidate(group: FabricGroup, standing: V41CandidateStanding) -> D0SubjectStanding {
+// A KEYED CANDIDATE WHOSE DERIVATION EVIDENCE STILL OWES SOMETHING HAS NO SUBJECT (proud-deer-538,
+// 2026-09-24): the derivation is an input here, not a field a caller may forget to read, so a consent can
+// never be asked over stores that were not read back at their seams. The obligation is the evidence's own.
+fn d0_subject_of_candidate(group: FabricGroup, standing: V41CandidateStanding, derivation: V41DerivationEvidence) -> D0SubjectStanding {
   match standing {
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } =>
+      if length(v41_derivation_obligations(d: derivation)) != 0 { D0SubjectUnestablished { obligations: v41_derivation_obligations(d: derivation) } } else {
       D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), successor: c, cleanup: QuiescentReservedBaseline, term: d0_consent_term } }
+      }
     V41CandidateUnestablished { obligations: o } => D0SubjectUnestablished { obligations: o }
     V41CandidateRefused { defects: d } => D0SubjectRefused { defects: d }
   }
 }
 
 fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
-  d0_subject_of_candidate(group: group, standing: v41_candidate().standing)
+  let v = v41_candidate()
+  d0_subject_of_candidate(group: group, standing: v.standing, derivation: v.derivation)
 }
 
 // THE REQUEST, with the intent over the exact operation (sha256 through the realization; an

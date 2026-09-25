@@ -27,7 +27,6 @@ import v2.std.rust_leaf_model_claim {
   RustClaimExpectation,
   RustClaimSubject,
   RustEmitProjectionEqualityExpectation,
-  rust_leaf_phase1_algebra_carrier_ordered_ring,
   rust_leaf_phase1_primitive_i32,
   rust_leaf_phase1_err_e0308,
   rust_leaf_phase1_err_e0423,

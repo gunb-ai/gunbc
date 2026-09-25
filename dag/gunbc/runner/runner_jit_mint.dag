@@ -1,7 +1,7 @@
 module gunbc.runner_jit_mint
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
@@ -24,7 +24,7 @@ import gunbc.runner_microvm_attempt {
   runner_microvm_attempt_unit_name,
 }
 
-data runner_jit_mint_disposition: Disposition = SingleAuthority
+data runner_jit_mint_disposition: ConstructionMechanism = SingleAuthority
 
 // THE MINT IS PLANNED, NOT PERFORMED, AND THE SPLIT IS THE POINT.
 //

@@ -4,6 +4,7 @@ import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_addr
 import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
+import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
 import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
   persisted_resolved_graph_format_wall_seed_growth_justification,
   resolved_graph_provider_ctx_reuse_seed_growth_justification
@@ -45,6 +46,7 @@ import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_grow
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
+import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
@@ -271,6 +273,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     shared_fill_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
+    native_claim_program_seed_growth_justification,
     census_memo_seed_growth_justification,
     kind_reflection_seed_growth_justification,
     typed_module_store_seed_growth_justification,
@@ -311,6 +314,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
+    unimported_bare_provider_gate_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification
   ]
 }

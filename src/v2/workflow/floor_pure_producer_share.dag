@@ -608,6 +608,9 @@ import v2.std.collection { List }
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 BOUND-VALUE RESOLVE ROW IS THE SAME GROUND AT ELEVEN SPECIMENS:
+// v2.test.claim.namespace_xl0.bound_value_resolve_refusal bvr_outcomes drives one front end over
+// eleven inline modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -676,6 +679,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
+  "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
@@ -782,6 +786,11 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.type_param_binder_frame.tpb_type_param_as_value",
   "v2.test.claim.type_param_binder_frame.tpb_emitted_add_twin",
   "v2.test.claim.type_param_binder_frame.tpb_emitted_add_generic",
+  "v2.test.claim.body_type_annotation_refusal.btar_let_annotated",
+  "v2.test.claim.body_type_annotation_refusal.btar_let_plain",
+  "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_annotated",
+  "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_plain",
+  "v2.test.claim.body_type_annotation_refusal.btar_if_arm_fn_literal",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_coproduct",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_coproduct_colliding",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_record",
@@ -828,6 +837,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
+  "v2.test.claim.namespace_xl0.body_shape_contract.body_shape_normalized_root",
   "v2.compiler.reference_conservation.dag_declared_token_classes",
   "v2.test.claim.namespace_xl0.reference_conservation.clean_control_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.block_second_statement_subject",
@@ -855,6 +865,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.statement_let_bind.unbound_prefix_subject",
   "v2.test.claim.body_lowering.statement_let_bind.single_statement_subject",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_subject",
+  "v2.test.claim.machine_shape_construction_wall.machine_shape_record_literal_subject",
+  "v2.test.claim.machine_shape_construction_wall.machine_shape_record_literal_home_subject",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",

@@ -1,7 +1,7 @@
 module v2.test.claim.body_type_annotation_refusal
 
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
@@ -37,19 +37,24 @@ fn btar_atom_in(n: Node, id: Symbol) -> Bool {
   })
 }
 
+// The refusal's reason and locus, over its diagnostics alone, so a claim over any stage's outcome
+// (v2.test.claim.body_lowering.statement_let_bind) reads the same check.
+fn btar_refusal_at_authored(d: NonEmptyDiagnostics, id: Symbol) -> Bool {
+  (diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_annotation_not_carried)
+    && match diagnostics_fatal(d: d).at {
+      NodeLocus { anchor: a } =>
+        btar_atom_in(n: a.at, id: id)
+          && !btar_atom_in(n: a.at, id: ^dag_token_kw_let)
+          && !btar_atom_in(n: a.at, id: ^dag_token_eq)
+          && !btar_atom_in(n: a.at, id: ^dag_token_kw_fn)
+      _ => false
+    }
+}
+
 fn btar_refused_at_authored_q(o: Outcome<Node>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      (diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_annotation_not_carried)
-        && match diagnostics_fatal(d: d).at {
-          NodeLocus { anchor: a } =>
-            btar_atom_in(n: a.at, id: ^Q)
-              && !btar_atom_in(n: a.at, id: ^dag_token_kw_let)
-              && !btar_atom_in(n: a.at, id: ^dag_token_eq)
-              && !btar_atom_in(n: a.at, id: ^dag_token_kw_fn)
-          _ => false
-        }
+    Rejected { diagnostics: d } => btar_refusal_at_authored(d: d, id: ^Q)
   }
 }
 
