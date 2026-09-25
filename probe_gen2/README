@@ -1,0 +1,1 @@
+Gen-two census refusal set, NOT FOR MERGE. Source: srv1, gen-one built from combine/stern-12274-12277-12210 (a9c3b5617e), 'gen-one emit --entry v2.compiler.compile --source-root dag --source-root src/v2'. census_refusals.txt lists 405 unique (reason, file); g0_tokens_remain_loci.txt gives the 387 parse_g0_tokens_remain files with their first-unconsumed byte range.
