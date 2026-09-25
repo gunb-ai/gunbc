@@ -2,10 +2,10 @@ module test.claim.spark.group_b_serving_capacity_witness_test
 
 import std.types { Bool }
 import v2.std.optional { Present, Absent }
+import gunbc.harness.harness_seat { harness_interactive_quality_seats }
 import gunbc.spark.group_b_serving_capacity {
   group_b_restoration_intent_admission, group_b_restoration_intent, group_b_restoration_profile,
   group_b_restoration_utilization, group_b_restoration_seats, group_b_restoration_executable,
-  group_b_kv_inventory_tokens, group_b_restoration_window_tokens,
 }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
@@ -26,47 +26,20 @@ import std.measure { token_count_value, basis_point_count }
 // ── THE DECLARED OBLIGATION AND ITS DERIVED EXECUTABLE ────────────────────────────────────────────
 //
 // THE VERTICAL'S CAPACITY INTENT: what group B is restored TO. The basis rides in the module's
-// comment; the witnesses below pin the DERIVATION -- the executable profile's shape is the
-// intent's, not an authored row's -- the SEAT COUNT's authority (the engine's measured KV
-// inventory, tokens over tokens, the limiting rank named) -- and the VERDICT PATH: the declared
-// intent's subject is UNESTABLISHED until the open terms land, with the 262K prefill workspace
-// named among the obligations.
-
-test fn w_the_restoration_intent_derives_from_the_engine_kv_inventory() -> Bool {
+// comment; the witness pins the DERIVATION -- the executable profile's shape is the intent's, not
+// an authored row's -- and the VERDICT PATH: the declared intent's subject is UNESTABLISHED until
+// the experiment's real receipts land. NO fixture ceiling stands in for production evidence here;
+// the FitProved discriminator on the fit witness stays a fixture, and this row is the reason it
+// cannot be quoted as the arm's.
+test fn w_the_restoration_intent_derives_from_the_harness_seat_count() -> Bool {
   match group_b_restoration_intent_admission {
     ServingCapacityIntentRefused { cause: _ } => false
     ServingCapacityIntentAdmitted { intent: i } =>
-      group_b_kv_inventory_tokens == 1805689
-        && group_b_restoration_window_tokens == 262144
-        && group_b_restoration_seats == 6
-        && group_b_restoration_seats == group_b_kv_inventory_tokens / group_b_restoration_window_tokens
-        && intent_max_active_sequences(i: i) == 6
-        && token_count_value(t: intent_max_single_sequence_tokens(i: i)) == 262144
-        && token_count_value(t: intent_max_total_resident_tokens(i: i)) == 1572864
-        && token_count_value(t: intent_max_total_resident_tokens(i: i)) <= group_b_kv_inventory_tokens
+      group_b_restoration_seats == harness_interactive_quality_seats
+        && intent_max_active_sequences(i: i) == harness_interactive_quality_seats
+        && token_count_value(t: intent_max_single_sequence_tokens(i: i)) == 65536
+        && token_count_value(t: intent_max_total_resident_tokens(i: i)) == harness_interactive_quality_seats * 65536
   }
-}
-
-// THE SIX-SEAT DERIVATION, PINNED ARITHMETIC: floor(1,805,689 / 262,144) = 6 with
-// 1,805,689 = 6 x 262,144 + 232,825, and the basis named -- the inventory was derived by the
-// engine FROM THE LIMITING RANK (TP3/srv11, the smallest residual arena), so six is the count
-// the worst rank admits.
-test fn w_the_six_seat_derivation_is_pinned_to_the_limiting_rank() -> Bool {
-  group_b_kv_inventory_tokens / 262144 == 6
-    && group_b_kv_inventory_tokens == 6 * 262144 + 232825
-    && group_b_restoration_seats == 6
-}
-
-// THE NO-LINEAR-EXTRAPOLATION LAW AS A RED CONTROL. Deriving seats by scaling the inventory from
-// TP0/srv9's larger residual arena (24.08 GiB) instead of the limiting rank's (TP3/srv11, 17.03
-// GiB) is the forbidden linear route, and its number is pinned: floor(1,805,689 x 2408 / 1703 /
-// 262,144) = 9, not 6 -- three fabricated seats. The declared count must never equal it; the row
-// goes RED the moment arena bytes become a seat-count input.
-test fn w_the_seat_count_refuses_the_residual_arena_route() -> Bool {
-  let seats_via_tp0_arena_linear = (group_b_kv_inventory_tokens * 2408 / 1703) / group_b_restoration_window_tokens
-  seats_via_tp0_arena_linear == 9
-    && seats_via_tp0_arena_linear != group_b_restoration_seats
-    && group_b_restoration_seats == 6
 }
 
 test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
@@ -77,9 +50,8 @@ test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
         Absent => false
         Present { value: executable } =>
           let profile = executable.profile
-          token_count_value(t: profile.max_model_len) == 262144
-            && profile.max_num_seqs == 6
-            && profile.max_num_seqs == group_b_restoration_seats
+          token_count_value(t: profile.max_model_len) == 65536
+            && profile.max_num_seqs == harness_interactive_quality_seats
             && token_count_value(t: profile.max_num_batched_tokens) == 2048
             && basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8567
             && (profile.kv_cache_dtype_wire as String) == "fp8"
@@ -98,19 +70,15 @@ test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
 // THE RETIRED SHAPE IS GONE: the derived executable is NOT the crash-looping configuration. A
 // consumer naming the retired constant fails to compile -- this row is the runtime half of that
 // control, pinning that the restoration's engine config differs from the retired row's in the
-// fields that mattered (seat count sixteen -> six, utilization 8400 -> 8567) while the window
-// coincides BY DESIGN: 262144 is what the derived count buys at the advised envelope, not the
-// retired over-provision.
+// fields that mattered (window and seat count), while the module graph makes the retired spelling
+// itself unwritable.
 test fn w_the_derived_profile_is_not_the_retired_crash_looping_shape() -> Bool {
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
       let profile = executable.profile
-      token_count_value(t: profile.max_model_len) == 262144
-        && profile.max_num_seqs == 6
+      token_count_value(t: profile.max_model_len) == 65536
         && !(profile.max_num_seqs == 16)
-        && basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8567
-        && !(basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8400)
   }
 }
 
@@ -131,7 +99,6 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
             ArmMemoryFitUnestablished { obligations: os } =>
               length(os) > 0
                 && any(os, o => string_contains(s: o as String, pattern: "kv-cache has no defensible bound"))
-                && any(os, o => string_contains(s: o as String, pattern: "activation-workspace has no defensible bound"))
                 && any(os, o => string_contains(s: o as String, pattern: "per-rank checkpoint placement is unread"))
                 && any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve"))
             _ => false
@@ -141,9 +108,7 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
 }
 
 test fn w_all_group_b_serving_capacity_claims_hold() -> Bool {
-  w_the_restoration_intent_derives_from_the_engine_kv_inventory()
-    && w_the_six_seat_derivation_is_pinned_to_the_limiting_rank()
-    && w_the_seat_count_refuses_the_residual_arena_route()
+  w_the_restoration_intent_derives_from_the_harness_seat_count()
     && w_the_executable_profile_is_the_intents_exact_derivation()
     && w_the_derived_profile_is_not_the_retired_crash_looping_shape()
     && w_the_declared_intents_subject_is_unestablished_until_real_receipts_land()

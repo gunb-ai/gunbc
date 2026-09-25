@@ -2,6 +2,7 @@ module test.claim.spark.native_serving_realization_witness_test
 
 import std.types { Bool, String, List }
 import v2.std.optional { Present, Absent }
+import gunbc.harness.harness_seat { harness_interactive_quality_seats }
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_all_unit_renders, glm_native_experiment_all_unit_renders,
@@ -103,9 +104,8 @@ fn first_matching_line(lines: List<String>, prefix: String) -> String {
 // ── THE ENGINE ARGV IS THE DERIVED PROFILE'S, NOT A RETIRED CONSTANT'S ─────────────────────────
 //
 // THE RENDERER'S AUTHORITY TRANSITION, pinned: the argv reads the restoration intent's derivation
-// (gunbc.spark.group_b_serving_capacity), so --max-model-len is the declared 262144-token window,
-// --max-num-seqs is the inventory-derived six seats (floor(1,805,689 / 262,144), the limiting
-// rank TP3/srv11 as basis), and the utilization is the engine-advised 0.8567 -- not the retired
+// (gunbc.spark.group_b_serving_capacity), so --max-model-len is the declared 64K seat, --max-num-seqs
+// is the harness seat count, and the utilization is the engine-advised 0.8567 -- not the retired
 // 2026-09-19 row (262144 tokens, sixteen sequences, 0.84), whose spelling no longer exists for a
 // consumer to reference.
 test fn w_the_engine_argv_is_the_derived_restoration_profile() -> Bool {
@@ -113,11 +113,11 @@ test fn w_the_engine_argv_is_the_derived_restoration_profile() -> Bool {
   all_four_rendered(rs: normal)
     && all(normal, r => {
       let t = unit_text(r: r)
-      string_contains(s: t, pattern: "--max-model-len 262144")
-        && string_contains(s: t, pattern: "--max-num-seqs 6")
+      string_contains(s: t, pattern: "--max-model-len 65536")
+        && string_contains(s: t, pattern: join(["--max-num-seqs ", to_string(harness_interactive_quality_seats)], ""))
         && string_contains(s: t, pattern: "--gpu-memory-utilization 0.8567")
         && string_contains(s: t, pattern: "--kv-cache-dtype fp8")
-        && !string_contains(s: t, pattern: "--max-num-seqs 16")
+        && !string_contains(s: t, pattern: "--max-model-len 262144")
     })
 }
 
