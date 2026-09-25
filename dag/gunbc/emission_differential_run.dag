@@ -1,0 +1,175 @@
+module gunbc.emission_differential_run
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.semantic_conformance {
+  DifferentialRecord, SubjectAuthorityBinding, AuthorityBound,
+  ObservedResult, ProducedValue, RefusedWithDiagnostic, NotRun,
+  LegacyObservation, LegacyNotConsulted,
+  ConformanceDisposition, Conforms, NativeV2Defect, V2EvaluatorDefect,
+  HostRealizationDefect, SemanticAuthorityMissing, SemanticAuthorityConflict,
+  WitnessDefect, LegacyV1Defect, Unclassified,
+  PromotedRoute, EvaluatorOnPromotedRoute,
+  classify_differential_record, disposition_blocks_cutover,
+}
+import gunbc.emission_differential_specimens { list_init_subject }
+
+// THE COMPARISON ENTRY. It takes ONE observation per route as a (kind, payload) pair and classifies
+// the pair through gunbc.semantic_conformance's existing fold. It computes no expectation of its own
+// and contains no comparison between the two routes: both are compared to the subject's authority by
+// classify_differential_record, which is what keeps "the two routes agreed" from becoming a verdict.
+//
+// WHY A KIND TOKEN AND A PAYLOAD RATHER THAN ONE STRING. The broken realization this instrument
+// exists to catch ANSWERS THE EMPTY STRING for qualified_name_init. A channel that encoded
+// non-observation as an empty or missing payload would therefore read the defect as "this route did
+// not run" -- an Unclassified instead of a NativeV2Defect. Both block, so the gate would stay
+// honest, but the instrument would MISATTRIBUTE the failure to itself and the emitter would be
+// exonerated by a parsing decision. The kind is carried separately for exactly that reason.
+//
+// THE KIND IS A COPRODUCT, NOT A STRING FROM A CLOSED SET CHECKED BY A PREDICATE. The first form of
+// this module carried the kind as a String, gave observation_from_kind an else arm returning NotRun,
+// and put the refusal in a separate membership predicate the entry called. That is validation
+// standing where construction was available (DESIGN section 5), and it fails open exactly where a
+// predicate can be skipped: every consumer that reaches the classifier without calling the predicate
+// -- which every witness claim did -- turned a mistyped token into NotRun, the misattribution the
+// paragraph above says the token exists to prevent. Raised as review 69884 finding 1.
+//
+// SO THE STRING IS PARSED ONCE, AT THE ONE BOUNDARY WHERE A STRING EXISTS AT ALL: argv. Past that
+// boundary no unrecognized kind is representable, observation_from_kind is a total match with no
+// else arm, and the predicate is gone rather than moved.
+type ObservationKind
+  = ObservedValueKind
+  | ObservedRefusalKind
+  | ObservationAbsentKind
+
+type ObservationKindParse
+  = KindRecognized { kind: ObservationKind }
+  | KindUnrecognized { token: String }
+
+fn parse_observation_kind(token: String) -> ObservationKindParse {
+  if token == "value" {
+    KindRecognized { kind: ObservedValueKind }
+  } else {
+    if token == "refused" {
+      KindRecognized { kind: ObservedRefusalKind }
+    } else {
+      if token == "notobserved" {
+        KindRecognized { kind: ObservationAbsentKind }
+      } else {
+        KindUnrecognized { token: token }
+      }
+    }
+  }
+}
+
+fn observation_from_kind(kind: ObservationKind, payload: String) -> ObservedResult {
+  match kind {
+    ObservedValueKind => ProducedValue { digest: payload as NonEmptyStr }
+    ObservedRefusalKind => RefusedWithDiagnostic { diagnostic_identity: payload as NonEmptyStr }
+    ObservationAbsentKind => NotRun
+  }
+}
+
+fn disposition_identity(disposition: ConformanceDisposition) -> String {
+  match disposition {
+    Conforms => "Conforms"
+    NativeV2Defect { detail: _ } => "NativeV2Defect"
+    V2EvaluatorDefect { detail: _ } => "V2EvaluatorDefect"
+    HostRealizationDefect { detail: _ } => "HostRealizationDefect"
+    SemanticAuthorityMissing { subject_id: _ } => "SemanticAuthorityMissing"
+    SemanticAuthorityConflict { subject_id: _, detail: _ } => "SemanticAuthorityConflict"
+    WitnessDefect { detail: _ } => "WitnessDefect"
+    LegacyV1Defect { detail: _ } => "LegacyV1Defect"
+    Unclassified { detail: _ } => "Unclassified"
+  }
+}
+
+fn disposition_detail(disposition: ConformanceDisposition) -> String {
+  match disposition {
+    Conforms => "both routes satisfy the subject's independent authority"
+    NativeV2Defect { detail: d } => d
+    V2EvaluatorDefect { detail: d } => d
+    HostRealizationDefect { detail: d } => d
+    SemanticAuthorityMissing { subject_id: _ } => "the subject carries no primary authority"
+    SemanticAuthorityConflict { subject_id: _, detail: d } => d
+    WitnessDefect { detail: d } => d
+    LegacyV1Defect { detail: d } => d
+    Unclassified { detail: d } => d
+  }
+}
+
+// The record for the list_init subject. The legacy column is LegacyNotConsulted rather than an
+// absent observation, because "we did not ask v1" and "v1 produced nothing" are different facts and
+// only one of them is a measurement.
+fn list_init_record(
+  native_kind: ObservationKind,
+  native_payload: String,
+  eval_kind: ObservationKind,
+  eval_payload: String
+) -> DifferentialRecord {
+  DifferentialRecord {
+    binding: AuthorityBound { subject: list_init_subject },
+    native_v2: observation_from_kind(kind: native_kind, payload: native_payload),
+    v2_evaluator: observation_from_kind(kind: eval_kind, payload: eval_payload),
+    legacy_v1: LegacyNotConsulted,
+    effect_receipt: [],
+  }
+}
+
+fn list_init_disposition(
+  native_kind: ObservationKind,
+  native_payload: String,
+  eval_kind: ObservationKind,
+  eval_payload: String
+) -> ConformanceDisposition {
+  classify_differential_record(
+    record: list_init_record(
+      native_kind: native_kind,
+      native_payload: native_payload,
+      eval_kind: eval_kind,
+      eval_payload: eval_payload
+    ),
+    route: EvaluatorOnPromotedRoute
+  )
+}
+
+// THE HUMAN-RUN ENTRY, AND THE ONLY PLACE A KIND IS A STRING. It parses both tokens before it
+// classifies anything, and an unrecognized token leaves as a located refusal naming the token it
+// received -- not as a NotRun that would read as "the route did not run". Past the two matches
+// below the kind is an ObservationKind, so no consumer downstream of here, witness or entry, can
+// reach the classifier with a kind that was never recognized.
+//
+// Exit 0 only when the disposition does not block; every other outcome is a located failure naming
+// the disposition arm and its detail.
+fn compare_list_init(
+  native_kind: String,
+  native_payload: String,
+  eval_kind: String,
+  eval_payload: String
+) -> ProcessExit {
+  match parse_observation_kind(token: native_kind) {
+    KindUnrecognized { token: t } =>
+      exit_failure(reason: concat("refused: unknown native observation kind '", t, "' -- expected value, refused or notobserved"))
+    KindRecognized { kind: native } =>
+      match parse_observation_kind(token: eval_kind) {
+        KindUnrecognized { token: t } =>
+          exit_failure(reason: concat("refused: unknown evaluator observation kind '", t, "' -- expected value, refused or notobserved"))
+        KindRecognized { kind: evaluator } => {
+          let d = list_init_disposition(
+            native_kind: native,
+            native_payload: native_payload,
+            eval_kind: evaluator,
+            eval_payload: eval_payload
+          )
+          if disposition_blocks_cutover(disposition: d, route: EvaluatorOnPromotedRoute) {
+            exit_failure(reason: concat(
+              concat("BLOCKED ", disposition_identity(disposition: d)),
+              concat(": ", disposition_detail(disposition: d))
+            ))
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+  }
+}

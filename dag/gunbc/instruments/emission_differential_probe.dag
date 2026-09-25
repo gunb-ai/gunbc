@@ -1,0 +1,26 @@
+module tools.emission_differential_probe
+
+import std.types { String }
+import v2.std.qualified_name {
+  qualified_name_from_dotted_string, qualified_name_init, qualified_name_to_dotted_string,
+}
+
+// THE SPECIMEN SOURCE, REALIZED TWICE. This module is the whole reason the comparison is a
+// differential rather than two unrelated measurements: the interpreter executes THIS text, and the
+// emitted native binary executes a Rust realization of THIS text, so both observations are bound to
+// one semantic subject and one input by construction rather than by a convention the runner
+// remembers.
+//
+// THE DIGEST RENDERER IS DELIBERATELY INSIDE THE SHARED SOURCE. Rendering the result in the runner
+// instead -- a .dag projection for one route and hand-written Rust for the other -- would put a
+// SECOND difference between the two columns, and a disagreement could then be the renderer rather
+// than the subject. Because the renderer is shared, a defect in it makes BOTH routes wrong in the
+// same way, which the carrier reports as a defect against the independent authority rather than as
+// agreement. That is the intended behaviour, not a gap.
+fn specimen_digest() -> String {
+  qualified_name_to_dotted_string(
+    qn: qualified_name_init(
+      qn: qualified_name_from_dotted_string(dotted: "v2.std.text")
+    )
+  )
+}
