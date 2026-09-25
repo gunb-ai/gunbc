@@ -1,0 +1,79 @@
+module v2.std.anonymous_binder
+
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Named, Positional, Symbol }
+import v2.std.node_query { pattern_wildcard_name }
+
+// AN ANONYMOUS PARAMETER SLOT IS A MINTED BINDER, NOT A FIELD NAMED `_`. A function's domain is a
+// name-keyed Conj (v2.std.node edges_conform: every edge Named, every name distinct), so two `_`
+// parameters spelled as the label `_` are two fields with one name -- ill-formed, although the
+// seed admits `fn f(_: A, _: B)` as two unreadable slots (v1.compiler.infer
+// direct_call_shape_wall_note). Each anonymous slot therefore carries its own label, minted here.
+//
+// THE LABEL IS UNAUTHORABLE. `<anonymous-parameter-N>` is not an identifier in the dag grammar (the
+// v2.std.qualified_name declaration_reference_marker precedent, also v2.std.type_binder
+// type_params_marker), so no body mention, named call argument or field can spell it: an anonymous
+// slot is NEVER referenceable, by construction, and a `_` written in a body resolves against
+// nothing (v2.compiler.resolve anonymous_parameter_referenced_diagnostic).
+//
+// N IS THE SLOT'S 1-BASED POSITION WITHIN ITS OWN BINDER LIST, never a module-wide or walk-order
+// counter and never an occurrence id. The label is part of the Arrow's TYPE: an occurrence- or
+// counter-derived label would make `fn(_: Int) -> Int` at two sites two different types with two
+// content hashes, and an edit anywhere above a site would rename it (DESIGN 4c keeps occurrence
+// allocation disjoint from semantic identity). The slot's occurrence stays where it already lives,
+// on the edge target. Ruled by neat-boar-16 via gentle-koi-724, 2026-09-25.
+
+fn anonymous_param_label_prefix() -> String {
+  "<anonymous-parameter-"
+}
+
+// THE ONE MINT. Consumed by anonymous_binder_mint_domain, the only producer of a domain carrying
+// minted slots.
+fn anonymous_param_label(slot: Int) -> Symbol {
+  symbol_intern_lexeme(
+    lexeme: anonymous_param_label_prefix() + integer_int_to_decimal_string(value: slot) + ">"
+  )
+}
+
+// THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission renders
+// it `_`, the wiring-liveness lens exempts it, reference conservation credits it -- asks this, and
+// never compares a label to the spelling `_`.
+fn is_anonymous_param_label(sym: Symbol) -> Bool {
+  starts_with(s: symbol_lexeme(sym: sym), prefix: anonymous_param_label_prefix())
+}
+
+fn edge_is_anonymous_param(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => is_anonymous_param_label(sym: sym)
+    Positional => false
+  }
+}
+
+type AnonymousBinderMint {
+  slot: Int
+  edges: List<Edge>
+}
+
+// THE ONE PRODUCER of a domain's anonymous slots: every edge the author spelled `_` is relabelled
+// with its slot's minted binder; every other edge is unchanged. This is the only place the authored
+// spelling `_` is read for a parameter, and it is read once, at the source boundary.
+fn anonymous_binder_mint_domain(edges: List<Edge>) -> List<Edge> {
+  let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: [] }, f: fn(acc, e) {
+    let slot = acc.slot + 1
+    let relabelled = match e.label {
+      Named { name: sym } =>
+        if sym == pattern_wildcard_name() {
+          Edge { label: Named { name: anonymous_param_label(slot: slot) }, target: e.target }
+        } else {
+          e
+        }
+      Positional => e
+    }
+    AnonymousBinderMint { slot: slot, edges: list_snoc_item(xs: acc.edges, item: relabelled) }
+  })
+  minted.edges
+}

@@ -40,6 +40,7 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
+import v2.std.anonymous_binder { anonymous_binder_mint_domain }
 import v2.std.algebra { fold_list, list_append, list_map, list_snoc_item, length, zip_eq }
 import v2.std.collection {
   List,
@@ -365,7 +366,7 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Sy
     Absent => Empty
     Present { value: comma_spine } =>
       fold(
-        body_lower_collect_param_edges(sequence_capture: comma_spine),
+        body_lower_param_edges(sequence_capture: comma_spine),
         init: Empty,
         f: fn(acc, e) {
           match e.label {
@@ -1746,6 +1747,14 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
   }
 }
 
+// A PARAMETER LIST'S EDGES, WITH EVERY ANONYMOUS SLOT MINTED. The raw collector below recurses over
+// the comma spine and cannot know a slot's position; the mint needs the whole list, so it runs once
+// here, and both the domain (body_lower_domain_from_param_list) and the ingest-side binding list the
+// domain is checked against (body_lower_param_binding_symbols_from_param_list) read through it.
+fn body_lower_param_edges(sequence_capture: Node) -> List<Edge> {
+  anonymous_binder_mint_domain(edges: body_lower_collect_param_edges(sequence_capture: sequence_capture))
+}
+
 fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
   match dag_binding_branded_atom_identity(node: node) {
     Present { value: binding } => Present { value: binding }
@@ -2064,7 +2073,7 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
-      let edges = body_lower_collect_param_edges(sequence_capture: comma_spine)
+      let edges = body_lower_param_edges(sequence_capture: comma_spine)
       if count(edges) == 0 {
         Present {
           value: node_lowered_from(
