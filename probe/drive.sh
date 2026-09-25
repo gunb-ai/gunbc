@@ -4,7 +4,7 @@ set -u
 R=$(pwd)
 for spec in "$@"; do
   row=${spec%%:*}; mod=${spec#*:}
-  O=$R/target/drive_$row; rm -rf $O; mkdir -p $O; tar xzf probe/emit_$row.tgz -C $O
+  O=${DRIVE_DIR:-/tmp}/drive_$row; rm -rf $O; mkdir -p $O; tar xzf probe/emit_$row.tgz -C $O; [ -f $O/Cargo.toml ] || : > $O/Cargo.toml
   echo "######## $row"
   ./target/release/cssl_assemble --out-dir $O --entry-dag src/v2/compiler/$mod.dag --root $R 2>&1 | tail -1
   printf '[package]\nname = "v1_compiled"\nversion = "0.1.0"\nedition = "2021"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = "witness"\npath = "src/main.rs"\n\n[dependencies]\nim = { version = "15.1", features = ["serde"] }\nserde = { version = "1", features = ["derive", "rc"] }\nserde_json = "1"\nstacker = "0.1"\nlazy_static = "1"\nunicode-ident = "1"\nunicode-properties = { version = "0.1", features = ["emoji"] }\nv1-compiler = { path = "%s/src/v1/stage0" }\n' "$R" > $O/Cargo.toml
