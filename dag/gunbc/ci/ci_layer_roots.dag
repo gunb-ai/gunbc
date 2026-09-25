@@ -390,9 +390,9 @@ data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
-data excl_local_repo_wet_device_route_clock_read_reason: String = "real host-effect execution witness over the App Attest device routes whose subjects are reached only through two READ-ONLY effects with no mock_response: Clock.TimestampAdd (the read skew window's bounds, gunbc.auth.approval_device_routes device_instant_plus / device_instant_minus, a `date -u -d` computation) and the enrolment store's Filesystem.Read under a bound realization (the gate's discriminating control proceeds past device_crypto_admission into observe_enrollment). Neither writes, reaches the network or depends on the verdict of host state: the skew bounds are pure date arithmetic over supplied instants, and the control asserts only that the answer is not the realization reason, which holds whether the store slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
+data excl_local_repo_wet_device_route_store_read_reason: String = "real host-effect execution witness over the App Attest device routes whose one claim is the gate's discriminating control: under a bound realization the read proceeds past device_crypto_admission into the enrolment store's Filesystem.Read (gunbc.auth.approval_device_redemption observe_enrollment over approval_device_store_root), which has no mock_response. The route takes no store as a parameter, so the store cannot be supplied at the claim's interface. The effect is READ-ONLY: nothing is written, no network is reached, and the claim asserts only that the answer is not the realization reason, which holds whether the slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
 
-data excl_local_repo_wet_device_route_clock_read_dissolve: DissolutionCondition = unbound_dissolution(description: "UTC instant arithmetic becomes a pure fold beside gunbc.auth.approval_capability utc_instant_before (so the skew window needs no Clock.TimestampAdd), and mock_response coverage lands for Filesystem.Read sufficient for observe_enrollment to be driven under a fixed store; then both fns re-enroll as ordinary hermetic discovery rows in test.claim.approval_device_routes_witness_test, drop off local_repo_wet_schedule, and this row deletes")
+data excl_local_repo_wet_device_route_store_read_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for Filesystem.Read sufficient for observe_enrollment to be driven under a fixed store, OR the device read routes take their store observation as a supplied value; then the control re-enrolls as an ordinary hermetic discovery row in test.claim.approval_device_routes_witness_test, drops off local_repo_wet_schedule, and this row deletes")
 
 data excl_local_repo_wet_tempdir_write_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.Dir and Filesystem.Write, sufficient for sha256sum_verify_via_shell to be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
@@ -1080,8 +1080,8 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "approval_device_routes_wet_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_device_route_clock_read_reason,
-    dissolution: excl_local_repo_wet_device_route_clock_read_dissolve},
+    reason: excl_local_repo_wet_device_route_store_read_reason,
+    dissolution: excl_local_repo_wet_device_route_store_read_dissolve},
   WitnessExclusionRow {
     pattern: "approval_device_enrolment_code_wet_witness_test.dag",
     classification: LocalRepoWetLane,

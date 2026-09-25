@@ -391,9 +391,17 @@ test fn the_worst_row_is_taken_over_every_run_not_the_latest() -> Bool {
 // THE LADDER: each step must be CUMULATIVE with the ones before it, not independent.
 test fn the_repair_ladder_accumulates_its_removals() -> Bool {
   let steps = repair_ladder(runs: both_runs, ceiling_ms: millisecond(count: 500), already_excluded: [], order: ["m.hot", "m.mid"])
-  count(steps) == 2
-    && millisecond_count(m: worst_cost_at_least_ms(w: steps[0].worst)) == 300 && steps[0].runs_refused == 0
-    && millisecond_count(m: worst_cost_at_least_ms(w: steps[1].worst)) == 0 && steps[1].runs_refused == 0
+  match steps |> get(0) {
+    Absent => false
+    Present { value: a } =>
+      match steps |> get(1) {
+        Absent => false
+        Present { value: b } =>
+          count(steps) == 2
+            && millisecond_count(m: worst_cost_at_least_ms(w: a.worst)) == 300 && a.runs_refused == 0
+            && millisecond_count(m: worst_cost_at_least_ms(w: b.worst)) == 0 && b.runs_refused == 0
+      }
+  }
 }
 
 // INFLATION IS PAIRED ON IDENTITY, and the min_base filter drops rows too small to measure.
