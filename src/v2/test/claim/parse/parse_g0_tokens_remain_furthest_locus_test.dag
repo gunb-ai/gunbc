@@ -6,10 +6,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // census of v2.compiler.compile (probe/neat-boar-16-gen2-census) reported all 387
 // parse_g0_tokens_remain refusals at the first token of a top-level item -- `test` 204, `fn` 117,
 // `service` 41 -- because the module's `repeat` stops at an item whose production fails as a
-// whole, and the diagnostic named the first leftover token. The first claim is the treatment: an
-// unadmitted token inside a fn body is reported at that token. The second is the control that the
-// furthest rule does not invent depth: a failure that consumed nothing inside the item stays at
-// the item's first token. The third pins the offset unit as it stands.
+// whole, and the diagnostic named the first leftover token. The treatment: an unadmitted token
+// inside a fn body is reported at that token, on a cold parse and again on a served one. The
+// control: a failure that consumed nothing inside the item stays at the item's first token, so the
+// furthest rule does not invent depth. The third claim pins the offset unit as it stands.
 
 // The fatal diagnostic is the last one (v2.std.diagnostic diagnostics_fatal); grammar advisories ride
 // ahead of it. -1 is no tokens_remain refusal on a source extent; every claim compares against a positive offset.
@@ -38,9 +38,16 @@ fn tokens_remain_start(src: String) -> Int {
   }
 }
 
-// `fn f` begins at 32; the `]` the let initializer cannot start with is at 58.
-test fn tokens_remain_mid_item_failure_is_located_at_the_construct() -> Bool {
-  tokens_remain_start(src: "module m.t\nfn ok() -> Int { 1 }\nfn f() -> Int {\n  let x = ]\n  x\n}\n") == 58
+// THE TREATMENT, AND THE LOCUS DOES NOT DEPEND ON CACHE WARMTH. `fn f` begins at 11; the `]` the
+// let initializer cannot start with is at 37. The seed serves parse memo entries across parses of
+// one token stream, so the second parse meets entries the first stored; each entry carries its own
+// subparse's furthest record, and the served parse must land on the same token. One claim, not two:
+// the cold assertion alone would be implied by this one and pay the same parse again.
+test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool {
+  let src = "module m.t\nfn f() -> Int {\n  let x = ]\n}\n"
+  let cold = tokens_remain_start(src: src)
+  let warm = tokens_remain_start(src: src)
+  cold == 37 && warm == 37
 }
 
 test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
@@ -48,20 +55,10 @@ test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
 }
 
 // THE UNIT IS CODE POINTS TODAY, WHATEVER THE EXTENT IS CALLED. Three two-byte scalars precede the
-// `]`: code-point offset 60, byte offset 63. v2.compiler.tokenize advances its position by the
+// `]`: code-point offset 43, byte offset 46. v2.compiler.tokenize advances its position by the
 // lexeme's length in code points and the carrier is v2.std.diagnostic ByteRange, so every v2 token
 // extent is mislabelled, not only this refusal's. Converting is a lexer-wide change with consumers
-// that slice source by these offsets; when it lands this claim must flip to 63, not be deleted.
+// that slice source by these offsets; when it lands this claim must flip to 46, not be deleted.
 test fn tokens_remain_offset_unit_is_code_points_as_lexed() -> Bool {
-  tokens_remain_start(src: "module m.t\ndata s: String = \"ééé\"\nfn f() -> Int {\n  let x = ]\n  x\n}\n") == 60
-}
-
-// THE LOCUS DOES NOT DEPEND ON CACHE WARMTH. The seed serves parse memo entries across parses of
-// one token stream, so the second parse here meets entries the first one stored; each entry carries
-// its own subparse's furthest record, and the served parse must land on the same token.
-test fn tokens_remain_locus_is_the_same_on_a_served_reparse() -> Bool {
-  let src = "module m.t\nfn ok() -> Int { 1 }\nfn f() -> Int {\n  let x = ]\n  x\n}\n"
-  let cold = tokens_remain_start(src: src)
-  let warm = tokens_remain_start(src: src)
-  cold == 58 && warm == 58
+  tokens_remain_start(src: "module m.t\nfn f() -> Int {\n  let x = \"ééé\" ]\n}\n") == 43
 }
