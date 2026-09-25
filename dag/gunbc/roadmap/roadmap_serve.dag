@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ActuationMintHandler,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -515,7 +515,6 @@ fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
     ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
     ApprovalStatusHandler => true
-    ActuationMintHandler => false
   }
 }
 

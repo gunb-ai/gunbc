@@ -36,12 +36,6 @@ data approval_broker_submit_path: NonEmptyStr = "/approvals"
 
 data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalation_id\}"
 
-// THE ACTUATION MINT IS LOOPBACK-ONLY AND ITS PREFIX IS DISJOINT FROM EVERY FRONT-DOOR MOUNT. The
-// tailnet front door mounts the confirm and status routes by PATH PREFIX, so a mint path under
-// /approvals/ would be reachable from the tailnet through the status mount. A separate first segment
-// keeps it off every mount (gunbc.auth.gcp_iam_actuation_mint).
-data approval_broker_actuation_mint_path: NonEmptyStr = "/actuation-tokens"
-
 // ── The broker's own listener ────────────────────────────────────────────────────────────────
 // A SEPARATE PORT IS WHAT MAKES THE SEPARATE PROCESS OBSERVABLE. Two units with two MainPIDs that
 // shared a socket would be a lie the first `ss` would expose; the broker binds its own loopback
@@ -92,7 +86,8 @@ data approval_broker_listen_port: Port = 8085
 data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
 
 // THE HOST THE BROKER RUNS ON, derived from the instance that owns its unit rather than spelled: a
-// caller that must reach the loopback listener (the GCP IAM converge job's runner) has to run there.
+// run that files and polls over the loopback approval client (the GCP IAM converge job) has to run
+// there.
 fn approval_broker_host_identity() -> NonEmptyStr {
   srv1_live_dashboard_instance().host_identity
 }
@@ -125,10 +120,6 @@ fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
     approval_broker_loopback_base_url(port: port) as String,
     serve_liveness_path as String,
   ], "") as NonEmptyStr
-}
-
-fn approval_broker_actuation_mint_url(port: Port) -> NonEmptyStr {
-  concat(approval_broker_loopback_base_url(port: port) as String, approval_broker_actuation_mint_path as String) as NonEmptyStr
 }
 
 fn approval_broker_status_url(port: Port, escalation_id: NonEmptyStr) -> NonEmptyStr {

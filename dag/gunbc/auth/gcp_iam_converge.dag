@@ -36,9 +36,11 @@ import gunbc.auth.gcp_iam_converge_federation {
 // Operator requirement 2026-09-24: IAM changes (WIF pools and providers, service accounts, secret
 // grants) are applied by a convergence -- declared desired state, observe, diff, Noop/Apply/Refuse,
 // independent readback -- with actuation authorized by ONE operator approval through the approval
-// loop, not by an operator running a command with a pasted token. Operator decisions 2026-09-25:
-// the actuation credential is MINTED BY THE APPROVAL BROKER (option A), and the broker authenticates
-// to GCP with a keyed minter service account placed on srv1 by the custody converge (A1).
+// loop, not by an operator running a command with a pasted token. Operator decision 2026-09-25:
+// option B -- the job federates to iam-converge through its own pinned pool, and refuses before
+// impersonating unless a recorded approval matches the re-derived diff. A keyed minter on srv1 (A1)
+// was built and withdrawn the same day: the operator ruled out any hard dependency on srv1 for the
+// credential.
 //
 // THE CYCLE, and which principal performs each step:
 //   plan      -- iam_observe_service_account (read-only, WIF-reachable by the converge job) observes
@@ -46,13 +48,22 @@ import gunbc.auth.gcp_iam_converge_federation {
 //                Noop asks nobody.
 //   request   -- the diff's canonical preimage is SHA-256'd; the digest is the request's intent hash
 //                and the escalation id's suffix, so the operator's tap is consent to exactly it.
-//   mint      -- after the tap, the broker (gunbc.auth.gcp_iam_actuation_mint) mints a
-//                iam_converge_token_lifetime_seconds token for iam_converge_service_account, once,
-//                and only for an approved escalation of this family whose revision the run presents.
-//   actuate   -- the run re-plans, refuses unless the digest still equals the approved one, and runs
-//                the existing provisioning protocol (gunbc.auth.heal_publisher_provision
-//                provision_dedicated_federation) under the minted token: create only what was
-//                observed absent, re-observe and re-classify, policy writes etag-fenced, readback.
+//   gate      -- the request step emits the job output that admits the next step only when the
+//                approval store holds an approval over exactly this request (gunbc.auth.gcp_iam_converge_run).
+//   impersonate -- only then does the workflow's second auth step federate to iam-converge, for
+//                iam_converge_token_lifetime_seconds.
+//   actuate   -- the apply step re-plans under iam-observe, re-derives the request, re-reads the
+//                recorded approval and refuses unless it is for that revision, then runs the existing
+//                provisioning protocol (gunbc.auth.heal_publisher_provision provision_dedicated_federation)
+//                under the iam-converge token: create only what was observed absent, re-observe and
+//                re-classify, etag-fenced policy writes, and a readback under iam-observe.
+//
+// THE RUNG, STATED HONESTLY (operator 2026-09-25). Approval-necessity is enforced by REVIEWED MAIN
+// CODE, not by the credential layer: the pool's provider admits this job at main by its pinned
+// claims, so a change merged to main that skipped the gate would federate without a tap. What holds
+// the line today is that the workflow file, this module and the run module land only through review
+// and the merge queue. The upgrade that moves it into the credential layer is a declared frontier,
+// gunbc.auth.privileged_effect_census gcp_iam_approval_enforced_in_reviewed_code.
 
 // ── The principals ───────────────────────────────────────────────────────────────────────────
 // iam-converge IS THE ALLOCATION OF gunbc.spark.bootstrap_provision FleetCloudGrantAdministrator,
@@ -65,24 +76,21 @@ data iam_converge_service_account: ServiceAccountEmail = "iam-converge@gunbai-se
 
 // THE PLANNING READER. The convergence principal is barred from reading any IAM policy (bootstrap
 // provision: a data-plane principal that can read a policy can enumerate who else holds the key), and
-// iam-converge is reachable only through an approval, so a plan that must run BEFORE the approval
-// needs its own reader. It holds get/list on the declared subjects and getIamPolicy on the same
+// iam-converge must not be impersonated before the approval, so a plan that runs BEFORE it needs its
+// own reader. It holds get/list on the declared subjects and getIamPolicy on the same
 // resource population as the writer, and changes nothing. Its ONE payload read is the pinned
-// version of the approval submission MAC key, which the job needs to sign its filing and its mint
-// request -- the same cell the pair-serving door's job holds for the same reason.
+// version of the approval submission MAC key, which the job needs to sign its filing -- the same cell
+// the pair-serving door's job holds for the same reason.
 data iam_observe_service_account_id: NonEmptyStr = "iam-observe"
 
 data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secrets.iam.gserviceaccount.com"
 
-// THE BROKER'S OWN GCP IDENTITY (decision A1). srv1 is not a GitHub job, so it cannot federate; the
-// key sits in Secret Manager custody and is placed on srv1 by the host credential custody converge.
-// Its ONLY grant is roles/iam.serviceAccountTokenCreator on iam-converge's own policy. It adds no
-// trust root: srv1 already holds both approval MAC keys, so whoever holds srv1 can forge an approval.
-data approval_broker_minter_service_account_id: NonEmptyStr = "approval-broker-minter"
-
-data approval_broker_minter_service_account: ServiceAccountEmail = "approval-broker-minter@gunbai-secrets.iam.gserviceaccount.com"
-
-// THE MINTED TOKEN'S LIFETIME. generateAccessToken admits 1..3600; ten minutes covers a
+// WHO MAY BECOME iam-converge: the principal set of the job's dedicated pool
+// (gunbc.auth.gcp_iam_converge_federation), holding roles/iam.workloadIdentityUser on iam-converge's
+// own policy and no other grant. The provider's condition pins this repository, the fleet-converge
+// workflow file at main, a dispatch on main and the gcp-iam-converge environment. That binding is
+// written once by the bootstrap ceremony; iam-converge's own policy is never a converge target.
+// THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
 // provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with
 // readback) and ends before a leaked token is worth much.
 data iam_converge_token_lifetime_seconds: Int = 600
@@ -143,11 +151,10 @@ data iam_converge_denied_permissions: List<String> = [
 //    exactly the service accounts the declared federations name and the secrets their grants name.
 //    Adding a federation to gcp_iam_converge_targets widens this, and nothing else can.
 //
-//    THE ACTUATION CHAIN IS NEVER A TARGET. iam-converge's own policy and the minter's are written
-//    once, by the bootstrap ceremony, and are outside this population: if iam-converge could write
-//    its own policy it could name a second token creator, and the approval would stop being the only
-//    path to the credential. iam_converge_population_excludes_the_actuation_chain is that property,
-//    executed.
+//    THE ACTUATION PRINCIPAL IS NEVER A TARGET. iam-converge's own policy is written once, by the
+//    bootstrap ceremony, and is outside this population: if iam-converge could write its own policy
+//    it could name a second impersonator, and the pinned job would stop being the only path to the
+//    credential. iam_converge_population_excludes_the_actuation_chain is that property, executed.
 fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
   DedicatedFederation {
     label: "gcp iam converge observe federation",
@@ -163,7 +170,7 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
     service_account_member: federated_service_account_member(email: iam_observe_service_account),
     secret_grants: [pinned_version_accessor_grant_for(
       title_prefix: "gcp-iam-converge",
-      description: "gunbc.auth.gcp_iam_converge: the one version the gcp iam converge job reads, to sign its request and its mint",
+      description: "gunbc.auth.gcp_iam_converge: the one version the gcp iam converge job reads, to sign its request",
       target: approval_submission_mac_key_secret_ref,
     )],
   }
@@ -201,7 +208,6 @@ fn iam_converge_resource_population() -> List<String> {
 
 fn iam_converge_population_excludes_the_actuation_chain() -> Bool {
   !string_in(x: service_account_resource(email: iam_converge_service_account), xs: iam_converge_resource_population())
-    && !string_in(x: service_account_resource(email: approval_broker_minter_service_account), xs: iam_converge_resource_population())
 }
 
 fn iam_converge_resource_condition() -> IamCondition {
@@ -445,15 +451,15 @@ fn gcp_iam_diff_digest(d: GcpIamEstateDiff) -> GcpIamDiffDigest {
 }
 
 // ── The request ──────────────────────────────────────────────────────────────────────────────
-// THE ESCALATION FAMILY IS THE PREFIX, and the broker's mint route admits only this family: an
-// approval for anything else -- a boot ruling, an app enrolment -- cannot be redeemed for an IAM
-// credential, because the prefix is part of the id the stored decision is keyed by.
+// THE ESCALATION FAMILY IS THE PREFIX: the apply step reads the decision under an id it re-derives
+// in this family, so an approval of anything else -- a boot ruling, an app enrolment -- is never the
+// record it consults.
 data gcp_iam_converge_escalation_prefix: NonEmptyStr = "gcp-iam-converge-"
 
-// THE ID CARRIES THE ATTEMPT AS WELL AS THE DIGEST. The store admits one request per id, and one
-// approval mints one token; a run whose mint or actuation failed after the tap has spent that
-// approval, so a rerun of the SAME diff must be able to file afresh. The digest still binds the
-// consent: it is the request's revision, and the mint route compares it.
+// THE ID CARRIES THE ATTEMPT AS WELL AS THE DIGEST. The store admits one request per id, and an
+// approval is consent for one run: a run bound to run-N cannot spend an approval filed by run-M, and a
+// rerun of the SAME diff files afresh. The digest still binds the consent: it is the request's
+// revision, and the apply step compares it.
 fn gcp_iam_converge_escalation_id(d: Sha256Digest, attempt: AttemptIdentity) -> NonEmptyStr {
   join([gcp_iam_converge_escalation_prefix as String, d.hex as String, "-", attempt as String], "") as NonEmptyStr
 }
@@ -483,8 +489,8 @@ fn gcp_iam_converge_purpose(d: GcpIamEstateDiff) -> NonEmptyStr {
   join([
     "GCP IAM converge (project ", fleet_secrets_project_id as String, ") -- ",
     join(map(d.diffs, t => target_diff_sentence(d: t)), " || "),
-    ". Approving mints one ", to_string(iam_converge_token_lifetime_seconds), "s token for ",
-    iam_converge_service_account as String, " for this run only.",
+    ". Approving lets this run, and only this run, impersonate ", iam_converge_service_account as String,
+    " for ", to_string(iam_converge_token_lifetime_seconds), "s.",
   ], "") as NonEmptyStr
 }
 

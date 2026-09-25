@@ -25,7 +25,7 @@ import gunbc.auth.approval_writer_authority {
 }
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marked_body,
-  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved, ActuationMintHandlerObserved,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
   BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
 }
 import gunbc.auth.approval_broker_endpoint {
@@ -34,9 +34,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_submit_path,
   approval_broker_status_path_template,
   approval_broker_confirm_path_prefix,
-  approval_broker_actuation_mint_path,
 }
-import gunbc.auth.gcp_iam_actuation_mint { actuation_mint_for_body, ActuationMinted, ActuationMintRefused }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment, attr }
@@ -102,7 +100,6 @@ type ApprovalBrokerHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
-  | ActuationMintHandler
 
 // THE APPROVAL PAIR IS TWO ROUTES ON PURPOSE. The operator's tap is a GET, and a GET must not
 // spend the decision -- link previews, mail scanners, chat unfurlers and browser prefetch all
@@ -121,7 +118,6 @@ fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>>
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_status_path_template as String, handler: ApprovalStatusHandler },
-    ServedRouteSpec { method: POST, raw: approval_broker_actuation_mint_path as String, handler: ActuationMintHandler },
   ]
 }
 
@@ -399,24 +395,6 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
   broker_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body, marker: StatusHandlerObserved, process: process)
 }
 
-// THE ACTUATION MINT ROUTE (gunbc.auth.gcp_iam_actuation_mint). It mutates the store -- it claims
-// the one mint slot an approval has -- so it passes the same writer gate as the decide and submit
-// routes. The answer's first line is the token and its second the expiry; a refusal's body is the
-// reason. The token is in no other place: not the marker, not a log.
-fn actuation_mint_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
-  match approval_write_admission(asker: process) {
-    ApprovalWriteRefused { holder: h, asker: a } =>
-      broker_text_response(status: 503, content_type: text_plain_utf8, body: concat(approval_write_refusal_reason(holder: h, asker: a) as String, "\n"), marker: ActuationMintHandlerObserved, process: process)
-    ApprovalWriteAdmitted { writer: _ } =>
-      match actuation_mint_for_body(body: request.body) {
-        ActuationMintRefused { status: s, reason: r } =>
-          broker_text_response(status: s, content_type: text_plain_utf8, body: join(["actuation mint refused: ", r, "\n"], ""), marker: ActuationMintHandlerObserved, process: process)
-        ActuationMinted { token: t, expire_time: e } =>
-          broker_text_response(status: 200, content_type: text_plain_utf8, body: join([t as String, "\n", e, "\n"], ""), marker: ActuationMintHandlerObserved, process: process)
-      }
-  }
-}
-
 // ── The HTTP adapter ─────────────────────────────────────────────────────────────────────────
 // THE ADAPTER TAKES NO PLAN, NO INSTANCE AND NO RELEASE REVISION, and the absence of all three is
 // the extraction's evidence rather than an omission. The roadmap's adapter threads an instance (so
@@ -483,7 +461,6 @@ fn approval_broker_invoke(
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
     ApprovalStatusHandler => approval_status_response(params: params, process: process)
-    ActuationMintHandler => actuation_mint_response(request: request, process: process)
   }
 }
 
