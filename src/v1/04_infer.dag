@@ -2813,12 +2813,21 @@ fn match_unguarded_absent_arm_index(arm_nodes: List<Node>) -> Int {
   )
 }
 
-fn optional_scrutinee_binding_is_present(scrut_type: Node, arm_pattern: MatchPattern, arm_index: Int, absent_arm_index: Int) -> Bool {
-  let is_bind = match arm_pattern {
-    Bind { declaration: _ } => true
+// A NON-NULL LITERAL ARM OVER AN OPTIONAL SEES THE PRESENT VALUE too: a literal denotes a present
+// value, so it can match only one, and the arm's pattern is checked at the scrutinee's REQUIRED type.
+// This is the ONE decision of which arms of a match over an optional see the present value; the
+// interpreter (v1.compiler.interpreter eval_match peels the payload in exactly these arms) and every
+// Rust match rendering (the arm emitted under `Some(..)`) read it rather than deciding it again.
+fn optional_match_arm_sees_present_value(scrutinee_type: Node, arm_pattern: MatchPattern, arm_index: Int, absent_arm_index: Int) -> Bool {
+  let pattern_sees_present = match arm_pattern {
+    Bind { declaration: _ } => absent_arm_index >= 0 && arm_index > absent_arm_index
+    LitPattern { value: v } => match v {
+      LitNull => false
+      _ => true
+    }
     _ => false
   }
-  is_bind && absent_arm_index >= 0 && arm_index > absent_arm_index && scrut_type.return_cardinality == CardOptional
+  pattern_sees_present && scrutinee_type.return_cardinality == CardOptional
 }
 
 fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferScope) -> List<ErrorNode> {
@@ -8092,8 +8101,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
         let arm_b = arm_body(n: arm_node)
-        let arm_subject = if optional_scrutinee_binding_is_present(
-            scrut_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
+        let arm_subject = if optional_match_arm_sees_present_value(
+            scrutinee_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
           pattern_subject_from_node(n: with_required_cardinality(n: scrut_rt))
         } else { scrut_subject }
         let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, scope: scope)
