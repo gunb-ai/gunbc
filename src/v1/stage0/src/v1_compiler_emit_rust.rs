@@ -39227,6 +39227,15 @@ pub fn compiler_entry_native_cli_driver() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn compiler_entry_native_claim_driver() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "NativeClaimDriver".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilerPipelineEntryDecl {
     pub module_name: String,
@@ -39348,12 +39357,20 @@ pub fn compiler_pipeline_entry_is_source_root_eval(modules: Rc<Vec<Rc<TypedModul
 pub fn compiler_pipeline_entry_driver_is_known(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
     match compiler_pipeline_entry_decl(modules.clone()) {
         Some(d) => {
-            ((((d.driver.clone() == compiler_entry_retained_host_driver())
+            (((((d.driver.clone() == compiler_entry_retained_host_driver())
                 || (d.driver.clone() == compiler_entry_source_root_eval_driver()))
                 || (d.driver.clone() == compiler_entry_direct_ingest_driver()))
                 || (d.driver.clone() == compiler_entry_native_cli_driver()))
+                || (d.driver.clone() == compiler_entry_native_claim_driver()))
         }
         std::option::Option::None => true,
+    }
+}
+
+pub fn compiler_pipeline_entry_is_native_claim(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => (d.driver.clone() == compiler_entry_native_claim_driver()),
+        std::option::Option::None => false,
     }
 }
 
@@ -39455,6 +39472,12 @@ pub fn emit_main_rs(
                         pipeline_module.clone(),
                     );
                 }
+                if compiler_pipeline_entry_is_native_claim(modules.clone()) {
+                    return emit_native_claim_driver_main_rs(
+                        crate_name.clone(),
+                        pipeline_module.clone(),
+                    );
+                }
                 if compiler_pipeline_entry_is_direct_ingest(modules.clone()) {
                     return emit_direct_ingest_driver_main_rs(
                         crate_name.clone(),
@@ -39531,6 +39554,20 @@ pub fn emit_direct_ingest_driver_main_rs(
 
 pub fn emit_host_source_root_read_rs() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {".to_string(), "\n".to_string()), "    let entries = match std::fs::read_dir(dir) {".to_string()), "\n".to_string()), "        Ok(entries) => entries,".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"could not walk source root {}: {cause}\", dir.display())),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for entry in entries {".to_string()), "\n".to_string()), "        let entry = match entry {".to_string()), "\n".to_string()), "            Ok(entry) => entry,".to_string()), "\n".to_string()), "            Err(cause) => return Err(format!(\"could not read entry under {}: {cause}\", dir.display())),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let path = entry.path();".to_string()), "\n".to_string()), "        if path.is_dir() {".to_string()), "\n".to_string()), "            collect_dag_paths(&path, out)?;".to_string()), "\n".to_string()), "        } else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) {".to_string()), "\n".to_string()), "            out.push(path.to_string_lossy().into_owned());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Ok(())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {".to_string()), "\n".to_string()), "    let mut paths: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for root in source_roots {".to_string()), "\n".to_string()), "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    paths.sort();".to_string()), "\n".to_string()), "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();".to_string()), "\n".to_string()), "    for path in &paths {".to_string()), "\n".to_string()), "        let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "            Ok(text) => text,".to_string()), "\n".to_string()), "            Err(cause) => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: could not read {path}: {cause}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        reads.push(Rc::new(DagSourceReadWitness {".to_string()), "\n".to_string()), "            source: Rc::new(Medium {".to_string()), "\n".to_string()), "                carried: text,".to_string()), "\n".to_string()), "                fidelity: DecodeFidelity::Lossless,".to_string()), "\n".to_string()), "                _phantom: std::marker::PhantomData,".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "            artifact: Rc::new(Artifact {".to_string()), "\n".to_string()), "                kind: ArtifactKind::SourceFile,".to_string()), "\n".to_string()), "                id: path.clone(),".to_string()), "\n".to_string()), "                file_path: path.clone(),".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "            compilation_unit: path.clone(),".to_string()), "\n".to_string()), "            source_root: source_root_for_storage_path(path.clone()),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    reads".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string())
+}
+
+pub fn emit_native_claim_driver_main_rs(
+    crate_name: String,
+    pipeline_module: String,
+) -> Rc<TextFile> {
+    {
+        let pipeline_mod =
+            crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
+        Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let report = native_claim_report();".to_string()), "\n".to_string()), "    print!(\"{}\", report.stdout);".to_string()), "\n".to_string()), "    match &*report.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+})
+    }
 }
 
 pub fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> Rc<TextFile> {

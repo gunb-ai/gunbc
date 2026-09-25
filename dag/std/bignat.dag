@@ -1,7 +1,6 @@
 module std.bignat
 
 import std.types { Int, List, String, Bool }
-import std.integer { UInt8 }
 
 // A MULTI-LIMB UNSIGNED NATURAL over the substrate's 64-bit Int, which refuses on overflow.
 //
@@ -81,7 +80,7 @@ type BignatOctetFold {
 }
 
 // Big-endian octets to limbs: walk the octets from the least significant end.
-fn bignat_from_octets(octets: List<UInt8>) -> BigNat {
+fn bignat_from_octets(octets: List<Int>) -> BigNat {
   let r = fold(reverse(octets), init: BignatOctetFold { limbs: [], limb: 0, place: 1 }, f: (acc, o) =>
     if acc.place == 65536 {
       BignatOctetFold { limbs: acc.limbs |> list_push(acc.limb + o * 65536), limb: 0, place: 1 }
@@ -91,17 +90,17 @@ fn bignat_from_octets(octets: List<UInt8>) -> BigNat {
   if r.place == 1 { BigNat { limbs: r.limbs } } else { BigNat { limbs: r.limbs |> list_push(r.limb) } }
 }
 
-fn bignat_limb_octets(limb: Int) -> List<UInt8> {
+fn bignat_limb_octets(limb: Int) -> List<Int> {
   [limb / 65536, (limb / 256) % 256, limb % 256]
 }
 
 // Exactly `width` big-endian octets. A value that does not fit answers Absent rather than truncating.
-fn bignat_to_octets(a: BigNat, width: Int) -> List<UInt8>? {
+fn bignat_to_octets(a: BigNat, width: Int) -> List<Int>? {
   let all = fold(reverse(a.limbs), init: [], f: (acc, limb) => fold(bignat_limb_octets(limb: limb), init: acc, f: (acc2, o) => acc2 |> list_push(o)))
   bignat_fit_octets(octets: all, width: width)
 }
 
-fn bignat_fit_octets(octets: List<UInt8>, width: Int) -> List<UInt8>? {
+fn bignat_fit_octets(octets: List<Int>, width: Int) -> List<Int>? {
   let n = count(octets)
   if n == width {
     Present { value: octets }
@@ -115,7 +114,7 @@ fn bignat_fit_octets(octets: List<UInt8>, width: Int) -> List<UInt8>? {
   }
 }
 
-fn bignat_pad_front(octets: List<UInt8>, zeros: Int) -> List<UInt8> {
+fn bignat_pad_front(octets: List<Int>, zeros: Int) -> List<Int> {
   if zeros <= 0 { octets } else { bignat_pad_front(octets: fold(octets, init: [0], f: (acc, o) => acc |> list_push(o)), zeros: zeros - 1) }
 }
 
