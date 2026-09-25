@@ -1,0 +1,83 @@
+module gunbc.auth.approval_device_crypto_realization
+
+import std.types { NonEmptyStr, String, List, HttpStatus }
+import std.logic { Bool }
+
+// ── WHICH REALIZATION RUNS THE DEVICE VERIFIERS IS PART OF ROUTE ADMISSION ───────────────────
+// extdeps.crypto.signature verify_signature and extdeps.apple.app_attest verify_attestation /
+// verify_assertion are authored .dag folds. Called from an interpreted broker they ARE the
+// interpreter -- the cost gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier
+// names, per request, on the approval broker -- so a route that invoked them with nothing in front
+// would realize that frontier as the evaluator. That frontier is therefore not an annotation beside
+// the routes: every verifier-dependent route in gunbc.auth.approval_device_routes asks
+// device_crypto_admission FIRST and refuses 503 with the typed cause before any decode, store read
+// or verifier call when the native handler is not bound (DESIGN section 5: a frontier that is only
+// an annotation is not a wall).
+//
+// Selecting the realization is itself realization (DESIGN section 3), so this module sits beside
+// the routes, never inside the verifier interface.
+//
+// THE RECEIPT COVERS A NAMED POPULATION, NOT "THE VERIFIER RUNS NATIVELY". A bound handler is
+// admitted only when its receipt lists every obligation below, and the P-256 base-point ORDER is its
+// own obligation: a passing signature vector does not establish that the published base point has
+// the declared order, so a receipt that covered only verification would admit the routes while the
+// order fact the frontier names stayed dead.
+
+type DeviceCryptoObligation
+  = P256SignatureVerification
+  | AppAttestAttestationVerification
+  | AppAttestAssertionVerification
+  | P256BasePointOrder
+
+// The full population a bound handler must cover.
+data device_crypto_obligations: List<DeviceCryptoObligation> = [
+  P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
+]
+
+// What executing evidence discharges each obligation on the natively emitted route.
+fn device_crypto_obligation_evidence(o: DeviceCryptoObligation) -> NonEmptyStr {
+  match o {
+    P256SignatureVerification => "extdeps.crypto.signature verify_signature (EcdsaP256Sha256) executing on the natively emitted handler"
+    AppAttestAttestationVerification => "extdeps.apple.app_attest verify_attestation executing on the natively emitted handler"
+    AppAttestAssertionVerification => "extdeps.apple.app_attest verify_assertion executing on the natively emitted handler"
+    P256BasePointOrder => "test.claim.p256_dag_ecdsa_witness_test the_base_point_has_order_n (n*G == infinity for the published base point) with its discriminating control (n-1)*G != infinity, executing natively"
+  }
+}
+
+type DeviceCryptoHandlerReceipt {
+  handler_identity: NonEmptyStr
+  exact_revision: NonEmptyStr
+  covered: List<DeviceCryptoObligation>
+}
+
+type DeviceCryptoRealization
+  = NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt }
+  | NativeDeviceCryptoUnavailable { cause: NonEmptyStr }
+
+// THE PRODUCTION BINDING. Unavailable until a natively emitted handler exists with a receipt over the
+// whole population -- the capability ecdsa_verification_realization_frontier names; no PR in flight
+// discharges it. Writing a Bound arm here is the whole cutover and it is admitted only with that
+// handler's identity and exact revision, so the review of that one row is where the claim is made.
+data approval_device_crypto_realization: DeviceCryptoRealization = NativeDeviceCryptoUnavailable {
+  cause: "no natively emitted realization handler of the device verifiers is bound (gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier); the interpreted verifiers are not admitted per request",
+}
+
+type DeviceCryptoAdmission
+  = DeviceCryptoAdmitted { handler_identity: NonEmptyStr, exact_revision: NonEmptyStr }
+  | DeviceCryptoRefused { status: HttpStatus, reason: String }
+
+fn device_crypto_missing(receipt: DeviceCryptoHandlerReceipt) -> List<DeviceCryptoObligation> {
+  filter(device_crypto_obligations, o => !any(receipt.covered, c => c == o))
+}
+
+fn device_crypto_admission(r: DeviceCryptoRealization) -> DeviceCryptoAdmission {
+  match r {
+    NativeDeviceCryptoUnavailable { cause: c } => DeviceCryptoRefused { status: 503, reason: "the native device-crypto realization is unavailable: " + (c as String) }
+    NativeDeviceCryptoBound { receipt: rc } =>
+      if count(device_crypto_missing(receipt: rc)) > 0 {
+        DeviceCryptoRefused { status: 503, reason: "the native device-crypto handler receipt does not cover: " + join(map(device_crypto_missing(receipt: rc), o => device_crypto_obligation_evidence(o: o) as String), "; ") }
+      } else {
+        DeviceCryptoAdmitted { handler_identity: rc.handler_identity, exact_revision: rc.exact_revision }
+      }
+  }
+}

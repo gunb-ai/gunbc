@@ -68,7 +68,11 @@ fn test_marker_find_emitted_under(n: Node, emitted: Symbol) -> Optional<Node> {
 fn test_marker_lowered_hash(n: Node) -> Optional<Hash> {
   match normalize_node(n: n) {
     Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: lowered, diagnostics: _ } => optional_present(value: content_hash(n: lowered))
+    Accepted { value: lowered, diagnostics: d } =>
+      match admit_retention_free(tree: lowered, diagnostics: d) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: root, diagnostics: _ } => optional_present(value: content_hash(n: root))
+      }
   }
 }
 

@@ -8,7 +8,7 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   ProviderPathUnread, DownstreamProviderPopulation, NoDownstreamProviders,
-  ProviderRegionObservation, ProviderRegionRead,
+  ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread,
   ProviderRouteObserved, ProviderRouteRegionUnobserved,
   PermittedJurisdictionsEnumerated,
 }
@@ -28,7 +28,12 @@ import product.supplier.cloudflare_r2 {
   cloudflare_r2_route_facts_population,
   cloudflare_r2_data_paths,
   cloudflare_r2_facts,
+  cloudflare_r2_region_from_read,
+  cloudflare_r2_region_from_observations,
+  CloudflareR2BucketLocationObservation,
 }
+import extdeps.cloudflare.r2_buckets { R2BucketResponse, R2BucketRead, R2BucketPresent, R2BucketAbsent }
+import gunbc.cloudflare.r2_origin { FabricDurableOrigin, FabricBootOrigin }
 
 data r2_witness_customer_profile: NonEmptyStr = "r2-witness-customer-profile"
 data r2_witness_data_handling_profile: NonEmptyStr = "r2-witness-data-handling-profile"
@@ -306,4 +311,162 @@ test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool {
       located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_downstream_obligation"),
     ),
   }
+}
+
+// THE REGION DERIVATION OVER SUPPLIED GET BUCKET ANSWERS. The inputs are designed reads at the
+// extdeps.cloudflare.r2_buckets R2BucketRead boundary; the real producer is
+// gunbc.cloudflare.r2_bucket_ensure read_r2_bucket, a live signed call that no witness can make, and
+// its inhabitance is the converge receipt that prints the same field (r2_bucket_read_location_text).
+
+fn t_origin_read(name: String, jurisdiction: String, location: String?) -> R2BucketRead {
+  R2BucketPresent {
+    bucket: R2BucketResponse { name: name, jurisdiction: Present { value: jurisdiction }, location: location },
+  }
+}
+
+fn t_region_is(r: ProviderRegionObservation, decl: String) -> Bool {
+  match r {
+    ProviderRegionUnread { obligation } => false,
+    ProviderRegionRead { region } => declaration_ref_eq(a: region, b: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: decl)),
+  }
+}
+
+fn t_region_unread(r: ProviderRegionObservation) -> Bool {
+  match r {
+    ProviderRegionRead { region } => false,
+    ProviderRegionUnread { obligation } => declaration_ref_eq(
+      a: obligation,
+      b: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
+    ),
+  }
+}
+
+test fn a_converged_read_reporting_enam_reads_the_enam_location() -> Bool {
+  t_region_is(
+    r: cloudflare_r2_region_from_read(
+      purpose: FabricDurableOrigin {},
+      read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: Present { value: "enam" }),
+    ),
+    decl: "r2_location_enam",
+  )
+}
+
+test fn a_converged_read_without_a_location_stays_unread() -> Bool {
+  t_region_unread(r: cloudflare_r2_region_from_read(
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: none),
+  ))
+}
+
+test fn an_unpublished_location_token_stays_unread() -> Bool {
+  t_region_unread(r: cloudflare_r2_region_from_read(
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: Present { value: "ENAM" }),
+  ))
+}
+
+test fn a_read_under_another_jurisdiction_lends_no_region() -> Bool {
+  t_region_unread(r: cloudflare_r2_region_from_read(
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "eu", location: Present { value: "weur" }),
+  ))
+}
+
+test fn a_read_of_another_bucket_lends_no_region() -> Bool {
+  t_region_unread(r: cloudflare_r2_region_from_read(
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-boot", jurisdiction: "default", location: Present { value: "enam" }),
+  ))
+}
+
+test fn an_absent_bucket_lends_no_region() -> Bool {
+  t_region_unread(r: cloudflare_r2_region_from_read(purpose: FabricDurableOrigin {}, read: R2BucketAbsent))
+}
+
+// The observation is keyed by purpose, so a boot-origin row cannot place the durable origin.
+test fn an_observation_of_another_purpose_does_not_place_the_durable_origin() -> Bool {
+  let boot = CloudflareR2BucketLocationObservation {
+    purpose: FabricBootOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-boot", jurisdiction: "default", location: Present { value: "enam" }),
+    observed_at: "2026-09-24T00:00:00Z",
+    receipt: "r2-witness-receipt",
+  }
+  let durable = CloudflareR2BucketLocationObservation {
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: Present { value: "weur" }),
+    observed_at: "2026-09-24T00:00:00Z",
+    receipt: "r2-witness-receipt",
+  }
+  t_region_unread(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [boot]))
+    && t_region_is(
+      r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [boot, durable]),
+      decl: "r2_location_weur",
+    )
+}
+
+fn t_durable_observation(location: String) -> CloudflareR2BucketLocationObservation {
+  CloudflareR2BucketLocationObservation {
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: Present { value: location }),
+    observed_at: "2026-09-24T00:00:00Z",
+    receipt: "r2-witness-receipt",
+  }
+}
+
+fn t_region_ambiguous(r: ProviderRegionObservation) -> Bool {
+  match r {
+    ProviderRegionRead { region } => false,
+    ProviderRegionUnread { obligation } => declaration_ref_eq(
+      a: obligation,
+      b: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_observation_ambiguous_obligation"),
+    ),
+  }
+}
+
+// Two valid, conflicting same-purpose reads refuse in BOTH orders: neither enam nor weur by position.
+test fn conflicting_same_purpose_observations_refuse_in_either_order() -> Bool {
+  let enam = t_durable_observation(location: "enam")
+  let weur = t_durable_observation(location: "weur")
+  t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [enam, weur]))
+    && t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [weur, enam]))
+}
+
+// A stale row beside a fresh one is the same ambiguity: agreement does not clear it either.
+test fn a_duplicated_observation_refuses_even_when_the_rows_agree() -> Bool {
+  let enam = t_durable_observation(location: "enam")
+  t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [enam, enam]))
+}
+
+test fn a_single_observation_is_read() -> Bool {
+  t_region_is(
+    r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [t_durable_observation(location: "enam")]),
+    decl: "r2_location_enam",
+  )
+}
+
+// THE CONSULTED CITATIONS ARE THE READINGS THE OBLIGATION NAMES, so durable storage is
+// researched-and-unanswered rather than never-looked.
+test fn durable_storage_cites_the_get_bucket_location_reading_as_consulted() -> Bool {
+  match cloudflare_r2_data_paths().durable_storage {
+    ProviderPathLocated { operator, jurisdiction, evidence } => false,
+    ProviderPathAbsent { evidence } => false,
+    ProviderPathUnread { obligation, consulted } =>
+      count(filter(consulted, c => declaration_ref_eq(
+        a: c,
+        b: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_get_bucket_location_reading"),
+      ))) == 1,
+  }
+}
+
+test fn no_production_path_is_never_looked() -> Bool {
+  let c = cloudflare_r2_data_paths()
+  let paths = [
+    c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+    c.control_plane, c.support_access, c.administrative_access, c.spill,
+  ]
+  count(filter(paths, p => match p {
+    ProviderPathUnread { obligation, consulted } => count(consulted) > 0,
+    ProviderPathLocated { operator, jurisdiction, evidence } => false,
+    ProviderPathAbsent { evidence } => false,
+  })) == 9
 }

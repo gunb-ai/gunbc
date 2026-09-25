@@ -337,6 +337,28 @@ fn utc_instant_before(a: Timestamp, b: Timestamp) -> Bool {
   a < b
 }
 
+// THE SIGNED DISTANCE IN SECONDS BETWEEN TWO CANONICAL INSTANTS, as a pure fold over the fields
+// utc_instant_is_canonical already validates -- so a window around an instant is a comparison of
+// two integers, not a clock call. Like utc_instant_before it is defined ONLY on canonical pairs;
+// the caller establishes canonicity first. Days are counted from a proleptic Gregorian origin
+// shifted by one 400-year cycle, which keeps every term non-negative (year 0000 included) without
+// changing any leap year; the shift cancels in the difference.
+data month_numbers: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+fn utc_instant_seconds(t: Timestamp) -> Int {
+  let year = number_at(t: t, offsets: year_offsets)
+  let month = number_at(t: t, offsets: month_offsets)
+  let shifted = year + 399
+  let days_before_year = 365 * shifted + shifted / 4 - shifted / 100 + shifted / 400
+  let days_before_month = fold(filter(month_numbers, m => m < month), init: 0, f: (acc, m) => acc + days_in_month(y: year, m: m))
+  let days = days_before_year + days_before_month + number_at(t: t, offsets: day_offsets) - 1
+  days * 86400 + number_at(t: t, offsets: hour_offsets) * 3600 + number_at(t: t, offsets: minute_offsets) * 60 + number_at(t: t, offsets: second_offsets)
+}
+
+fn utc_instant_seconds_after(later: Timestamp, earlier: Timestamp) -> Int {
+  utc_instant_seconds(t: later) - utc_instant_seconds(t: earlier)
+}
+
 // EXPIRY IS CHECKED WITH A STRICT COMPARISON AT THE BOUNDARY INSTANT.
 //
 // std.scoped_authorization grant_not_expired_at uses `<=`, which INCLUDES the expiry instant. That

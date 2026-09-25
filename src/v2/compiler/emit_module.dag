@@ -2,7 +2,7 @@ module v2.compiler.emit_module
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
-import v2.compiler.target_carriers { target_source_medium }
+import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
 import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.emission_provenance {
@@ -27,8 +27,6 @@ import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
 
-data emit_module_decl_separator: String = "\n\n"
-
 // The module source is ASSEMBLED FROM the contribution tree, never reconstructed by concatenating
 // strings beside it (std.emission_provenance): emit_module_text materializes what
 // emit_module_contribution built, so there is one authority for what bytes this fold produces and
@@ -44,11 +42,11 @@ fn emit_module_emit_unobserved_fragment(source: String) -> EmissionContribution 
   }
 }
 
-// The separator is AUTHORED: its bytes are the literal declared above in this .dag file, so its
+// The separator is AUTHORED: its bytes are the literal declared in v2.compiler.target_carriers, so its
 // origin is that declaration and not the fold that placed it.
 fn emit_module_separator_fragment() -> EmissionContribution {
   EmissionAuthoredFragment {
-    origin: decl_ref(module_path: "v2.compiler.emit_module", decl_name: "emit_module_decl_separator"),
+    origin: decl_ref(module_path: "v2.compiler.target_carriers", decl_name: "emit_module_decl_separator"),
     source: emit_module_decl_separator
   }
 }
