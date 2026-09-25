@@ -75,6 +75,8 @@ import v2.std.diagnostic {
   Diagnostics,
   ExternalContractUnknown,
   Locus,
+  NonEmptyDiagnostics,
+  UserInputBoundary,
   node_locus,
   Outcome,
   Unavailable,
@@ -2269,13 +2271,31 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) ->
               match bound_facts.grounding {
                 GroundingNotDerived { node: _ } => outcome_accepted(true)
                 DerivedGrounding { grounding: g } =>
-                  bind_outcome(
-                    o: coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: annotation),
-                    f: fn(_) { outcome_accepted(true) }
-                  )
+                  match coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: annotation) {
+                    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+                    Rejected { diagnostics: r } =>
+                      Rejected { diagnostics: infer_bind_annotation_refusal(annotation: annotation, cause: r) }
+                  }
               }
           }
       }
+  }
+}
+
+// THE REFUSAL IS THE ANNOTATION'S. Coercion's mismatch is located at the bound value it could not
+// carry across; it rides in front as the cause, and the fatal -- the last diagnostic, which every
+// consumer reads as the verdict -- is located at the authored annotation with its own reason.
+fn infer_bind_annotation_refusal(annotation: Node, cause: NonEmptyDiagnostics) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: cause.head,
+    tail: list_snoc_item(
+      xs: cause.tail,
+      item: Diagnostic {
+        reason: ^infer_reason_bound_value_does_not_inhabit_annotation,
+        at: node_locus(node: annotation),
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    )
   }
 }
 

@@ -101,6 +101,17 @@ fn bla_atom_in(n: Node, id: Symbol) -> Bool {
   })
 }
 
+// The annotation is a type expression; the bound value `x + x` is a Transform and the binder is `y`,
+// so a locus holding no computation and no `y` is the annotation's.
+fn bla_has_computation(n: Node) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, x) {
+    acc || match x.kind {
+      ComputationNode { behavior: _ } => true
+      _ => false
+    }
+  })
+}
+
 fn bla_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
 }
@@ -159,7 +170,8 @@ fn bla_infers(o: Outcome<Node>) -> Outcome<Bool> {
 
 // (5) INFER CHECKS THE BOUND VALUE AGAINST THE ANNOTATION through v2.std.coercion: an Int sum
 // ascribed Int is admitted; the same sum ascribed Bool resolves and then refuses with coercion's
-// typed mismatch. RED BEFORE the infer rule: the Bool ascription was admitted.
+// typed mismatch as the cause, and a fatal of its own located at the annotation `Bool`, not at the
+// sum. RED BEFORE the infer rule: the Bool ascription was admitted.
 test fn bla_infer_admits_int_ascribed_int() -> Bool {
   match bla_infers(o: bla_int_sum_as_int()) {
     Accepted { value: _, diagnostics: _ } => true
@@ -171,7 +183,14 @@ test fn bla_infer_refuses_int_ascribed_bool() -> Bool {
   tpb_accepts(o: bla_int_sum_as_bool())
     && match bla_infers(o: bla_int_sum_as_bool()) {
       Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: d } => bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+      Rejected { diagnostics: d } =>
+        bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
+          && match diagnostics_fatal(d: d).at {
+            NodeLocus { anchor: a } =>
+              !bla_has_computation(n: a.at) && !bla_atom_in(n: a.at, id: ^y)
+            _ => false
+          }
     }
 }
 
