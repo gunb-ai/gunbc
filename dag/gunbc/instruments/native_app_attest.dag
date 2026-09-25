@@ -1,6 +1,7 @@
 module gunbc.instruments.native_app_attest
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
+import v2.std.algebra { filter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import extdeps.standards.rfc_5280 { X509Certificate }
 import extdeps.standards.webauthn_authenticator_data { AuthenticatorData }
