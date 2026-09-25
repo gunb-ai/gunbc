@@ -52,7 +52,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -74,7 +74,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_spine_node, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -479,8 +479,12 @@ fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_match_arm_stmt_body)
 }
 
+// A service declaration lowers from its UNFOLDED parse subtree (body_lower_service_decl): its members
+// are interface or set-aside facts, never bodies, so folding them first would retain each one.
 fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
-  if emitted == ^dag_surface_fn_body {
+  if emitted == ^dag_surface_service_decl {
+    true
+  } else if emitted == ^dag_surface_fn_body {
     under_fn_decl
   } else {
     body_lower_is_deferred_lower_emitted(emitted: emitted)
@@ -7034,8 +7038,337 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   }
 }
 
+// SERVICE DECLARATIONS, AT DECLARATION GRADE. A service is an interface (DESIGN section 3): a named
+// product of function types. `service S { operation Op { input { a: A } output { b: B } } }` lowers
+// onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { a: A }, Conj { b: B }) } }`,
+// the same Arrow a function TYPE lowers to (body_lower_fn_type_lowered_optional) -- so the graft
+// flattens it like a record and the symbol index sees the service, its operations and their
+// payload fields. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
+// node_minimal's TransportSlot is NOT promoted: transport is a realization handler, not a node field).
+//
+// WHAT IS NOT LOWERED IS SET ASIDE, TYPED AND LOCATED, UNDER TWO COUNTED REASONS:
+//  - body_lowering_reason_realization_member_set_aside: transport / exit / response / mock_response.
+//    Realization per DESIGN section 3, never part of the interface, so the interface lowers without it.
+//  - body_lowering_reason_interface_member_unmodeled: readonly / idempotent / hermetic and an io
+//    field's `from "key"` / `= default` tail. These ARE interface facts (idempotent governs retry,
+//    DESIGN section 4b) with no typed carrier yet, so they rank for modeling under their own reason
+//    instead of hiding in the realization bucket (rfm service_interface_member_has_no_carrier).
+// A set-aside member is UNREACHABLE AS LOWERED: only the census door admits these diagnostics
+// (v2.compiler.normalized_tree admit_census_tree, whose carrier has no route to eval or emission);
+// the full door refuses them (admit_normalized_tree), so no stage that would need a service's
+// realization can be handed a service and assume a transport. Any member this lowering cannot read
+// retains the shell, which both doors refuse.
+//
+// THE NAME IS ONE LABEL, THE WHOLE DECLARED SPELLING (`shell.Find`), not a per-segment spine. A
+// spine collides at the module (dag/extdeps/shell.dag declares sixteen services under `shell`) and
+// needs a prefix merge in namespace_graft. FRONTIER, stated: the dotted label hides named parts
+// (DESIGN section 2) and a dotted reference to it does not resolve; the trigger is v2 resolving
+// service CALLS, at which point the spine plus a graft prefix merge becomes the required shape and
+// this label migrates in one transition.
+fn body_lower_service_set_aside(reason: Symbol, n: Node) -> Diagnostics {
+  Some { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: reason, n: n)) }
+}
+
+// The production shells directly beneath a node, looking through the two choice wrappers
+// (service_body_entry, operation_body_entry) that carry no fact of their own.
+fn body_lower_service_member_shells(root: Node) -> List<Node> {
+  fold(root.children, init: Empty, f: fn(acc, e) {
+    list_append(left: acc, right: body_lower_service_member_shells_at(node: e.target))
+  })
+}
+
+fn body_lower_service_member_shells_at(node: Node) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if (id == ^dag_surface_service_body_entry) || (id == ^dag_surface_operation_body_entry) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: inner } => body_lower_service_member_shells_at(node: inner)
+          Absent => [node]
+        }
+      } else {
+        [node]
+      }
+    Absent => body_lower_service_member_shells(root: node)
+  }
+}
+
+// An io field's `[from "key"] [= default]` tail is present when either optional captured anything.
+fn body_lower_io_field_tail_present(tail: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: tail) {
+    Absent => (is_empty_conj_root(n: tail) == false)
+    Present { value: pair } =>
+      (is_empty_conj_root(n: pair.left) == false) || (is_empty_conj_root(n: pair.right) == false)
+  }
+}
+
+
+fn body_lower_io_block(shell: Node) -> Outcome<Node> {
+  let refuse = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: shell)
+  )
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => refuse
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => refuse
+        Present { value: kw } =>
+          match sugar_sequence_pair_optional(node: kw.right) {
+            Absent => refuse
+            Present { value: brace } =>
+              match sugar_sequence_pair_optional(node: brace.right) {
+                Absent => refuse
+                Present { value: inner } =>
+                  match body_lower_comma_list_items_optional(list_capture: inner.left) {
+                    Absent => refuse
+                    Present { value: items } =>
+                      match fold(items, init: Present { value: IoAcc { edges: Empty, diagnostics: None } }, f: fn(acc, item) {
+                        match acc {
+                          Absent => Absent
+                          Present { value: a } =>
+                            match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+                              Absent => Absent
+                              Present { value: field } =>
+                                match body_lower_field_decl_edge_optional(item: field.left) {
+                                  Absent => Absent
+                                  Present { value: edge } =>
+                                    Present {
+                                      value: IoAcc {
+                                        edges: list_snoc_item(xs: a.edges, item: edge),
+                                        diagnostics: if body_lower_io_field_tail_present(tail: field.right) {
+                                          diagnostics_merge(
+                                            outer: a.diagnostics,
+                                            inner: body_lower_service_set_aside(reason: ^body_lowering_reason_interface_member_unmodeled, n: item)
+                                          )
+                                        } else {
+                                          a.diagnostics
+                                        }
+                                      }
+                                    }
+                                }
+                            }
+                        }
+                      }) {
+                        Absent => refuse
+                        Present { value: a } =>
+                          outcome_with_diagnostics(
+                            value: body_lower_payload_node(edges: a.edges, source: shell),
+                            diagnostics: a.diagnostics
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type IoAcc {
+  edges: List<Edge>,
+  diagnostics: Diagnostics,
+}
+
+type BodyLowerOperationAcc {
+  input: Optional<Node>,
+  output: Optional<Node>,
+  diagnostics: Diagnostics,
+}
+
+fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node) -> Outcome<BodyLowerOperationAcc> {
+  bind_outcome(o: acc, f: fn(a) {
+    match parse_production_emitted_identity_optional(node: member) {
+      Absent => body_lower_wrapper_retained_shell_as(shell: member)
+      Present { value: id } =>
+        if (id == ^dag_surface_input_block) || (id == ^dag_surface_output_block) {
+          bind_outcome(o: body_lower_io_block(shell: member), f: fn(io) {
+            if id == ^dag_surface_input_block {
+              match a.input {
+                Present { value: _ } =>
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
+                Absent =>
+                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io }, output: a.output, diagnostics: a.diagnostics })
+              }
+            } else {
+              match a.output {
+                Present { value: _ } =>
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
+                Absent =>
+                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io }, diagnostics: a.diagnostics })
+              }
+            }
+          })
+        } else if id == ^dag_surface_op_modifier {
+          body_lower_operation_acc_set_aside(a: a, reason: ^body_lowering_reason_interface_member_unmodeled, n: member)
+        } else if (id == ^dag_surface_transport)
+          || (id == ^dag_surface_exit_block)
+          || (id == ^dag_surface_response_block)
+          || (id == ^dag_surface_mock_response_block) {
+          body_lower_operation_acc_set_aside(a: a, reason: ^body_lowering_reason_realization_member_set_aside, n: member)
+        } else {
+          body_lower_wrapper_retained_shell_as(shell: member)
+        }
+    }
+  })
+}
+
+fn body_lower_operation_acc_set_aside(a: BodyLowerOperationAcc, reason: Symbol, n: Node) -> Outcome<BodyLowerOperationAcc> {
+  outcome_accepted(
+    value: BodyLowerOperationAcc {
+      input: a.input,
+      output: a.output,
+      diagnostics: diagnostics_merge(outer: a.diagnostics, inner: body_lower_service_set_aside(reason: reason, n: n))
+    }
+  )
+}
+
+// A member this lowering cannot read retains, typed by the one retention producer, whatever the
+// carrier type of the fold it interrupts: the retained shell's diagnostic rides a Rejected here
+// because a partially read service has no representation.
+fn body_lower_wrapper_retained_shell_as<T>(shell: Node) -> Outcome<T> {
+  outcome_rejected(d: body_lower_wrapper_retained_diagnostic(n: shell))
+}
+
+// An operation that declares no input (or no output) block exchanges the empty product.
+fn body_lower_io_payload_or_empty(o: Optional<Node>, source: Node) -> Node {
+  match o {
+    Present { value: payload } => payload
+    Absent => body_lower_payload_node(edges: Empty, source: source)
+  }
+}
+
+fn body_lower_operation(shell: Node) -> Outcome<Edge> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => body_lower_wrapper_retained_shell_as(shell: shell)
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => body_lower_wrapper_retained_shell_as(shell: shell)
+        Present { value: op_name } =>
+          bind_outcome(
+            o: fold(
+              body_lower_service_member_shells(root: captured),
+              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, diagnostics: None }),
+              f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
+            ),
+            f: fn(a) {
+              outcome_with_diagnostics(
+                value: Edge {
+                  label: Named { name: op_name },
+                  target: node_with_occurrence_id(
+                    kind: TypeNode { connective: Arrow },
+                    children: [
+                      Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.input, source: shell) },
+                      Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) }
+                    ],
+                    occurrence_id: shell.occurrence_id
+                  )
+                },
+                diagnostics: a.diagnostics
+              )
+            }
+          )
+      }
+  }
+}
+
+type BodyLowerServiceAcc {
+  operations: List<Edge>,
+  diagnostics: Diagnostics,
+}
+
+fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) -> Outcome<BodyLowerServiceAcc> {
+  bind_outcome(o: acc, f: fn(a) {
+    match parse_production_emitted_identity_optional(node: member) {
+      Absent => body_lower_wrapper_retained_shell_as(shell: member)
+      Present { value: id } =>
+        if id == ^dag_surface_qualified_name {
+          outcome_accepted(value: a)
+        } else if id == ^dag_surface_operation {
+          bind_outcome(o: body_lower_operation(shell: member), f: fn(op) {
+            outcome_accepted(value: BodyLowerServiceAcc { operations: list_snoc_item(xs: a.operations, item: op), diagnostics: a.diagnostics })
+          })
+        } else if id == ^dag_surface_transport {
+          outcome_accepted(
+            value: BodyLowerServiceAcc {
+              operations: a.operations,
+              diagnostics: diagnostics_merge(
+                outer: a.diagnostics,
+                inner: body_lower_service_set_aside(reason: ^body_lowering_reason_realization_member_set_aside, n: member)
+              )
+            }
+          )
+        } else {
+          body_lower_wrapper_retained_shell_as(shell: member)
+        }
+    }
+  })
+}
+
+fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_qualified_name) {
+    Absent => Absent
+    Present { value: qn_shell } =>
+      match parse_production_captured_child_optional(node: qn_shell) {
+        Absent => Absent
+        Present { value: qn_capture } =>
+          match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: qn_shell) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: segments, diagnostics: _ } =>
+              optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: segments)))
+          }
+      }
+  }
+}
+
+fn body_lower_service_decl(shell: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_service_name_optional(captured: captured) {
+        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Present { value: service_name } =>
+          bind_outcome(
+            o: fold(
+              body_lower_service_member_shells(root: captured),
+              init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, diagnostics: None }),
+              f: fn(acc, member) { body_lower_service_member(acc: acc, member: member) }
+            ),
+            f: fn(a) {
+              outcome_with_diagnostics(
+                value: node_with_occurrence_id(
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge { label: Named { name: service_name }, target: body_lower_payload_node(edges: a.operations, source: shell) }
+                  ],
+                  occurrence_id: shell.occurrence_id
+                ),
+                diagnostics: a.diagnostics
+              )
+            }
+          )
+      }
+  }
+}
+
+fn body_lowering_diagnostic_is_service_set_aside(d: Diagnostic) -> Bool {
+  (d.reason == ^body_lowering_reason_realization_member_set_aside)
+    || (d.reason == ^body_lowering_reason_interface_member_unmodeled)
+}
+
+fn body_lowering_diagnostics_carry_service_set_aside(d: Diagnostics) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: ne } =>
+      fold_list(
+        xs: ne.tail,
+        empty: body_lowering_diagnostic_is_service_set_aside(d: ne.head),
+        cons: fn(found, x) { found || body_lowering_diagnostic_is_service_set_aside(d: x) }
+      )
+  }
+}
+
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
-  if emitted == ^dag_surface_type_decl {
+  if emitted == ^dag_surface_service_decl {
+    body_lower_service_decl(shell: shell)
+  } else if emitted == ^dag_surface_type_decl {
     body_lower_type_decl(shell: shell)
   } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)

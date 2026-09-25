@@ -1,6 +1,9 @@
 module v2.compiler.normalized_tree
 
-import v2.compiler.body_lowering_fold { body_lowering_diagnostics_carry_wrapper_retention }
+import v2.compiler.body_lowering_fold {
+  body_lowering_diagnostics_carry_service_set_aside,
+  body_lowering_diagnostics_carry_wrapper_retention
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -80,6 +83,23 @@ fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
   }
 }
 
+// A SERVICE WITH A SET-ASIDE MEMBER IS UNREACHABLE AS LOWERED. Body lowering lowers a service's
+// interface and sets its realization members (transport, exit, response, mock_response) and its
+// unmodeled interface members (modifiers, io `from` / default tails) aside, typed and located
+// (v2.compiler.body_lowering_fold body_lower_service_decl). A NormalizedTree is what resolution,
+// eval and emission consume, and every one of those would need the set-aside facts to act on a
+// service -- so this door refuses, carrying each set-aside member's own located diagnostic as
+// pending, and nothing downstream can assume a default transport. Only the census door, whose
+// carrier has no route past the symbol index, admits them. Next-rung trigger: a realization binding
+// carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier.
+fn normalized_tree_service_set_aside_diagnostic(root: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^normalized_tree_reason_service_realization_unreachable,
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
@@ -92,6 +112,13 @@ fn admit_normalized_tree(
       diagnostics: rejected_with_pending(
         pending: diagnostics,
         rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
+      )
+    }
+  } else if body_lowering_diagnostics_carry_service_set_aside(d: diagnostics) {
+    Rejected {
+      diagnostics: rejected_with_pending(
+        pending: diagnostics,
+        rejected: diagnostics_singleton(d: normalized_tree_service_set_aside_diagnostic(root: root))
       )
     }
   } else {
@@ -134,6 +161,9 @@ type CensusTree sole_constructor {
 // could not read -- and a declaration census that silently dropped one would answer resolution with
 // a confident "not declared" (DESIGN section 5). A declaration that failed to PARSE never reaches
 // this door: the census entry takes a ParseTree.
+// A service's set-aside members (realization, unmodeled interface) are admitted HERE and only here:
+// the carrier's one reader is the symbol index, which needs the interface and never a realization,
+// while admit_normalized_tree refuses them for every consumer that would.
 fn admit_census_tree(
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
