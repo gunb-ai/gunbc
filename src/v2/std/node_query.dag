@@ -578,52 +578,6 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
   })
 }
 
-fn node_is_callee_reference(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Arrow } => true
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
-  }
-}
-
-fn node_is_call(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: callee } => node_is_callee_reference(node: callee)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
-fn call_callee_target(node: Node) -> Outcome<Node> {
-  if node_is_call(node: node) {
-    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-      Present { value: callee } => outcome_accepted(value: callee)
-      Absent =>
-        outcome_rejected(d: Diagnostic {
-          reason: ^call_callee_absent,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        })
-    }
-  } else {
-    outcome_rejected(d: Diagnostic {
-      reason: ^node_not_a_call,
-      at: node_locus(node: node),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    })
-  }
-}
-
-fn call_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    TailFound { tail: args } => args
-    TailAbsent => Empty
-  }
-}
-
 fn node_envelope_without_named_coordinate_go(
   root: Node,
   xs: FreeMonoid<Edge>,
