@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
 import extdeps.vllm.engram_layout { VllmEngramRankRows }
-import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition, v41_live_store_readback }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of, v41_magic_octets,
   V41ReadbackSample, V41SampleMagic, V41SampleStoreRecord, V41SampleSourceWeight, V41SampleSourceScale,
@@ -154,4 +154,14 @@ test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool {
   let foreign = v41_store_readback(spec: w_spec(), readings: V41StoreReadbackRead { host: "f" as NonEmptyStr, observed_at: "f" as NonEmptyStr, readings: concat(all, [w_read(p: WHonest, s: V41SampleStoreRecord { layer: 1, rank: 0, local_row: 1 })]) })
   w_refused_naming(v: missing, fragment: "owes magic layer.14.rank.1")
     && w_refused_naming(v: foreign, fragment: "record layer.1.rank.0 row 1 is not a sample the spec owes")
+}
+
+// THE LIVE READBACK VERIFIES: srv5's eight stores, read at every seam by fleet-converge run 36126002186,
+// are v41_place_row of the published rows at every sampled row, no seam is undiscriminating, and all 56
+// owed samples were read. A reading that stopped matching, or a spec whose seams moved, turns this red.
+test fn the_live_readback_of_the_eight_stores_verifies() -> Bool {
+  match v41_live_store_readback() {
+    V41StoreReadbackVerified { host: h, observed_at: _, samples: n } => (h as String) == "srv5" && n == 56
+    _ => false
+  }
 }
