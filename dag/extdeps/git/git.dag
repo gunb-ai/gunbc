@@ -941,7 +941,7 @@ fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
 // A LOCAL FETCH SOURCE IS TRUSTED AT ITS GIT DIR, NOT ITS WORKTREE. `git fetch <path>` spawns
 // git-upload-pack(1) on <path>, and upload-pack enters the repository through enter_repo() (git
 // path.c), which probes `<path>/.git` before `<path>` and -- with the CVE-2024-32004 fix, present in srv1's
-// packaged git (it reports 2.43.0, so the fix is a distribution backport and no version number
+// packaged git 1:2.43.0-1ubuntu7.3 (an Ubuntu security backport, so no upstream version number
 // bounds it) -- checks ownership with die_upon_dubious_ownership() against the directory it ENTERED. For a
 // non-bare source that is the git dir, so a safe.directory naming the worktree is never the path
 // compared (srv1 journal 2026-09-25 02:07:36: "detected dubious ownership in repository at
