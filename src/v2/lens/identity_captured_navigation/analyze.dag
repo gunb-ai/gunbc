@@ -139,10 +139,28 @@ fn node_source_symbol_of_occurrence(occ_id: std.occurrence_identity.OccurrenceId
           match extent {
             WholeFile => Absent
             ByteRange { start: start, end: end } =>
-              Present { value: symbol_intern_lexeme(lexeme: substring(s: source_text, start: start, end: end)) }
+              source_slice_of_byte_range(source_text: source_text, start: start, end: end)
           }
         _ => Absent
       }
+  }
+}
+
+// ByteRange is in UTF-8 octets and host `substring` indexes scalars, so the extent is converted
+// through v2.std.text string_scalar_index_of_octet first. An endpoint inside a scalar or past the
+// end names no source text, and fail-closes to Absent rather than slicing a neighbouring span.
+fn source_slice_of_byte_range(source_text: String, start: Int, end: Int) -> Optional<Symbol> {
+  let scalars = chars(s: source_text)
+  match string_scalar_index_of_octet(code_points: scalars, octet: start) {
+    OctetAtScalarBoundary { index: si } =>
+      match string_scalar_index_of_octet(code_points: scalars, octet: end) {
+        OctetAtScalarBoundary { index: ei } =>
+          Present { value: symbol_intern_lexeme(lexeme: substring(s: source_text, start: si, end: ei)) }
+        OctetInsideScalar => Absent
+        OctetBeyondEnd => Absent
+      }
+    OctetInsideScalar => Absent
+    OctetBeyondEnd => Absent
   }
 }
 
