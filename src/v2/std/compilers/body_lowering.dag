@@ -1,7 +1,7 @@
 module v2.std.compilers.body_lowering
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.algebra { contains, fold_list, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.diagnostic {
   Accepted,
@@ -36,7 +36,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   is_empty_conj_root,
-  node_synthetic
+  node_synthetic,
+  symbol_eq
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
@@ -208,20 +209,6 @@ fn view_refusal<T>(reason: Symbol, at: Node) -> Outcome<T> {
   outcome_rejected(d: body_lowering_diagnostic(reason: reason, n: at))
 }
 
-// An operand that is not lowered substrate: an empty Conj, a grammar sequence, or a production
-// capture the fold never consumed (one capture edge or, ambiguously, several -- never read as
-// "no capture"). Each is surface syntax standing where a lowered operand belongs.
-// Refusing it keeps the Node internally consistent; it does not detect an operand that was dropped
-// outright (see the note above the views).
-fn view_is_surface_residue(n: Node) -> Bool {
-  is_empty_conj_root(n: n)
-    || (match sugar_sequence_pair_optional(node: n) { Present { value: _ } => true  Absent => false })
-    || (match named_child_lookup(root: n, name: ^grammar_production_captured_node_projection) {
-          NamedChildFound { target: _ } => true
-          NamedChildAmbiguous => true
-          NamedChildMissing => false
-        })
-}
 
 // Every child of `site`, in order, provided every edge is positional and no child is an
 // empty-Conj residue; the first defect refuses at the node that carries it.
@@ -233,10 +220,9 @@ fn view_whole_positional_children(site: Node) -> Outcome<List<Node>> {
         match e.label {
           Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
           Positional =>
-            if view_is_surface_residue(n: e.target) {
-              view_refusal(reason: ^body_view_operand_residue, at: e.target)
-            } else {
-              outcome_accepted(value: list_snoc_item(xs: xs, item: e.target))
+            match operand_slot_of(n: e.target) {
+              ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
+              WholeOperand { node: t } => outcome_accepted(value: list_snoc_item(xs: xs, item: t))
             }
         }
     }
@@ -254,9 +240,6 @@ fn view_atom_identity_optional(n: Node) -> Optional<Symbol> {
   }
 }
 
-fn view_symbol_listed(id: Symbol, xs: List<Symbol>) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == id) })
-}
 
 // ONE CALL READER. application_read replaced v2.std.node_query node_is_call / call_callee_target /
 // call_argument_targets, which were deleted in the same change that cut their six production
@@ -338,8 +321,26 @@ fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
   })
 }
 
+// THE ONE CLASSIFIER of "is this node surface residue", answered as the coproduct every site
+// matches on. Residue is not lowered substrate: an empty Conj, a grammar sequence, or a production
+// capture the fold never consumed (one capture edge or, ambiguously, several -- never read as "no
+// capture"); each is surface syntax standing where a lowered operand belongs. Refusing it keeps the
+// Node internally consistent; it does not detect an operand that was dropped outright (see the note
+// above the views).
 fn operand_slot_of(n: Node) -> OperandSlot {
-  if view_is_surface_residue(n: n) { ResidueOperand { node: n } } else { WholeOperand { node: n } }
+  if is_empty_conj_root(n: n) {
+    ResidueOperand { node: n }
+  } else {
+    match sugar_sequence_pair_optional(node: n) {
+      Present { value: _ } => ResidueOperand { node: n }
+      Absent =>
+        match named_child_lookup(root: n, name: ^grammar_production_captured_node_projection) {
+          NamedChildFound { target: _ } => ResidueOperand { node: n }
+          NamedChildAmbiguous => ResidueOperand { node: n }
+          NamedChildMissing => WholeOperand { node: n }
+        }
+    }
+  }
 }
 
 // THE HEAD LAYER of the base read: the edges are all positional and the first is a callee. An Atom
@@ -370,16 +371,14 @@ fn application_head_read(site: Node) -> ApplicationHeadRead {
                 Present { value: AtomHead { identity: id } } =>
                   ApplicationHeadFound { head: head, head_identity: AtomHead { identity: id }, operands: rest }
                 Present { value: ArrowHead } =>
-                  if view_is_surface_residue(n: head) {
-                    application_head_refused(reason: ^body_view_operand_residue, at: head)
-                  } else {
-                    ApplicationHeadFound { head: head, head_identity: ArrowHead, operands: rest }
+                  match operand_slot_of(n: head) {
+                    ResidueOperand { node: _ } => application_head_refused(reason: ^body_view_operand_residue, at: head)
+                    WholeOperand { node: _ } => ApplicationHeadFound { head: head, head_identity: ArrowHead, operands: rest }
                   }
                 Absent =>
-                  if view_is_surface_residue(n: head) {
-                    application_head_refused(reason: ^body_view_operand_residue, at: head)
-                  } else {
-                    application_head_refused(reason: ^body_view_transform_head_not_callee, at: head)
+                  match operand_slot_of(n: head) {
+                    ResidueOperand { node: _ } => application_head_refused(reason: ^body_view_operand_residue, at: head)
+                    WholeOperand { node: _ } => application_head_refused(reason: ^body_view_transform_head_not_callee, at: head)
                   }
               }
           }
@@ -461,7 +460,7 @@ fn call_read(site: Node, operators: List<Symbol>) -> CallRead {
     Application { view: a } =>
       let call = Call { view: CallView { site: site, callee: a.head, callee_identity: a.head_identity, arguments: a.operands } }
       match a.head_identity {
-        AtomHead { identity: id } => if view_symbol_listed(id: id, xs: operators) { NotCall } else { call }
+        AtomHead { identity: id } => if contains(xs: operators, item: id, eq: symbol_eq) { NotCall } else { call }
         ArrowHead => call
       }
   }
@@ -480,8 +479,8 @@ fn operator_read(site: Node, binary_operators: List<Symbol>, prefix_operators: L
         ArrowHead => NotOperator
         AtomHead { identity: id } =>
           let arity = count(a.operands)
-          let binary = view_symbol_listed(id: id, xs: binary_operators)
-          let prefix = view_symbol_listed(id: id, xs: prefix_operators)
+          let binary = contains(xs: binary_operators, item: id, eq: symbol_eq)
+          let prefix = contains(xs: prefix_operators, item: id, eq: symbol_eq)
           if (binary && arity == 2) || (prefix && arity == 1) {
             Operator { view: OperatorView { site: site, operator: id, operands: a.operands } }
           } else if binary || prefix {
@@ -506,10 +505,9 @@ fn match_arm_view(arm: Node) -> Outcome<MatchArmView> {
                     match b.label {
                       Named { name: bn } =>
                         if (pn == ^match_arm_pattern) && (bn == ^match_arm_body) {
-                          if view_is_surface_residue(n: b.target) {
-                            view_refusal(reason: ^body_view_operand_residue, at: b.target)
-                          } else {
-                            outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: b.target })
+                          match operand_slot_of(n: b.target) {
+                            ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
+                            WholeOperand { node: body } => outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: body })
                           }
                         } else {
                           view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
