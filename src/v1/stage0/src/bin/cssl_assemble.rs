@@ -18,26 +18,16 @@ struct Args {
     entry_dag: PathBuf,
     #[arg(long)]
     root: PathBuf,
-    #[arg(
-        long,
-        default_value = "dag/gunbc/instruments/self_host_std_bridge_shims"
-    )]
-    std_bridge_dir: PathBuf,
 }
 
 fn main() {
     let args = Args::parse();
-    let std_bridge = if args.std_bridge_dir.is_absolute() {
-        args.std_bridge_dir
-    } else {
-        args.root.join(args.std_bridge_dir)
-    };
     let entry_dag = if args.entry_dag.is_absolute() {
         args.entry_dag
     } else {
         args.root.join(args.entry_dag)
     };
-    match assemble_seed_linked_closure(&args.out_dir, &entry_dag, &std_bridge) {
+    match assemble_seed_linked_closure(&args.out_dir, &entry_dag) {
         Ok(()) => {
             println!("CSSL_ASSEMBLE: PASS");
         }
