@@ -9,6 +9,7 @@ import v2.compiler.reference_conservation_admission {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.test.claim.body_type_annotation_refusal { btar_refusal_at_authored }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,10 +92,17 @@ test fn let_in_form_unchanged_holds() -> Bool {
   }
 }
 
-test fn typed_statement_let_lowers_holds() -> Bool {
+// A TYPED STATEMENT LET REFUSES AT ITS ANNOTATION, FOR THE DURATION OF A DECLARED GAP. This row
+// asserted the annotated let LOWERS; it did so by dropping `: Int` before resolve
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2), and the drop is
+// now a typed refusal located at the authored type. RESTORATION TRIGGER, naming the capability: a
+// v2.std.node Bind carrier for the let annotation (v2.std.type_binder `<type-annotation>`), read by
+// resolve in a type-position frame -- when it lands this row flips back to asserting the typed let
+// lowers, with its annotation CARRIED rather than explained as dropped.
+test fn typed_statement_let_refuses_at_its_annotation_holds() -> Bool {
   match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 36, end: 39), tail: Empty } }) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => btar_refusal_at_authored(d: d, id: ^Int)
   }
 }
 

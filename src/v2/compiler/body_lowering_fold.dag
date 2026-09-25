@@ -28,6 +28,7 @@ import v2.extdeps.languages.dag {
   dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
+  dag_lex_keyword_symbol,
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
@@ -3342,9 +3343,14 @@ fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
 // dag_token_kw_fn and the literal was erased (gunbc.recurring_failure_mode
 // body_type_annotation_dropped_before_resolve_in_v2). `true` / `false` are keyword tokens that ARE
 // literal operands and are read above by body_lower_literal_bool_atom_optional before this fallback.
+// KEYWORD, not token: an int literal reaches this fallback as an atom whose identity is the token CLASS
+// dag_token_int_literal (`let x = 1 in x` binds exactly that), so asking whether the atom is any lexer
+// token refused every such literal (v2.test.claim.body_lowering.statement_let_bind
+// let_in_form_unchanged_holds). The keyword classes are the rules lexed by a KeywordPattern
+// (v2.extdeps.languages.dag dag_lex_keyword_symbol).
 fn body_lower_atom_is_keyword_token(node: Node) -> Bool {
   match node_atom_identity_optional(node: node) {
-    Present { value: id } => dag_lex_token_symbol(sym: id) && !(id == ^dag_token_kw_true) && !(id == ^dag_token_kw_false)
+    Present { value: id } => dag_lex_keyword_symbol(sym: id) && !(id == ^dag_token_kw_true) && !(id == ^dag_token_kw_false)
     Absent => false
   }
 }

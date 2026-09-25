@@ -265,6 +265,22 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
   )
 }
 
+// A token class the rule set lexes by a KEYWORD pattern -- `fn`, `in`, `let` -- as distinct from the
+// classes it lexes by character classes or literals (an identifier, an int literal), which are also
+// token classes (lex_rule_set_token_class_member) and name operands.
+fn lex_rule_set_keyword_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  fold_list(
+    xs: rules.rules,
+    empty: false,
+    cons: fn(acc, rule) {
+      acc || match rule {
+        TokenRule { token_class: c, pattern: KeywordPattern { text: _ } } => c == token_class
+        _ => false
+      }
+    }
+  )
+}
+
 type LexPatternFold<R> {
   empty:       R
   literal:     fn(v2.std.text.String) -> R

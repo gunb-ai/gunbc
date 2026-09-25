@@ -89,6 +89,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_insert_token_classes,
   lex_rule_set_token_class_map,
+  lex_rule_set_keyword_class_member,
   lex_rule_set_token_class_member,
   symbol_intern_lexeme
 }
@@ -2953,6 +2954,13 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
 
 fn dag_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
+    rules: dag_lex_rules(),
+    token_class: sym
+  )
+}
+
+fn dag_lex_keyword_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_keyword_class_member(
     rules: dag_lex_rules(),
     token_class: sym
   )
