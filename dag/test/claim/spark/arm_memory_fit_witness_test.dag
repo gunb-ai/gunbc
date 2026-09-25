@@ -11,6 +11,7 @@ import std.measure {
 }
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.engine_args { PrefixCachingExplicit }
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, resolved_kv_layout, KvGroupLayout, FullAttention,
@@ -35,8 +36,9 @@ import gunbc.spark.pair_serving_capacity_floor {
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.arm_memory_fit {
   ArmMemoryComponent, ArmComponentBound, ArmRankDemand, ArmSupplyDeductions,
-  ArmPoolBound,
+  ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded,
   ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseIdleServing, ArmPhaseLoaderTransform, ArmPhasePeakServing,
+  ArmPhaseGraphCapture,
   ArmCheckpointResidency, ArmLoaderTransform, ArmRuntimeFixed, ArmCollectiveWorkspace,
   ArmActivationWorkspace, ArmGraphCapture, ArmKvCache, ArmFragmentationAllowance,
   ComponentBoundExact, ComponentBoundInterval, ComponentBoundCeiling, ComponentBoundOpen,
@@ -1014,6 +1016,492 @@ test fn w_the_joined_bound_participates_in_falsification() -> Bool {
   }
 }
 
+// ── WITNESS 18: THE WET RECEIPT BUNDLE — THE CONVERGED RUN'S RECEIPTS MEET THE 262144x6 SUBJECT ────
+//
+// THE BUNDLE, verbatim from the fleet logs of the converged bounded-experiment run (2026-09-25,
+// engine v0.1.dev1+g8d09804c8, profile 64K window x 1 seat x 2048 batched tokens x fp8 KV x 8567
+// basis points, all lines subject-bound per rank). Head EngineCore line [kv_cache_utils.py:2312]:
+// "GPU KV cache size: 1,805,689 tokens, Maximum concurrency for 65,536 tokens per request: 27.55x".
+// Per-rank worker lines [gpu_worker.py:867], figures in 0.01 GiB print precision:
+//
+//   rank 0 (TP0, srv9,  head):  pool 121.69, envelope 104.25, weights+non-torch 77.01, peak activation 3.16, graph 0.02,  KV arena 24.08
+//   rank 1 (TP1, srv10):        pool 121.69, envelope 104.25, weights+non-torch 81.06, peak activation 4.26, graph -2.54, KV arena 18.93
+//   rank 2 (TP2, srv12):        pool 121.69, envelope 104.25, weights+non-torch 80.66, peak activation 3.76, graph 0.07,  KV arena 19.84
+//   rank 3 (TP3, srv11, LIMITING): pool 119.69, envelope 102.54, weights+non-torch 81.59, peak activation 3.92, graph 0.09, KV arena 17.03
+//
+// THE FIVE MODELING LAWS these receipts obey, stated once because each is load-bearing:
+//   1. THE KV ARENA IS SUPPLY, NEVER DEMAND. "Current kv cache memory in use" is the ALLOCATED
+//      RESIDUAL ARENA (envelope - weights - activation - graph): 104.25 - 77.01 - 3.16 - 0.02 = 24.06
+//      on rank 0, matching the printed 24.08 at the line's own rounding. It is never read as the
+//      64K seat's demand and never extrapolated into a seat count.
+//   2. THE KV DEMAND SIDE IS THE ENGINE'S TOKEN INVENTORY, in tokens: 1,805,689 tokens of
+//      group-aware capacity, sized by the engine FROM THE LIMITING RANK's arena. The 262144 x 6
+//      subject's demand is 1,572,864 tokens <= 1,805,689 BY THE ENGINE'S OWN COUNT; the per-rank
+//      BYTE ceiling below is the allocator's arena (a supply fact), not a per-seat derivation.
+//   3. THE 64K PEAK ACTIVATIONS DISCHARGE NOTHING HERE. They are engine-reported peaks at the 64K
+//      window with 2048-token chunked prefill; they do not cover a 262144-window lifetime and are
+//      carried as ObservationOnly, so the 262K prefill workspace (e.g. the sparse-indexer logits
+//      buffer, configuration-capped at 64 MiB by VLLM_SPARSE_INDEXER_MAX_LOGITS_MB) stands as the
+//      named per-rank activation obligation. A zero is not smuggled in.
+//   4. THE CHECKPOINT TERMS ARE THE MEASURED PER-RANK weights+non-torch VALUES, not an even
+//      split: 77.01 / 81.06 / 80.66 / 81.59 GiB falsify the even-placement assumption by
+//      measurement, and each rank carries its own.
+//   5. NO layers x width x tokens FORMULA anywhere: GLM-5.3-Flash is hybrid MLA + linear
+//      attention with per-group cache costs (extdeps.vllm.kv_group_metadata); the engine's own
+//      token-capacity number is the only KV authority these receipts cite.
+//
+// THE EXPECTED VERDICT IS UNESTABLISHED, NAMING THE OPEN TERMS: checkpoint-residency, graph-capture
+// and kv-cache discharge to measured ceilings on all four ranks; loader-transform, runtime-fixed,
+// collective-workspace, fragmentation-allowance stay open (the bundle carries no such receipts) and
+// activation-workspace stays open as the named 262K prefill obligation on every rank; both supply
+// deductions stay open (the bundle reads the device pool, not the host share of it).
+
+// THE PER-RANK FIGURES, stored at the lines' 0.01 GiB print precision (centi-GiB integers); the
+// graph_printed field keeps the engine's verbatim figure because rank 1's is negative.
+type FxWetRank {
+  rank: Nat
+  host: NonEmptyStr
+  weights_centi_gib: Nat
+  activation_centi_gib: Nat
+  graph_printed: NonEmptyStr
+  graph_bound_centi_gib: Nat
+  kv_centi_gib: Nat
+  pool_centi_gib: Nat
+  envelope_centi_gib: Nat
+}
+
+data fx_wet_tp0: FxWetRank = FxWetRank {
+  rank: 0, host: "srv9" as NonEmptyStr,
+  weights_centi_gib: 7701, activation_centi_gib: 316, graph_printed: "0.02" as NonEmptyStr,
+  graph_bound_centi_gib: 3, kv_centi_gib: 2408, pool_centi_gib: 12169, envelope_centi_gib: 10425,
+}
+
+data fx_wet_tp1: FxWetRank = FxWetRank {
+  rank: 1, host: "srv10" as NonEmptyStr,
+  weights_centi_gib: 8106, activation_centi_gib: 426, graph_printed: "-2.54" as NonEmptyStr,
+  graph_bound_centi_gib: 0, kv_centi_gib: 1893, pool_centi_gib: 12169, envelope_centi_gib: 10425,
+}
+
+data fx_wet_tp2: FxWetRank = FxWetRank {
+  rank: 2, host: "srv12" as NonEmptyStr,
+  weights_centi_gib: 8066, activation_centi_gib: 376, graph_printed: "0.07" as NonEmptyStr,
+  graph_bound_centi_gib: 8, kv_centi_gib: 1984, pool_centi_gib: 12169, envelope_centi_gib: 10425,
+}
+
+// THE LIMITING RANK: the smallest pool and the smallest residual arena, which is the rank the
+// engine sized the whole inventory against.
+data fx_wet_tp3: FxWetRank = FxWetRank {
+  rank: 3, host: "srv11" as NonEmptyStr,
+  weights_centi_gib: 8159, activation_centi_gib: 392, graph_printed: "0.09" as NonEmptyStr,
+  graph_bound_centi_gib: 10, kv_centi_gib: 1703, pool_centi_gib: 11969, envelope_centi_gib: 10254,
+}
+
+data fx_wet_ranks: List<FxWetRank> = [fx_wet_tp0, fx_wet_tp1, fx_wet_tp2, fx_wet_tp3]
+
+data fx_wet_kv_inventory_tokens: Nat = 1805689
+
+data fx_wet_head_line: NonEmptyStr = "GPU KV cache size: 1,805,689 tokens, Maximum concurrency for 65,536 tokens per request: 27.55x [kv_cache_utils.py:2312, head EngineCore, srv9, 2026-09-25]" as NonEmptyStr
+
+// THE BYTE CONVERSIONS. A printed c centi-GiB is widened by ONE reporter precision unit (0.01 GiB)
+// when it bounds a term above: the true value lies below (c + 1) centi-GiB. Observation samples
+// carry the printed figure itself, rounded to the nearest byte.
+fn fx_wet_ceiling_bytes(centi: Nat) -> ByteSize {
+  byte_size(count: ((centi + 1) * 1073741824 + 99) / 100)
+}
+
+fn fx_wet_observed_bytes(centi: Nat) -> ByteSize {
+  byte_size(count: (centi * 1073741824 + 50) / 100)
+}
+
+// RANK 1's graph figure is the one modeling call in the byte layer: the engine printed -2.54 GiB
+// (capture memory pooled against the profiling buffers, netting BELOW the pre-capture baseline).
+// A demand cannot be negative, so the tight true ceiling is 0 bytes; the verbatim -2.54 rides the
+// receipt text and is never silently dropped.
+fn fx_wet_graph_ceiling_bytes(centi: Nat) -> ByteSize {
+  if centi == 0 {
+    byte_size(count: 0)
+  } else {
+    fx_wet_ceiling_bytes(centi: centi)
+  }
+}
+
+// THE 0.01-GiB FIGURE RENDERER, for quoting the wet lines verbatim inside receipt texts.
+fn fx_wet_gib_wire(centi: Nat) -> String {
+  let whole = centi / 100
+  let frac = centi - whole * 100
+  join([
+    to_string(whole), ".",
+    if frac < 10 { join(["0", to_string(frac)], "") } else { to_string(frac) },
+  ], "")
+}
+
+fn fx_wet_worker_line(r: FxWetRank) -> NonEmptyStr {
+  join([
+    "Free memory on device (", fx_wet_gib_wire(centi: r.pool_centi_gib), "/", fx_wet_gib_wire(centi: r.pool_centi_gib),
+    " GiB). Desired GPU memory utilization is (0.8567, ", fx_wet_gib_wire(centi: r.envelope_centi_gib),
+    " GiB). Actual usage is ", fx_wet_gib_wire(centi: r.weights_centi_gib), " GiB weights+non-torch, ",
+    fx_wet_gib_wire(centi: r.activation_centi_gib), " GiB peak activation, ", r.graph_printed as String,
+    " GiB CUDAGraph. ... Current kv cache memory in use is ", fx_wet_gib_wire(centi: r.kv_centi_gib), " GiB. [gpu_worker.py:867]",
+  ], "") as NonEmptyStr
+}
+
+// THE RECEIPT TEXT NAMES THE SUBJECT on every receipt, as the join's provenance wall requires:
+// checkpoint, runtime and topology wires, host, rank, date, engine version, and the quoted line.
+fn fx_wet_receipt(kind: NonEmptyStr, host: NonEmptyStr, rank: Nat, line: NonEmptyStr) -> NonEmptyStr {
+  join([
+    kind as String, " | wet line: ", line as String,
+    " | measured 2026-09-25 on host ", host as String, " (TP rank ", to_string(rank),
+    ") by engine v0.1.dev1+g8d09804c8 (extdeps.vllm.server Vllm8d09804) | bounded-experiment profile 64K window x 1 seat x 2048 batched tokens x fp8 KV x 8567 basis points | subject ",
+    fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+  ], "") as NonEmptyStr
+}
+
+fn fx_wet_checkpoint_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmCheckpointResidency,
+    rank: r.rank,
+    phase: ArmPhaseIdleServing,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_ceiling_bytes(centi: r.weights_centi_gib),
+    receipt: fx_wet_receipt(kind: "CheckpointRankResidencyBound" as NonEmptyStr, host: r.host, rank: r.rank, line: fx_wet_worker_line(r: r)),
+  }
+  ArmComponentReceipt { rank: r.rank, component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
+}
+
+fn fx_wet_graph_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmGraphCapture,
+    rank: r.rank,
+    phase: ArmPhaseGraphCapture,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_graph_ceiling_bytes(centi: r.graph_bound_centi_gib),
+    receipt: join([
+      "GraphCaptureBound | wet line: ", fx_wet_worker_line(r: r) as String,
+      " | rank 1's printed -2.54 GiB nets below the pre-capture baseline (capture memory pooled against the profiling buffers); a demand cannot be negative, so the tight true ceiling is 0 bytes and the verbatim figure is quoted, not dropped | measured 2026-09-25 by engine v0.1.dev1+g8d09804c8 | subject ",
+      fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    ], "") as NonEmptyStr,
+  }
+  ArmComponentReceipt { rank: r.rank, component: ArmGraphCapture, class: arm_classify_measurement(m: m) }
+}
+
+// THE KV RECEIPT IS THE HEAD INVENTORY, NOT A LAYOUT RECEIPT: it vouches capacity in TOKENS for
+// this subject's seat population and bounds the per-rank allocator bytes by the rank's own arena.
+// It does NOT vouch the per-group page bytes (extdeps.vllm.kv_layout stays open for that); what it
+// discharges is this subject's kv-cache term, on the engine's own group-aware authority.
+fn fx_wet_kv_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmKvCache,
+    rank: r.rank,
+    phase: ArmPhaseIdleServing,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_ceiling_bytes(centi: r.kv_centi_gib),
+    receipt: join([
+      "KvTokenCapacityInventory (the engine's group-aware KV cache inventory; NOT a KvLayoutReceipt: per-group page bytes stay open at extdeps.vllm.kv_layout) | wet line: ",
+      fx_wet_head_line as String,
+      " | per-rank residual arena [gpu_worker.py:867]: ", fx_wet_gib_wire(centi: r.kv_centi_gib),
+      " GiB = envelope - weights - activation - graph on this rank, the ALLOCATED RESIDUAL ARENA and a supply fact, never per-seat demand; the engine sized the inventory FROM THE LIMITING RANK (TP3/srv11, 17.03 GiB), and the subject's 6 seats x 262144 tokens = 1,572,864 tokens stand within 1,805,689 by the engine's own count | measured 2026-09-25 on host ",
+      r.host as String, " (TP rank ", to_string(r.rank), ") by engine v0.1.dev1+g8d09804c8 | subject ",
+      fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    ], "") as NonEmptyStr,
+  }
+  ArmComponentReceipt { rank: r.rank, component: ArmKvCache, class: arm_classify_measurement(m: m) }
+}
+
+// THE ACTIVATION RECEIPT CARRIES THE NAMED 262K PREFILL OBLIGATION on its receipt text: the
+// measured peak is a 64K-window / 2048-token-chunk figure, it does not cover a 262144-window
+// lifetime, and it therefore discharges nothing on this subject (the classifier reads
+// covers_lifetime and lands ObservationOnly). The 262K-length-dependent workspace term -- e.g. the
+// sparse-indexer logits buffer, configuration-capped at 64 MiB by VLLM_SPARSE_INDEXER_MAX_LOGITS_MB
+// -- is named here so the obligation cannot vanish into a silently unchanged open bound.
+fn fx_wet_activation_receipt(r: FxWetRank) -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmActivationWorkspace,
+    rank: r.rank,
+    phase: ArmPhaseProfiling,
+    workload: token_count(count: 65536),
+    covers_lifetime: false,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_observed_bytes(centi: r.activation_centi_gib),
+    receipt: join([
+      "ActivationWorkspaceBound-candidate | wet line: ", fx_wet_worker_line(r: r) as String,
+      " | 262K PREFILL WORKSPACE OBLIGATION: this peak is measured at the 64K window with 2048-token chunked prefill (max_num_batched_tokens=2048); it does not cover a 262144-token window lifetime and discharges no 262K-length-dependent workspace term, e.g. the sparse-indexer logits buffer capped at 64 MiB by VLLM_SPARSE_INDEXER_MAX_LOGITS_MB; an ActivationWorkspaceBound receipt measured ON THE 262144 x 6 SUBJECT is what discharges it | measured 2026-09-25 on host ",
+      r.host as String, " (TP rank ", to_string(r.rank), ") by engine v0.1.dev1+g8d09804c8 | subject ",
+      fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
+    ], "") as NonEmptyStr,
+  }
+  ArmComponentReceipt { rank: r.rank, component: ArmActivationWorkspace, class: arm_classify_measurement(m: m) }
+}
+
+fn fx_wet_bundle() -> List<ArmComponentReceipt> {
+  flat_map(fx_wet_ranks, r => [
+    fx_wet_checkpoint_receipt(r: r),
+    fx_wet_graph_receipt(r: r),
+    fx_wet_kv_receipt(r: r),
+    fx_wet_activation_receipt(r: r),
+  ])
+}
+
+// THE POOL THE WET BUNDLE READS: per-rank totals 121.69 / 121.69 / 121.69 / 119.69 GiB. The span
+// runs one reporter precision unit below the smallest reading to one above the largest, so BOTH
+// endpoints cover every rank of the arm and the conservative endpoint is the LIMITING RANK's.
+data fx_wet_pool_low: ByteSize = byte_size(count: 128505421496)
+
+data fx_wet_pool_high: ByteSize = byte_size(count: 130674379980)
+
+fn fx_wet_pool() -> ArmPoolBound {
+  match closed_interval(low: fx_wet_pool_low, high: fx_wet_pool_high, le: measure_le) {
+    IntervalReady { interval: i } =>
+      ArmPoolBounded {
+        span: i,
+        how: "wet per-rank pool readings 2026-09-25 [gpu_worker.py:867]: 121.69 GiB on TP0/srv9, TP1/srv10 and TP2/srv12; 119.69 GiB on TP3/srv11; read to 0.01 GiB, so the span runs one precision unit below the smallest reading (119.68 GiB) to one above the largest (121.70 GiB) and covers every rank" as NonEmptyStr,
+      }
+    IntervalRefused { reason: r } => ArmPoolUnbounded { obligation: r }
+  }
+}
+
+// THE DEDUCTIONS THE BUNDLE DOES NOT COVER: it reads each rank's device pool, nothing about the
+// host share of the unified pool or foreign residency, so both stay open obligations by law
+// ("an unmodeled pool is unestablished, not refused" cuts both ways: no receipt, no bound).
+fn fx_wet_deductions() -> ArmSupplyDeductions {
+  ArmSupplyDeductions {
+    host_os_control_reserve: ComponentBoundOpen {
+      obligation: "no measured upper bound exists for the host/OS/control-plane reserve of the unified pool; the 2026-09-25 bundle reads each rank's device pool but does not inventory the host share of it" as NonEmptyStr,
+    },
+    foreign_residency: ComponentBoundOpen {
+      obligation: "no inventory of protected non-arm residency exists for the serving hosts; the 2026-09-25 bundle reads each rank's own pool only" as NonEmptyStr,
+    },
+  }
+}
+
+// THE SUBJECT: 6 seats of 262144 tokens, 2048 batched, fp8 KV, 8567 basis points -- the derived
+// count the inventory supports -- priced through the receipt join.
+fn fx_wet_intent() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+fn fx_wet_profile() -> ServingLaunchProfile {
+  profile_for_intent(
+    intent: fx_wet_intent(),
+    decided_gpu_memory_basis_points: basis_point(count: 8567),
+    kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true })
+}
+
+fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
+  arm_memory_fit_subject_with_receipts(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    intent: fx_wet_intent(),
+    requested_profile: fx_wet_profile(),
+    pool: fx_wet_pool(),
+    deductions: fx_wet_deductions(),
+    receipts: receipts)
+}
+
+test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool {
+  match fx_wet_join(receipts: fx_wet_bundle()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } => {
+      let rank0 = first(filter(subject.ranks, r => r.rank == 0))
+      let rank1 = first(filter(subject.ranks, r => r.rank == 1))
+      let rank3 = first(filter(subject.ranks, r => r.rank == 3))
+      (match rank0 {
+        Present { value: rd } =>
+          match rd.checkpoint_residency {
+            ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 82699595285
+            _ => false
+          }
+        Absent => false
+      })
+        && (match rank1 {
+          Present { value: rd } =>
+            match rd.graph_capture {
+              ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 0
+              _ => false
+            }
+          Absent => false
+        })
+        && (match rank3 {
+          Present { value: rd } =>
+            match rd.kv_cache {
+              ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 18296560681
+              _ => false
+            }
+          Absent => false
+        })
+        && (match arm_memory_fit_verdict(subject: subject) {
+          ArmMemoryFitUnestablished { obligations: _ } => true
+          _ => false
+        })
+    }
+  }
+}
+
+test fn w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
+  match fx_wet_join(receipts: fx_wet_bundle()) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) == 22
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 1 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 2 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 3 activation-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 0 loader-transform has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 1 runtime-fixed has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 2 collective-workspace has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 3 fragmentation-allowance has no defensible bound"))
+            && any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve"))
+            && any(os, o => string_contains(s: o as String, pattern: "foreign-residency"))
+            && !any(os, o => string_contains(s: o as String, pattern: "checkpoint-residency has no defensible bound"))
+            && !any(os, o => string_contains(s: o as String, pattern: "graph-capture has no defensible bound"))
+            && !any(os, o => string_contains(s: o as String, pattern: "kv-cache has no defensible bound"))
+        _ => false
+      }
+  }
+}
+
+// THE PREFILL OBLIGATION IS PRESENT AND NAMED: every rank's activation-workspace bound is still
+// open after the join, and every activation receipt is ObservationOnly whose receipt text names
+// the 262144-window lifetime, the sparse-indexer buffer and its 64 MiB configuration cap.
+test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool {
+  let acts = filter(fx_wet_bundle(), r => r.component == ArmActivationWorkspace)
+  length(acts) == 4
+    && all(acts, r =>
+      match r.class {
+        ObservationOnly { measurement: m, why: _ } =>
+          string_contains(s: m.receipt as String, pattern: "262144")
+            && string_contains(s: m.receipt as String, pattern: "sparse-indexer")
+            && string_contains(s: m.receipt as String, pattern: "64 MiB")
+        _ => false
+      })
+    && (match fx_wet_join(receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb =>
+          match rb.activation_workspace {
+            ComponentBoundOpen { obligation: _ } => true
+            _ => false
+          })
+    })
+}
+
+// THE SIX-SEAT DERIVATION IS PINNED: floor(1,805,689 / 262,144) = 6 by the engine's own inventory,
+// the subject prices exactly that population, and the total resident tokens (6 x 262,144 =
+// 1,572,864) stand inside the inventory with 232,825 tokens of slack.
+test fn w_the_six_seat_derivation_is_pinned_to_the_engine_inventory() -> Bool {
+  fx_wet_kv_inventory_tokens / 262144 == 6
+    && 6 * 262144 == 1572864
+    && 1572864 <= fx_wet_kv_inventory_tokens
+    && fx_wet_kv_inventory_tokens - 1572864 == 232825
+    && string_contains(s: fx_wet_head_line as String, pattern: "1,805,689")
+    && string_contains(s: fx_wet_head_line as String, pattern: "27.55x")
+    && (match fx_wet_join(receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        intent_max_active_sequences(i: subject.intent) == 6
+          && token_count_value(t: intent_max_single_sequence_tokens(i: subject.intent)) == 262144
+          && token_count_value(t: intent_max_total_resident_tokens(i: subject.intent)) == 1572864
+    })
+}
+
+// THE NO-LINEAR-EXTRAPOLATION LAW AS A RED CONTROL. The engine sized the inventory from TP3/srv11's
+// residual arena (17.03 GiB -- the smallest); TP0/srv9's arena is 24.08 GiB. Deriving a seat count by
+// scaling the inventory linearly from TP0's leftover is the forbidden route, and its number is
+// pinned here so the row goes RED the moment any spelling wires arena bytes into a seat count:
+// floor(1,805,689 x 2408 / 1703 / 262,144) = 9, not 6 -- the linear route fabricates three seats the
+// engine's own count does not admit.
+test fn w_the_linear_arena_route_fabricates_nine_seats_and_is_refused() -> Bool {
+  let seats_via_tp0_arena_linear = (fx_wet_kv_inventory_tokens * 2408 / 1703) / 262144
+  (match first(filter(fx_wet_ranks, r => r.rank == 3)) {
+    Present { value: tp3 } => tp3.host == "srv11" as NonEmptyStr && tp3.pool_centi_gib == 11969 && tp3.kv_centi_gib == 1703
+    Absent => false
+  })
+    && (match first(filter(fx_wet_ranks, r => r.rank == 0)) {
+      Present { value: tp0 } => tp0.kv_centi_gib == 2408
+      Absent => false
+    })
+    && seats_via_tp0_arena_linear == 9
+    && seats_via_tp0_arena_linear != 6
+    && (match fx_wet_join(receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } => intent_max_active_sequences(i: subject.intent) == 6
+    })
+}
+
+// THE LIMITING-RANK CONTROL ON THE ENVELOPE WALL. The decided envelope the proof prices derives
+// from the pool span (extdeps.vllm.runtime_defaults vllm_requested_envelope_bytes). Priced from
+// the wet span, the conservative wall (102.5298 GiB at 8567 basis points off the 119.68 GiB low)
+// sits BELOW the band TP3/srv11's printed 102.54 GiB envelope implies ([102.535, 102.545) GiB at
+// 0.01 GiB print precision). Priced from TP0's reading alone (121.68 GiB low), the conservative
+// wall would read 104.2433 GiB -- ABOVE the limiting rank's actual envelope, a wall ~1.7 GiB more
+// generous than the engine's own decision on the rank that binds. Swapping TP0's numbers in
+// changes the wall; this row is the discriminator.
+test fn w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall() -> Bool {
+  let tp3_band_low = byte_size(count: 110096117923)
+  let tp3_band_high = byte_size(count: 110106855342)
+  let tp0_only_low = byte_size(count: 130652905144)
+  let wet_env_low = vllm_requested_envelope_bytes(device_total: fx_wet_pool_low, utilization: basis_point(count: 8567))
+  let tp0_env_low = vllm_requested_envelope_bytes(device_total: tp0_only_low, utilization: basis_point(count: 8567))
+  measure_le(a: wet_env_low, b: tp3_band_low)
+    && !measure_le(a: tp0_env_low, b: tp3_band_high)
+}
+
+// THE JOIN'S WALLS EXTEND TO THE WET TERMS: a second receipt for an already-discharged term, a
+// receipt on a rank this topology does not carry, and a bundle whose provenance names another
+// checkpoint are each refused before any verdict exists.
+test fn w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms() -> Bool {
+  (match fx_wet_join(receipts: concat(fx_wet_bundle(), [fx_wet_checkpoint_receipt(r: fx_wet_tp0)])) {
+    ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "two receipts name rank 0 checkpoint-residency")
+    ArmMemorySubjectReady { subject: _ } => false
+  })
+    && (match fx_wet_join(receipts: concat(fx_wet_bundle(), [fx_wet_rank4_receipt()])) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "rank 4")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+    && (match arm_memory_fit_subject_with_receipts(
+      checkpoint: Glm53Exl3_205,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      intent: fx_wet_intent(),
+      requested_profile: fx_wet_profile(),
+      pool: fx_wet_pool(),
+      deductions: fx_wet_deductions(),
+      receipts: fx_wet_bundle()) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
+      ArmMemorySubjectReady { subject: _ } => false
+    })
+}
+
+// A RECEIPT ON A RANK OUTSIDE THE TOPOLOGY, built from rank 0's own wet figures with the rank
+// index moved: the roster wall must refuse it, not drop it.
+fn fx_wet_rank4_receipt() -> ArmComponentReceipt {
+  let m = ArmMeasurement {
+    component: ArmCheckpointResidency,
+    rank: 4,
+    phase: ArmPhaseIdleServing,
+    workload: token_count(count: 65536),
+    covers_lifetime: true,
+    protocol: ProtocolEngineReportedMaximum,
+    observed: fx_wet_ceiling_bytes(centi: fx_wet_tp0.weights_centi_gib),
+    receipt: fx_wet_receipt(kind: "CheckpointRankResidencyBound" as NonEmptyStr, host: fx_wet_tp0.host, rank: 4, line: fx_wet_worker_line(r: fx_wet_tp0)),
+  }
+  ArmComponentReceipt { rank: 4, component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
+}
+
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
   w_the_production_tuple_is_unestablished_with_named_obligations()
     && w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank()
@@ -1045,4 +1533,11 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_an_observation_receipt_discharges_nothing()
     && w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance()
     && w_the_joined_bound_participates_in_falsification()
+    && w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv()
+    && w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms()
+    && w_the_262k_prefill_workspace_is_present_and_named()
+    && w_the_six_seat_derivation_is_pinned_to_the_engine_inventory()
+    && w_the_linear_arena_route_fabricates_nine_seats_and_is_refused()
+    && w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall()
+    && w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms()
 }
