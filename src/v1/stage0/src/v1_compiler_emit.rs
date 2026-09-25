@@ -65,7 +65,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::item_is_effectful_callee;
+pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
@@ -3184,7 +3184,7 @@ pub fn emit_unified_operation_method(
             bound.clone(),
             op_text.clone(),
             si.clone(),
-            (method_depth.clone() + 1),
+            v1_rt::int_add(method_depth.clone(), 1),
         );
         let sig = v1_rt::concat(
             v1_rt::concat(
@@ -3215,7 +3215,10 @@ pub fn emit_unified_operation_method(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(sig.clone(), spec.block_syntax.clone().block_open.clone()),
-                    crate::v1_compiler_emit_core_support::make_indent((method_depth.clone() + 1)),
+                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                        method_depth.clone(),
+                        1,
+                    )),
                 ),
                 body.clone(),
             )
@@ -3482,7 +3485,7 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
                 .clone()
                 .iter()
                 .cloned()
-                .take(((stmts.clone().len() as i64) - 1) as usize)
+                .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
                 .collect::<Vec<_>>(),
         )
     }
@@ -3762,7 +3765,10 @@ pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> Str
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(tco.loop_keyword.clone(), syntax.block_open.clone()),
-                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                        depth.clone(),
+                        1,
+                    )),
                 ),
                 inner.clone(),
             )
@@ -3772,7 +3778,10 @@ pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> Str
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(tco.loop_keyword.clone(), syntax.block_open.clone()),
-                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                                depth.clone(),
+                                1,
+                            )),
                         ),
                         inner.clone(),
                     ),
@@ -3845,8 +3854,11 @@ pub fn shared_tco_if(
                 let t = crate::v1_std_core::if_then_branch(frame.expr.clone());
                 let e = crate::v1_std_core::if_else_branch(frame.expr.clone());
                 let cond_str = recurse_expr(c.clone(), frame.scope.clone(), frame.depth.clone());
-                let then_str =
-                    recurse_tco(t.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
+                let then_str = recurse_tco(
+                    t.clone(),
+                    frame.scope.clone(),
+                    v1_rt::int_add(frame.depth.clone(), 1),
+                );
                 let else_prefix = if syntax.significant_whitespace.clone() {
                     crate::v1_compiler_emit_core_support::make_indent(frame.depth.clone())
                 } else {
@@ -3854,12 +3866,15 @@ pub fn shared_tco_if(
                 };
                 match e.clone() {
                     Some(eb) => {
-                        let else_str =
-                            recurse_tco(eb.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
+                        let else_str = recurse_tco(
+                            eb.clone(),
+                            frame.scope.clone(),
+                            v1_rt::int_add(frame.depth.clone(), 1),
+                        );
                         if syntax.significant_whitespace.clone() {
-                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), then_str.clone()), "\n".to_string()), else_prefix.clone()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), else_str.clone())
+                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), then_str.clone()), "\n".to_string()), else_prefix.clone()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), else_str.clone())
                         } else {
-                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), then_str.clone()), "\n".to_string()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), else_str.clone()), "\n".to_string()), syntax.block_close.clone())
+                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), then_str.clone()), "\n".to_string()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(frame.depth.clone(), 1))), else_str.clone()), "\n".to_string()), syntax.block_close.clone())
                         }
                     }
                     std::option::Option::None => {
@@ -3871,7 +3886,7 @@ pub fn shared_tco_if(
                                         syntax.block_open.clone(),
                                     ),
                                     crate::v1_compiler_emit_core_support::make_indent(
-                                        (frame.depth.clone() + 1),
+                                        v1_rt::int_add(frame.depth.clone(), 1),
                                     ),
                                 ),
                                 then_str.clone(),
@@ -3886,7 +3901,7 @@ pub fn shared_tco_if(
                                                 syntax.block_open.clone(),
                                             ),
                                             crate::v1_compiler_emit_core_support::make_indent(
-                                                (frame.depth.clone() + 1),
+                                                v1_rt::int_add(frame.depth.clone(), 1),
                                             ),
                                         ),
                                         then_str.clone(),
@@ -4175,7 +4190,7 @@ pub fn emit_unified_tco_body(
             Rc::new(TcoFrame {
                 expr: texpr.clone(),
                 scope: scope.clone(),
-                depth: (depth.clone() + 1),
+                depth: v1_rt::int_add(depth.clone(), 1),
             }),
             fn_name.clone(),
             params.clone(),
@@ -4246,8 +4261,8 @@ pub fn emit_tco_match_go(
         let bs = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
             .block_syntax
             .clone();
-        let case_depth = (depth.clone() + 1);
-        let body_depth = (case_depth.clone() + 1);
+        let case_depth = v1_rt::int_add(depth.clone(), 1);
+        let body_depth = v1_rt::int_add(case_depth.clone(), 1);
         let arm_strs = Rc::new({
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
@@ -4443,11 +4458,11 @@ pub fn emit_unified_tco_match_arm(
             .block_syntax
             .clone();
         let case_depth = if bs.significant_whitespace.clone() {
-            (depth.clone() + 1)
+            v1_rt::int_add(depth.clone(), 1)
         } else {
             depth.clone()
         };
-        let body_depth = (case_depth.clone() + 1);
+        let body_depth = v1_rt::int_add(case_depth.clone(), 1);
         let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g| {
             emit_unified_typed_expr(
                 g.clone(),
@@ -4831,13 +4846,17 @@ pub fn suffix_escape_collides_with_reserved_chain(
         } else {
             if (v1_rt::substring(
                 &name,
-                (name_len.clone() - suffix_len.clone()),
+                v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
                 name_len.clone(),
             ) != suffix.clone())
             {
                 break false;
             } else {
-                let base = v1_rt::substring(&name, 0, (name_len.clone() - suffix_len.clone()));
+                let base = v1_rt::substring(
+                    &name,
+                    0,
+                    v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
+                );
                 if {
                     let mut __found = false;
                     for r in keywords.iter().cloned() {
@@ -4897,9 +4916,9 @@ pub fn emit_suffix_escape_ident(
 
 pub fn hex_digit_char(d: i64) -> String {
     if (d.clone() < 10) {
-        v1_rt::from_code_point((48 + d.clone()))
+        v1_rt::from_code_point(v1_rt::int_add(48, d.clone()))
     } else {
-        v1_rt::from_code_point((55 + d.clone()))
+        v1_rt::from_code_point(v1_rt::int_add(55, d.clone()))
     }
 }
 
@@ -4913,8 +4932,8 @@ pub fn int_to_upper_hex_inner(mut __tco_loop_n: i64, mut __tco_loop_acc: String)
             break acc.clone();
         } else {
             {
-                let __tco_0 = (n.clone() / 16);
-                let __tco_1 = v1_rt::concat(hex_digit_char((n.clone() % 16)), acc);
+                let __tco_0 = v1_rt::int_div(n.clone(), 16);
+                let __tco_1 = v1_rt::concat(hex_digit_char(v1_rt::int_rem(n.clone(), 16)), acc);
                 __tco_loop_n = __tco_0;
                 __tco_loop_acc = __tco_1;
                 continue;
@@ -4970,7 +4989,7 @@ pub fn escape_emoji_codepoints_inner(
             };
             {
                 let __tco_0 = s;
-                let __tco_1 = (pos + 1);
+                let __tco_1 = v1_rt::int_add(pos, 1);
                 let __tco_2 = n;
                 let __tco_3 = next_acc.clone();
                 let __tco_4 = prefix;
@@ -5943,7 +5962,7 @@ pub fn transparent_representation_root(
                             let __tco_0 = base.clone();
                             let __tco_1 = env;
                             let __tco_2 = target;
-                            let __tco_3 = (fuel - 1);
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
                             __tco_loop_n = __tco_0;
                             __tco_loop_env = __tco_1;
                             __tco_loop_target = __tco_2;
@@ -5964,7 +5983,7 @@ pub fn transparent_representation_root(
                                 let __tco_0 = rt.clone();
                                 let __tco_1 = env;
                                 let __tco_2 = target;
-                                let __tco_3 = (fuel - 1);
+                                let __tco_3 = v1_rt::int_sub(fuel, 1);
                                 __tco_loop_n = __tco_0;
                                 __tco_loop_env = __tco_1;
                                 __tco_loop_target = __tco_2;
@@ -6018,7 +6037,7 @@ pub fn transparent_named_carrier_root(
                             decl.clone(),
                             env.clone(),
                             target.clone(),
-                            (fuel.clone() - 1),
+                            v1_rt::int_sub(fuel.clone(), 1),
                         )
                     }
                 }
@@ -6214,12 +6233,17 @@ pub fn emit_typed_for_each_shared(
             elem_type.clone(),
             Rc::new(SubValueRelation::SubValueUnknown),
         );
-        let body_str = recurse(body.clone(), body_scope.clone(), (depth.clone() + 1));
+        let body_str = recurse(
+            body.clone(),
+            body_scope.clone(),
+            v1_rt::int_add(depth.clone(), 1),
+        );
         let var_str = emit_ident(variable.clone(), target.clone());
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         let fes = spec.for_each_syntax.clone();
         let bs = spec.block_syntax.clone();
-        let body_indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let body_indent =
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
         if bs.significant_whitespace.clone() {
             v1_rt::concat(
                 v1_rt::concat(
@@ -6711,9 +6735,9 @@ pub fn emit_typed_if_shared(
         match else_branch.clone() {
             Some(eb) => match es.if_value_form.clone() {
                 IfValueForm::IfExpression => {
-                    let then_str = recurse(then_branch.clone(), (depth.clone() + 1));
-                    let else_str = recurse(eb.clone(), (depth.clone() + 1));
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone())
+                    let then_str = recurse(then_branch.clone(), v1_rt::int_add(depth.clone(), 1));
+                    let else_str = recurse(eb.clone(), v1_rt::int_add(depth.clone(), 1));
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone())
                 }
                 IfValueForm::ConditionalTernary => {
                     let then_str = recurse(then_branch.clone(), depth.clone());
@@ -6748,7 +6772,7 @@ pub fn emit_typed_if_shared(
                     };
                     let then_str = recurse(then_branch.clone(), depth.clone());
                     let else_str = recurse(eb.clone(), depth.clone());
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("func() ".to_string(), result_type.clone()), " { if ".to_string()), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "return ".to_string()), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "return ".to_string()), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("func() ".to_string(), result_type.clone()), " { if ".to_string()), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "return ".to_string()), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "return ".to_string()), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
                 }
             },
             std::option::Option::None => {
@@ -6761,16 +6785,18 @@ pub fn emit_typed_if_shared(
                                     v1_rt::concat("if ".to_string(), cond_str.clone()),
                                     bs.block_open.clone(),
                                 ),
-                                crate::v1_compiler_emit_core_support::make_indent(
-                                    (depth.clone() + 1),
-                                ),
+                                crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                                    depth.clone(),
+                                    1,
+                                )),
                             ),
                             then_str.clone(),
                         )
                     }
                 } else {
                     {
-                        let then_str = recurse(then_branch.clone(), (depth.clone() + 1));
+                        let then_str =
+                            recurse(then_branch.clone(), v1_rt::int_add(depth.clone(), 1));
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -6781,7 +6807,7 @@ pub fn emit_typed_if_shared(
                                                 bs.block_open.clone(),
                                             ),
                                             crate::v1_compiler_emit_core_support::make_indent(
-                                                (depth.clone() + 1),
+                                                v1_rt::int_add(depth.clone(), 1),
                                             ),
                                         ),
                                         then_str.clone(),
@@ -7780,8 +7806,8 @@ pub fn emit_typed_match_go(
         let bs = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
             .block_syntax
             .clone();
-        let case_depth = (depth.clone() + 1);
-        let body_depth = (case_depth.clone() + 1);
+        let case_depth = v1_rt::int_add(depth.clone(), 1);
+        let body_depth = v1_rt::int_add(case_depth.clone(), 1);
         let arm_strs = Rc::new({
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
@@ -7862,11 +7888,11 @@ pub fn emit_typed_match_unified(
                 .block_syntax
                 .clone();
             let case_depth = if bs.significant_whitespace.clone() {
-                (depth.clone() + 1)
+                v1_rt::int_add(depth.clone(), 1)
             } else {
                 depth.clone()
             };
-            let body_depth = (case_depth.clone() + 1);
+            let body_depth = v1_rt::int_add(case_depth.clone(), 1);
             let arm_strs = Rc::new({
                 let mut __result = Vec::new();
                 for arm in arms.iter().cloned() {
@@ -7980,7 +8006,7 @@ pub fn emit_unified_typed_expr(
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
-                    (fuel.clone() - 1),
+                    v1_rt::int_sub(fuel.clone(), 1),
                     render_pattern.clone(),
                 )
             },
@@ -8346,7 +8372,7 @@ pub fn emit_unified_typed_expr(
                             registry.clone(),
                             scope.clone(),
                             depth.clone(),
-                            (fuel.clone() - 1),
+                            v1_rt::int_sub(fuel.clone(), 1),
                             render_pattern.clone(),
                         )
                     },

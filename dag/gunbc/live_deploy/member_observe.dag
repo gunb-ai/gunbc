@@ -30,7 +30,7 @@ import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_r
 import gunbc.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity { observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.deployed_tree_observation {
-  deployed_tree_read_tree_argv, deployed_tree_status_argv, deployed_tree_ignored_argv,
+  deployed_tree_revision_argv, deployed_tree_read_tree_argv, deployed_tree_status_argv, deployed_tree_ignored_argv,
   deployed_tree_content_reading, ContentRead, ContentUnreadable,
   DeployedScopeMatchesCommit, DeployedScopeDiverged,
 }
@@ -350,7 +350,7 @@ fn head_leg(arm: ObservationArm, repo: String) -> Leg {
       let r = git.Inspect.HeadCommitIn(repository_path: repo)
       leg_of(success: r.success, stdout: r.sha, stderr: r.stderr, leg: "head")
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["git", "-C", repo, "rev-parse", "HEAD"], leg: "head")
+    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_revision_argv(repo: repo as NonEmptyStr), leg: "head")
   }
 }
 

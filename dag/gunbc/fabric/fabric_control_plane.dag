@@ -6,7 +6,7 @@ import std.decl_ref { decl_ref }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
 import std.durable_compare_and_set {
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_count,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted, cas_generation_count,
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
   CasUnreadableObservationBoundExceeded,
 }
@@ -984,6 +984,7 @@ fn cas_store_failure_wire(cause: CasStoreFailure) -> NonEmptyStr {
   match cause {
     CasSlotObservationRefused { cause: c } => cas_unreadable_wire(cause: c)
     CasGenerationPublicationRefused { detail: _ } => "cas-publication-refused"
+    CasGenerationSpaceExhausted { head: _ } => "cas-generation-space-exhausted"
   }
 }
 

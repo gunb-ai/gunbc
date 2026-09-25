@@ -1066,7 +1066,7 @@ fn repository_bootstrap_wet(
   if !inited.success {
     convergence_exit(outcome: ConvergenceBootstrapInitRefused { repo: repo, stderr: inited.stderr })
   } else {
-    let fetched = git.Core.FetchForcedRefInRepo(repo: repo as FilePath, remote: remote, refspec: candidate)
+    let fetched = git.Core.FetchForcedRefInRepoTrustingDirectory(repo: repo as FilePath, remote: remote, refspec: candidate, trusted_directory: remote)
     if fetched.exit_code != 0 {
       convergence_exit(outcome: ConvergenceBootstrapObjectImportRefused {
         candidate: candidate,
@@ -1115,6 +1115,13 @@ fn repository_bootstrap_wet(
   }
 }
 
+// THE OBJECT SOURCE IS FETCHED AS A TRUSTED DIRECTORY, FOR ONE INVOCATION. The source is the runner
+// checkout, owned by the runner principal, and this runs as the service user, so git refuses it as
+// dubious ownership (srv1 journal for fleet-converge run 36032847731). `-c safe.directory=<path>`
+// on the command line is protected configuration (git-config(1) safe.directory) and reaches the
+// upload-pack a local fetch spawns, so trust is scoped to exactly the operand this convergence was
+// handed, persisted nowhere, never `*`. Here and in the bootstrap fetch alike.
+//
 // THE PRE-STATE FAULT IS NOT RELAXED; ONE OF ITS CAUSES IS ROUTED. A repository that cannot be
 // observed still refuses with the identical typed cause it always did -- both non-empty and
 // unobservable roots return `fault` unchanged. What changed is that an EMPTY root, which the old
@@ -1143,10 +1150,11 @@ fn repository_converge_wet(
       Absent => convergence_exit(outcome: ConvergencePreStateUnobservable { detail: convergence_ref_observation_detail(observation: before.refs) })
       Present { value: refs_before } => {
       let expected_old = convergence_ref_hex_at(refs: refs_before, refname: base_ref)
-      let fetched = git.Core.FetchForcedRefInRepo(
+      let fetched = git.Core.FetchForcedRefInRepoTrustingDirectory(
         repo: repo as FilePath,
         remote: remote,
         refspec: candidate,
+        trusted_directory: remote,
       )
       if fetched.exit_code != 0 {
         convergence_exit(outcome: ConvergenceObjectImportRefused {

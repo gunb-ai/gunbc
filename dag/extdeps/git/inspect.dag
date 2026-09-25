@@ -155,6 +155,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // SP SP TAB (`<mode> <type> <object>\t<path>`), which is what makes a path containing a newline, a
 // quote or a tab-free space unambiguous -- git's own -z contract, not a convention this repository
 // invents.
+// HeadCommitIn, ReadTreeIntoIndex, StatusAgainstIndex and IgnoredAgainstIndex TRUST THE REPOSITORY
+// THEY ARE ASKED ABOUT, for their own invocation only: `-c safe.directory=<repository_path>` beside
+// `-C <repository_path>`, the same words extdeps.git git_in_trusted_repository_args builds for the
+// transported legs. Their one consumer reads a deployed tree another principal owns, which git
+// otherwise refuses as dubious ownership; the trust is derived from the input path, so it can name
+// neither a different repository nor the wildcard, and nothing is written to any config.
+//
 // git.Inspect.ReadTreeIntoIndex IS NOT readonly, AND THE THREE NEIGHBOURS AROUND IT ARE. read-tree
 // WRITES the index file GIT_INDEX_FILE names; the repository's own index is untouched, which is why
 // StatusAgainstIndex and IgnoredAgainstIndex stay readonly, but the scratch index is a file the
@@ -217,7 +224,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "-C", "{repository_path}", "rev-parse", "HEAD"] }
+    transport shell { argv: ["git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "rev-parse", "HEAD"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -233,7 +240,7 @@ service git.Inspect {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "read-tree", "--no-sparse-checkout", "{revision_hex}"] }
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "read-tree", "--no-sparse-checkout", "{revision_hex}"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -251,7 +258,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -269,7 +276,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
