@@ -365,6 +365,8 @@ fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Boo
   }
 }
 
+// The producer answers Conj { g: Arrow }; the domain reader conses, so it answers the labels in
+// reverse slot order.
 test fn nfbcp_two_anonymous_params_lower_to_distinct_minted_binders_holds() -> Bool {
   match nfbcp_fn_decl_shell(text: nfbcp_anonymous_repeat_source) {
     Absent => false
@@ -373,8 +375,6 @@ test fn nfbcp_two_anonymous_params_lower_to_distinct_minted_binders_holds() -> B
         Rejected { diagnostics: _ } => false
         Accepted { value: lowering, diagnostics: _ } =>
           match lowering {
-            // The producer answers Conj { g: Arrow }; the reader conses, so it answers the domain's
-            // labels in reverse slot order.
             BodyLowered { node: member } =>
               fold(member.children, init: false, f: fn(found, e) {
                 found || (body_lower_arrow_domain_binding_symbols(arrow: e.target)
