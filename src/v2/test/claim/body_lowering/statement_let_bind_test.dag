@@ -13,6 +13,7 @@ import v2.test.claim.body_type_annotation_refusal { btar_refusal_at_authored }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
 import v2.std.node { Bind, ComputationNode, Named, Node, Positional, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
