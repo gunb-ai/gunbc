@@ -127,28 +127,39 @@ test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool
 }
 
 // THE EMISSION CONTROL, EXECUTED THROUGH THE CLOSURE-EMIT DOOR (the route v2.cli.compile_cli
-// takes). A function whose DECLARED RETURN TYPE is a function type is a declared frontier of the
-// Rust target: the produced-declaration renderer has no type shape for a closure-returning
-// signature (impl Fn versus Box<dyn Fn> is an unmodeled target decision), so the module refuses
-// produced_decl_render_type_shape_unsupported before the body is projected. The claim asserts THAT
-// typed refusal: an Accepted emission or any other reason is red, so the frontier cannot close
-// silently or be crossed by a signature-only rendering. The FunctionValueBody body projection
-// (target_project_closure_in_arrow_scope) sits behind the refusal and is not reached today.
-// TRIGGER (the capability, not an artifact): the Rust target model renders a closure-returning
-// signature AND an executed curried emit compiles and runs. When that lands this claim flips: it
-// asserts FvbEmitted carrying the nested closures (`|x|`, `|y|`) and that the emitted crate builds
-// and runs, and a refusal becomes red.
-data fvb_emit_source: String = "module fvb_emit_probe\n\nimport v2.std.logic { Bool }\n\nfn fvb_curried_emit(p: Bool) -> fn(Bool) -> fn(Bool) -> Bool { x => y => x }\n"
+// takes). A function whose DECLARED RETURN TYPE is a function type renders through the Rust target
+// model's FunctionTypeRealizationRow for each position (v2.extdeps.languages.rust
+// rust_function_type_realization_rows, pinned to std.decision by
+// test.claim.rust_function_type_selection_witness): `impl Fn` at the function item's return, `Box<dyn
+// Fn>` at an Fn bound's return where E0562 refuses impl, and the returned closures `move` their
+// captures. This was a declared frontier (the renderer refused produced_decl_render_type_shape_unsupported
+// before the body was projected); the claims below are its flip.
+//
+// THE GOLDENS WERE COMPILED AND RUN BEFORE THEY WERE WRITTEN HERE: both texts, emitted by this route,
+// were built with rustc 1.93.0 on the same runner in one dispatch with a main applying them --
+// fvb_curried_emit(0)(7)(9) == 7 and fvb_direct(5)(11) == 5 -- so a golden read back off the emitter
+// is not what these compare against. An emission that refuses, or that renders any other text, is red.
+//
+// The specimens are Int-typed because a produced declaration's type references spell through
+// binding_spellings, which carries Int (i32) and not Bool; Bool's spelling there is the separate
+// TargetAtomRealization lane stage0_production_target names, not this one.
+data fvb_emit_source: String = "module fvb_emit_probe\n\nimport v2.std.integer { Int }\n\nfn fvb_curried_emit(p: Int) -> fn(Int) -> fn(Int) -> Int { x => y => x }\n"
+
+data fvb_emit_direct_source: String = "module fvb_emit_probe\n\nimport v2.std.integer { Int }\n\nfn fvb_direct(p: Int) -> fn(Int) -> Int { fn(q) { p } }\n"
+
+data fvb_emit_curried_golden: String = "fn fvb_curried_emit(p: i32) -> impl Fn(i32) -> Box<dyn Fn(i32) -> i32> { move |x| { Box::new(move |y| { x }) } }\n\n"
+
+data fvb_emit_direct_golden: String = "fn fvb_direct(p: i32) -> impl Fn(i32) -> i32 { move |q| { p } }\n\n"
 
 type FvbEmitVerdict
   = FvbEmitted { text: String }
   | FvbEmitRefused { reason: Symbol }
 
-fn fvb_emit_verdict() -> FvbEmitVerdict {
+fn fvb_emit_verdict_of(source: String) -> FvbEmitVerdict {
   let e = emit_compiler_import_closure_from_ingest_located(
     ingest: Cons {
       head: DagSourceReadWitness {
-        source: Medium { carried: fvb_emit_source, fidelity: Lossless },
+        source: Medium { carried: source, fidelity: Lossless },
         artifact: Artifact { kind: SourceFile, id: ^fvb_emit_probe_artifact, file_path: "src/v2/fvb_emit_probe.dag" },
         compilation_unit: ^fvb_emit_probe_cu,
         source_root: V2Tree
@@ -167,9 +178,24 @@ fn fvb_emit_verdict() -> FvbEmitVerdict {
   }
 }
 
-test fn a_function_typed_return_refuses_at_the_rust_type_shape_frontier() -> Bool {
-  match fvb_emit_verdict() {
-    FvbEmitted { text: _ } => false
-    FvbEmitRefused { reason: r } => r == ^produced_decl_render_type_shape_unsupported
+fn fvb_emit_curried_verdict() -> FvbEmitVerdict {
+  fvb_emit_verdict_of(source: fvb_emit_source)
+}
+
+fn fvb_emit_direct_verdict() -> FvbEmitVerdict {
+  fvb_emit_verdict_of(source: fvb_emit_direct_source)
+}
+
+test fn a_curried_function_typed_return_emits_impl_fn_over_box_dyn_fn() -> Bool {
+  match fvb_emit_curried_verdict() {
+    FvbEmitted { text: t } => t == fvb_emit_curried_golden
+    FvbEmitRefused { reason: _ } => false
+  }
+}
+
+test fn a_fn_returning_fn_emits_impl_fn_with_a_move_closure() -> Bool {
+  match fvb_emit_direct_verdict() {
+    FvbEmitted { text: t } => t == fvb_emit_direct_golden
+    FvbEmitRefused { reason: _ } => false
   }
 }

@@ -149,6 +149,10 @@ import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   ProducedDeclWired,
   ProducedDeclRenderRows,
+  FunctionTypeAtFnBoundReturn,
+  FunctionTypeAtItemReturn,
+  FunctionTypeRealizationRow,
+  FunctionTypeSugarRows,
   ProducedSignatureFixed,
   ProducedSignatureDeclName,
   ProducedSignatureParams,
@@ -1376,8 +1380,59 @@ data rust_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRender
   param_separator: [^rust_token_comma],
   type_ref_token_class: ^rust_token_ident,
   block_close: [FixedToken { token_class: ^rust_token_rbrace }],
-  block_evaluation_mode: ValueProducing
+  block_evaluation_mode: ValueProducing,
+  function_type_realizations: rust_function_type_realization_rows
 }
+
+// THE PARENTHESIZED Fn BOUND, `Fn(A, B) -> R` -- The Rust Reference, "Trait and lifetime bounds"
+// (TypeBound / TraitBound) and core::ops::Fn: the parenthesized argument list is the sugar for
+// `Fn<(A, B), Output = R>`. Both realization rows spell their function type through it.
+data rust_fn_trait_sugar: FunctionTypeSugarRows = FunctionTypeSugarRows {
+  params_open: ^rust_token_lparen,
+  param_separator: ^rust_token_comma,
+  params_close: ^rust_token_rparen,
+  arrow: ^rust_token_arrow
+}
+
+// THE SPELLING OF EACH CANDIDATE REALIZATION OF A FUNCTION-TYPED VALUE. What Rust states about the
+// two forms -- `impl Fn` admitted at a function's return and refused at an Fn bound's return
+// (E0562), `Box<dyn Fn>` admitted everywhere at one allocation and a vtable call -- is
+// extdeps.languages.rust.function_type_forms, cited there; this row says only how each is written.
+// A boxed type demands a boxed value, so Box's value_open is `Box::new(`; and a returned closure
+// outlives the frame whose bindings it captures, so both rows `move` them ("Closure expressions",
+// expr.closure; without it rustc 1.93 refuses E0373 "closure may outlive the current function").
+//
+// WHICH ROW STANDS AT WHICH POSITION IS A SELECTION, NOT A PICK MADE HERE. It is executed by
+// gunbc.rust_function_type_selection over std.decision select_realization, each row's
+// `realization` names the candidate that selection returns, and
+// test.claim.rust_function_type_selection_witness executes the selection and pins these rows to its
+// SelectedWithin receipt. At an Fn bound's return E0562 is a hard constraint excluding impl before
+// Pareto, so Box is selected by construction; at a function item's return both are admitted, neither
+// dominates, and the stated policy prefers impl.
+// DIVERGENCE, STATED: the selection runs offline and this row carries its winner, instead of the
+// emitter selecting per signature. TRIGGER (the capability): the self-emitted target_model can
+// consume std.decision -- then the emitter calls select_realization itself and these rows reduce
+// to the candidate field.
+data rust_function_type_realization_rows: List<FunctionTypeRealizationRow> = [
+  FunctionTypeRealizationRow {
+    position: FunctionTypeAtItemReturn,
+    realization: ^rust_fn_type_impl_trait,
+    sugar: rust_fn_trait_sugar,
+    type_open: [^rust_token_kw_impl, ^rust_token_fn_trait],
+    type_close: [],
+    value_open: [^rust_token_kw_move],
+    value_close: []
+  },
+  FunctionTypeRealizationRow {
+    position: FunctionTypeAtFnBoundReturn,
+    realization: ^rust_fn_type_boxed_trait_object,
+    sugar: rust_fn_trait_sugar,
+    type_open: [^rust_token_box, ^rust_token_fn_type_lt, ^rust_token_kw_dyn, ^rust_token_fn_trait],
+    type_close: [^rust_token_fn_type_gt],
+    value_open: [^rust_token_box, ^rust_token_path_sep, ^rust_token_box_new, ^rust_token_lparen, ^rust_token_kw_move],
+    value_close: [^rust_token_rparen]
+  }
+]
 
 fn rust_produced_decl_support() -> ProducedDeclSupport {
   ProducedDeclWired {
@@ -2328,7 +2383,16 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
     rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
     rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
-    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false"),
+    rust_lex_rule(token_class: ^rust_token_kw_impl, text: "impl "),
+    rust_lex_rule(token_class: ^rust_token_kw_dyn, text: "dyn "),
+    rust_lex_rule(token_class: ^rust_token_kw_move, text: "move "),
+    rust_lex_rule(token_class: ^rust_token_fn_trait, text: "Fn"),
+    rust_lex_rule(token_class: ^rust_token_box, text: "Box"),
+    rust_lex_rule(token_class: ^rust_token_path_sep, text: "::"),
+    rust_lex_rule(token_class: ^rust_token_box_new, text: "new"),
+    rust_lex_rule(token_class: ^rust_token_fn_type_lt, text: "<"),
+    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">")
   ]
 }
 

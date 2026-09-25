@@ -262,6 +262,85 @@ type ProducedDeclRenderRows {
   type_ref_token_class: Symbol
   block_close: List<ConcreteSyntaxToken>
   block_evaluation_mode: BlockEvaluationMode
+  function_type_realizations: List<FunctionTypeRealizationRow>
+}
+
+// WHERE A FUNCTION-TYPED VALUE SITS, as the facts a target's function-type realization depends
+// on. A target may admit different realizations at different positions -- Rust admits an opaque
+// `impl Trait` as a function item's return type and refuses it as the return type of an `Fn`
+// bound (E0562) -- so a realization row is keyed by position and a position no row names REFUSES.
+type FunctionTypePosition
+  = FunctionTypeAtItemReturn
+  | FunctionTypeAtFnBoundReturn
+
+// The target's sugar for a function type's parameter list and return: `(A, B) -> R` in Rust's
+// parenthesized `Fn` bound. Shared by every realization row of a target that uses it.
+type FunctionTypeSugarRows {
+  params_open: Symbol
+  param_separator: Symbol
+  params_close: Symbol
+  arrow: Symbol
+}
+
+// ONE REALIZATION OF A FUNCTION-TYPED VALUE AT ONE POSITION, as rows: how its TYPE is spelled
+// around the sugar (type_open / type_close) and how a closure VALUE inhabiting that type is
+// spelled around the closure (value_open / value_close). The two halves are one row because they
+// are one fact: a boxed type demands a boxed value, and a value that escapes its frame must move
+// its captures. `realization` is the identity the target's selection of this row is attributed to
+// (for Rust, gunbc.rust_function_type_selection); the compiler reads it and holds no arm.
+type FunctionTypeRealizationRow {
+  position: FunctionTypePosition
+  realization: Symbol
+  sugar: FunctionTypeSugarRows
+  type_open: List<Symbol>
+  type_close: List<Symbol>
+  value_open: List<Symbol>
+  value_close: List<Symbol>
+}
+
+fn function_type_position_eq(a: FunctionTypePosition, b: FunctionTypePosition) -> Bool {
+  match a {
+    FunctionTypeAtItemReturn =>
+      match b {
+        FunctionTypeAtItemReturn => true
+        FunctionTypeAtFnBoundReturn => false
+      }
+    FunctionTypeAtFnBoundReturn =>
+      match b {
+        FunctionTypeAtItemReturn => false
+        FunctionTypeAtFnBoundReturn => true
+      }
+  }
+}
+
+// The row a target declares for a position. Absent is not a default: the caller refuses.
+fn function_type_realization_at(
+  rows: List<FunctionTypeRealizationRow>,
+  position: FunctionTypePosition
+) -> Optional<FunctionTypeRealizationRow> {
+  fold_list(
+    xs: rows,
+    empty: optional_absent(),
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if function_type_position_eq(a: row.position, b: position) {
+            optional_present(value: row)
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+fn fixed_tokens_of(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: classes,
+    empty: Empty,
+    cons: fn(acc, tc) { list_snoc_item(xs: acc, item: FixedToken { token_class: tc }) }
+  )
 }
 
 type ProducedDeclSupport
@@ -442,11 +521,135 @@ fn produced_decl_signature_segment_tokens(
     ProducedSignatureParams =>
       produced_decl_params_tokens(rows: rows, params: subject.params)
     ProducedSignatureReturnType =>
-      produced_decl_type_ref_tokens(
-        token_class: rows.type_ref_token_class,
+      produced_decl_type_tokens_at(
+        rows: rows,
+        position: FunctionTypeAtItemReturn,
         type_node: subject.codomain
       )
   }
+}
+
+// A type at a position that may hold a function type: an atom renders as before; a function type
+// renders through the target's realization row for that position, its parameter types as type
+// references and its return type at the Fn-bound-return position. A position the target declares
+// no row for refuses typed and located, naming the position -- never a guessed spelling.
+fn produced_decl_type_tokens_at(
+  rows: ProducedDeclRenderRows,
+  position: FunctionTypePosition,
+  type_node: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Arrow } =>
+      match function_type_realization_at(rows: rows.function_type_realizations, position: position) {
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_function_type_position_unrealized,
+              node: type_node
+            )
+          )
+        Present { value: row } =>
+          bind_outcome(
+            o: produced_decl_subject_from_name_and_arrow(fn_name: ^produced_decl_function_type, arrow: type_node),
+            f: fn(shape) {
+              bind_outcome(
+                o: produced_decl_function_type_params_tokens(
+                  rows: rows,
+                  sugar: row.sugar,
+                  params: produced_decl_function_type_domain_edges(arrow: type_node, params: shape.params)
+                ),
+                f: fn(param_tokens) {
+                  bind_outcome(
+                    o: produced_decl_type_tokens_at(
+                      rows: rows,
+                      position: FunctionTypeAtFnBoundReturn,
+                      type_node: shape.codomain
+                    ),
+                    f: fn(return_tokens) {
+                      outcome_accepted(
+                        value: list_append(
+                          left: list_append(
+                            left: list_append(left: fixed_tokens_of(classes: row.type_open), right: param_tokens),
+                            right: Cons { head: FixedToken { token_class: row.sugar.arrow }, tail: return_tokens }
+                          ),
+                          right: fixed_tokens_of(classes: row.type_close)
+                        )
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+      }
+    _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node)
+  }
+}
+
+// A function TYPE's domain is lowered two ways: a single parameter type stands as the domain itself
+// (`fn(Int) -> R` lowers to Arrow(Int, R)), and several stand as a Conj of their edges. The Conj's
+// edges are the parameters; a lone type is one parameter, carried as one positional edge.
+fn produced_decl_function_type_domain_edges(arrow: Node, params: List<Edge>) -> List<Edge> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } => params
+        _ => [Edge { label: Positional, target: domain }]
+      }
+    Absent => params
+  }
+}
+
+fn produced_decl_function_type_param_tokens(
+  rows: ProducedDeclRenderRows,
+  edge: Edge
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target)
+}
+
+fn produced_decl_function_type_params_tokens(
+  rows: ProducedDeclRenderRows,
+  sugar: FunctionTypeSugarRows,
+  params: List<Edge>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold_list(
+      xs: params,
+      empty: outcome_accepted(value: ProducedDeclParamsFold { any_written: false, tokens: Empty }),
+      cons: fn(acc, edge) {
+        bind_outcome(
+          o: acc,
+          f: fn(so_far) {
+            bind_outcome(
+              o: produced_decl_function_type_param_tokens(rows: rows, edge: edge),
+              f: fn(toks) {
+                outcome_accepted(
+                  value: ProducedDeclParamsFold {
+                    any_written: true,
+                    tokens: list_append(
+                      left: so_far.tokens,
+                      right: match so_far.any_written {
+                        true => Cons { head: FixedToken { token_class: sugar.param_separator }, tail: toks }
+                        false => toks
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(folded) {
+      outcome_accepted(
+        value: Cons {
+          head: FixedToken { token_class: sugar.params_open },
+          tail: list_snoc_item(xs: folded.tokens, item: FixedToken { token_class: sugar.params_close })
+        }
+      )
+    }
+  )
 }
 
 fn produced_decl_signature_segments_tokens(
@@ -5041,6 +5244,70 @@ fn target_value_expr_closure_param_edges(params: List<Symbol>) -> List<Edge> {
   )
 }
 
+// A closure VALUE realized at a function-typed position: the plain closure wire plus the
+// position's value_open / value_close token classes (FunctionTypeRealizationRow), carried as
+// ordered named edges so the serializer spells them around the closure. An empty pair is exactly
+// target_value_expression_closure.
+fn target_value_expression_realized_closure(
+  params: List<Symbol>,
+  body: TargetValueExpression,
+  value_open: List<Symbol>,
+  value_close: List<Symbol>
+) -> TargetValueExpression {
+  let plain = target_value_expression_closure(params: params, body: body)
+  TargetValueExpression {
+    kind: TargetValueExprClosure,
+    node: Node {
+      kind: plain.node.kind,
+      children: list_append(
+        left: list_append(
+          left: plain.node.children,
+          right: target_value_expr_closure_token_edges(field: ^target_value_expr_field_closure_value_open, classes: value_open)
+        ),
+        right: target_value_expr_closure_token_edges(field: ^target_value_expr_field_closure_value_close, classes: value_close)
+      ),
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+fn target_value_expr_closure_token_edges(field: Symbol, classes: List<Symbol>) -> List<Edge> {
+  fold_list(
+    xs: classes,
+    empty: Empty,
+    cons: fn(acc, tc) {
+      list_snoc_item(xs: acc, item: target_model_named_edge(name: field, target: target_model_type_atom_node(identity: tc)))
+    }
+  )
+}
+
+fn target_value_expr_closure_tokens_from_wire(wire: Node, field: Symbol) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold(
+    wire.children,
+    init: outcome_accepted(Empty),
+    f: fn(acc, edge) {
+      bind_outcome(
+        o: acc,
+        f: fn(so_far) {
+          match edge.label {
+            Named { name: n } =>
+              if n == field {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: tc } } =>
+                    outcome_accepted(list_snoc_item(xs: so_far, item: FixedToken { token_class: tc }))
+                  _ => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+                }
+              } else {
+                outcome_accepted(so_far)
+              }
+            Positional => outcome_accepted(so_far)
+          }
+        }
+      )
+    }
+  )
+}
+
 fn target_value_expression_closure(
   params: List<Symbol>,
   body: TargetValueExpression
@@ -7713,6 +7980,10 @@ fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol
                 }
               } else if n == ^target_value_expr_field_closure_body {
                 acc
+              } else if n == ^target_value_expr_field_closure_value_open {
+                acc
+              } else if n == ^target_value_expr_field_closure_value_close {
+                acc
               } else {
                 outcome_rejected(
                   target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -7781,6 +8052,29 @@ fn target_value_expression_closure_to_concrete_tokens(
 }
 
 fn target_value_expression_closure_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_open),
+    f: fn(open_tokens) {
+      bind_outcome(
+        o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_close),
+        f: fn(close_tokens) {
+          bind_outcome(
+            o: target_value_expression_closure_plain_tokens(expr: expr, projection: projection, catalog: catalog),
+            f: fn(plain) {
+              outcome_accepted(list_append(left: list_append(left: open_tokens, right: plain), right: close_tokens))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_closure_plain_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
   catalog: Node
@@ -14676,6 +14970,129 @@ fn target_project_closure_in_arrow_scope(
   )
 }
 
+// The names an Arrow's domain binds, in order: the Named labels of its domain Conj. A domain with no
+// parameters binds nothing (an empty list, not a refusal), so a nullary function item or `fn() {..}`
+// has an empty scope rather than a malformed one.
+fn arrow_domain_binder_names(arrow: Node) -> List<Symbol> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          arrow_domain_edge_names(edges: domain.children)
+        _ => Empty
+      }
+    Absent => Empty
+  }
+}
+
+fn arrow_domain_edge_names(edges: List<Edge>) -> List<Symbol> {
+  fold_list(
+    xs: edges,
+    empty: Empty,
+    cons: fn(acc, edge) { arrow_domain_edge_name_step(acc: acc, edge: edge) }
+  )
+}
+
+fn arrow_domain_edge_name_step(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
+  match edge.label {
+    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    Positional => acc
+  }
+}
+
+fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == wanted })
+}
+
+// A FUNCTION VALUE THAT IS RETURNED: the body of a function item (FunctionValueBody), or the body
+// of such a closure when it is itself a function value. Each sits at a function-typed position, so
+// its spelling is the target's FunctionTypeRealizationRow for that position -- the same row the
+// signature's return type was rendered from (produced_decl_type_tokens_at), which is what keeps
+// the value inhabiting the type: a boxed return type gets a boxed closure, an escaping closure moves
+// its captures. A target that declares no row for the position refuses typed and located. A
+// closure in any other position (an argument, a let) stays target_project_closure_in_arrow_scope.
+//
+// THE SCOPE IS LEXICAL. `enclosing` is every binder of the arrows this closure is nested in -- the
+// function item's parameters, then each enclosing closure's -- so a body that names one of them is
+// a CAPTURE, a binding reference the `move` in value_open takes by value. Without it `y => x` reads
+// `x` against y's domain alone, misses, and the atom is treated as a literal.
+fn target_project_realized_closure(
+  closure: Node,
+  position: FunctionTypePosition,
+  enclosing: List<Symbol>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  let rows = match target.produced_decl_support {
+    ProducedDeclUnwired => Empty
+    ProducedDeclWired { render_rows: r, scaffold_relation_rule_name: _, scaffold_base_row: _ } => r.function_type_realizations
+  }
+  match function_type_realization_at(rows: rows, position: position) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_function_type_position_unrealized,
+          node: closure
+        )
+      )
+    Present { value: row } =>
+      let params = arrow_domain_binder_names(arrow: closure)
+      let scope = list_append(left: enclosing, right: params)
+      bind_outcome(
+        o: find_arrow_body_child(root: closure),
+        f: fn(body) {
+          bind_outcome(
+            o: match classify_arrow_body_form(target: body) {
+              FunctionValueBody =>
+                target_project_realized_closure(
+                  closure: body,
+                  position: FunctionTypeAtFnBoundReturn,
+                  enclosing: scope,
+                  target: target,
+                  source_bool_form: source_bool_form,
+                  handle_transform: handle_transform
+                )
+              _ =>
+                match body.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    if symbol_list_contains(xs: scope, wanted: id) {
+                      outcome_accepted(target_value_expression_binding_ref(binding: id))
+                    } else {
+                      target_value_expr_project_body_subexpression(
+                        arrow: closure,
+                        node: body,
+                        target: target,
+                        source_bool_form: source_bool_form,
+                        handle_transform: handle_transform
+                      )
+                    }
+                  _ =>
+                    target_value_expr_project_body_subexpression(
+                      arrow: closure,
+                      node: body,
+                      target: target,
+                      source_bool_form: source_bool_form,
+                      handle_transform: handle_transform
+                    )
+                }
+            },
+            f: fn(body_expr) {
+              outcome_accepted(
+                target_value_expression_realized_closure(
+                  params: params,
+                  body: body_expr,
+                  value_open: row.value_open,
+                  value_close: row.value_close
+                )
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
 fn target_value_expression_projection_from_target(
   target: TargetModel
 ) -> Outcome<TargetValueExpressionProjection> {
@@ -14720,8 +15137,10 @@ fn target_project_arrow_body_to_value_expression(
     Accepted { value: body, diagnostics: _ } =>
       match classify_arrow_body_form(target: body) {
         FunctionValueBody =>
-          target_project_closure_in_arrow_scope(
+          target_project_realized_closure(
             closure: body,
+            position: FunctionTypeAtItemReturn,
+            enclosing: arrow_domain_binder_names(arrow: arrow),
             target: target,
             source_bool_form: source_bool_form,
             handle_transform: handle_transform
