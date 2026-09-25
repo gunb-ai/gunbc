@@ -23,9 +23,6 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject,
   mtcollins1_boot_subject,
 }
-import gunbc.machine_intake_mtcollins1_standing_ruling {
-  StandingRulingConfirmation, StandingRulingConfirmed, StandingRulingRefused, mtcollins1_boot_standing_ruling_read,
-}
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
@@ -816,7 +813,6 @@ fn mtcollins1_boot_actuate(
 // compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
 // caller could author. The hold is freed whatever the actuation answered.
 fn mtcollins1_boot_under_live_unit_hold(
-  ruling: StandingRulingConfirmation,
   run_id: NonEmptyStr,
   subject: MtCollins1BootSubject,
   password_file: String,
@@ -827,7 +823,7 @@ fn mtcollins1_boot_under_live_unit_hold(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
   ]
 {
-  match mtcollins1_boot_acquire_unit_hold(ruling: ruling, run_id: run_id) {
+  match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
     UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
     UnitHeld { proof: p } =>
       unit_hold_release(
@@ -848,7 +844,7 @@ fn mtcollins1_boot_under_live_unit_hold(
 // writes the diagnostic bundle (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) and the
 // receipt, and appends the bundle's decisive findings to a refusal reason. The attempt returns a
 // RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
-// was read -- including the standing ruling unconfirmed or the unit held -- still uploads a bundle
+// was read -- including the unit held -- still uploads a bundle
 // saying the BMC sections were NOT TAKEN and why.
 // THE SDR CACHE SITS BESIDE THE CREDENTIAL FILE, under the runner's per-job temporary directory,
 // because it is dumped with that credential and lives exactly as long as the attempt that reads it.
@@ -937,7 +933,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   let exit_word = match concluded { ExitSuccess => "ok"  _ => "refused" }
   let receipt_body = join([
-    "authorization=standing ruling (gunbc.machine_intake_mtcollins1_standing_ruling), read before the unit hold; no per-run approval",
+    "authorization=workload identity of the fleet-converge run on main (operator ruling 2026-09-25); no per-run or standing approval; the unit hold is the interlock",
     concat("attempt=", attempt_identity_text(a: run)),
     concat("exit=", exit_word),
     bundle_write_receipt_line(w: write),
@@ -964,8 +960,7 @@ fn mtcollins1_boot_wet() -> ProcessExit
   mtcollins1_boot_conclude(attempt: attempt)
 }
 
-// THE "BEFORE" SEL SNAPSHOT IS A READONLY READ taken once the credential is read and the standing
-// ruling confirmed, and before the unit hold is taken, so the delta brackets every controller write
+// THE "BEFORE" SEL SNAPSHOT IS A READONLY READ taken once the credential is read, and before the unit hold is taken, so the delta brackets every controller write
 // the attempt makes (gunbc#12093).
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
@@ -1001,22 +996,18 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
   if !pw_read.success {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error)))
   }
-  let ruling = match mtcollins1_boot_standing_ruling_read() {
-    StandingRulingRefused { reason: r } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: r as String))
-    StandingRulingConfirmed { confirmation: c } => c
-  }
   let subject = mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr)
   match mtcollins1_bmc_username {
     Absent =>
       MtCollins1BootAttempt {
-        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        outcome: mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
         bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
       }
     Present { value: user } => {
       let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
       let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
       MtCollins1BootAttempt {
-        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        outcome: mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
         bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
       }
     }

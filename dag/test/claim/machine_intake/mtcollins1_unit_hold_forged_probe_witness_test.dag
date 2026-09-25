@@ -78,21 +78,12 @@ test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_attach_remote_image") >= 1
 }
 
-// THE SKIP-THE-READ MUTATION REFUSES AT COMPILE TIME: a forged confirmation has no constructor, and
-// the hold-owning boot path admits only the entry that performs the read.
-test fn a_boot_that_skips_the_standing_ruling_read_does_not_compile() -> Bool {
+// NO PUBLIC ROUTE REACHES A PROOF OR AN ACTUATION FROM OUTSIDE ITS ROOTS: the hold-owning boot path
+// admits only the wet entry, the boot's actuation is sealed to the hold-owning path, and the unit-hold
+// acquire (the proof's only mint) is sealed to the two roots.
+test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool {
   let c = probe()
-  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "StandingRulingConfirmation") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
-}
-
-// NO PUBLIC PROOF-ACCEPTING ROUTE SKIPS THE RULING (side-chat review 5287596716, item 3): the boot's
-// actuation is sealed to the hold-owning path, the unit-hold acquire (the proof's only mint) is sealed
-// to the two roots and itself takes a ruling confirmation, and the ruling read is sealed to those same
-// two roots.
-test fn every_route_to_a_proof_or_an_actuation_passes_through_the_ruling_read() -> Bool {
-  let c = probe()
-  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_actuate") >= 1
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_actuate") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "unit_hold_acquire") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_standing_ruling_read") >= 1
 }
