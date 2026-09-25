@@ -38,10 +38,10 @@ fn first_or_zero(xs: List<Int>) -> Int {
   }
 }
 
-fn octet_sum_from(xs: List<Int>, i: Int, acc: Int) -> Int {
-  match xs |> get(i) {
+fn octet_sum_from(xs: List<Int>, acc: Int) -> Int {
+  match xs |> first {
     null => acc
-    x => octet_sum_from(xs: xs, i: i + 1, acc: acc + x)
+    x => octet_sum_from(xs: xs |> skip(1), acc: acc + x)
   }
 }
 
@@ -78,7 +78,7 @@ fn observed_line() -> String {
     to_string(value: positional_fold(xs: o)),
     to_string(value: first_or_zero(xs: o)),
     to_string(value: first_or_zero(xs: [])),
-    to_string(value: octet_sum_from(xs: o, i: 0, acc: 0)),
+    to_string(value: octet_sum_from(xs: o, acc: 0)),
     label(names: ["x"]),
     label(names: []),
     label(names: ["q"])
