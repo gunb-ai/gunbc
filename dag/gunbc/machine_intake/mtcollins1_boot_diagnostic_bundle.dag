@@ -296,10 +296,11 @@ data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-bo
 // post-attempt pass (mtcollins1_smpro_sequenced).
 //
 // WHETHER THE OVERRIDE WAS CONSUMED BY THIS ATTEMPT. The IPMI boot override is one-shot: the
-// controller clears boot parameter 5's valid flag when a boot consumes it. The handoff verifies the
-// override was set; parameter 5 is read again before the set and after the attempt, so a consumed
-// override is distinguished from one still pending (the host never booted through it) and from one
-// that was ALREADY pending before this attempt set it, whose consumption cannot be attributed.
+// controller clears boot parameter 5's valid flag when a boot consumes it, and on its own timeout.
+// The handoff verifies the override was set; parameter 5 is read again before the set and after the
+// attempt, so an override still pending (the host never booted through it) and one ALREADY pending
+// before this attempt set it are told apart from one no longer pending -- and "consumed" is claimed
+// only beside the census END marker (boot_override_consumption).
 //
 // A POWER-OFF AFTER THE CENSUS END MARKER IS THE IMAGE WORKING. Chassis power is read after the
 // attempt; off after the END marker is recorded as expected, and the post-attempt SMpro pass is not
@@ -310,7 +311,8 @@ type BootParam5Reading
   | BootParam5NotTaken { reason: NonEmptyStr }
 
 type BootOverrideConsumption
-  = OverrideConsumedByThisAttempt
+  = OverrideConsumedByCensusBoot
+  | OverrideNoLongerPendingAfterAttempt
   | OverridePendingBeforeAttempt
   | OverrideStillPendingAfterAttempt
   | OverrideNotHandedOff { reason: NonEmptyStr }
@@ -361,31 +363,39 @@ fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr
   }
 }
 
-// ORDER IS THE ARGUMENT. An override never handed off has no consumption to attribute; one already
-// pending before this attempt set it cannot be attributed; only then does the after-read decide.
-fn boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, handed_off: IpmiBootSelection?, not_handed_off_reason: NonEmptyStr) -> BootOverrideConsumption {
-  match handed_off {
-    Absent => OverrideNotHandedOff { reason: not_handed_off_reason }
-    Present { value: selection } =>
-      match before {
-        BootParam5Read { readback: b, at: _ } =>
-          if boot_override_pending(readback: b, selection: selection) {
-            OverridePendingBeforeAttempt
-          } else {
-            match after {
-              BootParam5Read { readback: a, at: _ } =>
-                if boot_override_pending(readback: a, selection: selection) { OverrideStillPendingAfterAttempt } else { OverrideConsumedByThisAttempt }
-              other => match boot_param5_unread_reason(r: other, which: "after the attempt") {
-                Present { value: why } => OverrideConsumptionUnread { reason: why }
-                Absent => OverrideConsumptionUnread { reason: "boot parameter 5 after the attempt was not read" }
-              }
+// ORDER IS THE ARGUMENT, AND "CONSUMED" NEEDS A DISCRIMINATOR (DESIGN §4d; review 71115). An
+// override already pending before this attempt set it cannot be attributed; one still pending after
+// was not consumed. One NO LONGER pending is only that: the BMC also clears the valid bit on its own
+// (the IPMI boot-flag valid-bit timeout), a power-off or another writer can clear it, and a changed
+// rendering can stop matching. So consumption by this attempt is minted only beside an observation
+// that only a boot through the override's device produces: the census END marker, which only the
+// census image on the attached virtual CD prints, for this machine and this run. Without it the
+// verdict records what was observed and says consumption is not established.
+fn boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, selection: IpmiBootSelection, booted_through_override_device: Bool) -> BootOverrideConsumption {
+  match before {
+    BootParam5Read { readback: b, at: _ } =>
+      if boot_override_pending(readback: b, selection: selection) {
+        OverridePendingBeforeAttempt
+      } else {
+        match after {
+          BootParam5Read { readback: a, at: _ } =>
+            if boot_override_pending(readback: a, selection: selection) {
+              OverrideStillPendingAfterAttempt
+            } else if booted_through_override_device {
+              OverrideConsumedByCensusBoot
+            } else {
+              OverrideNoLongerPendingAfterAttempt
             }
+          other => match boot_param5_unread_reason(r: other, which: "after the attempt") {
+            Present { value: why } => OverrideConsumptionUnread { reason: why }
+            Absent => OverrideConsumptionUnread { reason: "boot parameter 5 after the attempt was not read" }
           }
-        other => match boot_param5_unread_reason(r: other, which: "before the attempt") {
-          Present { value: why } => OverrideConsumptionUnread { reason: why }
-          Absent => OverrideConsumptionUnread { reason: "boot parameter 5 before the attempt was not read" }
         }
       }
+    other => match boot_param5_unread_reason(r: other, which: "before the attempt") {
+      Present { value: why } => OverrideConsumptionUnread { reason: why }
+      Absent => OverrideConsumptionUnread { reason: "boot parameter 5 before the attempt was not read" }
+    }
   }
 }
 
@@ -414,7 +424,8 @@ fn power_after_findings(p: PowerAfterAttempt) -> List<String> {
 
 fn override_consumption_text(c: BootOverrideConsumption) -> String {
   match c {
-    OverrideConsumedByThisAttempt => "consumed by this attempt"
+    OverrideConsumedByCensusBoot => "consumed by this attempt: cleared after a census END marker, which only a boot of the override's device prints"
+    OverrideNoLongerPendingAfterAttempt => "no longer pending after the attempt, but no boot through the override's device was observed, so consumption by this attempt is not established"
     OverridePendingBeforeAttempt => "ALREADY PENDING before this attempt set it; consumption not attributable"
     OverrideStillPendingAfterAttempt => "STILL PENDING after the attempt; not consumed"
     OverrideNotHandedOff { reason: r } => concat("not handed off: ", r as String)

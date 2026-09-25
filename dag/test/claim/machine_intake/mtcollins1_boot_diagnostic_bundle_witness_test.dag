@@ -19,7 +19,7 @@ import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootRunRecord, run_record_not_taken,
   BootParam5Read, BootParam5Unread, BootParam5NotTaken, BootOverrideConsumption,
-  OverrideConsumedByThisAttempt, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt, OverrideNotHandedOff, OverrideConsumptionUnread,
+  OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt, OverrideNotHandedOff, OverrideConsumptionUnread,
   boot_override_consumption, override_findings,
   PoweredOffAfterCensusEnd, PoweredOffWithoutCensusEnd, PoweredOnAfterAttempt, PowerAfterUnobserved,
   power_after_attempt, power_after_findings,
@@ -774,18 +774,28 @@ fn p5_pending() -> String {
 
 data p5_consumed: String = "Boot parameter version: 1\nBoot Flag Invalid\nBoot Device Selector : No override"
 
-fn consumption(before: String, after: String) -> BootOverrideConsumption {
+fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOverrideConsumption {
   boot_override_consumption(
     before: BootParam5Read { readback: before, at: "t0" },
     after: BootParam5Read { readback: after, at: "t1" },
-    handed_off: Present { value: mtcollins1_cdrom_selection },
-    not_handed_off_reason: "unused",
+    selection: mtcollins1_cdrom_selection,
+    booted_through_override_device: census_ended,
   )
 }
 
-test fn an_override_set_by_this_attempt_and_gone_after_is_consumed_by_it() -> Bool {
-  match consumption(before: p5_consumed, after: p5_consumed) { OverrideConsumedByThisAttempt => true _ => false }
+fn consumption(before: String, after: String) -> BootOverrideConsumption {
+  consumption_with(before: before, after: after, census_ended: true)
+}
+
+test fn an_override_gone_after_a_census_boot_is_consumed_by_it() -> Bool {
+  match consumption(before: p5_consumed, after: p5_consumed) { OverrideConsumedByCensusBoot => true _ => false }
     && override_findings(c: consumption(before: p5_consumed, after: p5_consumed)) == []
+}
+
+// REVIEW 71115: an override no longer pending is not a consumption without the discriminator. The
+// BMC's own valid-bit timeout, a power-off or another writer clears it too.
+test fn an_override_gone_without_a_census_boot_is_only_no_longer_pending() -> Bool {
+  match consumption_with(before: p5_consumed, after: p5_consumed, census_ended: false) { OverrideNoLongerPendingAfterAttempt => true _ => false }
 }
 
 test fn an_override_still_pending_after_the_attempt_was_not_consumed() -> Bool {
@@ -797,16 +807,11 @@ test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it()
   match consumption(before: p5_pending(), after: p5_consumed) { OverridePendingBeforeAttempt => true _ => false }
 }
 
-test fn consumption_without_a_handoff_or_a_read_is_never_minted() -> Bool {
-  let not_handed = match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5Read { readback: p5_consumed, at: "t1" }, handed_off: none, not_handed_off_reason: "the handoff refused") {
-    OverrideNotHandedOff { reason: _ } => true
-    _ => false
-  }
-  let unread_after = match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, handed_off: Present { value: mtcollins1_cdrom_selection }, not_handed_off_reason: "unused") {
+test fn consumption_without_a_read_is_never_minted() -> Bool {
+  match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: mtcollins1_cdrom_selection, booted_through_override_device: true) {
     OverrideConsumptionUnread { reason: _ } => true
     _ => false
   }
-  not_handed && unread_after
 }
 
 test fn power_off_after_the_census_end_marker_is_expected_not_a_finding() -> Bool {

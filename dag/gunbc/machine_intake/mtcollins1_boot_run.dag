@@ -1043,7 +1043,7 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
         smpro_census: census,
         override_before: before,
         override_after: after,
-        override: boot_override_consumption(before: before, after: after, handed_off: Present { value: sel }, not_handed_off_reason: "unreachable: the handoff observed power on"),
+        override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: false),
         power_after: power_after,
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
@@ -1052,7 +1052,7 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
         smpro_census: census,
         override_before: before,
         override_after: after,
-        override: boot_override_consumption(before: before, after: after, handed_off: Present { value: sel }, not_handed_off_reason: "unreachable: the handoff observed power on"),
+        override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: true),
         power_after: power_after,
       }
   }

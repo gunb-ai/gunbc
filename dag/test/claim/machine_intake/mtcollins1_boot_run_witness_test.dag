@@ -6,10 +6,10 @@ import std.measure { second_count, minute_count, hardware_thread_count, hardware
 import v2.std.optional { Present }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
-  ActuationNotPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
+  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
-  BootParam5Read, SmproNotTaken, SmproProbed, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByThisAttempt,
+  BootParam5Read, SmproNotTaken, SmproProbed, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
 }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_run {
@@ -643,6 +643,10 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   )
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
-    && (match ended.override { OverrideConsumedByThisAttempt => true _ => false })
+    && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
+    && (match mtcollins1_boot_run_record(
+      stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproNotTaken { reason: "x" } },
+      before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
+    ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { outcomes: _ } => true _ => false })
 }
