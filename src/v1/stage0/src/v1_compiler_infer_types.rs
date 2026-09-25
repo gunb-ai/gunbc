@@ -16,7 +16,11 @@ pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profi
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
-pub use crate::std_coercion::dag_subtraction_result_type;
+pub use crate::std_coercion::dag_subtraction_refinement;
+pub use crate::std_coercion::SubtractionRefinement;
+use crate::std_coercion::SubtractionRefinement::{
+    SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
+};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -3183,6 +3187,23 @@ pub struct BinOpInferred {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
+pub fn subtraction_refinement_of(
+    left_type: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Rc<SubtractionRefinement> {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        left_type.clone(),
+        source_indices.clone(),
+        env.clone(),
+    ) {
+        Some(operand) => crate::std_coercion::dag_subtraction_refinement(operand.clone()),
+        std::option::Option::None => {
+            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+        }
+    }
+}
+
 pub fn infer_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
@@ -3190,27 +3211,34 @@ pub fn infer_binop_type_node(
     env: Rc<TypeEnv>,
 ) -> Rc<BinOpInferred> {
     match op.clone() {
-        BinOp::Sub => {
-            let escaped = match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-                left_type.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(operand) => crate::std_coercion::dag_subtraction_result_type(operand.clone()),
-                std::option::Option::None => std::option::Option::None,
-            };
-            match escaped.clone() {
-                Some(from_type) => Rc::new(BinOpInferred {
-                    result_type: nominal_type_ref(from_type.clone()),
+        BinOp::Sub => match (*subtraction_refinement_of(
+            left_type.clone(),
+            source_indices.clone(),
+            env.clone(),
+        ))
+        .clone()
+        {
+            SubtractionRefinement::SubtractionEscapesTo {
+                from_type: from_type,
+                ..
+            } => Rc::new(BinOpInferred {
+                result_type: nominal_type_ref(from_type.clone()),
+                algebra_field: std::option::Option::None,
+            }),
+            SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
+                Rc::new(BinOpInferred {
+                    result_type: error_type(),
                     algebra_field: std::option::Option::None,
-                }),
-                std::option::Option::None => infer_arithmetic_binop_type_node(
+                })
+            }
+            SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
+                infer_arithmetic_binop_type_node(
                     op.clone(),
                     left_type.clone(),
                     source_indices.clone(),
-                ),
+                )
             }
-        }
+        },
         _ => {
             infer_arithmetic_binop_type_node(op.clone(), left_type.clone(), source_indices.clone())
         }

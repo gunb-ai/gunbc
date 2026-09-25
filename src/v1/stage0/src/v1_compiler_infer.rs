@@ -18,6 +18,8 @@ pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
 pub use crate::std_algebra::carrier_container_equality_rows;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
+pub use crate::std_coercion::SubtractionRefinement;
+use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -208,7 +210,7 @@ pub use crate::v1_compiler_infer_types::{
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, template_return_has_variables,
+    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -13308,6 +13310,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.clone(),
                 span.clone(),
             );
+            let refinement_diags = match op.clone() {
+    BinOp::Sub => match (*crate::v1_compiler_infer_types::subtraction_refinement_of(crate::v1_compiler_infer_types::resolved_type(left_typed.clone()), scope.type_env.clone().source_indices.clone(), scope.type_env.clone())).clone() {
+    SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: fts, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ".to_string(), ((fts.clone().len() as i64)).to_string()), " rows for this operand's declaration (source types ".to_string()), fts.clone().join(&", ".to_string())), "); the difference's type would depend on row order".to_string()), span.clone(), scope.module_name.clone())]),
+    _ => Rc::new(vec![]),
+},
+    _ => Rc::new(vec![]),
+};
             let bo_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprBinOp {
@@ -13328,8 +13337,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             Rc::new(InferResult {
                 typed: bo_texpr.clone(),
                 diagnostics: v1_rt::concat(
-                    v1_rt::concat(left_diags.clone(), right_diags.clone()),
-                    eq_wall_diags.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(left_diags.clone(), right_diags.clone()),
+                        eq_wall_diags.clone(),
+                    ),
+                    refinement_diags.clone(),
                 ),
             })
         }

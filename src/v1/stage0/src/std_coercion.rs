@@ -4,6 +4,7 @@
 use self::RealizationGround::*;
 use self::RealizationRefusalCause::*;
 use self::ReferenceIdentityUnavailableCause::*;
+use self::SubtractionRefinement::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
@@ -189,21 +190,52 @@ pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool
     }
 }
 
-pub fn dag_subtraction_result_type(operand: Rc<DeclarationRef>) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for r in refinement_cast_rules().iter().cloned() {
-            if crate::std_decl_ref::declaration_ref_eq(r.to_declaration.clone(), operand.clone()) {
-                __result.push(r);
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SubtractionRefinement {
+    SubtractionStaysInOperandAlgebra,
+    SubtractionEscapesTo { from_type: String },
+    SubtractionRefinementAmbiguous { from_types: Rc<Vec<String>> },
+}
+
+pub fn dag_subtraction_refinement(operand: Rc<DeclarationRef>) -> Rc<SubtractionRefinement> {
+    {
+        let hits = Rc::new({
+            let mut __result = Vec::new();
+            for r in refinement_cast_rules().iter().cloned() {
+                if crate::std_decl_ref::declaration_ref_eq(
+                    r.to_declaration.clone(),
+                    operand.clone(),
+                ) {
+                    __result.push(r);
+                }
+            }
+            __result
+        });
+        if ((hits.clone().len() as i64) == 0) {
+            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+        } else {
+            if ((hits.clone().len() as i64) == 1) {
+                match hits.clone().first().cloned() {
+                    Some(r) => Rc::new(SubtractionRefinement::SubtractionEscapesTo {
+                        from_type: r.from_type.clone(),
+                    }),
+                    std::option::Option::None => {
+                        Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+                    }
+                }
+            } else {
+                Rc::new(SubtractionRefinement::SubtractionRefinementAmbiguous {
+                    from_types: Rc::new({
+                        let mut __result = Vec::new();
+                        for r in hits.iter().cloned() {
+                            __result.push(r.from_type.clone());
+                        }
+                        __result
+                    }),
+                })
             }
         }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(r) => Some(r.from_type.clone()),
-        std::option::Option::None => std::option::Option::None,
     }
 }
 
