@@ -11,6 +11,6 @@ import test.fixture.service_owner_identity.service_b { OwnerIdentityProbe }
 // writable as corpus files; they are pinned by test.claim.service_owner_identity_witness and
 // cli_run service_owner_pull_tests.
 fn ping() -> String {
-  let r = OwnerIdentityProbe.Ping()
+  let r = OwnerIdentityProbe.OwnerIdentityPing()
   r.ok
 }

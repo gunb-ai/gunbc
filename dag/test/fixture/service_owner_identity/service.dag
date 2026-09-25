@@ -7,7 +7,7 @@ import std.types { String, Unit }
 // test.claim.service_owner_identity_witness can import two VALUES under one name and observe the
 // refusal. Designed, not real: no real pair of value declarations shares a bare service's name.
 service OwnerIdentityProbe {
-  operation Ping {
+  operation OwnerIdentityPing {
     input {}
     output { ok: String from "stdout" }
     readonly

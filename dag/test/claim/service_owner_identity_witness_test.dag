@@ -107,7 +107,7 @@ test fn a_resource_beside_the_imported_service_does_not_collide() -> Bool {
 // RED for the collision rule: two VALUES under one name -- a bare service and a data declaration,
 // designed in test.fixture.service_owner_identity because no real pair exists -- have no position to
 // tell them apart, so the receiver refuses rather than taking whichever the scope fold inserted last.
-data two_values_source: String = "module probe_service_owner_identity_two_values\nimport std.types { String }\nimport test.fixture.service_owner_identity.service { OwnerIdentityProbe }\nimport test.fixture.service_owner_identity.value { OwnerIdentityProbe }\nfn ping() -> String {\n  let r = OwnerIdentityProbe.Ping()\n  r.ok\n}\n"
+data two_values_source: String = "module probe_service_owner_identity_two_values\nimport std.types { String }\nimport test.fixture.service_owner_identity.service { OwnerIdentityProbe }\nimport test.fixture.service_owner_identity.value { OwnerIdentityProbe }\nfn ping() -> String {\n  let r = OwnerIdentityProbe.OwnerIdentityPing()\n  r.ok\n}\n"
 
 test fn two_values_under_one_name_refuse_at_the_receiver() -> Bool {
   keyed_count(source: two_values_source, wanted_class: "AmbiguousReference", wanted_subject: "OwnerIdentityProbe") == 1
@@ -121,7 +121,7 @@ test fn two_values_under_one_name_refuse_at_the_receiver() -> Bool {
 fn owner_probe_source(import_lines: String) -> String {
   "module probe_service_owner_plural\nimport std.types { String }\n"
     + import_lines
-    + "fn ping() -> String {\n  let r = OwnerIdentityProbe.Ping()\n  r.ok\n}\n"
+    + "fn ping() -> String {\n  let r = OwnerIdentityProbe.OwnerIdentityPing()\n  r.ok\n}\n"
 }
 
 data svc_a_named: String = "import test.fixture.service_owner_identity.service { OwnerIdentityProbe }\n"
@@ -135,13 +135,13 @@ fn ambiguous_count(import_lines: String) -> Int {
   keyed_count(source: owner_probe_source(import_lines: import_lines), wanted_class: "AmbiguousReference", wanted_subject: "OwnerIdentityProbe")
 }
 
-// ADMITTED, and by the route: no ambiguity, no owner refusal, and Ping's existence established --
+// ADMITTED, and by the route: no ambiguity, no owner refusal, and OwnerIdentityPing's existence established --
 // the key the unresolved arm reports, so a zero here is not vacuous.
 fn admitted(import_lines: String) -> Bool {
   let src = owner_probe_source(import_lines: import_lines)
   keyed_count(source: src, wanted_class: "AmbiguousReference", wanted_subject: "OwnerIdentityProbe") == 0
     && keyed_count(source: src, wanted_class: "ServiceOwnerMismatch", wanted_subject: "OwnerIdentityProbe") == 0
-    && keyed_count(source: src, wanted_class: "MethodExistenceUndecided", wanted_subject: "Ping") == 0
+    && keyed_count(source: src, wanted_class: "MethodExistenceUndecided", wanted_subject: "OwnerIdentityPing") == 0
 }
 
 test fn two_same_named_services_refuse_in_either_order() -> Bool {

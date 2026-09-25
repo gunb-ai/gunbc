@@ -1,5 +1,6 @@
 module test.claim.tailscale_acl_witness
 import std.types { String, Bool }
+import v2.std.algebra { length }
 import std.disposition { Disposition, Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }

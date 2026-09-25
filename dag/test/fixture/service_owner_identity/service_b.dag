@@ -7,7 +7,7 @@ import std.types { String, Unit }
 // set, never by import or census order.
 // Designed, not real: no two real modules declare one service name today.
 service OwnerIdentityProbe {
-  operation Ping {
+  operation OwnerIdentityPing {
     input {}
     output { ok: String from "stdout" }
     readonly
