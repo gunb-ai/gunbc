@@ -297,15 +297,14 @@ type SubtractionRefinement
 
 fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
   let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
-  if (hits |> count) == 0 {
-    SubtractionStaysInOperandAlgebra
-  } else if (hits |> count) == 1 {
-    match hits |> first {
-      Present { value: r } => SubtractionEscapesTo { from_type: r.from_type }
-      Absent => SubtractionStaysInOperandAlgebra
-    }
-  } else {
-    SubtractionRefinementAmbiguous { from_types: hits |> map(r => r.from_type) }
+  match hits |> first {
+    Absent => SubtractionStaysInOperandAlgebra
+    Present { value: r } =>
+      if (hits |> count) == 1 {
+        SubtractionEscapesTo { from_type: r.from_type }
+      } else {
+        SubtractionRefinementAmbiguous { from_types: hits |> map(h => h.from_type) }
+      }
   }
 }
 
