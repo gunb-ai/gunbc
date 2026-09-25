@@ -1,6 +1,7 @@
 module v2.test.claim.body_lowering.function_value_body
 
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
