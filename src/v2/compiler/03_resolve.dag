@@ -448,6 +448,20 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// A `_` IN VALUE POSITION NAMES NOTHING, AND THE REFUSAL SAYS WHY. An anonymous parameter slot is
+// bound under a minted label no source can spell (v2.std.anonymous_binder), so a `_` reaching an
+// atom lookup finds no binder by construction -- the slot is never referenceable. The generic
+// unbound-symbol refusal would be true but would send the author looking for a missing declaration;
+// this cause names the actual rule. It is located at the mention's own occurrence, never at the
+// slot's label, which carries none.
+fn anonymous_parameter_referenced_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_anonymous_parameter_referenced,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 // AN UNBOUND NAME THE CORPUS DOES DECLARE IS A MISSING BINDING, NOT A TYPO, AND THE REFUSAL SAYS SO.
 // Deleting the corpus-wide spelling search makes a reference refuse when nothing on its chain binds
 // it -- correct, and the point of the package -- but on its own it hands the author of a module
@@ -930,6 +944,13 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
                 Accepted {
                   value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
                   diagnostics: pending
+                }
+              } else if identity == pattern_wildcard_name() {
+                Rejected {
+                  diagnostics: rejected_with_pending(
+                    pending: pending,
+                    rejected: diagnostics_singleton(d: anonymous_parameter_referenced_diagnostic(n: n))
+                  )
                 }
               } else {
                 Rejected {

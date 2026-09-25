@@ -1380,7 +1380,7 @@ jobs:
         id: mtcollins1_boot_admit
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_admit_executor
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_admission.dag --function mtcollins1_boot_admit_executor
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         timeout-minutes: 5
