@@ -1,6 +1,7 @@
 module test.claim.repository_convergence_placement_witness_test
 
 import std.types { String, Bool }
+import gunbc.live_deploy.repository_convergence { convergence_fetch_trusted_directory }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead,
@@ -398,4 +399,21 @@ test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool
         }
     }
   }
+}
+
+// THE FETCH SOURCE IS TRUSTED AT ITS GIT DIR (#12246 follow-up). The expected values are written
+// out, not re-derived, so the oracle is git's observed refusal and not the derivation under test:
+// srv1 journal 2026-09-25 02:07:36 refused `-c safe.directory=<checkout>` with "detected dubious
+// ownership in repository at <checkout>/.git". RED: the worktree-only path #12246 passed is not
+// the path passed now. A second source gets its own git dir, never the fixture's, never `*`.
+//
+// DECLARED FRONTIER: the execution-level control (a local fetch across two owning principals) is
+// not creatable in a session container -- one uid, no sudo, no user namespaces, and release git
+// ignores GIT_TEST_ASSUME_DIFFERENT_OWNER. Its trigger is the next srv1 dashboard_deploy, whose
+// ConvergenceObjectImportRefused arm reds on this exact cause.
+test fn the_fetch_source_is_trusted_at_its_git_dir_not_its_worktree() -> Bool {
+  convergence_fetch_trusted_directory(remote: fixture_object_source) == "/home/ghrunner/work/gunbc/gunbc/.git"
+    && convergence_fetch_trusted_directory(remote: fixture_object_source) != fixture_object_source
+    && convergence_fetch_trusted_directory(remote: "/srv/another-checkout") == "/srv/another-checkout/.git"
+    && convergence_fetch_trusted_directory(remote: fixture_object_source) != "*"
 }

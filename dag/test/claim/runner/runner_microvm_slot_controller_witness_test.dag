@@ -43,7 +43,9 @@ import gunbc.runner_microvm_slot_unit {
 }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
 import extdeps.systemd.unit_file { ServiceSlice, SliceUnitFile, SystemdSliceDirective, MemoryMax, MemorySwapMax, DirectiveByteCount }
-import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registration }
+import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registration, refusal_text, ReservationNotObserved }
+import gunbc.fabric_required_build_cell { ReservationUnreadable, ReservationPayloadUndecodable }
+import std.durable_compare_and_set { CasUnreadableReadRefused }
 import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
 import gunbc.runner.runner_jit_perform { JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched, DispatchRefusedCellNotOwned }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome, JitConfigMinted }
@@ -338,4 +340,21 @@ test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool 
         "--property=PartOf=gunbc-microvm-slot@srv1-13.service",
       ]
   }
+}
+
+// THE RESERVATION REFUSAL CARRIES WHY THE STORE COULD NOT BE READ. The first srv1 slot start (fleet-
+// converge run 36054790165) refused "the allocation store could not be read for srv1-13" and nothing
+// more: the store read's typed cause was dropped at gunbc.fabric_required_build_cell, so a missing
+// directory and a refused read looked the same to the operator. The red is that old text, which ended
+// at the slot key; the receipt now carries the cause through std's one rendering of it, and a payload
+// that does not decode carries its decode detail the same way.
+test fn a_reservation_refusal_names_why_the_store_could_not_be_read() -> Bool {
+  let unreadable = refusal_text(r: ReservationNotObserved {
+    observation: ReservationUnreadable { slot_key: "srv1-13" as NonEmptyStr, cause: CasUnreadableReadRefused { detail: "No such file or directory" as NonEmptyStr } },
+  })
+  let undecodable = refusal_text(r: ReservationNotObserved {
+    observation: ReservationPayloadUndecodable { slot_key: "srv1-13" as NonEmptyStr, detail: "not a hold payload" as NonEmptyStr },
+  })
+  string_contains(s: unreadable, pattern: "No such file or directory")
+    && string_contains(s: undecodable, pattern: "not a hold payload")
 }

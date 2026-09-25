@@ -2,7 +2,6 @@ module extdeps.standards.rfc_7468
 
 import std.types { Int, String, List }
 import std.logic { Bool }
-import std.integer { UInt8 }
 import std.encoding { base64_decode, Standard }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
@@ -31,7 +30,7 @@ type PemRefusal
   | PemBodyNotBase64
 
 type PemDecode
-  = PemDecoded { der: List<UInt8> }
+  = PemDecoded { der: List<Int> }
   | PemRefused { cause: PemRefusal }
 
 fn pem_begin_line(label: String) -> String {
