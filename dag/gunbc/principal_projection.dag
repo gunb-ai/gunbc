@@ -1,6 +1,7 @@
 module gunbc.principal_projection
 
 import std.types { String, NonEmptyStr, Bool, Int, Email }
+import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import extdeps.auth.jwt { jwt_string_or_uri_wire }
 import extdeps.auth.oidc {
@@ -108,6 +109,40 @@ fn principal_ref_label(p: PrincipalRef) -> String {
     ],
     "",
   )
+}
+
+// THE LABEL PARSE, the inverse spelling the v3 event codec decodes with: exactly three non-empty
+// segments after the principal: marker, else none — a malformed label refuses rather than
+// guessing, so a corrupt event is unreadable, never mis-attributed. No whitespace anywhere.
+fn principal_ref_parse_label(s: String) -> PrincipalRef? {
+  let t = trim(s)
+  if starts_with(s: t, prefix: "principal:") {
+    let rest = substring(s: t, start: 10, end: string_length(s: t))
+    let segs = split(s: rest, delimiter: "/")
+    if count(segs) == 3 && !string_contains(s: rest, pattern: " ") {
+      match segs.first() {
+        Absent => none
+        Present { value: a } =>
+          match segs.skip(n: 1).first() {
+            Absent => none
+            Present { value: n } =>
+              match segs.skip(n: 2).first() {
+                Absent => none
+                Present { value: sub } =>
+                  if a == "" || n == "" || sub == "" {
+                    none
+                  } else {
+                    Present { value: PrincipalRef { authority: a as NonEmptyStr, namespace: n as NonEmptyStr, subject: sub as NonEmptyStr } }
+                  }
+              }
+          }
+      }
+    } else {
+      none
+    }
+  } else {
+    none
+  }
 }
 
 // ── The sealed human-principal mint ────────────────────────────────────────────────────────────

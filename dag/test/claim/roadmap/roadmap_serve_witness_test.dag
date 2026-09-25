@@ -67,7 +67,8 @@ import gunbc.roadmap_authority {
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
-import gunbc.roadmap.roadmap_event_log { IssueComment }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label, fabric_workflow_principal }
+import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_lines_accepted_count }
@@ -691,6 +692,10 @@ test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool 
     && bad_selector_tailnet_only.status == 403
 }
 
+fn fixture_human_ref() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-human" as NonEmptyStr }
+}
+
 // CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records
 // the fact and stops, with no launch vocabulary anywhere in the body.
 test fn witness_human_assignment_never_dispatches() -> Bool {
@@ -698,11 +703,11 @@ test fn witness_human_assignment_never_dispatches() -> Bool {
     instance: srv2_preview_dashboard_instance(),
     plan: caller_supplied_plan_fixture(),
     node_id: "some-node",
-    assignee: "briansrls@gunb.ai",
+    assignee: fixture_human_ref(),
     event_id: "evt-1",
   )
   r.status == 200
-    && string_contains(s: r.body, pattern: "assigned: some-node → briansrls@gunb.ai (event evt-1)")
+    && string_contains(s: r.body, pattern: "assigned: some-node → principal:google-oidc/accounts/sub-human (event evt-1)")
     && !string_contains(s: r.body, pattern: "fabric")
     && !string_contains(s: r.body, pattern: "waiting on")
     && !string_contains(s: r.body, pattern: "session")
@@ -715,18 +720,18 @@ test fn witness_human_assignment_never_dispatches() -> Bool {
 test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> Bool {
   let blocked = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee: "fabric@gunb.ai",
+    assignee: fabric_workflow_principal,
     event_id: "evt-2",
     outcome: na(r: LaunchDependenciesBlocked { blockers: ["dep-a", "dep-b"] }),
   )
   let no_capacity = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee: "fabric@gunb.ai",
+    assignee: fabric_workflow_principal,
     event_id: "evt-3",
     outcome: na(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }),
   )
   blocked.status == 409
-    && string_contains(s: blocked.body, pattern: "assigned: some-node → fabric@gunb.ai (event evt-2)")
+    && string_contains(s: blocked.body, pattern: "assigned: some-node → principal:gunbc/workflows/fabric (event evt-2)")
     && string_contains(s: blocked.body, pattern: "waiting on fabric: dependencies_blocked")
     && string_contains(s: blocked.body, pattern: "dependencies not closed: dep-a, dep-b")
     && string_contains(s: blocked.body, pattern: "the assignment stands")
@@ -742,12 +747,12 @@ test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> 
 test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee: "fabric@gunb.ai",
+    assignee: fabric_workflow_principal,
     event_id: "evt-4",
     outcome: Spawned { node_id: "some-node", session_name: "gunbc-some-node-abc", provider: "codex", launch: launch_identity_exemplar() },
   )
   r.status == 200
-    && string_contains(s: r.body, pattern: "assigned: some-node → fabric@gunb.ai (event evt-4)")
+    && string_contains(s: r.body, pattern: "assigned: some-node → principal:gunbc/workflows/fabric (event evt-4)")
     && string_contains(s: r.body, pattern: "fabric work request admitted: session gunbc-some-node-abc")
     && string_contains(s: r.body, pattern: "Work tab")
 }
@@ -758,7 +763,7 @@ test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
 test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee: "fabric@gunb.ai",
+    assignee: fabric_workflow_principal,
     event_id: "evt-5",
     outcome: na(r: LaunchAlreadyLive { session_name: "gunbc-some-node-abc" }),
   )
@@ -834,11 +839,11 @@ test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool
 // shape reads back the same address).
 test fn witness_comment_recorded_response_names_the_deep_link() -> Bool {
   let comments = [
-    IssueComment { ordinal: 1, key: "k1" as NonEmptyStr, author: "s1" as NonEmptyStr, body: "one", visibility: "public" as NonEmptyStr, created_at: "t1", edited_at: "", deleted: false },
-    IssueComment { ordinal: 2, key: "k2" as NonEmptyStr, author: "s2" as NonEmptyStr, body: "two", visibility: "public" as NonEmptyStr, created_at: "t2", edited_at: "", deleted: false },
+    IssueComment { ordinal: 1, comment: "k1" as NonEmptyStr, author: EventPrincipalAuthenticated { ref: fixture_human_ref() }, body: "one", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "t1", edited_at: "", deleted: false },
+    IssueComment { ordinal: 2, comment: "k2" as NonEmptyStr, author: EventPrincipalAuthenticated { ref: fixture_human_ref() }, body: "two", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "t2", edited_at: "", deleted: false },
   ]
-  let first = serve_comment_recorded_response(node_id: "demo-node", comments: comments, key: "k2", event_id: "evt-9", already_present: false)
-  let retry = serve_comment_recorded_response(node_id: "demo-node", comments: comments, key: "k2", event_id: "", already_present: true)
+  let first = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k2", event_id: "evt-9", already_present: false)
+  let retry = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k2", event_id: "", already_present: true)
   first.status == 200
     && string_contains(s: first.body, pattern: "comment recorded: /issue/demo-node#comment-2 (event evt-9)")
     && retry.status == 200

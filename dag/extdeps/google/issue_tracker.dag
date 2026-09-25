@@ -610,31 +610,24 @@ fn issue_results_assignee_display(assignee: User?) -> String {
   }
 }
 
-// THE ASSIGNMENT FIELD'S POPULATION AND VALIDATION (owner rulings 2026-09-25: assignment works "via
-// email ... autocompletes to recently used emails"; the worker identity is NOT model-specific — it
-// is a high-level endpoint like fabric offers, and the workflow figures out which model to use).
-// The endpoint carries BOTH principal spellings: the display form is the email spelling the field
-// offers and the event records; the qualified form names the same endpoint in the
-// authority+namespace+identity algebra (docs/plans/qualified-subject-identity.md). The
-// recently-used feed itself is the event ledger's fold (gunbc.roadmap.roadmap_event_log
-// roadmap_recent_claimed_assignees), not an interface row — the ledger owns the history.
+// THE ASSIGNMENT FIELD'S DISPLAY VOCABULARY (reshaped by the owner ruling 2026-09-25,
+// docs/plans/human-identity-authorization.md): the durable principal identity lives in
+// gunbc.principal_projection — email is the SELECTOR and a display fact, never the identity (the
+// ruling bans subject = email outright: the a3fd5eb principal_from_email shape has no constructor
+// anywhere in gunbc). THIS module keeps the interface's visible shapes: the fabric selector's
+// email spelling (what the picker displays; the stored identity is principal:gunbc/workflows/
+// fabric from the principal authority), the selector's shape validation, and the unassigned
+// placeholder. The suggestion assembly and the principal chips ride the event-principal types in
+// the page; the avatar chain below is the interface's display law (initials under the
+// never-blocks rule).
 data issue_assign_fabric_display: NonEmptyStr = "fabric@gunb.ai"
-data issue_assign_fabric_qualified: NonEmptyStr = "worker:fabric/offered"
 
-// ONE QUALIFIED-PRINCIPAL MODEL (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
-// every participant — humans and the workflow endpoint — is one construction. Email is the
-// user-facing SELECTOR, never the durable identity: aliases can change without rewriting history,
-// so the durable SUBJECT names the principal and the email selects it. NO MODEL NAMES in the
-// assignment UI — Fabric picks the worker through its capability/cost/capacity/serving authorities;
-// the realization may appear in the Work tab, never in the assignment vocabulary.
-type PrincipalKind
-  = PrincipalKindHuman
-  | PrincipalKindWorkflow
-
-// THE AVATAR'S STANDING AND ITS SOURCE, decided by the resolution chain below. THE NEVER-BLOCKS
-// LAW (owner mandate): absent and unread render deterministic initials and NEVER refuse
-// assignment, comments, or rendering — every standing yields a renderable avatar, so no operation
-// waits on a photo service.
+// THE AVATAR DISPLAY LAW (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md): the
+// resolution chain — internal principal profile → Google Workspace directory/Contacts photo →
+// cached prior → deterministic initials — with THE NEVER-BLOCKS LAW: absent and unread render
+// initials and NEVER refuse assignment, comments, or rendering. These are DISPLAY rows; the
+// profile facts and the principal refs live in gunbc.principal_projection, and the /avatar
+// endpoint + directory fetch are the realization (follow-up, A9).
 type AvatarStanding
   = AvatarResolved
   | AvatarAbsent
@@ -651,25 +644,13 @@ type AvatarProbe
   | AvatarProbeMiss
   | AvatarProbeUnread
 
-type QualifiedPrincipal {
-  subject: NonEmptyStr
-  primary_email: NonEmptyStr
-  display_name: NonEmptyStr
-  kind: PrincipalKind
-  avatar: AvatarStanding
-  avatar_source: AvatarSource
-}
-
 type AvatarResolution {
   standing: AvatarStanding
   source: AvatarSource
 }
 
-// THE AVATAR RESOLUTION CHAIN, in its ruled order: internal principal profile → Google Workspace
-// directory/Contacts photo → cached prior → deterministic initials. The probes are INPUTS: the
-// /avatar/<principal> endpoint and the directory fetch are the realization (follow-up), and this
-// fn is the modeled decision over what the probes found. The first HIT wins; no hit with any
-// unread probe is AvatarUnread (degraded, still initials-rendered); all misses is AvatarAbsent.
+// THE CHAIN over the probe results: the first HIT wins; no hit with any unread probe is
+// AvatarUnread (degraded, still initials-rendered); all misses is AvatarAbsent.
 fn avatar_resolve(probe_internal: AvatarProbe, probe_directory: AvatarProbe, probe_cache: AvatarProbe) -> AvatarResolution {
   if probe_internal == AvatarProbeHit {
     AvatarResolution { standing: AvatarResolved, source: AvatarFromInternalProfile }
@@ -693,84 +674,13 @@ fn avatar_initials_of(display_name: String) -> String {
   join([first, second], "")
 }
 
-// THE NEVER-BLOCKS LAW, one spelling: rendering falls back to initials under exactly the standings
-// that carry no image — the page renders initials whenever this is true and never consults a probe
-// on the assignment/comment/render path.
+// THE NEVER-BLOCKS LAW, one spelling: rendering falls back to initials under exactly the
+// standings that carry no image.
 fn avatar_initial_fallback(a: AvatarStanding) -> Bool {
   match a {
     AvatarResolved => false
     AvatarAbsent => true
     AvatarUnread => true
-  }
-}
-
-// THE PRINCIPAL OF AN EMAIL SELECTOR, the deterministic construction every surface shares: the
-// fabric endpoint's spellings name the workflow principal (display "Fabric", kind Workflow, its
-// service avatar RESOLVED from its internal profile — stable, modeled, no external fetch, and it
-// never masquerades as human: the kind drives the workflow badge at render). Any other valid email
-// names a human whose display name derives from the selector itself, avatar ABSENT (initials at
-// render) until an /avatar realization upgrades it through the resolution chain.
-fn principal_from_email(email: String) -> QualifiedPrincipal? {
-  let t = trim(email)
-  if !issue_assignee_input_valid(s: t) {
-    none
-  } else if issue_assignee_is_fabric_endpoint(s: t) {
-    Present { value: QualifiedPrincipal {
-      subject: issue_assign_fabric_qualified,
-      primary_email: issue_assign_fabric_display,
-      display_name: "Fabric" as NonEmptyStr,
-      kind: PrincipalKindWorkflow,
-      avatar: AvatarResolved,
-      avatar_source: AvatarFromInternalProfile,
-    } }
-  } else {
-    Present { value: QualifiedPrincipal {
-      subject: t as NonEmptyStr,
-      primary_email: t as NonEmptyStr,
-      display_name: principal_display_name_of(email: t) as NonEmptyStr,
-      kind: PrincipalKindHuman,
-      avatar: AvatarAbsent,
-      avatar_source: AvatarFromInitials,
-    } }
-  }
-}
-
-fn principal_display_name_of(email: String) -> String {
-  match split(s: email, delimiter: "@").first() {
-    Present { value: local } => local
-    Absent => email
-  }
-}
-
-// THE SUGGESTIONS FEED (owner mandate: recents first from durable assignment history, fabric pinned
-// near top, dedupe by stable principal, avatar + display name + email + kind per row). The SEEDS
-// are always present — the viewer (self), then fabric pinned — then the ledger's recently-used
-// principals, each exactly once by SUBJECT (a principal selected under two emails lists once, at
-// their newest turn). One fn every assign surface derives its control from.
-fn issue_assign_suggestions(viewer: String, recent_emails: List<String>) -> List<QualifiedPrincipal> {
-  let seed_principals = concat(
-    match principal_from_email(email: viewer) { Present { value: p } => [p]  Absent => [] },
-    match principal_from_email(email: issue_assign_fabric_display as String) { Present { value: p } => [p]  Absent => [] },
-  )
-  let recent_principals = fold(recent_emails, init: [], f: (acc, e) => match principal_from_email(email: e) {
-    Present { value: p } => concat(acc, [p])
-    Absent => acc
-  })
-  principal_dedup_by_subject(concat(seed_principals, recent_principals))
-}
-
-// One principal exactly once, first occurrence kept — the seeds win over a recent that names the
-// same subject.
-fn principal_dedup_by_subject(ps: List<QualifiedPrincipal>) -> List<QualifiedPrincipal> {
-  fold(ps, init: [], f: (acc, p) => if any(acc, a => (a.subject as String) == (p.subject as String)) { acc } else { concat(acc, [p]) })
-}
-
-// THE KIND AND AVATAR-STANDING WIRES, the class-suffix vocabulary the stylesheet and any client
-// program bind on — one spelling each, derived never hand-rolled downstream.
-fn issue_principal_kind_wire(k: PrincipalKind) -> String {
-  match k {
-    PrincipalKindHuman => "human"
-    PrincipalKindWorkflow => "workflow"
   }
 }
 
@@ -805,21 +715,6 @@ fn issue_assignee_input_is_email(s: String) -> Bool {
         }
     }
   }
-}
-
-fn issue_assignee_is_fabric_endpoint(s: String) -> Bool {
-  let t = trim(s)
-  t == (issue_assign_fabric_display as String) || t == (issue_assign_fabric_qualified as String)
-}
-
-fn issue_assignee_input_valid(s: String) -> Bool {
-  issue_assignee_input_is_email(s: s) || issue_assignee_is_fabric_endpoint(s: s)
-}
-
-// THE CANONICAL SPELLING THE EVENT RECORDS: the fabric endpoint's qualified form normalizes to its
-// display form — one endpoint, one spelling on the wire, both accepted at the route.
-fn issue_assignee_canonical(s: String) -> String {
-  if (trim(s) == (issue_assign_fabric_qualified as String)) { issue_assign_fabric_display as String } else { trim(s) }
 }
 
 // THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law: the column set, the row

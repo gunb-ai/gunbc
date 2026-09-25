@@ -2,7 +2,8 @@ module test.claim.roadmap.roadmap_event_carrier_witness_test
 
 import std.types { Bool, String, FilePath, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_event_log { RoadmapEvent, Claimed, roadmap_event_envelope, RoadmapEventId }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, Claimed, roadmap_event_envelope, RoadmapEventId, EventPrincipalAuthenticated }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout, roadmap_event_node_dir, roadmap_event_file_relative, roadmap_event_push_refspec, roadmap_event_commit_message,
   roadmap_events_branch, roadmap_events_decode_reads, EventFileRead, EventFileContent, EventFileUnreadable, RoadmapEventsRead, EventsRead, EventsReadRefused,
@@ -11,7 +12,9 @@ import gunbc.roadmap.roadmap_event_carrier {
 import gunbc.roadmap.roadmap_event_log { roadmap_event_wire_text }
 
 fn self_claimed(node: RoadmapNodeId, author: String, at: String) -> RoadmapEventEnvelope {
-  roadmap_event_envelope(e: RoadmapEvent { node: node, author: author as NonEmptyStr, parent: none, kind: Claimed { assignee: author as NonEmptyStr, return_to: author as NonEmptyStr }, recorded_at: at })
+  let ref = PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: author as NonEmptyStr }
+  let principal = EventPrincipalAuthenticated { ref: ref }
+  roadmap_event_envelope(e: RoadmapEvent { node: node, author: principal, parent: none, kind: Claimed { assignee: principal, return_to: principal }, recorded_at: at })
 }
 
 // The carrier's layout is a function of the instance roots: the worktree hangs under the instance

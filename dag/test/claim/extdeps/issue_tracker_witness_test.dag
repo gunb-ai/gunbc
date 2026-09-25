@@ -69,26 +69,7 @@ import extdeps.google.issue_tracker {
   issue_results_row_tracks,
   issue_assignee_unassigned_display,
   issue_results_assignee_display,
-  issue_assign_fabric_display,
-  issue_assign_fabric_qualified,
   issue_assignee_input_is_email,
-  issue_assignee_is_fabric_endpoint,
-  issue_assignee_input_valid,
-  issue_assignee_canonical,
-  issue_assign_suggestions,
-  principal_from_email,
-  principal_display_name_of,
-  principal_dedup_by_subject,
-  issue_principal_kind_wire,
-  issue_avatar_standing_wire,
-  avatar_resolve,
-  avatar_initials_of,
-  avatar_initial_fallback,
-  PrincipalKind, PrincipalKindHuman, PrincipalKindWorkflow,
-  AvatarStanding, AvatarResolved, AvatarAbsent, AvatarUnread,
-  AvatarSource, AvatarFromInternalProfile, AvatarFromGoogleDirectory, AvatarFromCachedPrior, AvatarFromInitials,
-  AvatarProbe, AvatarProbeHit, AvatarProbeMiss, AvatarProbeUnread,
-  QualifiedPrincipal, AvatarResolution,
 }
 import std.types { list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -770,36 +751,6 @@ test fn w_title_is_the_primary_column_with_the_dominant_share() -> Bool {
 }
 
 
-// THE QUALIFIED-PRINCIPAL MODEL (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
-// email is the selector, never the durable identity; fabric@gunb.ai is the workflow endpoint with
-// BOTH spellings naming ONE principal; NO MODEL NAMES in the assignment vocabulary. The fabric
-// principal is kind Workflow with its service avatar resolved from its internal profile (stable,
-// modeled, no external fetch) and never masquerades as human; a human principal's display name
-// derives deterministically from the selector.
-test fn w_qualified_principal_model_email_selector_fabric_endpoint_no_model_names() -> Bool {
-  let fabric = principal_from_email(email: "fabric@gunb.ai")
-  let fabric_qualified = principal_from_email(email: "worker:fabric/offered")
-  let human = principal_from_email(email: "briansrls@gunb.ai")
-  let refused = principal_from_email(email: "not an email")
-  (match fabric { Present { value: p } =>
-    (p.subject as String) == "worker:fabric/offered"
-      && (p.primary_email as String) == "fabric@gunb.ai"
-      && (p.display_name as String) == "Fabric"
-      && (match p.kind { PrincipalKindWorkflow => true  PrincipalKindHuman => false })
-      && (match p.avatar { AvatarResolved => true  AvatarAbsent => false  AvatarUnread => false })
-      && (match p.avatar_source { AvatarFromInternalProfile => true  AvatarFromGoogleDirectory => false  AvatarFromCachedPrior => false  AvatarFromInitials => false })
-    Absent => false })
-    && (match fabric_qualified { Present { value: p } => (p.subject as String) == "worker:fabric/offered"  Absent => false })
-    && (match human { Present { value: p } =>
-      (p.subject as String) == "briansrls@gunb.ai"
-        && (p.display_name as String) == "briansrls"
-        && (match p.kind { PrincipalKindHuman => true  PrincipalKindWorkflow => false })
-        && (match p.avatar { AvatarResolved => false  AvatarAbsent => true  AvatarUnread => false })
-      Absent => false })
-    && (match refused { Present { value: _ } => false  Absent => true })
-    && principal_display_name_of(email: "ops-team@gunb.ai") == "ops-team"
-}
-
 // THE AVATAR RESOLUTION CHAIN, in its ruled order — internal profile → directory → cached →
 // initials — with UNREAD degraded (initials, honestly reported) and ABSENT the all-miss floor. The
 // never-blocks law: EVERY standing renders initials or an image, so assignment, comments and
@@ -823,61 +774,18 @@ test fn w_avatar_resolution_chain_order_and_the_never_blocks_law() -> Bool {
     && avatar_initials_of(display_name: "ops") == "o"
 }
 
-// THE SUGGESTIONS FEED (the autocomplete's population, owner mandate: fabric pinned near top,
-// recents from durable assignment history, dedupe by stable principal): the seeds are ALWAYS
-// PRESENT — the viewer first, fabric pinned second — the recents follow most-recent-first, and a
-// recent naming a seed's subject never repeats it. Every row carries avatar + display name +
-// email + kind.
-test fn w_assign_suggestions_seeds_fabric_pinned_recents_deduped_by_subject() -> Bool {
-  let suggestions = issue_assign_suggestions(viewer: "briansrls@gunb.ai", recent_emails: [
-    "teammate@gunb.ai",
-    "fabric@gunb.ai",
-    "briansrls@gunb.ai",
-    "teammate@gunb.ai",
-  ])
-  (match suggestions.first() {
-    Present { value: p } => (p.primary_email as String) == "briansrls@gunb.ai" && (match p.kind { PrincipalKindHuman => true  PrincipalKindWorkflow => false })
-    Absent => false
-  })
-    && (match suggestions.skip(n: 1).first() {
-      Present { value: p } => (p.primary_email as String) == "fabric@gunb.ai" && (match p.kind { PrincipalKindWorkflow => true  PrincipalKindHuman => false })
-      Absent => false
-    })
-    && (match suggestions.skip(n: 2).first() { Present { value: p } => (p.primary_email as String) == "teammate@gunb.ai"  Absent => false })
-    && count(suggestions) == 3
-    && count(issue_assign_suggestions(viewer: "", recent_emails: [])) == 1
-    && (match issue_assign_suggestions(viewer: "", recent_emails: []).first() {
-      Present { value: p } => (match p.kind { PrincipalKindWorkflow => true  PrincipalKindHuman => false })
-      Absent => false
-    })
-}
-
-// THE ROUTE'S VALIDATION TABLE: an email spelling (one @, dotted domain, no spaces) or the fabric
-// endpoint in either spelling; everything else refuses. The canonical spelling normalizes the
-// fabric qualified form to the display form — one endpoint, one wire spelling.
-test fn w_assignee_validation_accepts_emails_and_fabric_refuses_everything_else() -> Bool {
-  issue_assignee_input_valid(s: "briansrls@gunb.ai")
-    && issue_assignee_input_valid(s: "  briansrls@gunb.ai  ")
-    && issue_assignee_input_valid(s: "fabric@gunb.ai")
-    && issue_assignee_input_valid(s: "worker:fabric/offered")
-    && !issue_assignee_input_valid(s: "")
-    && !issue_assignee_input_valid(s: "not-an-email")
-    && !issue_assignee_input_valid(s: "a@b")
-    && !issue_assignee_input_valid(s: "@gunb.ai")
-    && !issue_assignee_input_valid(s: "two@at@gunb.ai")
-    && !issue_assignee_input_valid(s: "has space@gunb.ai")
-    && issue_assignee_is_fabric_endpoint(s: "worker:fabric/offered")
-    && !issue_assignee_is_fabric_endpoint(s: "briansrls@gunb.ai")
-    && issue_assignee_canonical(s: "worker:fabric/offered") == "fabric@gunb.ai"
-    && issue_assignee_canonical(s: " briansrls@gunb.ai ") == "briansrls@gunb.ai"
-    && !issue_assignee_input_is_email(s: "worker:fabric/offered")
-}
-
-// THE KIND AND STANDING WIRES, the class-suffix vocabulary the stylesheet binds.
-test fn w_principal_kind_and_avatar_standing_wires() -> Bool {
-  issue_principal_kind_wire(k: PrincipalKindHuman) == "human"
-    && issue_principal_kind_wire(k: PrincipalKindWorkflow) == "workflow"
-    && issue_avatar_standing_wire(a: AvatarResolved) == "resolved"
-    && issue_avatar_standing_wire(a: AvatarAbsent) == "absent"
-    && issue_avatar_standing_wire(a: AvatarUnread) == "unread"
+// THE SELECTOR'S SHAPE VALIDATION, what remains at the interface after the ruling reshaped the
+// principal model: an email spelling (one @, a non-empty local part, a dotted domain, no
+// whitespace) is a well-formed selector; empty and malformed strings are not. (What a selector
+// RESOLVES to is the identity authority's question — gunbc.principal_projection + the A9 directory
+// — never this module's.)
+test fn w_assignee_selector_shape_validation() -> Bool {
+  issue_assignee_input_is_email(s: "briansrls@gunb.ai")
+    && issue_assignee_input_is_email(s: "  briansrls@gunb.ai  ")
+    && !issue_assignee_input_is_email(s: "")
+    && !issue_assignee_input_is_email(s: "not-an-email")
+    && !issue_assignee_input_is_email(s: "a@b")
+    && !issue_assignee_input_is_email(s: "@gunb.ai")
+    && !issue_assignee_input_is_email(s: "two@at@gunb.ai")
+    && !issue_assignee_input_is_email(s: "has space@gunb.ai")
 }

@@ -1560,7 +1560,7 @@ fn issue_detail_fixture_view() -> gunbc.roadmap_presentation.WorkRowView {
     disclosure: gunbc.roadmap_presentation.NoDisclosure,
     rounds: hero_rounds_fixture(),
     worker_alive: true,
-    standing: Present { value: NodeClaimed { by: "agent-35" as NonEmptyStr, since: "2026-09-23" } },
+    standing: Present { value: NodeClaimed { by: fixture_human_principal(), since: "2026-09-23" } },
     attempt_stale: false,
   }
 }
@@ -1581,6 +1581,22 @@ fn issue_detail_fixture_panel() -> gunbc.roadmap_presentation.IssueLinkPanel {
     edges: edges)
 }
 
+fn fixture_human_ref() -> gunbc.principal_projection.PrincipalRef {
+  gunbc.principal_projection.PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-viewer" as NonEmptyStr }
+}
+
+fn fixture_human_principal() -> gunbc.roadmap.roadmap_event_log.EventPrincipal {
+  gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_human_ref() }
+}
+
+fn fixture_fabric_principal() -> gunbc.roadmap.roadmap_event_log.EventPrincipal {
+  gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: gunbc.principal_projection.fabric_workflow_principal }
+}
+
+fn fixture_teammate_legacy() -> gunbc.roadmap.roadmap_event_log.EventPrincipal {
+  gunbc.roadmap.roadmap_event_log.LegacyEmailPrincipal { email: "teammate@gunb.ai" as NonEmptyStr, authentication_unestablished: true }
+}
+
 fn issue_detail_fixture_html() -> HtmlEmitResult {
   try_serialize_html_source(node: issue_detail_page_launch(
     view: issue_detail_fixture_view(),
@@ -1588,8 +1604,8 @@ fn issue_detail_fixture_html() -> HtmlEmitResult {
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: [],
-    viewer: "briansrls@gunb.ai",
-    recents: [ "teammate@gunb.ai" ],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
     expected_revision: ""))
 }
 
@@ -1605,7 +1621,7 @@ test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
         && string_contains(s: h, pattern: "<section class=\"panel-issue\">")
         && string_contains(s: h, pattern: "<section class=\"panel-work\">")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
-        && string_contains(s: h, pattern: "<span class=\"issue-field-value\">agent-35</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-value\">principal:google-oidc/accounts/sub-viewer</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">status</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-value\">Agent working</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">component</span>")
@@ -1681,7 +1697,7 @@ fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
     attempts: [ completed_attempt_progress(node_id: "page-task-one") ],
     attempts_refused: none,
     standings: StandingsObserved { rows: [
-      NodeStandingRow { node_id: "page-task-one", standing: NodeInProgress { by: "operator@gunb.ai" as NonEmptyStr, last_note: "working" as NonEmptyStr } },
+      NodeStandingRow { node_id: "page-task-one", standing: NodeInProgress { by: fixture_human_principal(), last_note: "working" as NonEmptyStr } },
     ] },
     launch: dispatch_doc_standing(),
     stale_nodes: if stale { ["page-task-one"] } else { [] }))
@@ -1731,8 +1747,8 @@ test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: attempts,
     events: [],
-    viewer: "briansrls@gunb.ai",
-    recents: [ "teammate@gunb.ai" ],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
     expected_revision: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1803,9 +1819,9 @@ test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() ->
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
-      occurrence_count(s: table, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"operator &lt;operator@gunb.ai&gt;\"") == 1
+      occurrence_count(s: table, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-viewer — principal:google-oidc/accounts/sub-viewer\"") == 1
         && occurrence_count(s: table, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\">--</span>") == 2
-        && occurrence_count(s: table, pattern: "operator@gunb.ai</") == 0
+        && occurrence_count(s: table, pattern: "sub-viewer</") == 0
         && !string_contains(s: table, pattern: "assignee\"><button")
         && !string_contains(s: table, pattern: "assignee\"><a")
   }
@@ -1868,7 +1884,7 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
         && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"last-modified\"")
         && marker_before(s: row_body, first: "data-col=\"last-modified\"", second: "class=\"issue-row-actions\"")
         && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-priority\" data-col=\"priority\"></span><span class=\"issue-cell issue-cell-type\" data-col=\"type\"></span><span class=\"issue-cell issue-cell-title\" data-col=\"title\"><a class=\"issue-title-link\" href=\"/issue/page-task-one\">")
-        && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\"><span class=\"issue-avatar\" data-avatar=\"absent\" title=\"operator &lt;operator@gunb.ai&gt;\">o</span></span>")
+        && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\"><span class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-viewer — principal:google-oidc/accounts/sub-viewer\">s</span></span>")
         && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-status\" data-col=\"status\"><span class=\"taskbar-signal issue-status activity-line-error-refusal\">Submission · failed</span></span>")
         && string_contains(s: row_body, pattern: "</a></span><span class=\"issue-cell issue-cell-assignee\"")
   }
@@ -1983,12 +1999,12 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         && string_contains(s: body, pattern: "<form class=\"issue-assign-form\" method=\"post\" enctype=\"text/plain\" action=\"/issue/issue-detail-specimen/assign\">")
         && string_contains(s: body, pattern: "<input class=\"issue-assign-input\" name=\"assignee\" id=\"issue-assign-input\" type=\"text\" list=\"issue-assign-recents\"")
         && string_contains(s: body, pattern: "<datalist id=\"issue-assign-recents\">")
-        && string_contains(s: body, pattern: "<option value=\"briansrls@gunb.ai\"></option>")
-        && string_contains(s: body, pattern: "<option value=\"fabric@gunb.ai\"></option>")
+        && string_contains(s: body, pattern: "<option value=\"principal:google-oidc/accounts/sub-viewer\"></option>")
+        && string_contains(s: body, pattern: "<option value=\"principal:gunbc/workflows/fabric\"></option>")
         && string_contains(s: body, pattern: "<option value=\"teammate@gunb.ai\"></option>")
         && occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3
-        && string_contains(s: body, pattern: "data-principal=\"worker:fabric/offered\" data-kind=\"workflow\"")
-        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"resolved\">F<span class=\"issue-avatar-badge\">workflow</span>")
+        && string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"")
+        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span>")
         && string_contains(s: body, pattern: "name=\"expected_revision\" type=\"hidden\"")
         && occurrence_count(s: body, pattern: "class=\"issue-action\"") == 0
         && string_contains(s: body, pattern: "data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"")
@@ -2024,8 +2040,8 @@ test fn witness_issue_detail_assignee_shows_attempt_identity() -> Bool {
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ],
     events: [],
-    viewer: "briansrls@gunb.ai",
-    recents: [ "teammate@gunb.ai" ],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
     expected_revision: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2043,7 +2059,7 @@ fn fx_event_envelope(id: String, at: String, kind: gunbc.roadmap.roadmap_event_l
     id: id as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
     event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
-      author: "agent-35" as NonEmptyStr,
+      author: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_human_ref() },
       parent: none,
       kind: kind,
       recorded_at: at,
@@ -2053,7 +2069,7 @@ fn fx_event_envelope(id: String, at: String, kind: gunbc.roadmap.roadmap_event_l
 
 test fn witness_issue_work_tab_renders_event_history_newest_first() -> Bool {
   let events = [
-    fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: "agent-35" as NonEmptyStr, return_to: "agent-35" as NonEmptyStr }),
+    fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_human_principal(), return_to: fixture_human_principal() }),
     fx_event_envelope(id: "evt-two", at: "2026-09-24T03:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "kv receipts joined" as NonEmptyStr }),
     fx_event_envelope(id: "evt-three", at: "2026-09-24T02:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "ranks realized" as NonEmptyStr }),
   ]
@@ -2063,8 +2079,8 @@ test fn witness_issue_work_tab_renders_event_history_newest_first() -> Bool {
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: events,
-    viewer: "briansrls@gunb.ai",
-    recents: [ "teammate@gunb.ai" ],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
     expected_revision: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>

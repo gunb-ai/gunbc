@@ -96,9 +96,7 @@ import extdeps.google.issue_tracker {
   IssueColumnPriority, IssueColumnType, IssueColumnTitle, IssueColumnAssignee,
   IssueColumnStatus, IssueColumnLastModified,
   issue_results_columns, issue_results_column_kind_wire,
-  QualifiedPrincipal, issue_assign_suggestions, avatar_initials_of,
-  principal_from_email,
-  issue_principal_kind_wire, issue_avatar_standing_wire,
+  avatar_initials_of, issue_avatar_standing_wire, AvatarStanding, AvatarAbsent,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
@@ -515,8 +513,8 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
 // route records the Claimed event and then drives the SAME launch admission the /dispatch route
 // answers (see gunbc.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
 // typed vocabulary when fabric cannot start.
-fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<String>, expected_revision: String) -> List<Fragment> {
-  let suggestions = issue_assign_suggestions(viewer: viewer, recent_emails: recents)
+fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> List<Fragment> {
+  let suggestions = issue_assign_suggestions(viewer: viewer, recents: recents)
   [ el_attrs("form", [
       attr(name: "class", value: "issue-assign-form" ),
       attr(name: "method", value: "post" ),
@@ -535,7 +533,7 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<St
       el_attrs("datalist", [
         attr(name: "id", value: "issue-assign-recents" ),
       ], map(suggestions, p =>
-        el_attrs("option", [ attr(name: "value", value: p.primary_email as String) ], []))),
+        el_attrs("option", [ attr(name: "value", value: suggestion_selector_of(p: p)) ], []))),
       el_attrs("input", [
         attr(name: "name", value: "expected_revision" ),
         attr(name: "type", value: "hidden" ),
@@ -555,36 +553,111 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<St
     ]) ]
 }
 
+// THE SUGGESTIONS FEED (owner ruling: email-centric display, stable PrincipalRef submission):
+// fabric pinned first, the authenticated viewer (self) when the page rendered with one, then the
+// ledger's recently-used principals newest-first, each exactly once by label — a legacy-email
+// recent and an authenticated principal never collide, and a legacy entry is never auto-matched
+// to an authenticated one (the ruling's migration law).
+fn issue_assign_suggestions(viewer: String, recents: List<EventPrincipal>) -> List<EventPrincipal> {
+  let fabric_row = [EventPrincipalAuthenticated { ref: fabric_workflow_principal }]
+  let self_row = match principal_ref_parse_label(s: viewer) {
+    Present { value: ref } => [EventPrincipalAuthenticated { ref: ref }]
+    Absent => []
+  }
+  let seeds = concat(self_row, fabric_row)
+  concat(seeds, filter(recents, r => !any(seeds, s2 => event_principal_label(p: s2) == event_principal_label(p: r))))
+}
+
+// THE SELECTOR a suggestion submits: the stable principal label for authenticated principals —
+// suggestion rows submit the PrincipalRef (the picker's rule); a legacy-email recent offers its
+// email for DISPLAY but the submission path re-resolves through the directory lookup, because a
+// legacy string is display, never identity.
+fn suggestion_selector_of(p: EventPrincipal) -> String {
+  match p {
+    EventPrincipalAuthenticated { ref } => principal_ref_label(p: ref)
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } => event_principal_label(p: p)
+  }
+}
+
 // ONE SUGGESTION ROW, avatar-backed per the mandate: the avatar chip (initials under the
 // never-blocks law — the /avatar image endpoint is the realization, follow-up), the display name,
-// the email selector, and the kind badge for the workflow endpoint so Fabric never masquerades as
-// human.
-fn issue_assign_suggestion_nodes(p: QualifiedPrincipal) -> Fragment {
+// the selector, and the workflow badge for the fabric endpoint so it never masquerades as human.
+fn issue_assign_suggestion_nodes(p: EventPrincipal) -> Fragment {
+  let display = event_principal_display(p: p)
   el_attrs("div", [
     attr(name: "class", value: "issue-assign-suggestion" ),
-    attr(name: "data-principal", value: p.subject as String ),
-    attr(name: "data-kind", value: issue_principal_kind_wire(k: p.kind) ),
+    attr(name: "data-principal", value: suggestion_selector_of(p: p) ),
+    attr(name: "data-kind", value: suggestion_kind_wire(p: p) ),
   ], concat(
-    [ issue_avatar_chip_node(p: p) ],
+    [ issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)) ],
     concat(
-      [ el_class("span", "issue-assign-name", [ txt(p.display_name as String) ]),
-        el_class("span", "issue-assign-email", [ txt(p.primary_email as String) ]) ],
-      [ el_class("span", "issue-assign-kind", [ txt(issue_principal_kind_wire(k: p.kind)) ]) ])))
+      [ el_class("span", "issue-assign-name", [ txt(display.name) ]),
+        el_class("span", "issue-assign-email", [ txt(display.detail) ]) ],
+      [ el_class("span", "issue-assign-kind", [ txt(suggestion_kind_wire(p: p)) ]) ])))
+}
+
+fn event_principal_is_fabric(p: EventPrincipal) -> Bool {
+  match p {
+    EventPrincipalAuthenticated { ref } => principal_ref_eq(a: ref, b: fabric_workflow_principal)
+    LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => false
+  }
+}
+
+fn suggestion_kind_wire(p: EventPrincipal) -> String {
+  if event_principal_is_fabric(p: p) { "workflow" } else { "human" }
+}
+
+// THE DISPLAY PROJECTION, what a chip or row renders: a legacy email shows its local part with
+// the legacy marker (readable history, never an identity claim); an authenticated principal shows
+// the fabric display alias for the workflow endpoint and its label for humans until the A9
+// directory binds profiles. NEVER BLOCKS: every input yields a row.
+type EventPrincipalDisplay {
+  name: String
+  detail: String
+  initials: String
+  avatar: AvatarStanding
+}
+
+fn event_principal_display(p: EventPrincipal) -> EventPrincipalDisplay {
+  match p {
+    EventPrincipalAuthenticated { ref } =>
+      if principal_ref_eq(a: ref, b: fabric_workflow_principal) {
+        EventPrincipalDisplay { name: "Fabric", detail: fabric_display_alias as String, initials: "F", avatar: AvatarAbsent }
+      } else {
+        EventPrincipalDisplay { name: principal_ref_label(p: ref), detail: principal_ref_label(p: ref), initials: principal_subject_initial(ref: ref), avatar: AvatarAbsent }
+      }
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } =>
+      EventPrincipalDisplay { name: principal_display_name_of(email: email as String), detail: join([email as String, " (legacy, unverified)"], ""), initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent }
+  }
+}
+
+// THE PRINCIPAL'S OWN INITIAL when no profile names it: the subject's first character — a
+// deterministic placeholder, not an identity claim.
+fn principal_subject_initial(ref: PrincipalRef) -> String {
+  let sub = ref.subject as String
+  if string_length(s: sub) == 0 { "?" } else { substring(s: sub, start: 0, end: 1) }
+}
+
+fn principal_display_name_of(email: String) -> String {
+  match split(s: email, delimiter: "@").first() {
+    Present { value: local } => local
+    Absent => email
+  }
 }
 
 // THE AVATAR CHIP: initials under every standing (never-blocks law); the workflow endpoint wears
 // the badge. A resolved human avatar renders the same initials chip until the /avatar realization
 // lands — the standing rides the row for the upgrade, never a block.
-fn issue_avatar_chip_node(p: QualifiedPrincipal) -> Fragment {
+fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fragment {
   el_attrs("span", [
     attr(name: "class", value: join([
       "issue-avatar",
-      if issue_principal_kind_wire(k: p.kind) == "workflow" { " issue-avatar-workflow" } else { "" },
+      if workflow { " issue-avatar-workflow" } else { "" },
     ], "") ),
-    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: p.avatar) ),
+    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
   ], concat(
-    [ txt(avatar_initials_of(display_name: p.display_name as String)) ],
-    if issue_principal_kind_wire(k: p.kind) == "workflow" {
+    [ txt(display.initials) ],
+    if workflow {
       [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
     } else {
       []
@@ -592,36 +665,30 @@ fn issue_avatar_chip_node(p: QualifiedPrincipal) -> Fragment {
 }
 
 // THE RESULTS TABLE'S ASSIGNEE CHIP (owner ruling 2026-09-25, "make assignee always be the pfp (or
-// a default/placeholder) of the email account"): the principal's circular chip — initials under
-// the avatar law, the workflow badge for Fabric — NEVER the email text (the full identity rides
-// the title attribute, and the detail page). The cell passes the standing's holder email through
-// the principal model, so an unparseable value fails closed to the unassigned placeholder rather
-// than a broken chip.
-fn issue_assignee_chip_node(email: String) -> Fragment {
-  match principal_from_email(email: email) {
-    Present { value: p } =>
-      el_attrs("span", [
-        attr(name: "class", value: join([
-          "issue-avatar",
-          if issue_principal_kind_wire(k: p.kind) == "workflow" { " issue-avatar-workflow" } else { "" },
-        ], "") ),
-        attr(name: "data-avatar", value: issue_avatar_standing_wire(a: p.avatar) ),
-        attr(name: "title", value: join([p.display_name as String, " <", p.primary_email as String, ">"], "") ),
-      ], concat(
-        [ txt(avatar_initials_of(display_name: p.display_name as String)) ],
-        if issue_principal_kind_wire(k: p.kind) == "workflow" {
-          [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
-        } else {
-          []
-        }))
-    Absent =>
-      el_class("span", "issue-cell-assignee-missing", [ txt(issue_assignee_unassigned_display as String) ])
-  }
+// a default/placeholder) of the email account"): the holder principal's circular chip — initials
+// under the avatar law, the workflow badge for Fabric — NEVER the raw identity text (the full
+// identity rides the title attribute, and the detail page).
+fn issue_assignee_chip_node(holder: EventPrincipal) -> Fragment {
+  let display = event_principal_display(p: holder)
+  el_attrs("span", [
+    attr(name: "class", value: join([
+      "issue-avatar",
+      if event_principal_is_fabric(p: holder) { " issue-avatar-workflow" } else { "" },
+    ], "") ),
+    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
+    attr(name: "title", value: join([display.name, " — ", display.detail], "") ),
+  ], concat(
+    [ txt(display.initials) ],
+    if event_principal_is_fabric(p: holder) {
+      [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
+    } else {
+      []
+    }))
 }
 
 // THE DETAIL ACTION BAR: the durable Assign form alone (owner ruling 2026-09-25 — the table rows
 // and the detail header carry no execution buttons; see issue_assign_action_nodes for the ruling).
-fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<String>, expected_revision: String) -> List<Fragment> {
+fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> List<Fragment> {
   issue_assign_action_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision)
 }
 
@@ -1384,22 +1451,34 @@ fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
 // the placeholder (issue_assignee_unassigned_display, "--" per the capture) — the Buganizer
 // results row never leaves the cell blank. Changing the assignee is the follow-on intake slice;
 // this is the decided identity read as a field.
-fn issue_assignee_value(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> String {
+// THE HOLDER, the identity the assignee surfaces render: the latest attempt's session identity
+// when one holds the work, else the standing's holder principal — an IDENTITY, never a bare
+// string, so the chip and the rail render through the display projection. Absent names no holder.
+fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> EventPrincipal? {
   match attempts.first() {
-    Present { value: p } => attempt_key_short_form(key: p.attempt_key)
+    Present { value: p } => Present { value: LegacyEmailPrincipal { email: attempt_key_short_form(key: p.attempt_key) as NonEmptyStr, authentication_unestablished: true } }
     Absent =>
       match view.standing {
-        Absent => ""
+        Absent => none
         Present { value: s } => match s {
-          NodeClaimed { by, since: _ } => by as String
-          NodeInProgress { by, last_note: _ } => by as String
-          NodeBlocked { by, reason: _ } => by as String
-          NodeHandedBack { by, reason: _ } => by as String
-          NodeOpen => ""
-          NodeForked { heads: _ } => ""
-          NodeHistoryIncomplete { missing_parents: _ } => ""
+          NodeClaimed { by, since: _ } => Present { value: by }
+          NodeInProgress { by, last_note: _ } => Present { value: by }
+          NodeBlocked { by, reason: _ } => Present { value: by }
+          NodeHandedBack { by, reason: _ } => Present { value: by }
+          NodeOpen => none
+          NodeForked { heads: _ } => none
+          NodeHistoryIncomplete { missing_parents: _ } => none
         }
       }
+  }
+}
+
+// THE FIELD-ROW TEXT for the assignee row (the rail's plain-text spelling): the holder's display
+// name, empty when no holder exists — never a bare label.
+fn issue_assignee_value(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> String {
+  match issue_assignee_holder(view: view, attempts: attempts) {
+    Absent => ""
+    Present { value: holder } => event_principal_display(p: holder).name
   }
 }
 
@@ -1478,11 +1557,9 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "href", value: join(["/issue/", view.node_id], "") ),
         ], inline_md_nodes(text: view.headline)) ]
     IssueColumnAssignee =>
-      let assignee = issue_assignee_value(view: view, attempts: [])
-      if assignee == "" {
-        [ txt(issue_assignee_unassigned_display as String) ]
-      } else {
-        [ issue_assignee_chip_node(email: assignee) ]
+      match issue_assignee_holder(view: view, attempts: []) {
+        Absent => [ txt(issue_assignee_unassigned_display as String) ]
+        Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
       }
     IssueColumnStatus =>
       if bar.signal == "" { [] } else {
@@ -1646,10 +1723,10 @@ fn issue_event_row_node(env: RoadmapEventEnvelope) -> Fragment {
 fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
   match env.event.kind {
     Claimed { assignee, return_to: _ } =>
-      if (assignee as String) == (env.event.author as String) {
+      if event_principal_label(p: assignee) == event_principal_label(p: env.event.author) {
         "claimed the issue"
       } else {
-        join(["assigned the issue to ", assignee as String], "")
+        join(["assigned the issue to ", event_principal_label(p: assignee)], "")
       }
     Released => "released the issue"
     Progress { note } => join(["progress: ", note as String], "")
@@ -1657,9 +1734,9 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     HandedBack { reason } => join(["handed back: ", reason as String], "")
     ReceiptReferenced { obligation, address, verdict } =>
       join(["receipt ", obligation as String, " at ", address as String, ": ", verdict as String], "")
-    CommentCreated { key: _, body: _, visibility: _ } => "comment created"
-    CommentEdited { key: _, body: _ } => "comment edited"
-    CommentDeleted { key: _ } => "comment deleted"
+    CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
+    CommentEdited { comment: _, body: _ } => "comment edited"
+    CommentDeleted { comment: _ } => "comment deleted"
   }
 }
 
@@ -1749,7 +1826,7 @@ fn issue_tab_chip(label: String, tab: String) -> Fragment {
   ], [ txt(label) ])
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<String>, expected_revision: String) -> Fragment {
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
   let bar = task_bar_view_of(view: view, observation: observation)
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
@@ -1800,7 +1877,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
   ])
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<String>, expected_revision: String) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
@@ -1855,7 +1932,7 @@ fn issue_detail_page_for(
   stale_nodes: List<String>,
   events: List<RoadmapEventEnvelope>,
   viewer: String,
-  recents: List<String>,
+  recents: List<EventPrincipal>,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>

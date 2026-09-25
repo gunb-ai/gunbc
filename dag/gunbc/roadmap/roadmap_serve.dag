@@ -4,12 +4,14 @@ import extdeps.tailscale.identity { tailnet_identity_login }
 import extdeps.tailscale.serve { ServeStatusUnreadable }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
-  RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession,
+  RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy,
   ServeActionAssignIssue, ServeActionCommentIssue,
 }
-import gunbc.principal_projection { principal_ref_label }
+import gunbc.principal_projection {
+  PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
+}
 import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
 import std.algebra { trim }
@@ -118,12 +120,13 @@ import gunbc.roadmap.roadmap_event_carrier {
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
+  EventPrincipal, EventPrincipalAuthenticated,
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
   roadmap_recent_claimed_assignees,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present,
 }
 import extdeps.google.issue_tracker {
-  issue_assignee_input_valid, issue_assignee_canonical, issue_assignee_is_fabric_endpoint,
+  issue_assignee_input_is_email, issue_assign_fabric_display,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
@@ -762,7 +765,7 @@ fn serve_issue_detail_response_over(
   let standings = roadmap_standings_read(layout: layout)
   let viewer = authenticated_viewer_label(evidence: request.security.authentication)
   let recents = match roadmap_events_read_all(layout: layout) {
-    AllEventsRead { envelopes } => map(roadmap_recent_claimed_assignees(envs: envelopes), r => r as String)
+    AllEventsRead { envelopes } => roadmap_recent_claimed_assignees(envs: envelopes)
     AllEventsReadRefused { step: _, reason: _ } => []
   }
   let envelopes = match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
@@ -783,6 +786,40 @@ fn serve_issue_detail_response_over(
   serve_page_response_with_status(
     page: page,
     status: if issue_detail_node_exists(proj: plan, node_id: node_id) { 200 } else { 404 })
+}
+
+// THE ASSIGNEE SUBMISSION, resolved to the stable PrincipalRef the v3 event records (owner
+// ruling: the picker displays emails but submits principals). Resolution order: a principal label
+// parses directly; the fabric selector maps by declaration to the one workflow principal; any
+// other email goes through the directory lookup — and the directory producer is A9, so until it
+// lands the lookup refuses with the typed vocabulary rather than minting a principal from an
+// email (the banned shape has no constructor anywhere in gunbc).
+fn assignee_submission_shape_valid(s: String) -> Bool {
+  issue_assignee_input_is_email(s: s)
+    || trim(s) == (issue_assign_fabric_display as String)
+    || match principal_ref_parse_label(s: s) { Present { value: _ } => true  Absent => false }
+}
+
+fn assignee_principal_of(raw: String) -> PrincipalRef? {
+  let t = trim(raw)
+  match principal_ref_parse_label(s: t) {
+    Present { value: ref } => Present { value: ref }
+    Absent =>
+      if t == (issue_assign_fabric_display as String) {
+        Present { value: fabric_workflow_principal }
+      } else {
+        none
+      }
+  }
+}
+
+fn assignee_lookup_refusal(raw: String) -> String {
+  let t = trim(raw)
+  if issue_assignee_input_is_email(s: t) && t != (issue_assign_fabric_display as String) {
+    join(["'", t, "' names no admitted principal — the typed-email directory lookup is the A9 producer and no directory is bound yet, so human emails cannot mint a principal (and never will: email is display, not identity)"], "")
+  } else {
+    join(["'", t, "' is neither a principal spelling, the fabric selector, nor an email spelling"], "")
+  }
 }
 
 // THE DURABLE ASSIGN ROUTE — the AssignIssue command (owner rulings 2026-09-24 and the 2026-09-25
@@ -832,12 +869,12 @@ fn serve_issue_assign_response_over(
       Permit =>
         let author = authenticated_write_author_label(security: request.security)
         let raw_assignee = issue_form_field(body: request.body, name: "assignee")
-        if !issue_assignee_input_valid(s: raw_assignee) {
-          serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: '", raw_assignee, "' is not an email spelling or the fabric endpoint\n"], ""))
+        if !assignee_submission_shape_valid(s: raw_assignee) {
+          serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: '", raw_assignee, "' is not an email spelling, the fabric selector, or a principal spelling\n"], ""))
         } else {
           let raw_return_to = issue_form_field(body: request.body, name: "return_to")
-          if raw_return_to != "" && !issue_assignee_input_valid(s: raw_return_to) {
-            serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to '", raw_return_to, "' is not an email spelling or the fabric endpoint\n"], ""))
+          if raw_return_to != "" && !assignee_submission_shape_valid(s: raw_return_to) {
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to '", raw_return_to, "' is not an email spelling, the fabric selector, or a principal spelling\n"], ""))
           } else {
             let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
             let nid = node_id as NonEmptyStr as RoadmapNodeId
@@ -857,15 +894,28 @@ fn serve_issue_assign_response_over(
                     serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head, ") — reload and assign again\n"], ""))
                   } else {
                     let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                    let assignee = issue_assignee_canonical(s: raw_assignee) as NonEmptyStr
-                    let return_to = if raw_return_to == "" { author } else { issue_assignee_canonical(s: raw_return_to) as NonEmptyStr }
-                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: author, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: Claimed { assignee: assignee, return_to: return_to }, recorded_at: at }) {
-                      EventAppended { id } =>
-                        serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee as String, event_id: id as String)
-                      EventAlreadyPresent { id } =>
-                        serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee as String, event_id: id as String)
-                      EventAppendRefused { id: _, step, reason } =>
-                        serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused at ", step, ": ", reason, "\n"], ""))
+                    match authenticated_write_author_principal(security: request.security) {
+                      Absent =>
+                        serve_text_response(status: 403, content_type: text_plain_utf8, body: "assignment refused: admitted write carried no author principal (unreachable past the write law)\n")
+                      Present { value: author_ref } =>
+                        match assignee_principal_of(raw: raw_assignee) {
+                          Absent =>
+                            serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: ", assignee_lookup_refusal(raw: raw_assignee), "\n"], ""))
+                          Present { value: assignee_ref } =>
+                            match (if raw_return_to == "" { Present { value: author_ref } } else { assignee_principal_of(raw: raw_return_to) }) {
+                              Absent =>
+                                serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to ", assignee_lookup_refusal(raw: raw_return_to), "\n"], ""))
+                              Present { value: return_to_ref } =>
+                                match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: EventPrincipalAuthenticated { ref: author_ref }, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: Claimed { assignee: EventPrincipalAuthenticated { ref: assignee_ref }, return_to: EventPrincipalAuthenticated { ref: return_to_ref } }, recorded_at: at }) {
+                                  EventAppended { id } =>
+                                    serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee_ref, event_id: id as String)
+                                  EventAlreadyPresent { id } =>
+                                    serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee_ref, event_id: id as String)
+                                  EventAppendRefused { id: _, step, reason } =>
+                                    serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused at ", step, ": ", reason, "\n"], ""))
+                                }
+                            }
+                        }
                     }
                   }
                 }
@@ -873,6 +923,20 @@ fn serve_issue_assign_response_over(
           }
         }
     }
+  }
+}
+
+// THE AUTHOR PRINCIPAL OF AN ADMITTED WRITE, the typed form the v3 event records: a Google OIDC
+// session writes as its seated principal; fabric service evidence writes as the one workflow
+// principal (a service writer never presents a human session as workload identity — the ruling's
+// service-writer law). Only reachable past the write law's Permit arm; the Absent fallback is the
+// loud spelling of an unreachable state, refused at the call site, never a value that reaches the
+// durable record.
+fn authenticated_write_author_principal(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> PrincipalRef? {
+  match security.authentication {
+    GoogleOidcSession { session } => Present { value: session.principal }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
+    AuthAbsent => none
   }
 }
 
@@ -909,10 +973,10 @@ fn serve_assignment_launch_follow_through(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   node_id: String,
-  assignee: String,
+  assignee: PrincipalRef,
   event_id: String,
 ) -> ServeHttpResponse {
-  if issue_assignee_is_fabric_endpoint(s: assignee) {
+  if principal_ref_eq(a: assignee, b: fabric_workflow_principal) {
     serve_fabric_assignment_response(
       node_id: node_id,
       assignee: assignee,
@@ -920,20 +984,20 @@ fn serve_assignment_launch_follow_through(
       outcome: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
     )
   } else {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\n"], ""))
+    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\n"], ""))
   }
 }
 
-fn serve_fabric_assignment_response(node_id: String, assignee: String, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
+fn serve_fabric_assignment_response(node_id: String, assignee: PrincipalRef, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
   match outcome {
     Spawned { node_id: _, session_name, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
     SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
-      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>
-      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
+      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
   }
 }
 
@@ -973,7 +1037,7 @@ fn serve_issue_comment_response_over(
       Deny { refusal } =>
         serve_text_response(status: 403, content_type: text_plain_utf8, body: concat("comment refused: ", access_refusal_reason(refusal: refusal)))
       Permit =>
-        let author = authenticated_write_author_label(security: request.security)
+        let author_principal = authenticated_write_author_principal(security: request.security)
         let body = issue_comment_body_of(wire: request.body)
         if trim(body) == "" {
           serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: the body is empty\n")
@@ -995,23 +1059,29 @@ fn serve_issue_comment_response_over(
                 if expected_revision != "" && expected_revision != head_string {
                   serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["comment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head_string, ") — reload and comment again\n"], ""))
                 } else {
-                  let key_field = trim(issue_form_field(body: request.body, name: "key"))
-                  let comments = roadmap_issue_comments(envs: envelopes)
-                  if key_field != "" && roadmap_comment_created_key_present(envs: envelopes, key: key_field as NonEmptyStr) {
-                    serve_comment_recorded_response(node_id: node_id, comments: comments, key: key_field, event_id: "", already_present: true)
-                  } else if key_field == "" && roadmap_comment_retry_present(envs: envelopes, author: author, body: body as NonEmptyStr, head: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }) {
-                    serve_comment_recorded_response(node_id: node_id, comments: comments, key: "", event_id: "", already_present: true)
-                  } else {
-                    let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                    let comment_key = if key_field == "" { join([author as String, ":", body], "") as NonEmptyStr } else { key_field as NonEmptyStr }
-                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: author, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: CommentCreated { key: comment_key, body: body as NonEmptyStr, visibility: "public" as NonEmptyStr }, recorded_at: at }) {
-                      EventAppended { id } =>
-                        serve_comment_recorded_response(node_id: node_id, comments: [IssueComment { ordinal: count(comments) + 1, key: comment_key, author: author, body: "", visibility: "public" as NonEmptyStr, created_at: "", edited_at: "", deleted: false }], key: comment_key as String, event_id: id as String, already_present: false)
-                      EventAlreadyPresent { id } =>
-                        serve_comment_recorded_response(node_id: node_id, comments: comments, key: comment_key as String, event_id: id as String, already_present: true)
-                      EventAppendRefused { id: _, step, reason } =>
-                        serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["comment refused at ", step, ": ", reason, "\n"], ""))
-                    }
+                  match author_principal {
+                    Absent =>
+                      serve_text_response(status: 403, content_type: text_plain_utf8, body: "comment refused: admitted write carried no author principal (unreachable past the write law)\n")
+                    Present { value: author_ref } =>
+                      let author_identity = EventPrincipalAuthenticated { ref: author_ref }
+                      let key_field = trim(issue_form_field(body: request.body, name: "key"))
+                      let comments = roadmap_issue_comments(envs: envelopes)
+                      if key_field != "" && roadmap_comment_created_key_present(envs: envelopes, comment: key_field as NonEmptyStr) {
+                        serve_comment_recorded_response(node_id: node_id, comments: comments, comment: key_field, event_id: "", already_present: true)
+                      } else if key_field == "" && roadmap_comment_retry_present(envs: envelopes, author: author_identity, body: body as NonEmptyStr, head: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }) {
+                        serve_comment_recorded_response(node_id: node_id, comments: comments, comment: "", event_id: "", already_present: true)
+                      } else {
+                        let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+                        let comment_id = if key_field == "" { join([principal_ref_label(p: author_ref), ":", body], "") as NonEmptyStr } else { key_field as NonEmptyStr }
+                        match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: author_identity, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: CommentCreated { comment: comment_id, body: body as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, recorded_at: at }) {
+                          EventAppended { id } =>
+                            serve_comment_recorded_response(node_id: node_id, comments: [IssueComment { ordinal: count(comments) + 1, comment: comment_id, author: author_identity, body: "", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "", edited_at: "", deleted: false }], comment: comment_id as String, event_id: id as String, already_present: false)
+                          EventAlreadyPresent { id } =>
+                            serve_comment_recorded_response(node_id: node_id, comments: comments, comment: comment_id as String, event_id: id as String, already_present: true)
+                          EventAppendRefused { id: _, step, reason } =>
+                            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["comment refused at ", step, ": ", reason, "\n"], ""))
+                        }
+                      }
                   }
                 }
               }
@@ -1024,8 +1094,8 @@ fn serve_issue_comment_response_over(
 // THE COMMENT RESPONSE, factored pure over the recorded comments so the witness drives it without
 // a carrier: the deep link /issue/<id>#comment-N is the answer a retry and a first write share —
 // the client re-anchors instead of re-posting.
-fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>, key: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
-  let ordinal = match (filter(comments, c => (c.key as String) == key)).first() {
+fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>, comment: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
+  let ordinal = match (filter(comments, c => (c.comment as String) == comment)).first() {
     Present { value: c } => c.ordinal
     Absent => 0
   }

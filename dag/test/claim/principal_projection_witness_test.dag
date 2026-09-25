@@ -21,7 +21,7 @@ import gunbc.principal_projection {
   VerifiedOidcProjectionProjected, VerifiedOidcProjectionRefused,
   mint_human_principal_from_verdict, project_principal_profile, principal_profile_with_revision,
   verified_oidc_projection,
-  principal_ref_eq, principal_ref_label,
+  principal_ref_eq, principal_ref_label, principal_ref_parse_label,
   google_oidc_issuer, fabric_workflow_principal, fabric_display_alias,
 }
 
@@ -237,4 +237,26 @@ fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
 
 test fn the_human_principal_mint_refuses_callers_outside_the_roster() -> Bool {
   blocking_count_for_class(c: census_of(source: probe_source(name: "principal_mint_unadmitted_probe")), wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// THE LABEL PARSE, the v3 codec's decode arm: the ruling's spelling round-trips label -> ref ->
+// label; malformed spellings — wrong segment count, empty segments, whitespace, no marker —
+// refuse with none rather than guessing, so a corrupt event is unreadable, never mis-attributed.
+test fn the_principal_label_parse_round_trips_and_refuses_malformed_spellings() -> Bool {
+  let fabricated = PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-9" as NonEmptyStr }
+  let round_trip = match principal_ref_parse_label(s: principal_ref_label(p: fabricated)) {
+    Present { value: parsed } => principal_ref_eq(a: parsed, b: fabricated)
+    Absent => false
+  }
+  let fabric_round_trip = match principal_ref_parse_label(s: "principal:gunbc/workflows/fabric") {
+    Present { value: parsed } => principal_ref_eq(a: parsed, b: fabric_workflow_principal)
+    Absent => false
+  }
+  round_trip
+    && fabric_round_trip
+    && match principal_ref_parse_label(s: "principal:google-oidc/accounts") { Present { value: _ } => false  Absent => true }
+    && match principal_ref_parse_label(s: "principal:google-oidc//sub") { Present { value: _ } => false  Absent => true }
+    && match principal_ref_parse_label(s: "principal:/accounts/sub") { Present { value: _ } => false  Absent => true }
+    && match principal_ref_parse_label(s: "principal:google-oidc/accounts/sub extra") { Present { value: _ } => false  Absent => true }
+    && match principal_ref_parse_label(s: "fabric@gunb.ai") { Present { value: _ } => false  Absent => true }
 }

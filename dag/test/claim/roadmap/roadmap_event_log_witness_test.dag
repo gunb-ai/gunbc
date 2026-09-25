@@ -2,11 +2,13 @@ module test.claim.roadmap.roadmap_event_log_witness_test
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
   CommentCreated, CommentEdited, CommentDeleted,
+  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label, event_principal_authenticated,
   RoadmapEventEnvelope, RoadmapEventId, roadmap_event_id, roadmap_event_id_for, roadmap_event_envelope, roadmap_event_wire_text,
-  roadmap_event_schema, roadmap_event_schema_v1,
+  roadmap_event_schema, roadmap_event_schema_v2, roadmap_event_schema_v1,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
@@ -17,84 +19,145 @@ import gunbc.roadmap.roadmap_event_log {
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
 
-// A self-claim helper: assignee and return_to both name the author — the shape a CLI claim and a
-// v1 event share.
-fn ev(kind: RoadmapEventKind, parent: RoadmapEventId?, author: String, at: String) -> RoadmapEventEnvelope {
-  roadmap_event_envelope(e: RoadmapEvent { node: node(), author: author as NonEmptyStr, parent: parent, kind: kind, recorded_at: at })
+// Fixture principals: a verified human (the ruling's google-oidc/accounts/<sub> spelling), the
+// fabric workflow principal, and a legacy email wrapper — the three shapes an event field holds.
+fn human() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-1" as NonEmptyStr }
 }
 
-fn self_claim(parent: RoadmapEventId?, author: String, at: String) -> RoadmapEventEnvelope {
-  ev(kind: Claimed { assignee: author as NonEmptyStr, return_to: author as NonEmptyStr }, parent: parent, author: author, at: at)
+fn human_principal() -> EventPrincipal {
+  EventPrincipalAuthenticated { ref: human() }
+}
+
+fn legacy(email: String) -> EventPrincipal {
+  LegacyEmailPrincipal { email: email as NonEmptyStr, authentication_unestablished: true }
+}
+
+fn ev(kind: RoadmapEventKind, parent: RoadmapEventId?, author: EventPrincipal, at: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent { node: node(), author: author, parent: parent, kind: kind, recorded_at: at })
+}
+
+fn self_claim(parent: RoadmapEventId?, author: EventPrincipal, at: String) -> RoadmapEventEnvelope {
+  ev(kind: Claimed { assignee: author, return_to: author }, parent: parent, author: author, at: at)
 }
 
 // DISCRIMINATING: the id is a function of the event's content. The same event twice is one id; a
 // different note is a different id.
 test fn the_event_id_is_content_addressed() -> Bool {
-  let a = ev(kind: Progress { note: "read the diff" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
-  let b = ev(kind: Progress { note: "read the diff" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
-  let c = ev(kind: Progress { note: "wrote the fix" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let a = ev(kind: Progress { note: "read the diff" as NonEmptyStr }, parent: none, author: human_principal(), at: "t1")
+  let b = ev(kind: Progress { note: "read the diff" as NonEmptyStr }, parent: none, author: human_principal(), at: "t1")
+  let c = ev(kind: Progress { note: "wrote the fix" as NonEmptyStr }, parent: none, author: human_principal(), at: "t1")
   (a.id as String) == (b.id as String) && (a.id as String) != (c.id as String) && string_length(s: a.id as String) > 8
 }
 
-// DISCRIMINATING: the v2 wire form round-trips the Claimed assignee AND return_to, and a wire whose
-// id does not match its content refuses. The id moves with the assignee: reassignment is a
-// different event, never a silent edit.
-test fn the_v2_wire_form_round_trips_the_assignment_and_a_mismatched_id_refuses() -> Bool {
-  let claimed = ev(kind: Claimed { assignee: "teammate@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: none, author: "lead@gunb.ai", at: "2026-09-05T20:00:00Z")
-  let receipt = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "verification/86dd.json" as NonEmptyStr, verdict: "passed" as NonEmptyStr }, parent: Present { value: claimed.id }, author: "belt", at: "t2")
+// THE V3 WIRE, round-tripped: authors and assignees carry the principal: label; the id moves with
+// the assignee (reassignment is a different event, never a silent edit); a wire whose id does not
+// match its content refuses.
+test fn the_v3_wire_form_round_trips_the_principals_and_a_mismatched_id_refuses() -> Bool {
+  let claimed = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: none, author: human_principal(), at: "2026-09-05T20:00:00Z")
+  let receipt = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "verification/86dd.json" as NonEmptyStr, verdict: "passed" as NonEmptyStr }, parent: Present { value: claimed.id }, author: human_principal(), at: "t2")
   let ok = match roadmap_event_decode(text: roadmap_event_wire_text(env: receipt)) {
     RoadmapEventDecoded { envelope } => (envelope.id as String) == (receipt.id as String) && (match envelope.event.parent { Present { value: p } => (p as String) == (claimed.id as String)  Absent => false })
     RoadmapEventUndecodable { reason: _ } => false
   }
-  let forged = replace(s: roadmap_event_wire_text(env: claimed), from: "teammate@gunb.ai", to: "someone-else@gunb.ai")
+  let forged = replace(s: roadmap_event_wire_text(env: claimed), from: "workflows", to: "workflows-forged")
   let refused = match roadmap_event_decode(text: forged) {
     RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "does not match")
     RoadmapEventDecoded { envelope: _ } => false
   }
-  let different_assignee_different_id = (claimed.id as String) != (self_claim(parent: none, author: "lead@gunb.ai", at: "2026-09-05T20:00:00Z").id as String)
+  let different_assignee_different_id = (claimed.id as String) != (self_claim(parent: none, author: human_principal(), at: "2026-09-05T20:00:00Z").id as String)
   ok && refused && different_assignee_different_id
 }
 
-// THE MIGRATION DECISION, pinned by execution: the codec is versioned, so the assignee slice BUMPED
-// the schema to v2 and reads v1 BY READ COMPATIBILITY — no log is rewritten. A v1 Claimed (no
-// assignee/return_to members) still decodes, as a self-claim (both name the author — the only
-// assignment v1 could state), its id verifies against its OWN v1 canonical bytes, and re-encoding
-// it under v2 yields a DIFFERENT id — the bytes moved, the stored event did not.
-test fn a_v1_claimed_event_still_reads_as_a_self_claim() -> Bool {
-  let e = RoadmapEvent { node: node(), author: "session-a" as NonEmptyStr, parent: none, kind: Claimed { assignee: "session-a" as NonEmptyStr, return_to: "session-a" as NonEmptyStr }, recorded_at: "t1" }
-  let id = roadmap_event_id_for(e: e, schema: roadmap_event_schema_v1)
-  let wire = join(["{\"id\":\"", id as String, "\",\"event\":{\"schema\":\"roadmap-event/v1\",\"node\":\"demo-node\",\"author\":\"session-a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"t1\"}}"], "")
+// A V3 EVENT WHOSE PRINCIPAL FIELD IS MALFORMED refuses — a corrupt event is unreadable, never
+// mis-attributed (the codec's fail-closed arm).
+test fn a_v3_event_with_a_malformed_principal_refuses() -> Bool {
+  let bad_author = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"not-a-principal\",\"parent\":\"\",\"kind\":\"released\",\"recorded_at\":\"\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "not a well-formed principal")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  let bad_assignee = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"principal:google-oidc/accounts/s1\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\",\"assignee\":\"principal:google-oidc\",\"return_to\":\"principal:google-oidc/accounts/s1\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown or missing")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  bad_author && bad_assignee
+}
+
+// THE MIGRATION DECISION, pinned by execution: the codec is versioned, so the principal slice
+// BUMPED the schema to v3 and reads v1/v2 BY READ COMPATIBILITY — no log is rewritten. A v2
+// Claimed (email spellings) still decodes, its assignee wrapped as LegacyEmailPrincipal with
+// authentication_unestablished — READABLE, never authorizing — its id verifies against its OWN v2
+// canonical bytes, and re-encoding under v3 yields a DIFFERENT id (the bytes moved, the stored
+// event did not). The legacy email is NEVER auto-matched: it stays an email, no minting of a
+// current principal.
+test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matched() -> Bool {
+  let e = RoadmapEvent { node: node(), author: legacy("session-a"), parent: none, kind: Claimed { assignee: legacy("teammate@gunb.ai"), return_to: legacy("lead@gunb.ai") }, recorded_at: "t1" }
+  let id = roadmap_event_id_for(e: e, schema: roadmap_event_schema_v2)
+  let wire = join(["{\"id\":\"", id as String, "\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"demo-node\",\"author\":\"session-a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"t1\",\"assignee\":\"teammate@gunb.ai\",\"return_to\":\"lead@gunb.ai\"}}"], "")
   match roadmap_event_decode(text: wire) {
     RoadmapEventDecoded { envelope } =>
       (envelope.id as String) == (id as String)
+        && (match envelope.event.author {
+          LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "session-a" && authentication_unestablished
+          EventPrincipalAuthenticated { ref: _ } => false
+        })
         && (match envelope.event.kind {
-          Claimed { assignee, return_to } => (assignee as String) == "session-a" && (return_to as String) == "session-a"
+          Claimed { assignee, return_to } =>
+            (match assignee { LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "teammate@gunb.ai" && authentication_unestablished  EventPrincipalAuthenticated { ref: _ } => false })
+              && (match return_to { LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "lead@gunb.ai" && authentication_unestablished  EventPrincipalAuthenticated { ref: _ } => false })
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
           HandedBack { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
-          CommentCreated { key: _, body: _, visibility: _ } => false
-          CommentEdited { key: _, body: _ } => false
-          CommentDeleted { key: _ } => false
+          CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
+          CommentEdited { comment: _, body: _ } => false
+          CommentDeleted { comment: _ } => false
         })
         && (roadmap_event_id(e: envelope.event) as String) != (id as String)
     RoadmapEventUndecodable { reason: _ } => false
   }
 }
 
-// DISCRIMINATING: a v2 Claimed with a missing member refuses, and a schema outside both versions
-// refuses naming the expected pair.
-test fn a_v2_claimed_missing_its_members_or_an_unknown_schema_refuses() -> Bool {
-  let missing_return_to = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\",\"assignee\":\"b@gunb.ai\"}}") {
+// A V1 CLAIMED EVENT still reads as a self-claim over the legacy wrapper — both names = the
+// author email, the only assignment v1 could state — with the id pinned to its own v1 bytes.
+test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
+  let e = RoadmapEvent { node: node(), author: legacy("session-a"), parent: none, kind: Claimed { assignee: legacy("session-a"), return_to: legacy("session-a") }, recorded_at: "t1" }
+  let id = roadmap_event_id_for(e: e, schema: roadmap_event_schema_v1)
+  let wire = join(["{\"id\":\"", id as String, "\",\"event\":{\"schema\":\"roadmap-event/v1\",\"node\":\"demo-node\",\"author\":\"session-a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"t1\"}}"], "")
+  match roadmap_event_decode(text: wire) {
+    RoadmapEventDecoded { envelope } =>
+      (envelope.id as String) == (id as String)
+        && (match envelope.event.kind {
+          Claimed { assignee, return_to } =>
+            (match assignee { LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "session-a" && authentication_unestablished  EventPrincipalAuthenticated { ref: _ } => false })
+              && (match return_to { LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "session-a" && authentication_unestablished  EventPrincipalAuthenticated { ref: _ } => false })
+          Released => false
+          Progress { note: _ } => false
+          Blocked { reason: _ } => false
+          HandedBack { reason: _ } => false
+          ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+          CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
+          CommentEdited { comment: _, body: _ } => false
+          CommentDeleted { comment: _ } => false
+        })
+        && (roadmap_event_id(e: envelope.event) as String) != (id as String)
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+}
+
+// DISCRIMINATING: a v3 Claimed with a missing member, or a schema outside all three generations,
+// refuses naming the expected set.
+test fn a_v3_claimed_missing_its_members_or_an_unknown_schema_refuses() -> Bool {
+  let missing_return_to = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"principal:google-oidc/accounts/s1\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\",\"assignee\":\"principal:google-oidc/accounts/s2\"}}") {
     RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown or missing")
     RoadmapEventDecoded { envelope: _ } => false
   }
-  let wrong_schema = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\"}}") {
-    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "roadmap-event/v2") && string_contains(s: reason, pattern: "roadmap-event/v1")
+  let wrong_schema = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v4\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "roadmap-event/v3") && string_contains(s: reason, pattern: "roadmap-event/v1")
     RoadmapEventDecoded { envelope: _ } => false
   }
-  let unknown_kind = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"celebrated\",\"recorded_at\":\"\"}}") {
+  let unknown_kind = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"principal:google-oidc/accounts/s1\",\"parent\":\"\",\"kind\":\"celebrated\",\"recorded_at\":\"\"}}") {
     RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown")
     RoadmapEventDecoded { envelope: _ } => false
   }
@@ -104,58 +167,56 @@ test fn a_v2_claimed_missing_its_members_or_an_unknown_schema_refuses() -> Bool 
 // DISCRIMINATING: a linear chain folds in causal order regardless of list order; receipts do not
 // change the holder's state; release returns to open.
 test fn a_linear_history_folds_in_causal_order() -> Bool {
-  let e1 = self_claim(parent: none, author: "s1", at: "t1")
-  let e2 = ev(kind: Progress { note: "half done" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t2")
-  let e3 = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "v.json" as NonEmptyStr, verdict: "failed" as NonEmptyStr }, parent: Present { value: e2.id }, author: "belt", at: "t3")
-  let e4 = ev(kind: Blocked { reason: "oracle needs a fixture" as NonEmptyStr }, parent: Present { value: e3.id }, author: "s1", at: "t4")
+  let e1 = self_claim(parent: none, author: human_principal(), at: "t1")
+  let e2 = ev(kind: Progress { note: "half done" as NonEmptyStr }, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
+  let e3 = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "v.json" as NonEmptyStr, verdict: "failed" as NonEmptyStr }, parent: Present { value: e2.id }, author: human_principal(), at: "t3")
+  let e4 = ev(kind: Blocked { reason: "oracle needs a fixture" as NonEmptyStr }, parent: Present { value: e3.id }, author: human_principal(), at: "t4")
   let shuffled = [e3, e1, e4, e2]
   let blocked = roadmap_node_standing(envs: shuffled)
   let progressed = roadmap_node_standing(envs: [e2, e1, e3])
-  let released = roadmap_node_standing(envs: [e1, ev(kind: Released, parent: Present { value: e1.id }, author: "s1", at: "t2")])
+  let released = roadmap_node_standing(envs: [e1, ev(kind: Released, parent: Present { value: e1.id }, author: human_principal(), at: "t2")])
   roadmap_node_standing_key(s: blocked) == "blocked" && string_contains(s: roadmap_node_standing_text(s: blocked), pattern: "oracle needs a fixture")
     && roadmap_node_standing_key(s: progressed) == "in_progress"
     && roadmap_node_standing_key(s: released) == "open"
     && roadmap_node_standing_key(s: roadmap_node_standing(envs: [])) == "open"
 }
 
-// DISCRIMINATING: two writers on the same parent are a fork, named as such, never resolved by clock;
-// an event whose parent is absent makes the history incomplete rather than a root.
+// DISCRIMINATING: two writers on the same parent are a fork, named as such, never resolved by clock.
 test fn a_fork_and_a_missing_parent_are_their_own_standings() -> Bool {
-  let e1 = self_claim(parent: none, author: "s1", at: "t1")
-  let a = ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t9")
-  let b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s2", at: "t2")
+  let e1 = self_claim(parent: none, author: human_principal(), at: "t1")
+  let a = ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: human_principal(), at: "t9")
+  let b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
   let forked = roadmap_node_standing(envs: [e1, a, b])
-  let orphan = ev(kind: Progress { note: "c" as NonEmptyStr }, parent: Present { value: "deadbeefdeadbeef" as RoadmapEventId }, author: "s3", at: "t3")
+  let orphan = ev(kind: Progress { note: "c" as NonEmptyStr }, parent: Present { value: "deadbeefdeadbeef" as RoadmapEventId }, author: human_principal(), at: "t3")
   let incomplete = roadmap_node_standing(envs: [e1, orphan])
   (match forked { NodeForked { heads } => count(heads) == 2  _ => false })
     && roadmap_node_standing_key(s: incomplete) == "history_incomplete"
 }
 
 // THE STANDING'S CLAIM STEP NAMES THE HOLDER, NOT THE RECORDER: a reassignment is a newer Claimed,
-// and the newest wins — the standing's `by` is the latest assignee, the recording author stays on
-// the event.
+// the newest wins — `by` is the latest assignee principal, the recording author stays on the event.
 test fn reassignment_is_newest_claimed_wins() -> Bool {
-  let e1 = ev(kind: Claimed { assignee: "first@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: none, author: "lead@gunb.ai", at: "t1")
-  let e2 = ev(kind: Claimed { assignee: "second@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: Present { value: e1.id }, author: "lead@gunb.ai", at: "t2")
+  let e1 = ev(kind: Claimed { assignee: human_principal(), return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let e2 = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
   let shuffled = [e2, e1]
-  (match roadmap_node_standing(envs: shuffled) { NodeClaimed { by, since: _ } => (by as String) == "second@gunb.ai"  _ => false })
+  let expect_fabric = event_principal_authenticated(ref: fabric_workflow_principal())
+  (match roadmap_node_standing(envs: shuffled) { NodeClaimed { by, since: _ } => event_principal_label(p: by) == event_principal_label(p: expect_fabric)  _ => false })
     && roadmap_node_standing_key(s: roadmap_node_standing(envs: [e1])) == "claimed"
 }
 
 // THE ASSIGNMENT PROJECTION carries the return_to explicitly (default recorded by the caller as the
-// requester — never derived here), reports no holder on open/forked histories, and clears on
-// release.
+// requester — never derived here), reports no holder on open/forked histories, and clears on release.
 test fn the_assignment_projection_carries_return_to_and_clears_on_release() -> Bool {
-  let e1 = ev(kind: Claimed { assignee: "worker@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: none, author: "lead@gunb.ai", at: "t1")
-  let e2 = ev(kind: Released, parent: Present { value: e1.id }, author: "lead@gunb.ai", at: "t2")
+  let e1 = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let e2 = ev(kind: Released, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
   let held = roadmap_issue_assignment(envs: [e1])
   let released = roadmap_issue_assignment(envs: [e1, e2])
-  let fork_b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s2", at: "t9")
-  let forked = roadmap_issue_assignment(envs: [e1, ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t8"), fork_b])
+  let fork_b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: human_principal(), at: "t9")
+  let forked = roadmap_issue_assignment(envs: [e1, ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: human_principal(), at: "t8"), fork_b])
   let open_none = roadmap_issue_assignment(envs: [])
   (match held { IssueAssignmentProjection { holder, return_to } =>
-    (match holder { Present { value: h } => (h as String) == "worker@gunb.ai"  Absent => false })
-      && (match return_to { Present { value: r } => (r as String) == "lead@gunb.ai"  Absent => false })
+    (match holder { Present { value: h } => event_principal_label(p: h) == event_principal_label(p: event_principal_authenticated(ref: fabric_workflow_principal()))  Absent => false })
+      && (match return_to { Present { value: r } => event_principal_label(p: r) == event_principal_label(p: human_principal())  Absent => false })
     _ => false })
     && (match released { IssueAssignmentProjection { holder, return_to: _ } => match holder { Present { value: _ } => false  Absent => true }  _ => false })
     && (match forked { IssueAssignmentProjection { holder, return_to: _ } => match holder { Present { value: _ } => false  Absent => true }  _ => false })
@@ -163,62 +224,47 @@ test fn the_assignment_projection_carries_return_to_and_clears_on_release() -> B
 }
 
 // THE RECENTS DERIVATION (the autocomplete's feed): every Claimed assignee across the ledger,
-// most-recent-first, each principal exactly once (a principal reassigned lists at their newest
-// turn), only Claimed events feed it, and an unprobed-clock event (empty recorded_at) sorts
-// oldest — absence is not a timestamp.
+// most-recent-first, each principal exactly once by label (a legacy email and an authenticated
+// principal never collide, never auto-match), only Claimed events feed it, and an unprobed-clock
+// event (empty recorded_at) sorts oldest — absence is not a timestamp.
 test fn the_recents_derivation_dedupes_newest_first_only_claimed() -> Bool {
-  let a_old = ev(kind: Claimed { assignee: "a@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: none, author: "op", at: "2026-09-01T00:00:00Z")
-  let b = ev(kind: Claimed { assignee: "b@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: Present { value: a_old.id }, author: "op", at: "2026-09-03T00:00:00Z")
-  let a_new = ev(kind: Claimed { assignee: "a@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: Present { value: b.id }, author: "op", at: "2026-09-02T00:00:00Z")
-  let unprobed = ev(kind: Claimed { assignee: "c@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: none, author: "op", at: "")
-  let note = ev(kind: Progress { note: "not an assignment" as NonEmptyStr }, parent: none, author: "op", at: "2026-09-04T00:00:00Z")
+  let a_old = ev(kind: Claimed { assignee: legacy("a@gunb.ai"), return_to: human_principal() }, parent: none, author: human_principal(), at: "2026-09-01T00:00:00Z")
+  let b = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: Present { value: a_old.id }, author: human_principal(), at: "2026-09-03T00:00:00Z")
+  let a_new = ev(kind: Claimed { assignee: legacy("a@gunb.ai"), return_to: human_principal() }, parent: Present { value: b.id }, author: human_principal(), at: "2026-09-02T00:00:00Z")
+  let unprobed = ev(kind: Claimed { assignee: legacy("c@gunb.ai"), return_to: human_principal() }, parent: none, author: human_principal(), at: "")
+  let note = ev(kind: Progress { note: "not an assignment" as NonEmptyStr }, parent: none, author: human_principal(), at: "2026-09-04T00:00:00Z")
   let recents = roadmap_recent_claimed_assignees(envs: [note, a_new, unprobed, b, a_old])
-  let strings = map(recents, r => r as String)
-  (match strings.first() { Present { value: f } => f == "b@gunb.ai"  Absent => false })
-    && (match strings.skip(n: 1).first() { Present { value: s2 } => s2 == "a@gunb.ai"  Absent => false })
-    && (match strings.skip(n: 2).first() { Present { value: s3 } => s3 == "c@gunb.ai"  Absent => false })
-    && count(strings) == 3
-    && !any(strings, s => s == "op")
+  let labels = map(recents, r => event_principal_label(p: r))
+  (match labels.first() { Present { value: f } => f == "principal:gunbc/workflows/fabric"  Absent => false })
+    && (match labels.skip(n: 1).first() { Present { value: s2 } => s2 == "a@gunb.ai"  Absent => false })
+    && (match labels.skip(n: 2).first() { Present { value: s3 } => s3 == "c@gunb.ai"  Absent => false })
+    && count(labels) == 3
     && count(roadmap_recent_claimed_assignees(envs: [note])) == 0
 }
 
-// THE NEWEST-FIRST ORDER is a total sort by recorded_at, descending, so the fold's head is the
-// latest turn even when the input arrives shuffled.
-test fn the_newest_first_sort_orders_the_whole_population() -> Bool {
-  let a = self_claim(parent: none, author: "a", at: "t1")
-  let b = self_claim(parent: none, author: "b", at: "t5")
-  let c = self_claim(parent: none, author: "c", at: "t3")
-  let sorted = roadmap_events_newest_first(envs: [a, b, c])
-  let authors = map(sorted, e => e.event.author as String)
-  (match authors.first() { Present { value: f } => f == "b"  Absent => false })
-    && (match authors.skip(n: 1).first() { Present { value: s2 } => s2 == "c"  Absent => false })
-    && (match authors.skip(n: 2).first() { Present { value: s3 } => s3 == "a"  Absent => false })
-}
-
-
-// COMMENTS ARE DURABLE EVENTS: the created/edited/deleted wire forms round-trip through the same
-// codec, each carrying its members; a created event whose body member goes missing refuses.
+// COMMENTS ARE DURABLE EVENTS: the created/edited/deleted wire forms round-trip through the v3
+// codec; a created event whose body member goes missing refuses.
 test fn the_comment_wire_forms_round_trip() -> Bool {
-  let created = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "first words" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
-  let edited = ev(kind: CommentEdited { key: "k1" as NonEmptyStr, body: "better words" as NonEmptyStr }, parent: Present { value: created.id }, author: "s1", at: "t2")
-  let deleted = ev(kind: CommentDeleted { key: "k1" as NonEmptyStr }, parent: Present { value: edited.id }, author: "s1", at: "t3")
+  let created = ev(kind: CommentCreated { comment: "k1" as NonEmptyStr, body: "first words" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, parent: none, author: human_principal(), at: "t1")
+  let edited = ev(kind: CommentEdited { comment: "k1" as NonEmptyStr, body: "better words" as NonEmptyStr }, parent: Present { value: created.id }, author: human_principal(), at: "t2")
+  let deleted = ev(kind: CommentDeleted { comment: "k1" as NonEmptyStr }, parent: Present { value: edited.id }, author: human_principal(), at: "t3")
   let ok_created = match roadmap_event_decode(text: roadmap_event_wire_text(env: created)) {
     RoadmapEventDecoded { envelope } =>
       (envelope.id as String) == (created.id as String)
-        && (match envelope.event.kind { CommentCreated { key, body, visibility } => (key as String) == "k1" && (body as String) == "first words" && (visibility as String) == "public"  _ => false })
+        && (match envelope.event.kind { CommentCreated { comment, body, visibility, parent_comment } => (comment as String) == "k1" && (body as String) == "first words" && (visibility as String) == "public" && match parent_comment { Absent => true  Present { value: _ } => false }  _ => false })
     RoadmapEventUndecodable { reason: _ } => false
   }
   let ok_edited = match roadmap_event_decode(text: roadmap_event_wire_text(env: edited)) {
     RoadmapEventDecoded { envelope } =>
-      (match envelope.event.kind { CommentEdited { key, body } => (key as String) == "k1" && (body as String) == "better words"  _ => false })
+      (match envelope.event.kind { CommentEdited { comment, body } => (comment as String) == "k1" && (body as String) == "better words"  _ => false })
     RoadmapEventUndecodable { reason: _ } => false
   }
   let ok_deleted = match roadmap_event_decode(text: roadmap_event_wire_text(env: deleted)) {
     RoadmapEventDecoded { envelope } =>
-      (match envelope.event.kind { CommentDeleted { key } => (key as String) == "k1"  _ => false })
+      (match envelope.event.kind { CommentDeleted { comment } => (comment as String) == "k1"  _ => false })
     RoadmapEventUndecodable { reason: _ } => false
   }
-  let missing_body = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"comment_created\",\"recorded_at\":\"\",\"key\":\"k1\",\"visibility\":\"public\"}}") {
+  let missing_body = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"principal:google-oidc/accounts/s1\",\"parent\":\"\",\"kind\":\"comment_created\",\"recorded_at\":\"\",\"comment\":\"k1\",\"visibility\":\"public\"}}") {
     RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown or missing")
     RoadmapEventDecoded { envelope: _ } => false
   }
@@ -230,10 +276,10 @@ test fn the_comment_wire_forms_round_trip() -> Bool {
 // ORDINAL RETAINED (the deep link /issue/<id>#comment-N stays addressed), and the standing is
 // untouched by any comment event.
 test fn the_comment_fold_numbers_in_causal_order_and_tombstones_keep_the_ordinal() -> Bool {
-  let c1 = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
-  let c2 = ev(kind: CommentCreated { key: "k2" as NonEmptyStr, body: "two" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: Present { value: c1.id }, author: "s2", at: "t2")
-  let edit = ev(kind: CommentEdited { key: "k1" as NonEmptyStr, body: "one (edited)" as NonEmptyStr }, parent: Present { value: c2.id }, author: "s1", at: "t3")
-  let del = ev(kind: CommentDeleted { key: "k2" as NonEmptyStr }, parent: Present { value: edit.id }, author: "s2", at: "t4")
+  let c1 = ev(kind: CommentCreated { comment: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, parent: none, author: human_principal(), at: "t1")
+  let c2 = ev(kind: CommentCreated { comment: "k2" as NonEmptyStr, body: "two" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: Present { value: "k1" as NonEmptyStr } }, parent: Present { value: c1.id }, author: human_principal(), at: "t2")
+  let edit = ev(kind: CommentEdited { comment: "k1" as NonEmptyStr, body: "one (edited)" as NonEmptyStr }, parent: Present { value: c2.id }, author: human_principal(), at: "t3")
+  let del = ev(kind: CommentDeleted { comment: "k2" as NonEmptyStr }, parent: Present { value: edit.id }, author: human_principal(), at: "t4")
   let shuffled = [del, edit, c2, c1]
   let comments = roadmap_issue_comments(envs: shuffled)
   let first = match comments.first() { Present { value: c } => c  Absent => return_dummy() }
@@ -247,6 +293,7 @@ test fn the_comment_fold_numbers_in_causal_order_and_tombstones_keep_the_ordinal
     && (second.body as String) == ""
     && second.deleted
     && (second.edited_at as String) == ""
+    && (match second.parent_comment { Present { value: p } => (p as String) == "k1"  Absent => false })
     && roadmap_node_standing_key(s: roadmap_node_standing(envs: shuffled)) == "open"
     && issue_comment_anchor(ordinal: 2) == "comment-2"
 }
@@ -254,31 +301,31 @@ test fn the_comment_fold_numbers_in_causal_order_and_tombstones_keep_the_ordinal
 // A helper the fold witness uses for its unreachable arms — the comments list is fixture-built
 // and always carries two entries, but the language has no partial list accessor.
 fn return_dummy() -> IssueComment {
-  IssueComment { ordinal: 0, key: "dummy" as NonEmptyStr, author: "dummy" as NonEmptyStr, body: "", visibility: "public" as NonEmptyStr, created_at: "", edited_at: "", deleted: false }
+  IssueComment { ordinal: 0, comment: "dummy" as NonEmptyStr, author: LegacyEmailPrincipal { email: "dummy" as NonEmptyStr, authentication_unestablished: true }, body: "", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "", edited_at: "", deleted: false }
 }
 
-// RETRIES NEVER DUPLICATE, both shapes: a client key already present marks the retry (the route
+// RETRIES NEVER DUPLICATE, both shapes: a comment id already present marks the retry (the route
 // appends nothing and answers with the existing deep link), and a keyless composer re-posting the
-// same body on the same head is the same retry. A different body, a different head, or a different
-// author is a NEW comment, never a duplicate suppression.
+// same author, body, and head is the same retry. A different body, head, or author is a NEW
+// comment, never a suppressed duplicate.
 test fn the_retry_predicates_mark_retries_and_only_retries() -> Bool {
-  let c1 = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
-  let c2_same = ev(kind: CommentCreated { key: "k2" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: Present { value: c1.id }, author: "s1", at: "t2")
-  roadmap_comment_created_key_present(envs: [c1], key: "k1" as NonEmptyStr)
-    && !roadmap_comment_created_key_present(envs: [c1], key: "k9" as NonEmptyStr)
-    && roadmap_comment_retry_present(envs: [c1], author: "s1" as NonEmptyStr, body: "one" as NonEmptyStr, head: none)
-    && !roadmap_comment_retry_present(envs: [c1, c2_same], author: "s1" as NonEmptyStr, body: "one" as NonEmptyStr, head: Present { value: c2_same.id })
-    && !roadmap_comment_retry_present(envs: [c1], author: "s2" as NonEmptyStr, body: "one" as NonEmptyStr, head: Present { value: c1.id })
-    && !roadmap_comment_retry_present(envs: [c1], author: "s1" as NonEmptyStr, body: "two" as NonEmptyStr, head: Present { value: c1.id })
-    && !roadmap_comment_created_key_present(envs: [], key: "k1" as NonEmptyStr)
+  let c1 = ev(kind: CommentCreated { comment: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, parent: none, author: human_principal(), at: "t1")
+  let c2_same = ev(kind: CommentCreated { comment: "k2" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, parent: Present { value: c1.id }, author: human_principal(), at: "t2")
+  roadmap_comment_created_key_present(envs: [c1], comment: "k1" as NonEmptyStr)
+    && !roadmap_comment_created_key_present(envs: [c1], comment: "k9" as NonEmptyStr)
+    && roadmap_comment_retry_present(envs: [c1], author: human_principal(), body: "one" as NonEmptyStr, head: none)
+    && !roadmap_comment_retry_present(envs: [c1, c2_same], author: human_principal(), body: "one" as NonEmptyStr, head: Present { value: c2_same.id })
+    && !roadmap_comment_retry_present(envs: [c1], author: legacy("other@gunb.ai"), body: "one" as NonEmptyStr, head: none)
+    && !roadmap_comment_retry_present(envs: [c1], author: human_principal(), body: "two" as NonEmptyStr, head: none)
+    && !roadmap_comment_created_key_present(envs: [], comment: "k1" as NonEmptyStr)
 }
 
-// AN EDIT OR DELETE WHOSE KEY MATCHES NOTHING rewrites no one's words — the fold applies it to no
-// comment, and the stream renders exactly what was created.
-test fn an_edit_or_delete_with_an_unknown_key_is_an_honest_no_op() -> Bool {
-  let c1 = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
-  let stray_edit = ev(kind: CommentEdited { key: "nope" as NonEmptyStr, body: "hijack" as NonEmptyStr }, parent: Present { value: c1.id }, author: "s2", at: "t2")
-  let stray_del = ev(kind: CommentDeleted { key: "nope" as NonEmptyStr }, parent: Present { value: stray_edit.id }, author: "s2", at: "t3")
+// AN EDIT OR DELETE WHOSE COMMENT ID MATCHES NOTHING rewrites no one's words — the fold applies
+// it to no comment, and the stream renders exactly what was created.
+test fn an_edit_or_delete_with_an_unknown_comment_id_is_an_honest_no_op() -> Bool {
+  let c1 = ev(kind: CommentCreated { comment: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, parent: none, author: human_principal(), at: "t1")
+  let stray_edit = ev(kind: CommentEdited { comment: "nope" as NonEmptyStr, body: "hijack" as NonEmptyStr }, parent: Present { value: c1.id }, author: human_principal(), at: "t2")
+  let stray_del = ev(kind: CommentDeleted { comment: "nope" as NonEmptyStr }, parent: Present { value: stray_edit.id }, author: human_principal(), at: "t3")
   let comments = roadmap_issue_comments(envs: [c1, stray_edit, stray_del])
   count(comments) == 1
     && (match comments.first() { Present { value: c } => (c.body as String) == "one" && !c.deleted && (c.edited_at as String) == ""  Absent => false })
