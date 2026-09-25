@@ -33,7 +33,7 @@ data jade_first_contact_frontier_rows: List<FrontierRow> = concat(
       "family_standing_from_discrimination",
     ],
     reason: "The family discriminator and the evidentiary standing of its two Oem-key claims. Nothing decodes a Manager response yet, so nothing calls the fold outside its witnesses.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the read-only Jade first-contact converge, which authenticates to 10.0.7.2, reads /redfish/v1/Managers/<id> through extdeps.bmc.http GetManagerById, decodes the response into a ManagerIdentityObservation and folds it here. TRIGGER: that run calls discriminate_family on a decoded LIVE Manager response and carries the resulting BmcFirmwareFamilyStanding into its receipt. SUFFICIENT FOR deleting the NAME the run reads. NOT satisfied by a converge that imports these and determines a family another way, and NOT by the two Oem-key claims being cited - citation closes their read obligation, not this row."),
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the read-only Jade first-contact converge, which authenticates to 10.0.7.2, reads /redfish/v1/Managers/<id> through extdeps.bmc.http GetManager, decodes the response into a ManagerIdentityObservation and folds it here. TRIGGER: that run calls discriminate_family on a decoded LIVE Manager response and carries the resulting BmcFirmwareFamilyStanding into its receipt. SUFFICIENT FOR deleting the NAME the run reads. NOT satisfied by a converge that imports these and determines a family another way, and NOT by the two Oem-key claims being cited - citation closes their read obligation, not this row."),
   ),
   concat(
     frontier_rows_for_decls(
