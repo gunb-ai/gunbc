@@ -1,6 +1,7 @@
 module std.coercion
 
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import v2.std.algebra { any, filter }
 
 type TypeCheckpoint {
   dag_name: String
