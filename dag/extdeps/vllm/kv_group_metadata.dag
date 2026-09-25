@@ -92,6 +92,38 @@ fn vllm_kv_cache_spec_kind_wire(k: VllmKvCacheSpecKind) -> NonEmptyStr {
   }
 }
 
+// THE INVERSE OF THE WIRE SPELLING, for reading an emission's kind member back onto the
+// vocabulary this module models. It is total over the spellings vllm_kv_cache_spec_kind_wire
+// emits and absent on anything else: a kind string outside that set is the capture and the
+// modeled shape disagreeing somewhere, not a new variant to guess at. (The emission this
+// feeds is the patched engine's allocation plan; gunbc.spark.vllm_allocation_plan_observe
+// is the capture leg that reads it.)
+fn vllm_kv_cache_spec_kind_from_wire(wire: String) -> VllmKvCacheSpecKind? {
+  if wire == "full_attention" {
+    Present { value: VllmSpecKindFullAttention }
+  } else if wire == "mla_attention" {
+    Present { value: VllmSpecKindMlaAttention }
+  } else if wire == "sliding_window" {
+    Present { value: VllmSpecKindSlidingWindow }
+  } else if wire == "sliding_window_mla" {
+    Present { value: VllmSpecKindSlidingWindowMla }
+  } else if wire == "mamba" {
+    Present { value: VllmSpecKindMamba }
+  } else if wire == "chunked_local_attention" {
+    Present { value: VllmSpecKindChunkedLocalAttention }
+  } else if wire == "sink_full_attention" {
+    Present { value: VllmSpecKindSinkFullAttention }
+  } else if wire == "encoder_only_attention" {
+    Present { value: VllmSpecKindEncoderOnlyAttention }
+  } else if wire == "cross_attention" {
+    Present { value: VllmSpecKindCrossAttention }
+  } else if wire == "unknown" {
+    Present { value: VllmSpecKindUnknown }
+  } else {
+    none
+  }
+}
+
 // ── THE EMITTED RECORD ───────────────────────────────────────────────────────────────────────────
 //
 // One scheduler KV cache group, as the emission carries it. `sliding_window` is present exactly

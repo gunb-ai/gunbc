@@ -1,0 +1,594 @@
+module gunbc.spark.vllm_allocation_plan_observe
+
+import std.types { String, NonEmptyStr, List }
+import std.measure {
+  TokenCount, token_count,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  ByteSize, byte_size,
+}
+import std.content_hash { ContentHash, content_hash_validate_lower_hex_syntax }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field, json_field_string, json_field_nat, json_field_string_list,
+  FieldAbsent, FieldRead, FieldMalformed,
+}
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.vllm.kv_layout {
+  KvGroupKind,
+  KvAllocationPlanCapture, KvAllocationPlanCaptureGroup,
+  KvAllocationPlanAdmitted, KvAllocationPlanRefused,
+  resolved_kv_allocation_plan_from_capture,
+  ResolvedKvAllocationPlan,
+  VllmReportedCapacity,
+  AllocationPlanReproducesPrinted, AllocationPlanContradictsPrinted, AllocationPlanControlUnavailable,
+  allocation_plan_reproduces_reported_capacity,
+}
+import extdeps.vllm.kv_group_metadata {
+  vllm_kv_cache_spec_kind_from_wire,
+  kv_group_kind_from_emission,
+  KvGroupKindFromEmissionReady, KvGroupKindFromEmissionRefused,
+}
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
+
+// ── THE CAPTURE LEG OF THE ALLOCATION-PLAN RUNG ────────────────────────────────────────────────
+//
+// WHY THIS MODULE EXISTS. extdeps.vllm.kv_layout models ResolvedKvAllocationPlan — the shape the
+// patched engine's startup emission must carry — and erects the mint's walls (missing fields,
+// unread revisions, zero walls) plus the one control (the plan's own figures must reproduce the
+// engine's printed capacity). A shape is not evidence: the emission has to be READ from a launch,
+// bound to that launch, and folded through the mint and the control before any consumer may cite
+// it. That observation act lives here, in the gunbc layer, parallel to
+// gunbc.spark.vllm_kv_layout_observe's receipt over ResolvedKvLayout: the layout receipt recovers
+// a per-request cost from two printed lines, while this receipt reads the engine's own group
+// roster off the wire, so the two stay separate modules over separate subjects.
+//
+// WHAT IT READS. The patched engine (the reviewable patch at
+// dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch, against
+// github.com/vllm-project/vllm @ 8d09804c877c48165c6ba69bc9dc02d09bae0b83) emits one
+// "kv-allocation-plan/v1" JSON record per engine at the end of
+// EngineCore._initialize_kv_caches, on two channels carrying identical canonical bytes: a startup
+// log line keyed by the KV_ALLOCATION_PLAN_JSON marker, and — when the launch sets
+// VLLM_KV_ALLOCATION_PLAN_PATH — the same line at that path via tmp file and atomic rename. The
+// file channel is read first when it exists (an atomic rename hands the reader one whole line);
+// the log channel is substring-scanned out of captured container stdout, which the fleet already
+// collects for the startup capacity lines. Both reduce to the same parse below.
+//
+// THE REVISION IS THE EMISSION'S OWN SELF-REPORT, READ, NOT STAMPED. The record carries
+// vllm.__version__ verbatim, whose trailing +g<sha> names the source tree the running package
+// claims it was built from (extdeps.vllm.runtime_defaults Vllm8d09804 carries the same string
+// with the same caveat recorded there: the image SAYS which tree it was built from; the saying is
+// not a comparison of bytes). The parse below extracts that sha into the capture's
+// observed_at_revision, and the mint then decides whether THIS corpus has read that revision's
+// emission shape. A capture whose revision is not modelled refuses at the mint's revision wall
+// rather than being trusted — which is why a real capture from the patched 8d09804 image refuses
+// today: kv_layout's modeled revision has not advanced to the patched tree. That refusal is the
+// wall working as designed, stated here so it is not read as a defect in the route; advancing the
+// modeled revision to the patched source, after the fleet runs the image and its emission is read
+// at that revision, is the model lane's separate act.
+//
+// THE CONTROL'S TWO SIDES NEVER SHARE A SOURCE. The plan comes off the emission; the reported
+// capacity comes from the engine's startup stdout lines (extdeps.vllm.log_lines), captured and
+// supplied by the caller that observed the launch. The record deliberately does NOT carry the
+// printed figures: folding the emission's group sum against a capacity the same record supplied
+// would compare the emission with itself, permanently green, establishing nothing.
+
+// THE MARKER THE PATCH PRINTS. A capture route keys on this substring exactly as
+// extdeps.vllm.log_lines keys on the startup line markers: a real captured line carries a
+// process tag, level, timestamp and source location in front of it, so the read is a substring
+// find, not a line-prefix match. The bytes after the marker are one JSON document with sort_keys
+// and compact separators, so they parse whole.
+data kv_allocation_plan_log_marker: NonEmptyStr = "KV_ALLOCATION_PLAN_JSON" as NonEmptyStr
+
+// ── READING ONE MEMBER, THREE-VALUED ───────────────────────────────────────────────────────────
+//
+// A MEMBER IS ABSENT, PRESENT AND WELL SHAPED, OR PRESENT AND WRONG, and the three stay apart
+// into the capture type itself: absent becomes the corresponding optional's Absent, which the
+// mint's missing-field refusal names; malformed refuses the whole parse carrying the member's own
+// cause, because a document that spoke in a voice the reader does not understand is not a
+// document missing a field. This is the wire-level spelling of the same discipline
+// extdeps.languages.json.parse's JsonFieldRead states for JSON in general.
+type KvPlanMemberRead<T>
+  = KvPlanMemberPresent { value: T }
+  | KvPlanMemberAbsent
+  | KvPlanMemberMalformed { cause: NonEmptyStr }
+
+fn kv_plan_string_member(obj: JsonValue, key: String) -> KvPlanMemberRead<String> {
+  match json_field_string(obj: obj, key: key) {
+    FieldAbsent => KvPlanMemberAbsent
+    FieldRead { value: v } => KvPlanMemberPresent { value: v }
+    FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
+  }
+}
+
+fn kv_plan_nat_member(obj: JsonValue, key: String) -> KvPlanMemberRead<Nat> {
+  match json_field_nat(obj: obj, key: key) {
+    FieldAbsent => KvPlanMemberAbsent
+    FieldRead { value: v } => KvPlanMemberPresent { value: v }
+    FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
+  }
+}
+
+fn kv_plan_string_causes(r: KvPlanMemberRead<String>) -> List<NonEmptyStr> {
+  match r {
+    KvPlanMemberMalformed { cause: c } => [c]
+    _ => [] as List<NonEmptyStr>
+  }
+}
+
+fn kv_plan_nat_causes(r: KvPlanMemberRead<Nat>) -> List<NonEmptyStr> {
+  match r {
+    KvPlanMemberMalformed { cause: c } => [c]
+    _ => [] as List<NonEmptyStr>
+  }
+}
+
+fn kv_plan_revision_causes(r: KvPlanMemberRead<VllmSourceRevision>) -> List<NonEmptyStr> {
+  match r {
+    KvPlanMemberMalformed { cause: c } => [c]
+    _ => [] as List<NonEmptyStr>
+  }
+}
+
+fn kv_plan_group_list_causes(r: KvPlanMemberRead<List<KvAllocationPlanCaptureGroup>>) -> List<NonEmptyStr> {
+  match r {
+    KvPlanMemberMalformed { cause: c } => [c]
+    _ => [] as List<NonEmptyStr>
+  }
+}
+
+// ── PARSING THE EMISSION TEXT ──────────────────────────────────────────────────────────────────
+type KvPlanCaptureParse
+  = KvPlanCaptureParsed { capture: KvAllocationPlanCapture }
+  | KvPlanCaptureUnreadable { cause: NonEmptyStr }
+
+// THE SOURCE REVISION RIDES THE VERSION STRING'S +g<sha> SUFFIX, the spelling setuptools-scm
+// produced at build time (v0.1.dev1+g8d09804c8 for the arm's runtime). The parse is deliberately
+// small: split on the last +g, require nine or more lowercase hex characters (the fleet builds
+// abbreviate to nine; upstream full shas are forty, and the git object store's sha1 authority is
+// exactly the forty case, so nothing shorter than the observed abbreviation is trusted). A
+// version string without that suffix is a self-report about a build nobody read; it refuses
+// rather than being stamped with whatever revision this corpus happens to model.
+fn kv_plan_source_revision_of(package_version: String) -> VllmSourceRevision? {
+  let segments = split(s: package_version, delimiter: "+g")
+  match reverse(segments) |> first {
+    Absent => none
+    Present { value: sha } =>
+      if string_length(s: sha) >= 9 && content_hash_validate_lower_hex_syntax(text: sha) {
+        Present {
+          value: vllm_source_revision(
+            repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+            full_revision: sha as NonEmptyStr,
+          ),
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn kv_plan_revision_member(obj: JsonValue) -> KvPlanMemberRead<VllmSourceRevision> {
+  match json_field(obj: obj, key: "runtime") {
+    FieldAbsent =>
+      KvPlanMemberMalformed {
+        cause: "the emission does not carry a runtime self-report, so it names no revision its capture could be bound to" as NonEmptyStr,
+      }
+    FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
+    FieldRead { value: rt } =>
+      match json_field_string(obj: rt, key: "package_version") {
+        FieldAbsent =>
+          KvPlanMemberMalformed {
+            cause: "the emission's runtime self-report carries no package_version, so it names no revision its capture could be bound to" as NonEmptyStr,
+          }
+        FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
+        FieldRead { value: pv } =>
+          match kv_plan_source_revision_of(pv) {
+            Absent =>
+              KvPlanMemberMalformed {
+                cause: join([
+                  "the emission's runtime self-report `", pv,
+                  "` does not carry a +g<sha> source revision suffix",
+                ], "") as NonEmptyStr,
+              }
+            Present { value: r } => KvPlanMemberPresent { value: r }
+          }
+      }
+  }
+}
+
+// ONE GROUP ROW. The upstream kind string is read back onto the modeled vocabulary through
+// extdeps.vllm.kv_group_metadata's own inverse (not a second spelling here), and the kind +
+// window pair is folded onto the growth taxonomy by that module's mapping — a kind whose growth
+// shape the taxonomy refuses (chunked_local_attention, sink_full_attention, the encoder-side
+// kinds) refuses the row with kv_group_metadata's own cause, not a local approximation.
+type KvPlanGroupRowParse
+  = KvPlanGroupRowParsed { row: KvAllocationPlanCaptureGroup }
+  | KvPlanGroupRowUnreadable { cause: NonEmptyStr }
+
+fn kv_plan_group_row(el: JsonValue) -> KvPlanGroupRowParse {
+  match el {
+    JsonObject { members: _ } => kv_plan_group_row_members(el: el)
+    _ =>
+      KvPlanGroupRowUnreadable {
+        cause: "a groups entry is not an object" as NonEmptyStr,
+      }
+  }
+}
+
+fn kv_plan_group_row_members(el: JsonValue) -> KvPlanGroupRowParse {
+  let identity = kv_plan_string_member(obj: el, key: "identity")
+  let kind = kv_plan_string_member(obj: el, key: "kind")
+  let layers = kv_plan_layers_member(obj: el)
+  let block_size = kv_plan_nat_member(obj: el, key: "block_size")
+  let page = kv_plan_nat_member(obj: el, key: "page_size_bytes")
+  let tokens_per_state = kv_plan_nat_member(obj: el, key: "tokens_per_state")
+  let max_use = kv_plan_nat_member(obj: el, key: "max_memory_usage_bytes")
+  let blocks_at = kv_plan_nat_member(obj: el, key: "blocks_at_requested_length")
+  let window = kv_plan_nat_member(obj: el, key: "sliding_window")
+  let causes = concat(
+    concat(kv_plan_string_causes(identity), kv_plan_string_causes(kind)),
+    concat(
+      kv_plan_layers_causes(layers),
+      concat(
+        concat(kv_plan_nat_causes(block_size), kv_plan_nat_causes(page)),
+        concat(
+          concat(kv_plan_nat_causes(tokens_per_state), kv_plan_nat_causes(max_use)),
+          concat(kv_plan_nat_causes(blocks_at), kv_plan_nat_causes(window)),
+        ),
+      ),
+    ),
+  )
+  match length(causes) > 0 {
+    true =>
+      KvPlanGroupRowUnreadable {
+        cause: join(map(causes, c => c as String), "; ") as NonEmptyStr,
+      }
+    false => kv_plan_group_row_kind(identity: identity, kind: kind, layers: layers, block_size: block_size, page: page, tokens_per_state: tokens_per_state, max_use: max_use, blocks_at: blocks_at, window: window)
+  }
+}
+
+// THE KIND IS READ THROUGH THE GROWTH-SHAPE MAPPING, not stored raw: the capture type carries
+// KvGroupKind (what a sequence costs), and the upstream-kind-to-growth fold is
+// kv_group_metadata's authority, partial by construction.
+fn kv_plan_group_row_kind(
+  identity: KvPlanMemberRead<String>,
+  kind: KvPlanMemberRead<String>,
+  layers: KvPlanMemberRead<List<String>>,
+  block_size: KvPlanMemberRead<Nat>,
+  page: KvPlanMemberRead<Nat>,
+  tokens_per_state: KvPlanMemberRead<Nat>,
+  max_use: KvPlanMemberRead<Nat>,
+  blocks_at: KvPlanMemberRead<Nat>,
+  window: KvPlanMemberRead<Nat>,
+) -> KvPlanGroupRowParse {
+  match kind {
+    KvPlanMemberPresent { value: wire } =>
+      match vllm_kv_cache_spec_kind_from_wire(wire) {
+        Absent =>
+          KvPlanGroupRowUnreadable {
+            cause: join([
+              "a group row names the kind `", wire,
+              "`, which the modeled kind vocabulary has no spelling for",
+            ], "") as NonEmptyStr,
+          }
+        Present { value: upstream_kind } =>
+          match kv_group_kind_from_emission(kind: upstream_kind, window: kv_plan_token_opt(r: window)) {
+            KvGroupKindFromEmissionRefused { cause: c } => KvPlanGroupRowUnreadable { cause: c }
+            KvGroupKindFromEmissionReady { kind: k } =>
+              kv_plan_group_row_assemble(identity: identity, mapped: Present { value: k }, layers: layers, block_size: block_size, page: page, tokens_per_state: tokens_per_state, max_use: max_use, blocks_at: blocks_at)
+          }
+      }
+    _ =>
+      kv_plan_group_row_assemble(identity: identity, mapped: none, layers: layers, block_size: block_size, page: page, tokens_per_state: tokens_per_state, max_use: max_use, blocks_at: blocks_at)
+  }
+}
+
+fn kv_plan_token_opt(r: KvPlanMemberRead<Nat>) -> TokenCount? {
+  match r {
+    KvPlanMemberPresent { value: n } => Present { value: token_count(count: n) }
+    _ => none
+  }
+}
+
+fn kv_plan_group_row_assemble(
+  identity: KvPlanMemberRead<String>,
+  mapped: KvGroupKind?,
+  layers: KvPlanMemberRead<List<String>>,
+  block_size: KvPlanMemberRead<Nat>,
+  page: KvPlanMemberRead<Nat>,
+  tokens_per_state: KvPlanMemberRead<Nat>,
+  max_use: KvPlanMemberRead<Nat>,
+  blocks_at: KvPlanMemberRead<Nat>,
+) -> KvPlanGroupRowParse {
+  KvPlanGroupRowParsed {
+    row: KvAllocationPlanCaptureGroup {
+      identity: kv_plan_nonempty_opt(r: identity),
+      kind: mapped,
+      layer_identities: kv_plan_layer_opt(r: layers),
+      block_size: kv_plan_token_opt(r: block_size),
+      page_size_bytes: kv_plan_byte_opt(r: page),
+      tokens_per_state: kv_plan_token_opt(r: tokens_per_state),
+      max_memory_usage_bytes: kv_plan_byte_opt(r: max_use),
+      blocks_at_requested_length: kv_plan_block_opt(r: blocks_at),
+    },
+  }
+}
+
+fn kv_plan_nonempty_opt(r: KvPlanMemberRead<String>) -> NonEmptyStr? {
+  match r {
+    KvPlanMemberPresent { value: s } => Present { value: s as NonEmptyStr }
+    _ => none
+  }
+}
+
+fn kv_plan_layer_opt(r: KvPlanMemberRead<List<String>>) -> List<NonEmptyStr>? {
+  match r {
+    KvPlanMemberPresent { value: ss } => Present { value: map(ss, s => s as NonEmptyStr) }
+    _ => none
+  }
+}
+
+fn kv_plan_byte_opt(r: KvPlanMemberRead<Nat>) -> ByteSize? {
+  match r {
+    KvPlanMemberPresent { value: n } => Present { value: byte_size(count: n) }
+    _ => none
+  }
+}
+
+fn kv_plan_block_opt(r: KvPlanMemberRead<Nat>) -> AllocatorBlockCount? {
+  match r {
+    KvPlanMemberPresent { value: n } => Present { value: allocator_block_count(count: n) }
+    _ => none
+  }
+}
+
+// LAYER IDENTITIES RIDE THE JSON STRING-LIST READER, three-valued like every other member: an
+// array holding a non-string is malformed (the document spoke wrong), not an absent roster.
+fn kv_plan_layers_member(obj: JsonValue) -> KvPlanMemberRead<List<String>> {
+  match json_field_string_list(obj: obj, key: "layer_identities") {
+    FieldAbsent => KvPlanMemberAbsent
+    FieldRead { value: v } => KvPlanMemberPresent { value: v }
+    FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
+  }
+}
+
+fn kv_plan_layers_causes(r: KvPlanMemberRead<List<String>>) -> List<NonEmptyStr> {
+  match r {
+    KvPlanMemberMalformed { cause: c } => [c]
+    _ => [] as List<NonEmptyStr>
+  }
+}
+
+type KvPlanGroupFold
+  = KvPlanGroupsOk { rows: List<KvAllocationPlanCaptureGroup> }
+  | KvPlanGroupsBad { cause: NonEmptyStr }
+
+fn kv_plan_groups_member(obj: JsonValue) -> KvPlanMemberRead<List<KvAllocationPlanCaptureGroup>> {
+  match json_field(obj: obj, key: "groups") {
+    FieldAbsent => KvPlanMemberAbsent
+    FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => kv_plan_groups_fold(es: es)
+        _ => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
+      }
+  }
+}
+
+fn kv_plan_groups_fold(es: List<JsonValue>) -> KvPlanMemberRead<List<KvAllocationPlanCaptureGroup>> {
+  match fold(es, init: KvPlanGroupsOk { rows: [] as List<KvAllocationPlanCaptureGroup> }, f: (acc, el) =>
+    match acc {
+      KvPlanGroupsBad { cause: _ } => acc
+      KvPlanGroupsOk { rows: rows } =>
+        match kv_plan_group_row(el: el) {
+          KvPlanGroupRowParsed { row: r } =>
+            KvPlanGroupsOk { rows: concat(rows, [r]) }
+          KvPlanGroupRowUnreadable { cause: c } => KvPlanGroupsBad { cause: c }
+        }
+    }) {
+    KvPlanGroupsOk { rows: rows } => KvPlanMemberPresent { value: rows }
+    KvPlanGroupsBad { cause: c } => KvPlanMemberMalformed { cause: c }
+  }
+}
+
+// THE TOP-LEVEL DOCUMENT. Field reads are independent, so the malformed causes are collected
+// first and refused together; only a cause-free document reaches the capture assembly, where
+// absent members become absent optionals and the mint's walls — not this parser — judge the gap.
+fn kv_plan_capture_top(doc: JsonValue) -> KvPlanCaptureParse {
+  let revision = kv_plan_revision_member(obj: doc)
+  let image_digest = kv_plan_string_member(obj: doc, key: "image_digest")
+  let cache_format = kv_plan_string_member(obj: doc, key: "cache_format")
+  let allocator_blocks = kv_plan_nat_member(obj: doc, key: "allocator_blocks")
+  let requested_length = kv_plan_nat_member(obj: doc, key: "requested_length")
+  let scheduler_block_size = kv_plan_nat_member(obj: doc, key: "scheduler_block_size")
+  let groups = kv_plan_groups_member(obj: doc)
+  let grouping_padding = kv_plan_string_member(obj: doc, key: "grouping_padding")
+  let causes = concat(
+    concat(kv_plan_revision_causes(revision), kv_plan_string_causes(image_digest)),
+    concat(
+      concat(kv_plan_string_causes(cache_format), kv_plan_nat_causes(allocator_blocks)),
+      concat(
+        concat(kv_plan_nat_causes(requested_length), kv_plan_nat_causes(scheduler_block_size)),
+        concat(kv_plan_group_list_causes(groups), kv_plan_string_causes(grouping_padding)),
+      ),
+    ),
+  )
+  match length(causes) > 0 {
+    true =>
+      KvPlanCaptureUnreadable {
+        cause: join(map(causes, c => c as String), "; ") as NonEmptyStr,
+      }
+    false =>
+      match revision {
+        KvPlanMemberPresent { value: observed } =>
+          KvPlanCaptureParsed {
+            capture: KvAllocationPlanCapture {
+              observed_at_revision: observed,
+              image_digest: kv_plan_nonempty_opt(r: image_digest),
+              cache_format: kv_plan_nonempty_opt(r: cache_format),
+              allocator_blocks: kv_plan_block_opt(r: allocator_blocks),
+              requested_length: kv_plan_token_opt(r: requested_length),
+              scheduler_block_size: kv_plan_token_opt(r: scheduler_block_size),
+              groups: match groups {
+                KvPlanMemberPresent { value: gs } => Present { value: gs }
+                _ => none
+              },
+              grouping_padding: kv_plan_nonempty_opt(r: grouping_padding),
+            },
+          }
+        _ =>
+          KvPlanCaptureUnreadable {
+            cause: "unreachable: the runtime self-report refusal above already named the absent revision" as NonEmptyStr,
+          }
+      }
+  }
+}
+
+// ONE PARSE FOR BOTH CHANNELS. The file hands over exactly the canonical line; the caller trims
+// and parses it. Malformed JSON is the engine having spoken in a shape the reader does not
+// understand — a refusal naming that, not a missing capture.
+fn kv_allocation_plan_capture_from_emission(emission_text: String) -> KvPlanCaptureParse {
+  match parse_json_document(s: trim(s: emission_text)) {
+    JsonDocumentUnreadable { gap: _ } =>
+      KvPlanCaptureUnreadable {
+        cause: "the emission text is not a parseable JSON document" as NonEmptyStr,
+      }
+    JsonDocumentParsed { value: doc } => kv_plan_capture_top(doc: doc)
+  }
+}
+
+// THE LOG CHANNEL: the LAST marker line in the captured stdout wins. A launch emits the plan once
+// per engine, but captured text can concatenate restarts; the last line is the newest engine's,
+// which is the one a current-admission question may be asked about. The marker's presence on the
+// line is what identifies it, exactly as the startup capacity lines are identified.
+fn kv_allocation_plan_capture_from_startup_log(captured_stdout: String) -> KvPlanCaptureParse {
+  let marked = filter(split(s: captured_stdout, delimiter: "\n"), line =>
+    string_contains(s: line, pattern: kv_allocation_plan_log_marker as String))
+  match reverse(marked) |> first {
+    Absent =>
+      KvPlanCaptureUnreadable {
+        cause: "the captured stdout carries no KV_ALLOCATION_PLAN_JSON line" as NonEmptyStr,
+      }
+    Present { value: line } =>
+      let segments = split(s: line, delimiter: kv_allocation_plan_log_marker as String)
+      match reverse(segments) |> first {
+        Absent =>
+          KvPlanCaptureUnreadable {
+            cause: "unreachable: the marked line was found by its marker" as NonEmptyStr,
+          }
+        Present { value: payload } =>
+          kv_allocation_plan_capture_from_emission(emission_text: payload)
+      }
+  }
+}
+
+// ── THE RECEIPT: PARSE, MINT, CONTROL, BOUND TO ONE LAUNCH ─────────────────────────────────────
+//
+// The admission is not a choice the caller makes. The capture must parse, the mint's walls must
+// pass, and the control must reproduce the printed capacity; every other outcome is a named
+// refusal carrying its cause, and the launch the evidence was read from rides every arm, because
+// a reading of one launch is not evidence about its successor. The control is the one the
+// doctrine asks for and the only one offered: it runs forward from the emission's own group
+// figures against the printed line the engine produced independently — agreement is evidence,
+// disagreement is located, and a re-derivation from kind and block size is deliberately NOT
+// substituted (that would compare the model with itself).
+
+type VllmAllocationPlanReceipt
+  = KvAllocationPlanObserved {
+      launch: VllmServingLaunch,
+      plan: ResolvedKvAllocationPlan,
+      reported: VllmReportedCapacity,
+      blocks_per_max_request: AllocatorBlockCount,
+      source_capture_digest: ContentHash,
+    }
+  | KvAllocationPlanCaptureRefused { launch: VllmServingLaunch, cause: NonEmptyStr }
+  | KvAllocationPlanInconsistent { launch: VllmServingLaunch, cause: NonEmptyStr }
+
+fn admit_kv_allocation_plan(
+  launch: VllmServingLaunch,
+  capture: KvAllocationPlanCapture,
+  reported: VllmReportedCapacity,
+  source_capture_digest: ContentHash,
+) -> VllmAllocationPlanReceipt {
+  match resolved_kv_allocation_plan_from_capture(capture: capture) {
+    KvAllocationPlanRefused { cause: c } =>
+      KvAllocationPlanCaptureRefused { launch: launch, cause: c }
+    KvAllocationPlanAdmitted { plan: p } =>
+      match allocation_plan_reproduces_reported_capacity(plan: p, reported: reported) {
+        AllocationPlanControlUnavailable { cause: c } =>
+          KvAllocationPlanCaptureRefused { launch: launch, cause: c }
+        AllocationPlanContradictsPrinted { predicted_concurrency_hundredths: predicted, reported_concurrency_hundredths: printed } =>
+          KvAllocationPlanInconsistent {
+            launch: launch,
+            cause: join([
+              "the plan and the printed lines describe different engines: the groups predict a concurrency of ",
+              to_string(predicted),
+              " hundredths while the engine printed ",
+              to_string(printed),
+            ], "") as NonEmptyStr,
+          }
+        AllocationPlanReproducesPrinted { blocks_per_max_request: b, predicted_concurrency_hundredths: _ } =>
+          KvAllocationPlanObserved {
+            launch: launch,
+            plan: p,
+            reported: reported,
+            blocks_per_max_request: b,
+            source_capture_digest: source_capture_digest,
+          }
+      }
+  }
+}
+
+// THE ONE-SHOT FOLD the capture route runs: emission text in, receipt out. The parse refusal and
+// the mint refusal are distinct arms upstream of this function; here they share the receipt's
+// refused arm, with the cause saying which spoke.
+fn admit_kv_allocation_plan_emission(
+  launch: VllmServingLaunch,
+  emission_text: String,
+  reported: VllmReportedCapacity,
+  source_capture_digest: ContentHash,
+) -> VllmAllocationPlanReceipt {
+  match kv_allocation_plan_capture_from_emission(emission_text: emission_text) {
+    KvPlanCaptureUnreadable { cause: c } =>
+      KvAllocationPlanCaptureRefused { launch: launch, cause: c }
+    KvPlanCaptureParsed { capture: capture } =>
+      admit_kv_allocation_plan(launch: launch, capture: capture, reported: reported, source_capture_digest: source_capture_digest)
+  }
+}
+
+fn kv_allocation_plan_receipt_wire(r: VllmAllocationPlanReceipt) -> String {
+  match r {
+    KvAllocationPlanObserved { launch: _, plan: p, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
+      join([
+        "observed: plan at ",
+        p.runtime.full_revision as String,
+        ", ",
+        to_string(allocator_block_count_value(c: b)),
+        " blocks per full-context request, ",
+        p.grouping_padding as String,
+      ], "")
+    KvAllocationPlanCaptureRefused { launch: _, cause: c } => join(["refused: ", c as String], "")
+    KvAllocationPlanInconsistent { launch: _, cause: c } => join(["inconsistent: ", c as String], "")
+  }
+}
+
+// THE RECEIPT'S VERDICT VOCABULARY, for consumers that branch on standing rather than read the
+// wire text: only Observed is evidence a capacity question may cite, and the accessor refuses on
+// every other arm rather than widening an optional.
+type KvAllocationPlanStanding
+  = KvAllocationPlanEstablished
+  | KvAllocationPlanNotEstablished { cause: NonEmptyStr }
+
+fn kv_allocation_plan_standing(r: VllmAllocationPlanReceipt) -> KvAllocationPlanStanding {
+  match r {
+    KvAllocationPlanObserved { launch: _, plan: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
+      KvAllocationPlanEstablished
+    KvAllocationPlanCaptureRefused { launch: _, cause: c } =>
+      KvAllocationPlanNotEstablished { cause: c }
+    KvAllocationPlanInconsistent { launch: _, cause: c } =>
+      KvAllocationPlanNotEstablished { cause: c }
+  }
+}
