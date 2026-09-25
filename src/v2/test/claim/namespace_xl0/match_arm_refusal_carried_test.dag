@@ -27,9 +27,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // with the arm as its only locus. The reader now decides the shape first (a separator on the left is
 // a repeat element; an arm's left is its pattern) and wires the arm once, so its Rejected stands.
 //
-// The two red modules are the list literal in a second arm, on its own line and comma-separated.
-// The controls: the same literal in the FIRST arm refuses under the same cause on both sides (so
-// the red claims assert the cause the first arm already reached, not a new one); and the same two
+// The two red modules are a list literal in a second arm, on its own line and comma-separated.
+// The controls: the same literal in the FIRST arm refuses located on both sides; and the same two
 // layouts with no refusable value are not refused at all, so the shape decision did not stop
 // reading ordinary arms.
 data marc_second_arm_list_source: String = "module v2.test.marc_second_arm_list\n\nimport v2.std.logic { Bool }\n\nfn marc_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marc_probe(b: Bool, acc: List<Int>) -> List<Int> {\n  match b {\n    false => acc\n    true => marc_g(acc: [])\n  }\n}\n"
@@ -108,10 +107,33 @@ fn marc_outcomes() -> MarcOutcomes {
   }
 }
 
-fn marc_is_list_literal_refused(v: MarcVerdict) -> Bool {
+// THE CLAIMS ARE RELATIONAL. The subject is that arm POSITION does not change the cause, so the
+// second-arm and comma-arm modules must refuse under the SAME cause the first-arm module refuses
+// under, and that cause must not be the navigation cause. No claim names the list literal's own
+// cause: gunbc#12208 lowers list literals and deletes that cause, and a claim pinned to it would read
+// that landing as this defect's return. The specimen is still a list literal because it is the
+// shape the corpus specimen (gunbc.accelerator_demo_eval) refused on; if a later change lowers it,
+// a_first_arm_specimen_still_refuses_located goes red by name and the specimen value is replaced,
+// which is the honest reading rather than the relational claims greening over three accepts.
+fn marc_cause(v: MarcVerdict) -> Optional<Symbol> {
   match v {
-    MarcFileRefused { fatal_reason: r } => r == ^body_lowering_reason_list_literal_unlowered
-    MarcNotRefused => false
+    MarcFileRefused { fatal_reason: r } => optional_present(value: r)
+    MarcNotRefused => optional_absent()
+  }
+}
+
+fn marc_same_located_cause(v: MarcVerdict, first: MarcVerdict) -> Bool {
+  match marc_cause(v: first) {
+    Absent => false
+    Present { value: f } =>
+      if f == ^body_lowering_reason_match_arm_navigation_refused {
+        false
+      } else {
+        match marc_cause(v: v) {
+          Present { value: c } => c == f
+          Absent => false
+        }
+      }
   }
 }
 
@@ -122,26 +144,26 @@ fn marc_is_not_refused(v: MarcVerdict) -> Bool {
   }
 }
 
-test fn a_list_literal_in_a_second_arm_refuses_under_its_own_cause() -> Bool {
+test fn a_second_arm_refuses_under_the_cause_the_first_arm_reaches() -> Bool {
   match marc_outcomes() {
-    MarcOutcomesDecided { second_arm_list: v, comma_arm_list: _, first_arm_list: _, second_arm_ctl: _, comma_arm_ctl: _ } =>
-      marc_is_list_literal_refused(v: v)
+    MarcOutcomesDecided { second_arm_list: v, comma_arm_list: _, first_arm_list: f, second_arm_ctl: _, comma_arm_ctl: _ } =>
+      marc_same_located_cause(v: v, first: f)
     MarcContextRefused => false
   }
 }
 
-test fn a_list_literal_in_a_comma_separated_arm_refuses_under_its_own_cause() -> Bool {
+test fn a_comma_separated_arm_refuses_under_the_cause_the_first_arm_reaches() -> Bool {
   match marc_outcomes() {
-    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: v, first_arm_list: _, second_arm_ctl: _, comma_arm_ctl: _ } =>
-      marc_is_list_literal_refused(v: v)
+    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: v, first_arm_list: f, second_arm_ctl: _, comma_arm_ctl: _ } =>
+      marc_same_located_cause(v: v, first: f)
     MarcContextRefused => false
   }
 }
 
-test fn a_list_literal_in_a_first_arm_refuses_under_the_same_cause() -> Bool {
+test fn a_first_arm_specimen_still_refuses_located() -> Bool {
   match marc_outcomes() {
-    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: _, first_arm_list: v, second_arm_ctl: _, comma_arm_ctl: _ } =>
-      marc_is_list_literal_refused(v: v)
+    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: _, first_arm_list: f, second_arm_ctl: _, comma_arm_ctl: _ } =>
+      marc_same_located_cause(v: f, first: f)
     MarcContextRefused => false
   }
 }
