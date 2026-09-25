@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -36,7 +36,7 @@ import gunbc.command_runner {
   ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
 }
 
-data runner_microvm_boot_probe_disposition: Disposition = SingleAuthority
+data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthority
 
 // A GREEN GUEST BOOT PROBE IS NOT HOST-IMAGE PLACEABILITY. It runs a copied guest rootfs from a
 // checkout-built artifact, not a gunbc binary carried in the host image on tmpfs at host boot.

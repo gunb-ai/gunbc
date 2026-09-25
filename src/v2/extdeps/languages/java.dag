@@ -264,7 +264,7 @@ data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
   java_facts_boolean,
 ]
 
-data java_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data java_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn java_inhabitant_atom(id: Symbol) -> Node {
   Node {

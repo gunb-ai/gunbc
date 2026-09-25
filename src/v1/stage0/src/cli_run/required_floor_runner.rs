@@ -2241,20 +2241,43 @@ fn unimported_bare_provider_roster_source_at_base(
         "unimported_bare_provider_roster_at_base",
         &args,
     )?;
-    let v1_interpreter::Value::Record { fields, .. } = &shown else {
+    unimported_bare_provider_base_roster_decoded(&ctx, &shown, base)
+}
+
+/// UnimportedBareProviderBaseRoster is a closed coproduct (`BaseRosterShown { source }` |
+/// `BaseRosterUnreadable { stderr }`), so the reading is its variant: each arm is matched by name and
+/// read from its own declared field, and any other shape refuses. (gunbc#12205 destructured it as a
+/// Record, so every change that edits the roster refused at the base read.)
+fn unimported_bare_provider_base_roster_decoded(
+    ctx: &v1_interpreter::InterpContext,
+    shown: &v1_interpreter::Value,
+    base: &str,
+) -> Result<String, String> {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = shown
+    else {
         return Err(format!(
-            "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
-            floor_value_shape(Some(&shown))
+            "unimported_bare_provider_roster_at_base returned {}, expected an UnimportedBareProviderBaseRoster variant",
+            floor_value_shape(Some(shown))
         ));
     };
-    match (ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
-        (Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
-        (_, Some(v1_interpreter::Value::Str(err))) => Err(format!(
+    match (
+        ctx.resolve(*variant_name).as_str(),
+        ctx.field(fields, "source"),
+        ctx.field(fields, "stderr"),
+    ) {
+        ("BaseRosterShown", Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
+        ("BaseRosterUnreadable", _, Some(v1_interpreter::Value::Str(err))) => Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
              path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
              so it must exist at the base"
         )),
-        _ => Err("UnimportedBareProviderBaseRoster carries neither `source` nor `stderr`".to_string()),
+        (other, _, _) => Err(format!(
+            "unimported_bare_provider_roster_at_base returned variant {other} without its declared field"
+        )),
     }
 }
 
@@ -11279,6 +11302,51 @@ mod pure_producer_share_tests {
                 "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
                     .to_string()
             ]
+        );
+    }
+
+    /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
+    /// Record, so every roster-editing change refused). Values come from a fixture module that
+    /// declares UnimportedBareProviderBaseRoster exactly as v2.workflow.floor_unimported_bare_provider_debt
+    /// does: the shown arm yields its source, the unreadable arm refuses naming its stderr, and a
+    /// value of any other shape refuses.
+    #[test]
+    fn the_base_roster_read_decodes_both_arms_and_refuses_any_other_shape() {
+        let fixture = prepared_from(&[(
+            "dag/fixture/base_roster.dag",
+            "module fixture.base_roster\n\
+             type UnimportedBareProviderBaseRoster =\n\
+                 BaseRosterShown { source: String }\n\
+               | BaseRosterUnreadable { stderr: String }\n\
+             type NotARoster { source: String }\n\
+             fn shown() -> UnimportedBareProviderBaseRoster { BaseRosterShown { source: \"roster-bytes\" } }\n\
+             fn unreadable() -> UnimportedBareProviderBaseRoster { BaseRosterUnreadable { stderr: \"fatal: bad object\" } }\n\
+             fn other() -> NotARoster { NotARoster { source: \"roster-bytes\" } }\n",
+        )]);
+        let ctx = make_eval_context(
+            &fixture.graph,
+            fixture.source_indices.clone(),
+            v1_interpreter::ExecutionMode::Hermetic,
+        );
+        let value = |f: &str| {
+            v1_interpreter::run_in_context(&ctx, &format!("fixture.base_roster.{f}"), false)
+                .expect(f)
+        };
+        assert_eq!(
+            unimported_bare_provider_base_roster_decoded(&ctx, &value("shown"), "abc123"),
+            Ok("roster-bytes".to_string())
+        );
+        let refused =
+            unimported_bare_provider_base_roster_decoded(&ctx, &value("unreadable"), "abc123")
+                .expect_err("an unreadable base roster refuses");
+        assert!(
+            refused.contains("UnimportedBareProviderBaseRosterUnreadable")
+                && refused.contains("base=abc123")
+                && refused.contains("stderr=fatal: bad object"),
+            "{refused}"
+        );
+        assert!(
+            unimported_bare_provider_base_roster_decoded(&ctx, &value("other"), "abc123").is_err()
         );
     }
 

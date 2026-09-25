@@ -2,7 +2,7 @@ module gunbc.runner_microvm_lifecycle_realize
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem }
 import std.measure { Second, second, second_count, ByteSize, byte_size }
@@ -87,7 +87,7 @@ import gunbc.runner_microvm_lifecycle {
   attempt_teardown_readback, settle_teardown, TeardownSettlement,
 }
 
-data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
+data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = SingleAuthority
 
 // THE REALIZATION OF THE microVM SLOT LIFECYCLE: admits the cell, records the attempt in flight,
 // stages and launches through the sealed staging receipt, waits for a terminal condition, reads the
