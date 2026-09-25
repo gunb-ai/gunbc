@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.native_string_concat_appends_an_arguments_display_rendering
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data native_string_concat_appends_an_arguments_display_rendering: RecurringFailureMode = RecurringFailureMode {
+  identity: "native_string_concat_appends_an_arguments_display_rendering" as NonEmptyStr,
+
+  receipts: [
+    "**the seed interpreter's `concat` on a native String receiver appended each argument's DISPLAY rendering, so a String joined with a codepoint list became fabricated text** (INVALID STATE: `\"//\"` concatenated with the codepoint chain of ` ab` evaluates to the text `//[32, 97, 98]`, and with an empty chain to `//Empty`; no refusal). The site is `v1_compiler.v1_interpreter`, arm `method_call.concat`. Its `Value::Str` branch did `result.push_str(&format!(\"{}\", arg))`. The branch below it already refused the mirror case, a codepoint list receiver meeting a native String, as `StringRealizationStraddle`.",
+    "HARM, and how it surfaced. `v2.compiler.tokenize` `lex_rule_thunk` joins a sequence pattern's two lexemes with `list_append`. The `.dag` line-comment rule is `Sequence(Literal \"//\", Repeat(LineCommentTextChar))`, so every line comment's lexeme was the rendering, and `lex_walk_step` advanced `pos` by its length. Every token after any line comment carried a ByteRange past its true offset: +39 after a 13-character comment, and past the end of the file in `extdeps.bazel.build_event_stream`. Every locus consumer downstream read the wrong bytes: refusal carets, the XL-2 reference-conservation census, and XL-5's exact loci. Found by gentle-crane-869 (XL-2) while re-anchoring census extents. The existing annotation claims (`v2.test.tokenize.annotation_channel`) check counts and token identities, never offsets or annotation text, so they could not see it.",
+    "DISTINGUISHING FACTS. This is not gunbc#12285's defect. There the lexer counts code points into a field named bytes, which is a unit question that shifts extents by the octet excess of each non-ASCII scalar. Here the length is of the wrong TEXT, and it shifts extents on pure-ASCII sources. #12285's octet count over the rendering would inflate the extents just as much. Not `lowering_accessor_collapses_a_sequence_operand` either: that is a v2 reader; this is the seed realization of `concat` fabricating a value.",
+    "REPAIR AND RUNG. The Str-receiver arm now extends only with string-like arguments. Those are a native String; a codepoint `Empty`/`Cons` chain; a codepoint `Value::List`, admissible here because both operands of `concat` are one `FreeMonoid<T>`, so beside a String receiver the list's Ints are Chars; or, for `push`, one codepoint. Anything else refuses as `StringRealizationStraddle`. The free-call `concat` arm likewise joins a String with codepoint chains into one String instead of building a mixed `[Str, codepoint..]` list. RUNG after the repair: mitigatable (a typed refusal in the realization). CEILING: structurally guaranteed. The Char/String realization is grounded so that a codepoint sequence is distinguishable from a generic Int list at the Value level, and a mixed concat has no evaluation. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: that grounding, which is the same one `string_realization_straddle_detail`'s open thread names. The positive claims below are red with the old arm and green with the new one.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "a_token_after_a_line_comment_starts_at_its_offset", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "a_token_after_a_bare_line_comment_starts_at_its_offset", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "a_line_comment_captures_its_own_text_and_extent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "tokens_without_a_comment_start_at_their_offsets", field: WholeDeclaration },
+  ],
+}
