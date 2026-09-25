@@ -1,7 +1,7 @@
 module v2.compiler.reference_closure
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { contains, fold_list, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { contains, fold_list }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

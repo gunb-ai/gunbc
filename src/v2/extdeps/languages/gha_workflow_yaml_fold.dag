@@ -19,7 +19,7 @@ import v2.extdeps.languages.bash {
   bash_target_model_bundle,
   bash_word_atom
 }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.std.collection {
   Absent,
   List,

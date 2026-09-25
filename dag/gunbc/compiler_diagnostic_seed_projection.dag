@@ -4,7 +4,8 @@ import gunbc.capability_origin { CapabilityOrigin, ModeledCapability, NoNewCapab
 import gunbc.roadmap_model { RoadmapNodeId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { List, NonEmptyStr, String }
-import v2.std.algebra { list_append, list_map }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 
 // THE TYPED HOME for the receipt that seven lanes wrote into one String row, v1.std.core
 // compiler_diagnostic_seed_projection_note. That row was a DESIGN section 4c defect in terms -- a
