@@ -1,9 +1,9 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..b5c332c
+index 0000000..16abb9b
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,280 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -16,7 +16,7 @@ index 0000000..b5c332c
 +#
 +# This module keeps the staging buffer, the stream, and the prefetch protocol.
 +# It changes where the rows come from: a rank-local file whose identity is
-+# verified at open, mmap'd MAP_PRIVATE without registering the whole table
++# verified at open, mmap'd read-only without registering the whole table
 +# with CUDA. Token-time gathers copy requested rows into the existing bounded
 +# pinned staging buffer. A missing local path refuses; there is no NFS arm.
 +#
@@ -24,14 +24,24 @@ index 0000000..b5c332c
 +# v41_row_store_magic then weight||scale records; v41_row_address offsets follow;
 +# the store's SHA-256 is over those prefixed bytes. Open checks expected.magic
 +# (supplied from that symbol, not minted here) and whole-file digest against
-+# rank_digest_hex. encoding_digest / rank / format_revision are not on this
++# rank_digest_hex. expected.record_bytes is v41_row_bytes of the admitted spec,
++# supplied likewise. encoding_digest / rank / format_revision are not on this
 +# type until a modeled header carries them.
++#
++# The open and gather contracts are gunbc.spark.v41_engram_file_backed:
++# v41_open_residency_verdict (verification's page-cache residue is released and
++# read back as zero, else open refuses) and v41_gather_rows (one batched gather
++# at record-aligned offsets, in request order; a misaligned offset refuses).
 +
 +from __future__ import annotations
 +
++import ctypes
++import ctypes.util
 +import hashlib
 +import mmap
 +import os
++import time
++import warnings
 +from dataclasses import dataclass
 +from typing import Tuple
 +
@@ -50,18 +60,75 @@ index 0000000..b5c332c
 +    pass
 +
 +
++class EngramPageCacheResident(RuntimeError):
++    pass
++
++
++class EngramRowOffsetMisaligned(RuntimeError):
++    pass
++
++
 +@dataclass(frozen=True)
 +class ExpectedRowStoreIdentity:
 +    rank_digest_hex: str
 +    magic: bytes
++    record_bytes: int
 +
 +
-+def _sha256_file(path: str) -> str:
++@dataclass(frozen=True)
++class EngramStoreOpenReceipt:
++    """What open() observed: the verified range and its page-cache residency
++    before and after the release (gunbc.spark.v41_engram_file_backed
++    V41StoreOpenReceipt)."""
++
++    verified_bytes: int
++    resident_bytes_after_verify: int
++    resident_bytes_after_release: int
++
++
++_libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
++_libc.mmap.restype = ctypes.c_void_p
++_libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]
++_libc.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
++_libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
++_MAP_FAILED = ctypes.c_void_p(-1).value
++_RESIDENCY_WINDOW = 1 << 30
++
++
++def resident_bytes(fd: int, size: int) -> int:
++    """Page-cache resident bytes of [0, size) of fd, by mincore over a
++    transient mapping that is never touched (so reading does not fault)."""
++    page = os.sysconf("SC_PAGE_SIZE")
++    resident_pages = 0
++    off = 0
++    while off < size:
++        length = min(_RESIDENCY_WINDOW, size - off)
++        addr = _libc.mmap(None, length, mmap.PROT_READ, mmap.MAP_SHARED, fd, off)
++        if addr in (None, _MAP_FAILED):
++            raise OSError(ctypes.get_errno(), "mmap for residency readback failed")
++        try:
++            pages = (length + page - 1) // page
++            vec = (ctypes.c_ubyte * pages)()
++            if _libc.mincore(addr, length, vec) != 0:
++                raise OSError(ctypes.get_errno(), "mincore failed")
++            resident_pages += sum(b & 1 for b in bytes(vec))
++        finally:
++            _libc.munmap(addr, length)
++        off += length
++    return min(resident_pages * page, size)
++
++
++def _sha256_fd(fd: int, magic_len: int) -> Tuple[str, bytes, int]:
 +    h = hashlib.sha256()
-+    with open(path, "rb") as f:
++    head = b""
++    total = 0
++    with os.fdopen(os.dup(fd), "rb", closefd=True) as f:
 +        for chunk in iter(lambda: f.read(1024 * 1024), b""):
++            if len(head) < magic_len:
++                head += chunk[: magic_len - len(head)]
 +            h.update(chunk)
-+    return h.hexdigest()
++            total += len(chunk)
++    return h.hexdigest(), head, total
 +
 +
 +class FileBackedEngramStorage:
@@ -73,36 +140,115 @@ index 0000000..b5c332c
 +                f"rank-local Engram row store missing at {path}; "
 +                "token-time NFS fallback is refused"
 +            )
-+        opened = _sha256_file(path)
-+        if opened != expected.rank_digest_hex:
-+            raise EngramRowStoreIdentityMismatch(
-+                f"opened {path} digest {opened}, expected rank digest "
-+                f"{expected.rank_digest_hex}"
-+            )
 +        self.path = os.path.abspath(path)
 +        self.expected = expected
 +        self._fd = os.open(self.path, os.O_RDONLY)
-+        self._mmap = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
-+        if self._mmap[: len(expected.magic)] != expected.magic:
-+            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
++        try:
++            self.receipt = self._verify_and_release()
++            self._mmap = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
++        except BaseException:
++            os.close(self._fd)
++            raise
++        with warnings.catch_warnings():
++            # The mmap is read-only; the table is only ever read through index.
++            warnings.simplefilter("ignore", UserWarning)
++            self._table = torch.frombuffer(self._mmap, dtype=torch.uint8)
++        self._span = torch.arange(expected.record_bytes, dtype=torch.int64)
 +        self._header_ok = True
 +
++    def _verify_and_release(self) -> EngramStoreOpenReceipt:
++        # Verification stays fail-closed and whole-file; only its cache residue goes.
++        opened, head, verified = _sha256_fd(self._fd, len(self.expected.magic))
++        if opened != self.expected.rank_digest_hex:
++            raise EngramRowStoreIdentityMismatch(
++                f"opened {self.path} digest {opened}, expected rank digest "
++                f"{self.expected.rank_digest_hex}"
++            )
++        if head != self.expected.magic:
++            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
++        after_verify = resident_bytes(self._fd, verified)
++        os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
++        after_release = resident_bytes(self._fd, verified)
++        receipt = EngramStoreOpenReceipt(
++            verified_bytes=verified,
++            resident_bytes_after_verify=after_verify,
++            resident_bytes_after_release=after_release,
++        )
++        if after_release != 0:
++            raise EngramPageCacheResident(
++                f"{self.path}: {after_release} of {verified} verified bytes remain "
++                f"page-cache resident after POSIX_FADV_DONTNEED; receipt {receipt}"
++            )
++        return receipt
++
 +    def close(self) -> None:
++        del self._table
 +        self._mmap.close()
 +        os.close(self._fd)
 +
-+    def fetch_rows(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
-+        """Copy selected rows into an already-allocated bounded staging tensor."""
++    def _check_dest(self, dest: torch.Tensor) -> None:
 +        if dest.is_pinned() and dest.numel() * dest.element_size() >= self._mmap.size():
 +            raise EngramFullTablePinned(
 +                "staging destination covers the whole table; this runtime refuses "
 +                "full-Engram pinned allocation"
 +            )
++
++    def _record_index(self, offsets: list[int], nbytes: int) -> torch.Tensor:
++        record = self.expected.record_bytes
++        if nbytes != record:
++            raise EngramRowOffsetMisaligned(
++                f"fetch of {nbytes} bytes per row; the store's record is {record} bytes"
++            )
++        magic = len(self.expected.magic)
++        size = self._mmap.size()
++        for off in offsets:
++            if off < magic or (off - magic) % record != 0 or off + record > size:
++                raise EngramRowOffsetMisaligned(
++                    f"offset {off} is not magic + k * {record} inside a {size}-byte store"
++                )
++        return (torch.as_tensor(offsets, dtype=torch.int64).unsqueeze(1) + self._span).view(-1)
++
++    def fetch_rows(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
++        """Copy selected rows, in request order, into an already-allocated
++        bounded staging tensor with one batched gather."""
++        self._check_dest(dest)
++        index = self._record_index(offsets, nbytes)
++        rows = dest.view(torch.uint8).view(dest.shape[0], -1)[: len(offsets), :nbytes]
++        if rows.is_contiguous():
++            torch.index_select(self._table, 0, index, out=rows.view(-1))
++        else:
++            rows.copy_(torch.index_select(self._table, 0, index).view(len(offsets), nbytes))
++
++    def _fetch_rows_per_row(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
++        # The replaced per-row copy, kept ONLY as the differential oracle for
++        # measure_fetch_rows. It is never a fallback for fetch_rows.
++        self._check_dest(dest)
++        self._record_index(offsets, nbytes)
 +        view = memoryview(self._mmap)
 +        for i, off in enumerate(offsets):
 +            dest[i].view(torch.uint8).view(-1)[:nbytes].copy_(
 +                torch.frombuffer(view[off : off + nbytes], dtype=torch.uint8)
 +            )
++
++
++def measure_fetch_rows(storage: FileBackedEngramStorage, rows: int, repeats: int, seed: int = 0) -> dict:
++    """THE INSTRUMENT: seconds per fetch_rows call of `rows` random records,
++    batched gather versus the per-row oracle, and whether their bytes agree."""
++    record = storage.expected.record_bytes
++    count = (storage._mmap.size() - len(storage.expected.magic)) // record
++    g = torch.Generator().manual_seed(seed)
++    local = torch.randint(0, count, (rows,), generator=g)
++    offsets = (len(storage.expected.magic) + local * record).tolist()
++    a = torch.zeros((rows, record), dtype=torch.uint8)
++    b = torch.zeros((rows, record), dtype=torch.uint8)
++    timings = {}
++    for name, fn, dest in (("batched", storage.fetch_rows, a), ("per_row", storage._fetch_rows_per_row, b)):
++        fn(offsets, record, dest)
++        start = time.perf_counter()
++        for _ in range(repeats):
++            fn(offsets, record, dest)
++        timings[name] = (time.perf_counter() - start) / repeats
++    return {"rows": rows, "repeats": repeats, "seconds_per_call": timings, "bytes_agree": bool(torch.equal(a, b))}
 +
 +
 +def allocate_file_backed(
@@ -119,3 +265,22 @@ index 0000000..b5c332c
 +            "pinned staging is not smaller than the row store; refusing full-table pin"
 +        )
 +    return storage, staging
++
++
++if __name__ == "__main__":
++    import argparse
++    import json
++
++    p = argparse.ArgumentParser(description="measure fetch_rows over a rank-local Engram row store")
++    p.add_argument("--store", required=True)
++    p.add_argument("--rank-digest-hex", required=True)
++    p.add_argument("--magic-hex", required=True)
++    p.add_argument("--record-bytes", type=int, required=True)
++    p.add_argument("--rows", type=int, required=True)
++    p.add_argument("--repeats", type=int, default=100)
++    a = p.parse_args()
++    s = FileBackedEngramStorage(a.store, ExpectedRowStoreIdentity(a.rank_digest_hex, bytes.fromhex(a.magic_hex), a.record_bytes))
++    try:
++        print(json.dumps({"open_receipt": s.receipt.__dict__, "fetch_rows": measure_fetch_rows(s, a.rows, a.repeats)}))
++    finally:
++        s.close()
