@@ -24401,29 +24401,32 @@ pub fn emit_typed_expr(
             }
             ExprData::ExprListLit => {
                 if rust_list_lit_holds_callables(texpr.clone()) {
-                    crate::v1_compiler_emit::emit_list_lit_expr(
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for el in texpr.children.clone().iter().cloned() {
-                                __result.push(rust_callable_list_element(
-                                    el.clone(),
-                                    rust_list_lit_callable_element_type(
-                                        texpr.clone(),
-                                        shared_types.clone(),
+                    {
+                        let element_type = rust_list_lit_callable_element_type(
+                            texpr.clone(),
+                            shared_types.clone(),
+                            scope.clone(),
+                            emit_info.clone(),
+                        );
+                        crate::v1_compiler_emit::emit_list_lit_expr(
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for el in texpr.children.clone().iter().cloned() {
+                                    __result.push(rust_callable_list_element(
+                                        el.clone(),
+                                        element_type.clone(),
+                                        registry.clone(),
                                         scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
                                         emit_info.clone(),
-                                    ),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                        RenderTarget::Rust,
-                    )
+                                    ));
+                                }
+                                __result
+                            }),
+                            RenderTarget::Rust,
+                        )
+                    }
                 } else {
                     emit_typed_expr_shared(
                         texpr.clone(),
