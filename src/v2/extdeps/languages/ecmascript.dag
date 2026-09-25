@@ -226,7 +226,7 @@ data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts>
   ecmascript_facts_null
 ]
 
-data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data ecmascript_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
   Node {
