@@ -3,7 +3,7 @@ module v2.std.compilers.compilation_unit
 
 import std.algebra { Empty }
 import std.types { NonEmptyStr, List, Bool, String, Int }
-import std.content_hash { Fnv1a64Structural }
+import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
@@ -313,8 +313,12 @@ fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUni
   )
 }
 
-fn node_sort_key(n: Node) -> Fnv1a64Structural {
-  content_hash(n: n)
+// A DETERMINISM ORDER WITH NO SEMANTIC MEANING. Its only consumer, list_unique_sorted_nodes, sorts so
+// that equal content hashes are adjacent; which of two distinct hashes comes first carries no fact.
+// So the key is the digest's hex text, the orderable representation Fnv1a64Structural already
+// carries, and not the record: a record declares no order, and ordering one would invent a meaning.
+fn node_sort_key(n: Node) -> Fnv1a64StructuralDigestHex {
+  content_hash(n: n).digest
 }
 
 // Same canonicalize-before-dedup rule as `list_unique_sorted_ids`: the old version rescanned the

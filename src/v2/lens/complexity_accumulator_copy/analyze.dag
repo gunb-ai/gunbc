@@ -148,23 +148,15 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
   }
 }
 
-// A STATED DIVERGENCE FROM THE COMPILER'S OWN NAMED-ARGUMENT ACCESSOR (DESIGN section 3b), not an
-// unstated fork. v2.compiler.body_lowering_fold body_lower_named_arg_value_optional decodes the same
-// `name ^dag_token_colon value` spine and is the authority for what a named argument IS, so this
-// function should consume it and does not. THE REASON IS A DEFECT IN THAT ACCESSOR, NAMED BY SYMBOL:
-// it finishes through body_lower_arg_operand_optional into body_lower_operand_ref_optional. That
-// reader USED TO recurse into pair.left alone, so `left: seed + acc` answered `seed` -- the reading
-// review 64393 caught in the first version of this repair. It no longer narrows: an operator
-// expression is read whole by body_lower_read_operator_expression. What still keeps the two apart is
-// the refusal: an operand that reader cannot read answers Absent through the Optional accessor, not a
-// located refusal, so a census consuming it would count an unread argument as naming nothing. Until
-// the accessor carries that refusal, this function answers what the argument's VALUE SUBTREE is and
-// that accessor answers what an argument LOWERS TO.
-//
-// The class is filed at gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand.
-// TRIGGER: when body_lower_named_arg_value_optional returns the whole value or a located refusal,
-// this function DISSOLVES INTO IT -- arg_value_node deletes and arg_value_mentions censuses whatever
-// that accessor returns.
+// NOT A DIVERGENCE FROM THE COMPILER'S ARGUMENT READER, BECAUSE IT ANSWERS A DIFFERENT QUESTION.
+// v2.compiler.body_lowering_fold reads a call argument through body_lower_value_lowered and answers
+// what the argument LOWERS TO; this function answers the argument's VALUE SUBTREE, which
+// arg_value_mentions censuses for the identifiers the argument names. An earlier note here promised
+// that this function would dissolve into the compiler's accessor once that accessor carried a located
+// refusal. The refusal is now carried (v2.compiler.body_lowering_fold OperandRefRead), and the
+// dissolution is refuted rather than pending: a lowered node is not the subtree a census reads.
+// The class that motivated the note is filed at
+// gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand.
 // DELEGATES TO THE SPINE AUTHORITY rather than re-decoding it. This function used to carry its
 // own match chain over Seq(binding_name, Seq(colon, expr)) -- the third spelling of one fact in
 // the corpus -- and the decoder now lives beside the production it decodes, in

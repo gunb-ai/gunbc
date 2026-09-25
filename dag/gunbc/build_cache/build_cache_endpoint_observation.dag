@@ -1,7 +1,7 @@
 module gunbc.build_cache_endpoint_observation
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_shell_transport_observation {
@@ -22,7 +22,7 @@ import gunbc.build_cache_instance {
   ServerPlacementUnknown,
 }
 
-data build_cache_endpoint_observation_authority_disposition: Disposition = SingleAuthority
+data build_cache_endpoint_observation_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup

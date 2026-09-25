@@ -91,11 +91,12 @@ final class AppState: ObservableObject {
             let attempt = PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired)
             do {
                 let client = try requireClient()
-                let body = WireEncode.pushUpdate(registration(client.config, desired))
+                let push = registration(client.config, desired)
+                let body = WireEncode.pushUpdate(push)
                 let requestedAt = Self.now()
                 let auth = try await assertion(e, requestedAt: requestedAt,
                                                clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
-                try await client.updatePush(bodyJson: body, auth)
+                try await client.updatePush(push, auth)
                 // Record success only if the token is STILL desired and the enrolment the update
                 // was made for is STILL the current one; otherwise loop and re-derive.
                 guard apnsToken == desired, case .enrolled(var now) = state, now.enrollment_id == e.enrollment_id,

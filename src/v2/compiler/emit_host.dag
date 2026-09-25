@@ -51,6 +51,7 @@ import std.artifact_store {
   artifact_realization_digest
 }
 import std.content_hash {
+  Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural
 }
@@ -287,7 +288,7 @@ fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String 
   }
 }
 
-fn emit_host_string_list_digest(xs: List<String>, seed: String) -> ContentHash {
+fn emit_host_string_list_digest(xs: List<String>, seed: String) -> Fnv1a64Structural {
   fold(
     xs,
     init: content_hash_atom(value: seed),

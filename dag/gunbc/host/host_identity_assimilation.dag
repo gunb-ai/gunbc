@@ -58,7 +58,7 @@ data gunbc_host_identity_assimilation_scope_disposition: Disposition = std.dispo
 data gunbc_host_identity_assimilation_model_marker: NonEmptyStr = "gunbc.host_identity_assimilation.v0"
 
 fn host_identity_assimilation_model_hash() -> ContentHash {
-  content_hash_atom(value: gunbc_host_identity_assimilation_model_marker)
+  as_content_hash_structural(structural: content_hash_atom(value: gunbc_host_identity_assimilation_model_marker))
 }
 
 fn host_identity_assimilation_receipt(
