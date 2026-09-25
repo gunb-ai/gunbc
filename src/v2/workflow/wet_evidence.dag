@@ -1,6 +1,7 @@
 module v2.workflow.wet_evidence
 
-import v2.std.algebra { any, contains, filter, fold_list, length, list_append }
+import v2.std.algebra { any, contains, filter, fold_list, length }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }

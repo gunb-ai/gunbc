@@ -14,8 +14,8 @@ import v2.std.diagnostic {
   node_locus,
   rejected_with_pending
 }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.node { Node, Symbol }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }

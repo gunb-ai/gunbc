@@ -8,9 +8,9 @@ import v2.std.algebra {
   bag_eq,
   contains,
   fold_list,
-  list_snoc_item,
   unique
 }
+import std.algebra { list_snoc_item }
 import v2.std.language_model {
   LanguageModel,
   language_model_to_node,

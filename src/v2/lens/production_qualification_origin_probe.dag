@@ -12,9 +12,9 @@ import std.disposition { SingleAuthority }
 import v2.std.algebra {
   any,
   contains,
-  fold_list,
-  list_snoc_item
+  fold_list
 }
+import std.algebra { list_snoc_item }
 import v2.std.collection {
   Absent,
   List,

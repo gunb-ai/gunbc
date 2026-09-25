@@ -1,0 +1,417 @@
+module v2.test.claim.namespace_xl0.list_literal_value_lowering
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
+import v2.std.collection { List, list_at_optional }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import std.process { ProcessExit, exit_failure }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A LIST LITERAL LOWERS TO THE FLAT FREE-MONOID INTRODUCTION, EVERY ELEMENT WHOLE AND IN ORDER.
+//
+// THE SUBJECT IS v2.compiler.body_lowering_fold body_lower_list_literal, reached through the value
+// reader every value position uses (body_lower_value_lowered, via body_lower_primary_expr), on the
+// production route the resolver is handed: program_assembly module_roots_from_source_root_ingest,
+// projected through normalized_tree_roots_to_nodes. The one canonical lowered form is ONE Transform
+// whose head is the std.algebra FreeMonoid reference and whose remaining positional children are
+// the elements in order -- `[]` is the head alone -- the flat introduction std.literal_elaboration
+// UnicodeScalarSequenceUnfold names. Before the producer the literal lowered to its `[` atom in body
+// position and refused its whole module in argument position
+// (body_lowering_reason_list_literal_unlowered).
+//
+// THE MODULES VARY ONE THING EACH: a list of calls, a nested list, an empty list in argument
+// position, a three-element list in argument position, and a 200-element list. The reader below
+// decodes a lowered node into its element list only through the flat form, and each claim compares
+// the WHOLE decoded list against the authored elements in order, so a producer that kept only the
+// first element, dropped the tail, reordered, nested, or answered `[` fails every claim; the
+// mutation control states that directly.
+data llv_calls_source: String = "module v2.test.llv_calls\n\nimport v2.std.logic { Bool }\n\nfn llv_id(p: Bool) -> Bool { p }\n\nfn llv_probe(llv_a: Bool, llv_b: Bool) -> List<Bool> { [llv_id(p: llv_a), llv_id(p: llv_b)] }\n"
+
+data llv_nested_source: String = "module v2.test.llv_nested\n\nimport v2.std.logic { Bool }\n\nfn llv_probe(llv_c: Bool, llv_d: Bool, llv_e: Bool) -> List<List<Bool>> { [[llv_c], [llv_d, llv_e]] }\n"
+
+data llv_empty_arg_source: String = "module v2.test.llv_empty_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(p: Bool) -> Bool { llv_take(xs: []) }\n"
+
+data llv_long_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+
+data llv_arg_source: String = "module v2.test.llv_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_f: Bool, llv_g: Bool, llv_h: Bool) -> Bool { llv_take(xs: [llv_f, llv_g, llv_h]) }\n"
+
+fn llv_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data llv_ingest: SourceRootIngest = Cons {
+    head: llv_read(source: llv_calls_source, id: ^llv_calls_artifact, unit: ^llv_calls_cu, path: "src/v2/test/fixture/namespace_xl0/llv_calls.dag"),
+    tail: Cons {
+      head: llv_read(source: llv_nested_source, id: ^llv_nested_artifact, unit: ^llv_nested_cu, path: "src/v2/test/fixture/namespace_xl0/llv_nested.dag"),
+      tail: Cons {
+        head: llv_read(source: llv_empty_arg_source, id: ^llv_empty_arg_artifact, unit: ^llv_empty_arg_cu, path: "src/v2/test/fixture/namespace_xl0/llv_empty_arg.dag"),
+        tail: Cons {
+          head: llv_read(source: llv_arg_source, id: ^llv_arg_artifact, unit: ^llv_arg_cu, path: "src/v2/test/fixture/namespace_xl0/llv_arg.dag"),
+          tail: Cons {
+            head: llv_read(source: llv_long_source, id: ^llv_long_artifact, unit: ^llv_long_cu, path: "src/v2/test/fixture/namespace_xl0/llv_long.dag"),
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+
+// The ingest is enrolled warm (v2.workflow.floor_pure_producer_share); the walk runs per claim.
+fn llv_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: llv_ingest, lm: dag_language_model())
+}
+
+fn llv_roots() -> FreeMonoid<Node> {
+  match llv_normalized() {
+    Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+// ---- reading the canonical form ---------------------------------------------------------------
+
+fn llv_is_freemonoid_name(qn: QualifiedName) -> Bool {
+  match qn {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      (a == ^std) && (b == ^algebra) && (c == ^FreeMonoid)
+    _ => false
+  }
+}
+
+// The element list a lowered list node denotes, read ONLY through the flat form: a Transform whose
+// head is the std.algebra FreeMonoid reference; its elements are the remaining positional children.
+// Any other node (a `[` atom, a nested append, a call to anything else) answers Absent.
+fn llv_list_elements(n: Node) -> Optional<List<Node>> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: n) {
+        Empty => optional_absent()
+        Cons { head: head, tail: elements } =>
+          match qualified_name_from_node(root: head) {
+            Accepted { value: qn, diagnostics: _ } =>
+              if llv_is_freemonoid_name(qn: qn) { optional_present(value: elements) } else { optional_absent() }
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
+// ---- the authored elements --------------------------------------------------------------------
+
+type LlvElement
+  = LlvAtom { id: Symbol }
+  | LlvCall { callee: Symbol, inner: Symbol }
+  | LlvList { items: List<LlvElement> }
+
+fn llv_is_atom(n: Node, id: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: got } => got == id
+    Absent => false
+  }
+}
+
+// callee(p: inner): a Transform whose head is the callee atom and whose sole operand is the atom.
+fn llv_is_call(n: Node, callee: Symbol, inner: Symbol) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: n) {
+        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
+          llv_is_atom(n: head, id: callee) && llv_is_atom(n: arg, id: inner)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn llv_element_matches(n: Node, expected: LlvElement) -> Bool {
+  match expected {
+    LlvAtom { id: id } => llv_is_atom(n: n, id: id)
+    LlvCall { callee: c, inner: i } => llv_is_call(n: n, callee: c, inner: i)
+    LlvList { items: items } => llv_list_matches(n: n, items: items)
+  }
+}
+
+fn llv_elements_match(got: List<Node>, expected: List<LlvElement>) -> Bool {
+  match got {
+    Empty =>
+      match expected {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: g, tail: gs } =>
+      match expected {
+        Empty => false
+        Cons { head: e, tail: es } => llv_element_matches(n: g, expected: e) && llv_elements_match(got: gs, expected: es)
+      }
+  }
+}
+
+// The node is a lowered list whose elements are EXACTLY `items`, in order.
+fn llv_list_matches(n: Node, items: List<LlvElement>) -> Bool {
+  match llv_list_elements(n: n) {
+    Present { value: got } => llv_elements_match(got: got, expected: items)
+    Absent => false
+  }
+}
+
+// A call `callee(xs: <list>)` whose sole argument is exactly the list.
+fn llv_call_with_list_matches(n: Node, callee: Symbol, items: List<LlvElement>) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: n) {
+        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
+          llv_is_atom(n: head, id: callee) && llv_list_matches(n: arg, items: items)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+type LlvShape
+  = LlvListShape { items: List<LlvElement> }
+  | LlvArgShape { callee: Symbol, items: List<LlvElement> }
+
+fn llv_node_has_shape(n: Node, shape: LlvShape) -> Bool {
+  match shape {
+    LlvListShape { items: items } => llv_list_matches(n: n, items: items)
+    LlvArgShape { callee: c, items: items } => llv_call_with_list_matches(n: n, callee: c, items: items)
+  }
+}
+
+fn llv_any_node(shape: LlvShape) -> Bool {
+  fold_list(xs: llv_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || llv_node_has_shape(n: n, shape: shape) })
+  })
+}
+
+// ---- the claims -------------------------------------------------------------------------------
+
+test fn a_list_of_calls_lowers_every_call_whole_in_order() -> Bool {
+  llv_any_node(shape: LlvListShape {
+    items: [LlvCall { callee: ^llv_id, inner: ^llv_a }, LlvCall { callee: ^llv_id, inner: ^llv_b }]
+  })
+}
+
+test fn a_nested_list_lowers_each_inner_list_whole_in_order() -> Bool {
+  llv_any_node(shape: LlvListShape {
+    items: [
+      LlvList { items: [LlvAtom { id: ^llv_c }] },
+      LlvList { items: [LlvAtom { id: ^llv_d }, LlvAtom { id: ^llv_e }] }
+    ]
+  })
+}
+
+test fn an_empty_list_argument_lowers_to_the_bare_introduction() -> Bool {
+  llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: Empty })
+}
+
+test fn a_list_argument_lowers_every_element_in_order() -> Bool {
+  llv_any_node(shape: LlvArgShape {
+    callee: ^llv_take,
+    items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }]
+  })
+}
+
+// THE DEPTH CONTROL. A 200-element literal lowers to ONE flat node with 200 element operands, so its
+// depth does not grow with its length -- the property std.literal_elaboration requires of the
+// introduction so that emission stays within its bounded recursion fuel. A cons^n or append^n form
+// fails this: it has no single node carrying all 200 elements.
+fn llv_is_x_elements(xs: List<Node>) -> Bool {
+  fold_list(xs: xs, empty: true, cons: fn(acc, n) { acc && llv_is_atom(n: n, id: ^llv_x) })
+}
+
+fn llv_node_is_flat_long_list(n: Node) -> Bool {
+  match llv_list_elements(n: n) {
+    Present { value: xs } => (length(xs: xs) == 200) && llv_is_x_elements(xs: xs)
+    Absent => false
+  }
+}
+
+test fn a_two_hundred_element_list_lowers_to_one_flat_node() -> Bool {
+  fold_list(xs: llv_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || llv_node_is_flat_long_list(n: n) })
+  })
+}
+
+// THE MUTATION CONTROL: the argument's list is EXACTLY [f, g, h] -- present whole, so any truncation
+// or reordering reds this claim by itself -- and every proper prefix, proper suffix and the reversal
+// are ABSENT from the argument position. A producer that kept only
+// the first element, dropped the tail, or DROPPED THE HEAD (every proper prefix and suffix of
+// [f, g, h] is listed) would make one of these present and the claim red; so would a
+// reader that decoded an n-ary or truncated form as the whole list.
+test fn a_list_argument_is_not_its_first_element_or_a_truncation() -> Bool {
+  llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_h }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_f }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_h }] })
+}
+
+// ---- the self-reference case: std.algebra's own list literals ----------------------------------
+
+// THE HEADS NAME THE MODULE THAT DECLARES FreeMonoid, SO THAT MODULE'S OWN LISTS REFER TO ITSELF.
+// dag/std/algebra.dag carries list literals of its own; lowered, each is a call whose head is
+// std.algebra.<operation> -- a qualified reference from std.algebra to std.algebra. The claim is
+// that resolve BINDS it there: the module resolves whole on the native lane's route
+// (native_test_context_from_ingest, then native_census_module_resolution). A claim cannot read the
+// real file, so the subject is a fixture module OF THE SAME NAME carrying the FreeMonoid declaration the
+// lowering names, and its twin omits it. The twin must REFUSE at resolve: that is what
+// shows the heads are resolved references and not text a consumer skips, so the positive arm cannot
+// be green by the heads going unread. The twin's refusal must be LOCATED AT THE HEAD: the refused
+// node reads back (v2.std.qualified_name qualified_name_from_node) as exactly std.algebra.FreeMonoid,
+// so an unbound refusal anywhere else in the module cannot pass for it. The head is a qualified-name
+// spine, not an atom, which is why the locus is read as a path rather than an atom identity. The
+// real file is covered by the srv closure run.
+data llv_self_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n\ndata llv_self_none: LlvBit = []\n"
+
+// The twin drops ONLY the FreeMonoid declaration; nothing else in it names FreeMonoid, so the only
+// reference that can fail to bind is the lowered list's head.
+data llv_self_missing_source: String = "module std.algebra\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n"
+
+// One module per ingest: the two fixtures share a module name, as the self-reference requires.
+fn llv_self_ingest(source: String, tail: String) -> SourceRootIngest {
+  Cons {
+    head: llv_read(
+      source: source,
+      id: symbol_intern_lexeme(lexeme: "llv_self_artifact_" + tail),
+      unit: symbol_intern_lexeme(lexeme: "llv_self_cu_" + tail),
+      path: "src/v2/test/fixture/namespace_xl0/llv_self_" + tail + ".dag"
+    ),
+    tail: Empty
+  }
+}
+
+type LlvSelfVerdict
+  = LlvSelfResolved
+  | LlvSelfResolveRefused { reason: Symbol, at_atom: Optional<Symbol>, at_path: Optional<QualifiedName> }
+  | LlvSelfFileRefused
+  | LlvSelfAbsent
+  | LlvSelfContextRefused
+
+fn llv_self_verdict_of(outcome: NativeCensusModuleOutcome) -> LlvSelfVerdict {
+  match outcome {
+    NativeCensusModuleResolved => LlvSelfResolved
+    NativeCensusModuleFileRefused => LlvSelfFileRefused
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      LlvSelfResolveRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        },
+        at_path: match d.head.at {
+          NodeLocus { anchor: a } =>
+            match qualified_name_from_node(root: a.at) {
+              Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn llv_self_verdict(ingest: SourceRootIngest) -> LlvSelfVerdict {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => LlvSelfContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      fold_list(
+        xs: native_census_modules(ingest: ingest),
+        empty: LlvSelfAbsent,
+        cons: fn(acc, entry) {
+          if entry.module == "std.algebra" {
+            llv_self_verdict_of(
+              outcome: native_census_module_resolution(
+                context: context,
+                refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+                entry: entry
+              )
+            )
+          } else {
+            acc
+          }
+        }
+      )
+  }
+}
+
+fn llv_self_outcome() -> LlvSelfVerdict {
+  llv_self_verdict(ingest: llv_self_ingest(source: llv_self_source, tail: "whole"))
+}
+
+fn llv_self_missing_outcome() -> LlvSelfVerdict {
+  llv_self_verdict(ingest: llv_self_ingest(source: llv_self_missing_source, tail: "missing"))
+}
+
+test fn std_algebra_own_list_literals_bind_to_its_own_qualified_names() -> Bool {
+  match llv_self_outcome() {
+    LlvSelfResolved => true
+    _ => false
+  }
+}
+
+test fn std_algebra_without_freemonoid_refuses_its_own_list_literal_at_resolve() -> Bool {
+  match llv_self_missing_outcome() {
+    LlvSelfResolveRefused { reason: r, at_atom: _, at_path: Present { value: path } } =>
+      (r == ^resolve_reason_unbound_symbol) && (path == [^std, ^algebra, ^FreeMonoid])
+    _ => false
+  }
+}
+
+// A REPORT, NOT A CLAIM: the self-reference verdict rendered through the process exit, so a run of
+// this entry names what refused (gunbc run maps only ProcessExit to an exit code).
+fn llv_self_verdict_text(v: LlvSelfVerdict) -> String {
+  match v {
+    LlvSelfResolved => "resolved"
+    LlvSelfResolveRefused { reason: r, at_atom: a, at_path: p } =>
+      "resolve-refused reason=" + symbol_lexeme(sym: r) + " at=" + (match a {
+        Present { value: id } => symbol_lexeme(sym: id)
+        Absent => "(no atom)"
+      }) + " path=" + (match p {
+        Present { value: qn } => fold_list(xs: qn, empty: "", cons: fn(acc, seg) { acc + "." + symbol_lexeme(sym: seg) })
+        Absent => "(no path)"
+      })
+    LlvSelfFileRefused => "file-refused at normalize"
+    LlvSelfAbsent => "module absent from the census"
+    LlvSelfContextRefused => "native test context refused"
+  }
+}
+
+fn llv_self_report() -> ProcessExit {
+  exit_failure(reason: "whole: " + llv_self_verdict_text(v: llv_self_outcome()) + " | missing: " + llv_self_verdict_text(v: llv_self_missing_outcome()))
+}

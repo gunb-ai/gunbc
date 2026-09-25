@@ -5,7 +5,8 @@ import std.access { AccessDecision, decision_meet }
 import gunbc.host_effect { HostEffect }
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
 import v2.std.orchestration { FailFast }
-import v2.std.algebra { list_snoc_item, fold_list }
+import v2.std.algebra { fold_list }
+import std.algebra { list_snoc_item }
 import gunbc.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,

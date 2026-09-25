@@ -10,9 +10,9 @@ import v2.std.algebra {
   MissingMeet,
   NotBoundedLatticeInstance,
   any,
-  fold_list_right,
-  list_snoc_item
+  fold_list_right
 }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,

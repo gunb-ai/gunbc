@@ -16,7 +16,8 @@ import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
 import std.algebra {
-  Empty
+  Empty,
+  list_append
 }
 import std.graph {
   CallGraph,
@@ -39,8 +40,7 @@ import v2.std.optional {
   Present
 }
 import v2.std.algebra {
-  fold_list,
-  list_append
+  fold_list
 }
 import v2.std.compilers.lexing {
   LexRule,
