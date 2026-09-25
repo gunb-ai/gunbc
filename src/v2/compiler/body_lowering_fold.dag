@@ -52,7 +52,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_bind_annotated, lower_loop, lower_match, lower_unary_prefix }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -6165,13 +6165,13 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
 // only the diagnostic does. A coproduct whose sole consumer immediately
 // collapses it would be a second representation of a fact the reason symbol
 // already carries.
-// A LET ANNOTATION BODY LOWERING CANNOT CARRY REFUSES; IT IS NEVER DROPPED. `let y: T = e` lowers
-// to Bind[binder, value, body], which has no position for `T`, so dropping the annotation made it
-// invisible to v2.compiler.resolve and `let y: Q = x` was Accepted with `Q` declared nowhere
-// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). It refuses
-// body_lowering_reason_type_annotation_not_carried, located at the annotation, until a Bind
-// annotation carrier exists. A fn literal's return annotation is that row's other route; it refuses
-// the same way in body_lower_bound_value until gunbc#12210 lowers function values to Arrows.
+// AN ANNOTATION BODY LOWERING CANNOT CARRY REFUSES; IT IS NEVER DROPPED. Dropping one made it
+// invisible to v2.compiler.resolve, so `let y: Q = x` was Accepted with `Q` declared nowhere
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). A statement
+// let's annotation is now CARRIED on its Bind (v2.std.type_binder <type-annotation>, see
+// body_lower_let_annotation_lowered); a type expression the lowering cannot read still refuses
+// here, located at it. A fn literal's return annotation is that row's other route; it refuses the
+// same way in body_lower_bound_value until gunbc#12210 lowers function values to Arrows.
 fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: at)
@@ -6204,6 +6204,31 @@ fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
               }
           }
       }
+  }
+}
+
+// A STATEMENT LET'S ANNOTATION, LOWERED AS A TYPE EXPRESSION -- the reader the cast target uses
+// (body_lower_type_expr_lowered_optional). Absent when the let is unannotated; a written annotation
+// the lowering cannot read refuses located at it, so an annotation is carried or refused, never lost.
+fn body_lower_let_annotation_lowered(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_let_annotation_optional(captured: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: annotation } =>
+      match body_lower_type_expr_lowered_optional(node: annotation) {
+        Absent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: annotation)
+          )
+        Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+      }
+  }
+}
+
+fn body_lower_let_bind(key_binding: Node, value: Node, body_binding: Node, annotation: Optional<Node>) -> Node {
+  match annotation {
+    Absent => lower_bind(key_binding: key_binding, value: value, body_binding: body_binding)
+    Present { value: t } =>
+      lower_bind_annotated(key_binding: key_binding, value: value, body_binding: body_binding, annotation: t)
   }
 }
 
@@ -6433,9 +6458,6 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                         )
                       )
                     Present { value: key } =>
-                      match body_lower_let_annotation_optional(captured: let_captured) {
-                      Present { value: annotation } => body_lower_type_annotation_not_carried(at: annotation)
-                      Absent =>
                       match body_lower_let_statement_value_optional(captured: let_captured) {
                         Absent =>
                           outcome_rejected(
@@ -6446,23 +6468,28 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                           )
                         Present { value: value_capture } =>
                           bind_outcome(
-                            o: body_lower_bound_value(node: value_capture),
-                            f: fn(value) {
+                            o: body_lower_let_annotation_lowered(captured: let_captured),
+                            f: fn(annotation) {
                               bind_outcome(
-                                o: body_lower_stmt_spine(spine: rest),
-                                f: fn(body) {
-                                  outcome_accepted(
-                                    value: lower_bind(
-                                      key_binding: body_lower_type_atom_node(sym: key, source: let_captured),
-                                      value: value,
-                                      body_binding: body
-                                    )
+                                o: body_lower_bound_value(node: value_capture),
+                                f: fn(value) {
+                                  bind_outcome(
+                                    o: body_lower_stmt_spine(spine: rest),
+                                    f: fn(body) {
+                                      outcome_accepted(
+                                        value: body_lower_let_bind(
+                                          key_binding: body_lower_type_atom_node(sym: key, source: let_captured),
+                                          value: value,
+                                          body_binding: body,
+                                          annotation: annotation
+                                        )
+                                      )
+                                    }
                                   )
                                 }
                               )
                             }
                           )
-                      }
                       }
                   }
               }

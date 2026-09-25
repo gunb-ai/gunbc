@@ -119,7 +119,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
-import v2.std.type_binder { cast_target_optional, type_param_names }
+import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
@@ -2242,6 +2242,72 @@ fn infer_gather_transform_row_on_entries(
   }
 }
 
+// AN ANNOTATED LET CHECKS ITS BOUND VALUE AGAINST THE ANNOTATION. `let x: T = e` is Bind[x, e, body]
+// + <type-annotation> T (v2.std.type_binder); it awaits its children, then asks v2.std.coercion --
+// the one inhabitance authority, the fold a cast's crossing also asks -- whether e's derived
+// grounding inhabits T, and refuses with coercion's typed mismatch when it does not. An ascription
+// converts nothing, so only the verdict is used, never a crossed value. A value whose grounding is
+// not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
+// is: the check is neither admitted nor skipped silently.
+fn infer_bind_is_annotated(node: Node) -> Bool {
+  match type_annotation_optional(n: node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+  match type_annotation_optional(n: node) {
+    Absent => outcome_accepted(true)
+    Present { value: annotation } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+        Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+        Present { value: bound } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
+            Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: bound))
+            Present { value: bound_facts } =>
+              match bound_facts.grounding {
+                GroundingNotDerived { node: _ } => outcome_accepted(true)
+                DerivedGrounding { grounding: g } =>
+                  bind_outcome(
+                    o: coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: annotation),
+                    f: fn(_) { outcome_accepted(true) }
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn infer_gather_bind_annotation_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_bind_annotation_check(node: node, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: _, diagnostics: d } =>
+      infer_gather_transform_frontier_on_entries(
+        node: node,
+        entries: entries,
+        pending: diagnostics_merge(outer: pending, inner: d),
+        partials: partials,
+        tree: tree
+      )
+  }
+}
+
 // THE TRANSFORMS WHOSE TYPE IS DERIVED, by shape: the binary Int add, and a cast whose operand's
 // grounding is derived. Absent is the counted frontier (GroundingNotDerived), never an admission.
 fn infer_transform_derived_optional(
@@ -2388,7 +2454,21 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
           children_remaining: length(xs: n.children)
         )
       }
-    ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
+    ComputationNode { behavior: Bind } =>
+      if infer_bind_is_annotated(node: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
+      }
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
@@ -2733,6 +2813,14 @@ fn infer_gather_fold_step_merged(
     )
   } else if acc.await_transform_row && children_remaining == 0 {
     infer_gather_transform_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials,
+      tree: tree
+    )
+  } else if children_remaining == 0 && infer_bind_is_annotated(node: acc.node) {
+    infer_gather_bind_annotation_row_on_entries(
       node: acc.node,
       entries: merged_entries,
       pending: merged_pending,

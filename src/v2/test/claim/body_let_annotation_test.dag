@@ -1,0 +1,232 @@
+module v2.test.claim.body_let_annotation
+
+import std.algebra { Cons, Empty }
+import v2.std.coercion { NoTargetCandidate }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
+import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
+import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  diagnostics_fatal,
+  diagnostics_fatal_reason,
+  diagnostics_list_has_reason
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Bind, ComputationNode, Edge, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.type_binder { type_annotation_edge, type_annotation_optional }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a statement let's type annotation is CARRIED as the v2.std.type_binder
+// <type-annotation> edge on its Bind -- through lowering, resolve (type-role frame) and infer (the
+// bound value is checked against it) -- and translate refuses an annotated Bind until a target
+// models it. BOUNDARY: source text in, assembled program out through
+// v2.test.claim.type_param_binder_frame tpb_assemble -- the production route -- for lowering,
+// resolve and infer; translate is driven over a supplied Bind whose shape rows (1)-(2) establish
+// the real producer emits.
+//
+// RED BEFORE: on the parent of this change every annotated let refused
+// body_lowering_reason_type_annotation_not_carried at its annotation (gunbc.rung_drop
+// typed_statement_let_refuses_until_the_bind_annotation_carrier), so (1)-(5) were red.
+
+fn bla_concrete() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n")
+}
+
+fn bla_generic() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = x\n  y\n}\n")
+}
+
+fn bla_type_param_as_value() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = T\n  y\n}\n")
+}
+
+fn bla_value_param_as_type() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  let y: Q = Q\n  y\n}\n")
+}
+
+fn bla_int_sum_as_int() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n")
+}
+
+fn bla_int_sum_as_bool() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n")
+}
+
+fn bla_annotations(n: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: n), init: Empty, f: fn(acc, x) {
+    match type_annotation_optional(n: x) {
+      Present { value: t } => Cons { head: t, tail: acc }
+      Absent => acc
+    }
+  })
+}
+
+fn bla_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => Absent
+  }
+}
+
+// The one annotation a tree carries, as its atom identity; Absent when refused, when no Bind carries
+// one, or when more than one does.
+fn bla_annotation_identity(o: Outcome<Node>) -> Optional<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match bla_annotations(n: root) {
+        Cons { head: t, tail: Empty } => bla_atom_identity(n: t)
+        _ => Absent
+      }
+  }
+}
+
+fn bla_atom_in(n: Node, id: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, x) {
+    acc || match bla_atom_identity(n: x) {
+      Present { value: s } => s == id
+      Absent => false
+    }
+  })
+}
+
+fn bla_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
+}
+
+// (1) A let annotation naming a declared type lowers and resolves, carrying exactly one annotation
+// whose target is a resolved atom. A lowering that drops the edge reds this row: the count is 0.
+test fn bla_concrete_annotation_is_carried() -> Bool {
+  match bla_annotation_identity(o: bla_concrete()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// (2) The annotation resolves in the TYPE-ROLE frame: the enclosing fn's <T> binds a body
+// annotation's `T`.
+test fn bla_generic_annotation_binds_the_type_parameter() -> Bool {
+  bla_annotation_identity(o: bla_generic()) == optional_present(value: ^T)
+}
+
+// (3) A type parameter in VALUE position still refuses, with its own reason, located at the value
+// use: the frame that binds the annotation's `T` does not answer for the bound value's.
+test fn bla_type_parameter_in_value_position_refuses_located() -> Bool {
+  match bla_type_param_as_value() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^resolve_reason_type_parameter_in_value_position)
+        && match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } =>
+            bla_atom_in(n: a.at, id: ^T)
+              && !bla_atom_in(n: a.at, id: ^dag_token_kw_let)
+              && !bla_atom_in(n: a.at, id: ^dag_token_eq)
+          _ => false
+        }
+  }
+}
+
+// (4) ... and a VALUE binder never answers for the annotation: a parameter named `Q` leaves the
+// annotation `Q` unbound.
+test fn bla_value_binder_does_not_answer_the_annotation() -> Bool {
+  match bla_value_param_as_type() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+fn bla_infers(o: Outcome<Node>) -> Outcome<Bool> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+// (5) INFER CHECKS THE BOUND VALUE AGAINST THE ANNOTATION through v2.std.coercion: an Int sum
+// ascribed Int is admitted; the same sum ascribed Bool resolves and then refuses with coercion's
+// typed mismatch. RED BEFORE the infer rule: the Bool ascription was admitted.
+test fn bla_infer_admits_int_ascribed_int() -> Bool {
+  match bla_infers(o: bla_int_sum_as_int()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bla_infer_refuses_int_ascribed_bool() -> Bool {
+  tpb_accepts(o: bla_int_sum_as_bool())
+    && match bla_infers(o: bla_int_sum_as_bool()) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } => bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+    }
+}
+
+// TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and
+// the <type-annotation> edge.
+fn bla_bind(annotated: Bool) -> Node {
+  let key = dag_type_atom_node(identity: ^bla_y)
+  let value = dag_type_atom_node(identity: ^dag_binding_param_x)
+  let body = dag_type_atom_node(identity: ^bla_y)
+  if annotated {
+    lower_bind_annotated(key_binding: key, value: value, body_binding: body, annotation: dag_type_atom_node(identity: ^dag_binding_type_int))
+  } else {
+    lower_bind(key_binding: key, value: value, body_binding: body)
+  }
+}
+
+fn bla_no_facts(key: Node) -> Optional<InferredFacts> {
+  Absent
+}
+
+fn bla_emit_rust(body: Node) -> Outcome<String> {
+  match emit(
+    tree: InferredTree {
+      root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: body),
+      facts: PartialFunction { lookup: bla_no_facts }
+    },
+    target: rust_binop_target_model_staging()
+  ) {
+    Accepted { value: m, diagnostics: d } => Accepted { value: m.carried, diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn bla_refused_for_annotation(o: Outcome<String>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => bla_has_reason(d: d, reason: ^target_value_expr_reason_bind_annotation_not_modeled)
+  }
+}
+
+// (6) TRANSLATE REFUSES AN ANNOTATED BIND until a target models the annotation, rather than
+// projecting it as a plain let and dropping the type -- and the refusal is the annotation's: the
+// same Bind without the edge is not refused for that reason.
+test fn bla_translate_refuses_an_annotated_bind() -> Bool {
+  bla_refused_for_annotation(o: bla_emit_rust(body: bla_bind(annotated: true)))
+    && !bla_refused_for_annotation(o: bla_emit_rust(body: bla_bind(annotated: false)))
+}
+
+// (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
+// PositionalPlusOneNamedEdges): the annotation first or last is one node.
+test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
+  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
+  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let annotation = type_annotation_edge(annotation: dag_type_atom_node(identity: ^dag_binding_type_int))
+  content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, annotation]))
+    == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [annotation, key, value, body]))
+}

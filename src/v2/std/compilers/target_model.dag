@@ -91,7 +91,7 @@ import v2.std.passing_candidate_fold {
   OnePassingCandidate,
   PassingCandidateFold
 }
-import v2.std.type_binder { cast_target_optional }
+import v2.std.type_binder { cast_target_optional, type_annotation_optional }
 import v2.std.node {
   Arrow,
   ArrowBodyEdges,
@@ -14562,6 +14562,17 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
+// AN ANNOTATED LET REFUSES TRANSLATION UNTIL THE TARGET MODELS ITS ANNOTATION. The positional gate
+// above admits it by shape, and projecting it as a plain let would drop its v2.std.type_binder
+// <type-annotation> -- a target whose let spells a type would lose what the source wrote. So it
+// refuses, located at the Bind, until a target realization row carries the annotation.
+fn target_value_expr_bind_is_annotated(node: Node) -> Bool {
+  match type_annotation_optional(n: node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn target_value_expr_loop_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } =>
@@ -14581,6 +14592,13 @@ fn target_project_bind_let(
     outcome_rejected(
       target_value_expr_diagnostic(
         reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else if target_value_expr_bind_is_annotated(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_bind_annotation_not_modeled,
         node: body
       )
     )

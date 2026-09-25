@@ -88,6 +88,7 @@ import v2.std.symbol_index {
   symbol_index_lexical_lookup
 }
 import v2.std.node {
+  positional_child_count,
   Arrow,
   Atom,
   Bind,
@@ -109,7 +110,7 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed,
 }
-import v2.std.type_binder { edge_is_cast_target, edge_is_type_params, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
@@ -263,7 +264,7 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
 fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match n.kind {
     ComputationNode { behavior: Bind } =>
-      if count(n.children) == 3 {
+      if positional_child_count(children: n.children) == 3 {
         match first(n.children) {
           Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
@@ -358,8 +359,8 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
   }
 }
 
-// THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target today
-// (v2.std.type_binder <cast-target>), a let annotation next -- resolves here: in the type-role
+// THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target
+// (v2.std.type_binder <cast-target>) or a let's annotation (<type-annotation>) -- resolves here: in the type-role
 // frame, so the enclosing fn's <T> binds it and no value binder can, and an undeclared name refuses
 // located at that name.
 fn resolve_type_role_target(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
@@ -1593,7 +1594,7 @@ fn resolve_children_homogeneous_scope(
 //
 // THE BODY IS OUTSIDE IT, AND THAT IS MEASURED, NOT CHOSEN FOR TIDINESS. A frame answers a name
 // without knowing its position, and v2.compiler.body_lowering_fold carries no TYPE position into a
-// body today (a `let` lowers to Bind[binder, value, body], its annotation not carried; lambdas are
+// body then (a `let` lowered to Bind[binder, value, body], its annotation not carried; lambdas are
 // not lowered). So every `T` a body can contain is a VALUE-position use, and a frame over the body
 // admitted exactly one new program: `fn f<T>(x: T) -> T { T }`, a type used as a value, Accepted.
 // Kept off the body, that refuses as it did before. The trigger for widening the frame is the
@@ -1725,7 +1726,9 @@ fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
 // ORDINAL 0 IS THE BINDER, AND IT PRODUCES THE INNER SCOPE. Ordinal 1 resolves under the outer
 // scope, which the binder does not touch, so it is observed whatever the binder did. Ordinal 2 and
 // beyond resolve under the scope the binder produced; when the binder was refused that scope would
-// be invented, so those sites are recorded ObservationIncomplete and NOT resolved.
+// be invented, so those sites are recorded ObservationIncomplete and NOT resolved. A let's
+// <type-annotation> edge (v2.std.type_binder) sorts after the positionals and resolves in the
+// type-role frame, which no value binder reaches, so it is observed whatever the binder did.
 fn resolve_bind_edges(
   ctx: ResolveContext,
   edges: List<Edge>,
@@ -1733,7 +1736,9 @@ fn resolve_bind_edges(
   scope_inner: Scope
 ) -> ChildWalk {
   fold(edges, init: child_walk_init(), f: fn(acc, e) {
-    if acc.ordinal == 0 {
+    if edge_is_type_annotation(e: e) {
+      child_walk_step(w: acc, e: e, r: resolve_type_role_target(ctx: ctx, target: e.target))
+    } else if acc.ordinal == 0 {
       child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target))
     } else if acc.ordinal == 1 {
       child_walk_step(
@@ -1757,7 +1762,7 @@ fn resolve_bind_node(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  if count(n.children) == 3 {
+  if positional_child_count(children: n.children) == 3 {
     child_walk_node(n: n, w: resolve_bind_edges(
       ctx: ctx,
       edges: n.children,
