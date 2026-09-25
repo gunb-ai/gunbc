@@ -1838,9 +1838,9 @@ fn marker_before(s: String, first: String, second: String) -> Bool {
 }
 
 // A ROW NOT SHARING THE TEMPLATE IS A DERIVATION DEFECT (owner ruling 2026-09-24): every row
-// carries exactly the seven declared column cells — in roster order, each named by data-col —
+// carries exactly the six declared column cells — in roster order, each named by data-col —
 // then the actions region; the header pins the template, the rows ride it. Empty columns (P ·
-// TYPE · D VIEWS · LAST MODIFIED — facts our domain does not keep on the dense line) render
+// TYPE · LAST MODIFIED — facts our domain does not keep on the dense line) render
 // empty cells that KEEP their track; emptiness never re-orders a row. The TITLE cell IS the
 // detail link (owner ruling 2026-09-25, the ID column retired); the assignee cell reads the
 // standing's holder.
@@ -1850,14 +1850,14 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
     EmitOk { html: h } =>
       let table = table_region(html: h)
       let row_body = string_at(parts: split(s: string_at(parts: split(s: table, delimiter: "data-node=\"page-task-one\""), index: 1), delimiter: "</li>"), index: 0)
-      occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 21
-        && occurrence_count(s: table, pattern: "class=\"issue-col issue-col-") == 8
+      occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 18
+        && occurrence_count(s: table, pattern: "class=\"issue-col issue-col-") == 7
         && occurrence_count(s: table, pattern: "data-col=\"priority\"") == 4
         && occurrence_count(s: table, pattern: "data-col=\"type\"") == 4
         && occurrence_count(s: table, pattern: "data-col=\"title\"") == 4
         && occurrence_count(s: table, pattern: "data-col=\"assignee\"") == 4
         && occurrence_count(s: table, pattern: "data-col=\"status\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"d-views\"") == 4
+        && occurrence_count(s: table, pattern: "data-col=\"d-views\"") == 0
         && occurrence_count(s: table, pattern: "data-col=\"last-modified\"") == 4
         && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 4
         && occurrence_count(s: table, pattern: "data-col=\"id\"") == 0
@@ -1865,8 +1865,7 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
         && marker_before(s: row_body, first: "data-col=\"type\"", second: "data-col=\"title\"")
         && marker_before(s: row_body, first: "data-col=\"title\"", second: "data-col=\"assignee\"")
         && marker_before(s: row_body, first: "data-col=\"assignee\"", second: "data-col=\"status\"")
-        && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"d-views\"")
-        && marker_before(s: row_body, first: "data-col=\"d-views\"", second: "data-col=\"last-modified\"")
+        && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"last-modified\"")
         && marker_before(s: row_body, first: "data-col=\"last-modified\"", second: "class=\"issue-row-actions\"")
         && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-priority\" data-col=\"priority\"></span><span class=\"issue-cell issue-cell-type\" data-col=\"type\"></span><span class=\"issue-cell issue-cell-title\" data-col=\"title\"><a class=\"issue-title-link\" href=\"/issue/page-task-one\">")
         && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\"><span class=\"issue-avatar\" data-avatar=\"absent\" title=\"operator &lt;operator@gunb.ai&gt;\">o</span></span>")
@@ -1956,7 +1955,7 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
       let table = table_region(html: h)
       string_contains(s: table, pattern: join(["<span class=\"issue-cell issue-cell-title\" data-col=\"title\"><a class=\"issue-title-link\" href=\"/issue/page-long-title\">", long_title], ""))
         && string_contains(s: table, pattern: "class=\"issue-cell issue-cell-status\"")
-        && occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 7
+        && occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 6
         && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 2
         && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
         && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", issue_results_row_tracks()], ""))

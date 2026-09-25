@@ -360,8 +360,8 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
 // Re-pinned 2026-09-25 for the assignment vertical (owner rulings 2026-09-25 + the issue-page
 // mandate): the issue-table grid moves to the FIXED-TRACK roster (extdeps.google.issue_tracker
-// issue_results_columns: short columns fixed at declared content bounds — 4ch P, 6ch TYPE, the
-// avatar-chip calc for ASSIGNEE, 6ch D VIEWS, 12ch LAST MODIFIED, 24ch actions — TITLE the
+// issue_results_columns: short columns fixed at declared content bounds — 4ch P, 6ch TYPE, 9ch
+// ASSIGNEE from its header, 12ch LAST MODIFIED, 24ch actions — TITLE the
 // dominant minmax(0, 2fr) against STATUS's minmax(0, 1fr), no max-content track survives, so band
 // filtering never re-measures the geometry); the retired ID column's two rules (.issue-cell-id,
 // .issue-id-link) delete with the column; the TITLE link gains .issue-title-link (+ hover) painted
@@ -385,7 +385,11 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // center on the existing flex cell — the chip, the bare "--", and the unparseable-email
 // placeholder all center). Derived by execution (roadmap_css_derived_digest on this tree,
 // bcdf59bc15e39d80); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "bcdf59bc15e39d80"
+// Re-pinned 2026-09-25 for the D VIEWS retirement (owner: it is a view counter in the product,
+// not dependencies; we track no views and blockers live on the detail page): the roster drops the
+// column, the template loses its 8ch track. Derived by execution (roadmap_css_derived_digest on
+// this tree, dc62c7862ac2125d); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "dc62c7862ac2125d"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

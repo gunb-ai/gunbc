@@ -63,7 +63,6 @@ import extdeps.google.issue_tracker {
   IssueColumnTitle,
   IssueColumnAssignee,
   IssueColumnStatus,
-  IssueColumnDViews,
   IssueColumnLastModified,
   issue_results_columns,
   issue_results_column_kind_wire,
@@ -709,22 +708,22 @@ test fn w_browse_components_derives_the_tree() -> Bool {
 // THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law): the column set, the
 // header spellings, the row anatomy, and the grid template are DECLARED in this model and every
 // surface derives from them. This pin states the served roster IS the capture's amended by the
-// 2026-09-25 ruling ("the title is the link — drop the ID column"): the capture's anatomy P · TYPE
-// · TITLE · ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED (transcribed VERBATIM from
+// 2026-09-25 ruling ("the title is the link — drop the ID column") and the D VIEWS retirement
+// (same date: a view counter, not dependencies): the capture's anatomy P · TYPE · TITLE ·
+// ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED (transcribed VERBATIM from
 // /home/briansrls/chromium-565764076/ "test - Chromium.html", 50 live rows, verified 2026-09-24 —
-// docs/plans/buganizer-visual-contract.md §Issue-row anatomy) minus the retired ID column; the
+// docs/plans/buganizer-visual-contract.md §Issue-row anatomy) minus the two retired columns; the
 // TITLE cell carries the detail link now.
 test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling() -> Bool {
   let wires = map(issue_results_columns, c =>
     join([issue_results_column_kind_wire(kind: c.kind), ":", c.header as String], ""))
-  count(issue_results_columns) == 7
+  count(issue_results_columns) == 6
     && (match wires.first() { Present { value: w } => w == "priority:P", Absent => false })
     && (match wires.skip(n: 1).first() { Present { value: w } => w == "type:TYPE", Absent => false })
     && (match wires.skip(n: 2).first() { Present { value: w } => w == "title:TITLE", Absent => false })
     && (match wires.skip(n: 3).first() { Present { value: w } => w == "assignee:ASSIGNEE", Absent => false })
     && (match wires.skip(n: 4).first() { Present { value: w } => w == "status:STATUS", Absent => false })
-    && (match wires.skip(n: 5).first() { Present { value: w } => w == "d-views:D VIEWS", Absent => false })
-    && (match wires.skip(n: 6).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
+    && (match wires.skip(n: 5).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
 }
 
 // THE GRID TEMPLATE derives from the roster — one track per declared column, the workflow's
@@ -732,12 +731,12 @@ test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling()
 // derivation's bytes; the render-side witness pins the served CSS carries exactly them. THE TRACK
 // LAW rides the same string (owner rulings 2026-09-25): TITLE takes the dominant flexible share
 // (minmax(0, 2fr)) against STATUS's minmax(0, 1fr), and every short column is a FIXED width (P 4ch
-// from "P4", TYPE 6ch from "Task", ASSIGNEE the avatar chip's size plus a gutter, D VIEWS 6ch from
-// a three-digit count, LAST MODIFIED 12ch from an ISO date, actions 24ch from the count chip's
-// upper bound) — so band filtering changes which rows show and NEVER the grid geometry.
+// from "P4", TYPE 6ch from "Task", ASSIGNEE 9ch from its header, LAST MODIFIED 12ch from an ISO
+// date, actions 24ch from the count chip's upper bound) — so band filtering changes which rows
+// show and NEVER the grid geometry.
 test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
-  issue_results_row_tracks() == "4ch 6ch minmax(0, 2fr) 9ch minmax(0, 1fr) 8ch 12ch 24ch"
-    && count(issue_results_columns) == 7
+  issue_results_row_tracks() == "4ch 6ch minmax(0, 2fr) 9ch minmax(0, 1fr) 12ch 24ch"
+    && count(issue_results_columns) == 6
 }
 
 // THE FILTER-STABILITY LAW, the owner complaint's structural answer ("the size of columns is not

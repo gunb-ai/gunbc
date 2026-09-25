@@ -828,21 +828,22 @@ fn issue_assignee_canonical(s: String) -> String {
 // ruling 2026-09-25 ("the title is the link — drop the ID column") amends the capture-verified
 // roster (transcribed VERBATIM from /home/briansrls/chromium-565764076/ "test - Chromium.html", 50
 // live rows, verified 2026-09-24 — docs/plans/buganizer-visual-contract.md, §Issue-row anatomy):
-// the header row's cells in order now read P · TYPE · TITLE · ASSIGNEE · STATUS · D VIEWS ·
-// LAST MODIFIED. The ID column retires because the TITLE cell IS the link to the issue's detail
-// page (the capture's ID cell already linked /issue/<id>; the link follows the words, and the slug
-// stays the canonical key on the detail page). The capture's column picker
-// (bv2-column-picker-container) shows the product's set is user-adjustable; THIS row pins the
-// served roster. The row anatomy rides the same declaration: a row carries exactly one cell per
-// column, in this order, then the workflow's trailing ACTIONS slot (issue_results_row_tracks
-// below).
+// the header row's cells in order now read P · TYPE · TITLE · ASSIGNEE · STATUS · LAST MODIFIED.
+// The ID column retires because the TITLE cell IS the link to the issue's detail page (the
+// capture's ID cell already linked /issue/<id>; the link follows the words, and the slug stays
+// the canonical key on the detail page). D VIEWS retires too (owner ruling 2026-09-25): in the
+// product it is a VIEW COUNTER — a popularity signal, not dependencies — we track no views, and
+// blockers live on the detail page's Dependencies surface, never on the list row. The capture's
+// column picker (bv2-column-picker-container) shows the product's set is user-adjustable; THIS
+// row pins the served roster. The row anatomy rides the same declaration: a row carries exactly
+// one cell per column, in this order, then the workflow's trailing ACTIONS slot
+// (issue_results_row_tracks below).
 type IssueResultsColumnKind
   = IssueColumnPriority
   | IssueColumnType
   | IssueColumnTitle
   | IssueColumnAssignee
   | IssueColumnStatus
-  | IssueColumnDViews
   | IssueColumnLastModified
 
 // ONE DECLARATION PER COLUMN carries the two facts every surface needs, stated once, here: the
@@ -858,8 +859,8 @@ type IssueResultsColumnKind
 // header's own spelling or the content the column can wear, plus a one-gutter margin — P from the
 // priority vocabulary's widest spelling ("P4"), TYPE from the widest type word ("Task"), ASSIGNEE
 // from its header (8ch; the avatar chip is narrower, and a header that overflows its track paints
-// over the next column — owner complaint 2026-09-25, the ASSIGNEE/STATUS overlap), D VIEWS from
-// its header (wider than the three-digit count), LAST MODIFIED from an ISO date. The flexible pair
+// over the next column — owner complaint 2026-09-25, the ASSIGNEE/STATUS overlap), LAST MODIFIED
+// from an ISO date. The flexible pair
 // keeps the containment chain (min-width 0, nowrap, ellipsis) as the truncation authority, and the
 // header cells carry the same chain in the sheet.
 type IssueResultsColumn {
@@ -874,7 +875,6 @@ data issue_results_columns: List<IssueResultsColumn> = [
   IssueResultsColumn { kind: IssueColumnTitle, header: "TITLE", track: "minmax(0, 2fr)" },
   IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "9ch" },
   IssueResultsColumn { kind: IssueColumnStatus, header: "STATUS", track: "minmax(0, 1fr)" },
-  IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "8ch" },
   IssueResultsColumn { kind: IssueColumnLastModified, header: "LAST MODIFIED", track: "12ch" },
 ]
 
@@ -885,7 +885,6 @@ fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
     IssueColumnTitle => "title"
     IssueColumnAssignee => "assignee"
     IssueColumnStatus => "status"
-    IssueColumnDViews => "d-views"
     IssueColumnLastModified => "last-modified"
   }
 }

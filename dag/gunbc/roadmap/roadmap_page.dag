@@ -94,7 +94,7 @@ import extdeps.google.issue_tracker {
   issue_assignee_unassigned_display,
   IssueResultsColumn, IssueResultsColumnKind,
   IssueColumnPriority, IssueColumnType, IssueColumnTitle, IssueColumnAssignee,
-  IssueColumnStatus, IssueColumnDViews, IssueColumnLastModified,
+  IssueColumnStatus, IssueColumnLastModified,
   issue_results_columns, issue_results_column_kind_wire,
   QualifiedPrincipal, issue_assign_suggestions, avatar_initials_of,
   principal_from_email,
@@ -1435,8 +1435,9 @@ fn issue_controls_markup() -> Fragment {
 
 // THE DENSE ISSUE LINE derives its anatomy FROM the extdeps model (owner ruling 2026-09-24, the
 // derivation law): one cell per declared results column, in roster order — P · TYPE · TITLE ·
-// ASSIGNEE · STATUS · D VIEWS · LAST MODIFIED (the 2026-09-25 ruling dropped the ID column: the
-// TITLE cell IS the link) — then the workflow's trailing actions region
+// ASSIGNEE · STATUS · LAST MODIFIED (the 2026-09-25 rulings dropped the ID column — the TITLE
+// cell IS the link — and D VIEWS, a view counter we do not track) — then the workflow's trailing
+// actions region
 // (the last grid track), which the 2026-09-25 Buganizer ruling made STATUS ONLY (the k-of-n /
 // attempt-count chip — see issue_row_actions_nodes; the row's action buttons retired with it). The
 // template lands ONCE, on the .issue-table container (the stylesheet's
@@ -1487,7 +1488,6 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
       if bar.signal == "" { [] } else {
         [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
       }
-    IssueColumnDViews => []
     IssueColumnLastModified => []
   }
 }
