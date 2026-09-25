@@ -132,7 +132,7 @@ pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> Nanos
     crate::std_measure::nanosecond(rows.rows.clone().iter().cloned().fold(
         0,
         |acc: i64, r: Rc<NativeDriverExclusiveRow>| {
-            (acc + crate::std_measure::nanosecond_count(r.nanos.clone()))
+            v1_rt::int_add(acc, crate::std_measure::nanosecond_count(r.nanos.clone()))
         },
     ))
 }
@@ -153,10 +153,10 @@ pub fn native_driver_cost_account(
             })
         } else {
             {
-                let residual = crate::std_measure::nanosecond(
-                    (crate::std_measure::nanosecond_count(parent_span.clone())
-                        - crate::std_measure::nanosecond_count(sum.clone())),
-                );
+                let residual = crate::std_measure::nanosecond(v1_rt::int_sub(
+                    crate::std_measure::nanosecond_count(parent_span.clone()),
+                    crate::std_measure::nanosecond_count(sum.clone()),
+                ));
                 if (crate::std_measure::nanosecond_count(residual.clone())
                     > crate::std_measure::nanosecond_count(tolerance.clone()))
                 {

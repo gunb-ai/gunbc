@@ -1,11 +1,12 @@
 module extdeps.github.gists
 
 import extdeps.github.github { GitHubUser, default_api_base }
-import std.types { Timestamp, GistId, NonEmptyStr, HttpMethod, AuthScheme }
+import std.types { Timestamp, GistId, NonEmptyStr, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { HttpMethod }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

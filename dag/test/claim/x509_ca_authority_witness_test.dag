@@ -2,7 +2,6 @@ module test.claim.x509_ca_authority_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List }
-import std.integer { UInt8 }
 import extdeps.standards.rfc_5280 {
   X509Certificate, X509TbsFields, X509Extension, x509_ca_authority, X509CaStanding, X509CaAuthorized, X509CaRefused,
   X509BasicConstraintsAbsent, X509NotACa, X509PathLengthExceeded, X509KeyCertSignAbsent,
@@ -30,7 +29,7 @@ fn cawt_with_extensions(cert: X509Certificate, extensions: List<X509Extension>) 
   }, signature_algorithm: cert.signature_algorithm, signature_octets: cert.signature_octets }
 }
 
-fn cawt_replacing(cert: X509Certificate, oid: String, value: List<UInt8>?) -> X509Certificate {
+fn cawt_replacing(cert: X509Certificate, oid: String, value: List<Int>?) -> X509Certificate {
   let kept = fold(cert.tbs.extensions, init: [], f: (acc, x) => if x.oid == oid { acc } else { acc |> list_push(x) })
   match value {
     Absent => cawt_with_extensions(cert: cert, extensions: kept)
@@ -60,7 +59,7 @@ fn cawt_on_intermediate_without(oid: String) -> String {
   }
 }
 
-fn cawt_on_intermediate(oid: String, value: List<UInt8>?, below: Int) -> String {
+fn cawt_on_intermediate(oid: String, value: List<Int>?, below: Int) -> String {
   match sample_ca() {
     Absent => "undecoded"
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: cawt_replacing(cert: ca, oid: oid, value: value), intermediates_below: below))

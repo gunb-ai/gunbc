@@ -210,6 +210,11 @@ type Xl2Prerequisite
   | BlockStatementReferenceVisibility
   | LoweringOccurrenceProjection
   | ListLiteralElementVisibility
+  | LambdaArgumentValueLowering
+  | CaretSymbolOperandLowering
+  | AsCastOperandLowering
+  | ElseLessIfStatementLowering
+  | WildcardMatchArmResolution
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -244,22 +249,32 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   BlockStatementReferenceVisibility,
   LoweringOccurrenceProjection,
   ListLiteralElementVisibility,
+  LambdaArgumentValueLowering,
+  CaretSymbolOperandLowering,
+  AsCastOperandLowering,
+  ElseLessIfStatementLowering,
+  WildcardMatchArmResolution,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
   match p {
     PlainCallArgumentReferenceVisibility => "plain call-argument references reach resolve/denominator grain"
-    IfArmCallArgumentReferenceVisibility => "call-argument references inside an if-arm reach resolve"
+    IfArmCallArgumentReferenceVisibility => "call-argument and bare-name references inside an if-arm reach resolve"
     BareFieldTypeVisibility => "BARE field-position type names reach the containment tree"
     WholeTreeResolveCensus => "a whole-tree v2 census that RESOLVES per module"
     ResolveOccurrenceCompleteness => "occurrence completeness: every independent refusal reaches the census"
     OperatorExpressionLoweredWhole => "an operator expression is lowered whole, so every operand reaches resolve"
     MatchOnCallScrutineeNavigation => "a match whose scrutinee is a call has its arms navigated, not refused"
-    CompoundCallArgumentValueLowering => "a compound call-argument value (nested call, record, caret symbol, group, list) is lowered as a value, not refused as unread"
+    CompoundCallArgumentValueLowering => "a NON-list, NON-lambda compound call-argument value (nested call, record literal, parenthesised group) is lowered as a value, not refused as unread -- list-valued and lambda-valued arguments are ListLiteralElementVisibility and LambdaArgumentValueLowering"
     OptionalAccessorLocatedRefusal => "the Optional operand accessor carries a located refusal instead of answering Absent"
     StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
-    BlockStatementReferenceVisibility => "every statement of a brace body, not only its first expression, reaches resolve"
+    BlockStatementReferenceVisibility => "no statement of a brace body is silently dropped: a statement followed by another reaches resolve or refuses its module located"
     ListLiteralElementVisibility => "every element of a list literal reaches resolve on every route"
+    LambdaArgumentValueLowering => "an inline lambda as a call argument lowers to a function value whose parameters bind and whose body's references reach resolve"
+    CaretSymbolOperandLowering => "a caret symbol `^sym` has a lowered form on every route, distinct from a reference, instead of refusing as an unread operand or reading as its `^` token"
+    AsCastOperandLowering => "an `as` cast `e as T` has a lowered form on every route, so its operand and its target type both reach resolve"
+    ElseLessIfStatementLowering => "an else-less statement `if` (an early-return guard) lowers with the rest of the statement spine as its else, so every later statement reaches resolve"
+    WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
   }
 }
@@ -269,11 +284,12 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     PlainCallArgumentReferenceVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_is_reachable_by_the_collector_holds"),
       evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
-      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility." as NonEmptyStr,
+      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility, compound argument values CompoundCallArgumentValueLowering." as NonEmptyStr,
     }
-    IfArmCallArgumentReferenceVisibility => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_if_arm_call_argument_is_reported_dropped_holds"),
-      why: "a call argument inside an if-arm reaches no reference site: v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it, and the conservation check reports it dropped (the tracking claim pins that drop). No fix has merged." as NonEmptyStr,
+    IfArmCallArgumentReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12221, merge_sha: "e74e345a93" as NonEmptyStr, measured_at: "e74e345a93" as NonEmptyStr },
+      qualification: "if-arms lower through the statement authority (v2.compiler.body_lowering_fold body_lower_if_arm_lowered), so an undeclared name used as a call argument in a then arm, an else arm or a nested if-arm, or as a bare name in an arm, refuses at resolve at its own atom; the declared controls (declared_call_arguments_in_if_arms_resolve, a_let_block_in_an_if_arm_resolves, a_match_in_an_if_arm_resolves) resolve. Bounded to arms whose statements lower: an else-less statement `if` is ElseLessIfStatementLowering, and a match inside an arm now reaches resolve, where a wildcard arm refuses (WildcardMatchArmResolution)." as NonEmptyStr,
     }
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
@@ -293,32 +309,55 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     OperatorExpressionLoweredWhole => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal", decl_name: "an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom"),
       evidence: Xl2PrerequisiteEvidence { pr: 12145, merge_sha: "ada85b9452" as NonEmptyStr, measured_at: "ada85b9452" as NonEmptyStr },
-      qualification: "v2.compiler.body_lowering_fold body_lower_read_operator_expression reads the grammar's precedence tower whole, so every operand of a chained or comparison expression (`a == b`, `a + b * c > d`) reaches the normalized tree and resolve, and on the Outcome lowering routes an unreadable operand refuses at its position. Bounded to the Outcome routes: the Optional accessor still answers Absent (OptionalAccessorLocatedRefusal). Its two collateral regressions are separate outstanding arms, MatchOnCallScrutineeNavigation and CompoundCallArgumentValueLowering." as NonEmptyStr,
+      qualification: "v2.compiler.body_lowering_fold body_lower_read_operator_expression reads the grammar's precedence tower whole, so every operand of a chained or comparison expression (`a == b`, `a + b * c > d`) reaches the normalized tree and resolve, and on the Outcome lowering routes an unreadable operand refuses at its position. Bounded to the Outcome routes: the Optional accessor still answers Absent (OptionalAccessorLocatedRefusal). Its two collateral regressions, MatchOnCallScrutineeNavigation and CompoundCallArgumentValueLowering, are delivered by gunbc#12173 as their own arms." as NonEmptyStr,
     }
-    MatchOnCallScrutineeNavigation => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.match_on_a_call_scrutinee_refused_as_arm_navigation", decl_name: "match_on_a_call_scrutinee_refused_as_arm_navigation"),
-      why: "a collateral regression of gunbc#12145, kept explicit beside that arm's narrow delivery: a match whose scrutinee is a call refuses its module at normalize as body_lowering_reason_match_arm_navigation_refused (one-commit differential 2de78893dfe -> ada85b9452, recorded on the tracking row), so its references never reach resolve. No fix has merged." as NonEmptyStr,
+    MatchOnCallScrutineeNavigation => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12173, merge_sha: "bc61f22b53" as NonEmptyStr, measured_at: "9ce9082ef7" as NonEmptyStr },
+      qualification: "gunbc#12173 reads a match scrutinee through v2.compiler.body_lowering_fold body_lower_value_lowered, so a match whose scrutinee is a call has its arms navigated and an undeclared name in the scrutinee refuses at resolve at its atom. Its positive controls landed in gunbc#12194 (9ce9082ef7): a_call_match_scrutinee_resolves, a_multi_line_call_match_scrutinee_resolves and a_match_with_a_call_scrutinee_nested_in_an_arm_resolves. NOT claimed: a match exhaustive only through a wildcard arm, which refuses at resolve at `_` (WildcardMatchArmResolution)." as NonEmptyStr,
     }
-    CompoundCallArgumentValueLowering => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.compound_call_argument_value_refused_as_unread", decl_name: "compound_call_argument_value_refused_as_unread"),
-      why: "a collateral regression of gunbc#12145, kept explicit beside that arm's narrow delivery: a call argument whose value is a nested call, record literal, caret symbol, parenthesised group or list literal refuses its whole module at normalize as body_lowering_reason_call_argument_unread, so its references never reach resolve. No fix has merged." as NonEmptyStr,
+    CompoundCallArgumentValueLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12173, merge_sha: "bc61f22b53" as NonEmptyStr, measured_at: "9ce9082ef7" as NonEmptyStr },
+      qualification: "NARROWED, not the broad arm: gunbc#12173 lowers a call argument as a value, so an undeclared name in a nested call (named or positional), a record literal or a parenthesised group argument refuses at resolve at its own atom, with declared_names_inside_nested_call_and_record_arguments_resolve as the control; gunbc#12194 (9ce9082ef7) added the parenthesised call-operand pair. NOT claimed: a list-valued argument, which refuses located at the list (ListLiteralElementVisibility); a lambda-valued argument, which refuses its module (LambdaArgumentValueLowering); a caret-symbol value, which has no lowered form (CaretSymbolOperandLowering)." as NonEmptyStr,
     }
     OptionalAccessorLocatedRefusal => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
-      why: "the Optional accessor v2.compiler.body_lowering_fold body_lower_operand_ref_optional -- and body_lower_named_arg_value_optional above it -- answers Absent on an unread operator expression instead of carrying a located refusal, so an operand it cannot read is silently missing from the census rather than refused. The tracking row stays open for exactly this half of its trigger." as NonEmptyStr,
+      why: "the Optional operand reader v2.compiler.body_lowering_fold body_lower_arm_operand_resolved_optional answers without a located refusal on an operand it cannot read, and its caller body_lower_bound_value accepts that answer: the specimen `let x = b && (u)` followed by `x`, with `u` undeclared, RESOLVES on main, so `u` never reaches resolve. The tracking row stays open for exactly this. No fix has merged." as NonEmptyStr,
     }
     StrippedTreeRehearsalComposition => PrerequisiteDelivered {
       owner: decl_ref(module_path: "test.claim.namespace_xl2_rehearsal_census", decl_name: "xl2_residual_control_is_reported_holds"),
       evidence: Xl2PrerequisiteEvidence { pr: 12097, merge_sha: "1d4fa51a3d" as NonEmptyStr, measured_at: "1d4fa51a3d" as NonEmptyStr },
       qualification: "delivered at COMPOSITION grain: gunbc.namespace_xl2_rehearsal_census composes the import strip, the census-resolve observation and the completeness decision, built and exercised through its seven controls in test.claim.namespace_xl2_rehearsal_census. The real exact-base path, gunbc.namespace_xl2_rehearsal_census run_xl2_rehearsal_at, is NOT executed: no whole-tree rehearsal has run and no residual has been taken, so this is not the rehearsal instrument's delivery." as NonEmptyStr,
     }
-    BlockStatementReferenceVisibility => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "v2.test.claim.body_lowering.statement_let_bind", decl_name: "unbound_statement_prefix_refuses_holds"),
-      why: "`{ 1 \n 2 }` is ACCEPTED by normalize with the `2` dropped: v2.compiler.body_lowering_fold body_lower_body_from_fn_captured lowers only the first binary expression of the body (body_lower_body_subtree_lower_from_binary), so references in every later statement never reach resolve. The wall that exists for it, the tracking claim, is RED on main. No fix has merged." as NonEmptyStr,
+    BlockStatementReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12221, merge_sha: "e74e345a93" as NonEmptyStr, measured_at: "e74e345a93" as NonEmptyStr },
+      qualification: "delivered as a LOCATED REFUSAL, not as lowering: a body `1` then `2` on the next line is no longer accepted with the `2` dropped -- a statement followed by another refuses its module at normalize, located, in a fn body, in an if-arm and after a let (a_statement_followed_by_another_in_an_if_arm_refuses_at_normalize, a_statement_after_a_let_followed_by_another_refuses_at_normalize), while a let followed by its body resolves. The silent drop is closed; the refused module's references reach the census as a file refusal before resolve, not as resolved references." as NonEmptyStr,
     }
     ListLiteralElementVisibility => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.list_literal_elements_dropped_at_v2_body_lowering", decl_name: "list_literal_elements_dropped_at_v2_body_lowering"),
-      why: "v2.compiler.body_lowering_fold body_lower_primary_expr answers a list literal `[a]` with its first atom `[`, so its elements are dropped on every route -- data initializers, let values, call arguments (fierce-hawk-274, main 1b2f64fd49). As a call argument the shape refuses (body_lowering_reason_call_argument_unread) rather than drops, which is loud but still hides the elements. No fix has merged." as NonEmptyStr,
+      why: "v2.compiler.body_lowering_fold body_lower_primary_expr answers a list literal `[a]` with its first atom `[`, so its elements are dropped on every route -- data initializers, let values, call arguments (fierce-hawk-274, main 1b2f64fd49). As a call argument it refuses since gunbc#12173 LOCATED at the list (body_lowering_reason_list_literal_unlowered), which is loud but still hides the elements. No fix has merged." as NonEmptyStr,
+    }
+    LambdaArgumentValueLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lambda_has_no_lowered_function_value_form", decl_name: "lambda_has_no_lowered_function_value_form"),
+      why: "an inline lambda call argument refuses its whole module at normalize as body_lowering_reason_call_argument_unread; carrying its shell was measured to refuse the lambda's own parameter at resolve and was withdrawn. The lowering is owned by another lane (gunbc#12198 carries the shape control); no fix has merged." as NonEmptyStr,
+    }
+    CaretSymbolOperandLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.caret_symbol_has_no_lowered_form", decl_name: "caret_symbol_has_no_lowered_form"),
+      why: "a caret symbol as an operator operand refuses its module at normalize (body_lowering_reason_operator_operand_unread), and on the bottom-up value route body_lower_primary_expr answers it with its `^` token. Exposed by gunbc#12145, not introduced. No fix has merged." as NonEmptyStr,
+    }
+    AsCastOperandLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.as_cast_has_no_lowered_form", decl_name: "as_cast_has_no_lowered_form"),
+      why: "`as` is not an operator of the tower body_lower_read_operator_expression reads, so a cast operand refuses its module at normalize and on the value route its target type reaches no reference site. Exposed by gunbc#12145, not introduced. No fix has merged." as NonEmptyStr,
+    }
+    ElseLessIfStatementLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.else_less_if_statement_has_no_lowered_form", decl_name: "else_less_if_statement_has_no_lowered_form"),
+      why: "body_lower_try_if_from_captured requires an else arm, so an early-return guard refuses its module at normalize as body_lowering_reason_else_less_if_unlowered and the statements after it never reach resolve. Exposed by gunbc#12145, not introduced. No fix has merged." as NonEmptyStr,
+    }
+    WildcardMatchArmResolution => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name", decl_name: "a_wildcard_match_arm_resolves_as_an_unbound_name"),
+      why: "a pre-existing resolve defect surfaced by gunbc#12221: a wildcard arm `_` is looked up as a symbol and refuses as resolve_reason_unbound_symbol at `_`. It is RED-LOUD, not a drop -- independent refusals in the same declaration still reach the census (ResolveOccurrenceCompleteness) -- but it puts rows in the residual that name no rewritable occurrence and are indistinguishable by cause from a real unbound name, so the residual this stage exists to take is not exact while it stands. No fix has merged." as NonEmptyStr,
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),

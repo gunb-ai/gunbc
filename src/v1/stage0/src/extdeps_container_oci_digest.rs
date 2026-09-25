@@ -76,11 +76,11 @@ pub fn oci_encoded_digest_syntax_valid(
             if oci_encoded_digest_char_allowed(v1_rt::code_point(v1_rt::substring(
                 &text,
                 index.clone(),
-                (index.clone() + 1),
+                v1_rt::int_add(index.clone(), 1),
             ))) {
                 {
                     let __tco_0 = text;
-                    let __tco_1 = (index + 1);
+                    let __tco_1 = v1_rt::int_add(index, 1);
                     __tco_loop_text = __tco_0;
                     __tco_loop_index = __tco_1;
                     continue;
@@ -123,12 +123,16 @@ pub fn oci_digest_algorithm_syntax_valid(
         if (index.clone() >= v1_rt::string_length(&text)) {
             break in_component.clone();
         } else {
-            let cp = v1_rt::code_point(v1_rt::substring(&text, index.clone(), (index.clone() + 1)));
+            let cp = v1_rt::code_point(v1_rt::substring(
+                &text,
+                index.clone(),
+                v1_rt::int_add(index.clone(), 1),
+            ));
             if in_component.clone() {
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
                         let __tco_0 = text;
-                        let __tco_1 = (index + 1);
+                        let __tco_1 = v1_rt::int_add(index, 1);
                         let __tco_2 = true;
                         __tco_loop_text = __tco_0;
                         __tco_loop_index = __tco_1;
@@ -139,7 +143,7 @@ pub fn oci_digest_algorithm_syntax_valid(
                     if oci_digest_algorithm_separator_char_allowed(cp.clone()) {
                         {
                             let __tco_0 = text;
-                            let __tco_1 = (index + 1);
+                            let __tco_1 = v1_rt::int_add(index, 1);
                             let __tco_2 = false;
                             __tco_loop_text = __tco_0;
                             __tco_loop_index = __tco_1;
@@ -154,7 +158,7 @@ pub fn oci_digest_algorithm_syntax_valid(
                 if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                     {
                         let __tco_0 = text;
-                        let __tco_1 = (index + 1);
+                        let __tco_1 = v1_rt::int_add(index, 1);
                         let __tco_2 = true;
                         __tco_loop_text = __tco_0;
                         __tco_loop_index = __tco_1;

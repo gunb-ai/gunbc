@@ -279,7 +279,7 @@ pub fn eligible_name_count(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>, name: Str
         .cloned()
         .fold(0, |n: i64, entry: Rc<OccurrenceIndexEntry>| {
             if (entry.projection.clone().authored_name.clone() == name.clone()) {
-                (n.clone() + 1)
+                v1_rt::int_add(n.clone(), 1)
             } else {
                 n.clone()
             }
