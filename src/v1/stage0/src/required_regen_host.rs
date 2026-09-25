@@ -1127,7 +1127,7 @@ fn compile_stage0(
     let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
         result.emitted_edges.clone(),
         Rc::new(host_shell_modules.into_iter().collect()),
-        emitted_tree_partition_rows(&workspace_root())?,
+        emitted_tree_packages(&workspace_root())?,
     );
     if let crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
         edge_count,
@@ -1147,7 +1147,8 @@ fn compile_stage0(
     Ok(out)
 }
 
-/// THE PARTITION THE EMITTED TREE WILL BE BUILT UNDER, READ FROM THAT TREE.
+/// THE PACKAGE GRAPH THE EMITTED TREE WILL BE BUILT UNDER, READ FROM THAT TREE: its partition rows
+/// and the host shell node (`gunbc.stage0_executable_assembly_generated`) above them.
 ///
 /// The admission above maps each emitted edge through partition rows. The rows it must use are the
 /// ones this emission's own corpus declares -- `gunbc.stage0_crate_partition_generated`
@@ -1158,15 +1159,13 @@ fn compile_stage0(
 /// NotCovered until a regen had already installed the row it was refusing to produce (#12171's
 /// bootstrap deadlock, broken on #12185 only by hand-seeding the mirror). An unreadable or
 /// ill-shaped row set refuses; it never falls back to the compiled rows.
-fn emitted_tree_partition_rows(
+fn emitted_tree_packages(
     workspace: &Path,
-) -> Result<
-    Rc<im::Vector<Rc<crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow>>>,
-    String,
-> {
+) -> Result<Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String> {
     use crate::gunbc_stage0_crate_partition_generated::{
         GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
     };
+    use crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
     use crate::v1_interpreter::{self, ExecutionMode};
     const ROWS: &str = "generated_partition_crate_rows";
     let roots: Vec<String> = super::regen_source_roots()
@@ -1181,25 +1180,28 @@ fn emitted_tree_partition_rows(
         .collect();
     let entry = roots
         .iter()
-        .map(|root| Path::new(root).join("gunbc/stage0/stage0_crate_partition_generated.dag"))
+        .map(|root| Path::new(root).join("gunbc/stage0/stage0_emitted_edge_admission.dag"))
         .find(|path| path.is_file())
         .ok_or_else(|| {
             format!(
-                "refusal: gunbc.stage0_crate_partition_generated is under no regen source root \
-                 {roots:?}, so the emitted edges have no partition to be admitted against"
+                "refusal: gunbc.stage0_emitted_edge_admission is under no regen source root \
+                 {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
     let index = super::process_shared_index(&roots);
     let (graph, indices) =
         super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
             .map_err(|e| {
-                format!("refusal: the emitted tree's partition rows did not resolve: {e}")
+                format!("refusal: the emitted tree's package graph did not resolve: {e}")
             })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    let value = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, ROWS, &[], false)
-    })
-    .map_err(|e| format!("refusal: {ROWS} did not evaluate: {e}"))?;
+    let evaluate = |name: &str| {
+        v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(&ctx, name, &[], false)
+        })
+        .map_err(|e| format!("refusal: {name} did not evaluate: {e}"))
+    };
+    let value = evaluate(ROWS)?;
     let field = |fields: &[(v1_interpreter::Symbol, ModelValue)], name: &str| {
         fields
             .iter()
@@ -1273,7 +1275,26 @@ fn emitted_tree_partition_rows(
             carries_non_empty_wrappers,
         }));
     }
-    Ok(Rc::new(rows))
+    const SHELL_NAME: &str = "generated_host_shell_package_name";
+    const SHELL_DEPS: &str = "generated_host_shell_partition_dependencies";
+    let host_shell_package_name = match evaluate(SHELL_NAME)? {
+        ModelValue::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "refusal: {SHELL_NAME} evaluated to a {} where a String was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let host_shell_dependencies = im::Vector::from(model_value_to_string_list(
+        &evaluate(SHELL_DEPS)?,
+        SHELL_DEPS,
+    )?);
+    Ok(Rc::new(Stage0EmittedTreePackages {
+        rows: Rc::new(rows),
+        host_shell_package_name,
+        host_shell_dependencies: Rc::new(host_shell_dependencies),
+    }))
 }
 
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
