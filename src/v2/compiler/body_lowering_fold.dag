@@ -44,7 +44,11 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
+<<<<<<< ours
 import v2.std.algebra { fold_list, length, list_map, zip_eq }
+=======
+import v2.std.algebra { fold_list, list_map, length, zip_eq }
+>>>>>>> theirs
 import v2.std.collection {
   List,
   list_at_optional
