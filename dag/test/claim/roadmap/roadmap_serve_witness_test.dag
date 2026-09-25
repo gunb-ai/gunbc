@@ -1,5 +1,5 @@
 module test.claim.roadmap_serve_witness
-import extdeps.tailscale.identity { TailnetIdentityAbsent }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler,
@@ -51,6 +51,7 @@ import gunbc.roadmap_component { instrument_lab_links }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
+  RequestSecurityContext, AccessPathLocalDev,
   ServedRouteTable,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
   serve_select_route,
@@ -177,8 +178,13 @@ test fn witness_dispatch_get_folds_405() -> Bool {
   }
 }
 
-fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: method, path: path, body: "", identity: TailnetIdentityAbsent }
+fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+  ServeHttpRequest {
+    method: method,
+    path: path,
+    body: "",
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+  }
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
@@ -389,11 +395,15 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
     && !string_contains(s: r.body, pattern: "http")
 }
 
-// THE IDENTITY REACHES THE HANDLER. This is the end-to-end assertion for the whole identity
-// change: a login supplied at the serve entry arrives at the route that will consume it. Without
-// this the plumbing could be silently dropping it and every unit-level identity witness would
-// still pass.
-test fn the_authenticated_identity_reaches_the_approval_handler() -> Bool {
+// THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
+// this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
+// unless the access-path modeling vouches for it behind a serve-status readback — and this seam
+// performs no readback — so the consent record names no login. Without this the plumbing could
+// be silently laundering the header back into an identity and every unit-level witness would
+// still pass. The positive half (a modeled proxy path carries the observation) is
+// test.claim.request_authentication_witness's subject; the wiring between them is one function
+// call, roadmap_serve_request_security.
+test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent() -> Bool {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approve/abc123",
@@ -401,12 +411,12 @@ test fn the_authenticated_identity_reaches_the_approval_handler() -> Bool {
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  string_contains(s: r.body, pattern: "identity: briansrls@github")
+  string_contains(s: r.body, pattern: "transport observation: \n")
+    && !string_contains(s: r.body, pattern: "briansrls")
 }
 
-// AND ITS ABSENCE REACHES IT TOO, rather than becoming a default. A request that did not arrive
-// through the authenticating proxy carries no identity, and the handler must see exactly that.
-test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
+// AND A GENUINELY ABSENT HEADER IS THE SAME ANSWER: no observation, no identity, no default.
+test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approve/abc123",
@@ -414,7 +424,7 @@ test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
     tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
-  string_contains(s: r.body, pattern: "identity: \n")
+  string_contains(s: r.body, pattern: "transport observation: \n")
     && !string_contains(s: r.body, pattern: "briansrls")
 }
 
@@ -636,10 +646,11 @@ test fn witness_assign_form_field_reads_the_text_plain_body() -> Bool {
     && issue_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
 }
 
-// THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404, an
-// unauthenticated request is 403 (the durable record must name who assigned), and an invalid
-// selector is 400 — never an event.
-test fn witness_assign_route_refuses_404_403_400_before_any_host_read() -> Bool {
+// THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404,
+// and a request WITHOUT a Google session is 403 at the write law's authentication axis —
+// whether or not a tailnet header is present (the 2026-09-25 ruling's no-fallback law: tailnet
+// transport alone authorizes no write), and the 403 precedes even selector validation.
+test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
@@ -648,7 +659,7 @@ test fn witness_assign_route_refuses_404_403_400_before_any_host_read() -> Bool 
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  let no_identity = roadmap_serve_respond_for_instance(
+  let no_session_no_header = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/issue/restore-group-b-serving/assign",
@@ -656,7 +667,15 @@ test fn witness_assign_route_refuses_404_403_400_before_any_host_read() -> Bool 
     tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
-  let bad_selector = roadmap_serve_respond_for_instance(
+  let tailnet_only = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/restore-group-b-serving/assign",
+    body: "assignee=briansrls@gunb.ai",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  let bad_selector_tailnet_only = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/issue/restore-group-b-serving/assign",
@@ -665,10 +684,11 @@ test fn witness_assign_route_refuses_404_403_400_before_any_host_read() -> Bool 
     release_revision: deploy_witness_release_revision,
   )
   unknown.status == 404
-    && no_identity.status == 403
-    && string_contains(s: no_identity.body, pattern: "no authenticated identity")
-    && bad_selector.status == 400
-    && string_contains(s: bad_selector.body, pattern: "not an email spelling or the fabric endpoint")
+    && no_session_no_header.status == 403
+    && string_contains(s: no_session_no_header.body, pattern: "google-oidc-session")
+    && tailnet_only.status == 403
+    && string_contains(s: tailnet_only.body, pattern: "tailnet transport is not authentication")
+    && bad_selector_tailnet_only.status == 403
 }
 
 // CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records
@@ -766,8 +786,9 @@ test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_ve
 }
 
 // THE COMMENT ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is
-// 404, an unauthenticated request is 403, and an empty body is 400 — never an event.
-test fn witness_comment_route_refuses_404_403_400_before_any_host_read() -> Bool {
+// 404, and a request WITHOUT a Google session is 403 at the write law's authentication axis —
+// tailnet header or not — with the 403 preceding even the empty-body validation.
+test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
@@ -776,7 +797,7 @@ test fn witness_comment_route_refuses_404_403_400_before_any_host_read() -> Bool
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  let no_identity = roadmap_serve_respond_for_instance(
+  let no_session_no_header = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/issue/restore-group-b-serving/comment",
@@ -784,7 +805,15 @@ test fn witness_comment_route_refuses_404_403_400_before_any_host_read() -> Bool
     tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
-  let empty_body = roadmap_serve_respond_for_instance(
+  let tailnet_only = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/restore-group-b-serving/comment",
+    body: "body=hello",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  let empty_body_tailnet_only = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/issue/restore-group-b-serving/comment",
@@ -793,10 +822,11 @@ test fn witness_comment_route_refuses_404_403_400_before_any_host_read() -> Bool
     release_revision: deploy_witness_release_revision,
   )
   unknown.status == 404
-    && no_identity.status == 403
-    && string_contains(s: no_identity.body, pattern: "no authenticated identity")
-    && empty_body.status == 400
-    && string_contains(s: empty_body.body, pattern: "empty")
+    && no_session_no_header.status == 403
+    && string_contains(s: no_session_no_header.body, pattern: "google-oidc-session")
+    && tailnet_only.status == 403
+    && string_contains(s: tailnet_only.body, pattern: "tailnet transport is not authentication")
+    && empty_body_tailnet_only.status == 403
 }
 
 // THE RECORDED RESPONSE names the deep link — the FIRST WRITE and the RETRY share its spelling,

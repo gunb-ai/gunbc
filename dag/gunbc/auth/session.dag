@@ -1,0 +1,190 @@
+module gunbc.auth.session
+
+import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.decl_ref { decl_ref }
+import extdeps.auth.oidc {
+  OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal,
+  OidcLoginTransaction, login_transaction_expired,
+}
+import gunbc.principal_projection {
+  PrincipalRef, HumanPrincipalMinted, HumanPrincipalRefused, mint_human_principal_from_verdict,
+}
+
+// THE APPLICATION SESSION (ruling authority placement: gunbc.auth.session). An
+// AuthenticatedSession is what a completed Google login mints: the verdict-sealed human
+// principal, the method (Google OIDC — the only human authentication method this deployment
+// admits), the client the login ran for, a bounded lifetime, and the CSRF token the session's
+// mutations must present. The session IDENTIFIES the operator; it never authorizes anything by
+// itself — action authorization is gunbc.auth.request_authentication's law, and an approval
+// decision additionally requires the exact scoped capability (std.scoped_authorization and the
+// signed approval capability stay that authority; login never substitutes for it).
+
+type SessionClient
+  = SessionClientTrackerWeb
+  | SessionClientApprovalsWeb
+
+fn session_client_label(client: SessionClient) -> NonEmptyStr {
+  match client {
+    SessionClientTrackerWeb => "tracker-web" as NonEmptyStr
+    SessionClientApprovalsWeb => "approvals-web" as NonEmptyStr
+  }
+}
+
+// ONE HUMAN AUTHENTICATION METHOD. Google OIDC is the human-authentication authority (owner
+// directive 2026-09-25); the closed coproduct is the wall against a second, weaker method
+// arriving by drift — a new method is a new arm with its own evidence, never a loosened check.
+type SessionAuthMethod
+  = | AuthMethodGoogleOidc
+
+// THE CSRF TOKEN rides the session but is NOT the session: login state (the cookie) and the
+// mutation proof are separate facts, so a request that merely carries the cookie — replayed by
+// the browser from any origin — cannot satisfy the mutation check (ruling: login state != CSRF
+// token).
+type CsrfToken {
+  token: NonEmptyStr
+}
+
+type AuthenticatedSession {
+  session_id: NonEmptyStr
+  principal: PrincipalRef
+  authenticated_at: Timestamp
+  expires_at: Timestamp
+  auth_method: SessionAuthMethod
+  client: SessionClient
+  csrf: CsrfToken
+}
+
+// THE SESSION MINT, the sealed boundary that turns a completed login into session identity. The
+// principal comes ONLY from the verdict through the caller-sealed principal mint — there is no
+// principal parameter, so no caller can seat a session on a principal the evidence did not
+// establish (a service writer cannot present a human Google session as workload identity, and a
+// fabricated PrincipalRef cannot be seated at all). The transaction is checked here too:
+// expired or nonce-mismatched transactions refuse before any session exists.
+type SessionMint
+  = SessionMinted { session: AuthenticatedSession }
+  | SessionRefused { cause: SessionRefusalCause }
+
+type SessionRefusalCause
+  = SessionVerdictRefused { cause: OidcIdTokenRefusal }
+  | SessionTransactionExpired { transaction: OidcLoginTransaction, observed_at: Timestamp }
+  | SessionTransactionNonceMismatch { transaction_nonce: NonEmptyStr, token_nonce: NonEmptyStr? }
+
+fn mint_authenticated_session(
+  verdict: OidcIdTokenVerdict,
+  transaction: OidcLoginTransaction,
+  client: SessionClient,
+  session_id: NonEmptyStr,
+  authenticated_at: Timestamp,
+  expires_at: Timestamp,
+  csrf_token_value: NonEmptyStr,
+  observed_at: Timestamp,
+) -> SessionMint
+  admit_callers: [
+    decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
+  ]
+{
+  if login_transaction_expired(t: transaction, observed_at: observed_at) {
+    SessionRefused {
+      cause: SessionTransactionExpired { transaction: transaction, observed_at: observed_at },
+    }
+  } else {
+    match verdict {
+      OidcIdTokenRefused { cause: c } => SessionRefused { cause: SessionVerdictRefused { cause: c } }
+      OidcIdTokenVerified { claims } =>
+        if !oidc_nonce_matches_transaction(claims_nonce: claims.nonce, transaction_nonce: transaction.nonce) {
+          SessionRefused {
+            cause: SessionTransactionNonceMismatch {
+              transaction_nonce: transaction.nonce,
+              token_nonce: claims.nonce,
+            },
+          }
+        } else {
+          match mint_human_principal_from_verdict(verdict: verdict) {
+            HumanPrincipalRefused { cause: c } => SessionRefused { cause: SessionVerdictRefused { cause: c } }
+            HumanPrincipalMinted { principal: p } =>
+              SessionMinted {
+                session: AuthenticatedSession {
+                  session_id: session_id,
+                  principal: p,
+                  authenticated_at: authenticated_at,
+                  expires_at: expires_at,
+                  auth_method: AuthMethodGoogleOidc,
+                  client: client,
+                  csrf: CsrfToken { token: csrf_token_value },
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn oidc_nonce_matches_transaction(claims_nonce: NonEmptyStr?, transaction_nonce: NonEmptyStr) -> Bool {
+  match claims_nonce {
+    Present { value: n } => (n as String) == (transaction_nonce as String)
+    Absent => false
+  }
+}
+
+fn session_principal(session: AuthenticatedSession) -> PrincipalRef {
+  session.principal
+}
+
+// SESSION LIFETIME IS A TOTAL FOLD over the model's clock string, the same comparison
+// std.scoped_authorization uses for grant expiry.
+fn session_not_expired(session: AuthenticatedSession, observed_at: Timestamp) -> Bool {
+  observed_at <= session.expires_at
+}
+
+// ── The CSRF proof ─────────────────────────────────────────────────────────────────────────────
+// THE MUTATION PROOF, checked per state-changing request. Absent and mismatch are different
+// refusals with different remedies (the form forgot the token vs the token is stale), and an
+// empty presentation is absent — never a match against an empty token, because CsrfToken's
+// constructor carries a NonEmptyStr.
+type CsrfDecision
+  = CsrfAdmitted
+  | CsrfRefused { cause: CsrfRefusalCause }
+
+type CsrfRefusalCause
+  = CsrfTokenAbsent
+  | CsrfTokenMismatch { presented: NonEmptyStr, expected: NonEmptyStr }
+
+fn csrf_decision(session: AuthenticatedSession, presented_wire: String) -> CsrfDecision {
+  if presented_wire == "" {
+    CsrfRefused { cause: CsrfTokenAbsent }
+  } else if presented_wire == (session.csrf.token as String) {
+    CsrfAdmitted
+  } else {
+    CsrfRefused {
+      cause: CsrfTokenMismatch {
+        presented: presented_wire as NonEmptyStr,
+        expected: session.csrf.token,
+      },
+    }
+  }
+}
+
+// ── The opaque cookie ──────────────────────────────────────────────────────────────────────────
+// THE BROWSER CARRIER AND ITS ATTRIBUTES. The cookie value is opaque (Secret — no program reads
+// it back into a string here); the attributes are the ruling's spelled set, as data rows a
+// realization must emit verbatim: Secure, HttpOnly, SameSite=Lax, path-bound, bounded lifetime,
+// and rotation on every authentication (a fresh session_id + csrf token land at each login, so a
+// re-login invalidates what a stolen cookie could replay).
+data session_cookie_secure: Bool = true
+
+data session_cookie_http_only: Bool = true
+
+data session_cookie_same_site_lax: Bool = true
+
+data session_cookie_path: NonEmptyStr = "/" as NonEmptyStr
+
+// THE STANDING A REQUEST ARRIVES WITH. Decoding the wire cookie into this standing is the socket
+// realization's job (frontier: the serve runtime hands the standing across the seam); the model
+// decides over the standing, and each non-valid arm is a located refusal rather than an
+// anonymous session — a malformed cookie is a deployment fact, not a person.
+type SessionCookieStanding
+  = SessionCookieValid { session: AuthenticatedSession }
+  | SessionCookieExpired { session: AuthenticatedSession, observed_at: Timestamp }
+  | SessionCookieAbsent
+  | SessionCookieMalformed { detail: String }

@@ -1,0 +1,253 @@
+module test.claim.auth_session_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jwt {
+  NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcIdTokenVerdict,
+  OidcIdTokenSignature, OidcIdTokenSignatureVerified, JsonWebKeyRef,
+  OidcIdTokenVerdictPolicy, verify_oidc_id_token,
+  OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
+}
+import gunbc.auth.session {
+  AuthenticatedSession, SessionMint, SessionMinted, SessionRefused,
+  SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch,
+  AuthMethodGoogleOidc,
+  CsrfAdmitted, CsrfRefused, CsrfTokenAbsent, CsrfTokenMismatch,
+  mint_authenticated_session, csrf_decision, session_not_expired,
+  session_cookie_secure, session_cookie_http_only, session_cookie_same_site_lax, session_cookie_path,
+  SessionClientTrackerWeb, SessionClientApprovalsWeb,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WITNESS for the session authority (lane A3): a session is minted only from a verified
+// Google verdict bound to a live login transaction, the session carries the verdict-sealed
+// principal (no caller seats a session on any other principal), the CSRF proof is separate from
+// the cookie facts, and the cookie attributes are the ruling's spelled set.
+
+fn witness_claims(nonce: NonEmptyStr?) -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: nonce, acr: none, amr: none, azp: none, session_id: none,
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    standard: OidcStandardClaims {
+      email: Present { value: "person@gunb.ai" },
+      email_verified: Present { value: true },
+      name: Present { value: "A Person" },
+      picture: none,
+    },
+  }
+}
+
+fn witness_verdict(nonce: NonEmptyStr?) -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: witness_claims(nonce: nonce),
+    signature: OidcIdTokenSignatureVerified {
+      key: JsonWebKeyRef {
+        issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+        key_id: "witness-key" as NonEmptyStr,
+      },
+    },
+    policy: OidcIdTokenVerdictPolicy {
+      expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+      expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+      expected_nonce: none,
+      observed_at: NumericDateWholeSeconds { seconds: 1500 },
+    },
+  )
+}
+
+// A REFUSED VERDICT, produced by the real fold: the hd claim is missing, so the verdict refuses
+// without any hand-built refusal value.
+fn witness_refused_verdict() -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: OidcIdTokenClaims {
+      issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+      audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
+      expires_at: NumericDateWholeSeconds { seconds: 2000 },
+      issued_at: NumericDateWholeSeconds { seconds: 1000 },
+      auth_time: none, nonce: Present { value: "nonce-abc" as NonEmptyStr }, acr: none, amr: none, azp: none, session_id: none,
+      hosted_domain: none,
+      standard: OidcStandardClaims {
+        email: Present { value: "person@gunb.ai" },
+        email_verified: Present { value: true },
+        name: Present { value: "A Person" },
+        picture: none,
+      },
+    },
+    signature: OidcIdTokenSignatureVerified {
+      key: JsonWebKeyRef {
+        issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+        key_id: "witness-key" as NonEmptyStr,
+      },
+    },
+    policy: OidcIdTokenVerdictPolicy {
+      expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+      expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+      expected_nonce: none,
+      observed_at: NumericDateWholeSeconds { seconds: 1500 },
+    },
+  )
+}
+
+fn witness_transaction(nonce: NonEmptyStr, expires_at: String) -> OidcLoginTransaction {
+  OidcLoginTransaction {
+    state: "state-1" as NonEmptyStr,
+    nonce: nonce,
+    created_at: "2026-09-25T00:00:00Z",
+    expires_at: expires_at,
+    verifier: OidcPkceCodeVerifier { verifier: "verifier-xyz" as NonEmptyStr },
+    return_path: RelativeReturnPath { path: "/" as NonEmptyStr },
+  }
+}
+
+// THE ADMITTED WRAPPER (the session mint's roster names this decl).
+fn witness_mint_session(
+  verdict: OidcIdTokenVerdict,
+  transaction: OidcLoginTransaction,
+  session_id: NonEmptyStr,
+  csrf_token_value: NonEmptyStr,
+  observed_at: String,
+) -> SessionMint {
+  mint_authenticated_session(
+    verdict: verdict,
+    transaction: transaction,
+    client: SessionClientTrackerWeb,
+    session_id: session_id,
+    authenticated_at: "2026-09-25T00:00:00Z",
+    expires_at: "2026-09-25T12:00:00Z",
+    csrf_token_value: csrf_token_value,
+    observed_at: observed_at,
+  )
+}
+
+// THE POSITIVE CONTROL: a verified verdict bound to a live transaction mints a session on the
+// verdict-sealed principal, with the Google OIDC method, the client, and the CSRF token aboard.
+test fn a_verified_login_mints_a_session_on_the_verdict_principal() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      (s.session_id as String) == "session-1"
+        && (s.principal.subject as String) == "sub-123"
+        && (s.principal.authority as String) == "google-oidc"
+        && match s.auth_method {
+          AuthMethodGoogleOidc => true
+        }
+        && match s.client {
+          SessionClientTrackerWeb => true
+          SessionClientApprovalsWeb => false
+        }
+        && (s.csrf.token as String) == "csrf-1"
+  }
+}
+
+// A REFUSED VERDICT MINTS NO SESSION.
+test fn a_refused_verdict_mints_no_session() -> Bool {
+  match witness_mint_session(
+    verdict: witness_refused_verdict(),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: _ } => false
+    SessionRefused { cause: SessionVerdictRefused { cause: _ } } => true
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// THE TRANSACTION ARMS: an expired transaction refuses before any session exists; a nonce the
+// token did not answer refuses with both sides named.
+test fn an_expired_transaction_refuses_before_any_session_exists() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:01:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: _ } => false
+    SessionRefused { cause: SessionTransactionExpired { transaction: _, observed_at: _ } } => true
+    SessionRefused { cause: _ } => false
+  }
+}
+
+test fn a_nonce_the_token_did_not_answer_refuses() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-other" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: _ } => false
+    SessionRefused { cause: SessionTransactionNonceMismatch { transaction_nonce: t, token_nonce: n } } =>
+      t == "nonce-abc" as NonEmptyStr && n == Present { value: "nonce-other" as NonEmptyStr }
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// SESSION LIFETIME: the bounded expiry is a total fold over the model's clock string.
+test fn a_session_expires_at_its_bound() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      session_not_expired(session: s, observed_at: "2026-09-25T11:59:59Z")
+        && !session_not_expired(session: s, observed_at: "2026-09-25T12:00:01Z")
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// THE CSRF PROOF IS SEPARATE FROM THE COOKIE FACTS: an exact presentation admits; absent and
+// mismatched refuse with different causes; an empty presentation is absent, never a match.
+test fn the_csrf_proof_admits_exactly_and_refuses_absent_and_mismatch() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      csrf_decision(session: s, presented_wire: "csrf-1") == CsrfAdmitted
+        && match csrf_decision(session: s, presented_wire: "") {
+          CsrfRefused { cause: CsrfTokenAbsent } => true
+          _ => false
+        }
+        && match csrf_decision(session: s, presented_wire: "csrf-wrong") {
+          CsrfRefused { cause: CsrfTokenMismatch { presented: p, expected: e } } =>
+            p == "csrf-wrong" as NonEmptyStr && e == "csrf-1" as NonEmptyStr
+          _ => false
+        }
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// THE COOKIE ATTRIBUTES are the ruling's spelled set, as data a realization must emit verbatim.
+test fn the_cookie_attributes_are_the_rulings_spelled_set() -> Bool {
+  session_cookie_secure == true
+    && session_cookie_http_only == true
+    && session_cookie_same_site_lax == true
+    && (session_cookie_path as String) == "/"
+}

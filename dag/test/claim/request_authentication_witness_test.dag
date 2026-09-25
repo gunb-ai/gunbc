@@ -1,0 +1,447 @@
+module test.claim.request_authentication_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.access {
+  Permit, Deny,
+  AccessEvidenceAbsent, AccessEvidenceRejected, AccessActionNotGranted, AccessContextAbsent,
+  AccessPolicyRefused,
+}
+import extdeps.auth.jwt {
+  NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcIdTokenVerdict,
+  OidcIdTokenSignature, OidcIdTokenSignatureVerified, JsonWebKeyRef,
+  OidcIdTokenVerdictPolicy, verify_oidc_id_token,
+  OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
+}
+import extdeps.http.server {
+  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev,
+  RequestSecurityContext, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
+}
+import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
+import extdeps.tailscale.serve {
+  TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable,
+  TailscaleServeRouteKey, ServeRootMount,
+}
+import extdeps.tailscale.acl { TailscaleAclPolicy, operator_tailscale_acl_policy }
+import gunbc.auth.session {
+  AuthenticatedSession, SessionMint, SessionMinted, SessionRefused,
+  mint_authenticated_session,
+  SessionClientTrackerWeb,
+}
+import gunbc.auth.request_authentication {
+  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
+  FabricServiceEvidenceSubmissionMac,
+  DeploymentAccessPolicy,
+  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision,
+  ServeWriteAuthorizationPolicy,
+  request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
+  human_write_admission, service_write_authentication_decision,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WITNESS for the request-security law (lane A3): the access path is modeled through the
+// tailnet ACL and serve-route authorities with a versioned readback — never assumed from the
+// header — and the write law is the std.access conjunction: authentication AND action
+// authorization AND CSRF AND the deployment path policy, each axis refusing alone, the
+// conjunction the only Permit. The directive's controls are all executable here: a forged
+// header establishes no principal; a tailnet-only request authorizes no write; a Google session
+// alone authorizes no write and never substitutes for the approval capability; service evidence
+// and human evidence never substitute for each other.
+
+// ── Fixtures: a verified verdict, a live transaction, a minted session ─────────────────────────
+
+fn witness_claims() -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: Present { value: "nonce-abc" as NonEmptyStr }, acr: none, amr: none, azp: none, session_id: none,
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    standard: OidcStandardClaims {
+      email: Present { value: "person@gunb.ai" },
+      email_verified: Present { value: true },
+      name: Present { value: "A Person" },
+      picture: none,
+    },
+  }
+}
+
+fn witness_verdict() -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: witness_claims(),
+    signature: OidcIdTokenSignatureVerified {
+      key: JsonWebKeyRef {
+        issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+        key_id: "witness-key" as NonEmptyStr,
+      },
+    },
+    policy: OidcIdTokenVerdictPolicy {
+      expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+      expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+      expected_nonce: none,
+      observed_at: NumericDateWholeSeconds { seconds: 1500 },
+    },
+  )
+}
+
+fn witness_transaction() -> OidcLoginTransaction {
+  OidcLoginTransaction {
+    state: "state-1" as NonEmptyStr,
+    nonce: "nonce-abc" as NonEmptyStr,
+    created_at: "2026-09-25T00:00:00Z",
+    expires_at: "2026-09-25T00:10:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: "verifier-xyz" as NonEmptyStr },
+    return_path: RelativeReturnPath { path: "/" as NonEmptyStr },
+  }
+}
+
+// THE ADMITTED WRAPPER (the session mint's roster names this decl in this module). The fixture
+// verdict verifies, so the mint's refused arms are unreachable — a refused arm fails its test
+// rather than fabricating a session.
+fn witness_mint_session(expires_at: String) -> SessionMint {
+  mint_authenticated_session(
+    verdict: witness_verdict(),
+    transaction: witness_transaction(),
+    client: SessionClientTrackerWeb,
+    session_id: "session-1" as NonEmptyStr,
+    authenticated_at: "2026-09-25T00:00:00Z",
+    expires_at: expires_at,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  )
+}
+
+// ── The access-path modeling: tailnet through the ACL and serve-route authorities ──────────────
+
+fn witness_serve_route() -> TailscaleServeRouteKey? {
+  Present { value: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount } }
+}
+
+fn proxied_status() -> TailscaleServeStatusProjection {
+  ServeStatusProxies { targets: ["http://127.0.0.1:8080"] }
+}
+
+// THE TAILNET PATH IS MODELED, NOT ASSUMED: a loopback bind behind a serve-status readback
+// showing this backend proxied, plus the header, yields AccessPathTailnetProxy carrying the
+// observed login AND the versioned readback (ACL revision + serve-route key).
+test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readback() -> Bool {
+  match request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "operator@github",
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  ) {
+    AccessPathTailnetProxy { transport_observation: obs, route_readback: rb } =>
+      obs == TailnetUser { login: "operator@github" as NonEmptyStr }
+        && match rb {
+          TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } =>
+            r.https_port == 443
+          TailnetRouteReadbackUnobserved { reason: _ } => false
+        }
+    _ => false
+  }
+}
+
+// THE FORGED-HEADER CONTROL: the same header with NO readback is dropped — the path is
+// AccessPathLocalDev, the transport observation is absent, and with no session supplied the
+// context names no principal anywhere. A Tailscale-User-Login header alone, self-asserted by any
+// co-located process, establishes nothing.
+test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool {
+  let path = request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "forged-login@github",
+    serve_status: ServeStatusUnreadable,
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+  let security = RequestSecurityContext { access_path: path, authentication: AuthAbsent }
+  path == AccessPathLocalDev
+    && tailnet_transport_observation(security: security) == TailnetIdentityAbsent
+    && match security.authentication {
+      AuthAbsent => true
+      _ => false
+    }
+}
+
+// A NON-LOOPBACK BIND is direct reachability regardless of any header: the proxy cannot be the
+// sole route, so the header is unattributable and the path is DirectHttps.
+test fn a_non_loopback_bind_is_direct_https_regardless_of_the_header() -> Bool {
+  match request_access_path_of(
+    listen_host: "0.0.0.0" as NonEmptyStr,
+    tailscale_header: "operator@github",
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  ) {
+    AccessPathDirectHttps => true
+    _ => false
+  }
+}
+
+// AN EMPTY HEADER behind the modeled proxy is a local (on-host) request: tailscale serve always
+// injects the header, so its absence means the proxy was not in the path.
+test fn an_empty_header_behind_the_proxy_is_local_dev() -> Bool {
+  match request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "",
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  ) {
+    AccessPathLocalDev => true
+    _ => false
+  }
+}
+
+// ── The human-write law: the conjunction is the only Permit ────────────────────────────────────
+
+fn local_dev_absent_security() -> RequestSecurityContext<RequestAuthenticationEvidence> {
+  RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent }
+}
+
+fn session_security(session: AuthenticatedSession) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+  RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: session } }
+}
+
+fn open_write_policy() -> ServeWriteAuthorizationPolicy {
+  ServeWriteAuthorizationPolicy { approve_roster: [] }
+}
+
+// THE GREEN CONTROL: a live Google session + action authorization + the CSRF proof + the
+// deployment path policy = Permit. Every other control changes exactly one term of this.
+test fn the_write_law_admits_only_the_full_conjunction() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      human_write_admission(
+        route_path: "/issue/demo/assign" as NonEmptyStr,
+        action: ServeActionAssignIssue,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) == Permit
+  }
+}
+
+// ABSENT AUTHENTICATION REFUSES EVEN WITH EVERYTHING ELSE IN PLACE: the access path contributes
+// nothing; the refusal names the missing session evidence, and tailnet success is not a
+// substitute (the law never reads the path at this axis).
+test fn absent_authentication_refuses_the_write() -> Bool {
+  match human_write_admission(
+    route_path: "/issue/demo/assign" as NonEmptyStr,
+    action: ServeActionAssignIssue,
+    security: local_dev_absent_security(),
+    authorization_policy: open_write_policy(),
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "csrf-1",
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    Deny { refusal } =>
+      match refusal.cause {
+        AccessEvidenceAbsent { evidence: e } => string_contains(s: e, pattern: "google-oidc-session")
+        _ => false
+      }
+    Permit => false
+  }
+}
+
+// LOGIN STATE != CSRF TOKEN: a live session without the mutation's CSRF proof refuses at the
+// CSRF axis.
+test fn a_valid_session_without_the_csrf_proof_refuses() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/issue/demo/comment" as NonEmptyStr,
+        action: ServeActionCommentIssue,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessEvidenceRejected { evidence: e, reason: _ } => e == "csrf-token"
+            _ => false
+          }
+        Permit => false
+      }
+  }
+}
+
+// AN EXPIRED SESSION REFUSES at the authentication axis even with the right CSRF proof.
+test fn an_expired_session_refuses_the_write() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T00:06:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/issue/demo/assign" as NonEmptyStr,
+        action: ServeActionAssignIssue,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:07:00Z",
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessPolicyRefused { reason: r } => string_contains(s: r, pattern: "expired")
+            _ => false
+          }
+        Permit => false
+      }
+  }
+}
+
+// THE EVIDENCE KINDS NEVER SUBSTITUTE: service evidence on a human write refuses at the
+// authentication axis.
+test fn service_evidence_on_a_human_write_refuses() -> Bool {
+  let security = RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: FabricServiceEvidence { kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-09-25T00:00:00Z" },
+  }
+  match human_write_admission(
+    route_path: "/issue/demo/assign" as NonEmptyStr,
+    action: ServeActionAssignIssue,
+    security: security,
+    authorization_policy: open_write_policy(),
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "csrf-1",
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    Deny { refusal } =>
+      match refusal.cause {
+        AccessEvidenceRejected { evidence: e, reason: _ } => e == "fabric-service-evidence"
+        _ => false
+      }
+    Permit => false
+  }
+}
+
+// AND THE DUAL: a human Google session is not Fabric service evidence — it refuses at the
+// service-write gate — while Fabric's own service evidence admits it.
+test fn a_human_session_is_not_service_evidence_and_service_evidence_admits() -> Bool {
+  let service_security = RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: FabricServiceEvidence { kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-09-25T00:00:00Z" },
+  }
+  let service_admitted = service_write_authentication_decision(
+    route_path: "/approvals" as NonEmptyStr,
+    action: ServeActionApproveDecision,
+    security: service_security,
+  ) == Permit
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      service_admitted
+        && match service_write_authentication_decision(
+          route_path: "/approvals" as NonEmptyStr,
+          action: ServeActionApproveDecision,
+          security: session_security(session: s),
+        ) {
+          Deny { refusal } =>
+            match refusal.cause {
+              AccessEvidenceRejected { evidence: e, reason: _ } => e == "google-oidc-session"
+              _ => false
+            }
+          Permit => false
+        }
+  }
+}
+
+// LOGIN DOES NOT SATISFY THE APPROVAL AUTHORITY: the approve action admits exactly the roster's
+// principals — hd == gunb.ai alone is org membership, never approval authority — and the exact
+// scoped capability remains the approvals lane's (the principal axis here is the piece this
+// module owns; A7 joins it to the capability proof).
+test fn login_does_not_grant_approval_authority() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/approve/abc" as NonEmptyStr,
+        action: ServeActionApproveDecision,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessActionNotGranted { action: a } => a == "approve-decision"
+            _ => false
+          }
+        Permit => false
+      }
+        && human_write_admission(
+          route_path: "/approve/abc" as NonEmptyStr,
+          action: ServeActionApproveDecision,
+          security: session_security(session: s),
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+          csrf_presented: "csrf-1",
+          observed_at: "2026-09-25T00:05:00Z",
+        ) == Permit
+  }
+}
+
+// A TAILNET-REQUIRED DEPLOYMENT refuses a write arriving any other way, and admits the same
+// write over the modeled tailnet path: reachability changes never silently widen what a write
+// requires.
+test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
+  let proxy_path = request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "operator@github",
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/issue/demo/assign" as NonEmptyStr,
+        action: ServeActionAssignIssue,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessContextAbsent { context: c } =>
+              string_contains(s: c, pattern: "requires the tailnet access path")
+              && human_write_admission(
+                route_path: "/issue/demo/assign" as NonEmptyStr,
+                action: ServeActionAssignIssue,
+                security: RequestSecurityContext { access_path: proxy_path, authentication: GoogleOidcSession { session: s } },
+                authorization_policy: open_write_policy(),
+                deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true },
+                csrf_presented: "csrf-1",
+                observed_at: "2026-09-25T00:05:00Z",
+              ) == Permit
+            _ => false
+          }
+        Permit => false
+      }
+  }
+}
+
+// THE VIEWER LABEL is nobody when authentication is absent — the honest spelling of the
+// pre-login page — and a read never consults it for authorization. (The session arm's spelling
+// is exercised by every write-law control above, which builds sessions through the mint.)
+test fn the_viewer_label_is_nobody_when_authentication_is_absent() -> Bool {
+  authenticated_viewer_label(evidence: AuthAbsent) == ""
+}

@@ -1,6 +1,16 @@
 module gunbc.roadmap_serve
 
-import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
+import extdeps.tailscale.identity { tailnet_identity_login }
+import extdeps.tailscale.serve { ServeStatusUnreadable }
+import extdeps.tailscale.acl { operator_tailscale_acl_policy }
+import gunbc.auth.request_authentication {
+  RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession,
+  request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
+  human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy,
+  ServeActionAssignIssue, ServeActionCommentIssue,
+}
+import gunbc.principal_projection { principal_ref_label }
+import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
 import std.algebra { trim }
 import gunbc.auth.approval_request_submission {
@@ -42,6 +52,7 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
+  RequestSecurityContext,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
@@ -566,7 +577,7 @@ fn serve_publish_handler_response_for_instance(
 // live by watching which pages render. The page describes the decision the URL claims to carry;
 // the POST is where a claim becomes a fact.
 fn approval_confirm_page_response(
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let segment = path_param_value(params: params, name: "capability")
@@ -593,15 +604,18 @@ fn approval_confirm_page_response(
 // things only the request carries -- the method, the capability segment from the path, the
 // AUTHENTICATED IDENTITY and the clock reading -- and to render whatever comes back.
 //
-// The identity comes from request.identity, which the serve entry populated from the header
-// tailscale serve injects. It is not read from the body, a query parameter, or a cookie: those are
-// all supplied by whoever is making the request, and an identity the caller supplies is not an
-// identity. And whether that header is evidence at all is the deployment's to establish, not this
-// handler's to assume: gunbc.auth.approval_decision_store approval_identity_trust says NOT
-// ESTABLISHED while the unit binds 0.0.0.0, and redeem_over_store refuses on that row before it
-// reads anything else. So until the deployment earns the trust, this route answers a located
-// refusal naming the blocker -- which is the honest successor to the 501 it used to answer, not a
-// silent 200 and not a decision nobody recorded.
+// The operator observation comes from the request's ACCESS PATH — the proxy-attributed tailnet
+// login the path modeling vouches for, else absent. It is transport/audit metadata for the
+// consent record, never authentication evidence: it is not read from the body, a query
+// parameter, or a cookie (those are supplied by whoever is making the request), and whether it
+// is evidence at all is the deployment's to establish, not this handler's to assume:
+// gunbc.auth.approval_decision_store approval_identity_trust says NOT ESTABLISHED while the unit
+// binds 0.0.0.0, and redeem_over_store refuses on that row before it reads anything else. So
+// until the deployment earns the trust, this route answers a located refusal naming the blocker
+// -- which is the honest successor to the 501 it used to answer, not a silent 200 and not a
+// decision nobody recorded. THE GOOGLE-PRINCIPAL AXIS OF THIS DECISION IS THE APPROVALS LANE'S
+// CUT (A7): the authenticated session gate and the exact capability conjunction land there; this
+// handler passes the transport observation unchanged.
 //
 // A 503 IS THE DEPLOYMENT'S OR THE STORE'S FAULT, never the operator's: it names what to fix
 // before trying again, and it is the honest successor to the 501 this route answered while the
@@ -614,7 +628,7 @@ fn approval_confirm_page_response(
 // whether or not the trust standing is established (it is derived from the instance bind and is
 // closed while srv1_live_dashboard_instance binds 0.0.0.0), since Clock.Now has no hermetic arm.
 fn approval_decide_response(
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let segment = path_param_value(params: params, name: "capability")
@@ -623,13 +637,13 @@ fn approval_decide_response(
       serve_text_response(
         status: 400,
         content_type: text_plain_utf8,
-        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\ntransport observation: ", tailnet_identity_login(i: tailnet_transport_observation(security: request.security)), "\n"], ""),
       )
     CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } => approval_decide_parsed_response(request: request, segment: segment)
   }
 }
 
-fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -> ServeHttpResponse {
+fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, segment: String) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
@@ -640,13 +654,14 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
     IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
     IdentityHeaderUnattributed { residual: _ } => read_approval_keyring()
   }
+  let transport_observation = tailnet_transport_observation(security: request.security)
   let outcome = redeem_over_store(
     root: approval_decision_store_root,
     trust: approval_identity_trust,
     keyring: keyring,
     method: request.method,
     segment: segment,
-    presented_identity: request.identity,
+    presented_identity: transport_observation,
     observed_at: observed_at,
   )
   let status = match outcome {
@@ -668,7 +683,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
     body: join([
       "approval decision: ", store_redemption_reason(r: outcome), "\n",
       "capability: ", segment, "\n",
-      "identity: ", tailnet_identity_login(i: request.identity), "\n",
+      "transport observation: ", tailnet_identity_login(i: transport_observation), "\n",
       "observed_at: ", observed_at, "\n",
     ], ""),
   )
@@ -679,7 +694,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
 // key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
 // the body and renders the outcome, and the response never carries a link -- links go only to the
 // operator's phone.
-fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
+fn approval_submit_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
@@ -740,15 +755,12 @@ fn serve_issue_detail_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
   let standings = roadmap_standings_read(layout: layout)
-  let viewer = match request.identity {
-    TailnetIdentityAbsent => ""
-    TailnetUser { login } => login as String
-  }
+  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
   let recents = match roadmap_events_read_all(layout: layout) {
     AllEventsRead { envelopes } => map(roadmap_recent_claimed_assignees(envs: envelopes), r => r as String)
     AllEventsReadRefused { step: _, reason: _ } => []
@@ -780,8 +792,12 @@ fn serve_issue_detail_response_over(
 // event-CLI idiom: read, refuse on forked/incomplete history (409), parent = the head, probed
 // clock, append through the carrier. The expected_issue_revision field pins the head the page
 // rendered under: a mismatch is 409 STALE, never a silent chain onto a history the writer never
-// saw — reload and the form re-pins. The author is the request's AUTHENTICATED identity; absent is
-// a deployment fault (403), not a person the backend may act for. A HUMAN ASSIGNEE NEVER
+// saw — reload and the form re-pins. The author is the AUTHENTICATED PRINCIPAL: the write law
+// (gunbc.auth.request_authentication.human_write_admission) admits this route only on the
+// conjunction of a Google OIDC session, action authorization, and the CSRF proof, and the event
+// records the session principal's stable label — tailnet transport alone refuses at the
+// authentication axis with a located reason and is never a person the backend may act for.
+// A HUMAN ASSIGNEE NEVER
 // DISPATCHES: the response records the fact and stops. THE FABRIC ENDPOINT IS THE EXECUTION ENTRY
 // POINT (the Start Work button is retired): after the event lands, the handler drives the SAME
 // launch admission the /dispatch route answers. AN ADMISSION REFUSAL DOES NOT UNDO THE ASSIGNMENT:
@@ -794,17 +810,27 @@ fn serve_issue_detail_response_over(
 fn serve_issue_assign_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   if !issue_detail_node_exists(proj: plan, node_id: node_id) {
     serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
   } else {
-    match request.identity {
-      TailnetIdentityAbsent =>
-        serve_text_response(status: 403, content_type: text_plain_utf8, body: "assignment refused: the request carries no authenticated identity, and the durable record must name who assigned\n")
-      TailnetUser { login } =>
+    let observed_at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+    match human_write_admission(
+      route_path: join(["/issue/", node_id, "/assign"], "") as NonEmptyStr,
+      action: ServeActionAssignIssue,
+      security: request.security,
+      authorization_policy: tracker_write_authorization_policy,
+      deployment_policy: roadmap_deployment_access_policy,
+      csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+      observed_at: observed_at,
+    ) {
+      Deny { refusal } =>
+        serve_text_response(status: 403, content_type: text_plain_utf8, body: concat("assignment refused: ", access_refusal_reason(refusal: refusal)))
+      Permit =>
+        let author = authenticated_write_author_label(security: request.security)
         let raw_assignee = issue_form_field(body: request.body, name: "assignee")
         if !issue_assignee_input_valid(s: raw_assignee) {
           serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: '", raw_assignee, "' is not an email spelling or the fabric endpoint\n"], ""))
@@ -832,8 +858,8 @@ fn serve_issue_assign_response_over(
                   } else {
                     let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
                     let assignee = issue_assignee_canonical(s: raw_assignee) as NonEmptyStr
-                    let return_to = if raw_return_to == "" { login } else { issue_assignee_canonical(s: raw_return_to) as NonEmptyStr }
-                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: login, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: Claimed { assignee: assignee, return_to: return_to }, recorded_at: at }) {
+                    let return_to = if raw_return_to == "" { author } else { issue_assignee_canonical(s: raw_return_to) as NonEmptyStr }
+                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: author, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: Claimed { assignee: assignee, return_to: return_to }, recorded_at: at }) {
                       EventAppended { id } =>
                         serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee as String, event_id: id as String)
                       EventAlreadyPresent { id } =>
@@ -847,6 +873,16 @@ fn serve_issue_assign_response_over(
           }
         }
     }
+  }
+}
+
+// THE AUTHOR OF AN ADMITTED HUMAN WRITE. Only reachable past the write law's Permit arm, which
+// only a GoogleOidcSession can produce; every other arm is refused above, so the fallback string
+// is the loud spelling of an unreachable state, never a value that can reach the durable record.
+fn authenticated_write_author_label(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> NonEmptyStr {
+  match security.authentication {
+    GoogleOidcSession { session } => principal_ref_label(p: session.principal) as NonEmptyStr
+    _ => "unreachable: admitted human write without a session principal" as NonEmptyStr
   }
 }
 
@@ -910,11 +946,13 @@ fn serve_fabric_assignment_response(node_id: String, assignee: String, event_id:
 // NOTHING appended (control 7: retries never duplicate; this is the duplicate-append-refused
 // arm). A composer that minted no key (the no-JS native form) still never duplicates a retry on
 // an unchanged history: same author, same body, same head is the retry. Visibility is recorded
-// ("public" this cut). The author is the authenticated identity; the expected_revision guard
-// matches the assign route — 409 STALE on a moved head.
+// ("public" this cut). The author is the AUTHENTICATED PRINCIPAL — the same write law as the
+// assign route: Google OIDC session + action authorization + CSRF, with the event recording the
+// session principal's stable label; tailnet transport alone refuses at the authentication axis.
+// The expected_revision guard matches the assign route — 409 STALE on a moved head.
 fn serve_issue_comment_response_over(
   instance: HostDashboardInstance,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
@@ -922,10 +960,20 @@ fn serve_issue_comment_response_over(
   if !issue_detail_node_exists(proj: plan, node_id: node_id) {
     serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
   } else {
-    match request.identity {
-      TailnetIdentityAbsent =>
-        serve_text_response(status: 403, content_type: text_plain_utf8, body: "comment refused: the request carries no authenticated identity, and the durable record must name who wrote\n")
-      TailnetUser { login } =>
+    let observed_at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+    match human_write_admission(
+      route_path: join(["/issue/", node_id, "/comment"], "") as NonEmptyStr,
+      action: ServeActionCommentIssue,
+      security: request.security,
+      authorization_policy: tracker_write_authorization_policy,
+      deployment_policy: roadmap_deployment_access_policy,
+      csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+      observed_at: observed_at,
+    ) {
+      Deny { refusal } =>
+        serve_text_response(status: 403, content_type: text_plain_utf8, body: concat("comment refused: ", access_refusal_reason(refusal: refusal)))
+      Permit =>
+        let author = authenticated_write_author_label(security: request.security)
         let body = issue_comment_body_of(wire: request.body)
         if trim(body) == "" {
           serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: the body is empty\n")
@@ -951,14 +999,14 @@ fn serve_issue_comment_response_over(
                   let comments = roadmap_issue_comments(envs: envelopes)
                   if key_field != "" && roadmap_comment_created_key_present(envs: envelopes, key: key_field as NonEmptyStr) {
                     serve_comment_recorded_response(node_id: node_id, comments: comments, key: key_field, event_id: "", already_present: true)
-                  } else if key_field == "" && roadmap_comment_retry_present(envs: envelopes, author: login, body: body as NonEmptyStr, head: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }) {
+                  } else if key_field == "" && roadmap_comment_retry_present(envs: envelopes, author: author, body: body as NonEmptyStr, head: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }) {
                     serve_comment_recorded_response(node_id: node_id, comments: comments, key: "", event_id: "", already_present: true)
                   } else {
                     let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                    let comment_key = if key_field == "" { join([login as String, ":", body], "") as NonEmptyStr } else { key_field as NonEmptyStr }
-                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: login, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: CommentCreated { key: comment_key, body: body as NonEmptyStr, visibility: "public" as NonEmptyStr }, recorded_at: at }) {
+                    let comment_key = if key_field == "" { join([author as String, ":", body], "") as NonEmptyStr } else { key_field as NonEmptyStr }
+                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: author, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: CommentCreated { key: comment_key, body: body as NonEmptyStr, visibility: "public" as NonEmptyStr }, recorded_at: at }) {
                       EventAppended { id } =>
-                        serve_comment_recorded_response(node_id: node_id, comments: [IssueComment { ordinal: count(comments) + 1, key: comment_key, author: login, body: "", visibility: "public" as NonEmptyStr, created_at: "", edited_at: "", deleted: false }], key: comment_key as String, event_id: id as String, already_present: false)
+                        serve_comment_recorded_response(node_id: node_id, comments: [IssueComment { ordinal: count(comments) + 1, key: comment_key, author: author, body: "", visibility: "public" as NonEmptyStr, created_at: "", edited_at: "", deleted: false }], key: comment_key as String, event_id: id as String, already_present: false)
                       EventAlreadyPresent { id } =>
                         serve_comment_recorded_response(node_id: node_id, comments: comments, key: comment_key as String, event_id: id as String, already_present: true)
                       EventAppendRefused { id: _, step, reason } =>
@@ -1062,7 +1110,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
 // identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a
 // 400 that names the valid label set, never a fabricated arm.
 
-fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
+fn sandbox_echo_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let status = uri_query_param(path: request.path, key: "status")
   match belt_dispatch_result_for_label(wire_label: status) {
     Present { value: r } =>
@@ -1112,7 +1160,7 @@ fn roadmap_serve_invoke_over(
   daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match handler {
@@ -1188,7 +1236,7 @@ fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
@@ -1205,7 +1253,7 @@ fn roadmap_serve_invoke_for_instance(
 fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
@@ -1357,7 +1405,7 @@ fn roadmap_serve_selection_response_over(
   plan: RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match sel {
@@ -1387,7 +1435,7 @@ fn roadmap_serve_selection_response_over(
 fn roadmap_serve_selection_response_for_instance(
   instance: HostDashboardInstance,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
@@ -1402,7 +1450,7 @@ fn roadmap_serve_selection_response_for_instance(
 
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
@@ -1411,6 +1459,30 @@ fn roadmap_serve_selection_response(
     request: request,
     release_revision: release_revision,
   )
+}
+
+// THE REQUEST-SECURITY CONTEXT, built at the one seam every route shares. The access path is
+// modeled from the instance bind and the tailnet header through the ACL and serve-route
+// authorities (a header alone mints no tailnet path — the readback does). The authentication
+// evidence is AuthAbsent at this seam because the serve runtime does not yet hand a session
+// standing across the socket seam (frontier: the session-cookie channel lands with the serve
+// runtime's security wiring) — so until then every write route refuses at the authentication
+// axis of gunbc.auth.request_authentication.human_write_admission, loudly, by construction, and
+// no request is authenticated by tailnet transport.
+fn roadmap_serve_request_security(
+  instance: HostDashboardInstance,
+  tailscale_identity: String,
+) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+  RequestSecurityContext {
+    access_path: request_access_path_of(
+      listen_host: instance.listen_host,
+      tailscale_header: tailscale_identity,
+      serve_status: ServeStatusUnreadable,
+      serve_route: none,
+      acl_policy: operator_tailscale_acl_policy,
+    ),
+    authentication: AuthAbsent,
+  }
 }
 
 fn roadmap_serve_respond_over(
@@ -1453,7 +1525,10 @@ fn roadmap_serve_respond_over(
               method: m,
               path: path,
               body: body,
-              identity: tailnet_identity_of(header_value: tailscale_identity),
+              security: roadmap_serve_request_security(
+                instance: instance,
+                tailscale_identity: tailscale_identity,
+              ),
             },
             release_revision: release_revision,
           )
@@ -1498,17 +1573,21 @@ fn roadmap_serve_respond(
   )
 }
 
-// THE IDENTITY ARGUMENT, and why it arrives as one named value rather than a header bag.
+// THE TAILSCALE_HEADER ARGUMENT — the raw Tailscale-User-Login string — and why it still arrives
+// as one named value rather than a header bag.
 //
 // `tailscale serve` authenticates the tailnet device and user before proxying, and injects the
-// resulting login. That is the recipient authentication the approval loop needs: a signed
-// capability establishes WHAT is being decided, and this establishes WHO is deciding, so an
-// approval link that leaks to someone unrelated is useless to them -- they cannot present the
-// operator's identity, and on this deployment they cannot reach the socket at all.
+// resulting login. UNDER THE 2026-09-25 RULING THAT LOGIN IS TRANSPORT METADATA, never
+// application identity: it is one INPUT to the access-path modeling (which vouches for it only
+// behind a serve-status readback and the ACL revision), and the request-security context carries
+// it strictly separate from the authentication evidence. A signed capability establishes WHAT
+// is being decided; the Google OIDC session establishes WHO is deciding; the tailnet
+// observation, where attributed, is the audit trail the consent record may name.
 //
 // It is threaded through the entry rather than read at the handler because there is exactly one
 // entry, and a fact every route may need to consult belongs on the request that reaches them all.
-// Handlers that do not need it ignore it; the approval routes refuse without it.
+// Handlers that do not need it ignore it; the write routes consult the write law, which refuses
+// on the authentication axis until a Google session arrives at the seam.
 //
 // THE PLAN AUTHORITY IS THE PARAMETER, AND A SERVE ENTRY IS THE WHOLE INTEGRATION.
 //

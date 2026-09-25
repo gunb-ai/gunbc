@@ -1,6 +1,8 @@
 module extdeps.http.server
 
 import extdeps.tailscale.identity { TailnetIdentity }
+import extdeps.tailscale.serve { TailscaleServeRouteKey }
+import std.content_hash { ContentHash }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, HttpStatus, Port }
 import extdeps.external_authority { ExternalAuthority }
@@ -211,21 +213,50 @@ type ServedStaticRouteTable {
   routes: List<ServedStaticRoute>
 }
 
-// THE AUTHENTICATED IDENTITY IS PART OF THE REQUEST, not something a handler fetches.
+// THE REQUEST-SECURITY CONTEXT, carried ON the request for the same reason identity was: a
+// route that needs to know how a request arrived and what evidence it carries needs both at the
+// same moment it needs the path, and a second channel would let the two disagree. It is TWO
+// FACTS, NEVER ONE:
 //
-// It is carried here rather than passed alongside because a route that needs to know who is asking
-// needs it at the same moment it needs the path, and a second channel for "who" would let the two
-// disagree -- a handler holding request A's path and request B's identity is a shape worth making
-// unwritable rather than merely avoiding. Handlers with nothing to authenticate ignore the field.
+//   access_path      -- HOW the request reached the handler: DirectHttps, TailnetProxy, or
+//     LocalDev. Transport is not identity: the tailnet arm carries the observed login as
+//     TRANSPORT metadata (audit vocabulary, never authentication evidence — a
+//     Tailscale-User-Login header is unauthenticated on the wire and trustworthy only when the
+//     proxy is provably the sole route, which is a deployment fact modeled by the readback
+//     below, never assumed from the header).
+//   authentication   -- WHAT evidence the request presents: the consumer's own vocabulary
+//     (gunbc.auth.request_authentication projects GoogleOidcSession | FabricServiceEvidence |
+//     AuthAbsent), supplied as the type argument. Absent is a real inhabitant and the correct
+//     one for a request that presented no session; it is not anonymity and it authorizes
+//     nothing.
 //
-// TailnetIdentityAbsent is a real inhabitant and the correct one for every request that did not
-// arrive through the authenticating proxy. It is not anonymity; extdeps.tailscale.identity carries
-// the argument for why resolving it to a caller would be an absorbing fallback.
-type ServeHttpRequest {
+// THE TAILNET PATH IS MODELED THROUGH THE EXISTING AUTHORITIES, not as ambient reachability:
+// the arm carries the tailscale serve route key and the ACL policy revision the modeling was
+// computed under (the versioned readback), so a deployment that stops routing through the
+// proxy, or whose ACL drifts, changes the modeled path rather than silently widening it.
+type TailnetRouteReadback
+  = TailnetRouteReadbackObserved { acl_revision: ContentHash, serve_route: TailscaleServeRouteKey }
+  | TailnetRouteReadbackUnobserved { reason: String }
+
+type RequestAccessPath
+  = AccessPathDirectHttps
+  | AccessPathTailnetProxy { transport_observation: TailnetIdentity, route_readback: TailnetRouteReadback }
+  | AccessPathLocalDev
+
+type RequestSecurityContext<Authentication> {
+  access_path: RequestAccessPath
+  authentication: Authentication
+}
+
+// THE AUTHENTICATION EVIDENCE IS A TYPE ARGUMENT because extdeps owns the request SHAPE and the
+// interface stays realization-free (DESIGN 3): it cannot name gunbc's session vocabulary. A
+// handler that needs nothing ignores the field; a handler that writes consults the law in
+// gunbc.auth.request_authentication, which is where the two facts stay separate.
+type ServeHttpRequest<Authentication> {
   method: HttpMethod
   path: String
   body: String
-  identity: TailnetIdentity
+  security: RequestSecurityContext<Authentication>
 }
 
 type ServeHttpResponse {
