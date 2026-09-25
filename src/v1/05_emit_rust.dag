@@ -183,7 +183,7 @@ import v1.compiler.infer_env {
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
-  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType,
+  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier,
   OperandShapeFacts, OperandDeclaration,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
@@ -214,6 +214,7 @@ import v1.compiler.infer {
   build_params_scope, extend_scope,
   build_emit_graph_info,
   declared_return_type_node,
+  match_unguarded_absent_arm_index, optional_scrutinee_binding_is_present,
   expr_span,
   resolved_type_name,
   expand_type_for_field_access,
@@ -8677,7 +8678,7 @@ fn v1_fn_body_equality_bound_param_names(
   )
 }
 
-// Matches Eq/Ne bare exactly as is_string_comparison does in this module. The operator is genuinely
+// Matches the Eq/Ne half of is_string_comparison in this module, bare. The operator is genuinely
 // a spelling, so reading it as one is correct; it is the OPERANDS that must be resolved by type.
 fn is_equality_comparison(op: BinOp) -> Bool {
   match op {
@@ -9160,6 +9161,20 @@ fn rust_seam_primitive_name(module_path: String, name: String) -> String {
   }
 }
 
+// A REALIZED SEAM IS NOT RECURSION. Its self-call resolves through the roster to the runtime
+// bridge, so the body's one call is to v1_rt, never to this function -- but the tail-call and
+// stack-growth lowerings key recursion on the callee's NAME, so they read the self-call as a tail
+// self-call and lowered std.bytes bytes_octets to `loop { __tco_loop_b = b; continue; }`, a body
+// that compiles and never returns (the class gunbc.recurring_failure_mode
+// host_seam_self_call_diverges_when_its_arm_is_absent names, reached with the arm PRESENT). The
+// call-target authority already answers which declaration the call reaches; this asks the same
+// registry as the unrealized arm so the two cannot disagree, and a realized seam's body is emitted
+// as the ordinary routed call.
+fn rust_host_seam_is_realized(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices)
+    && rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name))
+}
+
 fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices)
     && rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) == false
@@ -9270,8 +9285,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
-  let use_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
-  let needs_stacker = is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
+  let realized_seam = rust_host_seam_is_realized(module_path: scope.module_name, name: name, body: body, source_indices: si)
+  let use_tco = !realized_seam && is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
+  let needs_stacker = !realized_seam && is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
   if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
     let kw = rust_items().func_keyword
     return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
@@ -13542,10 +13558,28 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
   concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
 }
 
-fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node) -> List<String> {
+// A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE, and the emitted pattern must
+// say so. v1.compiler.infer types the bare binding in `match opt { null => a  v => b }` at the
+// scrutinee's REQUIRED type (optional_scrutinee_binding_is_present over
+// match_unguarded_absent_arm_index); the body is emitted against that narrowed type. Emitting the
+// binding as a bare `v` bound the whole Option<T>, so the body met an Option where it was typed T
+// (E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>). The narrowing is read
+// from the checker's own predicate, never re-derived here, so the pattern and the typing cannot
+// disagree about which arm narrows: in exactly that arm the binding is emitted `Some(v)`, which the
+// earlier `None` arm keeps exhaustive. The tail-call lowering's own arm emitter
+// (emit_typed_tco_match_arm) and the String-literal re-emission (emit_typed_match's needs_string_from
+// arm) read the same predicate, so the three match renderings agree. In that re-emission a string
+// LITERAL arm over an optional scrutinee is `Some(ref __s)` as well: a literal matches only a
+// present value (the interpreter's Null never equals a Str), which is pattern semantics over an
+// optional carrier rather than the checker's narrowing, so it is keyed on the scrutinee's cardinality.
+fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
-    arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
+    let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
+    arms |> enumerate |> map(pair =>
+      emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false,
+        present_binding: optional_scrutinee_binding_is_present(scrut_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
+    )
   } else {
     let entries = arms |> map(arm => RcGroupedArmEntry {
       arm: arm,
@@ -13566,7 +13600,7 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
         Absent =>
           RcGroupedArmAcc {
             seen: acc.seen,
-            out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
+            out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
           }
       }
     )
@@ -13592,7 +13626,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
     Absent => type_variable_node(id: "match_result")
   }
-  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type)
+  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee))
   let arms_str = arm_strs |> join(separator: "\n")
 
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
@@ -13607,7 +13641,11 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   } else if needs_as_str {
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
-    let sf_arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true))
+    let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
+    let sf_scrut_optional = resolved_type(n: scrutinee).return_cardinality == CardOptional
+    let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
+      present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)
+        || (sf_scrut_optional && is_string_lit_pattern(p: arm_pattern(n: pair.second)))))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
@@ -13630,7 +13668,7 @@ fn emit_typed_match_arm_body_str(arm: Node, registry: Map<String, ItemInfo>, sco
   }
 }
 
-fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool) -> String {
+fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool, present_binding: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -13640,13 +13678,19 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   let pat_str = if string_from_mode {
     match arm_pat {
       LitPattern { value: v } => match v {
-        LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
+        LitStr { value: s } =>
+          if present_binding { concat("Some(ref __s) if __s == \"", escape_string_literal_body(s: s), "\"") }
+          else { concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"") }
         _ => rust_literal_for_pattern(value: v)
       }
-      _ => emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+      _ =>
+        if present_binding { concat("Some(", emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info), ")") }
+        else { emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info) }
     }
   } else if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+  } else if present_binding {
+    concat("Some(", emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info), ")")
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
@@ -14580,6 +14624,8 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
     HostRealizedOperand { reason: HostContainer }
   } else if authored == "" {
     HostRealizedOperand { reason: UnnamedSynthesizedType }
+  } else if is_host_text_carrier_type(n: rt, source_indices: scope.type_env.source_indices) {
+    HostRealizedOperand { reason: HostTextCarrier }
   } else {
   match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     Absent => OperandIdentityUnavailable { facts: OperandShapeFacts {
@@ -14659,6 +14705,8 @@ fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node
       } else {
         concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")")
       }
+    } else if is_optional_string_ordering(op: op, left: left, right: right, source_indices: scope.type_env.source_indices) {
+      concat("compile_error!(\"operator realization: `", op_str, "` over an optional String has no interpreter ordering (Null against Str refuses there), so it has no faithful Rust realization\")")
     } else {
       let both_string = is_string_typed_expr(e: left, source_indices: scope.type_env.source_indices) && is_string_typed_expr(e: right, source_indices: scope.type_env.source_indices)
       let is_str_concat = op_str == "+" && both_string
@@ -14788,12 +14836,40 @@ fn rust_append_method_call_appended_arg(args: List<Node>) -> Node? {
   }
 }
 
+// STRING ORDERING IS THE INTERPRETER'S ORDERING, REALIZED THROUGH THE SAME HOST SEAM AS EQUALITY.
+// The interpreter's (Value::Str, Value::Str) arm answers Lt/Gt/Le/Ge with the host string's own
+// comparison -- byte-lexicographic over UTF-8, which is Unicode scalar order -- so the emitted
+// realization converts both operands to the host &str exactly as Eq/Ne already do and applies the
+// same operator. Ordering ops were absent here, so `a < b` over two String-typed values (Timestamp
+// in extdeps.standards.rfc_5280 x509_validity_at, gunbc.auth.approval_capability utc_instant_before)
+// fell through to a raw `<` over the carrier and refused at rustc. Optional operands are NOT
+// admitted for ordering: the interpreter has no Null-vs-Str ordering arm (it refuses), and
+// Option<&str>'s None-first order would be a fabricated answer, so is_optional_string_ordering
+// refuses that shape at emission with a compile_error! naming why, rather than ordering silently.
 fn is_string_comparison(op: BinOp, left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let both = is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
   match op {
-    Eq => is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
-    Ne => is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
+    Eq => both
+    Ne => both
+    Lt => both && !is_optional_typed_expr(e: left) && !is_optional_typed_expr(e: right)
+    Gt => both && !is_optional_typed_expr(e: left) && !is_optional_typed_expr(e: right)
+    Le => both && !is_optional_typed_expr(e: left) && !is_optional_typed_expr(e: right)
+    Ge => both && !is_optional_typed_expr(e: left) && !is_optional_typed_expr(e: right)
     _ => false
   }
+}
+
+fn is_optional_string_ordering(op: BinOp, left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let ordering = match op {
+    Lt => true
+    Gt => true
+    Le => true
+    Ge => true
+    _ => false
+  }
+  ordering
+    && is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
+    && (is_optional_typed_expr(e: left) || is_optional_typed_expr(e: right))
 }
 
 fn is_string_typed_expr(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -14949,8 +15025,10 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
-      let arm_strs = arm_list |> map(arm =>
-        emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
+      let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
+      let arm_strs = arm_list |> enumerate |> map(pair =>
+        emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_rc_option_ref {
@@ -15027,7 +15105,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registr
     emit_default_return: frame => emit_rust_tco_default_return(frame: frame, registry: registry, shared_types: shared_types, emit_info: emit_info))
 }
 
-fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
+fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -15036,6 +15114,8 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let rc_analysis = rc_pattern_analysis_with_box_fields(rc_analysis: rc_analysis_raw, arm_pat: arm_pat, shared_types: shared_types, emit_info: emit_info, scope: scope)
   let pat_str = if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+  } else if present_binding {
+    concat("Some(", emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info), ")")
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
