@@ -17339,6 +17339,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
       "            std::process::exit(0);", "\n",
       "        \}", "\n",
       "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",
+      "            print!(\"\{text\}\");", "\n",
       "            eprintln!(\"REFUSED: \{reason\}\");", "\n",
       "            std::process::exit(*code as i32);", "\n",
       "        \}", "\n",
