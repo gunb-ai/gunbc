@@ -42,16 +42,16 @@ fn no_infoplist_key_settings(v: YamlValue) -> Bool {
 
 fn project_carries_required_content(v: YamlValue) -> Bool {
   let props = ["targets", "Approve", "info", "properties"]
-  (at(v: v, path: append(props, items: ["UILaunchScreen"])) == YamlKeyPresent { value: YamlMapping { entries: [] } })
-    && is_string(v: v, path: append(props, items: ["NSFaceIDUsageDescription"]), expected: "Approving a request signs it with a key that only unlocks with Face ID.")
-    && is_string(v: v, path: append(props, items: ["CFBundleDisplayName"]), expected: "Approve")
-    && (at(v: v, path: append(props, items: ["UIBackgroundModes"])) == YamlKeyPresent { value: YamlSequence { elements: [YamlString { value: "remote-notification" }] } })
-    && (at(v: v, path: append(props, items: ["UISupportedInterfaceOrientations"])) == YamlKeyPresent { value: YamlSequence { elements: [
+  (at(v: v, path: concat(props, ["UILaunchScreen"])) == YamlKeyPresent { value: YamlMapping { entries: [] } })
+    && is_string(v: v, path: concat(props, ["NSFaceIDUsageDescription"]), expected: "Approving a request signs it with a key that only unlocks with Face ID.")
+    && is_string(v: v, path: concat(props, ["CFBundleDisplayName"]), expected: "Approve")
+    && (at(v: v, path: concat(props, ["UIBackgroundModes"])) == YamlKeyPresent { value: YamlSequence { elements: [YamlString { value: "remote-notification" }] } })
+    && (at(v: v, path: concat(props, ["UISupportedInterfaceOrientations"])) == YamlKeyPresent { value: YamlSequence { elements: [
       YamlString { value: "UIInterfaceOrientationPortrait" }, YamlString { value: "UIInterfaceOrientationPortraitUpsideDown" },
       YamlString { value: "UIInterfaceOrientationLandscapeLeft" }, YamlString { value: "UIInterfaceOrientationLandscapeRight" }
     ] } })
-    && is_string(v: v, path: append(props, items: ["ApproveServerHost"]), expected: "$(APPROVE_SERVER_HOST)")
-    && is_string(v: v, path: append(props, items: ["ApproveApnsEnvironment"]), expected: "$(APNS_ENVIRONMENT)")
+    && is_string(v: v, path: concat(props, ["ApproveServerHost"]), expected: "$(APPROVE_SERVER_HOST)")
+    && is_string(v: v, path: concat(props, ["ApproveApnsEnvironment"]), expected: "$(APNS_ENVIRONMENT)")
     && is_string(v: v, path: ["targets", "Approve", "settings", "base", "PRODUCT_BUNDLE_IDENTIFIER"], expected: "ai.gunb.approve")
     && is_string(v: v, path: ["settings", "base", "SWIFT_VERSION"], expected: "5.10")
     && is_string(v: v, path: ["targets", "Approve", "info", "path"], expected: "Approve/Info.plist")
