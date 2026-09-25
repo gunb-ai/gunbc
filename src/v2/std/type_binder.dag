@@ -207,7 +207,10 @@ fn binder_conj_names(conj: Node) -> List<Symbol> {
   })
 }
 
-// WHERE THE MARKERS MAY STAND, stated over the whole tree. The type-parameter edge sits only on an
+// WHERE THE MARKERS MAY STAND, stated over the whole tree. Which wrapper a node is, is decided ONCE,
+// by type_decl_view: a node the view classifies as none of the three generic shapes is PlainTypeDecl,
+// and a plain node carries no marker at all -- so a Conj holding <type-parameters> beside an
+// unrelated edge is refused here because the view gives it no wrapper arm, not by a second list. The type-parameter edge sits only on an
 // Arrow (a fn's signature) or in a type-declaration wrapper, once, targeting a well-formed binder
 // Conj; the type-body and type-alias edges sit only in a wrapper; and an Arrow's non-body Named edge -- which
 // v2.std.node admits by SHAPE -- is the type-parameter edge. So a member carrying a binder among its
@@ -222,10 +225,11 @@ fn type_binder_node_conforms(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
     _ =>
-      if type_decl_wrapper_is(n: n) || type_alias_wrapper_is(n: n) || type_opaque_wrapper_is(n: n) {
-        params_ok
-      } else {
-        (params == 0) && (bodies == 0)
+      match type_decl_view(target: n) {
+        PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
+        GenericTypeDecl { binders: _, member: _ } => params_ok
+        GenericTypeAlias { binders: _, aliased: _ } => params_ok
+        GenericOpaqueTypeDecl { binders: _ } => params_ok
       }
   }
 }

@@ -13,7 +13,9 @@ import v2.std.collection {
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -78,21 +80,19 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
 // which keeps the binders an instantiation of `List<Int>` must substitute through -- and the index does
 // not descend into it: an aliased expression's parts (a qualified head's spine, its arguments) are not
 // declarations of the alias, and a binder is never a declared identity.
-fn symbol_index_declared_member(target: Node) -> Node {
-  match type_decl_view(target: target) {
-    GenericTypeDecl { binders: _, member: m } => m
-    GenericTypeAlias { binders: _, aliased: _ } => target
-    GenericOpaqueTypeDecl { binders: _ } => target
-    PlainTypeDecl { member: m } => m
-  }
+// The node a declared name binds to, and the member the index descends into when the declaration
+// declares members -- one dispatch on the view for both.
+type SymbolIndexDeclared {
+  bound: Node
+  members: Optional<Node>
 }
 
-fn symbol_index_declares_members(target: Node) -> Bool {
+fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   match type_decl_view(target: target) {
-    GenericTypeDecl { binders: _, member: _ } => true
-    GenericTypeAlias { binders: _, aliased: _ } => false
-    GenericOpaqueTypeDecl { binders: _ } => false
-    PlainTypeDecl { member: _ } => true
+    GenericTypeDecl { binders: _, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
+    GenericTypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    GenericOpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
   }
 }
 
@@ -117,20 +117,20 @@ fn symbol_index_fill_containment_edge(
         )
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let member = symbol_index_declared_member(target: edge.target)
+        let declared = symbol_index_declared(target: edge.target)
         let with_binding = symbol_index_insert(
           index: index,
           qualified_path: child_path,
-          resolved: member
+          resolved: declared.bound
         )
-        if symbol_index_declares_members(target: edge.target) {
-          symbol_index_fill_containment_node(
-            index: with_binding,
-            path: child_path,
-            node: member
-          )
-        } else {
-          with_binding
+        match declared.members {
+          Present { value: member } =>
+            symbol_index_fill_containment_node(
+              index: with_binding,
+              path: child_path,
+              node: member
+            )
+          Absent => with_binding
         }
       }
     Positional =>
