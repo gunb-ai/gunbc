@@ -1834,6 +1834,20 @@ fn node_admits_list_literal(n: Node, source_indices: Map<String, NewlineIndex>) 
            })
 }
 
+// A LAMBDA ELEMENT'S VALUE IS ITS ARROW, but its typed node carries its BODY type, so a list
+// literal typed from its first element named its element as the lambda's return -- or, under a
+// generic body, as an unbound variable: [fn() { none }] against List<fn() -> Int?> was typed
+// List<T>, and the emitter had no arrow to realize each element at. Where the declared element is
+// an arrow and every element is a lambda, the declared arrow IS the element type.
+fn declared_callable_list_element(elem_expected: Node?, elements: List<Node>) -> Node? {
+  match elem_expected {
+    Present { value: de } =>
+      if de.connective == Arrow && elements |> all(e => match e.expr_data { ExprLambda => true  _ => false }) { Present { value: de } }
+      else { none }
+    Absent => none
+  }
+}
+
 fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) != ""
     || n.children |> count > 0
@@ -8373,7 +8387,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => list_literal_optional_member_diags(typed_elements: typed_elements, scope: scope)
       }
       let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
-      let elem_type_node = if count(elem_results) > 0 {
+      let declared_callable_elem = declared_callable_list_element(elem_expected: elem_expected, elements: elements)
+      let elem_type_node = if declared_callable_elem != none {
+        match declared_callable_elem { Present { value: de } => de  Absent => unit_type }
+      } else if count(elem_results) > 0 {
         match first(elem_results) {
           Present { value: r } => resolved_type(n: r.typed)
           Absent => unit_type

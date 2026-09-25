@@ -62,8 +62,14 @@ fn resolved_type(n: Node) -> Node {
   }
 }
 
+// A CHILD POSITION'S TYPE IS THE CHILD ITSELF WHEN THE CHILD IS A CALLABLE TYPE. An Arrow type node
+// carries its RETURN type in inferred (make_callable_type), so reading inferred off it answered the
+// return: List<fn(Int) -> Int> had element Int, a lambda parameter bound under it was not callable,
+// and its call refused as "function 'r' not found in scope".
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none { resolved_type(n: ch) } else { ch }
+  if ch.connective == Arrow { ch }
+  else if ch.inferred != none { resolved_type(n: ch) } else { ch }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
