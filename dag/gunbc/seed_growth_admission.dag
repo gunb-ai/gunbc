@@ -5,6 +5,7 @@ import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.service_owner_pull_seed_growth { service_owner_pull_seed_growth_justification }
+import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
 import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
   persisted_resolved_graph_format_wall_seed_growth_justification,
   resolved_graph_provider_ctx_reuse_seed_growth_justification
@@ -313,6 +314,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     bare_reference_channel_outcome_seed_growth_justification,
     service_owner_pull_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
+    unimported_bare_provider_gate_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification
   ]
 }

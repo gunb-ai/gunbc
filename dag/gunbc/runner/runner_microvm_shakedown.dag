@@ -22,8 +22,6 @@ import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image, runner
 import gunbc.runner_microvm_slot_unit { microvm_controller_firecracker_release }
 import extdeps.virtualization.firecracker { FirecrackerRelease }
 import extdeps.github.actions_runner { ActionsRunnerRelease }
-import extdeps.github.actions_jit_runner { JitRunnerGroupId }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 data runner_microvm_shakedown_disposition: Disposition = SingleAuthority
 
@@ -144,12 +142,3 @@ fn microvm_shakedown_offer(slot: RunnerSlotIdentity) -> SupplierOffer<NonEmptySt
   }
 }
 
-// THE RUNNER GROUP THE ATTEMPT REGISTERS INTO. GitHub creates every organization with one runner
-// group named Default whose id is 1; the fleet's host slots register into it. The figure is
-// TranscribedUncited with its read obligation named: the org_runner_roster_observe mode reads
-// registrations, not groups, so the id has no producer in this corpus yet.
-data microvm_shakedown_runner_group_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "read the organization's runner groups (GET the organization's actions runner-groups) through gunbc.fleet.org_actions_inspection and cite the Default group's id from that response" as NonEmptyStr,
-}
-
-data microvm_shakedown_runner_group: JitRunnerGroupId = JitRunnerGroupId { value: 1 }

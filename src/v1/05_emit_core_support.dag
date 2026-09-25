@@ -178,11 +178,24 @@ fn to_upper_char(ch: Int) -> String {
 fn sanitize_service_name(name: String) -> String {
   let parts = name |> split(delimiter: ".")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
-  pascal_parts |> join(separator: "")
+  pascal_parts |> join(separator: "__")
 }
 
-// THE PROJECTION IS NOT INJECTIVE. The refusal is emitted_symbol_collision_diagnostics, called
-// from every target emitter. The class is gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective.
+// THE SEGMENT BOUNDARY SURVIVES THE PROJECTION. A dotted service's segments are joined with `__`,
+// so every dotted service symbol carries a `__` -- an element no authored type name in the corpus
+// carries -- and `type GitWorktree` beside `service git.Worktree` emits `GitWorktree` and
+// `Git__Worktree`, two symbols. Joining with nothing erased the boundary, which is what made the
+// projection many-to-one against the type namespace
+// (gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective).
+//
+// WHAT REMAINS NON-INJECTIVE IS AUTHORED, NOT PROJECTED, AND IS REFUSED RATHER THAN RENAMED.
+// Type names range over the whole identifier alphabet, so no spelling can be injective against
+// every POSSIBLE type name. The residue: an undotted service with a type's exact name, a type
+// authored with a `__` into the dotted-service space, two dotted services differing only in a
+// segment's first-letter case, or a segment beginning or ending with `_` (`a_.b` and `a._b` both
+// render `A___B`). Every one reaches emitted_symbol_collision_diagnostics, which refuses it typed
+// and located, called from every target emitter. The emitted crate root admits the `__` spelling
+// through its `non_camel_case_types` allowance.
 
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars
@@ -199,8 +212,14 @@ fn capitalize_first(s: String) -> String {
   }
 }
 
+// THE PARAMETER NAME KEEPS THE BOUNDARY-FREE SPELLING. `to_snake` of `Git__Worktree` is
+// `git___worktree`, which rustc's `non_snake_case` refuses under `-D warnings` at every function
+// that takes the service. A parameter lives in a function's own scope, beside other parameters
+// and never beside a type, so the type-namespace collision the struct symbol had cannot reach it.
+// Its residue -- one function demanding two services whose boundary-free spellings coincide -- is
+// rustc's duplicate-parameter refusal, loud and located at the function, not a silent overwrite.
 fn service_var_name(service_name: String) -> String {
-  to_snake(name: sanitize_service_name(name: service_name))
+  to_snake(name: sanitize_service_name(name: service_name) |> split(delimiter: "__") |> join(separator: ""))
 }
 
 fn to_pascal(name: String) -> String {

@@ -106,6 +106,7 @@ pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, floor_seam, make_eval_context,
     make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
+    unimported_bare_provider_entry_refusals,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
@@ -9444,7 +9445,7 @@ fn bare_reference_pull_paths_for_source(
         sf,
         index,
         |root| closure_name_census(index, root),
-        |provider| {
+        |_name, _module, provider| {
             for path in import_closure_live_paths_with_facts(provider, &index.module_graph_facts) {
                 let path = workspace_relative_repo_path(&path);
                 if seen.insert(path.clone()) {
@@ -9455,6 +9456,56 @@ fn bare_reference_pull_paths_for_source(
         },
     )?;
     Ok(pulled)
+}
+
+/// One bare reference in a file that has switched its bare channel off (gate one: it declares
+/// an import line) and whose declarer lies OUTSIDE that file's own import closure. The loader
+/// never pulls such a declarer for this file, so the name resolves through the census only and
+/// the entry route realizes it by accident of what else the closure imports, or not at all
+/// (`gunbc.recurring_failure_mode` `bare_reference_channel_declines_a_pull_in_silence`).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct UnimportedBareProvider {
+    pub(crate) file: String,
+    pub(crate) name: String,
+    pub(crate) provider_module: String,
+    pub(crate) provider: String,
+}
+
+/// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
+/// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
+/// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
+/// bare channel and owes nothing here.
+pub(crate) fn unimported_bare_providers(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+) -> Result<Vec<UnimportedBareProvider>, String> {
+    if !source_declares_import_lines(&sf.content) {
+        return Ok(Vec::new());
+    }
+    let file = workspace_relative_repo_path(&sf.path);
+    let closure: HashSet<String> =
+        import_closure_live_paths_with_facts(&sf.path, &index.module_graph_facts)
+            .iter()
+            .map(|p| workspace_relative_repo_path(p))
+            .collect();
+    let mut out = BTreeSet::new();
+    visit_bare_reference_providers(
+        sf,
+        index,
+        |root| closure_name_census(index, root),
+        |name, module, provider| {
+            if provider != file && !closure.contains(provider) {
+                out.insert(UnimportedBareProvider {
+                    file: file.clone(),
+                    name: name.to_string(),
+                    provider_module: module.to_string(),
+                    provider: provider.to_string(),
+                });
+            }
+            Ok(())
+        },
+    )?;
+    Ok(out.into_iter().collect())
 }
 
 /// Pool admission consumes the same resolution predicate as edge production, but never
@@ -9474,7 +9525,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
             source,
             index,
             |root| closure_name_census(index, root),
-            |_| Ok(()),
+            |_, _, _| Ok(()),
         )
     });
     *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
@@ -9488,7 +9539,7 @@ fn visit_bare_reference_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
     census_for: impl Fn(Option<&str>) -> Result<Rc<SymbolIndex>, String>,
-    mut visit: impl FnMut(&str) -> Result<(), String>,
+    mut visit: impl FnMut(&str, &str, &str) -> Result<(), String>,
 ) -> Result<(), String> {
     use crate::v1_compiler_infer_env::GlobalBareLookupState;
     let file_rel = workspace_relative_repo_path(&sf.path);
@@ -9565,6 +9616,8 @@ fn visit_bare_reference_providers(
     });
     let self_declared = module_self_declared_names(&sf.content);
     let explicit_imports = explicit_import_member_names(&sf.content);
+    let imported_modules: BTreeSet<String> =
+        extract_import_paths(&sf.content).into_iter().collect();
     // SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER. The 8 kernel type names
     // (`std_types::kernel_type_set` -- String/Int/Bool/Float/Secret/Json/Unit/Bytes) and the
     // container carrier spellings (`std_types::container_type_arity`, itself derived from the
@@ -9615,7 +9668,7 @@ fn visit_bare_reference_providers(
             |census: &Rc<SymbolIndex>| -> Result<(Option<String>, &'static str), String> {
                 if service_head {
                     return Ok((
-                        census_single_service_owner(census, &name, &file_rel)?,
+                        census_single_service_owner(census, &name, &file_rel, &imported_modules)?,
                         "service",
                     ));
                 }
@@ -9677,7 +9730,12 @@ fn visit_bare_reference_providers(
                     },
                     None => (
                         if in_call_position {
-                            census_single_service_owner(census, &name, &file_rel)?
+                            census_single_service_owner(
+                                census,
+                                &name,
+                                &file_rel,
+                                &imported_modules,
+                            )?
                         } else {
                             None
                         },
@@ -9744,7 +9802,7 @@ fn visit_bare_reference_providers(
                  (fail-closed)"
             ));
         }
-        visit(&dep_rel)?;
+        visit(&name, &module_path, &dep_rel)?;
     }
     // The whole-pool name reading forces the same shared
     // parse. In practice the census above has already forced it, so this delta is
@@ -9977,7 +10035,7 @@ mod closure_edge_demand_tests {
                     closure_name_census(index, root)
                 }
             },
-            |path| {
+            |_name, _module, path| {
                 providers.push(path.to_string());
                 Ok(())
             },
@@ -22003,47 +22061,59 @@ pub enum ClosureBareDisposition {
 /// service_census_candidates), so the one module a bare pull resolves to is decided over that
 /// whole set, and never by taking an element of it.
 ///
-/// ONLY AN IMPORT-LESS FILE REACHES THIS. Every caller of the bare half is gated by
-/// `source_declares_import_lines`, so a file with any `import` line -- `import m { Name }` or
-/// `import m` -- never asks the census; which declaration its names mean is v1.compiler.infer's
-/// decision over the typed candidate set (service_owner_conflicts_of). For an import-less file no
-/// import states an owner, so the only honest answers are: no owner, exactly one owner pulled, or
-/// a refusal naming every owner.
+/// THE FILE'S IMPORTS COME FIRST, BY MODULE IDENTITY, IN BOTH FORMS. The provider walk runs for
+/// import-less files on the bare channel and, through `unimported_bare_providers`, for files that
+/// DO import. When the file imports any owner of the name -- `import m { Name }` or `import m` --
+/// that import already provides the module, and which declaration the name means is
+/// v1.compiler.infer's decision over the typed candidate set (service_owner_conflicts_of), which
+/// admits one owner and refuses several with a located AmbiguousReference. The walk therefore
+/// names no provider there and decides nothing: a narrower reading of the imports here is how it
+/// came to refuse a wildcard import the compiler admits. Only a name no import reaches is the
+/// walk's to resolve: exactly one owner, or a refusal naming every owner.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ServiceOwnerPull {
     /// No module declares a service of that name.
     NoServiceOwner,
-    /// Exactly one module declares it.
+    /// An imported module owns it; the import provides it and inference decides.
+    DecidedByImport,
+    /// No import reaches it and exactly one module declares it.
     Pull(String),
 }
 
 pub(crate) fn decide_service_owner_pull(
     owners: &BTreeSet<String>,
+    imported_modules: &BTreeSet<String>,
 ) -> Result<ServiceOwnerPull, Vec<String>> {
-    match owners.len() {
-        0 => Ok(ServiceOwnerPull::NoServiceOwner),
-        1 => Ok(ServiceOwnerPull::Pull(
-            owners.iter().next().cloned().unwrap_or_default(),
-        )),
-        _ => Err(owners.iter().cloned().collect()),
+    if owners.is_empty() {
+        return Ok(ServiceOwnerPull::NoServiceOwner);
     }
+    if owners.iter().any(|o| imported_modules.contains(o)) {
+        return Ok(ServiceOwnerPull::DecidedByImport);
+    }
+    if owners.len() == 1 {
+        return Ok(ServiceOwnerPull::Pull(
+            owners.iter().next().cloned().unwrap_or_default(),
+        ));
+    }
+    Err(owners.iter().cloned().collect())
 }
 
 fn census_single_service_owner(
     census: &Rc<SymbolIndex>,
     name: &str,
     file_rel: &str,
+    imported_modules: &BTreeSet<String>,
 ) -> Result<Option<String>, String> {
     let owners: BTreeSet<String> = v1_rt::map_get(&census.services, name.to_string())
         .map(|entries| entries.iter().map(|e| e.module_path.clone()).collect())
         .unwrap_or_default();
-    match decide_service_owner_pull(&owners) {
+    match decide_service_owner_pull(&owners, imported_modules) {
         Ok(ServiceOwnerPull::Pull(module_path)) => Ok(Some(module_path)),
-        Ok(ServiceOwnerPull::NoServiceOwner) => Ok(None),
+        Ok(ServiceOwnerPull::NoServiceOwner | ServiceOwnerPull::DecidedByImport) => Ok(None),
         Err(all) => Err(format!(
             "bare_reference_closure: service '{name}' in '{file_rel}' is AMBIGUOUS -- {} modules \
-             declare a service of that name ({}), and this import-less file names none of them. \
-             Import the one you mean.",
+             declare a service of that name ({}) and '{file_rel}' imports none of them, and this \
+             resolver does not rank candidates. Import the one you mean.",
             all.len(),
             all.join(", ")
         )),
@@ -22118,43 +22188,72 @@ mod service_candidates_conflict_tests {
 
 #[cfg(test)]
 mod service_owner_pull_tests {
-    use super::{decide_service_owner_pull, source_declares_import_lines, ServiceOwnerPull};
+    use super::{decide_service_owner_pull, extract_import_paths, ServiceOwnerPull};
     use std::collections::BTreeSet;
 
     fn set(xs: &[&str]) -> BTreeSet<String> {
         xs.iter().map(|x| x.to_string()).collect()
     }
 
+    fn imports_of(source: &str) -> BTreeSet<String> {
+        extract_import_paths(source).into_iter().collect()
+    }
+
     const A: &str = "test.fixture.service_owner_identity.service";
     const B: &str = "test.fixture.service_owner_identity.service_b";
 
-    // The gate that keeps every importing file -- named OR wildcard -- away from this decision.
+    // Each import FORM, read by the same reader the walk uses, reaches the same decision.
     #[test]
-    fn named_and_wildcard_imports_both_close_the_bare_half() {
-        assert!(source_declares_import_lines(
-            "module p\nimport m { OwnerIdentityProbe }\n"
-        ));
-        assert!(source_declares_import_lines("module p\nimport m\n"));
-        assert!(!source_declares_import_lines(
-            "module p\nfn f() -> Int { 1 }\n"
-        ));
+    fn either_owner_imported_alone_by_name_or_wildcard_is_decided_by_the_import() {
+        let owners = set(&[A, B]);
+        for src in [
+            format!("module p\nimport {A} {{ OwnerIdentityProbe }}\n"),
+            format!("module p\nimport {A}\n"),
+            format!("module p\nimport {B} {{ OwnerIdentityProbe }}\n"),
+            format!("module p\nimport {B}\n"),
+        ] {
+            assert_eq!(
+                decide_service_owner_pull(&owners, &imports_of(&src)),
+                Ok(ServiceOwnerPull::DecidedByImport),
+                "{src}"
+            );
+        }
     }
 
     #[test]
-    fn a_plural_name_refuses_naming_every_owner_in_either_order() {
+    fn both_owners_imported_in_either_order_or_form_pick_no_winner() {
+        // Inference refuses these with AmbiguousReference over both owners.
+        let owners = set(&[A, B]);
+        for src in [
+            format!("module p\nimport {A} {{ OwnerIdentityProbe }}\nimport {B} {{ OwnerIdentityProbe }}\n"),
+            format!("module p\nimport {B}\nimport {A}\n"),
+        ] {
+            assert_eq!(
+                decide_service_owner_pull(&owners, &imports_of(&src)),
+                Ok(ServiceOwnerPull::DecidedByImport),
+                "{src}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unimported_plural_name_refuses_naming_every_owner_in_either_order() {
         let want = Err(vec![A.to_string(), B.to_string()]);
-        assert_eq!(decide_service_owner_pull(&set(&[A, B])), want);
-        assert_eq!(decide_service_owner_pull(&set(&[B, A])), want);
+        assert_eq!(decide_service_owner_pull(&set(&[A, B]), &set(&[])), want);
+        assert_eq!(
+            decide_service_owner_pull(&set(&[B, A]), &set(&["unrelated.module"])),
+            want
+        );
     }
 
     #[test]
-    fn a_single_owner_is_pulled_and_an_unknown_name_is_not() {
+    fn an_unimported_single_owner_is_pulled_and_an_unknown_name_is_not() {
         assert_eq!(
-            decide_service_owner_pull(&set(&[A])),
+            decide_service_owner_pull(&set(&[A]), &set(&[])),
             Ok(ServiceOwnerPull::Pull(A.to_string()))
         );
         assert_eq!(
-            decide_service_owner_pull(&set(&[])),
+            decide_service_owner_pull(&set(&[]), &set(&[A])),
             Ok(ServiceOwnerPull::NoServiceOwner)
         );
     }

@@ -5490,7 +5490,8 @@ fn type_node_positively_not_callable(n: Node, type_env: TypeEnv) -> Bool {
 // formal (dag/std/materialization_ladder.dag first_provider_where callers, the std.algebra
 // fold_list callers). The lambda's value is the arrow over its own parameters and body type, minted
 // by the same constructor a named function value's arrow is. Every other expression's value type is
-// its resolved type.
+// its resolved type. An unannotated `let` binds its local at this value type too, so a let-bound
+// lambda's local is its ARROW and every argument seam judges it like any other function value.
 //
 // A LAMBDA'S PARAMETERS ARE ITS CHILDREN AFTER THE BODY (lambda_body, lambda_param_names_at), each
 // carrying its type in `inferred`, and its `params` is empty -- so the arrow is minted over those
@@ -5523,9 +5524,18 @@ fn lambda_arrow_param(lambda_param: Node) -> Node {
 // an unbound type variable is not established.
 fn one_sided_callable_value_mismatch(declared: Node, produced: Node, type_env: TypeEnv) -> Bool {
   (type_node_is_arrow(n: declared) != type_node_is_arrow(n: produced))
-    && !direct_call_formal_has_unbound_type_variable(n: declared)
-    && !direct_call_formal_has_unbound_type_variable(n: produced)
+    && !one_sided_non_arrow_side_is_open(formal: declared, formal_basis: declared, actual: produced)
     && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: type_env)
+}
+
+// WHETHER A VALUE IS A FUNCTION AT ALL IS THE ARROW CONNECTIVE, NOT THE ARROW'S LEAVES. A lambda
+// with an unannotated parameter (`let f = fn(x) { 1 }`) is an arrow whose parameter is a fresh type
+// variable; that leaf leaves its parameter type open and its function-ness closed, so it cannot hide
+// a function standing where an `Int` is declared. What keeps the one-sided arm from judging is an
+// open NON-arrow side -- a type variable there may yet be a function -- and that case stays unjudged.
+fn one_sided_non_arrow_side_is_open(formal: Node, formal_basis: Node, actual: Node) -> Bool {
+  if type_node_is_arrow(n: formal) { direct_call_formal_has_unbound_type_variable(n: actual) }
+  else { direct_call_formal_has_unbound_type_variable(n: formal_basis) }
 }
 
 fn one_sided_callable_mismatch(formal: Node, actual: Node, type_env: TypeEnv) -> Bool {
@@ -5547,28 +5557,6 @@ fn type_node_is_arrow(n: Node) -> Bool {
   n.connective == Arrow
 }
 
-// A LOCAL VALUE'S RECORDED TYPE MAY BE A LAMBDA'S BODY, not its arrow: an unannotated
-// `let on_surface = fn(id) { .. }` binds the local at the lambda's resolved type, which is its body
-// type (expression_value_type states why). So a local passed where a function type is declared can
-// arrive typed as `Bool` while holding a function, and the one-sided arm cannot tell that apart from
-// a genuine Bool. Measured at dag/gunbc/primitive_egress/census.dag, a correct call refused. The arm
-// therefore does not judge a local value; that population is recorded on
-// gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted with its trigger, typing an
-// unannotated let-bound lambda at its arrow.
-fn expression_is_local_value(e: Node) -> Bool {
-  match e.expr_data {
-    ExprVar { binding_kind: kind } => binding_kind_is_local_value(kind: kind)
-    _ => false
-  }
-}
-
-fn binding_kind_is_local_value(kind: VarBindingKind?) -> Bool {
-  match kind {
-    Present { value: LocalValueBinding } => true
-    _ => false
-  }
-}
-
 fn direct_call_arg_type_mismatch(
   formal: Node,
   substitution_basis: Node,
@@ -5584,11 +5572,12 @@ fn direct_call_arg_type_mismatch(
   else if type_node_is_arrow(n: formal) && type_node_is_arrow(n: actual) {
     callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
   }
-  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_arrow(n: formal) || type_node_is_arrow(n: actual) {
-    one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
-      && !expression_is_local_value(e: actual_expr)
+    !one_sided_non_arrow_side_is_open(
+      formal: formal, formal_basis: substitution_basis, actual: actual)
+      && one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
   }
+  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
@@ -8493,7 +8482,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
-      let val_type = resolved_type(n: val_typed)
+      let val_type = expression_value_type(e: val_typed)
       let val_annotation_diags = match declared_let_type {
         Present { value: declared } =>
           let produced_value_type = expression_value_type(e: val_typed)
@@ -8503,8 +8492,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: val_expr.span,
             scope: scope)
           if (conformance |> count) > 0 { conformance }
-          else if one_sided_callable_value_mismatch(declared: declared, produced: produced_value_type, type_env: scope.type_env)
-              && !expression_is_local_value(e: val_typed) {
+          else if one_sided_callable_value_mismatch(declared: declared, produced: produced_value_type, type_env: scope.type_env) {
             [type_mismatch_error(
               expected: node_type_shape(n: declared, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: produced_value_type, source_indices: scope.type_env.source_indices),

@@ -4,11 +4,12 @@ import std.types { String }
 import test.fixture.service_owner_identity.service_b
 
 // A REAL MODULE, not a synthetic census source: importing ONE of the two same-named
-// OwnerIdentityProbe services -- by name or by wildcard -- compiles clean through the ordinary
-// module path. Any import line closes the bare-reference closure for this file
-// (cli_run source_declares_import_lines), so which declaration the name means is decided only by
+// OwnerIdentityProbe services -- by name or by wildcard -- must compile clean. The provider walk
+// reads this file's imports by module identity (cli_run decide_service_owner_pull) and names no
+// provider for an imported owner, so which declaration the name means is decided only by
 // v1.compiler.infer over the typed candidate set. The refusing forms (both imported) are not
-// writable as corpus files; they are pinned by test.claim.service_owner_identity_witness.
+// writable as corpus files; they are pinned by test.claim.service_owner_identity_witness and
+// cli_run service_owner_pull_tests.
 fn ping() -> String {
   let r = OwnerIdentityProbe.Ping()
   r.ok

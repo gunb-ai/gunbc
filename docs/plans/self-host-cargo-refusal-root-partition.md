@@ -30,11 +30,11 @@ Three separate places still say otherwise and are known-stale:
 - `docs/plans/v2-self-hosting.md` — "0/27 self-host-green" is still true, but its framing
   invites the emission reading.
 
-**A wrong root to avoid.** `v2.compiler.infer` `node_grounding_frontier_note` says v2 derives
-only 3 of 12 node kinds; the other nine carry `infer_grounding_not_derived`. True, and NOT a
-blocker — `GroundingNotDerived` sits on the **Accepted** path (DESIGN §4b names it a live
-specimen of `FrontierAccepted`, "the typed-located-counted diagnostic whose phase result is
-still `Accepted`"). smart-ram-730 read that count as a refusal and had to withdraw it.
+**A wrong root to avoid.** A node infer cannot ground carries `infer_grounding_not_derived`,
+and that is NOT a blocker: `v2.compiler.infer` `inferred_facts_not_derived` returns it on the
+**Accepted** path (DESIGN §4b names it a live specimen of `FrontierAccepted`, "the
+typed-located-counted diagnostic whose phase result is still `Accepted`"). How many nodes carry it
+is counted by that diagnostic, not by a kind count. smart-ram-730 read that diagnostic as a refusal and had to withdraw it.
 Likewise `v2_emitter_direct_rust_door_contract` IS red, but it refuses on **source fidelity**
 against a canned string with ~17 hand-authored groundings — a fixture-exactness check, not the
 emission path. Do not generalize from either.
