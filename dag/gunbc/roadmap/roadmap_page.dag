@@ -81,7 +81,6 @@ import gunbc.roadmap_presentation {
   WorkBandEntry, BandRow, BandFamily, BandProject,
   ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
   IssueTableRow,
-  project_tree_statuses,
   worker_alive_from_process,
   IssueLinkView, IssueLinkPanel, issue_work_history_rounds,
   issue_explanation, issue_first_open_kind, issue_wait_state_label,
@@ -89,9 +88,10 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
-  IssueActionKind, IssueActionAssign, IssueActionStartWork, issue_action_wire,
-  IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonText, issue_button_idiom_wire,
+  IssueActionAssign, issue_action_wire,
+  IssueButtonText, issue_button_idiom_wire,
   IssueActionAvailability, issue_action_availability_wire,
+  issue_assignee_unassigned_display,
   IssueResultsColumn, IssueResultsColumnKind,
   IssueColumnPriority, IssueColumnType, IssueColumnTitle, IssueColumnAssignee,
   IssueColumnStatus, IssueColumnDViews, IssueColumnId, IssueColumnLastModified,
@@ -492,72 +492,15 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
     el_attrs("button", dispatch_button_attributes(view: view, a: a), [ txt("dispatch") ]))
 }
 
-// THE MODELED ACTION (owner directive 2026-09-24: the issue-tracker's action surfaces come FROM
-// the extdeps model, never bespoke markup). Dispatch IS assignment, so the surface that POSTs
-// /dispatch/<node> wears the product's Assign action: the contained-primary idiom in the
-// product's action tokens, labeled by the model's wire spelling, its availability reading the
-// SAME launch admission the seam already decided (admitted → enabled; any refusal → the model's
-// disabled idiom: visible but non-interactive, never hidden). The launch identity evidence rides
-// the same data-launch-* attributes the route binds. This renderer serves the issue table and the
-// issue detail page; the tree view's taskbar keeps its own control (a different surface, owned
-// by the tactile lanes).
-fn issue_action_availability_of(a: WorkAction) -> IssueActionAvailability {
-  match a.availability {
-    ActionAvailable => IssueActionEnabled
-    ActionUnavailable => IssueActionDisabled
-  }
-}
-
-fn issue_action_button_class(a: WorkAction) -> String {
-  join([
-    "issue-action issue-action-",
-    issue_button_idiom_wire(idiom: IssueButtonContainedPrimary),
-    if a.availability == ActionAvailable { "" } else { " is-disabled" },
-  ], "")
-}
-
-// THE MODELED ACTIONS (owner ruling 2026-09-24): dispatch IS execution — the surface that POSTs
-// /dispatch/<node> wears the product's Start Work verb, its availability reading the SAME launch
-// admission it always has. ASSIGNMENT IS SEPARATE AND DURABLE: the Assign action records who the
-// issue is assigned to (a Claimed event on the issue's state, served by its own route) — never
-// one affordance doing both. Start Work renders in the contained-primary idiom; Assign, the
-// secondary action, in the flat text idiom — the product's two button shapes.
-fn issue_action_attributes(view: WorkRowView, a: WorkAction) -> List<Attribute> {
-  let base = [
-    attr(name: "class", value: issue_action_button_class(a: a) ),
-    attr(name: "type", value: "button" ),
-    attr(name: "data-action", value: issue_action_wire(kind: IssueActionStartWork) ),
-    attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonContainedPrimary) ),
-    attr(name: "data-action-route", value: "dispatch" ),
-    attr(name: "data-action-state", value: issue_action_availability_wire(a: issue_action_availability_of(a: a)) ),
-    attr(name: "data-node", value: view.node_id ),
-    attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
-    attr(name: "data-launch", value: a.label ),
-    attr(name: "title", value: a.detail ),
-  ]
-  let with_identity = match a.launch {
-    Absent => base
-    Present { value: id } => concat(base, [
-      attr(name: "data-launch-cause", value: launch_cause_label(c: id.cause) ),
-      attr(name: "data-launch-mode", value: spawn_mode_label(m: id.mode) ),
-      attr(name: "data-launch-instance", value: launch_identity_instance_text(id: id) ),
-      attr(name: "data-launch-revision", value: launch_identity_revision_hex(id: id) ),
-    ])
-  }
-  match a.availability {
-    ActionAvailable => with_identity
-    ActionUnavailable => concat(with_identity, [ attr(name: "disabled", value: "" ) ])
-  }
-}
-
-fn issue_action_nodes(view: WorkRowView) -> List<Fragment> {
-  map(view_dispatch_actions(view: view), a =>
-    el_attrs("button", issue_action_attributes(view: view, a: a), [ txt(issue_action_wire(kind: IssueActionStartWork)) ]))
-}
-
 // THE DURABLE ASSIGN ACTION: always available (any issue can be assigned), flat text idiom, POSTs
 // the assign route which records the Claimed event. The assignment is a recorded fact read back
-// through the standing — the assignee field shows the holder the record names.
+// through the standing — the assignee field shows the holder the record names. THE START WORK
+// BUTTON IS RETIRED (owner ruling 2026-09-25: "scrap the button stuff we have here for now — just
+// copy buganizer"): the Buganizer row and the detail page carry no execution buttons; the durable
+// Assign remains the detail header's one action, and the execution entry points will be re-modeled
+// later. The /dispatch route and its launch admission stay live — the retired surface is the
+// button, not the seam (the emitted client keeps the action bind so the modeled action's route
+// mapping survives; nothing on the tracker surfaces renders a Start Work button to press).
 fn issue_assign_action_nodes(view: WorkRowView) -> List<Fragment> {
   [ el_attrs("button", [
       attr(name: "class", value: "issue-action issue-action-text" ),
@@ -571,16 +514,10 @@ fn issue_assign_action_nodes(view: WorkRowView) -> List<Fragment> {
     ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]) ]
 }
 
-// The actuator cell for the issue-tracker surfaces: the same always-present wrapper the taskbar
-// face keeps (a stable actuator home), carrying the modeled actions instead of the old button.
-fn workflow_issue_action_nodes(view: WorkRowView) -> List<Fragment> {
-  [ el_class("div", workflow_controls_class, issue_action_nodes(view: view)) ]
-}
-
-// THE DETAIL ACTION BAR: both modeled actions, durable Assign beside execution Start Work —
-// distinct affordances, distinct effects, never merged.
+// THE DETAIL ACTION BAR: the durable Assign action alone (owner ruling 2026-09-25 — the table rows
+// and the detail header carry no execution buttons; see issue_assign_action_nodes for the ruling).
 fn issue_detail_action_bar_nodes(view: WorkRowView) -> List<Fragment> {
-  concat(issue_assign_action_nodes(view: view), issue_action_nodes(view: view))
+  issue_assign_action_nodes(view: view)
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -1109,10 +1046,11 @@ fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext
     body: body)
 }
 
-// The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6): active work bands
-// ABOVE the ready queue and never folds itself away (a flat section — the attention rule says work
-// in flight owns the operator's attention, so it gets no altitude fold to hide behind); the
-// scheduling bands keep the frontier vocabulary and the altitude machinery. The workspace
+// The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6), and since the
+// 2026-09-25 Buganizer ruling that view's page realization is the flat issue TABLE alone (see
+// workspace_markup): the view still derives the active/ready/upcoming/done/superseded band
+// entries — they are the table's row order and the data-band vocabulary the filter chips read —
+// but the banded forest that presented them retired with the tree/bands view tabs. The workspace
 // observation banner narrates a channel-level refusal ONCE, and rows the impact covers render
 // without their per-row unobservable line (workspace_covers_row_activity — the row's typed state is
 // unchanged, only the duplicate narration is suppressed). The program strip is the
@@ -1278,40 +1216,13 @@ fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fr
   }
 }
 
-fn band_entry_statuses(entry: WorkBandEntry) -> List<String> {
-  match entry {
-    BandRow { row } => [ work_lifecycle_key(l: row.lifecycle) ]
-    BandFamily { family } => map(family.rows, v => work_lifecycle_key(l: v.lifecycle))
-    BandProject { project } => project_tree_statuses(view: project)
-  }
-}
-
 fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> Fragment {
   el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
 }
 
-fn workspace_band(label: String, cls: String, entries: List<WorkBandEntry>, observation: ObservationImpactView) -> List<Fragment> {
-  if count(entries) == 0 && cls == "active" {
-    []
-  } else {
-    [ altitude_section(
-        cls: concat("frontier-bucket frontier-", cls),
-        title_nodes: [ el("h2", [ txt(label) ]) ],
-        statuses: fold(entries, init: [], f: (acc, e) => concat(acc, band_entry_statuses(entry: e))),
-        body: [ workspace_entries_ul(entries: entries, observation: observation) ]) ]
-  }
-}
-
-fn workspace_active_band(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> List<Fragment> {
-  if count(entries) == 0 {
-    []
-  } else {
-    [ el_class("section", "frontier-bucket frontier-active", [
-        el("h2", [ txt("Active") ]),
-        workspace_entries_ul(entries: entries, observation: observation),
-      ]) ]
-  }
-}
+// THE BAND SHELLS ARE RETIRED WITH THE VIEWS (owner ruling 2026-09-25): the frontier-bucket band
+// renderers had no caller left once the served page dropped the forest; the entry renderer
+// (workspace_entries_ul and its chain) stays for the /sandbox exhibit.
 
 fn workspace_observation_banner(observation: ObservationImpactView) -> List<Fragment> {
   match observation {
@@ -1324,17 +1235,17 @@ fn workspace_observation_banner(observation: ObservationImpactView) -> List<Frag
   }
 }
 
-// THE ISSUE TRACKER'S DEFAULT VIEW (owner ruling 2026-09-22, "the frontend as an issue tracker":
-// the default view is a searchable issue table). The page ships ONE body with two containers:
-// the flat issue TABLE (default) and the FOREST (the landed nested trees in band order), with the
-// tree and bands views being alternate presentations of the SAME forest DOM — the tree view
-// strips the band chrome via the container's data-view, the bands view keeps it. The table rows
-// are the same taskbar component; each carries data-search (headline · node id · owner) for the
-// client-side text filter and the data-band the chips read. View chips and band chips are
-// server-rendered buttons whose behavior the emitted client binds; without JavaScript the table
-// shows by default, which is the ruling's default state.
-fn issue_default_view() -> String { "table" }
-
+// THE ISSUE TRACKER'S SURFACE (owner ruling 2026-09-22, "the frontend as an issue tracker",
+// amended 2026-09-25: "just copy buganizer for now"): ONE body, ONE container — the searchable
+// issue TABLE, the Buganizer results surface. The tree and bands VIEW TABS are RETIRED (owner:
+// they go back to the old UI, it's jarring): the forest they switched to — the banded taskbar
+// rendering of the same rows — no longer ships on this page at all, and the view chips, the
+// client view switch, and the stylesheet's view rules went with them. What survives of the band
+// vocabulary is the FILTER: the all/active/ready/upcoming/done/superseded chips filter THIS table
+// in place (the stylesheet hides non-matching data-band rows), and the search input filters by
+// the row's own data-search (headline · node id · owner). The table rows are dense lines, not
+// taskbars; the forest renderer itself lives on as the /sandbox exhibit's grouping path (a design
+// surface, not this product surface).
 fn issue_owner_value(view: WorkRowView) -> String {
   fold(view.supporting_facts, init: "", f: (acc, f) =>
     if f.label == "owner" { f.value } else { acc })
@@ -1363,8 +1274,11 @@ fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
 // THE ASSIGNEE IS THE WORK'S HOLDER: when an attempt exists, the assignee surface shows the
 // attempt's session identity (its short key — who holds the work now); with no attempt, the
 // event-log standing's holder (who claimed the node); open / forked / incomplete standings name
-// no holder — the field renders empty (unassigned), never the owner relabeled. Changing the
-// assignee is the follow-on intake slice; this is the decided identity read as a field.
+// no holder — the field falls back to the model's unassigned placeholder, never the owner
+// relabeled. The empty string this fn returns for "no holder" is the caller's signal to render
+// the placeholder (issue_assignee_unassigned_display, "--" per the capture) — the Buganizer
+// results row never leaves the cell blank. Changing the assignee is the follow-on intake slice;
+// this is the decided identity read as a field.
 fn issue_assignee_value(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> String {
   match attempts.first() {
     Present { value: p } => attempt_key_short_form(key: p.attempt_key)
@@ -1388,14 +1302,6 @@ fn issue_search_value(view: WorkRowView) -> String {
   join([view.headline, " ", view.node_id, " ", issue_owner_value(view: view)], "")
 }
 
-fn issue_view_chip(label: String, view: String) -> Fragment {
-  el_attrs("button", [
-    attr(name: "class", value: if view == issue_default_view() { "chip chip-on" } else { "chip" } ),
-    attr(name: "type", value: "button" ),
-    attr(name: "data-view-chip", value: view ),
-  ], [ txt(label) ])
-}
-
 fn issue_band_chip(label: String, band: String) -> Fragment {
   el_attrs("button", [
     attr(name: "class", value: "chip chip-filter" ),
@@ -1412,37 +1318,36 @@ fn issue_controls_markup() -> Fragment {
         attr(name: "placeholder", value: "filter issues — title · id · owner" ),
         attr(name: "aria-label", value: "filter issues" ),
       ], []) ],
-    concat(
-      [
-        issue_view_chip(label: "table", view: "table"),
-        issue_view_chip(label: "tree", view: "tree"),
-        issue_view_chip(label: "bands", view: "bands"),
-      ],
-      [
-        issue_band_chip(label: "all", band: "all"),
-        issue_band_chip(label: "active", band: "active"),
-        issue_band_chip(label: "ready", band: "ready"),
-        issue_band_chip(label: "upcoming", band: "upcoming"),
-        issue_band_chip(label: "done", band: "done"),
-        issue_band_chip(label: "superseded", band: "superseded"),
-      ])))
+    [
+      issue_band_chip(label: "all", band: "all"),
+      issue_band_chip(label: "active", band: "active"),
+      issue_band_chip(label: "ready", band: "ready"),
+      issue_band_chip(label: "upcoming", band: "upcoming"),
+      issue_band_chip(label: "done", band: "done"),
+      issue_band_chip(label: "superseded", band: "superseded"),
+    ]))
 }
 
 // THE DENSE ISSUE LINE derives its anatomy FROM the extdeps model (owner ruling 2026-09-24, the
 // derivation law): one cell per declared results column, in roster order — P · TYPE · TITLE ·
 // ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED — then the workflow's trailing actions region
-// (the last grid track). The template lands ONCE, on the .issue-table container (the stylesheet's
+// (the last grid track), which the 2026-09-25 Buganizer ruling made STATUS ONLY (the k-of-n /
+// attempt-count chip — see issue_row_actions_nodes; the row's action buttons retired with it). The
+// template lands ONCE, on the .issue-table container (the stylesheet's
 // law), and this markup stays a flat list on purpose: the header div and the row div are
 // display: contents wrappers, so these cells parent DIRECTLY into the table's one grid and every
 // row's tracks ARE the header's by construction — a second grid spelling, here or in the sheet,
 // is a derivation defect, never a styling choice (owner column-alignment fix 2026-09-24). Cells
 // the domain has no fact for render EMPTY and keep their track — emptiness never re-orders a row.
 // The cells: TITLE reads the headline; ASSIGNEE reads the standing's holder (who holds the work
-// now — the attempt identity lives on the Work tab); STATUS reads the decided bar signal; the ID
-// cell links the issue's detail route (the capture's ID-links-to-detail). The table's row is NOT
-// the taskbar — the taskbar is the tree's component; the table reads the SAME decided bar view
-// (one authority) onto the contract's dense line. No id anchor on the row's li: the forest's rows
-// own the #node-* ids. The row's li keeps li.node so selection and the band chips apply uniformly
+// now — the attempt identity lives on the Work tab) and falls back to the model's "--"
+// unassigned placeholder when no holder exists (the capture's unassigned spelling); STATUS reads
+// the decided bar signal; the ID cell links the issue's detail route (the capture's
+// ID-links-to-detail). The table's row is NOT the taskbar — the taskbar is the /roadmap and
+// /sandbox component; the table reads the SAME decided bar view
+// (one authority) onto the contract's dense line. No id anchor on the row's li: the #node-* ids
+// were the forest rows' anchors, and the dense table rows carry none — the row's stable identity
+// is its data-node. The row's li keeps li.node so selection and the band chips apply uniformly
 // — the li stays in the DOM as the filter/selection subject; only its box is contents.
 
 // THE TABLE ROW SHOWS ONLY THE LATEST ATTEMPT'S SUMMARY, AND ONLY WHEN IT IS RECENT OR LIVE
@@ -1462,7 +1367,7 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
     IssueColumnTitle => inline_md_nodes(text: view.headline)
     IssueColumnAssignee =>
       let assignee = issue_assignee_value(view: view, attempts: [])
-      if assignee == "" { [] } else { [ txt(assignee) ] }
+      [ txt(if assignee == "" { issue_assignee_unassigned_display as String } else { assignee }) ]
     IssueColumnStatus =>
       if bar.signal == "" { [] } else {
         [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
@@ -1477,21 +1382,22 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
   }
 }
 
-// THE ROW'S ACTIONS REGION: the workflow's trailing slot — the project's k-of-n count when the row
-// carries its tree, the latest attempt's summary count otherwise, and the row's dispatch actuator
-// (Start Work — execution; the durable Assign lives on the detail page's action bar, never here).
+// THE ROW'S ACTIONS REGION: STATUS, NEVER ACTUATION (owner ruling 2026-09-25, "scrap the button
+// stuff ... just copy buganizer" — the Buganizer row carries no action buttons at all). The
+// workflow's trailing slot holds the project's k-of-n count when the row carries its tree, else
+// the latest attempt's summary count — a status chip, nothing pressable. The durable Assign
+// action lives on the detail page's action bar; the retired Start Work button rendered here
+// until the ruling.
 fn issue_row_actions_nodes(row: IssueTableRow, view: WorkRowView, bar: TaskBarView) -> Fragment {
   el_attrs("div", [
     attr(name: "class", value: "issue-row-actions" ),
     attr(name: "data-col", value: "actions" ),
-  ], concat(
-    match row.project {
-      Absent =>
-        if bar.count == "" { [] } else { [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ] }
-      Present { value: p } =>
-        [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
-    },
-    workflow_issue_action_nodes(view: view)))
+  ], match row.project {
+    Absent =>
+      if bar.count == "" { [] } else { [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ] }
+    Present { value: p } =>
+      [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
+  })
 }
 
 fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Fragment {
@@ -1868,20 +1774,19 @@ fn issue_detail_not_found_page(node_id: String) -> Fragment {
   }
 }
 
+// THE WORKSPACE RENDERS THE TABLE ALONE (owner ruling 2026-09-25: the tree/bands views and their
+// forest container retire from the served page — see the surface note above issue_owner_value).
+// The band derivation still runs one level down: DailyWorkspaceView's active/ready/upcoming/done/
+// superseded entries are what the flat table flattens (workspace_flat_table), so the table's row
+// ORDER is the band order and every row carries its data-band for the filter chips — the band
+// vocabulary outlives the band SURFACE. The forest renderer below (workspace_entries_ul and its
+// chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
+// calls it.
 fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
-  el_attrs("section", [
-    attr(name: "class", value: "roadmap-frontier" ),
-    attr(name: "data-view", value: issue_default_view() ),
-  ], [
+  el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", concat(
       [ issue_controls_markup() ],
       [ issue_table_markup(rows: ws.table, observation: ws.observation) ])),
-    el_class("div", "view-forest", concat(
-      workspace_active_band(entries: ws.active, observation: ws.observation),
-      concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
-        concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
-          concat(workspace_band(label: "Done", cls: "done", entries: ws.done, observation: ws.observation),
-            workspace_band(label: "Superseded", cls: "superseded", entries: ws.superseded, observation: ws.observation)))))),
   ])
 }
 

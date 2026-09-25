@@ -624,6 +624,11 @@ fn issue_tracker_root_css() -> String {
 // stretch every cell spans the row's full height, so the underlines are one continuous line; the
 // text rides a line-height equal to the row-height token (vertical centering without flex, which
 // would break the ellipsis chain), and the actions cell centers its buttons on the same law.
+// THE VIEW RULES AND BAND CHROME RETIRE WITH THE TABS (owner ruling 2026-09-25, "just copy
+// buganizer"): the data-view visibility switch and the frontier-bucket band-section family leave
+// this list — one table renders, nothing hides or shows by view, and no served surface renders a
+// frontier-bucket class any more. The kept machinery's rules stay (the /sandbox exhibit and the
+// /roadmap taskbar still render project chains, taskbars, and dispatch controls).
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
@@ -904,20 +909,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_20)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"table\"] .view-forest" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"tree\"] .view-table, .roadmap-frontier[data-view=\"bands\"] .view-table" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"tree\"] .frontier-bucket" }, decls: [
-      decl(prop: Border, value: "0"),
-      role_decl(prop: Background, r: CanvasRole),
-      decl(prop: Padding, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"tree\"] .frontier-bucket > h2" }, decls: [
-      decl(prop: Display, value: "none"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-controls" }, decls: [
       decl(prop: Display, value: "flex"),
@@ -1205,32 +1196,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-not-found" }, decls: [
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "frontier-bucket" }, decls: [
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
-      role_decl(prop: Background, r: SurfaceRole),
-    ] },
-    StaticRule { selector: RawSelector { text: ".frontier-bucket h2" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_14)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: Margin, value: scale_triple(a: space_0, b: space_0, c: space_8)),
-      decl(prop: TextTransform, value: "lowercase"),
-      decl(prop: LetterSpacing, value: "0.04em"),
-      role_decl(prop: Color, r: TextDimRole),
-    ] },
-    StaticRule { selector: ClassSelector { name: "frontier-ready" }, decls: [
-      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
-    ] },
-    StaticRule { selector: RawSelector { text: ".frontier-ready h2" }, decls: [
-      role_decl(prop: Color, r: TextRole),
-    ] },
-    StaticRule { selector: RawSelector { text: ".frontier-upcoming h2" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-    ] },
-    StaticRule { selector: RawSelector { text: ".frontier-done h2" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
       decl(prop: Display, value: "flex"),

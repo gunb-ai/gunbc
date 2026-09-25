@@ -415,18 +415,20 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
     elements: [ section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
   }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
+  try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
-// RLM-1 red control (d, page half): the blocked child renders NO ordinary Launch -- the button is
+// RLM-1 red control (d, page half): the blocked child renders NO ordinary Launch — the button is
 // disabled and carries the admission's DependenciesBlocked label naming the exact parents; the
-// override arm that used to make it operable is gone.
-test fn witness_upcoming_node_dispatch_refused_dependencies_blocked() -> Bool {
+// override arm that used to make it operable is gone. RENDER REPOINTED 2026-09-25 with the button
+// retirement: the tracker table and detail pages render no dispatch actuator at all (owner:
+// "scrap the button stuff ... just copy buganizer"), so the admission's page-render half lives on
+// the full-roadmap surface, whose taskbar rows still carry the control.
+test fn witness_blocked_node_dispatch_refused_dependencies_blocked() -> Bool {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
-        && string_contains(s: h, pattern: "data-node=\"roadmap-launch-canary-followup\"")
+      string_contains(s: h, pattern: "data-node=\"roadmap-launch-canary-followup\"")
         && string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
         && string_contains(s: h, pattern: "data-availability=\"unavailable\"")
@@ -886,61 +888,62 @@ fn fx_page_project_html() -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: fx_page_project_doc(), merged: [], launch: dispatch_doc_standing()))
 }
 
-fn fx_page_project_html_with_standings() -> HtmlEmitResult {
-  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted(
-    doc: fx_page_project_doc(),
-    merged: [],
-    accepted_ids: [],
-    withheld: [],
-    main_prefix: [],
-    attempts: [],
-    attempts_refused: none,
-    standings: StandingsObserved { rows: [
-      NodeStandingRow { node_id: "page-task-one", standing: NodeInProgress { by: "op" as NonEmptyStr, last_note: "working" as NonEmptyStr } },
-    ] },
-    launch: dispatch_doc_standing(),
-    stale_nodes: []))
-}
-
 fn occurrence_count(s: String, pattern: String) -> Int {
   count(split(s: s, delimiter: pattern)) - 1
 }
 
-// The project row carries its own row shape (head, actuator, disclosure — the SAME renderer as
-// every flat row), the derived "k of n tasks closed" summary with the flex-weighted bar, and the
-// task disclosure holding the nested task rows — each nested row a full row of the existing shape
-// (node-head, dispatch actuator), rendered exactly once across the whole page.
+// THE PROJECT ROW ON THE TABLE (owner ruling 2026-09-25, "just copy buganizer"): the dense line
+// carries the project's k-of-n count chip in the actions track — status, never actuation — and
+// every issue renders EXACTLY ONCE on the page: the forest that used to render the project a
+// second time (the taskbar with its progress bar, the tasks disclosure, the nested task rows, and
+// the row's dispatch/Start Work buttons) retired with the tree/bands views. The progress-bar and
+// task-disclosure renderer survives on the /sandbox exhibit's grouping path, not on this surface.
 test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-page-project\" data-band=\"upcoming\" data-node=\"page-project\" tabindex=\"0\">")
-        && string_contains(s: h, pattern: "<span class=\"taskbar-count\">0 of 2 tasks closed</span>")
-        && string_contains(s: h, pattern: "class=\"taskbar-project-bar\"")
-        && string_contains(s: h, pattern: "class=\"project-progress-closed\" style=\"flex-grow: 0\"")
-        && string_contains(s: h, pattern: "class=\"project-progress-open\" style=\"flex-grow: 2\"")
-        && string_contains(s: h, pattern: "<details class=\"project-tasks\">")
-        && string_contains(s: h, pattern: "page task one")
-        && string_contains(s: h, pattern: "page task two")
-        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 2
-        && occurrence_count(s: h, pattern: "data-node=\"page-task-two\" tabindex=\"0\"") == 2
-        && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 2
-        && occurrence_count(s: h, pattern: "class=\"taskbar-face\"") == 3
-        && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 6
-        && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 3
-        && occurrence_count(s: h, pattern: "<button class=\"issue-action issue-action-contained") == 3
-        && !string_contains(s: h, pattern: "class=\"project-chain\"")
+      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
+      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-band=\"upcoming\" data-node=\"page-project\" tabindex=\"0\"")
+        && string_contains(s: table, pattern: "<span class=\"taskbar-count\">0 of 2 tasks closed</span>")
+        && !string_contains(s: table, pattern: "taskbar-project-bar")
+        && !string_contains(s: table, pattern: "project-tasks")
+        && !string_contains(s: table, pattern: "project-chain")
+        && !string_contains(s: table, pattern: "class=\"taskbar\"")
+        && !string_contains(s: table, pattern: "dispatch-btn")
+        && !string_contains(s: table, pattern: "issue-action")
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-two\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 1
   }
 }
 
 // The open attribute is the seam's DECIDED auto_open, never authored: a subtask carrying a
-// non-routine event-log standing (here in_progress) opens the project's task disclosure; the same
-// document with standings unobserved renders it collapsed.
+// non-routine event-log standing opens the project's task disclosure; the same document with
+// standings unobserved renders it collapsed. RENDER REPOINTED 2026-09-25: the disclosure retired
+// from the served daily page with the forest, so the pin renders the project-tree component
+// directly — the renderer the /sandbox exhibit's grouping path still consumes.
+fn fx_project_tree_view(auto_open: Bool) -> gunbc.roadmap_presentation.ProjectTreeView {
+  gunbc.roadmap_presentation.ProjectTreeView {
+    row: hero_green_view(alive: false),
+    chain: [],
+    depth: 1,
+    closed_count: 0,
+    total_count: 2,
+    auto_open: auto_open,
+    subtree_error: false,
+    entries: [ gunbc.roadmap_presentation.ProjectLeaf { row: hero_row_view(
+      node_id: "fx-project-member",
+      activity: gunbc.roadmap_presentation.NoActiveWork,
+      alive: false) } ],
+    linked: [],
+  }
+}
+
 test fn witness_project_disclosure_open_attribute_is_derived() -> Bool {
-  match fx_page_project_html_with_standings() {
+  match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: fx_project_tree_view(auto_open: true), observation: gunbc.roadmap_presentation.ObservationsNominal)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: pulsing } =>
-      match fx_page_project_html() {
+      match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: fx_project_tree_view(auto_open: false), observation: gunbc.roadmap_presentation.ObservationsNominal)) {
         EmitRejected { reason: _ } => false
         EmitOk { html: quiet } =>
           string_contains(s: pulsing, pattern: "<details class=\"project-tasks\" open=\"\">")
@@ -980,8 +983,15 @@ fn fx_page_chain_edges() -> List<RoadmapEdge> {
   ]
 }
 
-fn fx_page_chain_html() -> HtmlEmitResult {
-  let doc = RoadmapDocument {
+// THE DEPTH CAP, APPLIED AFTER COLLAPSING (operator ruling 2026-09-21), split for the 2026-09-25
+// surface ruling: (1) the SERVED page half — the chain renders as flat table rows, every node
+// exactly once, and the cap machinery (the deeper disclosure) no longer ships on this surface;
+// (2) the MACHINERY half — the project-tree component the /sandbox exhibit still consumes renders
+// three expanded project levels, the project AT the cap behind a collapsed "+N deeper" disclosure
+// (N = the tasks hidden at the next level), and the rows beyond still render inside it — the cap
+// bounds the default view, it never drops a node.
+fn fx_page_chain_doc() -> RoadmapDocument {
+  RoadmapDocument {
     preamble: [],
     lead_lanes: [],
     sections: [ RoadmapSection {
@@ -989,38 +999,68 @@ fn fx_page_chain_html() -> HtmlEmitResult {
       elements: [ section_group(label: "", nodes: fx_page_chain_nodes(), edges: fx_page_chain_edges()) ],
     } ],
   }
-  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
-// THE DEPTH CAP, APPLIED AFTER COLLAPSING (operator ruling 2026-09-21): the fixture is a chain of
-// three MULTI-child projects (each carries a side leaf, so no link collapses), reaching a fourth
-// level past the cap — three project levels render expanded by default; a project AT the cap
-// renders its tasks behind a collapsed "+N deeper" disclosure (N = the tasks hidden at the next
-// level), and the rows beyond still render inside it — the cap bounds the default view, it never
-// drops a node.
+fn fx_page_chain_html() -> HtmlEmitResult {
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: fx_page_chain_doc(), merged: [], launch: dispatch_doc_standing()))
+}
+
+fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
+  let doc = fx_page_chain_doc()
+  let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
+  let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
+  let ctx = gunbc.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
+  let rows = map(nodes, rn => gunbc.roadmap_presentation.work_row_view(
+    rn: rn, nodes: nodes, edges: edges, merged: [],
+    activity: gunbc.roadmap_presentation.NoActiveWork,
+    rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr },
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false))
+  match (filter(rows, r => r.node_id == "page-chain-c1")).first() {
+    Absent => fx_project_tree_view(auto_open: false)
+    Present { value: top } =>
+      gunbc.roadmap_presentation.project_tree_view(
+        row: top, rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows))
+  }
+}
+
 test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
   match fx_page_chain_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 6
-        && occurrence_count(s: h, pattern: "<details class=\"project-tasks project-deeper\">") == 1
-        && string_contains(s: h, pattern: "+2 deeper")
-        && !string_contains(s: h, pattern: "project-deeper\" open")
-        && occurrence_count(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"") == 2
-        && occurrence_count(s: h, pattern: "data-node=\"page-chain-x3\" tabindex=\"0\"") == 2
+      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
+      !string_contains(s: table, pattern: "project-deeper")
+        && !string_contains(s: table, pattern: "+2 deeper")
+        && !string_contains(s: table, pattern: "class=\"project-tasks\"")
+        && occurrence_count(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-chain-x3\" tabindex=\"0\"") == 1
         && string_contains(s: h, pattern: "chain level four")
   }
+    && match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: fx_chain_top_project_view(), observation: gunbc.roadmap_presentation.ObservationsNominal)) {
+      EmitRejected { reason: _ } => false
+      EmitOk { html: h } =>
+        occurrence_count(s: h, pattern: "<details class=\"project-tasks project-deeper\">") == 1
+          && string_contains(s: h, pattern: "+2 deeper")
+          && !string_contains(s: h, pattern: "project-deeper\" open")
+          && string_contains(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"")
+          && string_contains(s: h, pattern: "chain level four")
+    }
 }
 
 // THE LIVE EXEMPLAR (identity grain, never a population count), post the 2026-09-21 collapse
-// ruling: over the real unfocused authority the chain shell-residue-zero → shell-gate-migration →
-// shell-effectplan-to-bash → shell-typed-invocation is four single-child links, so it renders as
-// ONE collapsed project row — residue-zero's — carrying the arc's ten authored shell-dag-* tasks
-// one disclosure down, with the three swallowed intermediates on the chain line. Since the
-// 2026-09-22 issue-tracker ruling the page ships TWO containers: the flat issue table (every
-// issue once, including the arc as a plain row) and the forest (the collapsed tree). So a task id
-// renders exactly TWICE — once per container — and a chain member once as the forest's chain
-// line plus once as its flat table row. No node is lost and none is duplicated within a view.
+// ruling and re-pointed at the 2026-09-25 table-only surface: over the real unfocused authority
+// the chain shell-residue-zero → shell-gate-migration → shell-effectplan-to-bash →
+// shell-typed-invocation is four single-child links, so the TREE derivation collapses it to ONE
+// project — residue-zero's, carrying the arc's ten authored shell-dag-* tasks and the three
+// swallowed intermediates in its counts. On the served table that collapse reads as the project
+// ROW's k-of-n chip (residue-zero renders once, as a node-project row), and every arc member —
+// the ten tasks AND the three chain intermediates — renders as its own flat row, exactly once:
+// the table swallows nothing and drops nothing. The collapsed-tree rendering (chain line and
+// all) survives only on the /sandbox exhibit's grouping path.
+fn li_of_node(html: String, node_id: String) -> String {
+  fold(split(s: html, delimiter: "<li"), init: "", f: (acc, p) =>
+    if string_contains(s: p, pattern: join(["data-node=\"", node_id, "\""], "")) { p } else { acc })
+}
+
 test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
   let task_ids = [
     "shell-dag-cron-entry-line-builder",
@@ -1039,18 +1079,21 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
       doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus), merged: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-shell-residue-zero\"")
-        && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 2)
-        && all(chain_ids, id => occurrence_count(s: h, pattern: join(["class=\"project-chain-member\" data-node=\"", id, "\""], "")) == 1)
-        && occurrence_count(s: h, pattern: "data-node=\"shell-typed-invocation\" tabindex=\"0\"") == 1
-        && string_contains(s: h, pattern: " tasks closed")
+      let arc_row = li_of_node(html: h, node_id: "shell-residue-zero")
+      string_contains(s: arc_row, pattern: "node-project")
+        && string_contains(s: arc_row, pattern: " tasks closed")
+        && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && all(chain_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && !string_contains(s: h, pattern: "project-chain-member")
   }
 }
 
-// THE COLLAPSED ROW'S SHAPE over a constructed chain (the ruling's rendering half): the top
-// project carries its own head, the chain end's counts and bar, and one task disclosure holding
-// the chain line (the swallowed intermediate, by identity) plus the chain end's task rows — and
-// the swallowed intermediate renders no row of its own.
+// THE COLLAPSED CHAIN ON THE TABLE (the 2026-09-25 rendering half): the tree derivation swallows
+// the single-child intermediate — top's row carries the chain end's "0 of 2 tasks closed" count
+// chip — while the TABLE swallows nothing: the intermediate and both tasks render as their own
+// flat rows, each exactly once, and no chain line or tasks disclosure ships on this surface
+// (that rendering survives on the /sandbox exhibit's grouping path, pinned at unit level by
+// witness_project_disclosure_open_attribute_is_derived and the depth-cap machinery half).
 test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
   let top = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00001", id: "page-collapse-top",
     done: false, content: "collapse top", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
@@ -1076,15 +1119,15 @@ test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
   match try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing())) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 2
-        && string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-page-collapse-top\"")
-        && string_contains(s: h, pattern: "0 of 2 tasks closed")
-        && occurrence_count(s: h, pattern: "class=\"project-chain-member\" data-node=\"page-collapse-mid\"") == 1
-        && string_contains(s: h, pattern: "collapse mid")
+      let top_row = li_of_node(html: h, node_id: "page-collapse-top")
+      string_contains(s: top_row, pattern: "node-project")
+        && string_contains(s: top_row, pattern: "0 of 2 tasks closed")
+        && !string_contains(s: h, pattern: "project-chain-member")
+        && !string_contains(s: h, pattern: "class=\"project-tasks\"")
         && occurrence_count(s: h, pattern: "data-node=\"page-collapse-mid\" tabindex=\"0\"") == 1
-        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t1\" tabindex=\"0\"") == 2
-        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t2\" tabindex=\"0\"") == 2
-        && string_contains(s: h, pattern: ">tasks</summary>")
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t1\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t2\" tabindex=\"0\"") == 1
+        && string_contains(s: h, pattern: "collapse mid")
   }
 }
 
@@ -1333,13 +1376,14 @@ test fn witness_client_paints_hero_face_verbatim() -> Bool {
 
 // ── GROUP-EVERYWHERE (operator feedback 2026-09-21: "I'm not seeing the grouping") ───────────────
 //
-// The amended placement rule, rendered: grouping is the organizing principle in EVERY band —
-// a task row nests under its project row regardless of attempts, keeping its hero treatment in
-// place, and a top-level row joins the Active band when its SUBTREE carries live work. These
-// fixtures drive the real authority's shell graph: one fabricated live attempt on
+// The amended placement rule, rendered: grouping is the organizing principle of the row set — a
+// task belongs to its project's flat-table contribution regardless of attempts, and a top-level
+// row joins the Active band's head when its SUBTREE carries live work. These fixtures drive the
+// real authority's shell graph: one fabricated live attempt on
 // shell-dag-cron-entry-line-builder (the row the live belt happens to be working) pulls the whole
-// collapsed shell project into the Active band, auto-open, with the live task nested under it —
-// and a refused attempt instead rolls the red flag up to the project's bar.
+// collapsed shell project to the table's head — and a refused attempt marks the live row's status
+// line error-refusal (the retired forest used to roll the red flag up to the project bar; that
+// render survives on the kept project-tree component).
 
 fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowView> {
   let doc = gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus)
@@ -1414,69 +1458,76 @@ fn fx_shell_task_ids() -> List<String> {
   ]
 }
 
-test fn witness_shell_project_groups_in_active_band_with_live_task() -> Bool {
+// THE GROUP-EVERYWHERE RULING ON THE TABLE (owner feedback 2026-09-21, re-pointed 2026-09-25): a
+// fabricated live attempt on shell-dag-cron-entry-line-builder pulls the whole collapsed shell
+// project to the head of the table as ONE node-project row (the Active band's flat-table
+// realization — the band vocabulary survives as row order and data-band), with the arc's k-of-n
+// chip and every task still rendered exactly once. The live row carries the decided active band
+// and a non-refusal status; the REFUSED arm carries the error-refusal status line — the table's
+// whole claim about execution, where the retired forest used to roll the red flag up to the
+// project bar (that render survives on the kept project-tree component:
+// witness_project_bar_flags_red_from_decided_field; the derivation lives in the presentation
+// witness).
+test fn witness_shell_project_row_heads_the_table_with_live_task() -> Bool {
   match fx_shell_live_workspace_html(refused: false) {
     EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      let active_parts = split(s: h, delimiter: "frontier-bucket frontier-active")
-      count(active_parts) == 2
-        && string_contains(s: string_at(parts: active_parts, index: 1), pattern: "<li class=\"node node-project node-open\" id=\"node-shell-residue-zero\"")
-        && all(fx_shell_task_ids(), id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 2)
-        && string_contains(s: h, pattern: "<details class=\"project-tasks\" open=\"\">")
-        && string_contains(s: h, pattern: "class=\"stage-strip\"")
-        && string_contains(s: h, pattern: "class=\"stage-segment stage-active stage-live\"")
-        && !string_contains(s: h, pattern: "taskbar-error")
+    EmitOk { html: live } =>
+      match fx_shell_live_workspace_html(refused: true) {
+        EmitRejected { reason: _ } => false
+        EmitOk { html: refused_h } =>
+          let project_row = li_of_node(html: live, node_id: "shell-residue-zero")
+          let live_row = li_of_node(html: live, node_id: "shell-dag-cron-entry-line-builder")
+          let refused_row = li_of_node(html: refused_h, node_id: "shell-dag-cron-entry-line-builder")
+          string_contains(s: project_row, pattern: "node-project")
+            && string_contains(s: project_row, pattern: " tasks closed")
+            && marker_before(s: live, first: "data-node=\"shell-residue-zero\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
+            && all(fx_shell_task_ids(), id => occurrence_count(s: live, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+            && string_contains(s: live_row, pattern: "data-band=\"active\"")
+            && !string_contains(s: live_row, pattern: "activity-line-error-refusal")
+            && string_contains(s: refused_row, pattern: "activity-line-error-refusal")
+            && !string_contains(s: live, pattern: "frontier-bucket")
+            && !string_contains(s: live, pattern: "class=\"taskbar\"")
+      }
   }
 }
 
-test fn witness_shell_red_flag_rolls_up_to_project_bar() -> Bool {
-  match fx_shell_live_workspace_html(refused: true) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "frontier-bucket frontier-active")
-        && string_contains(s: h, pattern: "class=\"taskbar taskbar-error\"")
-        && string_contains(s: h, pattern: "class=\"stage-segment stage-refused\"")
-        && string_contains(s: h, pattern: " tasks closed")
-  }
-}
-
-// THE ISSUE TRACKER'S DEFAULT VIEW (owner ruling 2026-09-22): the page opens on the searchable
-// issue table — one flat container with every rendered issue as a taskbar row carrying
-// data-search (headline · node id · owner), the search input, the view chips, and the band
-// chips; the forest ships in the same body as the alternate view. Without JavaScript the table
-// shows, which is the ruling's default state.
+// THE ISSUE TRACKER'S SURFACE (owner ruling 2026-09-22, amended 2026-09-25 "just copy buganizer"):
+// the page opens on the searchable issue table — one flat container with every rendered issue as a
+// dense line carrying data-search (headline · node id · owner), the search input, and the band
+// filter chips. THE VIEW TABS AND THEIR FOREST RETIRED with the 2026-09-25 ruling: no view chips,
+// no second container, no data-view attribute — a resurrected tab or forest reds here.
 test fn witness_default_view_is_the_searchable_issue_table() -> Bool {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<section class=\"roadmap-frontier\" data-view=\"table\">")
+      string_contains(s: h, pattern: "<section class=\"roadmap-frontier\">")
         && string_contains(s: h, pattern: "<div class=\"view-table\">")
-        && string_contains(s: h, pattern: "<div class=\"view-forest\">")
+        && !string_contains(s: h, pattern: "view-forest")
+        && !string_contains(s: h, pattern: "data-view")
         && string_contains(s: h, pattern: "<input type=\"search\" class=\"issue-search\"")
-        && string_contains(s: h, pattern: "data-view-chip=\"table\"")
-        && string_contains(s: h, pattern: "data-view-chip=\"tree\"")
-        && string_contains(s: h, pattern: "data-view-chip=\"bands\"")
         && string_contains(s: h, pattern: "data-band-chip=\"active\"")
-        && string_contains(s: h, pattern: "class=\"chip chip-on\"")
-        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 2
+        && string_contains(s: h, pattern: "data-band-chip=\"all\"")
+        && !string_contains(s: h, pattern: "data-view-chip")
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 1
         && string_contains(s: h, pattern: "data-search=\"page task one page-task-one")
   }
 }
 
-// The client mechanics and the stylesheet law, both pinned at their contracts: the chips only
-// write data attributes, the stylesheet decides visibility, the search reads the row's own
-// decided data-search, and filters retain nothing (matching is a substring read over the flat
-// table, never a tree walk).
+// The client mechanics and the stylesheet law, both pinned at their contracts: the band chips only
+// write data-band-filter — the stylesheet hides non-matching rows of the one table; the search
+// reads the row's own decided data-search; filters retain nothing (matching is a substring read
+// over the flat table, never a tree walk). The retired view switch is the census half: no
+// [data-view-chip] binding in the emitted asset, no data-view rule in the sheet.
 test fn witness_view_switch_and_filter_contracts() -> Bool {
   let js = dispatch_client_js_source()
   let css = roadmap_css()
-  string_contains(s: js, pattern: "[data-view-chip]")
+  !string_contains(s: js, pattern: "[data-view-chip]")
     && string_contains(s: js, pattern: "[data-band-chip]")
     && string_contains(s: js, pattern: "input.issue-search")
     && string_contains(s: js, pattern: "dataset.search")
     && string_contains(s: js, pattern: "toLowerCase()")
     && string_contains(s: js, pattern: "bandFilter")
-    && string_contains(s: css, pattern: ".roadmap-frontier[data-view=\"table\"] .view-forest { display: none }")
+    && !string_contains(s: css, pattern: "data-view")
     && string_contains(s: css, pattern: ".roadmap-frontier[data-band-filter=\"active\"] .view-table li.node:not([data-band=\"active\"]) { display: none }")
     && string_contains(s: css, pattern: ".taskbar-sub:empty, .taskbar-signal:empty, .taskbar-count:empty { display: none }")
 }
@@ -1635,7 +1686,7 @@ fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
 
 fn table_region(html: String) -> String {
   let parts = split(s: html, delimiter: "<div class=\"view-table\">")
-  match (split(s: string_at(parts: parts, index: 1), delimiter: "<div class=\"view-forest\">")).first() {
+  match (split(s: string_at(parts: parts, index: 1), delimiter: "</main>")).first() {
     Present { value: t } => t
     Absent => ""
   }
@@ -1709,26 +1760,44 @@ test fn witness_issue_tokens_resolve_in_both_themes() -> Bool {
     && all(names, n => occurrence_count(s: css, pattern: join(["--issue-", n, ":"], "")) == 3)
 }
 
-// THE MODELED ACTION (owner directive 2026-09-24): the issue table and the issue detail page
-// render the product's Assign action FROM the extdeps model — the contained-primary idiom, the
-// model's wire label, the model's availability idiom — and the OLD dispatch button markup is GONE
-// from those surfaces (a census control: zero dispatch-btn in the view-table region and the
-// detail body; the tree view's taskbar keeps its own control). The availability reads the same
-// launch admission: the fixture's nodes carry no execution contract, so the modeled action
-// renders the model's DISABLED idiom (visible, non-interactive, never hidden); the detail
-// fixture's admitted action renders ENABLED.
+// THE TABLE'S BUTTON CENSUS (owner ruling 2026-09-25, "scrap the button stuff ... just copy
+// buganizer"): the Buganizer results row carries NO action surface — no Start Work, no Assign, no
+// dispatch control, no chip-button of any kind in the actions track. The actions region is status
+// only (the attempt summary count / the project's k-of-n chip), and every pressable action on the
+// tracker UI lives on the DETAIL page's bar — the durable Assign alone (pinned in
+// witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee). RED CONTROLS: a
+// resurrected dispatch-btn or issue-action anywhere in the table region, or a bare <button> in any
+// row, reds here.
 test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let table = table_region(html: h)
+      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
       occurrence_count(s: table, pattern: "dispatch-btn") == 0
-        && occurrence_count(s: table, pattern: "<button class=\"issue-action issue-action-contained-primary is-disabled\"") == 3
-        && occurrence_count(s: table, pattern: "disabled=\"\">Start Work</button>") == 3
-        && string_contains(s: table, pattern: "data-action=\"Start Work\"")
-        && string_contains(s: table, pattern: "data-idiom=\"contained-primary\"")
-        && string_contains(s: table, pattern: "data-action-state=\"disabled\"")
-        && !string_contains(s: table, pattern: "data-action=\"Assign\"")
+        && occurrence_count(s: table, pattern: "issue-action") == 0
+        && occurrence_count(s: table, pattern: "Start Work") == 0
+        && occurrence_count(s: table, pattern: "<button") == 0
+        && string_contains(s: table, pattern: "class=\"issue-row-actions\" data-col=\"actions\"")
+        && string_contains(s: table, pattern: "<span class=\"taskbar-count\">")
+  }
+}
+
+// THE ASSIGNEE CELL (owner ruling 2026-09-25, "copy the UI semantics of assigned/etc from
+// buganizer"): the results row renders the holder as PLAIN TEXT — no chip, no button, no link —
+// and an unassigned issue renders the model's "--" placeholder, the capture-verified unassigned
+// spelling (extdeps.google.issue_tracker.issue_assignee_unassigned_display; 34 of the 50 saved
+// rows in "test - Chromium.html"). The fixture: page-task-one holds an in-progress standing (by
+// "op"); page-task-two and the project hold none — one row shows the identity, two show the
+// placeholder, and no cell carries a widget.
+test fn witness_issue_table_assignee_renders_identity_or_placeholder() -> Bool {
+  match fx_summary_only_page_html(stale: false) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
+      occurrence_count(s: table, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\">op</span>") == 1
+        && occurrence_count(s: table, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\">--</span>") == 2
+        && !string_contains(s: table, pattern: "assignee\"><button")
+        && !string_contains(s: table, pattern: "assignee\"><a")
   }
 }
 
@@ -1885,8 +1954,11 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
 }
 
 
-// The table row carries EXECUTION ONLY: the durable Assign action lives on the detail page's
-// action bar, never on the dense row — assignment and start-work stay distinct affordances.
+// THE DETAIL ACTION BAR (owner ruling 2026-09-25, "scrap the button stuff ... just copy
+// buganizer"): the durable Assign action alone — the model's text idiom, the model's wire label,
+// its own assign route — beside the retired Start Work's ABSENCE: the execution entry points will
+// be re-modeled later, and no execution button renders on the tracker surfaces in the interim.
+// The old dispatch button markup stays gone (a census control: zero dispatch-btn in the body).
 test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
@@ -1897,7 +1969,7 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
       }
       occurrence_count(s: body, pattern: "dispatch-btn") == 0
         && string_contains(s: body, pattern: "<button class=\"issue-action issue-action-text\" type=\"button\" data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"")
-        && string_contains(s: body, pattern: "<button class=\"issue-action issue-action-contained-primary\" type=\"button\" data-action=\"Start Work\" data-idiom=\"contained-primary\" data-action-route=\"dispatch\" data-action-state=\"enabled\"")
+        && occurrence_count(s: body, pattern: "Start Work") == 0
         && !string_contains(s: body, pattern: "is-disabled")
         && string_contains(s: body, pattern: "class=\"issue-action-bar\"")
   }

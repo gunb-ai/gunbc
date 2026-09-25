@@ -346,7 +346,19 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "6f561416f411a1de"
+// Re-pinned 2026-09-25 for the Buganizer-semantics ruling (owner 2026-09-25: "scrap the button
+// stuff we have here for now ... just copy buganizer"): the tree/bands view tabs and their forest
+// retire from the served workspace page — the data-view visibility rules and the frontier-bucket
+// band chrome leave the sheet (the kept machinery's rules stay: the /sandbox exhibit and the
+// /roadmap taskbar still render project chains, taskbars, and dispatch controls). Behavioral
+// receipts: witness_default_view_is_the_searchable_issue_table,
+// witness_view_switch_and_filter_contracts (view-switch census half),
+// witness_issue_table_renders_modeled_action_and_census (zero-button rows),
+// witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee (Assign alone),
+// witness_issue_table_assignee_renders_identity_or_placeholder (the capture's "--" cell),
+// the frontier suite's band-vocabulary re-law, the register censuses unchanged. Derived by
+// execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "a1155d6444e4ac0e"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

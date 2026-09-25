@@ -69,6 +69,8 @@ import extdeps.google.issue_tracker {
   issue_results_columns,
   issue_results_column_kind_wire,
   issue_results_row_tracks,
+  issue_assignee_unassigned_display,
+  issue_results_assignee_display,
 }
 import std.types { list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -408,9 +410,10 @@ test fn w_stock_sidebar_roster_is_verbatim() -> Bool {
 
 // The interface version records the latest cited session PLUS the owner-directed vocabulary
 // additions (the version comment on the row says why); the 2026-09-24 bump carries the action
-// vocabulary. The pin keeps the row from drifting back.
+// vocabulary, the 2026-09-25 bump the capture-verified assignee display rule. The pin keeps the
+// row from drifting back.
 test fn w_interface_version_cites_capture_date() -> Bool {
-  (issue_tracker_interface_version as String) == "2026-09-24"
+  (issue_tracker_interface_version as String) == "2026-09-25"
 }
 
 test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool {
@@ -642,6 +645,19 @@ test fn w_issue_action_availability_wires() -> Bool {
 // children, each component exactly once, sub-components at their depth.
 test fn w_issue_action_start_work_wire() -> Bool {
   issue_action_wire(kind: IssueActionStartWork) == "Start Work"
+}
+
+// THE ASSIGNEE DISPLAY RULE (owner ruling 2026-09-25, "copy the UI semantics of assigned/etc from
+// buganizer"): the results row's ASSIGNEE cell renders the identity as PLAIN TEXT — no chip, no
+// button, no link — and an unassigned issue renders the capture-verified "--" placeholder
+// (34 of the 50 saved rows in /home/briansrls/chromium-565764076/ "test - Chromium.html"; the
+// populated cells did not load in the artifact, so the pin states the placeholder and the
+// plain-text rule, not the populated spelling). RED CONTROL: an empty string is not the
+// placeholder, and the placeholder is not an email.
+test fn w_assignee_results_display_is_plain_text_with_verified_placeholder() -> Bool {
+  issue_results_assignee_display(assignee: Present { value: fixture_owner }) == "briansrls@gunb.ai"
+    && issue_results_assignee_display(assignee: Absent) == "--"
+    && (issue_assignee_unassigned_display as String) == "--"
 }
 
 test fn w_fleet_component_tree_hosts_and_arms() -> Bool {

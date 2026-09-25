@@ -162,20 +162,25 @@ fn daily_workspace_html(doc: RoadmapDocument, merged: List<Int>) -> String {
   }
 }
 
+// THE BAND VOCABULARY WITHOUT THE BAND SURFACE (owner ruling 2026-09-25, "just copy buganizer"):
+// the frontier's four buckets — ready / upcoming / done / superseded — no longer render as
+// frontier-bucket sections; they survive as the table's row vocabulary: the flat rows carry the
+// band in data-band (the band chips filter on it) in the same bucket order the view derived, and
+// the band CHIPS render for the filter. The forest that presented the buckets retired with the
+// tree/bands view tabs.
 test fn witness_page_renders_four_buckets() -> Bool {
   let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "<h1>daily workspace</h1>")
-    && string_contains(s: h, pattern: "<section class=\"roadmap-frontier\" data-view=\"table\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-superseded\"")
-    && string_contains(s: h, pattern: "<h2>Ready</h2>")
-    && string_contains(s: h, pattern: "<h2>Upcoming</h2>")
-    && string_contains(s: h, pattern: "<h2>Done</h2>")
-    && string_contains(s: h, pattern: "<h2>Superseded</h2>")
+    && string_contains(s: h, pattern: "<section class=\"roadmap-frontier\">")
+    && !string_contains(s: h, pattern: "frontier-bucket")
+    && !string_contains(s: h, pattern: "<h2>Ready</h2>")
+    && string_contains(s: h, pattern: "data-band=\"ready\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"ready\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"upcoming\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"done\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"superseded\"")
 }
 
 fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
@@ -232,8 +237,8 @@ test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
   let doc = fixture_doc(nodes: [node_old], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Old Row")
-    && string_contains(s: h, pattern: "class=\"status status-superseded\"")
-    && string_contains(s: h, pattern: "→ successor-lane")
+    && string_contains(s: h, pattern: "data-band=\"superseded\"")
+    && !string_contains(s: h, pattern: "frontier-bucket")
     && !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
 }
 
@@ -242,16 +247,18 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Spawn Me Now")
-    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
-    && string_contains(s: h, pattern: "class=\"node node-open\" data-node=\"spawn-me\"")
+    && string_contains(s: h, pattern: "data-band=\"ready\"")
+    && string_contains(s: h, pattern: "data-node=\"spawn-me\"")
+    && !string_contains(s: h, pattern: "frontier-bucket")
     && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
 test fn witness_authority_daily_workspace_serializes() -> Bool {
   match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
-        && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
+      string_contains(s: h, pattern: "data-band=\"ready\"")
+        && string_contains(s: h, pattern: "data-band=\"done\"")
+        && !string_contains(s: h, pattern: "frontier-bucket")
     EmitRejected { reason: _ } => false
   }
 }

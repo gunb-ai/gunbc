@@ -68,8 +68,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // publicly visible to the owner's signed-in session on 2026-09-22; a re-capture that changes any
 // vocabulary fact or view semantics bumps this row. Bumped 2026-09-24: the action vocabulary
 // below is owner-directed (the capture left the issue actions implicit beyond the shell's
-// "Create Issue"), which the version row records.
-data issue_tracker_interface_version: NonEmptyStr = "2026-09-24"
+// "Create Issue"), which the version row records. Bumped 2026-09-25: the results row's assignee
+// display rule (plain-text identity, the "--" unassigned placeholder) verified against the
+// saved-results capture, which the version row records.
+data issue_tracker_interface_version: NonEmptyStr = "2026-09-25"
 
 // The stock sidebar roster, verbatim from the owner's logged-in session (2026-09-22). The first
 // seven entries each have exactly one derivation fn below; the last four are navigation and
@@ -460,7 +462,11 @@ type IssueActionKind
 // EXECUTION (dispatch), the workflow launching an attempt. Never one affordance doing both. Start
 // Work is our execution verb on the tracker surface, owner-directed 2026-09-24 — the product's
 // own execution verbs are not part of the captured session; the Assign/Create/MarkDuplicate
-// labels remain the product's UI spellings.
+// labels remain the product's UI spellings. AMENDED 2026-09-25 (owner: "scrap the button stuff we
+// have here for now ... just copy buganizer"): no tracker surface renders a Start Work button
+// today — the detail page keeps the durable Assign action alone, and the execution entry points
+// will be re-modeled later. The verb stays modeled here (the /dispatch route and the admission
+// authority it answers remain live); only its rendered surface is retired.
 fn issue_action_wire(kind: IssueActionKind) -> String {
   match kind {
     IssueActionAssign => "Assign"
@@ -576,6 +582,27 @@ fn browse_component_tree_from(components: List<Component>, depth: Int) -> List<C
     at
   } else {
     concat(at, browse_component_tree_from(components: components, depth: depth + 1))
+  }
+}
+
+// THE RESULTS ROW'S ASSIGNEE CELL (owner ruling 2026-09-25, "copy the UI semantics of assigned/etc
+// from buganizer"; verified against the capture the same day). SOURCE, stated honestly:
+// /home/briansrls/chromium-565764076/ "test - Chromium.html" — the ASSIGNEE cell renders the
+// assignee's display identity as PLAIN TEXT: no chip, no button, no link, no menu. The capture's
+// populated cells did not load in the saved HTML (the identity renders asynchronously in the live
+// product, so the assigned rows' cells are empty in the artifact); the plain-text claim is the
+// identity the interface's User type already names, and the unassigned spelling is DIRECTLY
+// VERIFIED: every issue with no assignee renders the two-character placeholder "--" (34 of the
+// capture's 50 rows), in the cell's own dimmed voice — never blank, never a widget.
+data issue_assignee_unassigned_display: NonEmptyStr = "--"
+
+// THE CELL'S DISPLAY RULE, one fn every results surface derives from: the assignee's email when
+// one holds the issue, the unassigned placeholder when Absent — never a hand-rolled empties check
+// downstream of this row.
+fn issue_results_assignee_display(assignee: User?) -> String {
+  match assignee {
+    Present { value: a } => a.email
+    Absent => issue_assignee_unassigned_display as String
   }
 }
 
