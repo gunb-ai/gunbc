@@ -179,18 +179,6 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
     next_trigger: "ExtdepsTransportArgvFact carries a typed projection (ProjectedToken / UnprojectableForm) the way the materialization row already does, and the policy fold reads it -- at which point the empty string is unwritable and the boundary refuses. THE HARD REFUSAL WAS BUILT AND DELIBERATELY NOT LANDED: it stops corpus_git_policy_leak_defused_holds, and that red is not closable by the author who causes it, because the argv-call population is another lane's counted debt. A wall whose only reachable green is someone else's modelling change is not a wall this change may raise"
   },
   SeedWildcardSite {
-    file: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_node.rs",
-    symbol: "well_formed",
-    vocabulary_authority: [
-      DeclarationRef { module_path: "v2.std.node", decl_name: "Connective", field: WholeDeclaration },
-    ],
-    unhandled_forms: "Cardinality and Instantiation were answered well-formed; both are now checked, and Arrow is named as a declared residue",
-    reachability: "the arm was reachable for any node of either form; no run was watched reaching it, so the defect is established against the authority rather than against an observed input",
-    harm: "CLOSED by this change. The authority connective_edges_conform requires count(children) >= 1 for BOTH Cardinality and Instantiation, so an empty node of either form passed a check the authority fails -- a fail-open in the seed-linked normalize gate, one connective away from the case review 44739 caught in the same function",
-    disposition: EveryFormNamed,
-    next_trigger: "Arrow still answers true because the authority routes it to arrow_body_edges_conform, which this bridge does not carry; it dissolves with the bridge itself when the emitted v2 std closure compiles and the authority's fold is used directly"
-  },
-  SeedWildcardSite {
     file: "src/v1/stage0/src/v2_compiler_target_carriers.rs",
     symbol: "target_fidelity_quotient_optional",
     vocabulary_authority: [

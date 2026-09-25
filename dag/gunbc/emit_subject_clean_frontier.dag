@@ -1548,7 +1548,7 @@ fn observation_component_name(component: ObservationComponent) -> String {
 
 fn assembly_mode_text(mode: EmissionAssemblyMode) -> String {
   match mode {
-    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked:", d)
+    SeedLinkedAssembly => "seed-linked"
   }
 }
 
