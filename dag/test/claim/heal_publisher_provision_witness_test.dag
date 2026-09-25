@@ -19,6 +19,11 @@ import gunbc.auth.heal_publisher_provision {
 import extdeps.cloud.gcp.gcp { WifPoolWire, WifProviderWire, WifOidcWire }
 import gunbc.auth.github_gcp_federation { github_wif_issuer_uri }
 import v2.std.optional { Present, Absent }
+import extdeps.transports.rest { RestResponseObserved, RestBodyRead, RestBodyUndecodable }
+import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
+import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }
+import test.fixture.rest_exchange_replay_probe
+import gunbc.auth.mtcollins1_boot_federation_provision { mtcollins1_boot_dedicated_federation }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -204,4 +209,115 @@ test fn witness_the_pool_display_name_is_within_the_services_limit() -> Bool {
 // name at all; a name known to be over the limit must fail the same predicate.
 test fn witness_a_name_over_the_limit_would_not_pass_that_check() -> Bool {
   string_length(s: "GitHub heal publisher (protected publication only)") > 32
+}
+
+// ── the readings DECODED FROM THE WIRE, not constructed (2026-09-24) ─────────────────────────
+//
+// Every classifier row above hands the classifier a CONSTRUCTED WifProviderWire, so all of them
+// stayed green while the live run refused the provider it had just created: the IAM API answers in
+// proto3 JSON (cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.providers
+// #WorkloadIdentityPoolProvider), so issuerUri, attributeCondition and attributeMapping are
+// lowerCamelCase on the wire, the model's fields carried no `from` key, and the interpreter's nested
+// decode keyed the record by wire spelling -- the provisioner read "issuer is null", an empty
+// condition and a differing mapping off a provider that matched in every field. These bodies are the
+// shapes the service returned for the mtcollins1 boot federation in project 582015116396 on
+// 2026-09-24 (LIST providers and GET pool), served through the REST replay seam so the decode the
+// wet entry runs produces the readings the classifier judges.
+data live_mtcollins1_providers_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"attributeMapping\":{\"attribute.repository_id\":\"assertion.repository_id\",\"attribute.workflow_ref\":\"assertion.workflow_ref\",\"google.subject\":\"assertion.sub\"},\"attributeCondition\":\"assertion.repository_id == '1143718943' && assertion.repository_owner_id == '244123794' && assertion.workflow_ref == 'gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main' && assertion.ref == 'refs/heads/main' && assertion.event_name == 'workflow_dispatch' && assertion.environment == 'mtcollins1-boot'\",\"oidc\":{\"issuerUri\":\"https://token.actions.githubusercontent.com\"}}]}"
+
+data live_mtcollins1_pool_body: String = "{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot\",\"displayName\":\"Mt. Collins boot (one job)\",\"state\":\"ACTIVE\"}"
+
+// The witness frame's return is generic, so the providers Optional is re-typed as the operation declares it.
+fn decoded_providers() -> ProvidersReading {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifProvidersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_mtcollins1_providers_body } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.WifProvidersPage() }
+  )
+  match result {
+    WitnessReturned { value } => {
+      let providers: List<WifProviderWire>? = value.providers
+      ProvidersObserved { providers: match providers { Present { value: ps } => ps  Absent => [] } }
+    }
+    WitnessRefused { diagnostic: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
+  }
+}
+
+fn decoded_pool() -> PoolReading {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifPool",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_mtcollins1_pool_body } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.WifPool() }
+  )
+  match result {
+    WitnessReturned { value } => PoolObserved { pool: WifPoolWire { name: value.pool_name, display_name: value.display_name, disabled: value.disabled, state: value.state } }
+    WitnessRefused { diagnostic: _ } => PoolObservedAbsent
+  }
+}
+
+// THE DECODED FIELDS ARE THE WIRE'S: each renamed nested field reaches its authored name.
+test fn the_live_provider_list_decodes_its_camel_case_fields() -> Bool {
+  match decoded_providers() {
+    ProvidersObserved { providers: ps } => ps.length() == 1 && match first(ps) {
+      Present { value: p } =>
+        (match p.oidc { Present { value: o } => o.issuer_uri == (github_wif_issuer_uri as String)  Absent => false })
+          && (match p.attribute_condition { Present { value: c } => c == mtcollins1_boot_dedicated_federation().attribute_condition  Absent => false })
+          && (match p.attribute_mapping { Present { value: m } => m == mtcollins1_boot_dedicated_federation().attribute_mapping  Absent => false })
+      Absent => false
+    }
+    ProvidersUnreadable { cause: _ } => false
+  }
+}
+
+test fn the_live_pool_decodes_its_display_name() -> Bool {
+  match decoded_pool() {
+    PoolObserved { pool: p } => match p.display_name { Present { value: d } => d == "Mt. Collins boot (one job)"  Absent => false }
+    _ => false
+  }
+}
+
+// THE ROUTE THE RERUN TAKES: the created pool and provider, read back off the wire, classify as
+// present and matching, so the operator's rerun adopts them and proceeds to the bindings.
+test fn the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present() -> Bool {
+  let f = mtcollins1_boot_dedicated_federation()
+  let c = classify_dedicated_federation(f: f, pool: decoded_pool(), providers: decoded_providers(), account: AccountObserved { email: f.service_account as String })
+  classified(c: c) && federation_fully_present(c: c)
+}
+
+// ── the authored name of a renamed field is RESERVED, not a second wire spelling ──────────────
+//
+// A member spelled `issuer_uri` is not the wire key of WifOidcWire.issuer_uri (`issuerUri`), so it
+// may not populate the field around `from` and the typed decode; a body carrying both spellings
+// refuses rather than letting member order choose which one the classifier reads.
+data authored_only_issuer_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"oidc\":{\"issuer_uri\":\"https://token.actions.githubusercontent.com\"}}]}"
+
+data both_issuer_spellings_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"oidc\":{\"issuerUri\":\"https://token.actions.githubusercontent.com\",\"issuer_uri\":\"https://attacker.invalid\"}}]}"
+
+fn providers_body_refusal(body: String) -> String {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifProvidersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.WifProvidersPage() }
+  )
+  match result {
+    WitnessReturned { value } => match value.outcome {
+      RestBodyUndecodable { status: _, cause } => cause as String
+      _ => ""
+    }
+    WitnessRefused { diagnostic: _ } => ""
+  }
+}
+
+test fn an_authored_only_issuer_spelling_refuses_rather_than_populating_the_field() -> Bool {
+  string_contains(s: providers_body_refusal(body: authored_only_issuer_body), pattern: "is the authored name of a field whose declared wire key is `issuerUri`")
+}
+
+test fn both_issuer_spellings_refuse_as_ambiguous() -> Bool {
+  string_contains(s: providers_body_refusal(body: both_issuer_spellings_body), pattern: "the field's spelling is ambiguous")
 }
