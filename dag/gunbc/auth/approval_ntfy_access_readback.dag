@@ -1,6 +1,7 @@
 module gunbc.auth.approval_ntfy_access_readback
 
 import std.types { NonEmptyStr, String, List, Bool, Int, EpochSecs }
+import std.measure { Hertz, hertz, hertz_count }
 import std.algebra { trim }
 import std.measure { Second, second }
 import std.resources { Network }
@@ -29,7 +30,7 @@ import extdeps.posix.getconf { getconf_clock_ticks_command, clock_ticks_reading,
 import extdeps.systemd { SystemdUnitProperty, ActiveState, MainPID, EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_environment_command }
 import extdeps.linux.procfs { ProcNetTcp, ProcNetTcp6, procfs_path_literal, procfs_pid_file_path, procfs_stat_path }
-import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, ProcPidStatStartTime, StartTimeObserved }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, ProcPidStatStartTime, StartTimeObserved, process_start_epoch_seconds }
 import extdeps.linux.proc_stat { proc_stat_boot_time, ProcStatBootTime, BootTimeObserved }
 import extdeps.linux.proc_net_tcp {
   TcpSocketRow, ProcNetTcpTable, ProcNetTcpParsed, ProcNetTcpUnparseable, TcpLocalPort, TcpPortBound, TcpPortUnbound,
@@ -435,14 +436,14 @@ fn first_failed_read(runs: List<ReadRun>) -> ApprovalNtfyAclVerdict? {
 // THE TIMES THIS READING COMPARES. Every one is a whole Unix-epoch second (std.types EpochSecs), and
 // each carries how it was obtained, so a comparison never meets a bare number of unknown origin.
 //
-// The process start is DERIVED, never read (proc(5)): /proc/stat `btime` is the boot instant in
-// epoch seconds, /proc/<pid>/stat field 22 `starttime` is clock ticks since boot, and
-// sysconf(_SC_CLK_TCK) is ticks per second. started = btime + starttime / CLK_TCK, the division
-// truncating to a whole second. The tick count stays a tick count beside the instant derived from it.
+// The process start is DERIVED, never read, by the one home of that derivation,
+// extdeps.linux.proc_pid_stat process_start_epoch_seconds (btime + starttime / CLK_TCK, floored to a
+// whole second). Its inputs are kept beside it: the tick count stays a tick count and CLK_TCK is a
+// Hertz, so the instant is reproducible from what was read.
 type ProcessStartInstant {
   boot_time: EpochSecs
   start_ticks: Int
-  ticks_per_second: Int
+  ticks_per_second: Hertz
   started: EpochSecs
 }
 
@@ -462,12 +463,16 @@ fn epoch_secs_of(n: Int) -> EpochSecs? {
   if n < 0 { none } else { Present { value: n } }
 }
 
-fn process_start_instant(boot_time: EpochSecs, start_ticks: Int, ticks_per_second: Int) -> ProcessStartInstant {
-  ProcessStartInstant {
-    boot_time: boot_time,
-    start_ticks: start_ticks,
-    ticks_per_second: ticks_per_second,
-    started: (boot_time as Int) + (start_ticks / ticks_per_second),
+// A start before the epoch has no EpochSecs and is Absent, which the caller refuses.
+fn process_start_instant(boot_time: EpochSecs, start_ticks: Int, ticks_per_second: Hertz) -> ProcessStartInstant? {
+  match epoch_secs_of(n: process_start_epoch_seconds(boot_epoch_seconds: boot_time, ticks_per_second: ticks_per_second, start_ticks: start_ticks)) {
+    Absent => none
+    Present { value: started } => Present { value: ProcessStartInstant {
+      boot_time: boot_time,
+      start_ticks: start_ticks,
+      ticks_per_second: ticks_per_second,
+      started: started,
+    } }
   }
 }
 
@@ -490,7 +495,7 @@ fn file_time_label(t: FileTime) -> String {
 }
 
 fn process_start_label(s: ProcessStartInstant) -> String {
-  to_string(s.started as Int) + " (btime " + to_string(s.boot_time as Int) + " + " + to_string(s.start_ticks) + " ticks / " + to_string(s.ticks_per_second) + ")"
+  to_string(s.started as Int) + " (btime " + to_string(s.boot_time as Int) + " + " + to_string(s.start_ticks) + " ticks / " + to_string(hertz_count(h: s.ticks_per_second)) + " Hz)"
 }
 
 fn pid_start_ticks(read: NtfyRuntimeRead, text: String) -> Int? {
@@ -555,7 +560,10 @@ fn approval_ntfy_bracketed(pid: String, r: NtfyRuntimeReads) -> ApprovalNtfyAclV
 fn approval_ntfy_started(t0: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   match proc_stat_boot_time(content: run_stdout(run: r.boot_time)) {
     BootTimeObserved { epoch_seconds: btime } => match clock_ticks_reading(stdout: run_stdout(run: r.clock_ticks)) {
-      ClockTicksObserved { per_second: hz } => approval_ntfy_process(start: process_start_instant(boot_time: btime, start_ticks: t0, ticks_per_second: hz), r: r)
+      ClockTicksObserved { per_second: hz } => match process_start_instant(boot_time: btime, start_ticks: t0, ticks_per_second: hertz(count: hz)) {
+        Absent => unparseable(read: ReadPidStatBefore, detail: "the derived start precedes the epoch")
+        Present { value: start } => approval_ntfy_process(start: start, r: r)
+      }
       _ => unparseable(read: ReadClockTicks, detail: "CLK_TCK is not a positive integer")
     }
     _ => unparseable(read: ReadBootTime, detail: "no btime line")

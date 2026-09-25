@@ -1,6 +1,7 @@
 module test.claim.approval_ntfy_access_readback_witness_test
 
 import std.logic { Bool }
+import std.measure { hertz }
 import std.types { String, List, NonEmptyStr, Int }
 import extdeps.ntfy.access { NtfyRoleAdmin, NtfyRoleUser, NtfyReadWrite, ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyUserAccess, AdminAllTopics, TopicGrants }
 import extdeps.exec.command { LocalExec, SshExec, argv_words }
@@ -1079,9 +1080,12 @@ fn is_status_change(t: FileTime) -> Bool {
 // 1003 do not. Comparing against the untruncated 1002.5, or treating the equal second as before,
 // reds this.
 test fn a_file_time_in_the_start_second_does_not_predate_the_start() -> Bool {
-  let start = process_start_instant(boot_time: 1000, start_ticks: 250, ticks_per_second: 100)
-  (start.started as Int) == 1002
-    && file_time_predates_start(t: FileTime { kind: StatusChangeTime, at: 1001 }, start: start)
-    && !file_time_predates_start(t: FileTime { kind: StatusChangeTime, at: 1002 }, start: start)
-    && !file_time_predates_start(t: FileTime { kind: BirthTime, at: 1003 }, start: start)
+  match process_start_instant(boot_time: 1000, start_ticks: 250, ticks_per_second: hertz(count: 100)) {
+    Absent => false
+    Present { value: start } =>
+      (start.started as Int) == 1002
+        && file_time_predates_start(t: FileTime { kind: StatusChangeTime, at: 1001 }, start: start)
+        && !file_time_predates_start(t: FileTime { kind: StatusChangeTime, at: 1002 }, start: start)
+        && !file_time_predates_start(t: FileTime { kind: BirthTime, at: 1003 }, start: start)
+  }
 }
