@@ -22,6 +22,7 @@ type GeneratedArtifact
   | MicrovmShakedownYamlArtifact
   | HealWorkflowYamlArtifact
   | HealPublisherWorkflowYamlArtifact
+  | NativeFrontierWorkflowYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | CargoConfigArtifact
@@ -59,7 +60,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, NativeFrontierWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -204,6 +205,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     MicrovmShakedownYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "microvm-shakedown.yml" }
     HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
     HealPublisherWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal-publish.yml" }
+    NativeFrontierWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "native-frontier.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     CargoConfigArtifact => ArtifactLocation { directory: ".cargo", name: "config.toml" }
@@ -295,6 +297,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     MicrovmShakedownYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    NativeFrontierWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
@@ -360,6 +363,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     MicrovmShakedownYamlArtifact => match b { MicrovmShakedownYamlArtifact => true  _ => false }
     HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
     HealPublisherWorkflowYamlArtifact => match b { HealPublisherWorkflowYamlArtifact => true  _ => false }
+    NativeFrontierWorkflowYamlArtifact => match b { NativeFrontierWorkflowYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     CargoConfigArtifact => match b { CargoConfigArtifact => true  _ => false }
@@ -439,6 +443,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
     HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
+    NativeFrontierWorkflowYamlArtifact => decl_ref(module_path: "gunbc.native_frontier_workflow", decl_name: "expected_native_frontier_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
     CargoConfigArtifact => decl_ref(module_path: "gunbc.cargo_config_emit", decl_name: "expected_cargo_config_toml")
