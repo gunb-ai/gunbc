@@ -184,6 +184,12 @@ fn closure_ingest_step(
               bind_outcome(
                 o: qualified_name_from_module_node(root: census.root),
                 f: fn(module_qn) {
+                  if closure_ingest_declares(files: acc.files, member_module: module_qn) {
+                    outcome_rejected(d: closure_emission_diagnostic(
+                      reason: ^closure_census_duplicate_module,
+                      at: census.root
+                    ))
+                  } else {
                   outcome_accepted(value: ClosureIngest {
                     files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
                       module: module_qn,
@@ -193,6 +199,7 @@ fn closure_ingest_step(
                     }),
                     index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root)
                   })
+                  }
                 }
               )
             }
@@ -244,10 +251,25 @@ fn closure_census_index(files: FreeMonoid<ClosureIngestFile>) -> SymbolIndex {
   )
 }
 
-fn closure_file_of(files: FreeMonoid<ClosureIngestFile>, member_module: QualifiedName) -> FreeMonoid<ClosureIngestFile> {
-  fold_list(xs: files, empty: Empty, cons: fn(acc, f) {
+// A MODULE IDENTITY IS DECLARED BY EXACTLY ONE FILE, and the census refuses the second file that
+// declares one (closure_census_duplicate_module, located at that file's module node). Resolution
+// would refuse a duplicate too (resolve_duplicate_module_name), but each member is resolved in a
+// context holding only itself, so that wall cannot fire here; the census is where the whole
+// population is in view, so the wall lives there (review of gunbc#12218 at 242b7af).
+fn closure_ingest_declares(files: FreeMonoid<ClosureIngestFile>, member_module: QualifiedName) -> Bool {
+  fold_list(xs: files, empty: false, cons: fn(found, f) { found || f.module == member_module })
+}
+
+// EXACTLY ONE FILE, OR A TYPED REFUSAL. The census makes more than one unreachable, and it is refused
+// here anyway rather than read as its first element.
+fn closure_file_of(files: FreeMonoid<ClosureIngestFile>, member_module: QualifiedName, at: Node) -> Outcome<ClosureIngestFile> {
+  match fold_list(xs: files, empty: Empty, cons: fn(acc, f) {
     if f.module == member_module { list_snoc_item(xs: acc, item: f) } else { acc }
-  })
+  }) {
+    Empty => outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_emission_member_not_ingested, at: at))
+    Cons { head: file, tail: Empty } => outcome_accepted(value: file)
+    Cons { head: _, tail: _ } => outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: at))
+  }
 }
 
 // ONE MEMBER RESOLVED IN A CONTEXT WHOSE ONLY ROOT IS THE MEMBER: the default NamespaceOnlyY policy
@@ -285,13 +307,13 @@ fn closure_member_for_fold(
   active_roots: FreeMonoid<SourceRootRef>,
   member_module: QualifiedName
 ) -> Outcome<ReferenceClosureMember<NormalizedTree>> {
-  match closure_file_of(files: ingested.files, member_module: member_module) {
-    Empty =>
-      outcome_rejected(d: closure_emission_diagnostic(
-        reason: ^closure_emission_member_not_ingested,
-        at: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^closure_emission_member_not_ingested } }, children: [])
-      ))
-    Cons { head: file, tail: _ } =>
+  bind_outcome(
+    o: closure_file_of(
+      files: ingested.files,
+      member_module: member_module,
+      at: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^closure_emission_member_lookup } }, children: [])
+    ),
+    f: fn(file) {
       bind_outcome(
         o: normalize(parse_tree: file.parse_tree),
         f: fn(tree) {
@@ -316,7 +338,8 @@ fn closure_member_for_fold(
           )
         }
       )
-  }
+    }
+  )
 }
 
 // THE EMISSION-PHASE INDEX: members at full grade, non-members at census grade, one route
