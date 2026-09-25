@@ -1,0 +1,505 @@
+module v2.extdeps.languages.swift.print
+
+import std.types { String, List, Bool, Int }
+import v2.std.optional { Present, Absent }
+import extdeps.numeric.base16 { int_to_upper_hex }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.layout { Doc, DocLine, DocEmpty, LayoutProtocol, doc_text, doc_concat, doc_nest, render }
+import v2.extdeps.languages.swift.syntax {
+  SwiftComment, SwiftLineComment, SwiftDocLineComment,
+  SwiftType, SwiftTypeIdentifier, SwiftArrayType, SwiftDictionaryType, SwiftOptionalType, SwiftTupleType, SwiftTupleTypeElement,
+  SwiftAttribute, SwiftDeclarationModifier,
+  SwiftStaticModifier, SwiftPrivateModifier, SwiftFileprivateModifier, SwiftFinalModifier, SwiftIndirectModifier,
+  SwiftMutatingModifier, SwiftNonisolatedModifier, SwiftOverrideModifier,
+  SwiftArgument, SwiftStringLiteralDelimiter, SwiftStaticStringDelimiter, SwiftExtendedStringDelimiter,
+  SwiftStringSegment, SwiftStringText, SwiftStringInterpolation, SwiftDictionaryElement,
+  SwiftTryOperator, SwiftTry, SwiftOptionalTry, SwiftForcedTry,
+  SwiftTypeCastingOperator, SwiftIsCast, SwiftAsCast, SwiftConditionalAsCast, SwiftForcedAsCast,
+  SwiftPrefixOperator, SwiftLogicalNotOperator, SwiftNegationOperator,
+  SwiftInfixOperator, SwiftAddOperator, SwiftSubtractOperator, SwiftMultiplyOperator, SwiftEqualOperator, SwiftNotEqualOperator,
+  SwiftLessThanOperator, SwiftGreaterThanOperator, SwiftLessThanOrEqualOperator, SwiftGreaterThanOrEqualOperator,
+  SwiftLogicalAndOperator, SwiftLogicalOrOperator, SwiftNilCoalescingOperator, SwiftClosedRangeOperator, SwiftHalfOpenRangeOperator,
+  SwiftAssignmentOperator, SwiftAddAssignmentOperator,
+  SwiftExpr, SwiftIdentifierExpr, SwiftWildcardExpr, SwiftImplicitMemberExpr, SwiftExplicitMemberExpr, SwiftOptionalChainingExpr,
+  SwiftFunctionCallExpr, SwiftSubscriptExpr, SwiftStringLiteral, SwiftIntegerLiteral, SwiftBooleanLiteral, SwiftNilLiteral,
+  SwiftArrayLiteral, SwiftDictionaryLiteral, SwiftTupleExpr, SwiftParenthesizedExpr, SwiftClosure, SwiftTryExpr, SwiftAwaitExpr,
+  SwiftPrefixExpr, SwiftInfixExpr, SwiftTernaryConditionalExpr, SwiftTypeCastingExpr, SwiftKeyPathExpr,
+  SwiftClosureExpr,
+  SwiftBindingKeyword, SwiftLet, SwiftVar,
+  SwiftPattern, SwiftIdentifierPattern, SwiftWildcardPattern, SwiftTuplePattern, SwiftValueBindingPattern, SwiftEnumCasePattern, SwiftExpressionPattern,
+  SwiftCondition, SwiftExpressionCondition, SwiftOptionalBindingCondition,
+  SwiftElseClause, SwiftNoElse, SwiftElseBlock, SwiftElseIf,
+  SwiftCaseLabel, SwiftCaseItems, SwiftDefaultLabel, SwiftSwitchCase, SwiftCatchClause,
+  SwiftStmt, SwiftExpressionStmt, SwiftDeclarationStmt, SwiftReturnStmt, SwiftThrowStmt, SwiftIfStmt, SwiftGuardStmt,
+  SwiftForInStmt, SwiftSwitchStmt, SwiftDoStmt, SwiftCommentedStmt,
+  SwiftParameter, SwiftEnumCaseElement,
+  SwiftDecl, SwiftImportDecl, SwiftVariableDecl, SwiftComputedPropertyDecl, SwiftFunctionDecl, SwiftInitializerDecl,
+  SwiftStructDecl, SwiftClassDecl, SwiftEnumDecl, SwiftEnumCaseDecl, SwiftExtensionDecl, SwiftCommentedDecl,
+  SwiftSourceFile
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/swiftlang/swift-book/tree/swift-6.2-RELEASE/TSPL.docc/ReferenceManual"
+  }
+}
+
+// THE ONE PRINTER FOR v2.extdeps.languages.swift.syntax: a fold from the tree to Swift text through
+// std.layout. The layout is this printer's canonical policy, fixed here and nowhere else:
+//   - four-space indentation; one declaration or statement per line; every body on its own lines;
+//   - a closure whose body is one expression, and a guard whose else body is one non-block
+//     statement, stay on the line that opens them; a switch case with one non-block statement
+//     follows its label;
+//   - argument, element and parameter lists are never broken;
+//   - a blank line separates two members when either has a body, and separates top-level
+//     declarations except adjacent imports;
+//   - a static string literal spells \\ \" \n \t \r \0 by their short escapes and every other
+//     control or non-ASCII scalar as \u{X}, so the emitted source is ASCII; an extended literal
+//     spells its text verbatim.
+// Nothing in the tree chooses among layouts, so one tree has one text.
+
+data swift_print_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "    " }
+
+fn swp_t(s: String) -> Doc { doc_text(text: s) }
+
+fn swp_join(xs: List<String>, sep: String) -> String {
+  fold(xs, init: "", f: (acc, x) => if acc == "" { x } else { concat(acc, concat(sep, x)) })
+}
+
+fn swp_join_docs(xs: List<Doc>, sep: String) -> Doc {
+  doc_concat(parts: fold(xs, init: [], f: (acc, x) => if length(acc) == 0 { [x] } else { append(acc, items: [doc_text(text: sep), x]) }))
+}
+
+// ── Comments ────────────────────────────────────────────────────────────────────────────────
+fn swp_comment(c: SwiftComment) -> String {
+  match c {
+    SwiftLineComment { text: t } => if t == "" { "//" } else { concat("// ", t) }
+    SwiftDocLineComment { text: t } => if t == "" { "///" } else { concat("/// ", t) }
+  }
+}
+
+// ── Types ───────────────────────────────────────────────────────────────────────────────────
+fn swp_type(t: SwiftType) -> String {
+  match t {
+    SwiftTypeIdentifier { name: n, generic_arguments: a } =>
+      if length(a) == 0 { n } else { join([n, "<", swp_join(xs: map(a, x => swp_type(t: x)), sep: ", "), ">"], "") }
+    SwiftArrayType { element: e } => join(["[", swp_type(t: e), "]"], "")
+    SwiftDictionaryType { key: k, value: v } => join(["[", swp_type(t: k), ": ", swp_type(t: v), "]"], "")
+    SwiftOptionalType { wrapped: w } => concat(swp_type(t: w), "?")
+    SwiftTupleType { elements: es } => join(["(", swp_join(xs: map(es, e => swp_tuple_type_element(e: e)), sep: ", "), ")"], "")
+  }
+}
+
+fn swp_tuple_type_element(e: SwiftTupleTypeElement) -> String {
+  match e.name {
+    Present { value: n } => join([n, ": ", swp_type(t: e.element_type)], "")
+    Absent => swp_type(t: e.element_type)
+  }
+}
+
+fn swp_inherits(i: List<SwiftType>) -> String {
+  if length(i) == 0 { "" } else { concat(": ", swp_join(xs: map(i, x => swp_type(t: x)), sep: ", ")) }
+}
+
+// ── Attributes and modifiers ────────────────────────────────────────────────────────────────
+fn swp_modifier(m: SwiftDeclarationModifier) -> String {
+  match m {
+    SwiftStaticModifier => "static"
+    SwiftPrivateModifier => "private"
+    SwiftFileprivateModifier => "fileprivate"
+    SwiftFinalModifier => "final"
+    SwiftIndirectModifier => "indirect"
+    SwiftMutatingModifier => "mutating"
+    SwiftNonisolatedModifier => "nonisolated"
+    SwiftOverrideModifier => "override"
+  }
+}
+
+fn swp_attribute(a: SwiftAttribute) -> Doc {
+  if length(a.arguments) == 0 {
+    swp_t(s: join(["@", a.name, " "], ""))
+  } else {
+    doc_concat(parts: [swp_t(s: join(["@", a.name, "("], "")), swp_arguments(a: a.arguments), swp_t(s: ") ")])
+  }
+}
+
+fn swp_prefix(attrs: List<SwiftAttribute>, mods: List<SwiftDeclarationModifier>) -> Doc {
+  doc_concat(parts: append(map(attrs, a => swp_attribute(a: a)), items: map(mods, m => swp_t(s: concat(swp_modifier(m: m), " ")))))
+}
+
+// ── String literals ─────────────────────────────────────────────────────────────────────────
+fn swp_escape_scalar(cp: Int) -> String {
+  if cp == 92 { "\\\\" }
+  else if cp == 34 { "\\\"" }
+  else if cp == 10 { "\\n" }
+  else if cp == 9 { "\\t" }
+  else if cp == 13 { "\\r" }
+  else if cp == 0 { "\\0" }
+  else if cp < 32 || cp >= 127 { join(["\\u\{", int_to_upper_hex(n: cp), "\}"], "") }
+  else { from_code_point(cp: cp) }
+}
+
+fn swp_escape_text(s: String) -> String {
+  fold(chars(s: s), init: "", f: (acc, cp) => concat(acc, swp_escape_scalar(cp: cp)))
+}
+
+fn swp_string_segment(d: SwiftStringLiteralDelimiter, s: SwiftStringSegment) -> Doc {
+  match s {
+    SwiftStringText { text: t } => match d {
+      SwiftStaticStringDelimiter => swp_t(s: swp_escape_text(s: t))
+      SwiftExtendedStringDelimiter => swp_t(s: t)
+    }
+    SwiftStringInterpolation { expr: e } => match d {
+      SwiftStaticStringDelimiter => doc_concat(parts: [swp_t(s: "\\("), swp_expr(e: e), swp_t(s: ")")])
+      SwiftExtendedStringDelimiter => doc_concat(parts: [swp_t(s: "\\#("), swp_expr(e: e), swp_t(s: ")")])
+    }
+  }
+}
+
+fn swp_string_literal(d: SwiftStringLiteralDelimiter, segments: List<SwiftStringSegment>) -> Doc {
+  let quote = match d { SwiftStaticStringDelimiter => ["\"", "\""]  SwiftExtendedStringDelimiter => ["#\"", "\"#"] }
+  let open = match get(xs: quote, index: 0) { Present { value: q } => q  Absent => "" }
+  let close = match get(xs: quote, index: 1) { Present { value: q } => q  Absent => "" }
+  doc_concat(parts: append(append([swp_t(s: open)], items: map(segments, s => swp_string_segment(d: d, s: s))), items: [swp_t(s: close)]))
+}
+
+// ── Expressions ─────────────────────────────────────────────────────────────────────────────
+fn swp_try(o: SwiftTryOperator) -> String {
+  match o { SwiftTry => "try "  SwiftOptionalTry => "try? "  SwiftForcedTry => "try! " }
+}
+
+fn swp_cast(o: SwiftTypeCastingOperator) -> String {
+  match o { SwiftIsCast => " is "  SwiftAsCast => " as "  SwiftConditionalAsCast => " as? "  SwiftForcedAsCast => " as! " }
+}
+
+fn swp_infix(o: SwiftInfixOperator) -> String {
+  match o {
+    SwiftAddOperator => " + "
+    SwiftSubtractOperator => " - "
+    SwiftMultiplyOperator => " * "
+    SwiftEqualOperator => " == "
+    SwiftNotEqualOperator => " != "
+    SwiftLessThanOperator => " < "
+    SwiftGreaterThanOperator => " > "
+    SwiftLessThanOrEqualOperator => " <= "
+    SwiftGreaterThanOrEqualOperator => " >= "
+    SwiftLogicalAndOperator => " && "
+    SwiftLogicalOrOperator => " || "
+    SwiftNilCoalescingOperator => " ?? "
+    SwiftClosedRangeOperator => "..."
+    SwiftHalfOpenRangeOperator => "..<"
+    SwiftAssignmentOperator => " = "
+    SwiftAddAssignmentOperator => " += "
+  }
+}
+
+fn swp_argument(a: SwiftArgument) -> Doc {
+  match a.label {
+    Present { value: l } => doc_concat(parts: [swp_t(s: concat(l, ": ")), swp_expr(e: a.value)])
+    Absent => swp_expr(e: a.value)
+  }
+}
+
+fn swp_arguments(a: List<SwiftArgument>) -> Doc {
+  swp_join_docs(xs: map(a, x => swp_argument(a: x)), sep: ", ")
+}
+
+fn swp_closure_is_inline(c: SwiftClosureExpr) -> Bool {
+  if length(c.statements) == 1 {
+    match get(xs: c.statements, index: 0) {
+      Present { value: s } => match s { SwiftExpressionStmt { expr: _ } => true  _ => false }
+      Absent => false
+    }
+  } else { false }
+}
+
+fn swp_closure(c: SwiftClosureExpr) -> Doc {
+  let head = if length(c.parameters) == 0 { "\{" } else { join(["\{ ", swp_join(xs: c.parameters, sep: ", "), " in"], "") }
+  if swp_closure_is_inline(c: c) {
+    doc_concat(parts: [swp_t(s: concat(head, " ")), swp_join_docs(xs: map(c.statements, s => swp_stmt(s: s)), sep: ""), swp_t(s: " \}")])
+  } else {
+    doc_concat(parts: [swp_t(s: head), swp_block_body(statements: c.statements), swp_t(s: "\}")])
+  }
+}
+
+fn swp_expr(e: SwiftExpr) -> Doc {
+  match e {
+    SwiftIdentifierExpr { name: n } => swp_t(s: n)
+    SwiftWildcardExpr => swp_t(s: "_")
+    SwiftImplicitMemberExpr { name: n } => swp_t(s: concat(".", n))
+    SwiftExplicitMemberExpr { base: b, member: m } => doc_concat(parts: [swp_expr(e: b), swp_t(s: concat(".", m))])
+    SwiftOptionalChainingExpr { base: b } => doc_concat(parts: [swp_expr(e: b), swp_t(s: "?")])
+    SwiftFunctionCallExpr { callee: f, arguments: a, trailing_closure: tc } => match tc {
+      Absent => doc_concat(parts: [swp_expr(e: f), swp_t(s: "("), swp_arguments(a: a), swp_t(s: ")")])
+      Present { value: c } =>
+        if length(a) == 0 {
+          doc_concat(parts: [swp_expr(e: f), swp_t(s: " "), swp_closure(c: c)])
+        } else {
+          doc_concat(parts: [swp_expr(e: f), swp_t(s: "("), swp_arguments(a: a), swp_t(s: ") "), swp_closure(c: c)])
+        }
+    }
+    SwiftSubscriptExpr { base: b, arguments: a } => doc_concat(parts: [swp_expr(e: b), swp_t(s: "["), swp_arguments(a: a), swp_t(s: "]")])
+    SwiftStringLiteral { delimiter: d, segments: s } => swp_string_literal(d: d, segments: s)
+    SwiftIntegerLiteral { value: n } => swp_t(s: to_string(n))
+    SwiftBooleanLiteral { value: b } => swp_t(s: if b { "true" } else { "false" })
+    SwiftNilLiteral => swp_t(s: "nil")
+    SwiftArrayLiteral { elements: es } => doc_concat(parts: [swp_t(s: "["), swp_join_docs(xs: map(es, x => swp_expr(e: x)), sep: ", "), swp_t(s: "]")])
+    SwiftDictionaryLiteral { elements: es } =>
+      if length(es) == 0 {
+        swp_t(s: "[:]")
+      } else {
+        doc_concat(parts: [swp_t(s: "["), swp_join_docs(xs: map(es, x => doc_concat(parts: [swp_expr(e: x.key), swp_t(s: ": "), swp_expr(e: x.value)])), sep: ", "), swp_t(s: "]")])
+      }
+    SwiftTupleExpr { elements: es } => doc_concat(parts: [swp_t(s: "("), swp_arguments(a: es), swp_t(s: ")")])
+    SwiftParenthesizedExpr { inner: i } => doc_concat(parts: [swp_t(s: "("), swp_expr(e: i), swp_t(s: ")")])
+    SwiftClosure { closure: c } => swp_closure(c: c)
+    SwiftTryExpr { operator: o, operand: x } => doc_concat(parts: [swp_t(s: swp_try(o: o)), swp_expr(e: x)])
+    SwiftAwaitExpr { operand: x } => doc_concat(parts: [swp_t(s: "await "), swp_expr(e: x)])
+    SwiftPrefixExpr { operator: o, operand: x } =>
+      doc_concat(parts: [swp_t(s: match o { SwiftLogicalNotOperator => "!"  SwiftNegationOperator => "-" }), swp_expr(e: x)])
+    SwiftInfixExpr { lhs: l, operator: o, rhs: r } => doc_concat(parts: [swp_expr(e: l), swp_t(s: swp_infix(o: o)), swp_expr(e: r)])
+    SwiftTernaryConditionalExpr { condition: c, then_value: t, else_value: f } =>
+      doc_concat(parts: [swp_expr(e: c), swp_t(s: " ? "), swp_expr(e: t), swp_t(s: " : "), swp_expr(e: f)])
+    SwiftTypeCastingExpr { operand: x, operator: o, target: t } => doc_concat(parts: [swp_expr(e: x), swp_t(s: concat(swp_cast(o: o), swp_type(t: t)))])
+    SwiftKeyPathExpr { components: cs } => swp_t(s: concat("\\.", swp_join(xs: cs, sep: ".")))
+  }
+}
+
+// ── Patterns ────────────────────────────────────────────────────────────────────────────────
+fn swp_keyword(k: SwiftBindingKeyword) -> String {
+  match k { SwiftLet => "let"  SwiftVar => "var" }
+}
+
+fn swp_pattern(p: SwiftPattern) -> Doc {
+  match p {
+    SwiftIdentifierPattern { name: n } => swp_t(s: n)
+    SwiftWildcardPattern => swp_t(s: "_")
+    SwiftTuplePattern { elements: es } => doc_concat(parts: [swp_t(s: "("), swp_join_docs(xs: map(es, x => swp_pattern(p: x)), sep: ", "), swp_t(s: ")")])
+    SwiftValueBindingPattern { keyword: k, pattern: x } => doc_concat(parts: [swp_t(s: concat(swp_keyword(k: k), " ")), swp_pattern(p: x)])
+    SwiftEnumCasePattern { case_name: n, associated: a } =>
+      if length(a) == 0 {
+        swp_t(s: concat(".", n))
+      } else {
+        doc_concat(parts: [swp_t(s: join([".", n, "("], "")), swp_join_docs(xs: map(a, x => swp_pattern(p: x)), sep: ", "), swp_t(s: ")")])
+      }
+    SwiftExpressionPattern { expr: x } => swp_expr(e: x)
+  }
+}
+
+// ── Statements ──────────────────────────────────────────────────────────────────────────────
+// A block body: each statement on its own line one level in, then the line the caller closes on.
+fn swp_block_body(statements: List<SwiftStmt>) -> Doc {
+  doc_concat(parts: [doc_nest(levels: 1, body: doc_concat(parts: map(statements, s => doc_concat(parts: [DocLine, swp_stmt(s: s)])))), DocLine])
+}
+
+fn swp_block(head: Doc, statements: List<SwiftStmt>) -> Doc {
+  doc_concat(parts: [head, swp_t(s: " \{"), swp_block_body(statements: statements), swp_t(s: "\}")])
+}
+
+fn swp_stmt_has_block(s: SwiftStmt) -> Bool {
+  match s {
+    SwiftExpressionStmt { expr: _ } => false
+    SwiftReturnStmt { value: _ } => false
+    SwiftThrowStmt { value: _ } => false
+    SwiftDeclarationStmt { decl: d } => swp_decl_has_body(d: d)
+    _ => true
+  }
+}
+
+fn swp_single_simple(statements: List<SwiftStmt>) -> Bool {
+  if length(statements) == 1 {
+    match get(xs: statements, index: 0) {
+      Present { value: s } => !swp_stmt_has_block(s: s)
+      Absent => false
+    }
+  } else { false }
+}
+
+fn swp_condition(c: SwiftCondition) -> Doc {
+  match c {
+    SwiftExpressionCondition { expr: e } => swp_expr(e: e)
+    SwiftOptionalBindingCondition { keyword: k, name: n, initializer: i } => match i {
+      Present { value: e } => doc_concat(parts: [swp_t(s: join([swp_keyword(k: k), " ", n, " = "], "")), swp_expr(e: e)])
+      Absent => swp_t(s: join([swp_keyword(k: k), " ", n], ""))
+    }
+  }
+}
+
+fn swp_conditions(c: List<SwiftCondition>) -> Doc {
+  swp_join_docs(xs: map(c, x => swp_condition(c: x)), sep: ", ")
+}
+
+fn swp_else(e: SwiftElseClause) -> Doc {
+  match e {
+    SwiftNoElse => DocEmpty
+    SwiftElseBlock { statements: s } => swp_block(head: swp_t(s: " else"), statements: s)
+    SwiftElseIf { conditions: c, statements: s, else_clause: rest } =>
+      doc_concat(parts: [swp_block(head: doc_concat(parts: [swp_t(s: " else if "), swp_conditions(c: c)]), statements: s), swp_else(e: rest)])
+  }
+}
+
+fn swp_case_label(l: SwiftCaseLabel) -> Doc {
+  match l {
+    SwiftCaseItems { patterns: ps } => doc_concat(parts: [swp_t(s: "case "), swp_join_docs(xs: map(ps, p => swp_pattern(p: p)), sep: ", "), swp_t(s: ":")])
+    SwiftDefaultLabel => swp_t(s: "default:")
+  }
+}
+
+fn swp_switch_case(c: SwiftSwitchCase) -> Doc {
+  if swp_single_simple(statements: c.statements) {
+    doc_concat(parts: [swp_case_label(l: c.label), swp_t(s: " "), swp_join_docs(xs: map(c.statements, s => swp_stmt(s: s)), sep: "")])
+  } else {
+    doc_concat(parts: [swp_case_label(l: c.label), doc_nest(levels: 1, body: doc_concat(parts: map(c.statements, s => doc_concat(parts: [DocLine, swp_stmt(s: s)]))))])
+  }
+}
+
+fn swp_catch(c: SwiftCatchClause) -> Doc {
+  match c.pattern {
+    Present { value: p } => swp_block(head: doc_concat(parts: [swp_t(s: " catch "), swp_pattern(p: p)]), statements: c.statements)
+    Absent => swp_block(head: swp_t(s: " catch"), statements: c.statements)
+  }
+}
+
+fn swp_stmt(s: SwiftStmt) -> Doc {
+  match s {
+    SwiftExpressionStmt { expr: e } => swp_expr(e: e)
+    SwiftDeclarationStmt { decl: d } => swp_decl(d: d)
+    SwiftReturnStmt { value: v } => match v {
+      Present { value: e } => doc_concat(parts: [swp_t(s: "return "), swp_expr(e: e)])
+      Absent => swp_t(s: "return")
+    }
+    SwiftThrowStmt { value: e } => doc_concat(parts: [swp_t(s: "throw "), swp_expr(e: e)])
+    SwiftIfStmt { conditions: c, statements: b, else_clause: e } =>
+      doc_concat(parts: [swp_block(head: doc_concat(parts: [swp_t(s: "if "), swp_conditions(c: c)]), statements: b), swp_else(e: e)])
+    SwiftGuardStmt { conditions: c, else_statements: b } =>
+      if swp_single_simple(statements: b) {
+        doc_concat(parts: [swp_t(s: "guard "), swp_conditions(c: c), swp_t(s: " else \{ "), swp_join_docs(xs: map(b, x => swp_stmt(s: x)), sep: ""), swp_t(s: " \}")])
+      } else {
+        swp_block(head: doc_concat(parts: [swp_t(s: "guard "), swp_conditions(c: c), swp_t(s: " else")]), statements: b)
+      }
+    SwiftForInStmt { pattern: p, sequence: q, statements: b } =>
+      swp_block(head: doc_concat(parts: [swp_t(s: "for "), swp_pattern(p: p), swp_t(s: " in "), swp_expr(e: q)]), statements: b)
+    SwiftSwitchStmt { subject: x, cases: cs } =>
+      doc_concat(parts: [swp_t(s: "switch "), swp_expr(e: x), swp_t(s: " \{"), doc_concat(parts: map(cs, c => doc_concat(parts: [DocLine, swp_switch_case(c: c)]))), DocLine, swp_t(s: "\}")])
+    SwiftDoStmt { statements: b, catches: cs } =>
+      doc_concat(parts: append([swp_block(head: swp_t(s: "do"), statements: b)], items: map(cs, c => swp_catch(c: c))))
+    SwiftCommentedStmt { comments: cs, stmt: x } =>
+      doc_concat(parts: append(map(cs, c => doc_concat(parts: [swp_t(s: swp_comment(c: c)), DocLine])), items: [swp_stmt(s: x)]))
+  }
+}
+
+// ── Declarations ────────────────────────────────────────────────────────────────────────────
+fn swp_decl_has_body(d: SwiftDecl) -> Bool {
+  match d {
+    SwiftImportDecl { attributes: _, module_name: _ } => false
+    SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: _ } => false
+    SwiftEnumCaseDecl { elements: _ } => false
+    SwiftCommentedDecl { comments: _, decl: x } => swp_decl_has_body(d: x)
+    _ => true
+  }
+}
+
+fn swp_decl_is_import(d: SwiftDecl) -> Bool {
+  match d {
+    SwiftImportDecl { attributes: _, module_name: _ } => true
+    SwiftCommentedDecl { comments: _, decl: x } => swp_decl_is_import(d: x)
+    _ => false
+  }
+}
+
+fn swp_parameter(p: SwiftParameter) -> Doc {
+  let head = match p.argument_label {
+    Present { value: l } => join([l, " ", p.name, ": ", swp_type(t: p.parameter_type)], "")
+    Absent => join([p.name, ": ", swp_type(t: p.parameter_type)], "")
+  }
+  match p.default_value {
+    Present { value: v } => doc_concat(parts: [swp_t(s: concat(head, " = ")), swp_expr(e: v)])
+    Absent => swp_t(s: head)
+  }
+}
+
+fn swp_parameters(ps: List<SwiftParameter>) -> Doc {
+  doc_concat(parts: [swp_t(s: "("), swp_join_docs(xs: map(ps, p => swp_parameter(p: p)), sep: ", "), swp_t(s: ")")])
+}
+
+fn swp_enum_case_element(c: SwiftEnumCaseElement) -> String {
+  if length(c.associated) == 0 {
+    c.name
+  } else {
+    join([c.name, "(", swp_join(xs: map(c.associated, a => swp_tuple_type_element(e: a)), sep: ", "), ")"], "")
+  }
+}
+
+// Members of a type body: a blank line between two neighbours when either has a body.
+type SwiftPrintRun {
+  started: Bool
+  previous: Bool
+  docs: List<Doc>
+}
+
+fn swp_member_step(acc: SwiftPrintRun, m: SwiftDecl) -> SwiftPrintRun {
+  let has_body = swp_decl_has_body(d: m)
+  let line = doc_concat(parts: [DocLine, swp_decl(d: m)])
+  let spaced = acc.started && (acc.previous || has_body)
+  SwiftPrintRun { started: true, previous: has_body, docs: append(acc.docs, items: [if spaced { doc_concat(parts: [DocLine, line]) } else { line }]) }
+}
+
+fn swp_members(members: List<SwiftDecl>) -> Doc {
+  let run = fold(members, init: SwiftPrintRun { started: false, previous: false, docs: [] }, f: (acc, m) => swp_member_step(acc: acc, m: m))
+  doc_concat(parts: [doc_nest(levels: 1, body: doc_concat(parts: run.docs)), DocLine])
+}
+
+fn swp_type_decl(attrs: List<SwiftAttribute>, mods: List<SwiftDeclarationModifier>, keyword: String, name: String, inherits: List<SwiftType>, members: List<SwiftDecl>) -> Doc {
+  doc_concat(parts: [swp_prefix(attrs: attrs, mods: mods), swp_t(s: join([keyword, " ", name, swp_inherits(i: inherits), " \{"], "")), swp_members(members: members), swp_t(s: "\}")])
+}
+
+fn swp_decl(d: SwiftDecl) -> Doc {
+  match d {
+    SwiftImportDecl { attributes: a, module_name: n } => doc_concat(parts: [swp_prefix(attrs: a, mods: []), swp_t(s: concat("import ", n))])
+    SwiftVariableDecl { attributes: a, modifiers: m, keyword: k, pattern: p, annotation: t, initializer: i } =>
+      doc_concat(parts: [
+        swp_prefix(attrs: a, mods: m),
+        swp_t(s: concat(swp_keyword(k: k), " ")),
+        swp_pattern(p: p),
+        match t { Present { value: ty } => swp_t(s: concat(": ", swp_type(t: ty)))  Absent => DocEmpty },
+        match i { Present { value: e } => doc_concat(parts: [swp_t(s: " = "), swp_expr(e: e)])  Absent => DocEmpty },
+      ])
+    SwiftComputedPropertyDecl { attributes: a, modifiers: m, name: n, property_type: t, getter: g } =>
+      swp_block(head: doc_concat(parts: [swp_prefix(attrs: a, mods: m), swp_t(s: join(["var ", n, ": ", swp_type(t: t)], ""))]), statements: g)
+    SwiftFunctionDecl { attributes: a, modifiers: m, name: n, parameters: ps, is_async: asy, throws: th, result: r, body: b } =>
+      swp_block(
+        head: doc_concat(parts: [
+          swp_prefix(attrs: a, mods: m),
+          swp_t(s: concat("func ", n)),
+          swp_parameters(ps: ps),
+          swp_t(s: join([if asy { " async" } else { "" }, if th { " throws" } else { "" }, match r { Present { value: t } => concat(" -> ", swp_type(t: t))  Absent => "" }], "")),
+        ]),
+        statements: b
+      )
+    SwiftInitializerDecl { modifiers: m, parameters: ps, throws: th, body: b } =>
+      swp_block(head: doc_concat(parts: [swp_prefix(attrs: [], mods: m), swp_t(s: "init"), swp_parameters(ps: ps), swp_t(s: if th { " throws" } else { "" })]), statements: b)
+    SwiftStructDecl { attributes: a, modifiers: m, name: n, inherits: i, members: ms } => swp_type_decl(attrs: a, mods: m, keyword: "struct", name: n, inherits: i, members: ms)
+    SwiftClassDecl { attributes: a, modifiers: m, name: n, inherits: i, members: ms } => swp_type_decl(attrs: a, mods: m, keyword: "class", name: n, inherits: i, members: ms)
+    SwiftEnumDecl { attributes: a, modifiers: m, name: n, inherits: i, members: ms } => swp_type_decl(attrs: a, mods: m, keyword: "enum", name: n, inherits: i, members: ms)
+    SwiftEnumCaseDecl { elements: es } => swp_t(s: concat("case ", swp_join(xs: map(es, c => swp_enum_case_element(c: c)), sep: ", ")))
+    SwiftExtensionDecl { extended: t, inherits: i, members: ms } =>
+      doc_concat(parts: [swp_t(s: join(["extension ", swp_type(t: t), swp_inherits(i: i), " \{"], "")), swp_members(members: ms), swp_t(s: "\}")])
+    SwiftCommentedDecl { comments: cs, decl: x } =>
+      doc_concat(parts: append(map(cs, c => doc_concat(parts: [swp_t(s: swp_comment(c: c)), DocLine])), items: [swp_decl(d: x)]))
+  }
+}
+
+// ── A source file: top-level declarations separated by a blank line, except adjacent imports ─
+fn swp_top_level_step(acc: SwiftPrintRun, d: SwiftDecl) -> SwiftPrintRun {
+  let is_import = swp_decl_is_import(d: d)
+  let line = doc_concat(parts: [swp_decl(d: d), DocLine])
+  let spaced = acc.started && !(acc.previous && is_import)
+  SwiftPrintRun { started: true, previous: is_import, docs: append(acc.docs, items: [if spaced { doc_concat(parts: [DocLine, line]) } else { line }]) }
+}
+
+fn print_swift_source_file(f: SwiftSourceFile) -> String {
+  let run = fold(f.declarations, init: SwiftPrintRun { started: false, previous: false, docs: [] }, f: (acc, d) => swp_top_level_step(acc: acc, d: d))
+  render(doc: doc_concat(parts: run.docs), proto: swift_print_protocol)
+}

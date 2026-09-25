@@ -42,7 +42,10 @@ import gunbc.generated_artifact {
   PlanArtifact,
   CouponCadQueryProgramArtifact,
   ApprovalDeviceVectorsArtifact,
-  ApproveIosProjectYmlArtifact
+  ApproveIosProjectYmlArtifact,
+  ApproveIosProtocolSwiftArtifact,
+  ApproveIosWireSwiftArtifact,
+  ApproveIosProtocolVectorTestsSwiftArtifact
 }
 import v2.std.optional { Optional, Absent, Present }
 import tools.docs_projection_agreement { docs_projection_bytes_agree }
@@ -110,6 +113,9 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     WholeCorpusCompileMeasuredRootDemandsArtifact => Absent
     ApprovalDeviceVectorsArtifact => Absent
     ApproveIosProjectYmlArtifact => Absent
+    ApproveIosProtocolSwiftArtifact => Absent
+    ApproveIosWireSwiftArtifact => Absent
+    ApproveIosProtocolVectorTestsSwiftArtifact => Absent
     AutoinstallUserDataArtifact { spec: _ } => Absent
     RunnerHostSudoersArtifact { host: _ } => Absent
     PlanArtifact { plan: _ } => Absent

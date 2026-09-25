@@ -1,0 +1,323 @@
+module v2.extdeps.languages.swift.syntax
+
+import std.types { String, List, Bool, Int }
+import v2.std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/swiftlang/swift-book/tree/swift-6.2-RELEASE/TSPL.docc/ReferenceManual"
+  }
+}
+
+// A SWIFT PROGRAM AS A SYMBOLIC SYNTAX TREE: declarations, types, statements, expressions and
+// patterns as modeled nodes, never a String blob. Arm names follow the Swift 6.2 Language Reference
+// grammar productions (Declarations, Types, Statements, Expressions, Patterns, Attributes) of the
+// cited tag, so a reader can join each arm to the production it realizes. This is the program-grain
+// companion of v2.extdeps.languages.swift_decl, whose rows project .dag records and coproducts into
+// the struct and union-style enum declarations of the same grammar through the shared semantic-decl
+// fold; this tree is what a whole source file is when it is authored rather than derived.
+//
+// ONE PRINTER projects the tree to Swift text: v2.extdeps.languages.swift.print. Layout is the
+// printer's canonical policy and is not carried on the nodes -- there is no layout-hint field, so
+// two authors cannot spell one tree two ways.
+//
+// CONSUMER (DESIGN §3c): gunbc.approve_ios_swift_protocol, gunbc.approve_ios_swift_wire and
+// gunbc.approve_ios_swift_protocol_vector_tests, whose trees the printer renders into the
+// drift-gated apps/approve-ios sources (gunbc.generated_artifact).
+//
+// The emit direction only. §4 asks for one grammar read in both directions; the ingest direction
+// is the declared frontier below, not a second model.
+data swift_syntax_ingest_frontier: DissolutionCondition = unbound_dissolution(description: "v2.extdeps.languages.swift.syntax is printed (v2.extdeps.languages.swift.print) and never read: Swift source is authored as syntax-tree constructors rather than ingested. DISSOLVES WHEN the Swift grammar rows are read in both directions (DESIGN §4) so that ingest of a Swift source file produces this model, SUFFICIENT FOR the apps/approve-ios trees to be obtained by ingesting Swift rather than transcribed as constructors, and for print(ingest(s)) to be checked against s on the whole app")
+
+// ── Comments (the lexical `comment` production; carried beside a declaration or statement) ──
+type SwiftComment
+  = SwiftLineComment { text: String }
+  | SwiftDocLineComment { text: String }
+
+// ── Types (Types chapter) ────────────────────────────────────────────────────────────────────
+type SwiftType
+  = SwiftTypeIdentifier { name: String, generic_arguments: List<SwiftType> }
+  | SwiftArrayType { element: SwiftType }
+  | SwiftDictionaryType { key: SwiftType, value: SwiftType }
+  | SwiftOptionalType { wrapped: SwiftType }
+  | SwiftTupleType { elements: List<SwiftTupleTypeElement> }
+
+type SwiftTupleTypeElement {
+  name: String?
+  element_type: SwiftType
+}
+
+// ── Attributes and declaration modifiers ────────────────────────────────────────────────────
+type SwiftAttribute {
+  name: String
+  arguments: List<SwiftArgument>
+}
+
+type SwiftDeclarationModifier
+  = SwiftStaticModifier
+  | SwiftPrivateModifier
+  | SwiftFileprivateModifier
+  | SwiftFinalModifier
+  | SwiftIndirectModifier
+  | SwiftMutatingModifier
+  | SwiftNonisolatedModifier
+  | SwiftOverrideModifier
+
+// ── Expressions ─────────────────────────────────────────────────────────────────────────────
+type SwiftArgument {
+  label: String?
+  value: SwiftExpr
+}
+
+type SwiftStringLiteralDelimiter
+  = SwiftStaticStringDelimiter
+  | SwiftExtendedStringDelimiter
+
+type SwiftStringSegment
+  = SwiftStringText { text: String }
+  | SwiftStringInterpolation { expr: SwiftExpr }
+
+type SwiftDictionaryElement {
+  key: SwiftExpr
+  value: SwiftExpr
+}
+
+type SwiftTryOperator
+  = SwiftTry
+  | SwiftOptionalTry
+  | SwiftForcedTry
+
+type SwiftTypeCastingOperator
+  = SwiftIsCast
+  | SwiftAsCast
+  | SwiftConditionalAsCast
+  | SwiftForcedAsCast
+
+type SwiftPrefixOperator
+  = SwiftLogicalNotOperator
+  | SwiftNegationOperator
+
+type SwiftInfixOperator
+  = SwiftAddOperator
+  | SwiftSubtractOperator
+  | SwiftMultiplyOperator
+  | SwiftEqualOperator
+  | SwiftNotEqualOperator
+  | SwiftLessThanOperator
+  | SwiftGreaterThanOperator
+  | SwiftLessThanOrEqualOperator
+  | SwiftGreaterThanOrEqualOperator
+  | SwiftLogicalAndOperator
+  | SwiftLogicalOrOperator
+  | SwiftNilCoalescingOperator
+  | SwiftClosedRangeOperator
+  | SwiftHalfOpenRangeOperator
+  | SwiftAssignmentOperator
+  | SwiftAddAssignmentOperator
+
+type SwiftExpr
+  = SwiftIdentifierExpr { name: String }
+  | SwiftWildcardExpr
+  | SwiftImplicitMemberExpr { name: String }
+  | SwiftExplicitMemberExpr { base: SwiftExpr, member: String }
+  | SwiftOptionalChainingExpr { base: SwiftExpr }
+  | SwiftFunctionCallExpr { callee: SwiftExpr, arguments: List<SwiftArgument>, trailing_closure: SwiftClosureExpr? }
+  | SwiftSubscriptExpr { base: SwiftExpr, arguments: List<SwiftArgument> }
+  | SwiftStringLiteral { delimiter: SwiftStringLiteralDelimiter, segments: List<SwiftStringSegment> }
+  | SwiftIntegerLiteral { value: Int }
+  | SwiftBooleanLiteral { value: Bool }
+  | SwiftNilLiteral
+  | SwiftArrayLiteral { elements: List<SwiftExpr> }
+  | SwiftDictionaryLiteral { elements: List<SwiftDictionaryElement> }
+  | SwiftTupleExpr { elements: List<SwiftArgument> }
+  | SwiftParenthesizedExpr { inner: SwiftExpr }
+  | SwiftClosure { closure: SwiftClosureExpr }
+  | SwiftTryExpr { operator: SwiftTryOperator, operand: SwiftExpr }
+  | SwiftAwaitExpr { operand: SwiftExpr }
+  | SwiftPrefixExpr { operator: SwiftPrefixOperator, operand: SwiftExpr }
+  | SwiftInfixExpr { lhs: SwiftExpr, operator: SwiftInfixOperator, rhs: SwiftExpr }
+  | SwiftTernaryConditionalExpr { condition: SwiftExpr, then_value: SwiftExpr, else_value: SwiftExpr }
+  | SwiftTypeCastingExpr { operand: SwiftExpr, operator: SwiftTypeCastingOperator, target: SwiftType }
+  | SwiftKeyPathExpr { components: List<String> }
+
+// closure-expression: a closure-signature of bare parameter names (empty: no signature, `$0`-style).
+type SwiftClosureExpr {
+  parameters: List<String>
+  statements: List<SwiftStmt>
+}
+
+// ── Patterns ────────────────────────────────────────────────────────────────────────────────
+type SwiftBindingKeyword
+  = SwiftLet
+  | SwiftVar
+
+type SwiftPattern
+  = SwiftIdentifierPattern { name: String }
+  | SwiftWildcardPattern
+  | SwiftTuplePattern { elements: List<SwiftPattern> }
+  | SwiftValueBindingPattern { keyword: SwiftBindingKeyword, pattern: SwiftPattern }
+  | SwiftEnumCasePattern { case_name: String, associated: List<SwiftPattern> }
+  | SwiftExpressionPattern { expr: SwiftExpr }
+
+// ── Statements ──────────────────────────────────────────────────────────────────────────────
+type SwiftCondition
+  = SwiftExpressionCondition { expr: SwiftExpr }
+  | SwiftOptionalBindingCondition { keyword: SwiftBindingKeyword, name: String, initializer: SwiftExpr? }
+
+type SwiftElseClause
+  = SwiftNoElse
+  | SwiftElseBlock { statements: List<SwiftStmt> }
+  | SwiftElseIf { conditions: List<SwiftCondition>, statements: List<SwiftStmt>, else_clause: SwiftElseClause }
+
+type SwiftCaseLabel
+  = SwiftCaseItems { patterns: List<SwiftPattern> }
+  | SwiftDefaultLabel
+
+type SwiftSwitchCase {
+  label: SwiftCaseLabel
+  statements: List<SwiftStmt>
+}
+
+type SwiftCatchClause {
+  pattern: SwiftPattern?
+  statements: List<SwiftStmt>
+}
+
+type SwiftStmt
+  = SwiftExpressionStmt { expr: SwiftExpr }
+  | SwiftDeclarationStmt { decl: SwiftDecl }
+  | SwiftReturnStmt { value: SwiftExpr? }
+  | SwiftThrowStmt { value: SwiftExpr }
+  | SwiftIfStmt { conditions: List<SwiftCondition>, statements: List<SwiftStmt>, else_clause: SwiftElseClause }
+  | SwiftGuardStmt { conditions: List<SwiftCondition>, else_statements: List<SwiftStmt> }
+  | SwiftForInStmt { pattern: SwiftPattern, sequence: SwiftExpr, statements: List<SwiftStmt> }
+  | SwiftSwitchStmt { subject: SwiftExpr, cases: List<SwiftSwitchCase> }
+  | SwiftDoStmt { statements: List<SwiftStmt>, catches: List<SwiftCatchClause> }
+  | SwiftCommentedStmt { comments: List<SwiftComment>, stmt: SwiftStmt }
+
+// ── Declarations ────────────────────────────────────────────────────────────────────────────
+type SwiftParameter {
+  argument_label: String?
+  name: String
+  parameter_type: SwiftType
+  default_value: SwiftExpr?
+}
+
+type SwiftEnumCaseElement {
+  name: String
+  associated: List<SwiftTupleTypeElement>
+}
+
+type SwiftDecl
+  = SwiftImportDecl { attributes: List<SwiftAttribute>, module_name: String }
+  | SwiftVariableDecl { attributes: List<SwiftAttribute>, modifiers: List<SwiftDeclarationModifier>, keyword: SwiftBindingKeyword, pattern: SwiftPattern, annotation: SwiftType?, initializer: SwiftExpr? }
+  | SwiftComputedPropertyDecl { attributes: List<SwiftAttribute>, modifiers: List<SwiftDeclarationModifier>, name: String, property_type: SwiftType, getter: List<SwiftStmt> }
+  | SwiftFunctionDecl { attributes: List<SwiftAttribute>, modifiers: List<SwiftDeclarationModifier>, name: String, parameters: List<SwiftParameter>, is_async: Bool, throws: Bool, result: SwiftType?, body: List<SwiftStmt> }
+  | SwiftInitializerDecl { modifiers: List<SwiftDeclarationModifier>, parameters: List<SwiftParameter>, throws: Bool, body: List<SwiftStmt> }
+  | SwiftStructDecl { attributes: List<SwiftAttribute>, modifiers: List<SwiftDeclarationModifier>, name: String, inherits: List<SwiftType>, members: List<SwiftDecl> }
+  | SwiftClassDecl { attributes: List<SwiftAttribute>, modifiers: List<SwiftDeclarationModifier>, name: String, inherits: List<SwiftType>, members: List<SwiftDecl> }
+  | SwiftEnumDecl { attributes: List<SwiftAttribute>, modifiers: List<SwiftDeclarationModifier>, name: String, inherits: List<SwiftType>, members: List<SwiftDecl> }
+  | SwiftEnumCaseDecl { elements: List<SwiftEnumCaseElement> }
+  | SwiftExtensionDecl { extended: SwiftType, inherits: List<SwiftType>, members: List<SwiftDecl> }
+  | SwiftCommentedDecl { comments: List<SwiftComment>, decl: SwiftDecl }
+
+// top-level-declaration: a source file is its statements' declarations, in order.
+type SwiftSourceFile {
+  declarations: List<SwiftDecl>
+}
+
+// ── Constructors. Short names because a transcribed file is thousands of these; every one is
+// sw_-prefixed because module-level names are corpus-global. ──────────────────────────────────
+fn sw_t(n: String) -> SwiftType { SwiftTypeIdentifier { name: n, generic_arguments: [] } }
+fn sw_tg(n: String, a: List<SwiftType>) -> SwiftType { SwiftTypeIdentifier { name: n, generic_arguments: a } }
+fn sw_tarr(e: SwiftType) -> SwiftType { SwiftArrayType { element: e } }
+fn sw_tdict(k: SwiftType, v: SwiftType) -> SwiftType { SwiftDictionaryType { key: k, value: v } }
+fn sw_topt(w: SwiftType) -> SwiftType { SwiftOptionalType { wrapped: w } }
+fn sw_ttuple(e: List<SwiftTupleTypeElement>) -> SwiftType { SwiftTupleType { elements: e } }
+fn sw_tel(t: SwiftType) -> SwiftTupleTypeElement { SwiftTupleTypeElement { name: none, element_type: t } }
+fn sw_tnel(n: String, t: SwiftType) -> SwiftTupleTypeElement { SwiftTupleTypeElement { name: Present { value: n }, element_type: t } }
+
+fn sw_id(n: String) -> SwiftExpr { SwiftIdentifierExpr { name: n } }
+fn sw_dot(n: String) -> SwiftExpr { SwiftImplicitMemberExpr { name: n } }
+fn sw_mem(b: SwiftExpr, m: String) -> SwiftExpr { SwiftExplicitMemberExpr { base: b, member: m } }
+fn sw_path(b: String, m: String) -> SwiftExpr { SwiftExplicitMemberExpr { base: SwiftIdentifierExpr { name: b }, member: m } }
+fn sw_chain(b: SwiftExpr) -> SwiftExpr { SwiftOptionalChainingExpr { base: b } }
+fn sw_call(f: SwiftExpr, a: List<SwiftArgument>) -> SwiftExpr { SwiftFunctionCallExpr { callee: f, arguments: a, trailing_closure: none } }
+fn sw_calln(f: String, a: List<SwiftArgument>) -> SwiftExpr { SwiftFunctionCallExpr { callee: SwiftIdentifierExpr { name: f }, arguments: a, trailing_closure: none } }
+fn sw_callt(f: SwiftExpr, a: List<SwiftArgument>, c: SwiftClosureExpr) -> SwiftExpr { SwiftFunctionCallExpr { callee: f, arguments: a, trailing_closure: Present { value: c } } }
+fn sw_sub(b: SwiftExpr, a: List<SwiftArgument>) -> SwiftExpr { SwiftSubscriptExpr { base: b, arguments: a } }
+fn sw_arg(l: String, v: SwiftExpr) -> SwiftArgument { SwiftArgument { label: Present { value: l }, value: v } }
+fn sw_pos(v: SwiftExpr) -> SwiftArgument { SwiftArgument { label: none, value: v } }
+fn sw_str(s: String) -> SwiftExpr { SwiftStringLiteral { delimiter: SwiftStaticStringDelimiter, segments: [SwiftStringText { text: s }] } }
+fn sw_raw(s: String) -> SwiftExpr { SwiftStringLiteral { delimiter: SwiftExtendedStringDelimiter, segments: [SwiftStringText { text: s }] } }
+fn sw_interp(p: List<SwiftStringSegment>) -> SwiftExpr { SwiftStringLiteral { delimiter: SwiftStaticStringDelimiter, segments: p } }
+fn sw_st(s: String) -> SwiftStringSegment { SwiftStringText { text: s } }
+fn sw_si(e: SwiftExpr) -> SwiftStringSegment { SwiftStringInterpolation { expr: e } }
+fn sw_int(n: Int) -> SwiftExpr { SwiftIntegerLiteral { value: n } }
+fn sw_bool(b: Bool) -> SwiftExpr { SwiftBooleanLiteral { value: b } }
+fn sw_arr(e: List<SwiftExpr>) -> SwiftExpr { SwiftArrayLiteral { elements: e } }
+fn sw_strs(e: List<String>) -> SwiftExpr { SwiftArrayLiteral { elements: map(e, s => sw_str(s: s)) } }
+fn sw_dict(e: List<SwiftDictionaryElement>) -> SwiftExpr { SwiftDictionaryLiteral { elements: e } }
+fn sw_kv(k: SwiftExpr, v: SwiftExpr) -> SwiftDictionaryElement { SwiftDictionaryElement { key: k, value: v } }
+fn sw_tuple(e: List<SwiftArgument>) -> SwiftExpr { SwiftTupleExpr { elements: e } }
+fn sw_paren(e: SwiftExpr) -> SwiftExpr { SwiftParenthesizedExpr { inner: e } }
+fn sw_clo(p: List<String>, s: List<SwiftStmt>) -> SwiftClosureExpr { SwiftClosureExpr { parameters: p, statements: s } }
+fn sw_cloe(e: SwiftExpr) -> SwiftClosureExpr { SwiftClosureExpr { parameters: [], statements: [SwiftExpressionStmt { expr: e }] } }
+fn sw_try(e: SwiftExpr) -> SwiftExpr { SwiftTryExpr { operator: SwiftTry, operand: e } }
+fn sw_tryq(e: SwiftExpr) -> SwiftExpr { SwiftTryExpr { operator: SwiftOptionalTry, operand: e } }
+fn sw_await(e: SwiftExpr) -> SwiftExpr { SwiftAwaitExpr { operand: e } }
+fn sw_not(e: SwiftExpr) -> SwiftExpr { SwiftPrefixExpr { operator: SwiftLogicalNotOperator, operand: e } }
+fn sw_op(l: SwiftExpr, o: SwiftInfixOperator, r: SwiftExpr) -> SwiftExpr { SwiftInfixExpr { lhs: l, operator: o, rhs: r } }
+fn sw_add(l: SwiftExpr, r: SwiftExpr) -> SwiftExpr { SwiftInfixExpr { lhs: l, operator: SwiftAddOperator, rhs: r } }
+fn sw_eq(l: SwiftExpr, r: SwiftExpr) -> SwiftExpr { SwiftInfixExpr { lhs: l, operator: SwiftEqualOperator, rhs: r } }
+fn sw_ternary(c: SwiftExpr, t: SwiftExpr, e: SwiftExpr) -> SwiftExpr { SwiftTernaryConditionalExpr { condition: c, then_value: t, else_value: e } }
+fn sw_cast(e: SwiftExpr, o: SwiftTypeCastingOperator, t: SwiftType) -> SwiftExpr { SwiftTypeCastingExpr { operand: e, operator: o, target: t } }
+fn sw_asq(e: SwiftExpr, t: SwiftType) -> SwiftExpr { SwiftTypeCastingExpr { operand: e, operator: SwiftConditionalAsCast, target: t } }
+fn sw_keypath(c: List<String>) -> SwiftExpr { SwiftKeyPathExpr { components: c } }
+
+fn sw_expr(e: SwiftExpr) -> SwiftStmt { SwiftExpressionStmt { expr: e } }
+fn sw_ret(e: SwiftExpr) -> SwiftStmt { SwiftReturnStmt { value: Present { value: e } } }
+fn sw_throw(e: SwiftExpr) -> SwiftStmt { SwiftThrowStmt { value: e } }
+fn sw_assign(l: SwiftExpr, r: SwiftExpr) -> SwiftStmt { SwiftExpressionStmt { expr: SwiftInfixExpr { lhs: l, operator: SwiftAssignmentOperator, rhs: r } } }
+fn sw_let(n: String, e: SwiftExpr) -> SwiftStmt { SwiftDeclarationStmt { decl: sw_let_decl(n: n, e: e) } }
+fn sw_var(n: String, e: SwiftExpr) -> SwiftStmt { SwiftDeclarationStmt { decl: SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftVar, pattern: SwiftIdentifierPattern { name: n }, annotation: none, initializer: Present { value: e } } } }
+fn sw_let_typed(n: String, t: SwiftType, e: SwiftExpr) -> SwiftStmt { SwiftDeclarationStmt { decl: SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: n }, annotation: Present { value: t }, initializer: Present { value: e } } } }
+fn sw_let_uninit(n: String, t: SwiftType) -> SwiftStmt { SwiftDeclarationStmt { decl: SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: n }, annotation: Present { value: t }, initializer: none } } }
+fn sw_let_pat(p: SwiftPattern, e: SwiftExpr) -> SwiftStmt { SwiftDeclarationStmt { decl: SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: p, annotation: none, initializer: Present { value: e } } } }
+fn sw_guard(c: List<SwiftCondition>, e: List<SwiftStmt>) -> SwiftStmt { SwiftGuardStmt { conditions: c, else_statements: e } }
+fn sw_if(c: List<SwiftCondition>, s: List<SwiftStmt>) -> SwiftStmt { SwiftIfStmt { conditions: c, statements: s, else_clause: SwiftNoElse } }
+fn sw_for(n: String, e: SwiftExpr, s: List<SwiftStmt>) -> SwiftStmt { SwiftForInStmt { pattern: SwiftIdentifierPattern { name: n }, sequence: e, statements: s } }
+fn sw_switch(e: SwiftExpr, c: List<SwiftSwitchCase>) -> SwiftStmt { SwiftSwitchStmt { subject: e, cases: c } }
+fn sw_case(p: List<SwiftPattern>, s: List<SwiftStmt>) -> SwiftSwitchCase { SwiftSwitchCase { label: SwiftCaseItems { patterns: p }, statements: s } }
+fn sw_default(s: List<SwiftStmt>) -> SwiftSwitchCase { SwiftSwitchCase { label: SwiftDefaultLabel, statements: s } }
+fn sw_do_catch(s: List<SwiftStmt>, c: List<SwiftStmt>) -> SwiftStmt { SwiftDoStmt { statements: s, catches: [SwiftCatchClause { pattern: none, statements: c }] } }
+fn sw_cond(e: SwiftExpr) -> SwiftCondition { SwiftExpressionCondition { expr: e } }
+fn sw_bind(n: String, e: SwiftExpr) -> SwiftCondition { SwiftOptionalBindingCondition { keyword: SwiftLet, name: n, initializer: Present { value: e } } }
+fn sw_bind_self(n: String) -> SwiftCondition { SwiftOptionalBindingCondition { keyword: SwiftLet, name: n, initializer: none } }
+fn sw_pid(n: String) -> SwiftPattern { SwiftIdentifierPattern { name: n } }
+fn sw_pexpr(e: SwiftExpr) -> SwiftPattern { SwiftExpressionPattern { expr: e } }
+fn sw_pcase(n: String, a: List<SwiftPattern>) -> SwiftPattern { SwiftEnumCasePattern { case_name: n, associated: a } }
+fn sw_plet(n: String) -> SwiftPattern { SwiftValueBindingPattern { keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: n } } }
+fn sw_cmt_stmt(c: List<String>, s: SwiftStmt) -> SwiftStmt { SwiftCommentedStmt { comments: map(c, t => SwiftLineComment { text: t }), stmt: s } }
+
+fn sw_let_decl(n: String, e: SwiftExpr) -> SwiftDecl { SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: n }, annotation: none, initializer: Present { value: e } } }
+fn sw_static_let(n: String, e: SwiftExpr) -> SwiftDecl { SwiftVariableDecl { attributes: [], modifiers: [SwiftStaticModifier], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: n }, annotation: none, initializer: Present { value: e } } }
+fn sw_static_let_typed(n: String, t: SwiftType, e: SwiftExpr) -> SwiftDecl { SwiftVariableDecl { attributes: [], modifiers: [SwiftStaticModifier], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: n }, annotation: Present { value: t }, initializer: Present { value: e } } }
+fn sw_stored(k: SwiftBindingKeyword, n: String, t: SwiftType) -> SwiftDecl { SwiftVariableDecl { attributes: [], modifiers: [], keyword: k, pattern: SwiftIdentifierPattern { name: n }, annotation: Present { value: t }, initializer: none } }
+fn sw_field(n: String, t: SwiftType) -> SwiftDecl { sw_stored(k: SwiftVar, n: n, t: t) }
+fn sw_computed(n: String, t: SwiftType, s: List<SwiftStmt>) -> SwiftDecl { SwiftComputedPropertyDecl { attributes: [], modifiers: [], name: n, property_type: t, getter: s } }
+fn sw_param(l: String?, n: String, t: SwiftType) -> SwiftParameter { SwiftParameter { argument_label: l, name: n, parameter_type: t, default_value: none } }
+fn sw_p(n: String, t: SwiftType) -> SwiftParameter { SwiftParameter { argument_label: none, name: n, parameter_type: t, default_value: none } }
+fn sw_p_(n: String, t: SwiftType) -> SwiftParameter { SwiftParameter { argument_label: Present { value: "_" }, name: n, parameter_type: t, default_value: none } }
+fn sw_func(m: List<SwiftDeclarationModifier>, n: String, p: List<SwiftParameter>, th: Bool, r: SwiftType?, b: List<SwiftStmt>) -> SwiftDecl { SwiftFunctionDecl { attributes: [], modifiers: m, name: n, parameters: p, is_async: false, throws: th, result: r, body: b } }
+fn sw_struct(n: String, i: List<SwiftType>, m: List<SwiftDecl>) -> SwiftDecl { SwiftStructDecl { attributes: [], modifiers: [], name: n, inherits: i, members: m } }
+fn sw_enum(n: String, i: List<SwiftType>, m: List<SwiftDecl>) -> SwiftDecl { SwiftEnumDecl { attributes: [], modifiers: [], name: n, inherits: i, members: m } }
+fn sw_cases(n: List<String>) -> SwiftDecl { SwiftEnumCaseDecl { elements: map(n, c => SwiftEnumCaseElement { name: c, associated: [] }) } }
+fn sw_case_payload(n: String, a: List<SwiftTupleTypeElement>) -> SwiftDecl { SwiftEnumCaseDecl { elements: [SwiftEnumCaseElement { name: n, associated: a }] } }
+fn sw_doc(c: List<String>, d: SwiftDecl) -> SwiftDecl { SwiftCommentedDecl { comments: map(c, t => SwiftDocLineComment { text: t }), decl: d } }
+fn sw_cmt(c: List<String>, d: SwiftDecl) -> SwiftDecl { SwiftCommentedDecl { comments: map(c, t => SwiftLineComment { text: t }), decl: d } }
+fn sw_import(n: String) -> SwiftDecl { SwiftImportDecl { attributes: [], module_name: n } }

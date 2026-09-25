@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Optional, Present, Absent }
 import extdeps.apple.xcode { XcodeRelease }
 
-// THE iOS APPROVAL APP IS SEED-RETAINED HAND-AUTHORED SWIFT (operator ruling: apps/approve-ios/ in
+// THE iOS APPROVAL APP IS SWIFT, PART PRINTED FROM MODELED SYNTAX TREES AND PART HAND-AUTHORED (operator ruling: apps/approve-ios/ in
 // this repository, SwiftUI, iOS 17+). It is a realization of gunbc.auth.approval_device_wire (the
 // byte contract) and gunbc.auth.approval_device_redemption (the server's admission)
 // and of extdeps.apple.{secure_enclave, app_attest, apns}; it declares no wire fact of its own. Its
@@ -21,10 +21,16 @@ import extdeps.apple.xcode { XcodeRelease }
 // stored_request section by stored_request_specimens; the outcome envelopes through
 // redemption_response_of), so a fixture regenerated from that module carries all of it.
 //
-// WHY HAND-AUTHORED, stated as the §7 frontier row requires: extdeps.languages.swift carries a
-// subject citation and no emit transforms, so the substrate cannot emit this program today. The
-// trigger names the CAPABILITY: the Swift target gaining emission sufficient for this app, at which
-// point the Swift source is a generated artifact and this row retires with it.
+// WHY THE SWIFT IS NOT YET DERIVED, stated as the §7 frontier row requires. The Swift is in two
+// standings (operator direction 2026-09-25: hand-concatenated text, then a modeled form that is
+// emitted, then derived -- the shell-to-argv path). Protocol.swift, Wire.swift and
+// ProtocolVectorTests.swift are the MODELED stage: symbolic syntax trees
+// (v2.extdeps.languages.swift.syntax) transcribed from the files they replaced, printed by one
+// printer (v2.extdeps.languages.swift.print) and drift-gated, so a hand edit is refused. Their
+// constants and shapes are still transcribed rather than derived from gunbc.auth.approval_device_wire
+// (approve_ios_transcribed_swift_frontier), except the tests' surface-name set, which is generated
+// from the fixture's own rows. The other five files are still hand-authored text
+// (approve_ios_hand_authored_swift_frontier).
 // The vector check's own next-rung trigger, separate from the hand-authoring trigger below because
 // the two dissolve differently: this one ends when the check EXECUTES on the merge path, which can
 // happen while the Swift is still hand-authored. Either arm of the trigger is sufficient.
@@ -33,7 +39,11 @@ data approve_ios_vector_check_unenrolled_frontier: DissolutionCondition = unboun
 )
 
 data approve_ios_hand_authored_swift_frontier: DissolutionCondition = unbound_dissolution(
-  description: "apps/approve-ios is hand-authored Swift realizing gunbc.auth.approval_device_wire because extdeps.languages.swift has a subject citation and no emit transforms. DISSOLVES WHEN the Swift target gains emit transforms SUFFICIENT FOR emitting the app's protocol layer (the two byte builders, the wire records and the enclave/App Attest bindings) from the .dag authority, so that the Swift under apps/approve-ios/Approve is a generated artifact drift-gated like every other and the XCTest vector check becomes redundant with the emitter's own equivalence evidence",
+  description: "apps/approve-ios/Approve/ApproveApp.swift, AppState.swift, DeviceKeys.swift, EnrolmentState.swift and Views.swift are hand-authored Swift text: nothing refuses an edit to them and no model holds their structure. DISSOLVES WHEN each is a v2.extdeps.languages.swift.syntax tree printed by v2.extdeps.languages.swift.print and registered in gunbc.generated_artifact, SUFFICIENT FOR the drift gate to refuse a hand edit to every .swift file under apps/approve-ios, at which point only approve_ios_transcribed_swift_frontier remains",
+)
+
+data approve_ios_transcribed_swift_frontier: DissolutionCondition = unbound_dissolution(
+  description: "the Swift syntax trees for apps/approve-ios (gunbc.approve_ios_swift_protocol, gunbc.approve_ios_swift_wire, gunbc.approve_ios_swift_protocol_vector_tests) are transcribed: their protocol strings, wire member names, sum arms, routes and record fields restate gunbc.auth.approval_device_wire rather than being derived from it, so a wire change is caught only by the XCTest vectors on an operator's Mac. DISSOLVES WHEN the v2 emit route renders a module's records, coproducts and folds into Swift (the swift_decl rows through the closure-emit door, gunbc#12218) SUFFICIENT FOR the protocol layer's constants, record shapes and byte builders to be emitted from approval_device_wire, so that no approve-ios tree names a wire fact the .dag does not supply",
 )
 
 // WHAT IS DERIVED AND WHAT IS HAND-AUTHORED, at file grain (operator ruling 2026-09-24: model it durably):
@@ -41,9 +51,13 @@ data approve_ios_hand_authored_swift_frontier: DissolutionCondition = unbound_di
 //     every Info.plist key and build setting -- XcodeGen writes Approve/Info.plist from it, so the
 //     plist is derived one step further, on the Mac), and
 //     dag/test/fixture/approval_device_redemption/vectors.json (gunbc.auth.approval_device_redemption_fixtures).
-//   HAND-AUTHORED REALIZATION: every .swift file under apps/approve-ios/Approve and ApproveTests,
-//     and the operator-local Config/Team.xcconfig. The Swift is named by
-//     approve_ios_hand_authored_swift_frontier above; the xcconfig is operator identity, not a model fact.
+//   PRINTED FROM A MODELED SYNTAX TREE, drift-gated: apps/approve-ios/Approve/Protocol.swift,
+//     Approve/Wire.swift and ApproveTests/ProtocolVectorTests.swift (gunbc.approve_ios_swift_protocol,
+//     gunbc.approve_ios_swift_wire, gunbc.approve_ios_swift_protocol_vector_tests); the trees are
+//     transcribed, named by approve_ios_transcribed_swift_frontier above.
+//   HAND-AUTHORED REALIZATION: the other .swift files under apps/approve-ios/Approve, named by
+//     approve_ios_hand_authored_swift_frontier above, and the operator-local Config/Team.xcconfig,
+//     which is operator identity, not a model fact.
 //
 // THE iOS BUILD'S STANDING. The derived settings make warnings errors (SWIFT_TREAT_WARNINGS_AS_ERRORS,
 // GCC_TREAT_WARNINGS_AS_ERRORS, SWIFT_STRICT_CONCURRENCY complete), so a build that EXECUTES cannot
