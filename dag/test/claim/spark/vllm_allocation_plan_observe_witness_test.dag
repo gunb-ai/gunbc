@@ -21,6 +21,7 @@ import extdeps.vllm.kv_layout {
   resolved_kv_allocation_plan_from_capture,
   KvAllocationPlanAdmitted, KvAllocationPlanRefused,
 }
+import test.fixture.kv_allocation_plan_emission.real_262144x6_line { real_262144x6_kv_plan_line }
 import gunbc.spark.vllm_allocation_plan_observe {
   kv_allocation_plan_log_marker,
   kv_allocation_plan_capture_from_emission, kv_allocation_plan_capture_from_startup_log,
@@ -130,7 +131,10 @@ test fn a_complete_glm_shaped_emission_mints_and_reproduces_the_printed_capacity
             && token_count_value(t: p.requested_length) == 262144
             && token_count_value(t: p.scheduler_block_size) == 64
             && (p.cache_format as String) == "fp8_ds_mla"
-            && (p.image_digest as String) == "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333"
+            && (match p.image_digest {
+              Present { value: d } => (d as String) == "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333"
+              Absent => false
+            })
             && string_contains(s: p.grouping_padding as String, pattern: "padding")
             && length(p.groups) == 3
             && (match p.groups.first() {
@@ -381,5 +385,226 @@ test fn a_short_self_report_token_refuses_at_the_lexical_wall() -> Bool {
       string_contains(s: c as String, pattern: "not nine or more lowercase hex characters")
         && string_contains(s: c as String, pattern: "8d0980")
     KvPlanCaptureParsed { capture: _ } => false
+  }
+}
+
+// ── THE REAL CAPTURE: 2026-09-25, THE 262144x6 BOUNDED EXPERIMENT'S OWN LINE ─────────────────────
+//
+// THESE CLAIMS RUN ON THE ACTUAL BYTES the patched engine printed at the bounded 262144x6
+// experiment's launch (bounded run under image gunbc-vllm-glm53-gb10:derived-kvplan-20260925,
+// engine self-report 0.1.dev1+g8d09804c8, converged 2026-09-25; the fleet captured the head
+// EngineCore's startup stdout and this line is the KV_ALLOCATION_PLAN_JSON record off it). The
+// durable artifact is committed verbatim at
+// dag/test/fixture/kv_allocation_plan_emission/glm_5_3_flash_262144x6_2026-09-25_kv_plan_line.log
+// — 5058 bytes on disk including its trailing newline, sha256
+// 49917f9a5064dc966ec1c8e6204726dd3cedf3c5a13de4dd76b9eb0ede64c4ce; the value the claims
+// evaluate is real_262144x6_kv_plan_line, imported from
+// test.fixture.kv_allocation_plan_emission.real_262144x6_line so it has one home, and the length
+// pin below keeps it and the artifact identical). THE PRINTED SIDE the control runs against is the
+// head's own capacity lines at the same launch (extdeps.vllm.log_lines: both markers ride one
+// line on this build): pool 2,205,845 tokens, Maximum concurrency for 262,144 tokens per request:
+// 8.41x — captured independently of the emission, per the control's two-sides rule.
+//
+// WHAT THE REAL BYTES VOUCH: schema kv-allocation-plan/v1; allocator_blocks 1035; fp8 KV;
+// scheduler_block_size 2304; requested_length 262144; SIX groups — the mla_attention group
+// (group-0, 22 identities: the 11 sparse layers' indexer.k_cache + attn entries, block_size 2304,
+// page 76032 bytes, 114 blocks at the requested length), the sparse-indexer tail group
+// (group-1, sliding_window, window 4, one block), and FOUR mamba groups (the 34 KDA recurrent
+// layers, 9+9+8+8 identities, block_size 2304, page 1511424 bytes, 2 blocks each) — 67 identity
+// entries over 45 distinct layers, matching the engine's own grouping_padding note. Per-group
+// max_memory_usage_bytes is exactly blocks_at_requested_length x page_size_bytes on every row:
+// the emission's figures are the engine's own get_max_concurrency_for_kv_cache_config arithmetic.
+// image_digest is null — the launch did not set VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST — which the
+// mint now reads as the optional deployment self-report's absence (the launch's executable_digest
+// remains the authoritative image identity at the receipt).
+
+
+// THE REAL LINE PARSES WHOLE through the log channel, and its abbreviated self-report resolves:
+// the capture binds to the patched source's full sha — the same resolution act the synthetic arm
+// above pins, here executed on the bytes that actually came off the engine.
+test fn the_real_capture_parses_and_resolves_to_the_patched_source() -> Bool {
+  string_length(s: real_262144x6_kv_plan_line) == 5057
+    && (match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_kv_plan_line) {
+      KvPlanCaptureUnreadable { cause: _ } => false
+      KvPlanCaptureParsed { capture: c } =>
+        (c.observed_at_revision.full_revision as String) == "8d09804c877c48165c6ba69bc9dc02d09bae0b83"
+          && (match c.image_digest {
+            Absent => true
+            Present { value: _ } => false
+          })
+          && (match c.allocator_blocks {
+            Present { value: b } => allocator_block_count_value(c: b) == 1035
+            Absent => false
+          })
+          && (match c.requested_length {
+            Present { value: l } => token_count_value(t: l) == 262144
+            Absent => false
+          })
+          && (match c.scheduler_block_size {
+            Present { value: b } => token_count_value(t: b) == 2304
+            Absent => false
+          })
+          && (match c.cache_format {
+            Present { value: f } => (f as String) == "fp8"
+            Absent => false
+          })
+          && (match c.groups {
+            Present { value: gs } => length(gs) == 6
+            Absent => false
+          })
+    })
+}
+
+// THE REAL BYTES MINT: every field vouched (image_digest deliberately absent per the patched
+// contract), every group row complete, no zero walls — the plan admits, and the plan's figures
+// are the engine's own: group-0 at 114 blocks, the tail at 1, the four mamba groups at 2 each —
+// 123 blocks per full-context request.
+test fn the_real_capture_mints_with_the_engines_own_figures() -> Bool {
+  match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_kv_plan_line) {
+    KvPlanCaptureUnreadable { cause: _ } => false
+    KvPlanCaptureParsed { capture: c } =>
+      match resolved_kv_allocation_plan_from_capture(capture: c) {
+        KvAllocationPlanRefused { cause: _ } => false
+        KvAllocationPlanAdmitted { plan: p } =>
+          (match p.image_digest {
+            Absent => true
+            Present { value: _ } => false
+          })
+            && length(p.groups) == 6
+            && (match p.groups.first() {
+              Absent => false
+              Present { value: g } =>
+                (g.identity as String) == "group-0:mla_attention"
+                  && (match g.kind { FullAttention => true  _ => false })
+                  && length(g.layer_identities) == 22
+                  && token_count_value(t: g.block_size) == 2304
+                  && byte_size_count(b: g.page_size_bytes) == 76032
+                  && byte_size_count(b: g.max_memory_usage_bytes) == 8667648
+                  && allocator_block_count_value(c: g.blocks_at_requested_length) == 114
+            })
+            && (match p.groups |> skip(1) |> first {
+              Absent => false
+              Present { value: g } =>
+                (match g.kind {
+                  SlidingWindowAttention { window: w } => token_count_value(t: w) == 4
+                  _ => false
+                })
+                  && length(g.layer_identities) == 11
+                  && allocator_block_count_value(c: g.blocks_at_requested_length) == 1
+            })
+            && (match p.groups |> skip(2) |> first {
+              Absent => false
+              Present { value: g } =>
+                (match g.kind { MambaState => true  _ => false })
+                  && length(g.layer_identities) == 9
+                  && byte_size_count(b: g.page_size_bytes) == 1511424
+                  && byte_size_count(b: g.max_memory_usage_bytes) == 3022848
+                  && allocator_block_count_value(c: g.blocks_at_requested_length) == 2
+            })
+      }
+  }
+}
+
+// THE PRINTED SIDE OF THE REAL LAUNCH, bound to the same resolved revision the capture binds to:
+// pool 2,205,845 tokens and concurrency 8.41x (841 hundredths) at 262,144 tokens per request, one
+// physical line carrying both markers exactly as the fleet captured it.
+fn w_real_reported(hundredths: Nat) -> VllmReportedCapacity? {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: 2205845),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "GPU KV cache size: 2,205,845 tokens, Maximum concurrency for 262,144 tokens per request: 8.41x" as NonEmptyStr,
+      observed_at_revision: vllm_source_revision_read,
+    ),
+  ) {
+    KvPoolRefused { cause: _ } => none
+    KvPoolAdmitted { pool: p } =>
+      match vllm_reported_capacity(
+        pool: p,
+        max_concurrency: concurrent_request_hundredths(count: hundredths),
+        reading: vllm_startup_reading(
+          line: MaximumConcurrency,
+          captured_text: "GPU KV cache size: 2,205,845 tokens, Maximum concurrency for 262,144 tokens per request: 8.41x" as NonEmptyStr,
+          observed_at_revision: vllm_source_revision_read,
+        ),
+      ) {
+        ReportedCapacityRefused { cause: _ } => none
+        ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+      }
+  }
+}
+
+fn w_real_launch() -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupB,
+    head: spark_pair_serving_head(group: FabricGroupB),
+    systemd_invocation: "glm-bounded-experiment-262k-fixture-launch" as NonEmptyStr,
+    container_id: "glm-native-tp4" as NonEmptyStr,
+    executable_digest: w_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111"),
+    unit_digest: w_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333"),
+    started_at: 1789000000,
+  )
+}
+
+// THE CONTROL REPRODUCES THE PRINTED 8.41x OFF THE REAL BYTES: the emission's own group figures
+// sum to 123 blocks per full-context request; 1035 / 123 truncates to 841 hundredths — the 8.41x
+// the engine printed at the same launch. The two sides share no source: the plan is the captured
+// emission line, the printed figure is the head's capacity line. Agreement is evidence the plan
+// describes the engine that printed the line; the receipt is Observed and carries 123 blocks per
+// max-length request.
+//
+// THE 1035 x 2304 RECONCILIATION, stated where the control runs: the naive inventory product
+// 1035 x 2304 = 2,384,640 is NOT what the engine printed, and the gap is not scheduler overhead
+// or lost memory — the printed figure is a FULL-CONTEXT-EQUIVALENT PROJECTION, requests x context:
+// 1035 blocks over a 123-block request is 8.4146 requests, and 8.4146 x 262,144 tokens = 2,205,845
+// tokens, the printed line (its integer truncation). The 178,795-token gap between the inventory
+// product and the printed figure is the per-request non-token content the 123-block charge
+// carries — the four mamba states and the tail window priced in scheduler blocks — plus the
+// group-0 ceil-to-block padding (114 blocks x 2304 = 262,656 token-slots for 262,144 tokens).
+// The control checks the CONCURRENCY the engine derived (841 hundredths), and it reproduces.
+test fn the_real_capture_reproduces_the_printed_841_hundredths() -> Bool {
+  match w_real_reported(hundredths: 841) {
+    Absent => false
+    Present { value: reported } =>
+      match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_kv_plan_line) {
+        KvPlanCaptureUnreadable { cause: _ } => false
+        KvPlanCaptureParsed { capture: c } =>
+          match admit_kv_allocation_plan(
+            launch: w_real_launch(),
+            capture: c,
+            reported: reported,
+            source_capture_digest: w_digest(hex: "49917f9a5064dc966ec1c8e6204726dd3cedf3c5a13de4dd76b9eb0ede64c4ce"),
+          ) {
+            KvAllocationPlanObserved { launch: _, plan: p, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
+              allocator_block_count_value(c: b) == 123
+                && token_count_value(t: p.requested_length) == 262144
+                && allocator_block_count_value(c: p.allocator_blocks) == 1035
+                && length(p.groups) == 6
+            _ => false
+          }
+      }
+  }
+}
+
+// THE INCONSISTENT ARM DISCRIMINATES ON THE REAL BYTES TOO: a garbled printed line (the 64K run's
+// 27.55x, say, replayed against this plan) contradicts with the predicted figure carried — the
+// receipt names which side diverged rather than minting a green over mismatched evidence.
+test fn a_garbled_printed_line_contradicts_the_real_capture() -> Bool {
+  match w_real_reported(hundredths: 2755) {
+    Absent => false
+    Present { value: garbled } =>
+      match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_kv_plan_line) {
+        KvPlanCaptureUnreadable { cause: _ } => false
+        KvPlanCaptureParsed { capture: c } =>
+          match admit_kv_allocation_plan(
+            launch: w_real_launch(),
+            capture: c,
+            reported: garbled,
+            source_capture_digest: w_digest(hex: "49917f9a5064dc966ec1c8e6204726dd3cedf3c5a13de4dd76b9eb0ede64c4ce"),
+          ) {
+            KvAllocationPlanInconsistent { launch: _, cause: c } => string_contains(s: c as String, pattern: "describe different engines")
+            _ => false
+          }
+      }
   }
 }

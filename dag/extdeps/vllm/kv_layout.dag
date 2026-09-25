@@ -620,14 +620,21 @@ type KvAllocationPlanGroup {
 // ONE RESOLVED PLAN. `runtime` is the vLLM source revision the emission self-reports (the upstream
 // SHAPE is revision-bound exactly as kv_group_metadata's is); `image_digest` is the deployment
 // image's digest riding the same self-report, for the deployment axis the source revision cannot
-// name; `cache_format` is the engine's resolved cache format (the ResolvedKvCacheFormat startup
-// line is where a capture reads it, e.g. fp8_ds_mla for this checkpoint);
+// name — and it is OPTIONAL, because the patched engine's contract makes it one: the digest is a
+// deployment-supplied self-report (VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST), present when the launch
+// sets it, null when it does not (the real 262144x6 capture carries null, and the corpus mint
+// requiring it would refuse every launch that omits the knob — the model was over-specified
+// against the emission's documented contract). The authoritative image identity is the receipt's
+// launch reading (VllmServingLaunch.executable_digest), which binds every receipt arm; this field
+// is the emission's own claim beside it, absent rather than invented when the deployment declined
+// to carry it. `cache_format` is the engine's resolved cache format (the ResolvedKvCacheFormat
+// startup line is where a capture reads it, e.g. fp8_ds_mla for this checkpoint);
 // `requested_length` is the sequence length the engine's blocks_at_requested_length figures were
 // computed at (its own max_model_len at capture); `grouping_padding` is the allocator's own
 // statement of the grouping and padding decision, quoted, not paraphrased.
 type ResolvedKvAllocationPlan {
   runtime: VllmSourceRevision
-  image_digest: NonEmptyStr
+  image_digest: NonEmptyStr?
   cache_format: NonEmptyStr
   allocator_blocks: AllocatorBlockCount
   requested_length: TokenCount
@@ -742,13 +749,16 @@ fn kv_allocation_plan_capture_group_missing(g: KvAllocationPlanCaptureGroup) -> 
 
 // THE PLAN MINT. Three walls, in order: the capture's revision must be the modeled one (the field
 // set an emission carries is a property of the upstream revision, unread revisions are not
-// trusted); every top-level field and every group row must be vouched for (no invented layer
-// identities, page bytes or block figures beside a real capture); and the zero walls -- a zero
-// inventory, a zero requested length, a group with zero layers, zero block size, zero-byte page or
-// zero tokens per state is not a group, exactly as the layout fold refuses. THE MINT DOES NOT
-// CHECK THE PLAN AGAINST ANY PRINTED CAPACITY: that is the control below, kept separate so a plan
-// can be observed (minted) before it is controlled, and a control failure reads as located
-// evidence about one of the two, not as a parse error.
+// trusted); every top-level field and every group row the plan PRICES must be vouched for (no
+// invented layer identities, page bytes or block figures beside a real capture) — image_digest is
+// deliberately NOT among them, the patched engine's contract making it an optional
+// deployment-supplied self-report, and the authoritative image identity binds at the receipt's
+// launch carrier instead; and the zero walls -- a zero inventory, a zero requested length, a
+// group with zero layers, zero block size, zero-byte page or zero tokens per state is not a
+// group, exactly as the layout fold refuses. THE MINT DOES NOT CHECK THE PLAN AGAINST ANY PRINTED
+// CAPACITY: that is the control below, kept separate so a plan can be observed (minted) before it
+// is controlled, and a control failure reads as located evidence about one of the two, not as a
+// parse error.
 fn resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture) -> KvAllocationPlanAdmission {
   if !revision_is_modelled(r: capture.observed_at_revision) {
     KvAllocationPlanRefused {
@@ -795,39 +805,34 @@ fn resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture) ->
 
 fn kv_allocation_plan_capture_top_missing(capture: KvAllocationPlanCapture) -> List<NonEmptyStr> {
   concat(
-    match capture.image_digest {
-      Absent => ["image_digest" as NonEmptyStr]
+    match capture.cache_format {
+      Absent => ["cache_format" as NonEmptyStr]
       Present { value: _ } => [] as List<NonEmptyStr>
     },
     concat(
-      match capture.cache_format {
-        Absent => ["cache_format" as NonEmptyStr]
+      match capture.allocator_blocks {
+        Absent => ["allocator_blocks" as NonEmptyStr]
         Present { value: _ } => [] as List<NonEmptyStr>
       },
       concat(
-        match capture.allocator_blocks {
-          Absent => ["allocator_blocks" as NonEmptyStr]
+        match capture.requested_length {
+          Absent => ["requested_length" as NonEmptyStr]
           Present { value: _ } => [] as List<NonEmptyStr>
         },
         concat(
-          match capture.requested_length {
-            Absent => ["requested_length" as NonEmptyStr]
+          match capture.scheduler_block_size {
+            Absent => ["scheduler_block_size" as NonEmptyStr]
             Present { value: _ } => [] as List<NonEmptyStr>
           },
           concat(
-            match capture.scheduler_block_size {
-              Absent => ["scheduler_block_size" as NonEmptyStr]
+            match capture.groups {
+              Absent => ["groups" as NonEmptyStr]
               Present { value: _ } => [] as List<NonEmptyStr>
             },
-            concat(
-              match capture.groups {
-                Absent => ["groups" as NonEmptyStr]
-                Present { value: _ } => [] as List<NonEmptyStr>
-              },
-              match capture.grouping_padding {
-                Absent => ["grouping_padding" as NonEmptyStr]
-                Present { value: _ } => [] as List<NonEmptyStr>
-              }))))))
+            match capture.grouping_padding {
+              Absent => ["grouping_padding" as NonEmptyStr]
+              Present { value: _ } => [] as List<NonEmptyStr>
+            })))))
 }
 
 // THE ZERO WALLS RUN AFTER COMPLETENESS: a complete capture of a broken engine is still broken.
@@ -869,10 +874,7 @@ fn kv_allocation_plan_assemble(capture: KvAllocationPlanCapture, groups: List<Kv
   KvAllocationPlanAdmitted {
     plan: ResolvedKvAllocationPlan {
       runtime: capture.observed_at_revision,
-      image_digest: match capture.image_digest {
-        Present { value: d } => d
-        Absent => "unreachable: the missing-field refusal named the absent image digest" as NonEmptyStr
-      },
+      image_digest: capture.image_digest,
       cache_format: match capture.cache_format {
         Present { value: f } => f
         Absent => "unreachable: the missing-field refusal named the absent cache format" as NonEmptyStr

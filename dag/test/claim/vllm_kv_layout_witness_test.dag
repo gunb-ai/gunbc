@@ -495,7 +495,10 @@ test fn a_complete_plan_reproduces_the_printed_capacity_as_the_independent_contr
   (match resolved_kv_allocation_plan_from_capture(capture: capture) {
     KvAllocationPlanRefused { cause: _ } => false
     KvAllocationPlanAdmitted { plan: p } =>
-      p.image_digest == "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333" as NonEmptyStr
+      (match p.image_digest {
+        Present { value: d } => (d as String) == "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333"
+        Absent => false
+      })
         && (p.cache_format as String) == "fp8_ds_mla"
         && string_contains(s: p.grouping_padding as String, pattern: "padding")
         && length(p.groups) == 1
@@ -533,7 +536,7 @@ test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
   ])
   let no_padding = KvAllocationPlanCapture {
     observed_at_revision: vllm_source_revision_read,
-    image_digest: "sha256:1111" as NonEmptyStr,
+    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
     requested_length: Present { value: token_count(count: 1048576) },
@@ -560,7 +563,7 @@ test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> 
   )
   match resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture {
     observed_at_revision: foreign,
-    image_digest: "sha256:1111" as NonEmptyStr,
+    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
     requested_length: Present { value: token_count(count: 1048576) },
@@ -618,7 +621,7 @@ fn wp_pre_patch_revision_plan() -> ResolvedKvAllocationPlan {
   )
   ResolvedKvAllocationPlan {
     runtime: pre_patch,
-    image_digest: "sha256:1111" as NonEmptyStr,
+    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
     cache_format: "fp8_ds_mla" as NonEmptyStr,
     allocator_blocks: allocator_block_count(count: 65536),
     requested_length: token_count(count: 1048576),
