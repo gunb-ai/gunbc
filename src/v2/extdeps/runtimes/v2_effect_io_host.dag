@@ -48,7 +48,7 @@ import v2.std.node { Symbol }
 import v2.std.runtime {
   EffectHandler,
   EffectHandlerBinding,
-  EffectRequest,
+  OperationCall,
   RuntimeValue
 }
 import v2.std.witness { Holds, Violates }
@@ -174,7 +174,7 @@ fn effect_io_host_dispatch_read(
   host_ctx: EffectIoHostBackendContext,
   read_envelope: Envelope,
   fixture: EffectIoFixtureStore,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
@@ -208,7 +208,7 @@ fn effect_io_host_dispatch_write(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
   write_envelope: Envelope,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>

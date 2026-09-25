@@ -9,6 +9,11 @@ import v2.compiler.reference_conservation_admission {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.test.claim.body_type_annotation_refusal { btar_refusal_at_authored }
+import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
+import v2.std.node { Bind, ComputationNode, Named, Node, Positional, node_subtree_nodes }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,10 +96,68 @@ test fn let_in_form_unchanged_holds() -> Bool {
   }
 }
 
-test fn typed_statement_let_lowers_holds() -> Bool {
+// THE `in` FORM'S VALUE IS THE LITERAL, NOT ITS TOKEN CLASS. `let x = 1 in x` binds its value through
+// the first-atom fallback as the int-literal atom -- identity dag_token_int_literal, its magnitude
+// carried as a child edge (v2.extdeps.languages.dag dag_int_literal_magnitude_node_optional). A
+// keyword guard that asked "is this atom a lexer token" refused it (gunbc#12248, fixed to ask "is
+// it a keyword"); a reader that kept the class atom but dropped its magnitude would erase the `1`.
+// This row asserts both halves on the real normalize route: the Bind's value is an int-literal atom
+// and it carries a magnitude.
+fn let_in_bind_values_with_magnitude() -> List<Bool> {
+  match let_in_form_subject().normalized {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: [], f: fn(acc, n) {
+        match n.kind {
+          ComputationNode { behavior: Bind } =>
+            match positional_target_at(n: n, index: 1) {
+              Present { value: v } =>
+                concat(acc, [dag_node_is_int_literal_atom(node: v) && match dag_int_literal_magnitude_node_optional(node: v) {
+                  Present { value: _ } => true
+                  Absent => false
+                }])
+              Absent => concat(acc, [false])
+            }
+          _ => acc
+        }
+      })
+  }
+}
+
+fn positional_target_at(n: Node, index: Int) -> Optional<Node> {
+  fold(n.children, init: LetInPositionalScan { at: 0, found: optional_absent() }, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        if acc.at == index {
+          LetInPositionalScan { at: acc.at + 1, found: optional_present(value: e.target) }
+        } else {
+          LetInPositionalScan { at: acc.at + 1, found: acc.found }
+        }
+      Named { name: _ } => acc
+    }
+  }).found
+}
+
+type LetInPositionalScan {
+  at: Int
+  found: Optional<Node>
+}
+
+test fn let_in_form_binds_the_literal_value_holds() -> Bool {
+  let_in_bind_values_with_magnitude() == [true]
+}
+
+// A TYPED STATEMENT LET REFUSES AT ITS ANNOTATION, FOR THE DURATION OF A DECLARED GAP. This row
+// asserted the annotated let LOWERS; it did so by dropping `: Int` before resolve
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2), and the drop is
+// now a typed refusal located at the authored type. RESTORATION TRIGGER, naming the capability: a
+// v2.std.node Bind carrier for the let annotation (v2.std.type_binder `<type-annotation>`), read by
+// resolve in a type-position frame -- when it lands this row flips back to asserting the typed let
+// lowers, with its annotation CARRIED rather than explained as dropped.
+test fn typed_statement_let_refuses_at_its_annotation_holds() -> Bool {
   match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 36, end: 39), tail: Empty } }) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => btar_refusal_at_authored(d: d, id: ^Int)
   }
 }
 

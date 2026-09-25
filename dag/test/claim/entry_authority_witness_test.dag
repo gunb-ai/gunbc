@@ -23,8 +23,9 @@ module test.claim.entry_authority_witness_test
 //
 // COVERAGE BOUND. These arms read the emitted `src/main.rs` TEXT; none invokes rustc. That the
 // real rooted closures still emit and build under this rule is the job of
-// `//gunbc/instruments:self-host` (SourceRootEvalDriver) and `//gunbc/instruments:v2-native-cli`
-// (NativeCliDriver), which execute it.
+// `//gunbc/instruments:self-host` (SourceRootEvalDriver), `//gunbc/instruments:v2-native-cli`
+// (NativeCliDriver) and `//gunbc/instruments:native-crypto-vectors` (NativeClaimDriver), which
+// execute it.
 
 data ea_pure_library_source: String = "module ea_pure_library\n\nfn ea_value(x: Int) -> Int \{\n  x\n}\n"
 
@@ -33,6 +34,10 @@ data ea_uses_library_source: String = "module ea_uses_library\n\ntype EaNet \{\n
 data ea_service_library_source: String = "module ea_service_library\n\nservice EaSvc \{\n  operation Ping \{\n    input \{ arg: String \}\n    output \{ exit_code: Int from \"exit_code\" \}\n    readonly\n    transport shell \{ argv: [\"true\", arg] \}\n    exit \{ 0 => Unit  nonzero => Unit }\n    mock_response \{ 0 => \{ exit_code: 0 } \"hermetic\" }\n  }\n}\n\nfn ea_value(x: Int) -> Int \{\n  x\n}\n\nfn ea_call() -> Int \{\n  EaSvc.Ping(arg: \"x\").exit_code\n}\n"
 
 data ea_one_entry_source: String = "module ea_one_entry\n\ntype CompilerEntryDriver = DirectIngestDriver | NativeCliDriver\n\ntype EaNet \{\n  id: Int\n}\n\ndata compiler_pipeline_entry: CompilerEntryDriver = DirectIngestDriver\n\nfn ea_effect() -> Int\n  uses net: EaNet\n\{\n  net.id\n}\n"
+
+data ea_native_claim_source: String = "module ea_native_claim\n\ntype CompilerEntryDriver = DirectIngestDriver | NativeClaimDriver\n\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver\n\nfn ea_value(x: Int) -> Int \{\n  x\n}\n"
+
+data ea_native_claim_two_entries_source: String = "module ea_native_claim_two\n\ntype CompilerEntryDriver = NativeCliDriver | NativeClaimDriver\n\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver\n\ndata second_pipeline_entry: CompilerEntryDriver = NativeCliDriver\n"
 
 data ea_two_entries_source: String = "module ea_two_entries\n\ntype CompilerEntryDriver = DirectIngestDriver | NativeCliDriver\n\ndata compiler_pipeline_entry: CompilerEntryDriver = DirectIngestDriver\n\ndata second_pipeline_entry: CompilerEntryDriver = NativeCliDriver\n"
 
@@ -70,4 +75,21 @@ test fn two_declared_entries_refuse_as_ambiguous() -> Bool {
 
 test fn an_unmodeled_entry_driver_refuses() -> Bool {
   compile_dag_rust_emit_check(ea_unknown_driver_source, "src/main.rs", ["REFUSED: the compiler pipeline entry in"], ["compile_dag_source_to_target_text"])
+}
+
+// std.compiler_entry NativeClaimDriver: the rendered main makes ONE call and does only the two
+// things no fold can -- write stdout and set the status. The forbidden spellings are the other host
+// operations a main could reach for (argv, a file read, a directory walk), so a main that grew any of
+// them fails here even if it still calls the fold. The status comes only from the closed
+// NativeClaimTerminal, each arm to a FIXED code (0, 1, 2), and `*code as i32` is forbidden: a main
+// that passed a program-chosen code through could turn a failure spelled as 0 into held (review
+// 5311497200 of gunbc#12250).
+test fn a_native_claim_entry_renders_a_one_call_main_that_only_writes_and_exits() -> Bool {
+  compile_dag_rust_emit_check(ea_native_claim_source, "src/main.rs", ["let report = native_claim_report();", "print!(\"\{\}\", report.stdout);", "NativeClaimTerminal::NativeClaimHeld => std::process::exit(0)", "std::process::exit(1)", "std::process::exit(2)"], ["std::env::args", "read_to_string", "read_dir", "*code as i32", ea_absent_entry_marker])
+}
+
+// The exactly-one rule holds across driver kinds: a NativeClaimDriver entry beside a NativeCliDriver
+// one is the same ambiguity as two entries of one kind, and neither main is rendered.
+test fn a_native_claim_entry_beside_another_entry_refuses_as_ambiguous() -> Bool {
+  compile_dag_rust_emit_check(ea_native_claim_two_entries_source, "src/main.rs", ["REFUSED: the corpus declares more than one compiler pipeline entry"], ["native_claim_report", "v2_cli_run"])
 }
