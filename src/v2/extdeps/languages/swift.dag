@@ -98,8 +98,8 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_append, list_flat_map, list_map, ordered_ring_type_node }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_flat_map, list_map, ordered_ring_type_node }
 import v2.std.text { String }
 
 type SwiftIntWidth

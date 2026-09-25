@@ -21,8 +21,22 @@ import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, node_subtree_nodes }
-import v2.std.node_query { call_argument_targets, call_callee_target }
+import v2.std.node {
+  Bind,
+  ComputationNode,
+  Arrow,
+  Found,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_body_target_lookup,
+  named_edge_target_lookup,
+  node_subtree_nodes
+}
+import v2.std.type_binder { type_param_names }
+import v2.std.node_query { call_argument_targets, call_callee_target, node_positional_child_targets }
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -54,16 +68,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // scrutinees as such are gunbc#12173's subject (v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal);
 // they are here as the population the shape claims below read, which assert the lowered call's SHAPE.
 //
-// THE LAMBDA CLAIMS ARE A NAMED FRONTIER, ENROLLED EXPECTED-RED. A lambda argument whose body uses its
-// own parameter must RESOLVE, and an undeclared name in a lambda body must refuse at its atom. Neither
-// holds today: a lambda argument refuses its module as call_argument_unread, which is gen-one's first
-// fatal (dag/examples/weather/weather.dag). Carrying the lambda's shell whole under the
-// value_carried_unlowered advisory was tried in gunbc#12198 and measured on srv1 at 8fc9f27377: the
-// module then normalizes, but BOTH claims stay red, because a carried shell gives the resolver no scope
-// for the parameter -- a refusal moved from normalize to resolve, not a repair, so it was dropped.
-// The repair is real lambda lowering in argument position, owned by the body-lowering modeling pass
-// (MQ lane, adhoc-1b3dbcdb-f9f); these two rows flip green when it lands and the floor reports them
-// for removal.
+// THE LAMBDA CLAIMS. A lambda argument whose body uses its own parameter must RESOLVE, and an
+// undeclared name in a lambda body must refuse at its atom. Both were enrolled expected-red by
+// gunbc#12198 (a lambda argument refused its module as call_argument_unread, gen-one's first fatal at
+// dag/examples/weather/weather.dag, and carrying its shell whole left the parameter unscoped at
+// resolve). They hold now that the lambda lowers to the Arrow a named fn lowers to
+// (body_lowering_fold body_lower_function_value), its binder a Named edge of the Arrow's domain
+// that resolve scopes through the one Arrow binder model.
 data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
 
 data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: p) {\n    true => p\n    false => p\n  }\n}\n"
@@ -71,6 +82,32 @@ data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\ni
 data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => x, v: p) }\n"
 
 data vpw_lambda_undeclared_source: String = "module v2.test.vpw_lambda_undeclared\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => vpw_undeclared_lambda_body, v: p) }\n"
+
+// A fn literal in argument position, once with an expression body and once with a let-block body.
+// The callees differ from the lambda fixture's so each shape claim is satisfied by its own module.
+data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_literal(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_apply_block(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_literal(f: fn(x) { x }, v: p) }\n\nfn vpw_probe_block(p: Bool) -> Bool {\n  vpw_apply_block(f: fn(x) {\n    let y = x\n    y\n  }, v: p)\n}\n"
+
+// THE SEVEN'S token_stream WALL, MINIMISED (warm-bear-132's chunk c00017 of
+// src/v2/test/claim/parse/expression_bodied_fn_decl_parse_test.dag g_tokenize_parse): a match arm
+// whose body is a call taking a fn literal, whose own body is a match over the literal's binder and
+// also reads the enclosing fn's parameter. Before fn literals lowered, the binder was never scoped and
+// resolve refused it as resolve_reason_unbound_symbol.
+data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_arm\n\nimport v2.std.logic { Bool }\n\nfn vpw_then(o: Bool, f: Bool) -> Bool { o }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match p {\n    true =>\n      vpw_then(\n        o: p,\n        f: fn(token_stream) {\n          match token_stream {\n            true => token_stream\n            false => p\n          }\n        }\n      )\n    false => p\n  }\n}\n"
+
+// FN LITERALS AS RECORD FIELDS INSIDE A CALL ARGUMENT (warm-bear-132's 02_parse c01376 / c02555 and
+// grammar c01874 shapes, and c01376's `fn(_, _)` wildcards): the argument value is folded bottom-up
+// before it is read, and a function
+// value must reach its producer unfolded. A single-atom body once came back unread, and a
+// record-construct body as an Arrow the post-normalize well-formedness gate refused.
+data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      wild: fn(_, _) { false },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
+
+// TWO LAMBDAS, ONE PARAMETER NAME: each must carry its OWN fresh type parameter, not share one.
+data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_two(f: Bool, g: Bool) -> Bool { g }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_two(f: x => x, g: x => p) }\n"
+
+// A LET-BOUND FN LITERAL WITH A WRITTEN RETURN TYPE (crisp-dove-95's specimen for
+// gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2): the let's value
+// once lowered to the literal's first token, dropping the literal and its `-> Bool`.
+data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -93,7 +130,10 @@ data vpw_ingest: SourceRootIngest = Cons {
           head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
           tail: Cons {
             head: vpw_read(source: vpw_lambda_undeclared_source, id: ^vpw_lambda_undeclared_artifact, unit: ^vpw_lambda_undeclared_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_lambda_undeclared.dag"),
-            tail: Empty
+            tail: Cons {
+              head: vpw_read(source: vpw_fn_literal_in_arm_source, id: ^vpw_fn_literal_in_arm_artifact, unit: ^vpw_fn_literal_in_arm_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_in_arm.dag"),
+              tail: Empty
+            }
           }
         }
       }
@@ -115,6 +155,7 @@ type VpwOutcomes
       arg_lambda: VpwVerdict
       arg_call: VpwVerdict
       lambda_undeclared: VpwVerdict
+      fn_literal_in_arm: VpwVerdict
     }
 
 fn vpw_verdict_of(outcome: NativeCensusModuleOutcome) -> VpwVerdict {
@@ -161,7 +202,8 @@ fn vpw_outcomes() -> VpwOutcomes {
         match_declared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_match_declared"),
         arg_lambda: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_lambda"),
         arg_call: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_call"),
-        lambda_undeclared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_lambda_undeclared")
+        lambda_undeclared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_lambda_undeclared"),
+        fn_literal_in_arm: vpw_verdict_in(context: context, module_name: "v2.test.vpw_fn_literal_in_arm")
       }
   }
 }
@@ -183,7 +225,7 @@ fn vpw_is_unbound_at(v: VpwVerdict, spelling: Symbol) -> Bool {
 
 test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_scrutinee)
     VpwContextRefused => false
   }
@@ -191,7 +233,7 @@ test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_ato
 
 test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -199,7 +241,7 @@ test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
 
 test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -207,7 +249,7 @@ test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
 
 test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v, fn_literal_in_arm: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_lambda_body)
     VpwContextRefused => false
   }
@@ -215,7 +257,7 @@ test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_i
 
 test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_argument)
     VpwContextRefused => false
   }
@@ -229,16 +271,29 @@ test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom
 // Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the fail-closed exposure after #12145) both
 // fail these. Renaming the callee in the expected spelling makes them red. The ingest is enrolled warm
 // beside vpw_outcomes; the walk runs per claim.
-// The shape claims read their own ingest, WITHOUT the lambda fixtures: module_roots_from_source_root_ingest
-// refuses the whole ingest when one module refuses, and a lambda argument still refuses its module on
-// this route (the two lambda claims above are enrolled expected-red in v2.workflow.floor_expected_red).
-// A shared ingest would make every shape claim red for the lambda's reason and not its own -- the
-// collateral srv1 measured at 8fc9f27377 against main.
+// The shape ingest carries the lambda fixture too: module_roots_from_source_root_ingest refuses the
+// whole ingest when one module refuses, so a lambda argument that stopped lowering reds every shape
+// claim here, not only its own.
 data vpw_shape_ingest: SourceRootIngest = Cons {
     head: vpw_read(source: vpw_match_call_source, id: ^vpw_match_call_artifact, unit: ^vpw_match_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_match_call.dag"),
     tail: Cons {
       head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
-      tail: Empty
+      tail: Cons {
+        head: vpw_read(source: vpw_arg_lambda_source, id: ^vpw_arg_lambda_artifact, unit: ^vpw_arg_lambda_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_lambda.dag"),
+        tail: Cons {
+          head: vpw_read(source: vpw_arg_fn_literal_source, id: ^vpw_arg_fn_literal_artifact, unit: ^vpw_arg_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_fn_literal.dag"),
+          tail: Cons {
+            head: vpw_read(source: vpw_fn_literal_record_source, id: ^vpw_fn_literal_record_artifact, unit: ^vpw_fn_literal_record_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_record.dag"),
+            tail: Cons {
+              head: vpw_read(source: vpw_two_lambdas_source, id: ^vpw_two_lambdas_artifact, unit: ^vpw_two_lambdas_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_two_lambdas.dag"),
+              tail: Cons {
+                head: vpw_read(source: vpw_let_fn_literal_source, id: ^vpw_let_fn_literal_artifact, unit: ^vpw_let_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_let_fn_literal.dag"),
+                tail: Empty
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -295,11 +350,15 @@ fn vpw_nested_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 type VpwShape
   = VpwNestedCall { callee: Symbol, inner: Symbol }
   | VpwSingleCall { callee: Symbol, inner: Symbol }
+  | VpwLambdaArgument { callee: Symbol, binder: Symbol }
+  | VpwFnLiteralBlockArgument { callee: Symbol, binder: Symbol }
 
 fn vpw_node_has_shape(n: Node, shape: VpwShape) -> Bool {
   match shape {
     VpwNestedCall { callee: c, inner: i } => vpw_nested_call_shape(n: n, callee: c, inner: i)
     VpwSingleCall { callee: c, inner: i } => vpw_single_call_shape(n: n, callee: c, inner: i)
+    VpwLambdaArgument { callee: c, binder: b } => vpw_lambda_argument_shape(n: n, callee: c, binder: b)
+    VpwFnLiteralBlockArgument { callee: c, binder: b } => vpw_fn_literal_block_argument_shape(n: n, callee: c, binder: b)
   }
 }
 
@@ -329,5 +388,208 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
   vpw_is_call_to(n: n, callee: callee) && (match vpw_sole_argument(n: n) {
     Present { value: a } => vpw_is_atom(n: a, id: inner)
     Absent => false
+  })
+}
+
+// THE LAMBDA ARGUMENT'S SHAPE: a call to `callee` one of whose arguments is an Arrow whose first
+// positional child (the domain) has the Named edge `binder` typed by one of THAT Arrow's own type
+// parameters (v2.std.type_binder type_param_names -- the fresh `'p` gunbc#12217's binder model
+// carries), and whose arrow_body_edge target is the atom `binder` at its AUTHORED occurrence -- the
+// body's own use, not the binder's position (the type variable carries the binder's occurrence).
+// Dropping the binder edge, narrowing the lambda to its parameter, carrying its shell, or typing
+// the binder as anything but its own fresh type parameter each fail it.
+fn vpw_symbol_in(xs: List<Symbol>, s: Symbol) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
+}
+
+fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match named_edge_target_lookup(children: domain.children, name: binder) {
+        Found { target: t } =>
+          match node_atom_identity_optional(node: t) {
+            Present { value: tv } =>
+              if vpw_symbol_in(xs: type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
+            Absent => optional_absent()
+          }
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn vpw_is_lambda_using_its_binder(n: Node, binder: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match vpw_domain_binds(arrow: n, binder: binder) {
+        Present { value: elided } =>
+          match arrow_body_target_lookup(children: n.children) {
+            Found { target: body } =>
+              vpw_is_atom(n: body, id: binder) && (body.occurrence_id != elided.occurrence_id)
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn vpw_lambda_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee)
+    && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
+      acc || vpw_is_lambda_using_its_binder(n: a, binder: binder)
+    })
+}
+
+test fn a_lambda_argument_lowers_to_an_arrow_binding_its_parameter_for_its_body() -> Bool {
+  vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply, binder: ^x })
+}
+
+test fn a_fn_literal_argument_lowers_to_the_same_arrow_as_a_lambda() -> Bool {
+  vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply_literal, binder: ^x })
+}
+
+// A let-block body is lowered by the named fn's body lowering, so the Arrow's body is the Bind a
+// named fn's `let` lowers to -- not the block's first atom, and not an unlowered shell.
+fn vpw_is_arrow_binding_with_bind_body(a: Node, binder: Symbol) -> Bool {
+  match a.kind {
+    TypeNode { connective: Arrow } =>
+      match vpw_domain_binds(arrow: a, binder: binder) {
+        Present { value: _ } =>
+          match arrow_body_target_lookup(children: a.children) {
+            Found { target: body } =>
+              match body.kind {
+                ComputationNode { behavior: Bind } => true
+                _ => false
+              }
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn vpw_fn_literal_block_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee)
+    && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
+      acc || vpw_is_arrow_binding_with_bind_body(a: a, binder: binder)
+    })
+}
+
+test fn a_fn_literal_argument_with_a_let_block_body_lowers_its_body_as_a_named_fn_does() -> Bool {
+  vpw_any_node(shape: VpwFnLiteralBlockArgument { callee: ^vpw_apply_block, binder: ^x })
+}
+
+test fn a_fn_literal_in_a_match_arm_binds_its_parameter_for_its_match_body() -> Bool {
+  match vpw_outcomes() {
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: v } =>
+      vpw_is_resolved(v: v)
+    VpwContextRefused => false
+  }
+}
+
+// Any lowered node that is a function value binding `binder` whose body is that binder's own use.
+fn vpw_any_function_value_using(binder: Symbol) -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_lambda_using_its_binder(n: n, binder: binder)
+    })
+  })
+}
+
+// Any lowered Arrow binding `binder` in its domain, whatever its body.
+fn vpw_is_arrow_binding(n: Node, binder: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match vpw_domain_binds(arrow: n, binder: binder) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn vpw_any_function_value_binding(binder: Symbol) -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_arrow_binding(n: n, binder: binder)
+    })
+  })
+}
+
+test fn a_fn_literal_record_field_with_a_single_atom_body_lowers_unfolded() -> Bool {
+  vpw_any_function_value_using(binder: ^t)
+}
+
+// The shape ingest refuses as a whole if the record-construct-bodied literal's Arrow fails the
+// post-normalize well-formedness gate, so this claim is also that gate's control.
+test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_formed() -> Bool {
+  vpw_any_function_value_binding(binder: ^l)
+}
+
+fn vpw_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    _ => false
+  }
+}
+
+// Each lambda binds `x` in its own domain, typed by a type parameter declared on ITS OWN Arrow
+// (vpw_domain_binds reads the type variable against that Arrow's type_param_names). A fresh
+// type parameter shared across the two -- declared on one Arrow and referenced from the other, or a
+// domain typed by a variable no Arrow in the pair declares -- fails it.
+fn vpw_binds_x_in_own_frame(a: Node) -> Bool {
+  vpw_is_arrow(n: a) && (match vpw_domain_binds(arrow: a, binder: ^x) {
+    Present { value: _ } => true
+    Absent => false
+  })
+}
+
+fn vpw_two_distinct_type_binders(n: Node, callee: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee)
+    && (length(xs: call_argument_targets(node: n)) == 2)
+    && fold_list(xs: call_argument_targets(node: n), empty: true, cons: fn(acc, a) { acc && vpw_binds_x_in_own_frame(a: a) })
+}
+
+test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_parameter() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_two_distinct_type_binders(n: n, callee: ^vpw_apply_two)
+    })
+  })
+}
+
+// The let's bound value is the literal's whole Arrow: binder `y`, its body the use of `y`, and the
+// authored return type carried as the codomain (so the literal declares a type parameter for `y` only).
+fn vpw_is_let_bound_arrow(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold_list(xs: node_positional_child_targets(node: n), empty: false, cons: fn(acc, c) {
+        acc || (vpw_is_lambda_using_its_binder(n: c, binder: ^y) && (length(xs: type_param_names(n: c)) == 1))
+      })
+    _ => false
+  }
+}
+
+test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_let_bound_arrow(n: n) })
+  })
+}
+
+// `fn(_, _)`: two wildcard parameters in one domain. A domain is a record (every edge Named, every
+// name distinct), so the wildcards take unspellable distinct names; two edges named `_` failed the
+// post-normalize well-formedness gate and refused the whole ingest (02_parse c01376 / c02555).
+fn vpw_is_two_wildcard_arrow(n: Node) -> Bool {
+  vpw_is_arrow(n: n) && (match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+    Present { value: domain } => (length(xs: domain.children) == 2) && (length(xs: type_param_names(n: n)) == 3)
+    Absent => false
+  })
+}
+
+test fn a_fn_literal_with_two_wildcard_parameters_lowers_well_formed() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_two_wildcard_arrow(n: n) })
   })
 }

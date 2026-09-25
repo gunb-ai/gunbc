@@ -1116,30 +1116,35 @@ fn floor_expected_red_chunk_loaded_carrier_body_receipt() -> List<String> {
   Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Empty {} }
 }
 
-// A FUNCTION LITERAL IN VALUE POSITION DOES NOT YET LOWER: gunbc#12210's frontier, found red on
-// unmodified main by the adhoc-9d86ad93-96c sweep (srv1, neat-boar-16, 289eb51b3a). A fn literal as a
-// data-record field refuses as body_lowering_reason_wrapper_retained_emitted at its
-// dag_surface_fn_body (its body is lowered only under a fn declaration), and a fn literal as a call
-// argument refuses as body_lowering_reason_call_argument_unread at dag_surface_fn_literal. Neither
-// is repaired here because #12210 owns the one producer for that shape; a second local producer
-// would be the fork. The arrow-lambda sibling of the first row and its in-fn-body control stay green.
-// OWNER: gunbc#12210. DISSOLVE-ON: both rows PASSING, which is #12210 landing its fn-literal lowering.
-fn floor_expected_red_chunk_fn_literal_value_lowering() -> List<String> {
-  Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds", tail: Cons { head: "v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness.wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds", tail: Empty {} } }
+// A BUILTIN fold CALLEE DOES NOT RESOLVE WITHOUT AN IMPORT. This chunk was enrolled for gunbc#12210's
+// fn-literal lowering (adhoc-9d86ad93-96c sweep, srv1, neat-boar-16, 289eb51b3a), with two rows. #12210
+// retired the data-record row (v2.test.claim.body_lowering.data_initializer_fn_value
+// data_record_fn_literal_field_is_not_retained_holds now PASSES, seed-interpreted). This row's fn
+// literal now lowers and resolves too -- `fold(x, 0, fn(acc, y) { acc })` and `fn(acc, _)` both
+// normalize ACCEPTED -- but resolve refuses the CALLEE: resolve_reason_unbound_symbol at `fold`,
+// because the fixture's admission imports nothing and no builtin binds `fold` at v2 resolve. That is
+// not function-value lowering. OWNER: unassigned (raised to neat-boar-16 by gunbc#12210).
+// DISSOLVE-ON: the row PASSING.
+fn floor_expected_red_chunk_builtin_fold_callee_resolution() -> List<String> {
+  Cons { head: "v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness.wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds", tail: Empty {} }
 }
-
-// A LAMBDA ARGUMENT DOES NOT YET LOWER: the named frontier of gunbc#12198. Both rows are red on main
-// and on #12198's head (srv1, neat-boar-16, 8fc9f27377): a lambda argument refuses its module as
-// body_lowering_reason_call_argument_unread, and carrying its shell under value_carried_unlowered
-// normalizes the module but leaves the parameter unscoped at resolve. The claim module's comment is
-// the mechanism. OWNER: the body-lowering modeling pass (adhoc-1b3dbcdb-f9f), whose lambda lowering
-// in argument position is the capability that retires both. DISSOLVE-ON: both rows PASSING.
-fn floor_expected_red_chunk_lambda_argument_lowering() -> List<String> {
-  Cons { head: "v2.test.claim.namespace_xl0.value_position_whole_read.a_lambda_argument_whose_body_uses_its_parameter_resolves", tail: Cons { head: "v2.test.claim.namespace_xl0.value_position_whole_read.an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom", tail: Empty {} } }
+// A LIST LITERAL IN std.algebra BINDS TO std.algebra's OWN FreeMonoid ONCE A TYPE DECLARATION'S <T>
+// IS SCOPED. The self-reference claim of gunbc#12208 ingests a module std.algebra with the real
+// generic `type FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }`, and resolve refuses
+// it unbound at `T` (srv1, neat-boar-16, cdabcf7dfd: llv_self_report `whole: resolve-refused
+// reason=resolve_reason_unbound_symbol at=T`). gunbc#12217 scoped `<T>` for fn signatures only; a
+// TYPE declaration's binders are trigger (1) of gunbc.recurring_failure_mode
+// generic_type_parameter_resolved_as_an_ordinary_atom_in_v2, and gunbc#12240 (crisp-dove-95) lands
+// them. The list head itself binds: the twin without FreeMonoid refuses located AT the
+// std.algebra.FreeMonoid head, and that twin is green and NOT enrolled here. The fixture keeps the
+// generic on purpose, so the claim tests the std.algebra that exists rather than a simplified one.
+// OWNER: gunbc#12240. DISSOLVE-ON: the row PASSING.
+fn floor_expected_red_chunk_std_algebra_list_self_reference() -> List<String> {
+  Cons { head: "v2.test.claim.namespace_xl0.list_literal_value_lowering.std_algebra_own_list_literals_bind_to_its_own_qualified_names", tail: Empty {} }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_lambda_argument_lowering(), tail: Cons { head: floor_expected_red_chunk_fn_literal_value_lowering(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}} }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_builtin_fold_callee_resolution(), tail: Cons { head: floor_expected_red_chunk_std_algebra_list_self_reference(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in

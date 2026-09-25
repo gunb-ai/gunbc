@@ -2,9 +2,14 @@ module v2.compiler.body_lowering_fold
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.compiler.fold_lowering {
   FoldCallLowered,
+  FunctionValueBinder,
+  FunctionValueBlockBody,
+  FunctionValueBody,
+  FunctionValueExprBody,
+  function_value_parts_optional,
   FoldCallNotAFold,
   FoldCallStepFormUnresolved,
   FoldCallStepShapeInvalid,
@@ -39,7 +44,7 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
-import v2.std.algebra { fold_list, list_append, list_map, list_snoc_item, length, zip_eq }
+import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
   List,
   list_at_optional
@@ -51,8 +56,8 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -579,10 +584,19 @@ fn body_lower_operand_fold_children_read(node: Node) -> OperandRefRead {
   })
 }
 
+// A FUNCTION VALUE'S INTERIOR IS NOT FOLDED FROM OUTSIDE IT. `p => body` and `fn(..) { .. }` are
+// lowered as a unit, from their raw parse, by body_lower_function_value_arrow (via
+// body_lower_value_lowered) -- the named fn's top-down body lowering reads their body, exactly as it
+// reads a fn_decl's, and fold_lowering reads a fold step. A bottom-up fold that descended into one
+// first (body_lower_fold over an argument or record value, or normalize over a data initializer)
+// handed those readers an already-folded body the top-down walker does not read: a single-atom body
+// `fn(t) { t }` came back unread and a record-construct body came back as an ill-formed Arrow.
 fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_match_arm)
     || (emitted == ^dag_surface_match_arm_stmt_body)
+    || (emitted == ^dag_surface_arrow_lambda)
+    || (emitted == ^dag_surface_fn_literal)
 }
 
 fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
@@ -619,23 +633,20 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
 // fold reaches inside, so every interior of an already-preserved declaration re-entered the
 // dispatch and fell to the else arm.
 //
-// FOLD ORDER IS THE LOAD-BEARING ASSUMPTION FOR dag_surface_field_init, AND FOR THE TWO
-// FUNCTION-VALUE SHELLS THAT SIT IN EXPRESSION POSITION (dag_surface_arrow_lambda,
-// dag_surface_fn_literal). Those two were arriving at the unregistered-producer arm from a
-// data initializer, so a lambda that already lowers as a call argument or fn-body field produced
-// wrapper-retention diagnostics only because the DATA declaration's interior re-entered
-// dispatch. Preserving the shell after the child fold keeps the production identity later
-// consumers (fold_lowering's fn_literal search) still find, and does not emit retention.
+// FOLD ORDER IS THE LOAD-BEARING ASSUMPTION FOR dag_surface_field_init. The two function-value
+// shells (dag_surface_arrow_lambda, dag_surface_fn_literal) are listed here too, but for a different
+// reason: they are DEFERRED (body_lower_is_deferred_lower_emitted), so dispatch reaches them
+// UNFOLDED and preserving the shell preserves their raw parse for the function-value producer and
+// fold_lowering to read -- never a folded interior.
 // Type syntax is safe by what it IS -- no Behavior to lower to. field_init
-// and the function-value shells are safe by WHEN this dispatch reaches them: normalize_node_ctx
+// is safe by WHEN this dispatch reaches it: normalize_node_ctx
 // folds children first and passes the FOLDED node to body_lower_finish_for_normalize. There is a
 // live path in that same function where dispatch sees an UNFOLDED node -- the deferred arm passes
 // `folded: n` and does not fold children -- so adding these identities to
 // body_lower_is_deferred_lower_at_normalize, or otherwise dispatching before the child fold, would
 // preserve a shell around an UNLOWERED expression. NONE OF THE THREE WITNESSES WOULD CATCH THAT
 // for field_init: their field values are the literal 1, which lowers to itself, so the reordered
-// and the current fold produce the same tree for exactly those sources. The function-value rows
-// would catch it. Stated here rather than covered for field_init, because an assumption named in
+// and the current fold produce the same tree for exactly those sources. Stated here rather than covered for field_init, because an assumption named in
 // the carrier is worth more than a witness that does not actually cover it.
 // RUNG: this is a scope correction to a classifier, not a climb. The retained arm remains the
 // counted frontier for a body shape with no producer, and that is the discriminating control: an
@@ -1004,10 +1015,19 @@ fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
   )
 }
 
+// A NESTED FUNCTION VALUE IS A SCOPE BOUNDARY FOR EVERY DEEP SEARCH HERE. `p => body` and
+// `fn(..) { .. }` own their bodies; a control form, a fn_body or an else-less-if statement inside
+// one belongs to that function value, which lowers it through body_lower_function_value_arrow.
+// Searching past the boundary answered an OUTER body `filter(xs: xs, predicate: fn(x) { let y = ..
+// y })` with the literal's `let` (body_lower_find_control_form_optional is pre-order and deep), so
+// the enclosing fn_decl lowered to nothing and was wrapper-retained; whether it did depended on
+// which callee the literal sat under, because a fold-family call is lowered before the search runs.
 fn body_lower_find_captured_prunable(id: Symbol) -> Bool {
   (id == ^dag_surface_module_header)
     || (id == ^dag_surface_qualified_name)
     || (id == ^dag_surface_type_expr)
+    || (id == ^dag_surface_arrow_lambda)
+    || (id == ^dag_surface_fn_literal)
 }
 
 fn body_lower_find_captured_under_children(root: Node, emitted: Symbol) -> ParseSubtreeFind {
@@ -3506,19 +3526,19 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_lowered_behind_shells_optional(node: node) {
     Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
     Absent =>
-      if body_lower_value_is_function_value_shell(node: node) {
-        outcome_accepted(value: optional_absent())
-      } else {
-        let raw = body_lower_deep_unwrap_optional(node: node)
-        match body_lower_fold(node: raw) {
-          Accepted { value: folded, diagnostics: d } =>
-            match body_lower_lowered_behind_shells_optional(node: folded) {
-              Present { value: lowered } =>
-                outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
-              Absent => body_lower_body_subtree_lower(captured: raw)
-            }
-          Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
-        }
+      match body_lower_function_value_captured_optional(node: node) {
+        Present { value: capture } => body_lower_function_value(shell: node, capture: capture)
+        Absent =>
+          let raw = body_lower_deep_unwrap_optional(node: node)
+          match body_lower_fold(node: raw) {
+            Accepted { value: folded, diagnostics: d } =>
+              match body_lower_lowered_behind_shells_optional(node: folded) {
+                Present { value: lowered } =>
+                  outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+                Absent => body_lower_body_subtree_lower(captured: raw)
+              }
+            Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
+          }
       }
   }
 }
@@ -3582,16 +3602,258 @@ fn body_lower_node_is_lowered_atom(node: Node) -> Bool {
   }
 }
 
-// A function value in argument or field position -- `c => body`, `fn(a) { body }` -- has no
-// producer on this route (dag_surface_arrow_lambda and dag_surface_fn_literal are preserved
-// structure, lowered only by fold_lowering inside a fold-family call). The body walker would
-// answer such a value with its body's first primary, so it is named here and declined: the
-// caller carries the shell under its advisory instead of a truncation.
-fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
+// A LAMBDA IN VALUE POSITION LOWERS TO THE ARROW A NAMED FN LOWERS TO. `p => body` and
+// `(a, b, ..) => body` in argument or field position become the Arrow a generic named fn lowers to:
+//   Arrow [ Conj { p: 'p, .. }, 'return, 'return, <type-parameters>: Conj { 'p: 'p, .. }, arrow_body_edge: body ]
+// so `p => body` means `<'p>(p: 'p) => body` -- each parameter's unwritten type is a FRESH TYPE
+// PARAMETER of that lambda's own Arrow (body_lower_function_value_arrow mints them, on v2.std.type_binder type_params_edge). The binders are
+// the one binder model resolve already scopes (03_resolve resolve_arrow_node: value parameters for
+// the body, type parameters as a frame over the signature), so the body resolves with its parameters
+// bound and an undeclared name in it refuses at its own atom; and infer reads the type variables as
+// it reads any generic Arrow's, never as a named type. The binders are read off
+// dag_grammar_arrow_lambda_expr's two alternatives, the same reading fold_lowering's
+// arrow_lambda_is_parenthesised makes: bare
+//   seq(ident, seq(`=>`, expr))
+// and parenthesised, two or more binders,
+//   seq(`(`, seq(ident, seq(`,`, seq(ident, seq(repeat(seq(`,`, ident)), seq(`)`, seq(`=>`, expr)))))))
+// A shape outside those, or a body the value reader cannot lower, is a located refusal: the lambda is
+// never narrowed to its parameter and never carried as an unlowered shell. A lambda inside a
+// fold-family call is still fold_lowering's (body_lower_try_fold_loop runs before any argument is
+// read as a value), so this is the lambda's only other lowering, not a second one.
+// The function-value production a value is, with its captured child: `p => body` or `fn(..) { .. }`.
+type FunctionValueCapture {
+  emitted: Symbol
+  captured: Node
+}
+
+fn body_lower_function_value_captured_optional(node: Node) -> Optional<FunctionValueCapture> {
   let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
   match parse_production_emitted_identity_optional(node: stripped) {
-    Present { value: id } => (id == ^dag_surface_arrow_lambda) || (id == ^dag_surface_fn_literal)
+    Present { value: id } =>
+      if (id == ^dag_surface_arrow_lambda) || (id == ^dag_surface_fn_literal) {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } => optional_present(value: FunctionValueCapture { emitted: id, captured: captured })
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn body_lower_lambda_token_is(node: Node, token: Symbol) -> Bool {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: id } => id == token
     Absent => false
+  }
+}
+
+// A function value's return type: the one its source wrote, lowered as a named fn's is, or none --
+// in which case body_lower_function_value_arrow mints a fresh type parameter for it.
+type FunctionValueCodomain
+  = CodomainAuthored { type_node: Node }
+  | CodomainElided
+
+// opt(seq(`->`, type_expr)), the return clause v2.compiler.fold_lowering function_value_parts_optional
+// reads (a lambda's is the empty conj). Present-but-unreadable is Absent, and refuses.
+fn body_lower_function_value_codomain_optional(ret: Node) -> Optional<FunctionValueCodomain> {
+  let r = body_lower_deep_unwrap_optional(node: ret)
+  if is_empty_conj_root(n: r) {
+    optional_present(value: CodomainElided)
+  } else {
+    match sugar_sequence_pair_optional(node: r) {
+      Absent => optional_absent()
+      Present { value: pair } =>
+        if body_lower_lambda_token_is(node: pair.left, token: ^dag_token_arrow) {
+          match body_lower_type_expr_lowered_optional(node: pair.right) {
+            Absent => optional_absent()
+            Present { value: t } => optional_present(value: CodomainAuthored { type_node: t })
+          }
+        } else {
+          optional_absent()
+        }
+    }
+  }
+}
+
+// THE BODY, BY ITS FORM. An expression body (`p => e`) is read by the value reader; a block body
+// (`fn(..) { .. }`) by the named fn's own body lowering (body_lower_body_from_fn_captured), so let-
+// and block-tails lower exactly as they do in a named fn -- no second walker.
+fn body_lower_function_value_body(body: FunctionValueBody) -> Outcome<Optional<Node>> {
+  match body {
+    FunctionValueExprBody { expr: e } => body_lower_value_lowered(node: e)
+    FunctionValueBlockBody { fn_body: b } => body_lower_body_from_fn_captured(captured: b)
+  }
+}
+
+fn body_lower_function_value_body_node(body: FunctionValueBody) -> Node {
+  match body {
+    FunctionValueExprBody { expr: e } => e
+    FunctionValueBlockBody { fn_body: b } => b
+  }
+}
+
+// A FUNCTION VALUE IN VALUE POSITION. Its binders, return clause and body are read by the one reader
+// of the two function-value productions, v2.compiler.fold_lowering function_value_parts_optional,
+// which fold_lowering's own fold step also projects; the Arrow is built by
+// body_lower_function_value_arrow. A shape that reader declines, an unreadable return clause, or a
+// body neither body reader lowers is a located refusal: the value is never narrowed to its parameter
+// and never carried as an unlowered shell.
+fn body_lower_function_value(shell: Node, capture: FunctionValueCapture) -> Outcome<Optional<Node>> {
+  let unread: Outcome<Optional<Node>> = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: shell)
+  )
+  match function_value_parts_optional(captured: capture.captured, emitted: capture.emitted) {
+    Absent => unread
+    Present { value: parts } =>
+      match body_lower_function_value_codomain_optional(ret: parts.return_clause) {
+        Absent => unread
+        Present { value: codomain } =>
+          match body_lower_function_value_body(body: parts.body) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: Absent, diagnostics: _ } =>
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_function_value_body_unread,
+                  n: body_lower_function_value_body_node(body: parts.body)
+                )
+              )
+            Accepted { value: Present { value: body }, diagnostics: d } =>
+              match body_lower_function_value_arrow(shell: shell, binders: parts.binders, codomain: codomain, body: body) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: arrow, diagnostics: ad } =>
+                  outcome_with_diagnostics(
+                    value: optional_present(value: arrow),
+                    diagnostics: diagnostics_merge(outer: d, inner: ad)
+                  )
+              }
+          }
+      }
+  }
+}
+
+// THE ONE FUNCTION-VALUE ARROW PRODUCER. Every function value in value position -- `p => body` and
+// `fn(a, b) -> R { .. }` -- builds its Arrow through this, from its authored binders, its codomain
+// and its ALREADY LOWERED body, so there is one Arrow shape.
+//
+// AN UNWRITTEN TYPE IS A FRESH TYPE PARAMETER OF THIS ARROW (gunbc#12217's binder model): the
+// i-th parameter `p` is typed by the type parameter spelled `'p` followed by i primes, and an
+// unwritten return type by `'` followed by one prime per parameter. `'` is not an identifier
+// character of the dag lexer (IdentStartChar / IdentContinueChar), so no authored name can spell one:
+// the binder never shadows a visible name (resolve refuses one that does), never collides with a
+// declaration, and the primes keep repeated parameter names (`fn(_, _)`) distinct as
+// v2.std.node type_binder_conj_conforms requires. Each function value's Arrow carries its own type
+// parameters in its own frame, so no two lambdas share one.
+fn body_lower_function_value_type_var(base: String, primes: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: "'" + base + primes)
+}
+
+type FunctionValueSignature {
+  domain: List<Edge>
+  type_params: List<Edge>
+  primes: String
+  wildcard_primes: String
+}
+
+// A fresh type variable is minted by the compiler, not authored, so it is a SYNTHETIC atom: it must
+// not wear the binder's authored occurrence under a different spelling, which the reference
+// conservation census reads as the authored binder dropped (a projected occurrence is XL-2's
+// prerequisite, not modeled yet).
+fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: tv } }, children: [])
+}
+
+// A `_` parameter binds nothing, and a domain is a record (v2.std.node edges_conform: every edge
+// Named, every name distinct), so `fn(_, _)` cannot carry two fields named `_`. The FIRST wildcard
+// keeps the name `_` it was written with; each later one takes `_` followed by one prime per earlier
+// wildcard -- `_'`, `_''`, .. -- which no authored name can spell, so it stays distinct and no body
+// can refer to it. (The reference-conservation census matches an erased binder to its label by
+// spelling, so a second `_` has no label to match; occurrence projection, XL-2, dissolves that.)
+fn body_lower_function_value_binder_name(b: FunctionValueBinder, wildcard_primes: String) -> Symbol {
+  if b.name == ^_ {
+    symbol_intern_lexeme(lexeme: "_" + wildcard_primes)
+  } else {
+    b.name
+  }
+}
+
+fn body_lower_function_value_next_wildcard_primes(b: FunctionValueBinder, wildcard_primes: String) -> String {
+  if b.name == ^_ { wildcard_primes + "'" } else { wildcard_primes }
+}
+
+fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> FunctionValueSignature {
+  let no_edges: List<Edge> = []
+  fold(binders, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, primes: "", wildcard_primes: "" }, f: fn(acc, b) {
+    let tv = body_lower_function_value_type_var(base: symbol_lexeme(sym: b.name), primes: acc.primes)
+    FunctionValueSignature {
+      domain: list_append(
+        left: acc.domain,
+        right: [Edge {
+          label: Named { name: body_lower_function_value_binder_name(b: b, wildcard_primes: acc.wildcard_primes) },
+          target: body_lower_function_value_type_var_atom(tv: tv)
+        }]
+      ),
+      type_params: list_append(
+        left: acc.type_params,
+        right: [Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }]
+      ),
+      primes: acc.primes + "'",
+      wildcard_primes: body_lower_function_value_next_wildcard_primes(b: b, wildcard_primes: acc.wildcard_primes)
+    }
+  })
+}
+
+fn body_lower_function_value_arrow(
+  shell: Node,
+  binders: List<FunctionValueBinder>,
+  codomain: FunctionValueCodomain,
+  body: Node
+) -> Outcome<Node> {
+  match body_lower_reify_arrow_body(body: body) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: reified, diagnostics: bd } =>
+      let sig = body_lower_function_value_signature(binders: binders)
+      let return_tv = body_lower_function_value_type_var(base: "", primes: sig.primes)
+      let codomain_node = match codomain {
+        CodomainAuthored { type_node: t } => t
+        CodomainElided => body_lower_function_value_type_var_atom(tv: return_tv)
+      }
+      let type_params = match codomain {
+        CodomainAuthored { type_node: _ } => sig.type_params
+        CodomainElided =>
+          list_append(
+            left: sig.type_params,
+            right: [Edge { label: Named { name: return_tv }, target: codomain_node }]
+          )
+      }
+      let no_edges: List<Edge> = []
+      let type_param_edges: List<Edge> = match type_params {
+        Empty => no_edges
+        Cons { head: _, tail: _ } =>
+          [type_params_edge(conj: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_params, source: shell))]
+      }
+      outcome_with_diagnostics(
+        value: node_lowered_from(
+          source: shell,
+          kind: TypeNode { connective: Arrow },
+          children: list_append(
+            left: list_append(
+              left: [
+                Edge {
+                  label: Positional,
+                  target: node_lowered_from(kind: TypeNode { connective: Conj }, children: sig.domain, source: shell)
+                },
+                Edge { label: Positional, target: codomain_node },
+                Edge { label: Positional, target: codomain_node }
+              ],
+              right: type_param_edges
+            ),
+            right: [Edge { label: Named { name: ^arrow_body_edge }, target: reified }]
+          )
+        ),
+        diagnostics: bd
+      )
   }
 }
 
@@ -3626,45 +3888,11 @@ fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
 // only for what that declines; an argument neither reads is still a located refusal, and a
 // refusal either raises is the argument's.
 //
-// A LIST LITERAL ANYWHERE IN THE VALUE STILL REFUSES. Body lowering has no lowered form for
-// `[e1, .., en]`: body_lower_primary_expr answers it with its first atom, the `[` token, so its
-// elements would reach no reference site. Until list literals lower on every route, an argument
-// whose value contains one -- directly, or inside a record or group this reader now accepts --
-// refuses at the list, so reading more argument shapes never turns a refusal into a silent drop.
-fn body_lower_is_list_literal(node: Node) -> Bool {
-  match sugar_sequence_pair_optional(node: node) {
-    Absent => false
-    Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
-        Present { value: id } => id == ^dag_token_lbracket
-        Absent => false
-      }
-  }
-}
-
-fn body_lower_find_list_literal_optional(node: Node) -> Optional<Node> {
-  if body_lower_is_list_literal(node: node) {
-    optional_present(value: node)
-  } else {
-    fold(node.children, init: optional_absent(), f: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => body_lower_find_list_literal_optional(node: e.target)
-      }
-    })
-  }
-}
-
-fn body_lower_arg_value_lowered(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
-  match body_lower_find_list_literal_optional(node: value_capture) {
-    Present { value: list } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_list_literal_unlowered, n: list)
-      )
-    Absent => body_lower_arg_value_read(arg_capture: arg_capture, value_capture: value_capture)
-  }
-}
-
+// A LIST LITERAL IN THE VALUE LOWERS WITH IT. An argument whose value is or contains `[e1, .., en]`
+// once refused its whole module (body_lowering_reason_list_literal_unlowered), because body lowering
+// had no lowered form for the literal. The literal's producer is now body_lower_list_literal, reached
+// from body_lower_primary_expr, so the value reader below lowers it here exactly as in any other
+// value position; no argument-specific list handling remains.
 fn body_lower_arg_value_read(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
   match body_lower_value_lowered(node: value_capture) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -3685,14 +3913,14 @@ fn body_lower_call_arg_value(arg_capture: Node) -> Outcome<Node> {
   if body_lower_call_arg_capture_is_named(arg_capture: arg_capture) {
     match body_lower_named_arg_value_capture_optional(arg_capture: arg_capture) {
       Present { value: value_capture } =>
-        body_lower_arg_value_lowered(arg_capture: arg_capture, value_capture: value_capture)
+        body_lower_arg_value_read(arg_capture: arg_capture, value_capture: value_capture)
       Absent =>
         outcome_rejected(
           d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_unread, n: arg_capture)
         )
     }
   } else {
-    body_lower_arg_value_lowered(arg_capture: arg_capture, value_capture: arg_capture)
+    body_lower_arg_value_read(arg_capture: arg_capture, value_capture: arg_capture)
   }
 }
 
@@ -6028,9 +6256,21 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 // statement spine uses for its last statement. It was read by the operand reader first, whose
 // first-match readers stand a part in for the whole: `let x = g(p: u)` bound the callee `g`, and
 // `let x = b && (u)` bound `b`, so `u` reached no reference site and the module resolved. The fold's
-// refusal is the statement's refusal.
+// refusal is the statement's refusal. A FUNCTION VALUE is read by its own producer first: the fold
+// defers it (body_lower_is_deferred_lower_emitted), so `let g = fn(y) -> Q { y }` is lowered whole by
+// body_lower_function_value, and one it cannot lower is its located refusal
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2).
 fn body_lower_bound_value(node: Node) -> Outcome<Node> {
-  body_lower_fold(node: node)
+  match body_lower_function_value_captured_optional(node: node) {
+    Present { value: capture } =>
+      match body_lower_function_value(shell: node, capture: capture) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: Present { value: arrow }, diagnostics: d } => outcome_with_diagnostics(value: arrow, diagnostics: d)
+        Accepted { value: Absent, diagnostics: _ } =>
+          outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: node))
+      }
+    Absent => body_lower_fold(node: node)
+  }
 }
 
 fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
@@ -6997,6 +7237,84 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   }
 }
 
+// A LIST LITERAL IS THE FLAT FREE-MONOID INTRODUCTION (DESIGN section 4). `List<T>` is
+// std.algebra FreeMonoid<T> (dag/std/algebra.dag), and `[e1, .., en]` lowers to ONE Transform whose
+// head is the reference to that declaration and whose remaining positional children are the
+// elements in order; `[]` is the Transform with the head alone. The authority for the shape is
+// std.literal_elaboration UnicodeScalarSequenceUnfold, which carries a text's image as "the
+// language's canonical FreeMonoid introduction (the list-literal node)" with one element per
+// operand and REJECTS a cons^n nesting: O(n^2) under a sequence-backed carrier, and n deep it
+// exceeds the emitter's bounded recursion fuel on ordinary literals. (gunbc#12208 first lowered to a
+// right-nested list_append over singletons; that forked this authority and was reversed.) The head
+// is the declaring qualified name as a spine -- resolve binds it through its qualified door and
+// mints it as a resolved reference -- and it names std.algebra, NOT v2.std.algebra: v2.std.algebra
+// imports v2.std.node, so a list literal in v2.std.node referring to v2.std.algebra would close a
+// node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
+// not an application: 04_infer types it by its one introduction case
+// (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T. The
+// shape itself -- head path, constructor and reader -- is v2.std.compilers.body_lowering
+// lower_list_introduction and list_introduction_elements_optional, one authority for both sides.
+// The grammar writes the literal as seq(`[`, seq(optional comma_list(expr), `]`))
+// (v2.extdeps.languages.dag dag_grammar_primary_expr_core); its items are read by the one
+// comma-list walker. Every element is lowered WHOLE through body_lower_value_lowered, the value
+// reader every value position uses, so a call, record, nested list or operator expression in
+// element position lowers as it would anywhere else. An element that reader cannot lower refuses
+// located at that element. Before this producer body_lower_primary_expr answered the literal with
+// its `[` atom and every element was dropped; call arguments refused the whole module instead
+// (body_lowering_reason_list_literal_unlowered).
+fn body_lower_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      if body_lower_node_is_token(node: pair.left, token: ^dag_token_lbracket) {
+        match sugar_sequence_pair_optional(node: pair.right) {
+          Absent => optional_absent()
+          Present { value: rest } =>
+            if body_lower_node_is_token(node: rest.right, token: ^dag_token_rbracket) {
+              optional_present(value: rest.left)
+            } else {
+              optional_absent()
+            }
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn body_lower_list_literal_element(item: Node) -> Outcome<Node> {
+  match body_lower_value_lowered(node: item) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: Present { value: lowered }, diagnostics: d } =>
+      outcome_with_diagnostics(value: lowered, diagnostics: d)
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_list_element_unlowered, n: item)
+      )
+  }
+}
+
+fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_lower_comma_list_items(
+      list_capture: items_capture,
+      shape_refusal: ^body_lowering_reason_list_literal_shape_unread
+    ),
+    f: fn(items) {
+      bind_outcome(
+        o: fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
+          bind_outcome(o: acc, f: fn(elements) {
+            bind_outcome(o: body_lower_list_literal_element(item: item), f: fn(element) {
+              outcome_accepted(value: list_snoc_item(xs: elements, item: element))
+            })
+          })
+        }),
+        f: fn(elements) { outcome_accepted(value: lower_list_introduction(elements: elements, source: literal)) }
+      )
+    }
+  )
+}
+
 fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   let captured = match body_lower_unwrap_captured(shell: shell) {
     Present { value: inner } => inner
@@ -7004,6 +7322,10 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   }
   match body_lower_int_literal_with_magnitude_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
+        Absent =>
+      match body_lower_list_literal_items_capture_optional(captured: captured) {
+        Present { value: items_capture } =>
+          body_lower_list_literal(literal: captured, items_capture: items_capture)
         Absent =>
       match body_lower_try_record_literal(captured: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -7068,6 +7390,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
           }
       }
   }
+      }
       }
 }
 
