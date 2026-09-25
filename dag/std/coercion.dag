@@ -1,8 +1,5 @@
 module std.coercion
 
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import v2.std.algebra { any, filter }
-
 type TypeCheckpoint {
   dag_name: String
   target_type: String
@@ -211,7 +208,11 @@ type CastRule {
 // declared twice in one corpus -- std.nat.Nat (grounded onto Int, carrier i64) and v2.std.nat.Nat
 // (a Peano Zero | Succ coproduct) -- and only the first is a refinement of Int. A consumer that
 // holds a resolved declaration keys on to_declaration; to_type remains the spelling an explicit
-// `as` target is authored with.
+// `as` target is authored with. This module declares NO imports on purpose: it is in the v2
+// self-compile closure, which does not reach v2.std.algebra (the provider of the bare any / filter
+// it folds with), and importing any one name switches a file's bare channel off
+// (the unimported-bare-provider gate). DeclarationRef, decl_ref and declaration_ref_eq resolve
+// through that same bare channel to their single declarer, std.decl_ref.
 type RefinementCastRule {
   from_type: String
   to_type: String
