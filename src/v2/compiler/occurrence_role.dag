@@ -35,7 +35,15 @@ import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present }
 
 // WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
-// LoweringOccurrenceProjection, docs/plans/lowering-occurrence-projection-design.md section 3).
+// prerequisite gunbc.compiler_frontend_program_status LoweringOccurrenceProjection, tracked by
+// gunbc.recurring_failure_mode lowering_rebuilds_an_authored_atom_without_its_occurrence).
+//
+// DECLARED FRONTIER (DESIGN section 3c). This change has no production consumer. The named consumer
+// is v2.compiler.reference_conservation conservation_against_tree, reached from the census entry
+// v2.compiler.reference_conservation_census reference_conservation_census_for_paths: it reads
+// dag_occurrence_roles to count binders and non-module-scope labels as a typed excluded population
+// instead of locus_erased. TRIGGER: the census change stacked directly on this one (XL-2
+// LoweringOccurrenceProjection PR 3b). If that change does not land, this module is removed with it.
 //
 // The conservation census must tell a binder (a name a declaration introduces) and a label (a field
 // or argument name, resolved against its type or callee) apart from a reference to a module-scope
