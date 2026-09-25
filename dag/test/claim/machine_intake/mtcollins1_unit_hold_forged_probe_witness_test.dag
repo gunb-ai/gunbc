@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test
 
 import std.types { String, Bool, Int, List }
+import v2.std.algebra { filter }
 import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
