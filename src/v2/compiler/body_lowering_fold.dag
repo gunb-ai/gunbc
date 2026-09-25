@@ -52,7 +52,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -74,7 +74,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_spine_node, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -88,6 +88,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  EdgeLabel,
   Instantiation,
   Named,
   Node,
@@ -585,8 +586,12 @@ fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_match_arm_stmt_body)
 }
 
+// A service declaration lowers from its UNFOLDED parse subtree (body_lower_service_decl): its members
+// are interface or set-aside facts, never bodies, so folding them first would retain each one.
 fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
-  if emitted == ^dag_surface_fn_body {
+  if emitted == ^dag_surface_service_decl {
+    true
+  } else if emitted == ^dag_surface_fn_body {
     under_fn_decl
   } else {
     body_lower_is_deferred_lower_emitted(emitted: emitted)
@@ -7332,8 +7337,380 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
   }
 }
 
+// SERVICE DECLARATIONS, AT DECLARATION GRADE. A service is an interface (DESIGN section 3): a named
+// product of function types. `service S { operation Op { input { a: A } output { b: B } } }` lowers
+// onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { a: A }, Conj { b: B }) } }`,
+// the same Arrow a function TYPE lowers to (body_lower_fn_type_lowered_optional) -- so the graft
+// flattens it like a record and the symbol index sees the service, its operations and their
+// payload fields. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
+// node_minimal's TransportSlot is NOT promoted: transport is a realization handler, not a node field).
+//
+// WHAT IS NOT LOWERED IS SET ASIDE, TYPED AND LOCATED, UNDER TWO COUNTED REASONS:
+//  - body_lowering_reason_realization_member_set_aside: transport / exit / response / mock_response.
+//    Realization per DESIGN section 3, never part of the interface, so the interface lowers without it.
+//  - body_lowering_reason_interface_member_unmodeled: readonly / idempotent / hermetic and an io
+//    field's `from "key"` / `= default` tail. These ARE interface facts (idempotent governs retry,
+//    DESIGN section 4b) with no typed carrier yet, so they rank for modeling under their own reason
+//    instead of hiding in the realization bucket (rfm service_interface_member_has_no_carrier).
+// A set-aside member is UNREACHABLE AS LOWERED: only census grade admits them (v2.compiler.normalize
+// normalize_census, whose carrier has no route to eval or emission); every other route refuses the
+// service (body_lower_service_decl), so no stage that would need a service's realization can be
+// handed a service and assume a transport. The set-aside population is a typed list the lowering
+// builds, never a scan of diagnostic reasons. A member this lowering cannot read refuses, located.
+//
+// THE NAME IS ONE LABEL, THE WHOLE DECLARED SPELLING (`shell.Find`), not a per-segment spine. A
+// spine collides at the module (dag/extdeps/shell.dag declares sixteen services under `shell`) and
+// needs a prefix merge in namespace_graft. FRONTIER, stated: the dotted label hides named parts
+// (DESIGN section 2) and a dotted reference to it does not resolve; the trigger is v2 resolving
+// service CALLS, at which point the spine plus a graft prefix merge becomes the required shape and
+// this label migrates in one transition.
+type ServiceSetAsideKind
+  = RealizationMemberSetAside
+  | InterfaceMemberUnmodeled
+
+type ServiceSetAside {
+  kind: ServiceSetAsideKind,
+  member: Node,
+}
+
+fn service_set_aside_reason(kind: ServiceSetAsideKind) -> Symbol {
+  match kind {
+    RealizationMemberSetAside => ^body_lowering_reason_realization_member_set_aside
+    InterfaceMemberUnmodeled => ^body_lowering_reason_interface_member_unmodeled
+  }
+}
+
+fn service_set_aside_diagnostics(xs: List<ServiceSetAside>) -> Diagnostics {
+  fold(xs, init: None, f: fn(acc, x) {
+    diagnostics_merge(
+      outer: acc,
+      inner: Some { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: service_set_aside_reason(kind: x.kind), n: x.member)) }
+    )
+  })
+}
+
+// The production shells directly beneath a node, looking through the two choice wrappers
+// (service_body_entry, operation_body_entry) that carry no fact of their own.
+fn body_lower_service_member_shells(root: Node) -> List<Node> {
+  fold(root.children, init: Empty, f: fn(acc, e) {
+    list_append(left: acc, right: body_lower_service_member_shells_at(node: e.target))
+  })
+}
+
+fn body_lower_service_member_shells_at(node: Node) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if (id == ^dag_surface_service_body_entry) || (id == ^dag_surface_operation_body_entry) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: inner } => body_lower_service_member_shells_at(node: inner)
+          Absent => [node]
+        }
+      } else {
+        [node]
+      }
+    Absent => body_lower_service_member_shells(root: node)
+  }
+}
+
+// An io field's `[from "key"] [= default]` tail is present when either optional captured anything.
+fn body_lower_io_field_tail_present(tail: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: tail) {
+    Absent => (is_empty_conj_root(n: tail) == false)
+    Present { value: pair } =>
+      (is_empty_conj_root(n: pair.left) == false) || (is_empty_conj_root(n: pair.right) == false)
+  }
+}
+
+
+type BodyLowerIoBlock {
+  payload: Node,
+  set_aside: List<ServiceSetAside>,
+}
+
+fn body_lower_io_block(shell: Node) -> Outcome<BodyLowerIoBlock> {
+  let refuse = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: shell)
+  )
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => refuse
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => refuse
+        Present { value: kw } =>
+          match sugar_sequence_pair_optional(node: kw.right) {
+            Absent => refuse
+            Present { value: brace } =>
+              match sugar_sequence_pair_optional(node: brace.right) {
+                Absent => refuse
+                Present { value: inner } =>
+                  match body_lower_comma_list_items_optional(list_capture: inner.left) {
+                    Absent => refuse
+                    Present { value: items } =>
+                      match fold(items, init: Present { value: IoAcc { edges: Empty, set_aside: Empty } }, f: fn(acc, item) {
+                        match acc {
+                          Absent => Absent
+                          Present { value: a } =>
+                            match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+                              Absent => Absent
+                              Present { value: field } =>
+                                match body_lower_field_decl_edge_optional(item: field.left) {
+                                  Absent => Absent
+                                  Present { value: edge } =>
+                                    Present {
+                                      value: IoAcc {
+                                        edges: list_snoc_item(xs: a.edges, item: edge),
+                                        set_aside: if body_lower_io_field_tail_present(tail: field.right) {
+                                          list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: InterfaceMemberUnmodeled, member: item })
+                                        } else {
+                                          a.set_aside
+                                        }
+                                      }
+                                    }
+                                }
+                            }
+                        }
+                      }) {
+                        Absent => refuse
+                        Present { value: a } =>
+                          outcome_accepted(
+                            value: BodyLowerIoBlock { payload: body_lower_payload_node(edges: a.edges, source: shell), set_aside: a.set_aside }
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type IoAcc {
+  edges: List<Edge>,
+  set_aside: List<ServiceSetAside>,
+}
+
+type BodyLowerOperationAcc {
+  input: Optional<Node>,
+  output: Optional<Node>,
+  set_aside: List<ServiceSetAside>,
+}
+
+fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node) -> Outcome<BodyLowerOperationAcc> {
+  bind_outcome(o: acc, f: fn(a) {
+    match parse_production_emitted_identity_optional(node: member) {
+      Absent => body_lower_service_member_unread(member: member)
+      Present { value: id } =>
+        if (id == ^dag_surface_input_block) || (id == ^dag_surface_output_block) {
+          bind_outcome(o: body_lower_io_block(shell: member), f: fn(io) {
+            if id == ^dag_surface_input_block {
+              match a.input {
+                Present { value: _ } =>
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
+                Absent =>
+                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
+              }
+            } else {
+              match a.output {
+                Present { value: _ } =>
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
+                Absent =>
+                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
+              }
+            }
+          })
+        } else if id == ^dag_surface_op_modifier {
+          body_lower_operation_acc_set_aside(a: a, kind: InterfaceMemberUnmodeled, n: member)
+        } else if (id == ^dag_surface_transport)
+          || (id == ^dag_surface_exit_block)
+          || (id == ^dag_surface_response_block)
+          || (id == ^dag_surface_mock_response_block) {
+          body_lower_operation_acc_set_aside(a: a, kind: RealizationMemberSetAside, n: member)
+        } else {
+          body_lower_service_member_unread(member: member)
+        }
+    }
+  })
+}
+
+fn body_lower_operation_acc_set_aside(a: BodyLowerOperationAcc, kind: ServiceSetAsideKind, n: Node) -> Outcome<BodyLowerOperationAcc> {
+  outcome_accepted(
+    value: BodyLowerOperationAcc {
+      input: a.input,
+      output: a.output,
+      set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: kind, member: n })
+    }
+  )
+}
+
+// A member this lowering cannot read REFUSES, located at the member: a partially read service has
+// no representation, so nothing is kept and nothing is dropped.
+fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
+  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_member_unread, n: member))
+}
+
+// An operation that declares no input (or no output) block exchanges the empty product.
+fn body_lower_io_payload_or_empty(o: Optional<Node>, source: Node) -> Node {
+  match o {
+    Present { value: payload } => payload
+    Absent => body_lower_payload_node(edges: Empty, source: source)
+  }
+}
+
+type BodyLowerOperation {
+  edge: Edge,
+  set_aside: List<ServiceSetAside>,
+}
+
+fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => body_lower_service_member_unread(member: shell)
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => body_lower_service_member_unread(member: shell)
+        Present { value: op_name } =>
+          bind_outcome(
+            o: fold(
+              body_lower_service_member_shells(root: captured),
+              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, set_aside: Empty }),
+              f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
+            ),
+            f: fn(a) {
+              outcome_accepted(
+                value: BodyLowerOperation {
+                  edge: Edge {
+                    label: Named { name: op_name },
+                    target: node_with_occurrence_id(
+                      kind: TypeNode { connective: Arrow },
+                      children: [
+                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.input, source: shell) },
+                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) }
+                      ],
+                      occurrence_id: shell.occurrence_id
+                    )
+                  },
+                  set_aside: a.set_aside
+                }
+              )
+            }
+          )
+      }
+  }
+}
+
+type BodyLowerServiceAcc {
+  operations: List<Edge>,
+  set_aside: List<ServiceSetAside>,
+}
+
+fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) -> Outcome<BodyLowerServiceAcc> {
+  bind_outcome(o: acc, f: fn(a) {
+    match parse_production_emitted_identity_optional(node: member) {
+      Absent => body_lower_service_member_unread(member: member)
+      Present { value: id } =>
+        if id == ^dag_surface_qualified_name {
+          outcome_accepted(value: a)
+        } else if id == ^dag_surface_operation {
+          bind_outcome(o: body_lower_operation(shell: member), f: fn(op) {
+            if body_lower_service_declares_operation(operations: a.operations, name: op.edge.label) {
+              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_operation_repeated, n: member))
+            } else {
+              outcome_accepted(value: BodyLowerServiceAcc { operations: list_snoc_item(xs: a.operations, item: op.edge), set_aside: list_append(left: a.set_aside, right: op.set_aside) })
+            }
+          })
+        } else if id == ^dag_surface_transport {
+          outcome_accepted(
+            value: BodyLowerServiceAcc {
+              operations: a.operations,
+              set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: RealizationMemberSetAside, member: member })
+            }
+          )
+        } else {
+          body_lower_service_member_unread(member: member)
+        }
+    }
+  })
+}
+
+// AN OPERATION NAME IS DECLARED ONCE PER SERVICE. Two operations sharing a name would lower to two
+// identically labelled edges of one product, which is not a well-formed node and names no single
+// function type; the refusal is located at the second declaration, with its own cause, rather than
+// surfacing later as an unlocated post-normalize well-formedness failure at the module root.
+fn body_lower_service_declares_operation(operations: List<Edge>, name: EdgeLabel) -> Bool {
+  fold(operations, init: false, f: fn(found, e) { found || (e.label == name) })
+}
+
+fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_qualified_name) {
+    Absent => Absent
+    Present { value: qn_shell } =>
+      match parse_production_captured_child_optional(node: qn_shell) {
+        Absent => Absent
+        Present { value: qn_capture } =>
+          match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: qn_shell) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: segments, diagnostics: _ } =>
+              optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: segments)))
+          }
+      }
+  }
+}
+
+// THE TWO GRADES DIFFER ONLY IN WHAT A SET-ASIDE MEMBER MEANS. At census grade
+// (v2.compiler.normalize normalize_census, whose carrier has no route past the symbol index) the
+// interface is admitted and each set-aside member rides as a located advisory. On every other route
+// the lowered service would reach resolution, eval or emission, each of which would have to assume
+// the set-aside facts, so it REFUSES at the service with every member's own located diagnostic
+// pending: a set-aside realization is unreachable as lowered by construction, not by a door that
+// scans reasons.
+fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLowering> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_service_name_optional(captured: captured) {
+        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Present { value: service_name } =>
+          match fold(
+            body_lower_service_member_shells(root: captured),
+            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, set_aside: Empty }),
+            f: fn(acc, member) { body_lower_service_member(acc: acc, member: member) }
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: a, diagnostics: _ } =>
+              match a.set_aside {
+                Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations)))
+                Cons { head: _, tail: _ } =>
+                  if admit_set_aside {
+                    Accepted {
+                      value: BodyLowered { node: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations) },
+                      diagnostics: service_set_aside_diagnostics(xs: a.set_aside)
+                    }
+                  } else {
+                    Rejected {
+                      diagnostics: rejected_with_pending(
+                        pending: service_set_aside_diagnostics(xs: a.set_aside),
+                        rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: shell))
+                      )
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_service_node(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: service_name }, target: body_lower_payload_node(edges: operations, source: shell) }
+    ],
+    occurrence_id: shell.occurrence_id
+  )
+}
+
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
-  if emitted == ^dag_surface_type_decl {
+  if emitted == ^dag_surface_service_decl {
+    body_lower_service_decl(shell: shell, admit_set_aside: false)
+  } else if emitted == ^dag_surface_type_decl {
     body_lowering_lowered(o: body_lower_type_decl(shell: shell))
   } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     body_lowering_lowered(o: outcome_accepted(value: shell))
