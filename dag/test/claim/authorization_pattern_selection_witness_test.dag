@@ -242,6 +242,17 @@ test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
   (reasoned_divergences() |> count) > 0 && (reasoned_divergences_with_fired_triggers() |> count) == 0
 }
 
+// THE FIRST SITE REALIZED THROUGH THE APPROVAL CAPABILITY CONFORMS. The runner-group create's row is
+// run through the real fold: its characteristics select per-effect operator approval, and it
+// realizes exactly that, so its verdict is Conforms with no stated reason -- the census's first
+// conforming exemplar of the approval pattern.
+test fn the_runner_group_create_selects_and_realizes_operator_approval() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.runner_group_restriction_ensure_run::microvm_runner_group_after_gate"
+      && selected_approved(s: v.selection)
+      && match v.conformance { Conforms => true _ => false })
+}
+
 // THE MT. COLLINS BOOT (operator ruling 2026-09-23): the census row runs through the real fold and
 // DERIVES the federated pattern, and the site's realization conforms -- the boot is no longer an
 // unrostered per-run approval.

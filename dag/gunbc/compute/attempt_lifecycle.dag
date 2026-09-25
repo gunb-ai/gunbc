@@ -9,7 +9,7 @@ import std.durable_compare_and_set {
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   CasReadableSlot, CasReadableAbsent, CasReadablePresent,
   CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
@@ -345,6 +345,7 @@ fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpecta
             detail: match c {
               CasSlotObservationRefused { cause: u } => join(["the attempt store refused the read: ", cas_unreadable_slot_detail(cause: u)], "")
               CasGenerationPublicationRefused { detail: d } => join(["the attempt store refused the write: ", d as String], "")
+              CasGenerationSpaceExhausted { head: h } => join(["the attempt store's generation space is exhausted at head ", to_string(value: cas_generation_count(g: h))], "")
             },
           }
       }

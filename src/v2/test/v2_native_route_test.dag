@@ -35,7 +35,12 @@ import gunbc.witness_v2_native_route {
   native_route_admission_summary,
   native_route_live_control_module,
   NativeRouteCauseTally,
-  native_route_file_refusal_tally
+  native_route_file_refusal_tally,
+  FrontierRetirementStanding, FrontierOpen, FrontierRetired, FrontierRetirementCauseUnowned,
+  native_route_frontier_retirement_standing
+}
+import v2.workflow.compile_door_cause_ownership {
+  FrontierRetirement, node_grounding_frontier_retirement
 }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import v2.compiler.compile {
@@ -1572,6 +1577,83 @@ test fn the_refusal_tally_counts_each_refusal_once_at_fatal_grain() -> Bool {
   (native_route_tally_count_for(rows: rows, cause: ^parse_g0_tokens_remain) == 2)
   && (native_route_tally_count_for(rows: rows, cause: ^resolve_reason_unbound_symbol) == 1)
   && (fold_list(xs: rows, empty: 0, cons: fn(acc, row) { acc + row.file_refusals }) == 3)
+}
+
+// ── a frontier's retirement, joined to the route's population ──
+//
+// THE GROUNDING FRONTIER COUNTS BOTH POPULATIONS. One file refusal and one eval-stage member
+// refusal under two different grounding causes are both the frontier; a refusal under an
+// unrelated cause is not. So the standing is Open with exactly two remaining. A standing that
+// read only the file tally would say one, and one that matched any cause would say three.
+fn grounding_frontier_probe_receipt() -> NativeRouteReceipt {
+  receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [
+      refused_row(
+        module: "v2.test.frontier_probe",
+        declaration: "eval_refused",
+        stage: NativeTestStageEval,
+        reason: ^eval_rejected_grounding_not_derived
+      ),
+      refused_row(
+        module: "v2.test.frontier_probe",
+        declaration: "resolve_refused",
+        stage: NativeTestStagePrepare,
+        reason: ^resolve_reason_unbound_symbol
+      )
+    ],
+    file_refusals: [
+      file_refusal_row(path: ^frontier_a, head: ^infer_grounding_not_derived, fatal: ^translate_rejected_grounding_not_derived)
+    ]
+  )
+}
+
+test fn the_grounding_frontier_is_open_over_both_populations() -> Bool {
+  match native_route_frontier_retirement_standing(
+    retirement: node_grounding_frontier_retirement,
+    receipt: grounding_frontier_probe_receipt()
+  ) {
+    FrontierOpen { remaining: n } => n == 2
+    FrontierRetired => false
+    FrontierRetirementCauseUnowned { cause: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: a population none of whose refusals is a grounding cause retires the frontier.
+test fn the_grounding_frontier_retires_when_no_cause_is_observed() -> Bool {
+  match native_route_frontier_retirement_standing(
+    retirement: node_grounding_frontier_retirement,
+    receipt: receipt_over(
+      universe: [],
+      module_source_index: [],
+      population: [],
+      file_refusals: [
+        file_refusal_row(path: ^frontier_b, head: ^resolve_reason_unbound_symbol, fatal: ^resolve_reason_unbound_symbol)
+      ]
+    )
+  ) {
+    FrontierRetired => true
+    FrontierOpen { remaining: _ } => false
+    FrontierRetirementCauseUnowned { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED: a retirement over a cause the ownership table does not count at fatal
+// grain would read zero, and so Retired, forever. It must stand Unowned, naming the cause, and
+// that must hold even when the observed population is empty.
+test fn a_retirement_over_an_unowned_cause_is_not_retired() -> Bool {
+  match native_route_frontier_retirement_standing(
+    retirement: FrontierRetirement {
+      frontier: ^frontier_probe,
+      causes: [^infer_grounding_not_derived, ^frontier_probe_cause_nobody_owns]
+    },
+    receipt: receipt_over(universe: [], module_source_index: [], population: [], file_refusals: [])
+  ) {
+    FrontierRetirementCauseUnowned { cause: c } => c == ^frontier_probe_cause_nobody_owns
+    FrontierRetired => false
+    FrontierOpen { remaining: _ } => false
+  }
 }
 
 // ── the live pair, enrolled expecting-red (manager ruling 2026-09-21) ──

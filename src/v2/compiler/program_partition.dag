@@ -3,6 +3,11 @@ module v2.compiler.program_partition
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }
+import v2.compiler.emit_produced {
+  emit_produced_module,
+  produced_decl_conjs_in_tree,
+  produced_module_declares_bodied_members
+}
 import v2.compiler.infer {
   InferredFacts,
   InferredFactsEntry,
@@ -620,7 +625,11 @@ fn emit_partition_with_target(
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
-        emit(tree: tree, target: target)
+        if produced_module_declares_bodied_members(root: tree.root) {
+          emit_produced_module(decls: produced_decl_conjs_in_tree(root: tree.root), target: target)
+        } else {
+          emit(tree: tree, target: target)
+        }
       }
     )
   }

@@ -228,3 +228,28 @@ test fn known_gap_attempt_key_unconsumed_red_here_means_the_gap_was_closed() -> 
   committed_generation_of(outcome: for_slot_a) == 8
     && committed_generation_of(outcome: for_slot_b) == 8
 }
+
+fn occupied_at(g: CasGeneration) -> CasSlotObservation<NonEmptyStr> {
+  CasObservedReadable { readable: CasReadablePresent { version: CasSlotVersion {
+    generation: g, content: content_hash_of_value(value: "state" as NonEmptyStr), value: "state" as NonEmptyStr,
+  } } }
+}
+
+// THE LAST GENERATION HAS NO SUCCESSOR, AND AN ADMITTED ATTEMPT AGAINST IT REFUSES AS EXHAUSTED rather
+// than committing a successor that only an overflowing addition could name. The positive control is
+// the generation one below: it still commits, to the maximum itself.
+test fn an_attempt_against_the_last_generation_refuses_as_exhausted_and_one_below_commits_to_it() -> Bool {
+  let max = int_inclusive_max()
+  let exhausted = match cas_decide(attempt: proposal(expected: ExpectSlotGeneration { generation: max }), observed: occupied_at(g: max)) {
+    CasStoreRefused { cause: c } => match c {
+      CasGenerationSpaceExhausted { head: h } => h == max
+      _ => false
+    }
+    _ => false
+  }
+  let below = match cas_decide(attempt: proposal(expected: ExpectSlotGeneration { generation: max - 1 }), observed: occupied_at(g: max - 1)) {
+    CasCommitted { committed: v } => v.generation == max
+    _ => false
+  }
+  exhausted && below
+}

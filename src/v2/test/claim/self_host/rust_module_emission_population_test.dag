@@ -2,7 +2,7 @@ module v2.test.claim.self_host.rust_module_emission_population
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
-import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.emit_produced { produced_decl_conjs_in_tree }
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
