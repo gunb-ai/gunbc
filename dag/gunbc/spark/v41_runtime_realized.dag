@@ -10,7 +10,7 @@ import std.artifact_store {
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProcess, LocalAccelerator }
 import v2.std.optional { Present, Absent }
-import gunbc.spark.v41_runtime_candidate {
+import gunbc.spark.v41_runtime_candidate { v41_derivation_obligations,
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   V41RuntimeArtifactInputs,
   V41IdentityKeyed, V41IdentityUnestablished, V41IdentityRefused, v41_runtime_artifact_key,
@@ -240,6 +240,8 @@ type V41RealizedCandidate
   | V41CandidateRealizationUnestablished { obligations: List<NonEmptyStr> }
   | V41CandidateRealizationRefused { defects: List<NonEmptyStr> }
 
+// A REALIZED CANDIDATE IS SELECTABLE, so it may not be minted while the specification's derivation
+// evidence still owes a readback (gunbc.spark.v41_runtime_candidate V41DerivationEvidence).
 fn v41_realized_candidate(
   runtime: V41RealizedRuntime,
   row_store: V41RowStoreEncoding,
@@ -249,6 +251,7 @@ fn v41_realized_candidate(
     V41CandidateUnestablished { obligations: o } => V41CandidateRealizationUnestablished { obligations: o }
     V41CandidateRefused { defects: d } => V41CandidateRealizationRefused { defects: d }
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: exec, candidate: _, authorization_obligation: auth } =>
+      if length(v41_derivation_obligations(d: spec.derivation)) != 0 { V41CandidateRealizationUnestablished { obligations: v41_derivation_obligations(d: spec.derivation) } } else {
       match runtime {
         V41RuntimeRealizationUnestablished { obligations: o } => V41CandidateRealizationUnestablished { obligations: o }
         V41RuntimeRealizationRefused { defects: d } => V41CandidateRealizationRefused { defects: d }
@@ -269,6 +272,7 @@ fn v41_realized_candidate(
                 authorization_obligation: auth,
               }
           }
+      }
       }
   }
 }

@@ -53,7 +53,7 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
     descent: Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: v2.std.cardinality.RankingDimension { measured: ^anchor_descent_dim_sym }
+        strict: v2.std.cardinality.RankingComponent { measured: ^anchor_descent_dim_sym }
       }
     }
   }

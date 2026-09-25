@@ -1,7 +1,7 @@
 module gunbc.systemd_property_directive_overlap
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import extdeps.systemd {
@@ -13,7 +13,7 @@ import extdeps.systemd {
   InvocationIDProperty, FragmentPathProperty,
   systemd_unit_property_wire, PartOf }
 
-data systemd_property_directive_overlap_scope: Disposition = SingleAuthority
+data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
 
 // WHY THIS CARRIER EXISTS, AND WHY IT IS AN OBSERVATION RATHER THAN A REPAIR.
 //
