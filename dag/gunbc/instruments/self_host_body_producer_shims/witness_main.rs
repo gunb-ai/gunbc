@@ -115,25 +115,30 @@ fn main() {
     println!("dispatch_non_behavior eq_reject={reject_ok}");
     all_pass &= reject_ok;
 
-    let e_produce = emitted::produce_arrow_with_structured_body(
-        arrow_signature_emitted(),
-        if inject_fault {
-            atom_body_emitted()
-        } else {
-            transform_body_emitted()
-        },
-    );
-    let s_produce = seed::produce_arrow_with_structured_body(
-        arrow_signature_seed(),
-        transform_body_seed(),
-    );
-    let produce_ok = outcome_is_accepted_emitted(&e_produce)
-        == outcome_is_accepted_seed(&s_produce)
-        && (!inject_fault || !outcome_is_accepted_emitted(&e_produce));
-    println!(
-        "produce_arrow inject_fault={inject_fault} parity={produce_ok}"
-    );
-    all_pass &= produce_ok;
+    // THE FAULT RUN INVERTS EXACTLY ONE PROPOSITION: the planted claim is that emitted
+    // produce_arrow ACCEPTS an Atom body. A correct producer refuses it, so the injected run
+    // fails (the harness reads that as the fault detected); an accept-everything producer makes
+    // the injected run PASS, and cssl_fault_run_detected_the_planted_fault refuses. An earlier
+    // revision required `parity && !accepted` there, which no implementation could satisfy.
+    let produce_ok = if inject_fault {
+        let e_atom = emitted::produce_arrow_with_structured_body(
+            arrow_signature_emitted(),
+            atom_body_emitted(),
+        );
+        outcome_is_accepted_emitted(&e_atom)
+    } else {
+        let e_produce = emitted::produce_arrow_with_structured_body(
+            arrow_signature_emitted(),
+            transform_body_emitted(),
+        );
+        let s_produce = seed::produce_arrow_with_structured_body(
+            arrow_signature_seed(),
+            transform_body_seed(),
+        );
+        outcome_is_accepted_emitted(&e_produce) && outcome_is_accepted_seed(&s_produce)
+    };
+    println!("produce_arrow inject_fault={inject_fault} ok={produce_ok}");
+    all_pass = if inject_fault { produce_ok } else { all_pass && produce_ok };
 
     if all_pass {
         println!("SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS");

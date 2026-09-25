@@ -1,4 +1,4 @@
-//! Generic seed-shim assembly for curated self-host behavioral receipts.
+//! Whole-emitted-closure assembly for curated self-host behavioral receipts.
 //! Authority: tools.self_host_curated_seed_linked_harness (5-arm design).
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 

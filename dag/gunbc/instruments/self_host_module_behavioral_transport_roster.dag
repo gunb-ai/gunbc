@@ -31,8 +31,10 @@ import v2.std.text { String }
 // 01_tokenize, 02_parse, 03_body_producer, 03_ingest, 03_normalize, 03_resolve, 04_infer,
 // 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks,
 // program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data
-// only (shim paths, driver path, pass marker, supplementary claim-runs) migrated verbatim from
-// those files; the seed-vs-emitted execution stays entirely in the shared kernel
+// only (module path, driver path, pass marker, supplementary claim-runs); the hand shim paths the
+// rows once carried are deleted with the fields that held them (see
+// gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module), so every row links the whole
+// emitted closure. The emit/assemble/cargo/witness execution stays entirely in the shared kernel
 // (tools.self_host_curated_seed_linked_harness), so a new frontier row's receipt is one roster row,
 // not a new file. Fail-closed: an unrecognized module_path returns false (never a fabricated pass)
 // — see compiler_module_behavioral_receipt_for. tools.self_host_logic_behavioral_transport and

@@ -39,25 +39,25 @@ fn value_with_child() -> Rc<Node> {
     )
 }
 
-// The planted fault feeds the malformed tree where the well-formed one is expected, so the fault
-// run goes red only if emitted normalize really refuses it; a normalize that accepted everything
-// would stay green there, and cssl_fault_run_detected_the_planted_fault would refuse the receipt.
+// THE FAULT RUN INVERTS EXACTLY ONE PROPOSITION. Plain: the well-formed tree is accepted AND the
+// malformed one is refused. Injected: the malformed tree is ACCEPTED -- the planted fault is the claim
+// that normalize admits it. So a correct normalize passes plain and fails injected (the harness
+// reads that FAIL as the fault detected); an accept-everything normalize fails plain and PASSES
+// injected, so cssl_fault_run_detected_the_planted_fault refuses; a reject-everything normalize
+// fails plain. An earlier revision fed the malformed tree into both arms, so the injected run was
+// `p && !p` and printed FAIL for every implementation -- a fault arm with no reachable green.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let mut all_pass = true;
-
-    let valid_input = if inject_fault {
-        value_with_child()
+    let malformed_accepted = accepted(&emitted::normalize(value_with_child()));
+    let all_pass = if inject_fault {
+        println!("normalize injected: not_well_formed accepted={malformed_accepted}");
+        malformed_accepted
     } else {
-        value_node()
+        let valid_accepts = accepted(&emitted::normalize(value_node()));
+        println!("normalize well_formed accepts={valid_accepts}");
+        println!("normalize not_well_formed refuses={}", !malformed_accepted);
+        valid_accepts && !malformed_accepted
     };
-    let valid_accepts = accepted(&emitted::normalize(valid_input));
-    println!("normalize well_formed inject_fault={inject_fault} accepts={valid_accepts}");
-    all_pass &= valid_accepts;
-
-    let malformed_refuses = !accepted(&emitted::normalize(value_with_child()));
-    println!("normalize not_well_formed refuses={malformed_refuses}");
-    all_pass &= malformed_refuses;
 
     if all_pass {
         println!("SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS");
