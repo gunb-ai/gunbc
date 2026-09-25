@@ -4,6 +4,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitFailure, ExitSuccess }
 import v2.cli.compile_cli {
   CliEmitClosure,
+  CliCensusRefused,
   CliEmitted,
   CliPlan,
   CliPlanParsed,
@@ -66,6 +67,7 @@ fn plan_first_root(plan: CliPlan) -> String {
 fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
   match outcome {
     CliRunRefused { reason: reason, detail: _ } => reason
+    CliCensusRefused { reason: reason, detail: _, text: _ } => reason
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } =>
       ^cli_outcome_was_not_refused
   }
@@ -74,6 +76,7 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
 fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
   match outcome {
     CliRunRefused { reason: _, detail: _ } => false
+    CliCensusRefused { reason: _, detail: _, text: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => true
   }
 }
@@ -360,6 +363,9 @@ test fn a_trailing_token_refusal_names_the_refusing_link_as_its_reason_holds() -
 test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
   match cli_probe_trailing_outcome() {
     CliRunRefused { reason: _, detail: detail } =>
+      string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
+        && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
+    CliCensusRefused { reason: _, detail: detail, text: _ } =>
       string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false

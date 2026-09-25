@@ -60,12 +60,15 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
+  diagnostics_fatal,
   diagnostics_fatal_reason,
+  non_empty_diagnostics_append,
   node_locus,
   outcome_accepted,
   outcome_rejected
 }
 import v2.std.language_model { LanguageModel }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
@@ -122,8 +125,18 @@ type ClosureIngest {
   index: SourceRootIndex
 }
 
+// ONE FILE THE CENSUS COULD NOT READ, carried whole: its path and its located chain. The census
+// continues past it so one run names every such file -- the file-grain blocking set -- and the
+// emission still refuses when any exists, because membership cannot be derived while a file's
+// declarations are unreadable (DESIGN section 5).
+type ClosureCensusRefusal {
+  path: String
+  diagnostics: NonEmptyDiagnostics
+}
+
 type ClosureIngestState {
-  ingest: Outcome<ClosureIngest>
+  ingest: ClosureIngest
+  refusals: FreeMonoid<ClosureCensusRefusal>
   alloc: OccurrenceIdAllocator
   spans: SpanIndex
 }
@@ -142,6 +155,7 @@ type ClosureEmission {
 // gives: a refusal needs its file exactly when the outcome carries no value.
 type ClosureEmissionLocated {
   spans: SpanIndex
+  census_refusals: FreeMonoid<ClosureCensusRefusal>
   outcome: Outcome<ClosureEmission>
 }
 
@@ -153,6 +167,21 @@ fn closure_emission_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
   }
 }
 
+fn closure_ingest_refused(
+  state: ClosureIngestState,
+  read: DagSourceReadWitness,
+  d: NonEmptyDiagnostics,
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex
+) -> ClosureIngestState {
+  ClosureIngestState {
+    ingest: state.ingest,
+    refusals: list_snoc_item(xs: state.refusals, item: ClosureCensusRefusal { path: read.artifact.file_path, diagnostics: d }),
+    alloc: alloc,
+    spans: spans
+  }
+}
+
 fn closure_ingest_step(
   state: ClosureIngestState,
   read: DagSourceReadWitness,
@@ -160,59 +189,58 @@ fn closure_ingest_step(
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ClosureIngestState {
-  match state.ingest {
-    Rejected { diagnostics: _ } => state
-    Accepted { value: acc, diagnostics: _ } =>
+  let acc = state.ingest
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lm: lm),
+    f: fn(tokens) {
+      parse_module_prepared_seeded(
+        tokens: tokens,
+        prepared: prepared,
+        validation_residue: residue,
+        seed: state.alloc
+      )
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      closure_ingest_refused(state: state, read: read, d: d, alloc: state.alloc, spans: state.spans)
+    Accepted { value: artifact, diagnostics: _ } =>
+      let spans = span_index_merge(base: state.spans, incoming: artifact.span_index)
       match bind_outcome(
-        o: program_assembly_phase_tokenize(read: read, lm: lm),
-        f: fn(tokens) {
-          parse_module_prepared_seeded(
-            tokens: tokens,
-            prepared: prepared,
-            validation_residue: residue,
-            seed: state.alloc
+        o: normalize_census(parse_tree: artifact.tree),
+        f: fn(census) {
+          bind_outcome(
+            o: qualified_name_from_module_node(root: census.root),
+            f: fn(module_qn) {
+              outcome_accepted(value: ClosureIngest {
+                files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
+                  module: module_qn,
+                  parse_tree: artifact.tree,
+                  census: census,
+                  source_root: read.source_root
+                }),
+                index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root)
+              })
+            }
           )
         }
       ) {
         Rejected { diagnostics: d } =>
-          ClosureIngestState { ingest: Rejected { diagnostics: d }, alloc: state.alloc, spans: state.spans }
-        Accepted { value: artifact, diagnostics: _ } =>
-          let spans = span_index_merge(base: state.spans, incoming: artifact.span_index)
-          match bind_outcome(
-            o: normalize_census(parse_tree: artifact.tree),
-            f: fn(census) {
-              bind_outcome(
-                o: qualified_name_from_module_node(root: census.root),
-                f: fn(module_qn) {
-                  outcome_accepted(value: ClosureIngest {
-                    files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
-                      module: module_qn,
-                      parse_tree: artifact.tree,
-                      census: census,
-                      source_root: read.source_root
-                    }),
-                    index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root)
-                  })
-                }
-              )
-            }
-          ) {
-            Rejected { diagnostics: d } =>
-              ClosureIngestState { ingest: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: spans }
-            Accepted { value: next, diagnostics: _ } =>
-              ClosureIngestState { ingest: outcome_accepted(value: next), alloc: artifact.alloc, spans: spans }
-          }
+          closure_ingest_refused(state: state, read: read, d: d, alloc: artifact.alloc, spans: spans)
+        Accepted { value: next, diagnostics: _ } =>
+          ClosureIngestState { ingest: next, refusals: state.refusals, alloc: artifact.alloc, spans: spans }
       }
   }
 }
 
 // PHASE ONE: EVERY FILE PARSED AND CENSUSED, ONE OCCURRENCE ALLOCATOR THREADED ACROSS THE WHOLE
-// INGEST (the seeded front end), the first refusal stopping the census with its file's spans kept.
+// INGEST (the seeded front end). A refused file is recorded and the census continues, so the
+// refusal set is complete; the grammar failing to prepare is the one refusal with no file.
 fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureIngestState {
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } =>
       ClosureIngestState {
-        ingest: Rejected { diagnostics: d },
+        ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
+        refusals: Cons { head: ClosureCensusRefusal { path: "", diagnostics: d }, tail: Empty },
         alloc: occurrence_id_allocator_initial(),
         spans: span_index_empty()
       }
@@ -220,7 +248,8 @@ fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureIngestS
       fold_list(
         xs: ingest,
         empty: ClosureIngestState {
-          ingest: outcome_accepted(value: ClosureIngest { files: Empty, index: source_root_index_empty() }),
+          ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
+          refusals: Empty,
           alloc: occurrence_id_allocator_initial(),
           spans: span_index_empty()
         },
@@ -228,6 +257,20 @@ fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureIngestS
           closure_ingest_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
         }
       )
+  }
+}
+
+// The census admits the ingest only when no file refused; otherwise the emission refuses with every
+// refused file's chain, in ingest order, joined into one located chain.
+fn closure_census_outcome(census: ClosureIngestState) -> Outcome<ClosureIngest> {
+  match census.refusals {
+    Empty => outcome_accepted(value: census.ingest)
+    Cons { head: first, tail: rest } =>
+      Rejected {
+        diagnostics: fold_list(xs: rest, empty: first.diagnostics, cons: fn(acc, r) {
+          non_empty_diagnostics_append(a: acc, b: r.diagnostics)
+        })
+      }
   }
 }
 
@@ -409,8 +452,9 @@ fn emit_closure_from_ingest_located(
   let active_roots = source_root_set_from_ingest(ingest: ingest)
   ClosureEmissionLocated {
     spans: census.spans,
+    census_refusals: census.refusals,
     outcome: bind_outcome(
-      o: census.ingest,
+      o: closure_census_outcome(census: census),
       f: fn(ingested) {
         let roster = closure_ingest_roster(files: ingested.files)
         let census_index = closure_census_index(files: ingested.files)
@@ -507,4 +551,18 @@ fn closure_emission_first_refusal(emission: ClosureEmission) -> Optional<NonEmpt
         }
     }
   })
+}
+
+// THE CENSUS REFUSAL SET THROUGH THE SAME CODEC: one row per refused file, its path, its fatal reason
+// and where that fatal sits. This is the file-grain blocking set a gen-two run reports.
+fn closure_census_refusals_json(refusals: FreeMonoid<ClosureCensusRefusal>, spans: SpanIndex) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "census_refused", value: json_array(elements: fold_list(xs: refusals, empty: Empty, cons: fn(acc, r) {
+      list_snoc_item(xs: acc, item: json_object(members: [
+        json_kv(key: "file", value: json_string(s: r.path)),
+        json_kv(key: "reason", value: json_string(s: symbol_lexeme(sym: diagnostics_fatal_reason(d: r.diagnostics)))),
+        json_kv(key: "at", value: json_string(s: lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: r.diagnostics), index: spans)))
+      ]))
+    })))
+  ]))
 }

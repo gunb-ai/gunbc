@@ -4,6 +4,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.self_host.closure_emission {
+  closure_census_refusals_json,
   closure_emission_first_refusal,
   closure_emission_json,
   closure_emission_refused_count,
@@ -282,6 +283,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
 type CliRunOutcome
   = CliEmitted { text: String, closure_size: Int, refused_count: Int, refusal_detail: String }
   | CliRunRefused { reason: Symbol, detail: String }
+  | CliCensusRefused { reason: Symbol, detail: String, text: String }
 
 // THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
 // CARRIED `d.head.reason` (now the FATAL reason -- the head was the first advisory that happened
@@ -347,9 +349,18 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                   }
                 }
               Rejected { diagnostics: d } =>
-                CliRunRefused {
-                  reason: diagnostics_fatal_reason(d: d),
-                  detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
+                match emitted.census_refusals {
+                  Empty =>
+                    CliRunRefused {
+                      reason: diagnostics_fatal_reason(d: d),
+                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
+                    }
+                  Cons { head: _, tail: _ } =>
+                    CliCensusRefused {
+                      reason: diagnostics_fatal_reason(d: d),
+                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans),
+                      text: closure_census_refusals_json(refusals: emitted.census_refusals, spans: emitted.spans)
+                    }
                 }
             }
           }
@@ -395,6 +406,7 @@ fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
         exit_failure(reason: detail)
       }
     CliRunRefused { reason: _, detail: detail } => exit_failure(reason: detail)
+    CliCensusRefused { reason: _, detail: detail, text: _ } => exit_failure(reason: detail)
   }
 }
 
@@ -402,5 +414,6 @@ fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
   match outcome {
     CliEmitted { text: text, closure_size: _, refused_count: _, refusal_detail: _ } => text
     CliRunRefused { reason: _, detail: _ } => ""
+    CliCensusRefused { reason: _, detail: _, text: text } => text
   }
 }
