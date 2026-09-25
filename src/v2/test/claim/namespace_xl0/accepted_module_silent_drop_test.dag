@@ -5,7 +5,6 @@ import v2.compiler.compile {
   NativeCensusModuleOutcome,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
-  NativeTestContext,
   native_census_module_resolution,
   native_census_modules,
   native_lane_file_refusal_index,
@@ -20,7 +19,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.optional { Optional, Present, optional_absent }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import extdeps.communication.medium { Lossless, Medium }
@@ -35,9 +34,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolves one module against it. Each specimen puts ONE undeclared name where the XL-2 conservation
 // census (v2.compiler.reference_conservation_census reference_conservation_census_for_paths over
 // reference_conservation_stratified_sample_paths) found authored atoms absent from the normalized
-// tree of an ACCEPTED module. The correct outcome is a refusal at resolve located at that name, or a
-// refusal at normalize naming why the position is not lowered. Resolving is the silent drop: the
-// name never reached resolve, so the module is accepted with part of its body missing.
+// tree of an ACCEPTED module. Each claim holds only when resolve refuses the module as unbound AT
+// that name's atom: that is the one route on which the name is known to have survived lowering.
+// Resolving is the silent drop, since the name never reached resolve. A refusal at normalize does not
+// count, because no normalize reason for these positions exists yet, and "refused for any reason"
+// would let a parse or import regression green a specimen while the drop stands (review 71360). A
+// repair that chooses to refuse the position at normalize names its reason here in the same change.
+//
+// EACH GROUP IS ITS OWN INGEST, and each claim resolves only the module it asks about, so a claim
+// pays for its specimen and control and not for the other groups (DESIGN section 3, a witness
+// discriminates at one interface; review 71360).
 //
 // EACH SPECIMEN HAS A CONTROL THAT VARIES ONE THING, so a red names the dropped position and not
 // the route: the same undeclared name one arm earlier, as the operand of a binary expression whose
@@ -71,62 +77,44 @@ fn sd_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceR
   }
 }
 
-data sd_ingest: SourceRootIngest = Cons {
+data sd_arm_ingest: SourceRootIngest = Cons {
     head: sd_read(source: sd_arm_three_source, id: ^sd_arm_three_artifact, unit: ^sd_arm_three_cu, path: "src/v2/test/fixture/namespace_xl0/sd_arm_three.dag"),
     tail: Cons {
     head: sd_read(source: sd_arm_two_source, id: ^sd_arm_two_artifact, unit: ^sd_arm_two_cu, path: "src/v2/test/fixture/namespace_xl0/sd_arm_two.dag"),
-    tail: Cons {
+    tail: Empty
+  }
+  }
+
+data sd_operand_ingest: SourceRootIngest = Cons {
     head: sd_read(source: sd_and_match_source, id: ^sd_and_match_artifact, unit: ^sd_and_match_cu, path: "src/v2/test/fixture/namespace_xl0/sd_and_match.dag"),
     tail: Cons {
     head: sd_read(source: sd_and_if_source, id: ^sd_and_if_artifact, unit: ^sd_and_if_cu, path: "src/v2/test/fixture/namespace_xl0/sd_and_if.dag"),
     tail: Cons {
     head: sd_read(source: sd_and_plain_source, id: ^sd_and_plain_artifact, unit: ^sd_and_plain_cu, path: "src/v2/test/fixture/namespace_xl0/sd_and_plain.dag"),
-    tail: Cons {
+    tail: Empty
+  }
+  }
+  }
+
+data sd_literal_ingest: SourceRootIngest = Cons {
     head: sd_read(source: sd_map_value_source, id: ^sd_map_value_artifact, unit: ^sd_map_value_cu, path: "src/v2/test/fixture/namespace_xl0/sd_map_value.dag"),
     tail: Cons {
     head: sd_read(source: sd_record_value_source, id: ^sd_record_value_artifact, unit: ^sd_record_value_cu, path: "src/v2/test/fixture/namespace_xl0/sd_record_value.dag"),
     tail: Empty
   }
   }
-  }
-  }
-  }
-  }
-  }
 
 type SdVerdict
   = SdResolved
-  | SdFileRefused { fatal_reason: Optional<Symbol> }
+  | SdFileRefused
   | SdRefused { reason: Symbol, at_atom: Optional<Symbol> }
   | SdAbsent
+  | SdContextRefused
 
-type SdOutcomes
-  = SdContextRefused
-  | SdOutcomesDecided {
-      arm_three: SdVerdict
-      arm_two: SdVerdict
-      and_match: SdVerdict
-      and_if: SdVerdict
-      and_plain: SdVerdict
-      map_value: SdVerdict
-      record_value: SdVerdict
-    }
-
-fn sd_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
-  fold_list(
-    xs: context.file_refusals,
-    empty: optional_absent(),
-    cons: fn(acc, refusal) {
-      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
-    }
-  )
-}
-
-fn sd_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> SdVerdict {
+fn sd_verdict_of(outcome: NativeCensusModuleOutcome) -> SdVerdict {
   match outcome {
     NativeCensusModuleResolved => SdResolved
-    NativeCensusModuleFileRefused =>
-      SdFileRefused { fatal_reason: sd_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleFileRefused => SdFileRefused
     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
       SdRefused {
         reason: d.head.reason,
@@ -138,41 +126,29 @@ fn sd_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensus
   }
 }
 
-fn sd_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> SdVerdict {
-  fold_list(
-    xs: native_census_modules(ingest: sd_ingest),
-    empty: SdAbsent,
-    cons: fn(acc, entry) {
-      if entry.module == module_name {
-        sd_verdict_of(
-          context: context,
-          unit: unit,
-          outcome: native_census_module_resolution(
-            context: context,
-            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
-            entry: entry
-          )
-        )
-      } else {
-        acc
-      }
-    }
-  )
-}
-
-fn sd_outcomes() -> SdOutcomes {
-  match native_test_context_from_ingest(ingest: sd_ingest) {
+// The one module the claim asks about, resolved against its group's context; the group's other
+// modules are indexed (they are the ingest) but not resolved.
+fn sd_verdict(ingest: SourceRootIngest, module_name: String) -> SdVerdict {
+  match native_test_context_from_ingest(ingest: ingest) {
     Rejected { diagnostics: _ } => SdContextRefused
     Accepted { value: context, diagnostics: _ } =>
-      SdOutcomesDecided {
-        arm_three: sd_verdict_in(context: context, module_name: "v2.test.sd_arm_three", unit: ^sd_arm_three_cu),
-        arm_two: sd_verdict_in(context: context, module_name: "v2.test.sd_arm_two", unit: ^sd_arm_two_cu),
-        and_match: sd_verdict_in(context: context, module_name: "v2.test.sd_and_match", unit: ^sd_and_match_cu),
-        and_if: sd_verdict_in(context: context, module_name: "v2.test.sd_and_if", unit: ^sd_and_if_cu),
-        and_plain: sd_verdict_in(context: context, module_name: "v2.test.sd_and_plain", unit: ^sd_and_plain_cu),
-        map_value: sd_verdict_in(context: context, module_name: "v2.test.sd_map_value", unit: ^sd_map_value_cu),
-        record_value: sd_verdict_in(context: context, module_name: "v2.test.sd_record_value", unit: ^sd_record_value_cu)
-      }
+      fold_list(
+        xs: native_census_modules(ingest: ingest),
+        empty: SdAbsent,
+        cons: fn(acc, entry) {
+          if entry.module == module_name {
+            sd_verdict_of(
+              outcome: native_census_module_resolution(
+                context: context,
+                refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+                entry: entry
+              )
+            )
+          } else {
+            acc
+          }
+        }
+      )
   }
 }
 
@@ -185,67 +161,30 @@ fn sd_is_unbound_at(v: SdVerdict, spelling: Symbol) -> Bool {
   }
 }
 
-// Not dropped: either the name reached resolve and refused at its atom, or normalize refused the
-// module with a named fatal cause. A resolved module is the drop.
-fn sd_is_unbound_at_or_refused_at_normalize(v: SdVerdict, spelling: Symbol) -> Bool {
-  match v {
-    SdFileRefused { fatal_reason: Present { value: _ } } => true
-    _ => sd_is_unbound_at(v: v, spelling: spelling)
-  }
-}
-
 test fn a_third_match_arm_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: v, arm_two: _, and_match: _, and_if: _, and_plain: _, map_value: _, record_value: _ } =>
-      sd_is_unbound_at_or_refused_at_normalize(v: v, spelling: ^sd_undeclared_arm_three)
-    SdContextRefused => false
-  }
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_arm_ingest, module_name: "v2.test.sd_arm_three"), spelling: ^sd_undeclared_arm_three)
 }
 
 test fn a_second_match_arm_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: _, arm_two: v, and_match: _, and_if: _, and_plain: _, map_value: _, record_value: _ } =>
-      sd_is_unbound_at(v: v, spelling: ^sd_undeclared_arm_two)
-    SdContextRefused => false
-  }
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_arm_ingest, module_name: "v2.test.sd_arm_two"), spelling: ^sd_undeclared_arm_two)
 }
 
 test fn a_binary_operand_beside_a_match_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: _, arm_two: _, and_match: v, and_if: _, and_plain: _, map_value: _, record_value: _ } =>
-      sd_is_unbound_at_or_refused_at_normalize(v: v, spelling: ^sd_undeclared_and_match)
-    SdContextRefused => false
-  }
-}
-
-test fn a_binary_operand_beside_a_name_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: _, arm_two: _, and_match: _, and_if: _, and_plain: v, map_value: _, record_value: _ } =>
-      sd_is_unbound_at(v: v, spelling: ^sd_undeclared_and_plain)
-    SdContextRefused => false
-  }
-}
-
-test fn a_map_literal_value_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: _, arm_two: _, and_match: _, and_if: _, and_plain: _, map_value: v, record_value: _ } =>
-      sd_is_unbound_at_or_refused_at_normalize(v: v, spelling: ^sd_undeclared_map_value)
-    SdContextRefused => false
-  }
-}
-
-test fn a_record_literal_value_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: _, arm_two: _, and_match: _, and_if: _, and_plain: _, map_value: _, record_value: v } =>
-      sd_is_unbound_at(v: v, spelling: ^sd_undeclared_record_value)
-    SdContextRefused => false
-  }
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_operand_ingest, module_name: "v2.test.sd_and_match"), spelling: ^sd_undeclared_and_match)
 }
 
 test fn a_binary_operand_beside_an_if_reaches_resolve() -> Bool {
-  match sd_outcomes() {
-    SdOutcomesDecided { arm_three: _, arm_two: _, and_match: _, and_if: v, and_plain: _, map_value: _, record_value: _ } =>
-      sd_is_unbound_at_or_refused_at_normalize(v: v, spelling: ^sd_undeclared_and_if)
-    SdContextRefused => false
-  }
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_operand_ingest, module_name: "v2.test.sd_and_if"), spelling: ^sd_undeclared_and_if)
+}
+
+test fn a_binary_operand_beside_a_name_reaches_resolve() -> Bool {
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_operand_ingest, module_name: "v2.test.sd_and_plain"), spelling: ^sd_undeclared_and_plain)
+}
+
+test fn a_map_literal_value_reaches_resolve() -> Bool {
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_literal_ingest, module_name: "v2.test.sd_map_value"), spelling: ^sd_undeclared_map_value)
+}
+
+test fn a_record_literal_value_reaches_resolve() -> Bool {
+  sd_is_unbound_at(v: sd_verdict(ingest: sd_literal_ingest, module_name: "v2.test.sd_record_value"), spelling: ^sd_undeclared_record_value)
 }
