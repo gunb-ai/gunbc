@@ -19,7 +19,7 @@ fn nat_min(a: Nat, b: Nat) -> Nat {
 }
 
 // CEILING DIVISION, WITHOUT LEAVING THE NATURALS. The usual spelling `(a + b - 1) / b` subtracts,
-// and a difference of Nats is an Int (std.coercion dag_subtraction_result_type), so it cannot
+// and a difference of Nats is an Int (std.coercion dag_subtraction_refinement), so it cannot
 // return a Nat without a proof it does not have. Carrying the remainder instead stays in + and /,
 // which a Nat is closed under. A zero divisor has no quotient, so it is absent rather than
 // answered: each caller says what a zero divisor means in its own domain.

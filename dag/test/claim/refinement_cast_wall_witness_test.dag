@@ -65,7 +65,7 @@ test fn w_non_refinement_int_cast_is_still_accepted() -> Bool {
 }
 
 // THREE CONSEQUENCES OF THE SAME ROWS, each observed through the one wall above so no new instrument
-// is minted. (1) std.coercion dag_subtraction_result_type: a difference of two Nats leaves the
+// is minted. (1) std.coercion dag_subtraction_refinement: a difference of two Nats leaves the
 // refinement, so `(a - b) as Nat` is an Int-as-Nat refinement cast and refuses; the sum stays Nat
 // and casts by identity (the positive control on the same operands). Before, the binop fold typed
 // every difference at its left operand, so the cast was a Nat identity and a negative Nat was
