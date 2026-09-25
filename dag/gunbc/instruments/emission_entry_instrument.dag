@@ -23,7 +23,6 @@ import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 import tools.self_host_curated_seed_linked_harness {
-  cssl_std_bridge_shims_rel,
   cssl_v1_compiled_probe_lib_cargo_toml
 }
 import gunbc.emit_diagnostic_observation {
@@ -133,7 +132,7 @@ type WorkingTreeStanding
 // The assembly step is a coproduct rather than a directory string so a second assembly mode becomes
 // a variant here rather than an unlabelled path difference between two measurements.
 type EmissionAssemblyMode
-  = SeedLinkedAssembly { std_bridge_dir: String }
+  = | SeedLinkedAssembly
 
 // THE SUBJECT IS A SCOPE, NOT AN ENTRY STRING, AND THE REASON IS A MEASURED DEFECT RATHER THAN
 // GENERALITY FOR ITS OWN SAKE. Three whole-corpus runs were taken on 2026-08-28 under
@@ -212,7 +211,7 @@ fn working_tree_standing_text(standing: WorkingTreeStanding) -> String {
 
 fn emission_assembly_mode_text(mode: EmissionAssemblyMode) -> String {
   match mode {
-    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked via ", d)
+    SeedLinkedAssembly => "seed-linked"
   }
 }
 
@@ -593,8 +592,7 @@ fn measure_cargo_half(
       args: [
         "--out-dir", out_dir,
         "--entry-dag", assembly_entry,
-        "--root", root,
-        "--std-bridge-dir", cssl_std_bridge_shims_rel
+        "--root", root
       ]
     )
     if !assemble.success || !string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS") {
@@ -761,7 +759,7 @@ fn establish_subject(scope: EmissionScope, render_target: EmissionRenderTarget, 
                   working_tree: if status.entries_nul == "" { WorkingTreeClean } else { WorkingTreeDirty },
                   compiler: compiler,
                   assembler: assembler,
-                  assembly_mode: SeedLinkedAssembly { std_bridge_dir: cssl_std_bridge_shims_rel }
+                  assembly_mode: SeedLinkedAssembly
                 }
               }
           }

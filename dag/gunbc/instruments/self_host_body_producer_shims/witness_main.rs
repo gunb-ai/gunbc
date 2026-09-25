@@ -24,7 +24,15 @@ fn transform_body_emitted() -> Rc<ENode> {
         Rc::new(ENodeKind::ComputationNode {
             behavior: EBehavior::Transform,
         }),
-        Rc::new(vec![]),
+        Rc::new(vec![Rc::new(EEdge {
+            label: Rc::new(EEdgeLabel::Positional),
+            target: emitted_node_synthetic(
+                Rc::new(ENodeKind::ComputationNode {
+                    behavior: EBehavior::Value,
+                }),
+                Rc::new(vec![]),
+            ),
+        })]),
     )
 }
 
@@ -33,7 +41,15 @@ fn transform_body_seed() -> Rc<SNode> {
         Rc::new(SNodeKind::ComputationNode {
             behavior: SBehavior::Transform,
         }),
-        Rc::new(vec![]),
+        Rc::new(vec![Rc::new(SEdge {
+            label: Rc::new(SEdgeLabel::Positional),
+            target: seed_node_synthetic(
+                Rc::new(SNodeKind::ComputationNode {
+                    behavior: SBehavior::Value,
+                }),
+                Rc::new(vec![]),
+            ),
+        })]),
     )
 }
 
@@ -77,6 +93,10 @@ fn arrow_signature_seed() -> Rc<SNode> {
     )
 }
 
+// The Transform fixture carries one positional edge because v2.std.node behavior_edges_conform
+// requires `count(children) >= 1` for Transform. It carried none while this row linked a hand
+// v2_std_node shim laxer than that authority; against the emitted module the edgeless fixture is
+// (correctly) refused, so the shim had been keeping a malformed input green.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
     let mut all_pass = true;
