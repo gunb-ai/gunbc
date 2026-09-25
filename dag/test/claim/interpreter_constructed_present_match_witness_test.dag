@@ -1,0 +1,52 @@
+module test.claim.interpreter_constructed_present_match_witness_test
+
+import std.types { Bool, Int, String }
+
+// A MATCH OVER AN OPTIONAL SEES THE PRESENT VALUE WHERE THE CHECKER SAYS IT DOES, WHICHEVER WAY
+// THE OPTIONAL WAS BUILT. v1.compiler.infer types a bare binding after an unguarded `null` arm as
+// the payload (optional_scrutinee_binding_is_present over match_unguarded_absent_arm_index), and
+// a literal arm over an optional scrutinee matches only a present value. The interpreter holds an
+// optional in two representations -- a bare value when a host builtin produced it, an
+// Optional.Present variant when source wrote `Present { value }` -- and before the fix it honoured
+// the checker only for the first: over a constructed optional the literal arm missed and the
+// binding held the whole variant. Each claim below pairs a CONSTRUCTED optional with the same
+// match over a BUILTIN-produced one, so the constructed arm is the discriminating red and the
+// builtin arm is the positive control that the match itself is sound.
+
+fn constructed(s: String) -> String? { Present { value: s } }
+
+fn builtin_produced(s: String) -> String? { [s] |> first }
+
+fn classify(o: String?) -> String {
+  match o {
+    null => "n"
+    "x" => "ex"
+    v => v
+  }
+}
+
+fn constructed_int(n: Int) -> Int? { Present { value: n } }
+
+fn classify_int(o: Int?) -> Int {
+  match o {
+    null => 0
+    7 => 70
+    v => v + 1
+  }
+}
+
+test fn literal_arm_matches_a_constructed_present_string() -> Bool {
+  classify(o: constructed(s: "x")) == "ex" && classify(o: builtin_produced(s: "x")) == "ex"
+}
+
+test fn binding_arm_binds_the_payload_of_a_constructed_present_string() -> Bool {
+  classify(o: constructed(s: "q")) == "q" && classify(o: builtin_produced(s: "q")) == "q"
+}
+
+test fn absent_arm_still_takes_a_constructed_absent() -> Bool {
+  classify(o: none) == "n"
+}
+
+test fn literal_and_binding_arms_see_a_constructed_present_int() -> Bool {
+  classify_int(o: constructed_int(n: 7)) == 70 && classify_int(o: constructed_int(n: 2)) == 3
+}

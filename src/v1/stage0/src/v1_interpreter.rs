@@ -7576,12 +7576,46 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
 }
 
 fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let scrutinee_val = eval_expr(&match_scrutinee(node.clone()), env, ctx)?;
+    let scrutinee = match_scrutinee(node.clone());
+    let scrutinee_val = eval_expr(&scrutinee, env, ctx)?;
     let arms = match_arm_nodes(node.clone());
+    // The checker decides which arms of a match over an optional see the PRESENT value, and
+    // the interpreter reads that decision rather than re-deriving it: a bare binding after an
+    // unguarded Absent arm is `v1.compiler.infer` `optional_scrutinee_binding_is_present` over
+    // `match_unguarded_absent_arm_index` (the same predicate every Rust match rendering reads),
+    // and a literal arm over an optional scrutinee matches only a present value, as the emitted
+    // `Some(ref __s)` arm does. The optional's value has two runtime representations -- a bare
+    // value (host builtins) or an `Optional.Present` variant (an authored `Present { value }`)
+    // -- so the payload is peeled here; without it a constructed optional made the literal arm
+    // miss and the binding hold the whole variant while inference typed it as the payload.
+    let scrutinee_is_optional = scrutinee.inferred.is_some()
+        && crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()).return_cardinality
+            == crate::v1_std_core::Cardinality::CardOptional;
+    let absent_arm_index = if scrutinee_is_optional {
+        crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone())
+    } else {
+        -1
+    };
 
-    for arm in arms.iter() {
+    for (arm_index, arm) in arms.iter().enumerate() {
         let pattern = arm_pattern(arm.clone());
-        if let Some(bindings) = match_pattern(&pattern, &scrutinee_val, ctx) {
+        let sees_present_value = scrutinee_is_optional
+            && (matches!(&*pattern, MatchPattern::LitPattern { value } if !matches!(&**value, LiteralValue::LitNull))
+                || crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                    crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()),
+                    pattern.clone(),
+                    arm_index as i64,
+                    absent_arm_index,
+                ));
+        let arm_value = if sees_present_value {
+            match optional_present_payload(&scrutinee_val, ctx) {
+                Some(payload) => payload,
+                None => continue,
+            }
+        } else {
+            scrutinee_val.clone()
+        };
+        if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
             let arm_env = Env::extend(env, bindings);
             return eval_expr(&arm_body(arm.clone()), &arm_env, ctx);
         }
@@ -7590,6 +7624,26 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     Err(InterpError::PatternMatchFailure {
         value: format!("{}", scrutinee_val),
     })
+}
+
+/// The present payload of an optional value in either runtime representation, `None` when it
+/// is absent (`Null` or `Optional.Absent`).
+fn optional_present_payload(value: &Value, ctx: &InterpContext) -> Option<Value> {
+    match value {
+        Value::Null => None,
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } if *type_name == ctx.sym("Optional") => {
+            if *variant_name == ctx.sym("Present") {
+                fields_get(fields, ctx.sym("value")).cloned()
+            } else {
+                None
+            }
+        }
+        other => Some(other.clone()),
+    }
 }
 
 fn char_value(c: char) -> Value {
