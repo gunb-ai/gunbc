@@ -8,6 +8,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value,
   Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count,
   BasisPoint, basis_point, basis_point_count, concurrent_request_hundredths_count,
+  Gibibyte, gibibyte, gibibyte_to_byte_size,
 }
 import std.content_hash { ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -105,7 +106,7 @@ type V41ByteRangeBet {
 
 type V41EngramResidentBet {
   concurrency: Nat
-  resident_gib: Nat
+  resident: Gibibyte
   standing: CitedFigureStanding
 }
 
@@ -117,10 +118,10 @@ data v41_kv_bytes_per_token_bet: V41ByteRangeBet = V41ByteRangeBet {
 }
 
 data v41_engram_resident_bets: List<V41EngramResidentBet> = [
-  V41EngramResidentBet { concurrency: 2, resident_gib: 19, standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x2, disjoint prompts" as NonEmptyStr } },
-  V41EngramResidentBet { concurrency: 4, resident_gib: 30, standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x4, disjoint prompts" as NonEmptyStr } },
-  V41EngramResidentBet { concurrency: 6, resident_gib: 37, standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x6, disjoint prompts" as NonEmptyStr } },
-  V41EngramResidentBet { concurrency: 16, resident_gib: 46, standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x16, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 2, resident: gibibyte(count: 19), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x2, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 4, resident: gibibyte(count: 30), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x4, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 6, resident: gibibyte(count: 37), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x6, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 16, resident: gibibyte(count: 46), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x16, disjoint prompts" as NonEmptyStr } },
 ]
 
 type V41BetVerdict
@@ -136,6 +137,34 @@ fn v41_judge_byte_range_bet(bet: V41ByteRangeBet, observed: ByteSize?) -> V41Bet
         BetConfirmed { key: bet.key, observed: o }
       } else {
         BetFalsified { key: bet.key, observed: o }
+      }
+  }
+}
+
+// THE ENGRAM FIGURES ARE POINT BETS ("about 19 GiB") WITH NO STATED TOLERANCE, so no band exists to
+// confirm or falsify them against, and inventing one here would be a heuristic. Their verdict pairs
+// the observation with the bet, both in bytes, and a reader decides with both in view. A reading
+// that is missing is Unreadable, exactly as for the ranged bet.
+type V41PointBetVerdict
+  = PointBetObserved { concurrency: Nat, bet: ByteSize, observed: ByteSize }
+  | PointBetUnreadable { concurrency: Nat, cause: NonEmptyStr }
+
+fn v41_judge_engram_resident_bet(bet: V41EngramResidentBet, observed: ByteSize?) -> V41PointBetVerdict {
+  match observed {
+    Absent => PointBetUnreadable { concurrency: bet.concurrency, cause: "no after-requests mincore residency was read at this concurrency" as NonEmptyStr }
+    Present { value: o } => PointBetObserved { concurrency: bet.concurrency, bet: gibibyte_to_byte_size(g: bet.resident), observed: o }
+  }
+}
+
+// The observed figure the Engram bets name: a rank's mincore residency after requests, from the
+// admitted timeline. It is read per rank; the bet is per rank.
+fn v41_after_requests_resident(t: V41ResidencyTimeline, rank: Nat) -> ByteSize? {
+  match t {
+    ResidencyTimelineRefused { causes: _ } => none
+    ResidencyTimelineAdmitted { run_id: _, arm: _, cells: cs } =>
+      match list_at_optional(xs: filter(cs, c => c.rank == rank && v41_phase_wire(p: c.phase) == v41_phase_wire(p: AfterRequests)), index: 0) {
+        Present { value: c } => Present { value: v41_cell_engram_resident_bytes(c: c) }
+        Absent => none
       }
   }
 }

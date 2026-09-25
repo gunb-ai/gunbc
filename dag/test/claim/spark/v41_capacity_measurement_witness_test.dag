@@ -1,6 +1,7 @@
 module test.claim.spark.v41_capacity_measurement_witness
 
 import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
@@ -38,6 +39,7 @@ import gunbc.spark.v41_capacity_measurement {
   V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
   MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
   v41_capacity_measurement_plan_text, v41_measurement_ranks,
+  v41_engram_resident_bets, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -420,4 +422,25 @@ test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditio
     && contains(t, "engram arms: unbound")
     && contains(t, "TouchCounterUnavailable")
     && contains(t, "PROPOSED")
+}
+
+// THE ENGRAM POINT BETS ARE JUDGED IN BYTES AGAINST THE AFTER-REQUESTS RESIDENCY, and a refused
+// timeline leaves them unreadable rather than zero.
+test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> Bool {
+  let timeline = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheRetained, cells: w_all_cells())
+  match list_at_optional(xs: v41_engram_resident_bets, index: 0) {
+    Absent => false
+    Present { value: bet } => {
+      let observed = match v41_judge_engram_resident_bet(bet: bet, observed: v41_after_requests_resident(t: timeline, rank: 0)) {
+        PointBetObserved { concurrency: c, bet: b, observed: o } => c == 2 && byte_size_count(b: b) == 19 * 1073741824 && byte_size_count(b: o) == 0
+        PointBetUnreadable { concurrency: _, cause: _ } => false
+      }
+      let refused = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheReleased, cells: w_all_cells())
+      let unreadable = match v41_judge_engram_resident_bet(bet: bet, observed: v41_after_requests_resident(t: refused, rank: 0)) {
+        PointBetUnreadable { concurrency: _, cause: _ } => true
+        PointBetObserved { concurrency: _, bet: _, observed: _ } => false
+      }
+      observed && unreadable
+    }
+  }
 }
