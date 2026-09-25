@@ -5,6 +5,7 @@ import std.string_type { String }
 import v2.std.compilers.cli_surface { ProcessArgvExpansion }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.transports.shell { ShellOutcome }
 import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import std.measure { ByteSize }
 
@@ -106,6 +107,12 @@ data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 //
 // DO NOT RE-ADD ONE. An arm here is only honest if its value varies with the operation's declared
 // input, and even then it cannot answer whether a remote endpoint replied.
+// RunArgvOutcome IS RunArgv WITH THE SPAWN MADE A VALUE (extdeps.transports.shell ShellOutcome): a
+// caller whose refusal must be typed rather than an aborted evaluation -- a program that could not
+// be spawned is an observation it has to answer -- reads `outcome` BEFORE any stream, since on
+// ShellSpawnRefused the streams are absent. A sibling row rather than a field added to RunArgv,
+// because adding it there would hand every existing RunArgv caller empty streams on a spawn
+// failure where today its evaluation stops.
 service shell.Exec {
   operation Run {
     input { script: TransportScript }
@@ -131,6 +138,26 @@ service shell.Exec {
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
 
     output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: [program, arguments]
+    }
+
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+
+  operation RunArgvOutcome {
+    input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
+
+    output {
+      outcome: ShellOutcome
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
@@ -172,6 +199,11 @@ type ProcessObservation {
   stdout: String
   stderr: String
 }
+
+// A run whose spawn is part of the answer: the process ran and was observed, or no process ran.
+type ProcessRunOutcome
+  = ProcessRan { observation: ProcessObservation }
+  | ProcessNotSpawned { program: NonEmptyStr, cause: NonEmptyStr }
 
 fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
   ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }

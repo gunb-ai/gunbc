@@ -1,12 +1,13 @@
 module gunbc.auth.approval_request_submission
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, NonEmptyStr, String, Secret, HttpStatus }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
-import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
+import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
@@ -85,7 +86,10 @@ type PublisherTokenRead
   = PublisherTokenLoaded { token: Secret }
   | PublisherTokenUnavailable { path: NonEmptyStr, detail: String }
 
-fn read_publisher_token() -> PublisherTokenRead {
+fn read_publisher_token() -> PublisherTokenRead admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
     FilesystemExactPathRead { path: _, content: c } =>
@@ -274,12 +278,7 @@ fn submission_outcome_http_body(o: SubmissionOutcome) -> String {
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
   match o {
     SubmissionFiledAndNotified { escalation_id: e, message_id: m } => join(["filed ", e as String, " and notified (ntfy message ", m as String, ")"], "")
-    SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification did not publish: ", match p {
-      NtfyPublished { message_id: _ } => "published"
-      NtfyPublishRefused { status: s, detail: d } => join(["refused ", to_string(s), " ", d], "")
-      NtfyPublishUnreached { cause: c } => join(["unreached: ", c], "")
-      NtfyPublishUndecodable { status: s, cause: c } => join(["undecodable ", to_string(s), ": ", c], "")
-    }], "")
+    SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification is not confirmed published (a re-submission re-notifies the same request): ", ntfy_publish_outcome_sentence(o: p)], "")
     SubmissionFiledPublisherTokenUnavailable { escalation_id: e, detail: d } => join(["filed ", e as String, " but the publisher token is unavailable: ", d], "")
     SubmissionFiledLinksNotIssued { escalation_id: e, key_id: k } => join(["filed ", e as String, " but no link could be issued under key ", k as String], "")
     SubmissionAlreadyFiled { escalation_id: e } => join(["escalation ", e as String, " is already filed"], "")
@@ -314,25 +313,51 @@ fn notify_filed(
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
         Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
-        Present { value: message } => match publisher {
-          PublisherTokenUnavailable { path: _, detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
-          PublisherTokenLoaded { token: t } => {
-            let sent = ntfy.Publish.PublishMessage(
-              access_token: t,
-              topic: message.topic,
-              title: message.title,
-              body: message.body,
-              priority: ntfy_priority_wire(p: message.priority),
-              click: message.click,
-              cache: ntfy_cache_wire(c: message.cache),
-            )
-            match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
-              NtfyPublished { message_id: m } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
-              other => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: other }
-            }
+        Present { value: message } => match publish_notification(message: message, publisher: publisher) {
+          NotificationPublisherTokenUnavailable { detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
+          NotificationAttempted { publish: p, acceptance: a } => match a {
+            NtfyAccepted { message_id: Present { value: m } } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
+            _ => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
           }
         }
       }
+    }
+  }
+}
+
+// THE ONE PUBLISH BINDING (review 69826 of gunbc#12013): the ntfy operation call and its outcome
+// fold live here once, beside the publisher-token read they consume, and every notifying route --
+// the filed-request notice above, the device enrolment code -- maps this result into its own
+// type. Transport is a realization bound to a shape, not a fact restated at each caller (DESIGN
+// section 3b); a new NtfyMessage field or outcome arm is one edit.
+//
+// THE ADAPTER DOES NOT DECIDE "NOT PUBLISHED". It carries the transport outcome AND its acceptance
+// standing from extdeps.ntfy.ntfy ntfy_publish_acceptance, so no consumer can read an accepted
+// publish with an unread receipt, or an indeterminate one, as a clean refusal. An earlier revision
+// folded every non-NtfyPublished outcome into one NotificationNotPublished arm (review of
+// gunbc#12013), which the enrolment-code consumer then rendered as "unknown to anyone; run again".
+type NotificationPublish
+  = NotificationAttempted { publish: NtfyPublishOutcome, acceptance: NtfyPublishAcceptance }
+  | NotificationPublisherTokenUnavailable { detail: String }
+
+fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "notify_filed"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "deliver_enrolment_code"),
+] {
+  match publisher {
+    PublisherTokenUnavailable { path: _, detail: d } => NotificationPublisherTokenUnavailable { detail: d }
+    PublisherTokenLoaded { token: t } => {
+      let sent = ntfy.Publish.PublishMessage(
+        access_token: t,
+        topic: message.topic,
+        title: message.title,
+        body: message.body,
+        priority: ntfy_priority_wire(p: message.priority),
+        click: message.click,
+        cache: ntfy_cache_wire(c: message.cache),
+      )
+      let publish = ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id)
+      NotificationAttempted { publish: publish, acceptance: ntfy_publish_acceptance(o: publish) }
     }
   }
 }
