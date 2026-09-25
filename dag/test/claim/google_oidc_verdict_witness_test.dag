@@ -1,0 +1,377 @@
+module test.claim.google_oidc_verdict_witness_test
+
+import std.types { Bool, NonEmptyStr, String, Email }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jwt {
+  NumericDate, NumericDateWholeSeconds, NumericDateFractionalSeconds,
+  JwtStringOrUri, JwtBareString, JwtUriString, JwtAudience, JwtAudienceSingle, JwtAudienceMultiple,
+  jwt_string_or_uri_wire,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain,
+  OidcLoginScope, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label,
+  RelativeReturnPath, ReturnPathAdmitted, ReturnPathRefused, admit_login_return_path,
+  OidcLoginTransaction, OidcPkceCodeVerifier, login_transaction_expired,
+  JsonWebKeyRef, OidcIdTokenSignature, OidcIdTokenSignatureVerified, OidcIdTokenSignatureRefused,
+  OidcIdTokenVerdictPolicy, OidcIdTokenVerdict,
+  OidcIdTokenVerified, OidcIdTokenRefused,
+  OidcIdTokenSignatureRefusal, OidcIdTokenIssuerMismatch, OidcIdTokenAudienceNotAdmitted,
+  OidcIdTokenExpired, OidcIdTokenExpiryNotWholeSeconds, OidcIdTokenNonceMismatch,
+  OidcIdTokenEmailUnverified, OidcIdTokenHostedDomainMismatch,
+  verify_oidc_id_token,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WITNESS for the ID-token verdict (lane A2): every check the gunb.ai login places on a
+// Google ID token is a typed refusal arm, and each arm here is driven RED by changing exactly one
+// term of the verified positive control. The signature arm's verified input is a supplied value
+// (DESIGN 3): the production producer is the JWKS realization frontier, not this witness.
+
+// THE CLAIMS BUILDER: every test names exactly the knobs it changes; everything else stays at
+// the control value.
+fn claims_with(
+  issuer: JwtStringOrUri,
+  audience: JwtAudience,
+  expires_at: NumericDate,
+  nonce: NonEmptyStr?,
+  hosted_domain: OidcHostedDomain?,
+  email_verified: Bool?,
+) -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: issuer,
+    subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+    audience: audience,
+    expires_at: expires_at,
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: nonce, acr: none, amr: none, azp: none, session_id: none,
+    hosted_domain: hosted_domain,
+    standard: OidcStandardClaims {
+      email: Present { value: "person@gunb.ai" },
+      email_verified: email_verified,
+      name: Present { value: "A Person" },
+      picture: none,
+    },
+  }
+}
+
+fn control_issuer() -> JwtStringOrUri {
+  JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr }
+}
+
+fn control_audience() -> JwtAudience {
+  JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } }
+}
+
+fn control_claims() -> OidcIdTokenClaims {
+  claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+}
+
+fn policy_with(
+  admitted_audiences: List<JwtStringOrUri>,
+  observed_at: NumericDate,
+) -> OidcIdTokenVerdictPolicy {
+  OidcIdTokenVerdictPolicy {
+    expected_issuer: control_issuer(),
+    admitted_audiences: admitted_audiences,
+    expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+    expected_nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    observed_at: observed_at,
+  }
+}
+
+fn control_policy() -> OidcIdTokenVerdictPolicy {
+  policy_with(
+    admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+    observed_at: NumericDateWholeSeconds { seconds: 1500 },
+  )
+}
+
+fn verified_signature() -> OidcIdTokenSignature {
+  OidcIdTokenSignatureVerified {
+    key: JsonWebKeyRef {
+      issuer: control_issuer(),
+      key_id: "witness-key" as NonEmptyStr,
+    },
+  }
+}
+
+fn verdict_for(claims: OidcIdTokenClaims, policy: OidcIdTokenVerdictPolicy) -> OidcIdTokenVerdict {
+  verify_oidc_id_token(claims: claims, signature: verified_signature(), policy: policy)
+}
+
+// THE POSITIVE CONTROL: every check passes, the verdict is Verified carrying the claims.
+test fn a_fully_conforming_token_verifies() -> Bool {
+  match verdict_for(claims: control_claims(), policy: control_policy()) {
+    OidcIdTokenVerified { claims: c } => c.subject == control_claims().subject
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE SIGNATURE ARM: a refused signature input is the verdict's first refusal, before any claim
+// is read — an unverified token never reaches iss/aud/exp.
+test fn a_refused_signature_refuses_before_any_claim_check() -> Bool {
+  match verify_oidc_id_token(
+    claims: control_claims(),
+    signature: OidcIdTokenSignatureRefused { reason: "no JWKS key matched the token header" },
+    policy: control_policy(),
+  ) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenSignatureRefusal { reason: r } } =>
+      r == "no JWKS key matched the token header"
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE ISSUER ARM: a token from another issuer — even one that passes every other check —
+// refuses, naming both sides.
+test fn a_wrong_issuer_refuses_with_both_sides_named() -> Bool {
+  let claims = claims_with(
+    issuer: JwtUriString { value: "https://issuer.evil.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused {
+      cause: OidcIdTokenIssuerMismatch { presented: p, expected: e },
+    } =>
+      jwt_string_or_uri_wire(value: p) == "https://issuer.evil.example"
+        && jwt_string_or_uri_wire(value: e) == "https://accounts.google.com"
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE AUDIENCE ARM: a token minted for another client refuses, and one admitted audience among
+// several presented verifies.
+test fn a_token_for_another_client_refuses_at_the_audience_arm() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: JwtAudienceSingle { value: JwtBareString { value: "approvals-web-prod" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenAudienceNotAdmitted { presented: _, admitted: _ } } => true
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn one_admitted_audience_among_several_presented_verifies() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: JwtAudienceMultiple {
+      values: [
+        JwtBareString { value: "other-client" as NonEmptyStr },
+        JwtBareString { value: "tracker-web-prod" as NonEmptyStr },
+      ],
+    },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => true
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE EXPIRY ARM: a token one second past the observed instant refuses; a fractional component
+// on either side refuses rather than rounding.
+test fn an_expired_token_refuses_at_the_expiry_arm() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 1499 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  let policy = policy_with(
+    admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+    observed_at: NumericDateWholeSeconds { seconds: 1500 },
+  )
+  match verdict_for(claims: claims, policy: policy) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenExpired { expires_at: _, observed_at: _ } } => true
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn a_fractional_expiry_refuses_rather_than_rounding() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateFractionalSeconds { whole_seconds: 2000, fractional_digits: "5" as NonEmptyStr },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenExpiryNotWholeSeconds { reason: r } } =>
+      string_contains(s: r, pattern: "expiry carries a fractional-seconds component")
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE NONCE ARM: a token answering a different transaction refuses.
+test fn a_wrong_nonce_refuses_at_the_nonce_arm() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-other" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenNonceMismatch { presented: p, expected: e } } =>
+      p == Present { value: "nonce-other" as NonEmptyStr } && e == "nonce-abc" as NonEmptyStr
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE EMAIL ARM: unverified AND absent email_verified are the same refusal — "the provider did
+// not say" is not "the provider said true".
+test fn an_unverified_email_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: false },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenEmailUnverified { email_verified: v } } =>
+      v == Present { value: false }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn an_absent_email_verified_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: none,
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenEmailUnverified { email_verified: v } } =>
+      match v {
+        Present { value: _ } => false
+        Absent => true
+      }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE HOSTED-DOMAIN ARM: hd == gunb.ai is the Workspace gate. A different hd refuses; a MISSING
+// hd is a mismatch, not a pass — consumer accounts simply do not carry the claim.
+test fn a_wrong_hosted_domain_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "other-corp.example" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenHostedDomainMismatch { presented: p, expected: _ } } =>
+      p == Present { value: OidcHostedDomain { domain: "other-corp.example" as NonEmptyStr } }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn an_absent_hosted_domain_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: none,
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenHostedDomainMismatch { presented: p, expected: _ } } =>
+      match p {
+        Present { value: _ } => false
+        Absent => true
+      }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE hd VOCABULARY rides the claims record as Google's hosted-domain claim, and picture as the
+// OIDF standard claim — both optional, both wire-decoded by the realization, neither
+// load-bearing at any other check.
+test fn the_hd_and_picture_claim_vocabulary_is_representable() -> Bool {
+  let claims = control_claims()
+  claims.hosted_domain == Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } }
+    && match claims.standard.picture {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// LOGIN SCOPES ARE ONLY openid/email/profile: the closed coproduct labels the three, and no API
+// scope constructor exists to request Gmail/Contacts/Directory/Drive at login.
+test fn login_scopes_are_restricted_to_openid_email_profile() -> Bool {
+  oidc_login_scope_label(scope: OidcScopeOpenId) == "openid"
+    && oidc_login_scope_label(scope: OidcScopeEmail) == "email"
+    && oidc_login_scope_label(scope: OidcScopeProfile) == "profile"
+}
+
+// RELATIVE-RETURN-PATH ADMISSION: a same-origin path admits; a protocol-relative spelling and an
+// absolute URL refuse — the redirect target can never leave the origin.
+test fn return_path_admission_keeps_the_redirect_on_the_origin() -> Bool {
+  match admit_login_return_path(raw: "/issue/abc") {
+    ReturnPathAdmitted { path: p } => (p.path as String) == "/issue/abc"
+    ReturnPathRefused { raw: _, reason: _ } => false
+  }
+  && match admit_login_return_path(raw: "//evil.example/x") {
+    ReturnPathAdmitted { path: _ } => false
+    ReturnPathRefused { raw: _, reason: r } => string_contains(s: r, pattern: "protocol-relative")
+  }
+  && match admit_login_return_path(raw: "https://evil.example/x") {
+    ReturnPathAdmitted { path: _ } => false
+    ReturnPathRefused { raw: _, reason: r } => string_contains(s: r, pattern: "must be relative")
+  }
+}
+
+// THE TRANSACTION LIFETIME is a total fold over the model's clock string.
+test fn a_login_transaction_expires_at_its_bound() -> Bool {
+  let t = OidcLoginTransaction {
+    state: "state-1" as NonEmptyStr,
+    nonce: "nonce-abc" as NonEmptyStr,
+    created_at: "2026-09-25T00:00:00Z",
+    expires_at: "2026-09-25T00:10:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: "verifier-xyz" as NonEmptyStr },
+    return_path: RelativeReturnPath { path: "/" as NonEmptyStr },
+  }
+  !login_transaction_expired(t: t, observed_at: "2026-09-25T00:05:00Z")
+    && login_transaction_expired(t: t, observed_at: "2026-09-25T00:10:01Z")
+}

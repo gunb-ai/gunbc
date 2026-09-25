@@ -1,10 +1,12 @@
 module extdeps.auth.oidc
 
-import std.types { String, NonEmptyStr, Bool, List, Email }
+import std.types { String, NonEmptyStr, Bool, List, Email, Timestamp }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, uri_https }
 import extdeps.auth.jwt {
   NumericDate,
+  NumericDateWholeSeconds,
+  NumericDateFractionalSeconds,
   JwtStringOrUri,
   JwtAudience,
   JwtRegisteredClaims,
@@ -14,7 +16,10 @@ import extdeps.auth.jwt {
   JwtBareString,
   JwtUriString,
   jwt_string_or_uri_of_wire,
+  jwt_string_or_uri_wire,
+  jwt_audience_values,
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -35,7 +40,7 @@ data oidc_amr_external_authority: ExternalAuthority = ExternalAuthority {
 // vendor module redefining them would fork a concept with a specification.\n\nALL THREE ARE
 // OPTIONAL AND THE FIRST CUT REQUIRED THEM. Section 5.1 defines standard claims that MAY be
 // returned, and section 5.4 makes their presence contingent on the requested scope — email and
-// email_verified arrive with the email scope, name with profile. An ID Token issued for the openid
+// email_verified arrive with the email scope, name and picture with profile. An ID Token issued for the openid
 // scope alone carries none of them and is perfectly conforming. Requiring them encoded one observed
 // token's scope grant as though it were the specification.\n\nemail_verified is still the one worth
 // naming explicitly: section 5.1 says it is a BOOLEAN, and that when true the provider asserts it
@@ -49,6 +54,19 @@ type OidcStandardClaims {
   email: Email?
   email_verified: Bool?
   name: String?
+  picture: Uri?
+}
+
+// hd IS NOT AN OIDF STANDARD CLAIM; it is Google's hosted-domain claim (developers.google.com/
+// identity/openid-connect/openid-connect#an-id-tokens-payload), returned for Workspace accounts
+// when the profile scope is granted. It enters this module rather than a Google-specific one by
+// the owner directive of 2026-09-25 (reuse/extend extdeps.auth.oidc for the login claim
+// vocabulary), and the citation above keeps the layer honest: the vocabulary is Google's, the
+// carrier is the OIDC profile's. hd is the ONLY claim the gunb.ai login policy gates on
+// (hd == gunb.ai establishes Workspace membership); the policy comparison lives in the verdict
+// fold below, never in string parsing of an email address.
+type OidcHostedDomain {
+  domain: NonEmptyStr
 }
 
 // amr IS A LIST OF AUTHENTICATION METHODS AND IT MIXES REGISTERED SHORT NAMES WITH URI VALUES IN ONE ARRAY. RFC 8176 establishes an IANA registry of short names — pwd, mfa, otp, pop, hwk, sms and others — and OIDC Core section 2 types the entries as StringOrURI, so a value may legitimately be either.\n\nWHAT RFC 8176 DOES NOT SAY IS THAT A URI MEANS PRIVATE, and the first cut's AmrPrivateUri arm asserted exactly that. The registry governs short names; it does not reserve the URI space, forbid a URI from ever being registered, or define 'private' as the complement of its own contents. What is actually decidable from the value alone is its SHAPE — registered short name this model enumerates, unregistered short name, or URI-valued — and provenance is not recoverable from shape. So the arm is named for what it is. That the observed urn:openai: values happen to be OpenAI's is a fact about that provider, recorded in the codex module that observed them, not a rule this one may state.\n\nThe classification now routes through the RFC 7519 StringOrURI decoder rather than a local colon test, which is the same rule read once instead of twice — and it means a colon-bearing value that is NOT a valid URI is REFUSED here rather than silently filed as a vendor method. The registered arm is deliberately not exhaustive over the IANA registry: it names the values actually encountered, and an unrecognized short name lands in AmrUnregisteredName rather than being forced into a URI arm it does not belong in.
@@ -126,6 +144,7 @@ type OidcIdTokenClaims {
   amr: List<OidcAuthMethodReference>?
   azp: JwtStringOrUri?
   session_id: NonEmptyStr?
+  hosted_domain: OidcHostedDomain?
   standard: OidcStandardClaims
 }
 
@@ -141,3 +160,320 @@ fn oidc_id_token_registered_claims(claims: OidcIdTokenClaims) -> JwtRegisteredCl
     jwt_id: none,
   }
 }
+
+// ── Login: scopes, transaction, signature, verdict ─────────────────────────────────────────────
+
+// LOGIN REQUESTS ONLY openid/email/profile (owner ruling 2026-09-25: no Gmail/Contacts/Directory/
+// Drive scopes for login). The closed coproduct is the wall: with no API-scope constructor, a
+// login flow cannot request a data API scope by construction, and an API-scope vocabulary can
+// never ride the login transaction carrier. Profile enrichment for the assignee picker is a
+// separately authorized directory producer (the A9 lane), not a login scope.
+type OidcLoginScope
+  = OidcScopeOpenId
+  | OidcScopeEmail
+  | OidcScopeProfile
+
+fn oidc_login_scope_label(scope: OidcLoginScope) -> NonEmptyStr {
+  match scope {
+    OidcScopeOpenId => "openid" as NonEmptyStr
+    OidcScopeEmail => "email" as NonEmptyStr
+    OidcScopeProfile => "profile" as NonEmptyStr
+  }
+}
+
+// RELATIVE-RETURN-PATH ADMISSION. The login transaction names where the browser returns after the
+// Google redirect, and that value must not be able to leave the origin: an absolute URL or a
+// protocol-relative "//host/path" spelling would hand the redirect to whoever the value named.
+// Admission is a pure syntax fold over the supplied string: a single leading "/" admitted, "//"
+// refused (protocol-relative), anything else refused. The redirect itself is realization; this
+// fold is the policy its target must pass.
+type RelativeReturnPath {
+  path: NonEmptyStr
+}
+
+type RelativeReturnPathAdmission
+  = ReturnPathAdmitted { path: RelativeReturnPath }
+  | ReturnPathRefused { raw: String, reason: String }
+
+fn admit_login_return_path(raw: String) -> RelativeReturnPathAdmission {
+  if !starts_with(s: raw, prefix: "/") {
+    ReturnPathRefused {
+      raw: raw,
+      reason: "a login return path must be relative and start with /",
+    }
+  } else if starts_with(s: raw, prefix: "//") {
+    ReturnPathRefused {
+      raw: raw,
+      reason: "a login return path must not start with // (a protocol-relative spelling leaves the origin)",
+    }
+  } else {
+    ReturnPathAdmitted { path: RelativeReturnPath { path: raw as NonEmptyStr } }
+  }
+}
+
+// THE AUTH-CODE + PKCE TRANSACTION, the short-lived state the login flow persists before the
+// redirect and consumes at the callback: state (the browser-session binding), nonce (replayed
+// into the ID token and checked by the verdict), the PKCE verifier (proof key, sent at code
+// exchange), the admitted return path, and a bounded lifetime. state/nonce/verifier are minted
+// by the login realization's random source at transaction creation — the model carries them as
+// opaque non-empty values because their unguessability IS the property; nothing in the model
+// derives them from anything else.
+type OidcPkceCodeVerifier {
+  verifier: NonEmptyStr
+}
+
+type OidcLoginTransaction {
+  state: NonEmptyStr
+  nonce: NonEmptyStr
+  created_at: Timestamp
+  expires_at: Timestamp
+  verifier: OidcPkceCodeVerifier
+  return_path: RelativeReturnPath
+}
+
+fn login_transaction_expired(t: OidcLoginTransaction, observed_at: Timestamp) -> Bool {
+  !(observed_at <= t.expires_at)
+}
+
+// SIGNATURE VERIFICATION IS A REALIZATION INPUT, exactly as the approval broker takes
+// MacVerification: fetching the issuer's JWKS and checking the signature over header and payload
+// is a network operation with cache semantics (extdeps.auth.jwt states this surface lands with
+// the JWKS fetch it requires), so the verdict fold below decides over the realization-supplied
+// cryptographic outcome rather than performing it. The verified arm names the JWKS key the
+// signature checked against — RFC 7517: a key is identified within one issuer's key set — so a
+// verdict carries WHICH key stood behind it, and the production producer of this value is the
+// named frontier below, not any caller holding a claim set.
+type JsonWebKeyRef {
+  issuer: JwtStringOrUri
+  key_id: NonEmptyStr
+}
+
+type OidcIdTokenSignature
+  = OidcIdTokenSignatureVerified { key: JsonWebKeyRef }
+  | OidcIdTokenSignatureRefused { reason: String }
+
+// THE VERDICT POLICY: every expectation the gunb.ai login places on an ID token, as one value.
+// expected_issuer and the admitted audience roster are exactly the anti-substitution bindings the
+// approval capability binds by MAC (issuer, audience, authority): a token minted for another
+// client or another issuer refuses rather than being silently accepted. expected_hosted_domain
+// IS the Workspace-membership gate (hd == gunb.ai); it is compared as a claim, never parsed out
+// of an email address. expected_nonce binds the verdict to ONE login transaction. observed_at is
+// the realization's clock projected onto the wire NumericDate shape, so the expiry check never
+// mixes a fractional expiry with a whole-second reading by rounding.
+type OidcIdTokenVerdictPolicy {
+  expected_issuer: JwtStringOrUri
+  admitted_audiences: List<JwtStringOrUri>
+  expected_hosted_domain: OidcHostedDomain
+  expected_nonce: NonEmptyStr?
+  observed_at: NumericDate
+}
+
+// EVERY WAY AN ID TOKEN CAN FAIL, one typed arm per check, in the order the checks run:
+// signature, issuer, audience, expiry, nonce, email_verified, hosted domain. The arms carry both
+// sides of every mismatch so the refusal names what was presented against what was expected.
+type OidcIdTokenRefusal
+  = OidcIdTokenSignatureRefusal { reason: String }
+  | OidcIdTokenIssuerMismatch { presented: JwtStringOrUri, expected: JwtStringOrUri }
+  | OidcIdTokenAudienceNotAdmitted { presented: JwtAudience, admitted: List<JwtStringOrUri> }
+  | OidcIdTokenExpired { expires_at: NumericDate, observed_at: NumericDate }
+  | OidcIdTokenExpiryNotWholeSeconds { reason: String }
+  | OidcIdTokenNonceMismatch { presented: NonEmptyStr?, expected: NonEmptyStr }
+  | OidcIdTokenEmailUnverified { email_verified: Bool? }
+  | OidcIdTokenHostedDomainMismatch { presented: OidcHostedDomain?, expected: OidcHostedDomain }
+
+type OidcIdTokenVerdict
+  = OidcIdTokenVerified { claims: OidcIdTokenClaims }
+  | OidcIdTokenRefused { cause: OidcIdTokenRefusal }
+
+// THE VERDICT FOLD, the single place an unverified claim set becomes either a verified ID token
+// or a located refusal. Only the verified arm carries the claims onward, so a consumer that
+// requires a verdict cannot reach the claims of a token that failed any check — the projection
+// boundary in gunbc.principal_projection seals on this fold. Google is the AUTHENTICATION
+// authority only: nothing here grants any Google data API access.
+fn verify_oidc_id_token(
+  claims: OidcIdTokenClaims,
+  signature: OidcIdTokenSignature,
+  policy: OidcIdTokenVerdictPolicy,
+) -> OidcIdTokenVerdict {
+  match signature {
+    OidcIdTokenSignatureRefused { reason: r } =>
+      OidcIdTokenRefused { cause: OidcIdTokenSignatureRefusal { reason: r } }
+    OidcIdTokenSignatureVerified { key: _ } =>
+      if claims.issuer != policy.expected_issuer {
+        OidcIdTokenRefused {
+          cause: OidcIdTokenIssuerMismatch {
+            presented: claims.issuer,
+            expected: policy.expected_issuer,
+          },
+        }
+      } else if !oidc_audience_admitted(presented: claims.audience, admitted: policy.admitted_audiences) {
+        OidcIdTokenRefused {
+          cause: OidcIdTokenAudienceNotAdmitted {
+            presented: claims.audience,
+            admitted: policy.admitted_audiences,
+          },
+        }
+      } else {
+        match oidc_expiry_check(expires_at: claims.expires_at, observed_at: policy.observed_at) {
+          OidcExpiryExpired =>
+            OidcIdTokenRefused {
+              cause: OidcIdTokenExpired {
+                expires_at: claims.expires_at,
+                observed_at: policy.observed_at,
+              },
+            }
+          OidcExpiryNotWholeSeconds { reason: r } =>
+            OidcIdTokenRefused { cause: OidcIdTokenExpiryNotWholeSeconds { reason: r } }
+          OidcExpiryNotExpired => verify_oidc_id_token_past_expiry(claims: claims, policy: policy)
+        }
+      }
+  }
+}
+
+// EXPIRY IS NOT THE ONLY CLOCK-SENSITIVE CHECK, so the fold continues: nonce first (when the
+// policy names one — a verdict minted outside a login transaction carries no nonce expectation),
+// then email_verified, then the hosted domain.
+fn verify_oidc_id_token_past_expiry(
+  claims: OidcIdTokenClaims,
+  policy: OidcIdTokenVerdictPolicy,
+) -> OidcIdTokenVerdict {
+  match policy.expected_nonce {
+    Present { value: expected_nonce } =>
+      if oidc_nonce_matches(presented: claims.nonce, expected: expected_nonce) {
+        verify_oidc_id_token_past_nonce(claims: claims, policy: policy)
+      } else {
+        OidcIdTokenRefused {
+          cause: OidcIdTokenNonceMismatch {
+            presented: claims.nonce,
+            expected: expected_nonce,
+          },
+        }
+      }
+    Absent => verify_oidc_id_token_past_nonce(claims: claims, policy: policy)
+  }
+}
+
+// email_verified IS A BOOLEAN THE SPEC DEFINES AS A PAST-DILIGENCE CLAIM, and the login policy
+// requires it to be PRESENT AND TRUE: absent ("the provider did not say") and false are the same
+// refusal, with the value carried so the arm reads as a fact about the token, not a boolean
+// collapse.
+fn verify_oidc_id_token_past_nonce(
+  claims: OidcIdTokenClaims,
+  policy: OidcIdTokenVerdictPolicy,
+) -> OidcIdTokenVerdict {
+  if claims.standard.email_verified == Present { value: true } {
+    verify_oidc_id_token_past_email(claims: claims, policy: policy)
+  } else {
+    OidcIdTokenRefused {
+      cause: OidcIdTokenEmailUnverified { email_verified: claims.standard.email_verified },
+    }
+  }
+}
+
+// hd == gunb.ai IS WORKSPACE MEMBERSHIP, the last check. A missing hd is a mismatch, not a
+// pass: consumer accounts and non-Workspace issuers simply do not carry the claim.
+fn verify_oidc_id_token_past_email(
+  claims: OidcIdTokenClaims,
+  policy: OidcIdTokenVerdictPolicy,
+) -> OidcIdTokenVerdict {
+  match claims.hosted_domain {
+    Present { value: hd } =>
+      if hd == policy.expected_hosted_domain {
+        OidcIdTokenVerified { claims: claims }
+      } else {
+        OidcIdTokenRefused {
+          cause: OidcIdTokenHostedDomainMismatch {
+            presented: Present { value: hd },
+            expected: policy.expected_hosted_domain,
+          },
+        }
+      }
+    Absent =>
+      OidcIdTokenRefused {
+        cause: OidcIdTokenHostedDomainMismatch {
+          presented: none,
+          expected: policy.expected_hosted_domain,
+        },
+      }
+  }
+}
+
+fn oidc_nonce_matches(presented: NonEmptyStr?, expected: NonEmptyStr) -> Bool {
+  match presented {
+    Present { value: p } => (p as String) == (expected as String)
+    Absent => false
+  }
+}
+
+fn oidc_audience_admitted(presented: JwtAudience, admitted: List<JwtStringOrUri>) -> Bool {
+  let presented_values = jwt_audience_values(audience: presented)
+  fold(
+    admitted,
+    init: false,
+    f: (acc, a) => acc || any(presented_values, p => p == a),
+  )
+}
+
+// THE EXPIRY CHECK REFUSES TO ROUND. A fractional component on either side makes a whole-second
+// comparison wrong in whichever direction it rounds, so the arm is a refusal naming the side —
+// the same construction NumericDateLifetime uses — and only whole-second pairs compare.
+type OidcExpiryCheck
+  = OidcExpiryNotExpired
+  | OidcExpiryExpired
+  | OidcExpiryNotWholeSeconds { reason: String }
+
+fn oidc_expiry_check(expires_at: NumericDate, observed_at: NumericDate) -> OidcExpiryCheck {
+  match expires_at {
+    NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } =>
+      OidcExpiryNotWholeSeconds {
+        reason: "expiry carries a fractional-seconds component; a whole-second comparison would round it",
+      }
+    NumericDateWholeSeconds { seconds: until } =>
+      match observed_at {
+        NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } =>
+          OidcExpiryNotWholeSeconds {
+            reason: "observed-at carries a fractional-seconds component; a whole-second comparison would round it",
+          }
+        NumericDateWholeSeconds { seconds: from } =>
+          if until < from {
+            OidcExpiryExpired
+          } else {
+            OidcExpiryNotExpired
+          }
+      }
+  }
+}
+
+// ONE REFUSAL, ONE RENDERED REASON: every arm names its remedy — fix the signature path, issue
+// for the right issuer/audience, re-login past expiry, retry through a fresh transaction, verify
+// the address, or sign in with the Workspace account.
+fn oidc_id_token_refusal_reason(cause: OidcIdTokenRefusal) -> String {
+  match cause {
+    OidcIdTokenSignatureRefusal { reason: r } =>
+      concat("ID token signature refused: ", r)
+    OidcIdTokenIssuerMismatch { presented: p, expected: e } =>
+      concat("ID token issuer ", concat(jwt_string_or_uri_wire(value: p) as String, concat(" is not the expected issuer ", jwt_string_or_uri_wire(value: e) as String)))
+    OidcIdTokenAudienceNotAdmitted { presented: _, admitted: _ } =>
+      "ID token audience is not in this client's admitted audience roster"
+    OidcIdTokenExpired { expires_at: _, observed_at: _ } =>
+      "ID token is expired; the operator must authenticate again"
+    OidcIdTokenExpiryNotWholeSeconds { reason: r } =>
+      concat("ID token expiry is undecidable: ", r)
+    OidcIdTokenNonceMismatch { presented: _, expected: _ } =>
+      "ID token nonce does not match the login transaction; the token answers a different request"
+    OidcIdTokenEmailUnverified { email_verified: _ } =>
+      "ID token does not assert email_verified=true; the address is not a verified identity input"
+    OidcIdTokenHostedDomainMismatch { presented: _, expected: e } =>
+      concat("ID token hosted domain is not the admitted Workspace domain ", e.domain as String)
+  }
+}
+
+// THE PRODUCTION JWKS REALIZATION IS THE FRONTIER, not a gap: no producer of
+// OidcIdTokenSignatureVerified exists in this tree today, so no production login can mint a
+// verified verdict yet — every production login refuses loud at the signature check until this
+// lands. NAMED CONSUMER: the serve/login realization that fetches the issuer JWKS, checks the
+// ID-token signature, and hands the outcome to verify_oidc_id_token. SUFFICIENT FOR deleting
+// this row: that producer is the sole production minter of the verified arm.
+data oidc_jwks_verification_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the login request realization that fetches the Google issuer JWKS over HTTPS, verifies the ID-token signature against the announced key, and supplies OidcIdTokenSignature to verify_oidc_id_token as its sole production producer. SUFFICIENT FOR deleting this row: that realization exists and is the only production path to the verified arm. NOT satisfied by a witness constructing the input — supplied values discriminate the model, they are not the production wall",
+)
