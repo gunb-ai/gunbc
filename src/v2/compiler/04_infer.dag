@@ -47,6 +47,7 @@ import v2.std.optional {
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.compilers.body_lowering { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -2187,16 +2188,17 @@ fn infer_gather_transform_frontier_on_entries(
 // list_introduction_elements_optional) -- the flat canonical introduction
 // std.literal_elaboration UnicodeScalarSequenceUnfold names, never a cons^n nesting. It is not an
 // application: the head is a type, so application-argument inhabitance is not asked of it. Every
-// element's type must be one T, compared with provenance stripped (two equal types minted at two
-// occurrences are one type); the first element that differs refuses located AT that element. The
+// element's type must be one T, compared STRUCTURALLY with provenance stripped (two equal types minted
+// at two occurrences are one type, and a list of lists compares its element types whole); the first element that differs refuses located AT that element. The
 // literal's type is then FreeMonoid<T>: the Instantiation of the FreeMonoid reference at T. `[]`
 // carries no element to derive T from; its type is its boundary's, so it joins the counted
 // GroundingNotDerived frontier like every Transform this fold does not derive -- never a guessed T.
+// Two element types are one type when they are STRUCTURALLY equal with provenance removed at every
+// level -- the same authority the inhabitance judgment decides declared-versus-produced types with
+// (v2.std.exact_structural_equality_zip_fold_predicate exact_structural_equality_zip_fold), so a
+// list of lists compares its FreeMonoid<T> element types whole rather than as atoms.
 fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
-  infer_branch_type_atoms_equal(
-    a: canonicalize_node_strip_provenance(n: a),
-    b: canonicalize_node_strip_provenance(n: b)
-  )
+  exact_structural_equality_zip_fold(source_facts: a, candidate: b)
 }
 
 fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Node> {
