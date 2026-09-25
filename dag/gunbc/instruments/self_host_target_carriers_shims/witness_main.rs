@@ -12,7 +12,10 @@ use v1_compiled::v2_std_node::{node_synthetic, Behavior, Connective, Edge, EdgeL
 // instead: src/v2/compiler/07_target_carriers.dag fidelity_quotient_decode_fidelity folds a target's
 // fidelity quotient to Lossless when every disposition is the modeled kind, to Lossy when one
 // declares a fail-closed kind, and refuses (target_carriers_fidelity_disposition_malformed) a
-// disposition it does not recognize -- it never defaults one to Lossless.
+// disposition it does not recognize -- it never defaults one to Lossless. And
+// bundle_fidelity_quotient_optional reads a bundle with no fidelity-quotient edge as Absent (which
+// decodes Lossless) but refuses one with two (target_carriers_fidelity_quotient_ambiguous) rather
+// than reading a self-contradicting target as declaring none.
 
 fn atom(identity: &str) -> Rc<Node> {
     node_synthetic(
@@ -69,6 +72,29 @@ fn unrecognized() -> Rc<Node> {
     conj(vec![positional(atom("self_host_witness_unknown_disposition"))])
 }
 
+fn bundle(quotient_edges: usize) -> Rc<Node> {
+    conj(
+        (0..quotient_edges)
+            .map(|_| {
+                (
+                    Rc::new(EdgeLabel::Named {
+                        name: "target_model_edge_fidelity_quotient".to_string(),
+                    }),
+                    modeled_only(),
+                )
+            })
+            .collect(),
+    )
+}
+
+// None = refused, Some(false) = Absent, Some(true) = Present.
+fn quotient_in(bundle: Rc<Node>) -> Option<bool> {
+    match &*emitted::bundle_fidelity_quotient_optional(bundle) {
+        Outcome::Accepted { value, .. } => Some(value.is_some()),
+        Outcome::Rejected { .. } => None,
+    }
+}
+
 fn decode(quotient: Rc<Node>) -> Option<DecodeFidelity> {
     match &*emitted::fidelity_quotient_decode_fidelity(quotient) {
         Outcome::Accepted { value, .. } => Some(value.clone()),
@@ -88,7 +114,10 @@ fn main() {
     println!("quotient fail_closed fidelity={lossy:?} ok={lossy_ok}");
     let refused = decode(unrecognized()).is_none();
     println!("quotient unrecognized refused={refused}");
-    if lossless_ok && lossy_ok && refused {
+    let bundles = (quotient_in(bundle(0)), quotient_in(bundle(1)), quotient_in(bundle(2)));
+    let bundles_ok = bundles == (Some(false), Some(true), None);
+    println!("bundle quotient none/one/two={bundles:?} ok={bundles_ok}");
+    if lossless_ok && lossy_ok && refused && bundles_ok {
         println!("SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }
