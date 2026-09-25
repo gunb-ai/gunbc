@@ -4,12 +4,14 @@ import std.types { Bool, String, Int, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
+  CommentCreated, CommentEdited, CommentDeleted,
   RoadmapEventEnvelope, RoadmapEventId, roadmap_event_id, roadmap_event_id_for, roadmap_event_envelope, roadmap_event_wire_text,
   roadmap_event_schema, roadmap_event_schema_v1,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
   IssueAssignmentProjection, roadmap_issue_assignment,
+  IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first,
 }
 
@@ -72,6 +74,9 @@ test fn a_v1_claimed_event_still_reads_as_a_self_claim() -> Bool {
           Blocked { reason: _ } => false
           HandedBack { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+          CommentCreated { key: _, body: _, visibility: _ } => false
+          CommentEdited { key: _, body: _ } => false
+          CommentDeleted { key: _ } => false
         })
         && (roadmap_event_id(e: envelope.event) as String) != (id as String)
     RoadmapEventUndecodable { reason: _ } => false
@@ -188,4 +193,93 @@ test fn the_newest_first_sort_orders_the_whole_population() -> Bool {
   (match authors.first() { Present { value: f } => f == "b"  Absent => false })
     && (match authors.skip(n: 1).first() { Present { value: s2 } => s2 == "c"  Absent => false })
     && (match authors.skip(n: 2).first() { Present { value: s3 } => s3 == "a"  Absent => false })
+}
+
+
+// COMMENTS ARE DURABLE EVENTS: the created/edited/deleted wire forms round-trip through the same
+// codec, each carrying its members; a created event whose body member goes missing refuses.
+test fn the_comment_wire_forms_round_trip() -> Bool {
+  let created = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "first words" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let edited = ev(kind: CommentEdited { key: "k1" as NonEmptyStr, body: "better words" as NonEmptyStr }, parent: Present { value: created.id }, author: "s1", at: "t2")
+  let deleted = ev(kind: CommentDeleted { key: "k1" as NonEmptyStr }, parent: Present { value: edited.id }, author: "s1", at: "t3")
+  let ok_created = match roadmap_event_decode(text: roadmap_event_wire_text(env: created)) {
+    RoadmapEventDecoded { envelope } =>
+      (envelope.id as String) == (created.id as String)
+        && (match envelope.event.kind { CommentCreated { key, body, visibility } => (key as String) == "k1" && (body as String) == "first words" && (visibility as String) == "public"  _ => false })
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+  let ok_edited = match roadmap_event_decode(text: roadmap_event_wire_text(env: edited)) {
+    RoadmapEventDecoded { envelope } =>
+      (match envelope.event.kind { CommentEdited { key, body } => (key as String) == "k1" && (body as String) == "better words"  _ => false })
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+  let ok_deleted = match roadmap_event_decode(text: roadmap_event_wire_text(env: deleted)) {
+    RoadmapEventDecoded { envelope } =>
+      (match envelope.event.kind { CommentDeleted { key } => (key as String) == "k1"  _ => false })
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+  let missing_body = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"comment_created\",\"recorded_at\":\"\",\"key\":\"k1\",\"visibility\":\"public\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown or missing")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  ok_created && ok_edited && ok_deleted && missing_body
+}
+
+// THE COMMENT FOLD: creations take ordinals in CAUSAL order (not arrival order), an edit rewrites
+// the body and stamps edited_at on the matching comment only, a delete tombstones with the
+// ORDINAL RETAINED (the deep link /issue/<id>#comment-N stays addressed), and the standing is
+// untouched by any comment event.
+test fn the_comment_fold_numbers_in_causal_order_and_tombstones_keep_the_ordinal() -> Bool {
+  let c1 = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let c2 = ev(kind: CommentCreated { key: "k2" as NonEmptyStr, body: "two" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: Present { value: c1.id }, author: "s2", at: "t2")
+  let edit = ev(kind: CommentEdited { key: "k1" as NonEmptyStr, body: "one (edited)" as NonEmptyStr }, parent: Present { value: c2.id }, author: "s1", at: "t3")
+  let del = ev(kind: CommentDeleted { key: "k2" as NonEmptyStr }, parent: Present { value: edit.id }, author: "s2", at: "t4")
+  let shuffled = [del, edit, c2, c1]
+  let comments = roadmap_issue_comments(envs: shuffled)
+  let first = match comments.first() { Present { value: c } => c  Absent => return_dummy() }
+  let second = match comments.skip(n: 1).first() { Present { value: c } => c  Absent => return_dummy() }
+  count(comments) == 2
+    && first.ordinal == 1
+    && (first.body as String) == "one (edited)"
+    && (first.edited_at as String) == "t3"
+    && !first.deleted
+    && second.ordinal == 2
+    && (second.body as String) == ""
+    && second.deleted
+    && (second.edited_at as String) == ""
+    && roadmap_node_standing_key(s: roadmap_node_standing(envs: shuffled)) == "open"
+    && issue_comment_anchor(ordinal: 2) == "comment-2"
+}
+
+// A helper the fold witness uses for its unreachable arms — the comments list is fixture-built
+// and always carries two entries, but the language has no partial list accessor.
+fn return_dummy() -> IssueComment {
+  IssueComment { ordinal: 0, key: "dummy" as NonEmptyStr, author: "dummy" as NonEmptyStr, body: "", visibility: "public" as NonEmptyStr, created_at: "", edited_at: "", deleted: false }
+}
+
+// RETRIES NEVER DUPLICATE, both shapes: a client key already present marks the retry (the route
+// appends nothing and answers with the existing deep link), and a keyless composer re-posting the
+// same body on the same head is the same retry. A different body, a different head, or a different
+// author is a NEW comment, never a duplicate suppression.
+test fn the_retry_predicates_mark_retries_and_only_retries() -> Bool {
+  let c1 = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let c2_same = ev(kind: CommentCreated { key: "k2" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: Present { value: c1.id }, author: "s1", at: "t2")
+  roadmap_comment_created_key_present(envs: [c1], key: "k1" as NonEmptyStr)
+    && !roadmap_comment_created_key_present(envs: [c1], key: "k9" as NonEmptyStr)
+    && roadmap_comment_retry_present(envs: [c1], author: "s1" as NonEmptyStr, body: "one" as NonEmptyStr, head: none)
+    && !roadmap_comment_retry_present(envs: [c1, c2_same], author: "s1" as NonEmptyStr, body: "one" as NonEmptyStr, head: Present { value: c2_same.id })
+    && !roadmap_comment_retry_present(envs: [c1], author: "s2" as NonEmptyStr, body: "one" as NonEmptyStr, head: Present { value: c1.id })
+    && !roadmap_comment_retry_present(envs: [c1], author: "s1" as NonEmptyStr, body: "two" as NonEmptyStr, head: Present { value: c1.id })
+    && !roadmap_comment_created_key_present(envs: [], key: "k1" as NonEmptyStr)
+}
+
+// AN EDIT OR DELETE WHOSE KEY MATCHES NOTHING rewrites no one's words — the fold applies it to no
+// comment, and the stream renders exactly what was created.
+test fn an_edit_or_delete_with_an_unknown_key_is_an_honest_no_op() -> Bool {
+  let c1 = ev(kind: CommentCreated { key: "k1" as NonEmptyStr, body: "one" as NonEmptyStr, visibility: "public" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let stray_edit = ev(kind: CommentEdited { key: "nope" as NonEmptyStr, body: "hijack" as NonEmptyStr }, parent: Present { value: c1.id }, author: "s2", at: "t2")
+  let stray_del = ev(kind: CommentDeleted { key: "nope" as NonEmptyStr }, parent: Present { value: stray_edit.id }, author: "s2", at: "t3")
+  let comments = roadmap_issue_comments(envs: [c1, stray_edit, stray_del])
+  count(comments) == 1
+    && (match comments.first() { Present { value: c } => (c.body as String) == "one" && !c.deleted && (c.edited_at as String) == ""  Absent => false })
 }

@@ -2,6 +2,7 @@ module gunbc.roadmap_serve
 
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
+import std.algebra { trim }
 import gunbc.auth.approval_request_submission {
   admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
@@ -105,9 +106,10 @@ import gunbc.roadmap.roadmap_event_carrier {
   AllEventsRead, AllEventsReadRefused,
 }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapEvent, RoadmapEventId, Claimed,
+  RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
   roadmap_recent_claimed_assignees,
+  IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present,
 }
 import extdeps.google.issue_tracker {
   issue_assignee_input_valid, issue_assignee_canonical, issue_assignee_is_fabric_endpoint,
@@ -246,6 +248,7 @@ type RoadmapServeHandler
   | ApprovalStatusHandler
   | IssueDetailPageHandler
   | IssueAssignHandler
+  | IssueCommentHandler
 
 // Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -333,6 +336,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
@@ -801,11 +805,11 @@ fn serve_issue_assign_response_over(
       TailnetIdentityAbsent =>
         serve_text_response(status: 403, content_type: text_plain_utf8, body: "assignment refused: the request carries no authenticated identity, and the durable record must name who assigned\n")
       TailnetUser { login } =>
-        let raw_assignee = assign_form_field(body: request.body, name: "assignee")
+        let raw_assignee = issue_form_field(body: request.body, name: "assignee")
         if !issue_assignee_input_valid(s: raw_assignee) {
           serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: '", raw_assignee, "' is not an email spelling or the fabric endpoint\n"], ""))
         } else {
-          let raw_return_to = assign_form_field(body: request.body, name: "return_to")
+          let raw_return_to = issue_form_field(body: request.body, name: "return_to")
           if raw_return_to != "" && !issue_assignee_input_valid(s: raw_return_to) {
             serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to '", raw_return_to, "' is not an email spelling or the fabric endpoint\n"], ""))
           } else {
@@ -822,7 +826,7 @@ fn serve_issue_assign_response_over(
                 } else {
                   let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
                   let head = match heads.first() { Present { value: h } => h.id as String  Absent => "" }
-                  let expected_revision = assign_form_field(body: request.body, name: "expected_revision")
+                  let expected_revision = issue_form_field(body: request.body, name: "expected_revision")
                   if expected_revision != "" && expected_revision != head {
                     serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head, ") — reload and assign again\n"], ""))
                   } else {
@@ -846,10 +850,12 @@ fn serve_issue_assign_response_over(
   }
 }
 
-// ONE FIELD OF THE TEXT/PLAIN FORM BODY: the line "name=value", value taken verbatim to the line
-// end (the fields here are single-line by construction — an email spelling, an event id). A field
-// absent from the body reads as "".
-fn assign_form_field(body: String, name: String) -> String {
+// ONE FIELD OF A TEXT/PLAIN FORM BODY (the issue forms ship enctype text/plain — newline-
+// delimited k=v fields, no percent-encoding to undo): the line "name=value", value taken verbatim
+// to the line end (the fields here are single-line by construction — an email spelling, an event
+// id; the comment body rides LAST and is parsed by its own rule, since markdown freely carries
+// newlines). A field absent from the body reads as "".
+fn issue_form_field(body: String, name: String) -> String {
   let prefix = join([name, "="], "")
   match (filter(split(s: body, delimiter: "\n"), line => starts_with(s: line, prefix: prefix))).first() {
     Present { value: line } => substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
@@ -892,6 +898,113 @@ fn serve_fabric_assignment_response(node_id: String, assignee: String, event_id:
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>
       serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
+  }
+}
+
+// THE COMMENT ROUTE (owner mandate 2026-09-25: comments are durable events; retries never
+// duplicate): POST /issue/<id>/comment appends a CommentCreated to the SAME chained, fork-refusing
+// log — the event-CLI idiom again (read, refuse on forked/incomplete, parent = the single head,
+// probed clock, append through the carrier). The body ships enctype text/plain with the key line
+// first and the body LAST (markdown freely carries newlines). The key is the client's idempotency
+// token: already present, the request is a RETRY — 200 with the existing comment's deep link and
+// NOTHING appended (control 7: retries never duplicate; this is the duplicate-append-refused
+// arm). A composer that minted no key (the no-JS native form) still never duplicates a retry on
+// an unchanged history: same author, same body, same head is the retry. Visibility is recorded
+// ("public" this cut). The author is the authenticated identity; the expected_revision guard
+// matches the assign route — 409 STALE on a moved head.
+fn serve_issue_comment_response_over(
+  instance: HostDashboardInstance,
+  request: ServeHttpRequest,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let plan = roadmap_authority_projection()
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) {
+    serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
+  } else {
+    match request.identity {
+      TailnetIdentityAbsent =>
+        serve_text_response(status: 403, content_type: text_plain_utf8, body: "comment refused: the request carries no authenticated identity, and the durable record must name who wrote\n")
+      TailnetUser { login } =>
+        let body = issue_comment_body_of(wire: request.body)
+        if trim(body) == "" {
+          serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: the body is empty\n")
+        } else {
+          let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+          let nid = node_id as NonEmptyStr as RoadmapNodeId
+          match roadmap_events_read(layout: layout, node: nid) {
+            EventsReadRefused { node: _, step, reason } =>
+              serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["comment refused: could not read the issue's history (", step, "): ", reason, "\n"], ""))
+            EventsRead { node: _, envelopes } =>
+              let standing = roadmap_node_standing(envs: envelopes)
+              let key = roadmap_node_standing_key(s: standing)
+              if key == "forked" || key == "history_incomplete" {
+                serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["comment refused: the issue's history is ", key, ": ", roadmap_node_standing_text(s: standing), "\n"], ""))
+              } else {
+                let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
+                let head_string = match heads.first() { Present { value: h } => h.id as String  Absent => "" }
+                let expected_revision = issue_form_field(body: request.body, name: "expected_revision")
+                if expected_revision != "" && expected_revision != head_string {
+                  serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["comment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head_string, ") — reload and comment again\n"], ""))
+                } else {
+                  let key_field = trim(issue_form_field(body: request.body, name: "key"))
+                  let comments = roadmap_issue_comments(envs: envelopes)
+                  if key_field != "" && roadmap_comment_created_key_present(envs: envelopes, key: key_field as NonEmptyStr) {
+                    serve_comment_recorded_response(node_id: node_id, comments: comments, key: key_field, event_id: "", already_present: true)
+                  } else if key_field == "" && roadmap_comment_retry_present(envs: envelopes, author: login, body: body as NonEmptyStr, head: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }) {
+                    serve_comment_recorded_response(node_id: node_id, comments: comments, key: "", event_id: "", already_present: true)
+                  } else {
+                    let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+                    let comment_key = if key_field == "" { join([login as String, ":", body], "") as NonEmptyStr } else { key_field as NonEmptyStr }
+                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: login, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: CommentCreated { key: comment_key, body: body as NonEmptyStr, visibility: "public" as NonEmptyStr }, recorded_at: at }) {
+                      EventAppended { id } =>
+                        serve_comment_recorded_response(node_id: node_id, comments: [IssueComment { ordinal: count(comments) + 1, key: comment_key, author: login, body: "", visibility: "public" as NonEmptyStr, created_at: "", edited_at: "", deleted: false }], key: comment_key as String, event_id: id as String, already_present: false)
+                      EventAlreadyPresent { id } =>
+                        serve_comment_recorded_response(node_id: node_id, comments: comments, key: comment_key as String, event_id: id as String, already_present: true)
+                      EventAppendRefused { id: _, step, reason } =>
+                        serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["comment refused at ", step, ": ", reason, "\n"], ""))
+                    }
+                  }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+// THE COMMENT RESPONSE, factored pure over the recorded comments so the witness drives it without
+// a carrier: the deep link /issue/<id>#comment-N is the answer a retry and a first write share —
+// the client re-anchors instead of re-posting.
+fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>, key: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
+  let ordinal = match (filter(comments, c => (c.key as String) == key)).first() {
+    Present { value: c } => c.ordinal
+    Absent => 0
+  }
+  let link = join(["/issue/", node_id, "#comment-", to_string(value: ordinal)], "")
+  if already_present {
+    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["comment recorded (already present): ", link, "\n"], ""))
+  } else {
+    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["comment recorded: ", link, " (event ", event_id, ")\n"], ""))
+  }
+}
+
+// THE COMMENT BODY'S WIRE SHAPE: the form orders key first, body LAST, so the body may carry any
+// character including newlines. The body is everything after the FIRST body= field opener —
+// occurrences inside the markdown stay verbatim because the cut is at the first, never the last.
+fn issue_comment_body_of(wire: String) -> String {
+  if starts_with(s: wire, prefix: "body=") {
+    substring(s: wire, start: 5, end: string_length(s: wire))
+  } else {
+    let parts = split(s: wire, delimiter: "\nbody=")
+    if count(parts) == 1 {
+      ""
+    } else {
+      match parts.first() {
+        Present { value: before } => substring(s: wire, start: string_length(s: before) + 6, end: string_length(s: wire))
+        Absent => ""
+      }
+    }
   }
 }
 
@@ -1061,6 +1174,7 @@ fn roadmap_serve_invoke_over(
     SandboxEchoHandler => sandbox_echo_response(request: request)
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params, request: request)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
+    IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)

@@ -11,7 +11,7 @@ import gunbc.roadmap_serve {
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
-  IssueDetailPageHandler, IssueAssignHandler,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -24,9 +24,11 @@ import gunbc.roadmap_serve {
   roadmap_serve_respond_over,
   ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
   belt_dispatch_status,
-  assign_form_field,
+  issue_form_field,
   serve_assignment_launch_follow_through,
   serve_fabric_assignment_response,
+  issue_comment_body_of,
+  serve_comment_recorded_response,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
@@ -57,13 +59,14 @@ import extdeps.http.server {
   media_type_wire_label,
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
-import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
+import std.types { String, Int, Bool, List, NonEmptyStr, HttpMethod, GET, POST, PUT }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
+import gunbc.roadmap.roadmap_event_log { IssueComment }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_lines_accepted_count }
@@ -616,6 +619,7 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
 test fn witness_issue_detail_route_selects() -> Bool {
   selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
+    && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
 
 
@@ -625,11 +629,11 @@ test fn witness_issue_detail_route_selects() -> Bool {
 // bleeds across lines.
 test fn witness_assign_form_field_reads_the_text_plain_body() -> Bool {
   let body = "expected_revision=abc123\nreturn_to=\nassignee=briansrls@gunb.ai"
-  assign_form_field(body: body, name: "assignee") == "briansrls@gunb.ai"
-    && assign_form_field(body: body, name: "expected_revision") == "abc123"
-    && assign_form_field(body: body, name: "return_to") == ""
-    && assign_form_field(body: body, name: "missing") == ""
-    && assign_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
+  issue_form_field(body: body, name: "assignee") == "briansrls@gunb.ai"
+    && issue_form_field(body: body, name: "expected_revision") == "abc123"
+    && issue_form_field(body: body, name: "return_to") == ""
+    && issue_form_field(body: body, name: "missing") == ""
+    && issue_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
 }
 
 // THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404, an
@@ -742,4 +746,71 @@ test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
     && string_contains(s: r.body, pattern: "waiting on fabric: already_live")
     && string_contains(s: r.body, pattern: "attempt already live in gunbc-some-node-abc")
     && string_contains(s: r.body, pattern: "joins the existing attempt when one is live")
+}
+
+
+// ── The durable comment route: body wire shape, early refusals, retry-idempotence ────────────────
+// THE COMMENT BODY'S WIRE SHAPE: the body rides LAST (markdown freely carries newlines) — the
+// parse cuts at the FIRST body= opener and keeps everything after it verbatim, including a
+// literal "body=" inside the text or trailing newlines; a wire with no body field reads "".
+test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_verbatim() -> Bool {
+  let with_key = "key=abc-123\nexpected_revision=\nbody=first line\nsecond line\nbody= not a field"
+  let keyless = "body=just the body"
+  let trailing_newlines = "key=k\nbody=line\n\n"
+  let no_body = "key=k\nexpected_revision=x"
+  issue_comment_body_of(wire: with_key) == "first line\nsecond line\nbody= not a field"
+    && issue_comment_body_of(wire: keyless) == "just the body"
+    && issue_comment_body_of(wire: trailing_newlines) == "line\n\n"
+    && issue_comment_body_of(wire: no_body) == ""
+    && issue_comment_body_of(wire: "") == ""
+}
+
+// THE COMMENT ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is
+// 404, an unauthenticated request is 403, and an empty body is 400 — never an event.
+test fn witness_comment_route_refuses_404_403_400_before_any_host_read() -> Bool {
+  let unknown = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/no-such-issue/comment",
+    body: "body=hello",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  let no_identity = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/restore-group-b-serving/comment",
+    body: "body=hello",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  let empty_body = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/restore-group-b-serving/comment",
+    body: "key=k\nbody=",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  unknown.status == 404
+    && no_identity.status == 403
+    && string_contains(s: no_identity.body, pattern: "no authenticated identity")
+    && empty_body.status == 400
+    && string_contains(s: empty_body.body, pattern: "empty")
+}
+
+// THE RECORDED RESPONSE names the deep link — the FIRST WRITE and the RETRY share its spelling,
+// so the client re-anchors instead of re-posting (control 6's write-side half: a retry of either
+// shape reads back the same address).
+test fn witness_comment_recorded_response_names_the_deep_link() -> Bool {
+  let comments = [
+    IssueComment { ordinal: 1, key: "k1" as NonEmptyStr, author: "s1" as NonEmptyStr, body: "one", visibility: "public" as NonEmptyStr, created_at: "t1", edited_at: "", deleted: false },
+    IssueComment { ordinal: 2, key: "k2" as NonEmptyStr, author: "s2" as NonEmptyStr, body: "two", visibility: "public" as NonEmptyStr, created_at: "t2", edited_at: "", deleted: false },
+  ]
+  let first = serve_comment_recorded_response(node_id: "demo-node", comments: comments, key: "k2", event_id: "evt-9", already_present: false)
+  let retry = serve_comment_recorded_response(node_id: "demo-node", comments: comments, key: "k2", event_id: "", already_present: true)
+  first.status == 200
+    && string_contains(s: first.body, pattern: "comment recorded: /issue/demo-node#comment-2 (event evt-9)")
+    && retry.status == 200
+    && string_contains(s: retry.body, pattern: "comment recorded (already present): /issue/demo-node#comment-2")
 }

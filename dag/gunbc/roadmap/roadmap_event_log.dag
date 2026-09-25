@@ -56,7 +56,12 @@ type RoadmapEventId = NonEmptyStr where brand("RoadmapEventId")
 // the holder's work without finishing it, which is what the roadmap's own hand-back conditions
 // describe; Verified, Reviewed, Audited and Published are the belt's judgments, stated here by
 // REFERENCE to their receipts (an address the reader can resolve) so the log never becomes a
-// second copy of a receipt.
+// second copy of a receipt. COMMENTS ARE DURABLE EVENTS TOO (owner mandate 2026-09-25,
+// docs/plans/issue-page-architecture.md): CommentCreated / CommentEdited / CommentDeleted ride the
+// SAME chained, fork-refusing log — an edit or a delete APPENDS, never mutates, so history is
+// never silently rewritten. The comment's identity is its creation ordinal in causal order (the
+// stable deep link /issue/<id>#comment-N survives edits and deletes); the client's key makes a
+// retry converge on the one event instead of duplicating it.
 type RoadmapEventKind
   = Claimed { assignee: NonEmptyStr, return_to: NonEmptyStr }
   | Released
@@ -64,6 +69,9 @@ type RoadmapEventKind
   | Blocked { reason: NonEmptyStr }
   | HandedBack { reason: NonEmptyStr }
   | ReceiptReferenced { obligation: NonEmptyStr, address: NonEmptyStr, verdict: NonEmptyStr }
+  | CommentCreated { key: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr }
+  | CommentEdited { key: NonEmptyStr, body: NonEmptyStr }
+  | CommentDeleted { key: NonEmptyStr }
 
 type RoadmapEvent {
   node: RoadmapNodeId
@@ -86,6 +94,9 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     Blocked { reason: _ } => "blocked"
     HandedBack { reason: _ } => "handed_back"
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => "receipt"
+    CommentCreated { key: _, body: _, visibility: _ } => "comment_created"
+    CommentEdited { key: _, body: _ } => "comment_edited"
+    CommentDeleted { key: _ } => "comment_deleted"
   }
 }
 
@@ -108,6 +119,18 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
       json_kv(key: "obligation", value: json_string(s: obligation as String)),
       json_kv(key: "address", value: json_string(s: address as String)),
       json_kv(key: "verdict", value: json_string(s: verdict as String)),
+    ]
+    CommentCreated { key, body, visibility } => [
+      json_kv(key: "key", value: json_string(s: key as String)),
+      json_kv(key: "body", value: json_string(s: body as String)),
+      json_kv(key: "visibility", value: json_string(s: visibility as String)),
+    ]
+    CommentEdited { key, body } => [
+      json_kv(key: "key", value: json_string(s: key as String)),
+      json_kv(key: "body", value: json_string(s: body as String)),
+    ]
+    CommentDeleted { key } => [
+      json_kv(key: "key", value: json_string(s: key as String)),
     ]
   }
 }
@@ -220,6 +243,30 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
             }
         }
     }
+  } else if word == "comment_created" {
+    match event_member_nonempty(doc: doc, key: "key") {
+      Absent => none
+      Present { value: k } =>
+        match event_member_nonempty(doc: doc, key: "body") {
+          Absent => none
+          Present { value: b } =>
+            match event_member_nonempty(doc: doc, key: "visibility") {
+              Absent => none
+              Present { value: v } => Present { value: CommentCreated { key: k, body: b, visibility: v } }
+            }
+        }
+    }
+  } else if word == "comment_edited" {
+    match event_member_nonempty(doc: doc, key: "key") {
+      Absent => none
+      Present { value: k } =>
+        match event_member_nonempty(doc: doc, key: "body") {
+          Absent => none
+          Present { value: b } => Present { value: CommentEdited { key: k, body: b } }
+        }
+    }
+  } else if word == "comment_deleted" {
+    match event_member_nonempty(doc: doc, key: "key") { Present { value: k } => Present { value: CommentDeleted { key: k } }  Absent => none }
   } else { none }
 }
 
@@ -345,6 +392,9 @@ fn roadmap_standing_step(acc: RoadmapNodeStanding, env: RoadmapEventEnvelope) ->
     Blocked { reason } => NodeBlocked { by: e.author, reason: reason }
     HandedBack { reason } => NodeHandedBack { by: e.author, reason: reason }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+    CommentCreated { key: _, body: _, visibility: _ } => acc
+    CommentEdited { key: _, body: _ } => acc
+    CommentDeleted { key: _ } => acc
   }
 }
 
@@ -429,6 +479,9 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<No
     Blocked { reason: _ } => false
     HandedBack { reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+    CommentCreated { key: _, body: _, visibility: _ } => false
+    CommentEdited { key: _, body: _ } => false
+    CommentDeleted { key: _ } => false
   })
   roadmap_non_empty_dedup(map(roadmap_events_newest_first(envs: claimed), e => match e.event.kind {
     Claimed { assignee, return_to: _ } => assignee
@@ -437,6 +490,9 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<No
     Blocked { reason: _ } => "unused" as NonEmptyStr
     HandedBack { reason: _ } => "unused" as NonEmptyStr
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => "unused" as NonEmptyStr
+    CommentCreated { key: _, body: _, visibility: _ } => "unused" as NonEmptyStr
+    CommentEdited { key: _, body: _ } => "unused" as NonEmptyStr
+    CommentDeleted { key: _ } => "unused" as NonEmptyStr
   }))
 }
 
@@ -488,6 +544,9 @@ fn roadmap_assignment_step(acc: IssueAssignmentProjection, env: RoadmapEventEnve
     Blocked { reason: _ } => acc
     HandedBack { reason: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+    CommentCreated { key: _, body: _, visibility: _ } => acc
+    CommentEdited { key: _, body: _ } => acc
+    CommentDeleted { key: _ } => acc
   }
 }
 
@@ -507,4 +566,127 @@ fn roadmap_issue_assignment(envs: List<RoadmapEventEnvelope>) -> IssueAssignment
       }
     }
   }
+}
+
+// THE COMMENT, as the stream renders it: the creation ordinal (the stable deep-link N — assigned
+// in causal order, retained across edits and deletes), the durable key (the client's idempotency
+// token), the author principal, the current body ("" once deleted), the visibility, the created
+// and last-edited times, and the tombstone flag. Nothing here is mutated in place: every field
+// is a fold over appended events.
+type IssueComment {
+  ordinal: Int
+  key: NonEmptyStr
+  author: NonEmptyStr
+  body: String
+  visibility: NonEmptyStr
+  created_at: String
+  edited_at: String
+  deleted: Bool
+}
+
+// THE COMMENT FOLD over the node's causal chain: creations append in chain order, taking the next
+// ordinal; an edit rewrites the body and stamps edited_at on the comment whose key matches (an
+// edit whose key matches nothing is a no-op, honestly — it rewrites no one's words); a delete
+// tombstones (body cleared, deleted set, the ORDINAL RETAINED so the deep link and any reply
+// targeting #comment-N stay addressed). The fold needs the causal chain, not the arrival order —
+// two readers folding the same set read the same stream.
+fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<IssueComment> {
+  fold(chain, init: [], f: (acc, env) => match env.event.kind {
+    CommentCreated { key, body, visibility } => concat(acc, [IssueComment {
+      ordinal: count(acc) + 1,
+      key: key,
+      author: env.event.author,
+      body: body as String,
+      visibility: visibility,
+      created_at: env.event.recorded_at,
+      edited_at: "",
+      deleted: false,
+    }])
+    CommentEdited { key, body } => map(acc, c =>
+      if (c.key as String) == (key as String) {
+        IssueComment { ordinal: c.ordinal, key: c.key, author: c.author, body: body as String, visibility: c.visibility, created_at: c.created_at, edited_at: env.event.recorded_at, deleted: c.deleted }
+      } else {
+        c
+      })
+    CommentDeleted { key } => map(acc, c =>
+      if (c.key as String) == (key as String) {
+        IssueComment { ordinal: c.ordinal, key: c.key, author: c.author, body: "", visibility: c.visibility, created_at: c.created_at, edited_at: c.edited_at, deleted: true }
+      } else {
+        c
+      })
+    Claimed { assignee: _, return_to: _ } => acc
+    Released => acc
+    Progress { note: _ } => acc
+    Blocked { reason: _ } => acc
+    HandedBack { reason: _ } => acc
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+  })
+}
+
+// THE NODE'S COMMENTS: the single-head chain, like the standing. A forked or incomplete history
+// yields no comments rather than a half-built stream — the standing reports the fork; the page
+// renders the standing line.
+fn roadmap_issue_comments(envs: List<RoadmapEventEnvelope>) -> List<IssueComment> {
+  let missing = roadmap_event_missing_parents(envs: envs)
+  if count(missing) > 0 {
+    []
+  } else {
+    let heads = roadmap_event_heads(envs: envs)
+    if count(envs) == 0 || count(heads) != 1 {
+      []
+    } else {
+      match heads.first() {
+        Absent => []
+        Present { value: head } =>
+          roadmap_issue_comments_of_chain(chain: roadmap_event_chain(envs: envs, head: head, budget: count(envs)))
+      }
+    }
+  }
+}
+
+// THE RETRY-IDEMPOTENCE PREDICATE: a CommentCreated already carries this key — the append the
+// client is retrying already happened, and re-appending would duplicate the comment. The route
+// reads this BEFORE appending, so a retry answers 200 with the existing comment's deep link and
+// writes nothing (the duplicate-append-refused half of control 7).
+fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, key: NonEmptyStr) -> Bool {
+  any(envs, e => match e.event.kind {
+    CommentCreated { key: k, body: _, visibility: _ } => (k as String) == (key as String)
+    CommentEdited { key: _, body: _ } => false
+    CommentDeleted { key: _ } => false
+    Claimed { assignee: _, return_to: _ } => false
+    Released => false
+    Progress { note: _ } => false
+    Blocked { reason: _ } => false
+    HandedBack { reason: _ } => false
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+  })
+}
+
+// THE NO-KEY DEDUPE, the native-form path: the composer that minted no key still never duplicates
+// a retry on an unchanged history — an existing CommentCreated by the same author with the same
+// body chained on the same head IS the retry.
+fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: NonEmptyStr, body: NonEmptyStr, head: RoadmapEventId?) -> Bool {
+  any(envs, e => match e.event.kind {
+    CommentCreated { key: _, body: b, visibility: _ } =>
+      (e.event.author as String) == (author as String)
+        && (b as String) == (body as String)
+        && (match e.event.parent {
+          Absent => match head { Absent => true  Present { value: _ } => false }
+          Present { value: a } => match head { Present { value: h } => (a as String) == (h as String)  Absent => false }
+        })
+    CommentEdited { key: _, body: _ } => false
+    CommentDeleted { key: _ } => false
+    Claimed { assignee: _, return_to: _ } => false
+    Released => false
+    Progress { note: _ } => false
+    Blocked { reason: _ } => false
+    HandedBack { reason: _ } => false
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+  })
+}
+
+// THE DEEP LINK'S ANCHOR: comment-N, the ordinal spelled the way the location bar carries it —
+// the page renders this as the row's id so /issue/<id>#comment-N lands on the comment.
+fn issue_comment_anchor(ordinal: Int) -> String {
+  join(["comment-", to_string(value: ordinal)], "")
 }
