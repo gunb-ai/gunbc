@@ -1828,18 +1828,6 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
         timeout-minutes: 40
-      - name: "GCP IAM converge: publish whether a recorded approval admits impersonation"
-        id: gcp_iam_gate
-        run: |-
-          set -euo pipefail
-          if [ -s "$RUNNER_TEMP/gcp-iam-converge-approved" ]; then
-            echo "approved=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "approved=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::no recorded approval (converged, or refused before filing); iam-converge is not impersonated"
-          fi
-        if: github.event.inputs.mode == 'gcp_iam_converge'
-        timeout-minutes: 5
       - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a recorded approval)
         id: wif_auth_iam_converge
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -1849,7 +1837,7 @@ jobs:
           token_format: access_token
           access_token_lifetime: 600s
           create_credentials_file: false
-        if: github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_gate.outputs.approved == 'true'
+        if: github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_request.outputs.approved == 'true'
         timeout-minutes: 5
       - name: "GCP IAM converge: re-plan, re-read the recorded approval, apply as iam-converge, read back as iam-observe"
         id: gcp_iam_apply
@@ -1859,5 +1847,5 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           IAM_CONVERGE_ACCESS_TOKEN: ${{ steps.wif_auth_iam_converge.outputs.access_token }}
-        if: github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_gate.outputs.approved == 'true'
+        if: github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_request.outputs.approved == 'true'
         timeout-minutes: 15

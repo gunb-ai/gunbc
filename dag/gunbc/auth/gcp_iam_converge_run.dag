@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.github.actions_environment { github_run_id_variable_name, github_runner_temp_variable_name }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_output_variable_name }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { ensure_access_token, WorkloadIdentityToken, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused }
 import gunbc.auth.approval_gate {
@@ -26,8 +26,8 @@ import gunbc.auth.gcp_iam_converge {
 // ── THE CONVERGING RUN (fleet-converge mode gcp_iam_converge, its own job on srv1) ────────────
 // Operator decision 2026-09-25, option B. The job is three steps, and the ORDER is the gate:
 //   request (gcp_iam_converge_request_wet) -- as iam-observe: plan, file, wait for the tap, and write
-//            the approval marker ONLY when the store records an approval over exactly this request.
-//            The workflow turns the marker into the job output the next step reads.
+//            its step output approved=true ONLY when the store records an approval over exactly this
+//            request. No other arm writes the output, so it is absent for every other outcome.
 //   impersonate -- the workflow's second auth step federates to iam-converge, and runs only when that
 //            output says approved. No Noop, refusal, denial or timeout reaches it.
 //   apply (gcp_iam_converge_apply_wet) -- re-plan under iam-observe, re-derive the request for this
@@ -58,14 +58,10 @@ fn gcp_iam_converge_step_timeout_minutes() -> Int {
 // step only; the request step never has it in its environment.
 data iam_converge_token_env: NonEmptyStr = "IAM_CONVERGE_ACCESS_TOKEN"
 
-// THE APPROVAL MARKER, under RUNNER_TEMP, owner-only, written by exactly one arm below. The workflow
-// reads its presence; the apply step does not trust it -- it re-reads the store.
-data gcp_iam_converge_approval_marker_name: String = "gcp-iam-converge-approved"
-
-fn approval_marker_path() -> String {
-  let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
-  if tmp == "" { "" } else { join([tmp, "/", gcp_iam_converge_approval_marker_name], "") }
-}
+// THE APPROVAL OUTPUT: written to this step's GITHUB_OUTPUT by exactly one arm below, so the
+// workflow's impersonating step reads it as steps.<request>.outputs.<name>. The apply step does not
+// trust it -- it re-reads the store.
+data gcp_iam_converge_approved_output: String = "approved"
 
 fn observe_token() -> Secret? {
   match ensure_access_token(source: WorkloadIdentityToken) {
@@ -89,12 +85,12 @@ fn run_attempt() -> AttemptIdentity? {
 
 fn mark_approved(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessExit
 {
-  let path = approval_marker_path()
+  let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
   if path == "" {
-    exit_failure(reason: "gcp iam converge: approved, but RUNNER_TEMP is unset so the approval cannot be handed to the impersonating step; nothing applied")
+    exit_failure(reason: "gcp iam converge: approved, but GITHUB_OUTPUT is unset so the approval cannot be handed to the impersonating step; nothing applied")
   } else {
-    let w = Filesystem.WriteOwnerOnly(path: path, content: request.escalation_id as String)
-    if w.success { ExitSuccess } else { exit_failure(reason: concat("gcp iam converge: could not write the approval marker; nothing applied: ", w.error)) }
+    let w = Filesystem.Write(path: path, content: join([gcp_iam_converge_approved_output, "=true\n"], ""))
+    if w.success { ExitSuccess } else { exit_failure(reason: concat("gcp iam converge: could not write the approval output; nothing applied: ", w.error)) }
   }
 }
 
@@ -122,7 +118,7 @@ fn request_and_wait(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessE
   }
 }
 
-// PLANS, FILES AND WAITS. Noop and every refusal exit WITHOUT the marker, so the impersonating step
+// PLANS, FILES AND WAITS. Noop and every refusal exit WITHOUT the output, so the impersonating step
 // never runs for them.
 fn gcp_iam_converge_request_wet() -> ProcessExit
 {
@@ -172,7 +168,7 @@ fn readback_converged(observe: Secret) -> ProcessExit
   }
 }
 
-// THE RECORDED APPROVAL IS RE-READ HERE, not taken from the marker: the request this step derives
+// THE RECORDED APPROVAL IS RE-READ HERE, not taken from the step output: the request this step derives
 // NOW -- from a fresh plan, for this run's attempt -- must be the one the store holds an approval for.
 // A diff that moved after the tap derives a different revision, and approval_recorded_from_poll
 // refuses a decision for another revision.

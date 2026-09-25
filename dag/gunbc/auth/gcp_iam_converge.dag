@@ -496,18 +496,26 @@ type GcpIamRequest
   = GcpIamRequested { request: AuthorizationRequest<GcpIamEstateDiff> }
   | GcpIamUnrequestable { reason: NonEmptyStr }
 
+// THE REQUEST OVER A DIGEST, split from the hashing so each has one subject: this fold decides what
+// the digest and the attempt bind (the escalation id, the intent hash), and gcp_iam_diff_digest
+// decides the digest. A witness of the binding supplies a digest rather than paying SHA-256 in the
+// interpreter for every claim (DESIGN §3, a witness discriminates at one interface).
+fn gcp_iam_converge_request_over(d: GcpIamEstateDiff, g: Sha256Digest, attempt: AttemptIdentity) -> AuthorizationRequest<GcpIamEstateDiff> {
+  AuthorizationRequest {
+    escalation_id: gcp_iam_converge_escalation_id(d: g, attempt: attempt),
+    scopes: [gcp_iam_converge_scope],
+    subject: d,
+    purpose: gcp_iam_converge_purpose(d: d),
+    attempt: attempt,
+    intent_hash: as_content_hash_cryptographic(digest: g),
+    destructive: false,
+  }
+}
+
 fn gcp_iam_converge_request(d: GcpIamEstateDiff, attempt: AttemptIdentity) -> GcpIamRequest {
   match gcp_iam_diff_digest(d: d) {
     GcpIamDiffDigestRefused { reason: why } => GcpIamUnrequestable { reason: why }
-    GcpIamDiffDigested { digest: g } => GcpIamRequested { request: AuthorizationRequest {
-      escalation_id: gcp_iam_converge_escalation_id(d: g, attempt: attempt),
-      scopes: [gcp_iam_converge_scope],
-      subject: d,
-      purpose: gcp_iam_converge_purpose(d: d),
-      attempt: attempt,
-      intent_hash: as_content_hash_cryptographic(digest: g),
-      destructive: false,
-    } }
+    GcpIamDiffDigested { digest: g } => GcpIamRequested { request: gcp_iam_converge_request_over(d: d, g: g, attempt: attempt) }
   }
 }
 

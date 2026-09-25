@@ -83,7 +83,7 @@ import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_store_host }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime_seconds }
-import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approval_marker_name }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
 import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
 import gunbc.auth.mtcollins1_boot_federation {
   mtcollins1_boot_environment, mtcollins1_boot_wif_provider_resource, mtcollins1_boot_service_account,
@@ -3365,14 +3365,16 @@ fn fleet_converge_jobs() -> List<Job> {
 // its own pool pinned by the `environment` claim (gunbc.auth.gcp_iam_converge_federation). It runs on
 // srv1 because the approval client files and polls over srv1's loopback. THE STEP ORDER IS THE GATE
 // (gunbc.auth.gcp_iam_converge_run): the job federates as iam-observe, plans and waits; only a
-// recorded approval over exactly the planned request writes the marker the output step publishes,
+// recorded approval over exactly the planned request writes the request step's approved output,
 // and only that output admits the second auth step, which federates as iam-converge. The apply step
 // re-reads the recorded approval itself before the token is used.
 data fleet_converge_gcp_iam_converge_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
 
-data fleet_converge_gcp_iam_approved_output: String = "approved"
-
-data fleet_converge_gcp_iam_approved_if: String = join([fleet_converge_gcp_iam_converge_step_if, " && steps.gcp_iam_gate.outputs.", fleet_converge_gcp_iam_approved_output, " == 'true'"], "")
+// THE IMPERSONATION CONDITION reads the request step's own output, which the run writes through the
+// modeled filesystem on its one approved arm (gunbc.auth.gcp_iam_converge_run mark_approved). The
+// expression is a GitHub Actions expression and is rendered by the same concatenation every
+// fleet_converge_mode_step_if uses; it carries no shell.
+data fleet_converge_gcp_iam_approved_if: String = join([fleet_converge_gcp_iam_converge_step_if, " && steps.gcp_iam_request.outputs.", gcp_iam_converge_approved_output, " == 'true'"], "")
 
 fn fleet_converge_gcp_iam_request_step() -> Step {
   RunStep {
@@ -3387,28 +3389,6 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
-  }
-}
-
-fn fleet_converge_gcp_iam_gate_step() -> Step {
-  RunStep {
-    name: Present { value: "GCP IAM converge: publish whether a recorded approval admits impersonation" },
-    id: Present { value: "gcp_iam_gate" },
-    run: join([
-      "set -euo pipefail",
-      join(["if [ -s \"$RUNNER_TEMP/", gcp_iam_converge_approval_marker_name, "\" ]; then"], ""),
-      join(["  echo \"", fleet_converge_gcp_iam_approved_output, "=true\" >> \"$GITHUB_OUTPUT\""], ""),
-      "else",
-      join(["  echo \"", fleet_converge_gcp_iam_approved_output, "=false\" >> \"$GITHUB_OUTPUT\""], ""),
-      "  echo \"::notice::no recorded approval (converged, or refused before filing); iam-converge is not impersonated\"",
-      "fi",
-    ], "\n"),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -3468,7 +3448,6 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
         service_account: iam_observe_service_account as String,
       ),
       fleet_converge_gcp_iam_request_step(),
-      fleet_converge_gcp_iam_gate_step(),
       fleet_converge_gcp_iam_actuate_auth_step(),
       fleet_converge_gcp_iam_apply_step(),
     ],

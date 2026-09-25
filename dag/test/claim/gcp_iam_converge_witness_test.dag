@@ -3,6 +3,7 @@ module test.claim.gcp_iam_converge_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String, Timestamp }
 import std.scoped_authorization { AttemptIdentity }
+import std.content_hash { Sha256Digest }
 import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
@@ -13,8 +14,7 @@ import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstateRefused,
   GcpIamEffect, CreatePool, CreateProvider, CreateServiceAccount, AddPolicyCells,
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, GrantPolicyReading,
-  GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
-  plan_dedicated_federation, plan_estate, gcp_iam_converge_request,
+  plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage,
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
   iam_converge_resource_population, iam_converge_resource_condition, iam_converge_population_excludes_the_actuation_chain,
   iam_converge_denied_permissions, iam_converge_policy_role_permissions, iam_converge_create_role_permissions,
@@ -175,35 +175,32 @@ fn heal_account_diff(etag: String) -> GcpIamDiff {
   }
 }
 
-fn revision_for(d: GcpIamEstateDiff, attempt: String) -> String {
-  match gcp_iam_converge_request(d: d, attempt: attempt as AttemptIdentity) {
-    GcpIamRequested { request: q } => request_revision_of(request: q) as String
-    GcpIamUnrequestable { reason: _ } => ""
-  }
-}
+// A SUPPLIED DIGEST: the binding claims below are about what the request carries, not about SHA-256,
+// which extdeps.crypto.sha2's own witnesses establish. Two distinct digests stand for two distinct
+// preimages.
+data digest_a: Sha256Digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
 
-fn escalation_for(d: GcpIamEstateDiff, attempt: String) -> String {
-  match gcp_iam_converge_request(d: d, attempt: attempt as AttemptIdentity) {
-    GcpIamRequested { request: q } => q.escalation_id as String
-    GcpIamUnrequestable { reason: _ } => ""
-  }
-}
+data digest_b: Sha256Digest = Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
 
 // CONSENT IS TO A CHANGE FROM A SPECIFIC OBSERVED POLICY: the same cells against a policy that moved
-// (a different etag) is a different revision, so an approval in flight cannot be spent on it.
+// (a different etag) is a different preimage, so it digests to a different revision and an approval
+// in flight cannot be spent on it. The preimage is the interface; the digest is SHA-256 of it.
 test fn the_revision_binds_the_observed_etag() -> Bool {
-  let a = revision_for(d: one_effect_estate(etag: "e1"), attempt: "run-1")
-  let b = revision_for(d: one_effect_estate(etag: "e2"), attempt: "run-1")
-  a != "" && b != "" && a != b
+  gcp_iam_estate_diff_preimage(d: one_effect_estate(etag: "e1")) != gcp_iam_estate_diff_preimage(d: one_effect_estate(etag: "e2"))
+    && string_contains(s: gcp_iam_estate_diff_preimage(d: one_effect_estate(etag: "e1")), pattern: "etag:2:e1;")
 }
 
 // THE ATTEMPT IS IN THE ESCALATION ID AND NOT IN THE REVISION: a rerun of the same diff files afresh
-// (a spent approval cannot block it) while consenting to the identical content.
+// while consenting to the identical content, and a different digest is a different revision.
 test fn the_attempt_versions_the_escalation_and_not_the_revision() -> Bool {
   let d = one_effect_estate(etag: "e1")
-  revision_for(d: d, attempt: "run-1") == revision_for(d: d, attempt: "run-2")
-    && escalation_for(d: d, attempt: "run-1") != escalation_for(d: d, attempt: "run-2")
-    && starts_with(s: escalation_for(d: d, attempt: "run-1"), prefix: gcp_iam_converge_escalation_prefix as String)
+  let a1 = gcp_iam_converge_request_over(d: d, g: digest_a, attempt: "run-1" as AttemptIdentity)
+  let a2 = gcp_iam_converge_request_over(d: d, g: digest_a, attempt: "run-2" as AttemptIdentity)
+  let b1 = gcp_iam_converge_request_over(d: d, g: digest_b, attempt: "run-1" as AttemptIdentity)
+  request_revision_of(request: a1) == request_revision_of(request: a2)
+    && request_revision_of(request: a1) != request_revision_of(request: b1)
+    && a1.escalation_id != a2.escalation_id
+    && starts_with(s: a1.escalation_id as String, prefix: gcp_iam_converge_escalation_prefix as String)
 }
 
 // ── The gate: no write credential before a recorded approval ─────────────────────────────────
@@ -228,7 +225,7 @@ fn step_env_keys(st: Step) -> List<String> {
 test fn iam_converge_is_impersonated_only_after_a_recorded_approval() -> Bool {
   step_if(st: fleet_converge_gcp_iam_actuate_auth_step()) == fleet_converge_gcp_iam_approved_if
     && step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_approved_if
-    && string_contains(s: fleet_converge_gcp_iam_approved_if, pattern: "steps.gcp_iam_gate.outputs.approved == 'true'")
+    && string_contains(s: fleet_converge_gcp_iam_approved_if, pattern: "steps.gcp_iam_request.outputs.approved == 'true'")
     && !any(step_env_keys(st: fleet_converge_gcp_iam_request_step()), k => k == (iam_converge_token_env as String))
     && any(step_env_keys(st: fleet_converge_gcp_iam_apply_step()), k => k == (iam_converge_token_env as String))
 }
