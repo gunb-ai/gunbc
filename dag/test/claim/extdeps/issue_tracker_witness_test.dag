@@ -64,13 +64,32 @@ import extdeps.google.issue_tracker {
   IssueColumnAssignee,
   IssueColumnStatus,
   IssueColumnDViews,
-  IssueColumnId,
   IssueColumnLastModified,
   issue_results_columns,
   issue_results_column_kind_wire,
   issue_results_row_tracks,
   issue_assignee_unassigned_display,
   issue_results_assignee_display,
+  issue_assign_fabric_display,
+  issue_assign_fabric_qualified,
+  issue_assignee_input_is_email,
+  issue_assignee_is_fabric_endpoint,
+  issue_assignee_input_valid,
+  issue_assignee_canonical,
+  issue_assign_suggestions,
+  principal_from_email,
+  principal_display_name_of,
+  principal_dedup_by_subject,
+  issue_principal_kind_wire,
+  issue_avatar_standing_wire,
+  avatar_resolve,
+  avatar_initials_of,
+  avatar_initial_fallback,
+  PrincipalKind, PrincipalKindHuman, PrincipalKindWorkflow,
+  AvatarStanding, AvatarResolved, AvatarAbsent, AvatarUnread,
+  AvatarSource, AvatarFromInternalProfile, AvatarFromGoogleDirectory, AvatarFromCachedPrior, AvatarFromInitials,
+  AvatarProbe, AvatarProbeHit, AvatarProbeMiss, AvatarProbeUnread,
+  QualifiedPrincipal, AvatarResolution,
 }
 import std.types { list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -689,28 +708,177 @@ test fn w_browse_components_derives_the_tree() -> Bool {
 
 // THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law): the column set, the
 // header spellings, the row anatomy, and the grid template are DECLARED in this model and every
-// surface derives from them. This pin states the roster IS the capture's: /home/briansrls/
-// chromium-565764076/ "test - Chromium.html" (50 live rows; verified 2026-09-24 —
-// docs/plans/buganizer-visual-contract.md §Issue-row anatomy) — P · TYPE · TITLE · ASSIGNEE ·
-// STATUS · D VIEWS · ID · LAST MODIFIED, in order.
-test fn w_issue_results_roster_is_the_capture() -> Bool {
+// surface derives from them. This pin states the served roster IS the capture's amended by the
+// 2026-09-25 ruling ("the title is the link — drop the ID column"): the capture's anatomy P · TYPE
+// · TITLE · ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED (transcribed VERBATIM from
+// /home/briansrls/chromium-565764076/ "test - Chromium.html", 50 live rows, verified 2026-09-24 —
+// docs/plans/buganizer-visual-contract.md §Issue-row anatomy) minus the retired ID column; the
+// TITLE cell carries the detail link now.
+test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling() -> Bool {
   let wires = map(issue_results_columns, c =>
     join([issue_results_column_kind_wire(kind: c.kind), ":", c.header as String], ""))
-  count(issue_results_columns) == 8
+  count(issue_results_columns) == 7
     && (match wires.first() { Present { value: w } => w == "priority:P", Absent => false })
     && (match wires.skip(n: 1).first() { Present { value: w } => w == "type:TYPE", Absent => false })
     && (match wires.skip(n: 2).first() { Present { value: w } => w == "title:TITLE", Absent => false })
     && (match wires.skip(n: 3).first() { Present { value: w } => w == "assignee:ASSIGNEE", Absent => false })
     && (match wires.skip(n: 4).first() { Present { value: w } => w == "status:STATUS", Absent => false })
     && (match wires.skip(n: 5).first() { Present { value: w } => w == "d-views:D VIEWS", Absent => false })
-    && (match wires.skip(n: 6).first() { Present { value: w } => w == "id:ID", Absent => false })
-    && (match wires.skip(n: 7).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
+    && (match wires.skip(n: 6).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
 }
 
 // THE GRID TEMPLATE derives from the roster — one track per declared column, the workflow's
 // actions slot last — so the header and every row share it by construction. The pin states the
-// derivation's bytes; the render-side witness pins the served CSS carries exactly them.
+// derivation's bytes; the render-side witness pins the served CSS carries exactly them. THE TRACK
+// LAW rides the same string (owner rulings 2026-09-25): TITLE takes the dominant flexible share
+// (minmax(0, 2fr)) against STATUS's minmax(0, 1fr), and every short column is a FIXED width (P 4ch
+// from "P4", TYPE 6ch from "Task", ASSIGNEE the avatar chip's size plus a gutter, D VIEWS 6ch from
+// a three-digit count, LAST MODIFIED 12ch from an ISO date, actions 24ch from the count chip's
+// upper bound) — so band filtering changes which rows show and NEVER the grid geometry.
 test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
-  issue_results_row_tracks() == "max-content max-content minmax(0, 1fr) max-content minmax(0, 1fr) max-content max-content max-content max-content"
-    && count(issue_results_columns) == 8
+  issue_results_row_tracks() == "4ch 6ch minmax(0, 2fr) calc(var(--space-24) + var(--space-6)) minmax(0, 1fr) 6ch 12ch 24ch"
+    && count(issue_results_columns) == 7
+}
+
+// THE FILTER-STABILITY LAW, the owner complaint's structural answer ("the size of columns is not
+// stable when i click thru all -> active -> ready -> upcoming"): the template is ONE FIXED
+// STRING regardless of which band population renders — the function takes no population at all,
+// so no filtered row set can re-measure a track. RED DIRECTION: reintroducing a max-content
+// track (or taking a population) moves this pin.
+test fn w_issue_results_tracks_take_no_population_and_never_re_measures() -> Bool {
+  let all = issue_results_row_tracks()
+  let active_only = issue_results_row_tracks()
+  let ready_only = issue_results_row_tracks()
+  all == active_only
+    && all == ready_only
+    && !string_contains(s: all, pattern: "max-content")
+    && count(split(s: all, delimiter: "minmax(0, 2fr)")) == 2
+    && count(split(s: all, delimiter: "minmax(0, 1fr)")) == 2
+}
+
+// TITLE IS THE PRIMARY COLUMN: the dominant flexible share is TITLE's and TITLE's alone — the
+// 2fr weight sits on the title track, the 1fr on status, in roster order.
+test fn w_title_is_the_primary_column_with_the_dominant_share() -> Bool {
+  let title_track = match (filter(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "title")).first() {
+    Present { value: c } => c.track as String
+    Absent => ""
+  }
+  let status_track = match (filter(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "status")).first() {
+    Present { value: c } => c.track as String
+    Absent => ""
+  }
+  title_track == "minmax(0, 2fr)" && status_track == "minmax(0, 1fr)"
+}
+
+
+// THE QUALIFIED-PRINCIPAL MODEL (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
+// email is the selector, never the durable identity; fabric@gunb.ai is the workflow endpoint with
+// BOTH spellings naming ONE principal; NO MODEL NAMES in the assignment vocabulary. The fabric
+// principal is kind Workflow with its service avatar resolved from its internal profile (stable,
+// modeled, no external fetch) and never masquerades as human; a human principal's display name
+// derives deterministically from the selector.
+test fn w_qualified_principal_model_email_selector_fabric_endpoint_no_model_names() -> Bool {
+  let fabric = principal_from_email(email: "fabric@gunb.ai")
+  let fabric_qualified = principal_from_email(email: "worker:fabric/offered")
+  let human = principal_from_email(email: "briansrls@gunb.ai")
+  let refused = principal_from_email(email: "not an email")
+  (match fabric { Present { value: p } =>
+    (p.subject as String) == "worker:fabric/offered"
+      && (p.primary_email as String) == "fabric@gunb.ai"
+      && (p.display_name as String) == "Fabric"
+      && (match p.kind { PrincipalKindWorkflow => true  PrincipalKindHuman => false })
+      && (match p.avatar { AvatarResolved => true  AvatarAbsent => false  AvatarUnread => false })
+      && (match p.avatar_source { AvatarFromInternalProfile => true  AvatarFromGoogleDirectory => false  AvatarFromCachedPrior => false  AvatarFromInitials => false })
+    Absent => false })
+    && (match fabric_qualified { Present { value: p } => (p.subject as String) == "worker:fabric/offered"  Absent => false })
+    && (match human { Present { value: p } =>
+      (p.subject as String) == "briansrls@gunb.ai"
+        && (p.display_name as String) == "briansrls"
+        && (match p.kind { PrincipalKindHuman => true  PrincipalKindWorkflow => false })
+        && (match p.avatar { AvatarResolved => false  AvatarAbsent => true  AvatarUnread => false })
+      Absent => false })
+    && (match refused { Present { value: _ } => false  Absent => true })
+    && principal_display_name_of(email: "ops-team@gunb.ai") == "ops-team"
+}
+
+// THE AVATAR RESOLUTION CHAIN, in its ruled order — internal profile → directory → cached →
+// initials — with UNREAD degraded (initials, honestly reported) and ABSENT the all-miss floor. The
+// never-blocks law: EVERY standing renders initials or an image, so assignment, comments and
+// rendering never wait on a probe.
+test fn w_avatar_resolution_chain_order_and_the_never_blocks_law() -> Bool {
+  let from_internal = avatar_resolve(probe_internal: AvatarProbeHit, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeMiss)
+  let from_directory = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeHit, probe_cache: AvatarProbeHit)
+  let from_cache = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeHit)
+  let unread_beats_later_hits = avatar_resolve(probe_internal: AvatarProbeUnread, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeHit)
+  let all_miss = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeMiss)
+  (match from_internal { AvatarResolution { standing: AvatarResolved, source: AvatarFromInternalProfile } => true  _ => false })
+    && (match from_directory { AvatarResolution { standing: AvatarResolved, source: AvatarFromGoogleDirectory } => true  _ => false })
+    && (match from_cache { AvatarResolution { standing: AvatarResolved, source: AvatarFromCachedPrior } => true  _ => false })
+    && (match unread_beats_later_hits { AvatarResolution { standing: AvatarResolved, source: AvatarFromCachedPrior } => true  _ => false })
+    && (match all_miss { AvatarResolution { standing: AvatarAbsent, source: AvatarFromInitials } => true  _ => false })
+    && avatar_initial_fallback(a: AvatarAbsent)
+    && avatar_initial_fallback(a: AvatarUnread)
+    && !avatar_initial_fallback(a: AvatarResolved)
+    && avatar_initials_of(display_name: "Brian Searls") == "BS"
+    && avatar_initials_of(display_name: "Fabric") == "F"
+    && avatar_initials_of(display_name: "ops") == "o"
+}
+
+// THE SUGGESTIONS FEED (the autocomplete's population, owner mandate: fabric pinned near top,
+// recents from durable assignment history, dedupe by stable principal): the seeds are ALWAYS
+// PRESENT — the viewer first, fabric pinned second — the recents follow most-recent-first, and a
+// recent naming a seed's subject never repeats it. Every row carries avatar + display name +
+// email + kind.
+test fn w_assign_suggestions_seeds_fabric_pinned_recents_deduped_by_subject() -> Bool {
+  let suggestions = issue_assign_suggestions(viewer: "briansrls@gunb.ai", recent_emails: [
+    "teammate@gunb.ai",
+    "fabric@gunb.ai",
+    "briansrls@gunb.ai",
+    "teammate@gunb.ai",
+  ])
+  (match suggestions.first() {
+    Present { value: p } => (p.primary_email as String) == "briansrls@gunb.ai" && (match p.kind { PrincipalKindHuman => true  PrincipalKindWorkflow => false })
+    Absent => false
+  })
+    && (match suggestions.skip(n: 1).first() {
+      Present { value: p } => (p.primary_email as String) == "fabric@gunb.ai" && (match p.kind { PrincipalKindWorkflow => true  PrincipalKindHuman => false })
+      Absent => false
+    })
+    && (match suggestions.skip(n: 2).first() { Present { value: p } => (p.primary_email as String) == "teammate@gunb.ai"  Absent => false })
+    && count(suggestions) == 3
+    && count(issue_assign_suggestions(viewer: "", recent_emails: [])) == 1
+    && (match issue_assign_suggestions(viewer: "", recent_emails: []).first() {
+      Present { value: p } => (match p.kind { PrincipalKindWorkflow => true  PrincipalKindHuman => false })
+      Absent => false
+    })
+}
+
+// THE ROUTE'S VALIDATION TABLE: an email spelling (one @, dotted domain, no spaces) or the fabric
+// endpoint in either spelling; everything else refuses. The canonical spelling normalizes the
+// fabric qualified form to the display form — one endpoint, one wire spelling.
+test fn w_assignee_validation_accepts_emails_and_fabric_refuses_everything_else() -> Bool {
+  issue_assignee_input_valid(s: "briansrls@gunb.ai")
+    && issue_assignee_input_valid(s: "  briansrls@gunb.ai  ")
+    && issue_assignee_input_valid(s: "fabric@gunb.ai")
+    && issue_assignee_input_valid(s: "worker:fabric/offered")
+    && !issue_assignee_input_valid(s: "")
+    && !issue_assignee_input_valid(s: "not-an-email")
+    && !issue_assignee_input_valid(s: "a@b")
+    && !issue_assignee_input_valid(s: "@gunb.ai")
+    && !issue_assignee_input_valid(s: "two@at@gunb.ai")
+    && !issue_assignee_input_valid(s: "has space@gunb.ai")
+    && issue_assignee_is_fabric_endpoint(s: "worker:fabric/offered")
+    && !issue_assignee_is_fabric_endpoint(s: "briansrls@gunb.ai")
+    && issue_assignee_canonical(s: "worker:fabric/offered") == "fabric@gunb.ai"
+    && issue_assignee_canonical(s: " briansrls@gunb.ai ") == "briansrls@gunb.ai"
+    && !issue_assignee_input_is_email(s: "worker:fabric/offered")
+}
+
+// THE KIND AND STANDING WIRES, the class-suffix vocabulary the stylesheet binds.
+test fn w_principal_kind_and_avatar_standing_wires() -> Bool {
+  issue_principal_kind_wire(k: PrincipalKindHuman) == "human"
+    && issue_principal_kind_wire(k: PrincipalKindWorkflow) == "workflow"
+    && issue_avatar_standing_wire(a: AvatarResolved) == "resolved"
+    && issue_avatar_standing_wire(a: AvatarAbsent) == "absent"
+    && issue_avatar_standing_wire(a: AvatarUnread) == "unread"
 }

@@ -58,6 +58,7 @@ import gunbc.roadmap_launch_admission {
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+  launch_refusal_label, launch_refusal_reason,
 }
 import gunbc.roadmap_page {
   roadmap_page_for_projection_launch, roadmap_fleet_page,
@@ -99,11 +100,17 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout_for_instance,
   roadmap_events_read,
   roadmap_event_append,
+  roadmap_events_read_all,
   EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
+  AllEventsRead, AllEventsReadRefused,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed,
-  roadmap_node_standing, roadmap_node_standing_key,
+  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  roadmap_recent_claimed_assignees,
+}
+import extdeps.google.issue_tracker {
+  issue_assignee_input_valid, issue_assignee_canonical, issue_assignee_is_fabric_endpoint,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
@@ -719,17 +726,29 @@ fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse
 // issue rendered live from the same authorities the daily page reads: the plan for the ticket and
 // the parent/blocking links, the standings observation for the holder, the node's event log for
 // the Work tab's durable execution history — a local read per request, the same grain the tick's
-// standings read pays. Attempts ride the render entry's parameter (the live attempt feed is the
-// belt-side observation-storage decision, deferred with its reason in the report); the events
-// keep the Work tab honest until it lands. Unknown ids render the not-found document at 404.
+// standings read pays. THE ASSIGNMENT FIELD'S RECENTS ride the all-events read (the cross-issue
+// ledger fold); a refused all-events read degrades to the seeds alone rather than refusing the
+// page — the suggestions feed is furniture, not the issue's truth. Attempts ride the render
+// entry's parameter (the live attempt feed is the belt-side observation-storage decision, deferred
+// with its reason in the report); the events keep the Work tab honest until it lands. Unknown ids
+// render the not-found document at 404.
 fn serve_issue_detail_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
+  request: ServeHttpRequest,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
   let standings = roadmap_standings_read(layout: layout)
+  let viewer = match request.identity {
+    TailnetIdentityAbsent => ""
+    TailnetUser { login } => login as String
+  }
+  let recents = match roadmap_events_read_all(layout: layout) {
+    AllEventsRead { envelopes } => map(roadmap_recent_claimed_assignees(envs: envelopes), r => r as String)
+    AllEventsReadRefused { step: _, reason: _ } => []
+  }
   let envelopes = match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
     EventsRead { node: _, envelopes } => envelopes
     EventsReadRefused { node: _, step: _, reason: _ } => []
@@ -742,19 +761,32 @@ fn serve_issue_detail_response_over(
     standings: standings,
     launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
     stale_nodes: [],
-    events: envelopes)
+    events: envelopes,
+    viewer: viewer,
+    recents: recents)
   serve_page_response_with_status(
     page: page,
     status: if issue_detail_node_exists(proj: plan, node_id: node_id) { 200 } else { 404 })
 }
 
-// THE DURABLE ASSIGN ROUTE (owner ruling 2026-09-24: Assign is a recorded fact, never execution):
-// POST /issue/<id>/assign appends a Claimed event to the issue's event log — the event-CLI's
-// exact chaining idiom (read, refuse on forked/incomplete history, parent = the single head,
-// probed clock, append through the carrier), so the standing derives 'claimed by <who>' and the
-// assignee surface reads it back. The author is the request's AUTHENTICATED identity — absent is
-// a deployment fault, not a person the backend may act for; the durable record must name who
-// assigned. Not one button doing both: Start Work keeps its own dispatch route.
+// THE DURABLE ASSIGN ROUTE — the AssignIssue command (owner rulings 2026-09-24 and the 2026-09-25
+// issue-page mandate): POST /issue/<id>/assign records a Claimed event carrying the ASSIGNEE and
+// the RETURN_TO principal explicitly (default return_to = the requester — the authenticated
+// principal, never derived from whichever event was first), chained on the single head by the
+// event-CLI idiom: read, refuse on forked/incomplete history (409), parent = the head, probed
+// clock, append through the carrier. The expected_issue_revision field pins the head the page
+// rendered under: a mismatch is 409 STALE, never a silent chain onto a history the writer never
+// saw — reload and the form re-pins. The author is the request's AUTHENTICATED identity; absent is
+// a deployment fault (403), not a person the backend may act for. A HUMAN ASSIGNEE NEVER
+// DISPATCHES: the response records the fact and stops. THE FABRIC ENDPOINT IS THE EXECUTION ENTRY
+// POINT (the Start Work button is retired): after the event lands, the handler drives the SAME
+// launch admission the /dispatch route answers. AN ADMISSION REFUSAL DOES NOT UNDO THE ASSIGNMENT:
+// the event stands, the issue stays with Fabric, and the response renders the located waiting
+// condition in the launch's typed refusal vocabulary — "waiting on fabric: <label> — <reason>",
+// never "assignment failed". RE-ASSIGNING THE SAME REVISION joins the existing request: the
+// admission's own already-live / already-accepted arms refuse the duplicate attempt, and the
+// response says the assignment stands beside the refusal. THE REQUEST BODY is the form's
+// text/plain encoding — newline-delimited k=v fields, no percent-encoding to undo.
 fn serve_issue_assign_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -769,31 +801,97 @@ fn serve_issue_assign_response_over(
       TailnetIdentityAbsent =>
         serve_text_response(status: 403, content_type: text_plain_utf8, body: "assignment refused: the request carries no authenticated identity, and the durable record must name who assigned\n")
       TailnetUser { login } =>
-        let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-        let nid = node_id as NonEmptyStr as RoadmapNodeId
-        match roadmap_events_read(layout: layout, node: nid) {
-          EventsReadRefused { node: _, step, reason } =>
-            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused: could not read the issue's history (", step, "): ", reason, "\n"], ""))
-          EventsRead { node: _, envelopes } =>
-            let standing = roadmap_node_standing(envs: envelopes)
-            let key = roadmap_node_standing_key(s: standing)
-            if key == "forked" || key == "history_incomplete" {
-              serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue's history is ", key, ": ", roadmap_node_standing_text(s: standing), "\n"], ""))
-            } else {
-              let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
-              let parent = match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }
-              let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-              match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: login, parent: parent, kind: Claimed, recorded_at: at }) {
-                EventAppended { id } =>
-                  serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", login as String, " (event ", id as String, ")\n"], ""))
-                EventAlreadyPresent { id } =>
-                  serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned (already recorded): ", node_id, " → ", login as String, "\n"], ""))
-                EventAppendRefused { id: _, step, reason } =>
-                  serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused at ", step, ": ", reason, "\n"], ""))
-              }
+        let raw_assignee = assign_form_field(body: request.body, name: "assignee")
+        if !issue_assignee_input_valid(s: raw_assignee) {
+          serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: '", raw_assignee, "' is not an email spelling or the fabric endpoint\n"], ""))
+        } else {
+          let raw_return_to = assign_form_field(body: request.body, name: "return_to")
+          if raw_return_to != "" && !issue_assignee_input_valid(s: raw_return_to) {
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to '", raw_return_to, "' is not an email spelling or the fabric endpoint\n"], ""))
+          } else {
+            let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+            let nid = node_id as NonEmptyStr as RoadmapNodeId
+            match roadmap_events_read(layout: layout, node: nid) {
+              EventsReadRefused { node: _, step, reason } =>
+                serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused: could not read the issue's history (", step, "): ", reason, "\n"], ""))
+              EventsRead { node: _, envelopes } =>
+                let standing = roadmap_node_standing(envs: envelopes)
+                let key = roadmap_node_standing_key(s: standing)
+                if key == "forked" || key == "history_incomplete" {
+                  serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue's history is ", key, ": ", roadmap_node_standing_text(s: standing), "\n"], ""))
+                } else {
+                  let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
+                  let head = match heads.first() { Present { value: h } => h.id as String  Absent => "" }
+                  let expected_revision = assign_form_field(body: request.body, name: "expected_revision")
+                  if expected_revision != "" && expected_revision != head {
+                    serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head, ") — reload and assign again\n"], ""))
+                  } else {
+                    let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+                    let assignee = issue_assignee_canonical(s: raw_assignee) as NonEmptyStr
+                    let return_to = if raw_return_to == "" { login } else { issue_assignee_canonical(s: raw_return_to) as NonEmptyStr }
+                    match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: login, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: Claimed { assignee: assignee, return_to: return_to }, recorded_at: at }) {
+                      EventAppended { id } =>
+                        serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee as String, event_id: id as String)
+                      EventAlreadyPresent { id } =>
+                        serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee as String, event_id: id as String)
+                      EventAppendRefused { id: _, step, reason } =>
+                        serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused at ", step, ": ", reason, "\n"], ""))
+                    }
+                  }
+                }
             }
+          }
         }
     }
+  }
+}
+
+// ONE FIELD OF THE TEXT/PLAIN FORM BODY: the line "name=value", value taken verbatim to the line
+// end (the fields here are single-line by construction — an email spelling, an event id). A field
+// absent from the body reads as "".
+fn assign_form_field(body: String, name: String) -> String {
+  let prefix = join([name, "="], "")
+  match (filter(split(s: body, delimiter: "\n"), line => starts_with(s: line, prefix: prefix))).first() {
+    Present { value: line } => substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
+    Absent => ""
+  }
+}
+
+// THE EXECUTION ENTRY POINT'S FOLLOW-THROUGH, factored pure over the admission outcome so the
+// witness drives it with constructed outcomes: a human assignee stops at the recorded fact (NEVER
+// dispatches); the fabric endpoint drives the SAME admission the /dispatch route answers and the
+// response renders what came back — admitted (the attempt renders on the Work tab), actuation
+// failure (502, the assignment stands), or the typed refusal: the issue STAYS with Fabric and the
+// body names the located waiting condition, never "assignment failed".
+fn serve_assignment_launch_follow_through(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+  assignee: String,
+  event_id: String,
+) -> ServeHttpResponse {
+  if issue_assignee_is_fabric_endpoint(s: assignee) {
+    serve_fabric_assignment_response(
+      node_id: node_id,
+      assignee: assignee,
+      event_id: event_id,
+      outcome: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
+    )
+  } else {
+    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\n"], ""))
+  }
+}
+
+fn serve_fabric_assignment_response(node_id: String, assignee: String, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
+  match outcome {
+    Spawned { node_id: _, session_name, provider: _, launch: _ } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
+    SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
+    SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+    SpawnNotAdmitted { node_id: _, refusal } =>
+      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
   }
 }
 
@@ -961,7 +1059,7 @@ fn roadmap_serve_invoke_over(
     ApprovalSubmitHandler => approval_submit_response(request: request)
     ApprovalStatusHandler => approval_status_response(params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
-    IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params)
+    IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params, request: request)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)

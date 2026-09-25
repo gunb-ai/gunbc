@@ -302,3 +302,45 @@ fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNo
     roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
   }
 }
+
+// EVERY EVENT ACROSS EVERY NODE IN ONE SYNC — one fetch, then one read per node directory, the
+// envelopes concatenated (each envelope carries its own node). The assignment field's recently-used
+// derivation consumes this feed; a refusal on any node's read refuses the whole read, because one
+// damaged directory must never silently narrow the population.
+type RoadmapAllEventsRead
+  = AllEventsRead { envelopes: List<RoadmapEventEnvelope> }
+  | AllEventsReadRefused { step: String, reason: String }
+
+// THE PURE COMPOSITION, so the witness drives it with constructed per-node reads: the first refusal
+// refuses the whole (named by node and step), else the envelopes concatenate in node order.
+fn roadmap_all_events_of_reads(reads: List<RoadmapEventsRead>) -> RoadmapAllEventsRead {
+  match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
+    Present { value: EventsReadRefused { node, step, reason } } =>
+      AllEventsReadRefused { step: join(["node ", node as String, " ", step], ""), reason: reason }
+    _ =>
+      AllEventsRead { envelopes: fold(reads, init: [], f: (acc, r) => match r {
+        EventsRead { node: _, envelopes } => concat(acc, envelopes)
+        EventsReadRefused { node: _, step: _, reason: _ } => acc
+      }) }
+  }
+}
+
+fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => AllEventsReadRefused { step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => AllEventsReadRefused { step: join(["sync/", step], ""), reason: reason }
+        CarrierReady => {
+          let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+          let listing = Filesystem.List(path: root)
+          if !listing.success {
+            AllEventsRead { envelopes: [] }
+          } else {
+            let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+            roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId)))
+          }
+        }
+      }
+  }
+}

@@ -1,6 +1,7 @@
 module extdeps.google.issue_tracker
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
+import std.algebra { trim }
 import extdeps.color.srgb { Srgb8 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -70,7 +71,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // below is owner-directed (the capture left the issue actions implicit beyond the shell's
 // "Create Issue"), which the version row records. Bumped 2026-09-25: the results row's assignee
 // display rule (plain-text identity, the "--" unassigned placeholder) verified against the
-// saved-results capture, which the version row records.
+// saved-results capture, which the version row records. Ruled 2026-09-25 (same date, recorded in
+// the same row): the title IS the link and the ID column drops from the results roster, and the
+// assignment field's population/validation (recently-used emails, the fabric endpoint, the
+// email-shaped route validation) lands — owner rulings amending the capture-verified vocabulary.
 data issue_tracker_interface_version: NonEmptyStr = "2026-09-25"
 
 // The stock sidebar roster, verbatim from the owner's logged-in session (2026-09-22). The first
@@ -606,16 +610,232 @@ fn issue_results_assignee_display(assignee: User?) -> String {
   }
 }
 
+// THE ASSIGNMENT FIELD'S POPULATION AND VALIDATION (owner rulings 2026-09-25: assignment works "via
+// email ... autocompletes to recently used emails"; the worker identity is NOT model-specific — it
+// is a high-level endpoint like fabric offers, and the workflow figures out which model to use).
+// The endpoint carries BOTH principal spellings: the display form is the email spelling the field
+// offers and the event records; the qualified form names the same endpoint in the
+// authority+namespace+identity algebra (docs/plans/qualified-subject-identity.md). The
+// recently-used feed itself is the event ledger's fold (gunbc.roadmap.roadmap_event_log
+// roadmap_recent_claimed_assignees), not an interface row — the ledger owns the history.
+data issue_assign_fabric_display: NonEmptyStr = "fabric@gunb.ai"
+data issue_assign_fabric_qualified: NonEmptyStr = "worker:fabric/offered"
+
+// ONE QUALIFIED-PRINCIPAL MODEL (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
+// every participant — humans and the workflow endpoint — is one construction. Email is the
+// user-facing SELECTOR, never the durable identity: aliases can change without rewriting history,
+// so the durable SUBJECT names the principal and the email selects it. NO MODEL NAMES in the
+// assignment UI — Fabric picks the worker through its capability/cost/capacity/serving authorities;
+// the realization may appear in the Work tab, never in the assignment vocabulary.
+type PrincipalKind
+  = PrincipalKindHuman
+  | PrincipalKindWorkflow
+
+// THE AVATAR'S STANDING AND ITS SOURCE, decided by the resolution chain below. THE NEVER-BLOCKS
+// LAW (owner mandate): absent and unread render deterministic initials and NEVER refuse
+// assignment, comments, or rendering — every standing yields a renderable avatar, so no operation
+// waits on a photo service.
+type AvatarStanding
+  = AvatarResolved
+  | AvatarAbsent
+  | AvatarUnread
+
+type AvatarSource
+  = AvatarFromInternalProfile
+  | AvatarFromGoogleDirectory
+  | AvatarFromCachedPrior
+  | AvatarFromInitials
+
+type AvatarProbe
+  = AvatarProbeHit
+  | AvatarProbeMiss
+  | AvatarProbeUnread
+
+type QualifiedPrincipal {
+  subject: NonEmptyStr
+  primary_email: NonEmptyStr
+  display_name: NonEmptyStr
+  kind: PrincipalKind
+  avatar: AvatarStanding
+  avatar_source: AvatarSource
+}
+
+type AvatarResolution {
+  standing: AvatarStanding
+  source: AvatarSource
+}
+
+// THE AVATAR RESOLUTION CHAIN, in its ruled order: internal principal profile → Google Workspace
+// directory/Contacts photo → cached prior → deterministic initials. The probes are INPUTS: the
+// /avatar/<principal> endpoint and the directory fetch are the realization (follow-up), and this
+// fn is the modeled decision over what the probes found. The first HIT wins; no hit with any
+// unread probe is AvatarUnread (degraded, still initials-rendered); all misses is AvatarAbsent.
+fn avatar_resolve(probe_internal: AvatarProbe, probe_directory: AvatarProbe, probe_cache: AvatarProbe) -> AvatarResolution {
+  if probe_internal == AvatarProbeHit {
+    AvatarResolution { standing: AvatarResolved, source: AvatarFromInternalProfile }
+  } else if probe_directory == AvatarProbeHit {
+    AvatarResolution { standing: AvatarResolved, source: AvatarFromGoogleDirectory }
+  } else if probe_cache == AvatarProbeHit {
+    AvatarResolution { standing: AvatarResolved, source: AvatarFromCachedPrior }
+  } else if probe_internal == AvatarProbeUnread || probe_directory == AvatarProbeUnread || probe_cache == AvatarProbeUnread {
+    AvatarResolution { standing: AvatarUnread, source: AvatarFromInitials }
+  } else {
+    AvatarResolution { standing: AvatarAbsent, source: AvatarFromInitials }
+  }
+}
+
+// THE INITIALS FALLBACK, deterministic from the display name: the first character of the first
+// two words (one word yields one initial). No case folding — the name's own characters render.
+fn avatar_initials_of(display_name: String) -> String {
+  let words = split(s: display_name, delimiter: " ")
+  let first = match words.first() { Present { value: w } => if string_length(s: w) == 0 { "" } else { substring(s: w, start: 0, end: 1) }  Absent => "" }
+  let second = match words.skip(n: 1).first() { Present { value: w } => if string_length(s: w) == 0 { "" } else { substring(s: w, start: 0, end: 1) }  Absent => "" }
+  join([first, second], "")
+}
+
+// THE NEVER-BLOCKS LAW, one spelling: rendering falls back to initials under exactly the standings
+// that carry no image — the page renders initials whenever this is true and never consults a probe
+// on the assignment/comment/render path.
+fn avatar_initial_fallback(a: AvatarStanding) -> Bool {
+  match a {
+    AvatarResolved => false
+    AvatarAbsent => true
+    AvatarUnread => true
+  }
+}
+
+// THE PRINCIPAL OF AN EMAIL SELECTOR, the deterministic construction every surface shares: the
+// fabric endpoint's spellings name the workflow principal (display "Fabric", kind Workflow, its
+// service avatar RESOLVED from its internal profile — stable, modeled, no external fetch, and it
+// never masquerades as human: the kind drives the workflow badge at render). Any other valid email
+// names a human whose display name derives from the selector itself, avatar ABSENT (initials at
+// render) until an /avatar realization upgrades it through the resolution chain.
+fn principal_from_email(email: String) -> QualifiedPrincipal? {
+  let t = trim(email)
+  if !issue_assignee_input_valid(s: t) {
+    none
+  } else if issue_assignee_is_fabric_endpoint(s: t) {
+    Present { value: QualifiedPrincipal {
+      subject: issue_assign_fabric_qualified,
+      primary_email: issue_assign_fabric_display,
+      display_name: "Fabric" as NonEmptyStr,
+      kind: PrincipalKindWorkflow,
+      avatar: AvatarResolved,
+      avatar_source: AvatarFromInternalProfile,
+    } }
+  } else {
+    Present { value: QualifiedPrincipal {
+      subject: t as NonEmptyStr,
+      primary_email: t as NonEmptyStr,
+      display_name: principal_display_name_of(email: t) as NonEmptyStr,
+      kind: PrincipalKindHuman,
+      avatar: AvatarAbsent,
+      avatar_source: AvatarFromInitials,
+    } }
+  }
+}
+
+fn principal_display_name_of(email: String) -> String {
+  match split(s: email, delimiter: "@").first() {
+    Present { value: local } => local
+    Absent => email
+  }
+}
+
+// THE SUGGESTIONS FEED (owner mandate: recents first from durable assignment history, fabric pinned
+// near top, dedupe by stable principal, avatar + display name + email + kind per row). The SEEDS
+// are always present — the viewer (self), then fabric pinned — then the ledger's recently-used
+// principals, each exactly once by SUBJECT (a principal selected under two emails lists once, at
+// their newest turn). One fn every assign surface derives its control from.
+fn issue_assign_suggestions(viewer: String, recent_emails: List<String>) -> List<QualifiedPrincipal> {
+  let seed_principals = concat(
+    match principal_from_email(email: viewer) { Present { value: p } => [p]  Absent => [] },
+    match principal_from_email(email: issue_assign_fabric_display as String) { Present { value: p } => [p]  Absent => [] },
+  )
+  let recent_principals = fold(recent_emails, init: [], f: (acc, e) => match principal_from_email(email: e) {
+    Present { value: p } => concat(acc, [p])
+    Absent => acc
+  })
+  principal_dedup_by_subject(concat(seed_principals, recent_principals))
+}
+
+// One principal exactly once, first occurrence kept — the seeds win over a recent that names the
+// same subject.
+fn principal_dedup_by_subject(ps: List<QualifiedPrincipal>) -> List<QualifiedPrincipal> {
+  fold(ps, init: [], f: (acc, p) => if any(acc, a => (a.subject as String) == (p.subject as String)) { acc } else { concat(acc, [p]) })
+}
+
+// THE KIND AND AVATAR-STANDING WIRES, the class-suffix vocabulary the stylesheet and any client
+// program bind on — one spelling each, derived never hand-rolled downstream.
+fn issue_principal_kind_wire(k: PrincipalKind) -> String {
+  match k {
+    PrincipalKindHuman => "human"
+    PrincipalKindWorkflow => "workflow"
+  }
+}
+
+fn issue_avatar_standing_wire(a: AvatarStanding) -> String {
+  match a {
+    AvatarResolved => "resolved"
+    AvatarAbsent => "absent"
+    AvatarUnread => "unread"
+  }
+}
+
+// THE ROUTE'S VALIDATION, exactly as ruled: non-empty and either an email spelling or the fabric
+// endpoint (display or qualified); anything else refuses at 400, never becomes an event. An email
+// spelling is one @ with a non-empty local part and a dotted domain, and no whitespace anywhere.
+fn issue_assignee_input_is_email(s: String) -> Bool {
+  let t = trim(s)
+  if t == "" {
+    false
+  } else {
+    let parts = split(s: t, delimiter: "@")
+    match parts.first() {
+      Absent => false
+      Present { value: local } =>
+        match parts.skip(n: 1).first() {
+          Absent => false
+          Present { value: domain } =>
+            count(parts) == 2
+              && local != ""
+              && domain != ""
+              && string_contains(s: domain, pattern: ".")
+              && !string_contains(s: t, pattern: " ")
+        }
+    }
+  }
+}
+
+fn issue_assignee_is_fabric_endpoint(s: String) -> Bool {
+  let t = trim(s)
+  t == (issue_assign_fabric_display as String) || t == (issue_assign_fabric_qualified as String)
+}
+
+fn issue_assignee_input_valid(s: String) -> Bool {
+  issue_assignee_input_is_email(s: s) || issue_assignee_is_fabric_endpoint(s: s)
+}
+
+// THE CANONICAL SPELLING THE EVENT RECORDS: the fabric endpoint's qualified form normalizes to its
+// display form — one endpoint, one spelling on the wire, both accepted at the route.
+fn issue_assignee_canonical(s: String) -> String {
+  if (trim(s) == (issue_assign_fabric_qualified as String)) { issue_assign_fabric_display as String } else { trim(s) }
+}
+
 // THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law: the column set, the row
 // anatomy, and the grid template are DECLARED here; every surface derives from these rows, and
-// nothing is hand-styled downstream that this model states). SOURCE, stated honestly: transcribed
-// VERBATIM from the owner's saved-results-page capture, /home/briansrls/chromium-565764076/ "test
-// - Chromium.html" (50 live rows; verified 2026-09-24 — docs/plans/buganizer-visual-contract.md,
-// §Issue-row anatomy): the header row's cells in order read P · TYPE · TITLE · ASSIGNEE · STATUS ·
-// D VIEWS · ID · LAST MODIFIED. The capture's column picker (bv2-column-picker-container) shows
-// the product's set is user-adjustable; THIS row pins the capture's rendered roster. The row
-// anatomy rides the same declaration: a row carries exactly one cell per column, in this order,
-// then the workflow's trailing ACTIONS slot (issue_results_row_tracks below).
+// nothing is hand-styled downstream that this model states). SOURCE, stated honestly: the owner
+// ruling 2026-09-25 ("the title is the link — drop the ID column") amends the capture-verified
+// roster (transcribed VERBATIM from /home/briansrls/chromium-565764076/ "test - Chromium.html", 50
+// live rows, verified 2026-09-24 — docs/plans/buganizer-visual-contract.md, §Issue-row anatomy):
+// the header row's cells in order now read P · TYPE · TITLE · ASSIGNEE · STATUS · D VIEWS ·
+// LAST MODIFIED. The ID column retires because the TITLE cell IS the link to the issue's detail
+// page (the capture's ID cell already linked /issue/<id>; the link follows the words, and the slug
+// stays the canonical key on the detail page). The capture's column picker
+// (bv2-column-picker-container) shows the product's set is user-adjustable; THIS row pins the
+// served roster. The row anatomy rides the same declaration: a row carries exactly one cell per
+// column, in this order, then the workflow's trailing ACTIONS slot (issue_results_row_tracks
+// below).
 type IssueResultsColumnKind
   = IssueColumnPriority
   | IssueColumnType
@@ -623,16 +843,23 @@ type IssueResultsColumnKind
   | IssueColumnAssignee
   | IssueColumnStatus
   | IssueColumnDViews
-  | IssueColumnId
   | IssueColumnLastModified
 
 // ONE DECLARATION PER COLUMN carries the two facts every surface needs, stated once, here: the
-// header's wire spelling and the column's grid track. The two text-bearing columns (TITLE,
-// STATUS) are flexible minmax(0, 1fr) tracks: a max-content track sizes to its content, and our
-// status strings are unbounded ("blocked on <n ids>"), which inflated the shared grid past the
-// viewport and starved the title track to zero (owner complaint 2026-09-24, overlapping text).
-// Flexible tracks bound both columns to a share of the container and let the issue-cell
-// containment chain (min-width 0, nowrap, ellipsis) truncate.
+// header's wire spelling and the column's grid track. THE TRACK LAW (owner rulings 2026-09-25):
+// TITLE is the primary column and takes the DOMINANT flexible share — minmax(0, 2fr) against
+// STATUS's minmax(0, 1fr) — and every SHORT column takes a FIXED width, so band filtering changes
+// which rows show and NEVER the grid geometry (owner complaint 2026-09-25: "the size of columns is
+// not stable when i click thru all -> active -> ready -> upcoming"; the root cause was
+// max-content tracks re-measuring against each filtered population, display:none rows not
+// contributing, every track re-sizing). THE FIXED WIDTHS' BASIS, stated honestly: the saved
+// capture states no per-column pixel widths (its column picker shows the product's set is
+// user-adjustable), so each fixed width is DERIVED HERE from the upper bound of the content the
+// column can wear, plus a one-gutter margin — P from the priority vocabulary's widest spelling
+// ("P4"), TYPE from the widest type word ("Task"), ASSIGNEE from the avatar chip's declared size
+// (the 24px-token circle plus a gutter, in the sheet's token vocabulary — a grid track accepts the
+// calc), D VIEWS from a three-digit count, LAST MODIFIED from an ISO date. The flexible pair
+// keeps the containment chain (min-width 0, nowrap, ellipsis) as the truncation authority.
 type IssueResultsColumn {
   kind: IssueResultsColumnKind
   header: NonEmptyStr
@@ -640,14 +867,13 @@ type IssueResultsColumn {
 }
 
 data issue_results_columns: List<IssueResultsColumn> = [
-  IssueResultsColumn { kind: IssueColumnPriority, header: "P", track: "max-content" },
-  IssueResultsColumn { kind: IssueColumnType, header: "TYPE", track: "max-content" },
-  IssueResultsColumn { kind: IssueColumnTitle, header: "TITLE", track: "minmax(0, 1fr)" },
-  IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnPriority, header: "P", track: "4ch" },
+  IssueResultsColumn { kind: IssueColumnType, header: "TYPE", track: "6ch" },
+  IssueResultsColumn { kind: IssueColumnTitle, header: "TITLE", track: "minmax(0, 2fr)" },
+  IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "calc(var(--space-24) + var(--space-6))" },
   IssueResultsColumn { kind: IssueColumnStatus, header: "STATUS", track: "minmax(0, 1fr)" },
-  IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "max-content" },
-  IssueResultsColumn { kind: IssueColumnId, header: "ID", track: "max-content" },
-  IssueResultsColumn { kind: IssueColumnLastModified, header: "LAST MODIFIED", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "6ch" },
+  IssueResultsColumn { kind: IssueColumnLastModified, header: "LAST MODIFIED", track: "12ch" },
 ]
 
 fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
@@ -658,7 +884,6 @@ fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
     IssueColumnAssignee => "assignee"
     IssueColumnStatus => "status"
     IssueColumnDViews => "d-views"
-    IssueColumnId => "id"
     IssueColumnLastModified => "last-modified"
   }
 }
@@ -668,7 +893,11 @@ fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
 // one grid by construction — and a second grid-template-columns spelling anywhere is a derivation
 // defect, never a styling choice (owner complaint 2026-09-24, the column-alignment fix). The
 // actions slot is the workflow's furniture on the row (the project count and the dispatch
-// actuator), the last track.
+// actuator), the last track — FIXED like the other short columns (24ch from the count chip's
+// upper bound, "999 of 999 tasks closed", plus a gutter): a max-content actions track would
+// re-measure with the filtered population and shift the flexible TITLE/STATUS shares, which is the
+// instability the track law retires. THE FILTER-STABILITY LAW this serves: this function takes NO
+// population — the template is one fixed string regardless of which band's rows render.
 fn issue_results_row_tracks() -> String {
-  join(concat(map(issue_results_columns, c => c.track as String), ["max-content"]), " ")
+  join(concat(map(issue_results_columns, c => c.track as String), ["24ch"]), " ")
 }

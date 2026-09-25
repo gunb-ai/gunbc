@@ -24,6 +24,9 @@ import gunbc.roadmap_serve {
   roadmap_serve_respond_over,
   ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
   belt_dispatch_status,
+  assign_form_field,
+  serve_assignment_launch_follow_through,
+  serve_fabric_assignment_response,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
@@ -35,7 +38,7 @@ import gunbc.roadmap_launch_admission {
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchAlreadyAccepted, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchDependenciesBlocked, LaunchExecutionContractMissing,
-  LaunchNotAgentWork,
+  LaunchNotAgentWork, LaunchNoCapacity,
 }
 import gunbc.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
@@ -613,4 +616,130 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
 test fn witness_issue_detail_route_selects() -> Bool {
   selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
+}
+
+
+// ── The durable assign route: validation, concurrency, and the fabric execution entry point ──────
+// THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
+// name=value line, absent reads as empty; no percent-encoding exists to undo, and a value never
+// bleeds across lines.
+test fn witness_assign_form_field_reads_the_text_plain_body() -> Bool {
+  let body = "expected_revision=abc123\nreturn_to=\nassignee=briansrls@gunb.ai"
+  assign_form_field(body: body, name: "assignee") == "briansrls@gunb.ai"
+    && assign_form_field(body: body, name: "expected_revision") == "abc123"
+    && assign_form_field(body: body, name: "return_to") == ""
+    && assign_form_field(body: body, name: "missing") == ""
+    && assign_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
+}
+
+// THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404, an
+// unauthenticated request is 403 (the durable record must name who assigned), and an invalid
+// selector is 400 — never an event.
+test fn witness_assign_route_refuses_404_403_400_before_any_host_read() -> Bool {
+  let unknown = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/no-such-issue/assign",
+    body: "assignee=briansrls@gunb.ai",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  let no_identity = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/restore-group-b-serving/assign",
+    body: "assignee=briansrls@gunb.ai",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  let bad_selector = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/issue/restore-group-b-serving/assign",
+    body: "assignee=not-an-email",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  unknown.status == 404
+    && no_identity.status == 403
+    && string_contains(s: no_identity.body, pattern: "no authenticated identity")
+    && bad_selector.status == 400
+    && string_contains(s: bad_selector.body, pattern: "not an email spelling or the fabric endpoint")
+}
+
+// CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records
+// the fact and stops, with no launch vocabulary anywhere in the body.
+test fn witness_human_assignment_never_dispatches() -> Bool {
+  let r = serve_assignment_launch_follow_through(
+    instance: srv2_preview_dashboard_instance(),
+    plan: caller_supplied_plan_fixture(),
+    node_id: "some-node",
+    assignee: "briansrls@gunb.ai",
+    event_id: "evt-1",
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "assigned: some-node → briansrls@gunb.ai (event evt-1)")
+    && !string_contains(s: r.body, pattern: "fabric")
+    && !string_contains(s: r.body, pattern: "waiting on")
+    && !string_contains(s: r.body, pattern: "session")
+}
+
+// CONTROL 5, at the response seam: an admission refusal DOES NOT UNDO the assignment — the body
+// opens with the recorded fact, the issue STAYS with Fabric, and the waiting condition is located
+// in the launch's typed vocabulary (label + reason), never "assignment failed". The status is the
+// launch refusal's own mapping.
+test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> Bool {
+  let blocked = serve_fabric_assignment_response(
+    node_id: "some-node",
+    assignee: "fabric@gunb.ai",
+    event_id: "evt-2",
+    outcome: na(r: LaunchDependenciesBlocked { blockers: ["dep-a", "dep-b"] }),
+  )
+  let no_capacity = serve_fabric_assignment_response(
+    node_id: "some-node",
+    assignee: "fabric@gunb.ai",
+    event_id: "evt-3",
+    outcome: na(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }),
+  )
+  blocked.status == 409
+    && string_contains(s: blocked.body, pattern: "assigned: some-node → fabric@gunb.ai (event evt-2)")
+    && string_contains(s: blocked.body, pattern: "waiting on fabric: dependencies_blocked")
+    && string_contains(s: blocked.body, pattern: "dependencies not closed: dep-a, dep-b")
+    && string_contains(s: blocked.body, pattern: "the assignment stands")
+    && !string_contains(s: blocked.body, pattern: "assignment failed")
+    && no_capacity.status == 409
+    && string_contains(s: no_capacity.body, pattern: "waiting on fabric: no_capacity")
+    && string_contains(s: no_capacity.body, pattern: "belt at capacity: 3 of 3 slots occupied")
+    && !string_contains(s: no_capacity.body, pattern: "assignment failed")
+}
+
+// CONTROL 4's success arm: an admitted fabric request names the session and points at the Work tab
+// — the page reflects the attempt through the existing workflow machinery.
+test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
+  let r = serve_fabric_assignment_response(
+    node_id: "some-node",
+    assignee: "fabric@gunb.ai",
+    event_id: "evt-4",
+    outcome: Spawned { node_id: "some-node", session_name: "gunbc-some-node-abc", provider: "codex", launch: launch_identity_exemplar() },
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "assigned: some-node → fabric@gunb.ai (event evt-4)")
+    && string_contains(s: r.body, pattern: "fabric work request admitted: session gunbc-some-node-abc")
+    && string_contains(s: r.body, pattern: "Work tab")
+}
+
+// RE-ASSIGNING THE SAME REVISION JOINS THE EXISTING REQUEST: the admission's already-live arm
+// refuses the duplicate attempt, and the response says the assignment stands beside the refusal —
+// one work request, never a second attempt.
+test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
+  let r = serve_fabric_assignment_response(
+    node_id: "some-node",
+    assignee: "fabric@gunb.ai",
+    event_id: "evt-5",
+    outcome: na(r: LaunchAlreadyLive { session_name: "gunbc-some-node-abc" }),
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "waiting on fabric: already_live")
+    && string_contains(s: r.body, pattern: "attempt already live in gunbc-some-node-abc")
+    && string_contains(s: r.body, pattern: "joins the existing attempt when one is live")
 }

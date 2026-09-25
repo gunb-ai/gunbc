@@ -33,17 +33,32 @@ import gunbc.roadmap_model { RoadmapNodeId }
 // keys content on (std.content_hash); it makes two equal events one event. It does not make an event
 // unforgeable, and the author field is a claim the carrier's principal model must vouch for, which is
 // the carrier's obligation and is not asserted here.
-data roadmap_event_schema: String = "roadmap-event/v1"
+//
+// THE SCHEMA IS VERSIONED AND BOTH VERSIONS READ (owner ruling 2026-09-25, the assignment slice):
+// v2 is the current wire — the Claimed kind carries its assignee. v1 events, every log written
+// before this slice, carried Claimed with no assignee member and remain readable by MIGRATION AT
+// READ, never a rewrite: a v1 Claimed decodes with assignee = author (a self-claim, the only shape
+// v1 could state), and its id verifies against its own v1 canonical bytes. Nothing on disk is
+// rewritten; new events are v2, old events stay v1 forever, and one fold reads both.
+data roadmap_event_schema: String = "roadmap-event/v2"
+data roadmap_event_schema_v1: String = "roadmap-event/v1"
 
 type RoadmapEventId = NonEmptyStr where brand("RoadmapEventId")
 
-// THE VOCABULARY, ONE VARIANT PER FACT A SESSION CAN STATE. Claimed and Released bound who holds the
-// node; Progress carries a note; Blocked and HandedBack carry a reason and end the holder's work
-// without finishing it, which is what the roadmap's own hand-back conditions describe; Verified,
-// Reviewed, Audited and Published are the belt's judgments, stated here by REFERENCE to their
-// receipts (an address the reader can resolve) so the log never becomes a second copy of a receipt.
+// THE VOCABULARY, ONE VARIANT PER FACT A SESSION CAN STATE. Claimed bounds who holds the node: the
+// kind carries the ASSIGNEE, a qualified principal string in email form, and the RETURN_TO
+// principal the work comes back to (owner rulings 2026-09-25: assignment is via email,
+// autocompleting to recently used emails; AssignIssue records requester, assignee and
+// return_to/merge_owner explicitly, defaulting return_to to the requester — never derived from
+// whichever event was first; the recording author stays on the event itself, so a reassignment
+// names both who recorded it — the authenticated tailnet identity — and who holds it). Released
+// relinquishes the hold; Progress carries a note; Blocked and HandedBack carry a reason and end
+// the holder's work without finishing it, which is what the roadmap's own hand-back conditions
+// describe; Verified, Reviewed, Audited and Published are the belt's judgments, stated here by
+// REFERENCE to their receipts (an address the reader can resolve) so the log never becomes a
+// second copy of a receipt.
 type RoadmapEventKind
-  = Claimed
+  = Claimed { assignee: NonEmptyStr, return_to: NonEmptyStr }
   | Released
   | Progress { note: NonEmptyStr }
   | Blocked { reason: NonEmptyStr }
@@ -65,7 +80,7 @@ type RoadmapEventEnvelope {
 
 fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
   match k {
-    Claimed => "claimed"
+    Claimed { assignee: _, return_to: _ } => "claimed"
     Released => "released"
     Progress { note: _ } => "progress"
     Blocked { reason: _ } => "blocked"
@@ -74,9 +89,17 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
   }
 }
 
-fn roadmap_event_kind_members(k: RoadmapEventKind) -> List<JsonKeyValue> {
+// THE KIND'S OWN MEMBERS, per schema version. v2 writes the Claimed assignee and return_to; v1
+// wrote neither member (the shapes did not exist), and its canonical bytes keep omitting them, so
+// the id of a stored v1 event verifies against its own bytes, never against a re-emission that
+// would not match.
+fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<JsonKeyValue> {
   match k {
-    Claimed => []
+    Claimed { assignee, return_to } =>
+      if schema == roadmap_event_schema_v1 { [] } else { [
+        json_kv(key: "assignee", value: json_string(s: assignee as String)),
+        json_kv(key: "return_to", value: json_string(s: return_to as String)),
+      ] }
     Released => []
     Progress { note } => [json_kv(key: "note", value: json_string(s: note as String))]
     Blocked { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
@@ -92,23 +115,40 @@ fn roadmap_event_kind_members(k: RoadmapEventKind) -> List<JsonKeyValue> {
 // THE CANONICAL BYTES ARE THE IDENTITY'S SUBJECT. Members in a fixed order, the kind as a word plus
 // its own members, the parent as its id or an explicit absent marker, so two writers serialising the
 // same event produce the same bytes and therefore the same id.
-fn roadmap_event_canonical_json(e: RoadmapEvent) -> JsonValue {
+// THE CANONICAL BYTES ARE THE IDENTITY'S SUBJECT. Members in a fixed order, the kind as a word plus
+// its own members, the parent as its id or an explicit absent marker, so two writers serialising the
+// same event produce the same bytes and therefore the same id. The bytes are a function of the
+// schema version too: encoding always uses the current schema; decoding verifies an event against
+// the schema it declares for itself.
+fn roadmap_event_canonical_json_for(e: RoadmapEvent, schema: String) -> JsonValue {
   json_object(members: concat([
-    json_kv(key: "schema", value: json_string(s: roadmap_event_schema)),
+    json_kv(key: "schema", value: json_string(s: schema)),
     json_kv(key: "node", value: json_string(s: e.node as String)),
     json_kv(key: "author", value: json_string(s: e.author as String)),
     json_kv(key: "parent", value: json_string(s: match e.parent { Present { value: p } => p as String  Absent => "" })),
     json_kv(key: "kind", value: json_string(s: roadmap_event_kind_word(k: e.kind))),
     json_kv(key: "recorded_at", value: json_string(s: e.recorded_at)),
-  ], roadmap_event_kind_members(k: e.kind)))
+  ], roadmap_event_kind_members_for(k: e.kind, schema: schema)))
+}
+
+fn roadmap_event_canonical_json(e: RoadmapEvent) -> JsonValue {
+  roadmap_event_canonical_json_for(e: e, schema: roadmap_event_schema)
+}
+
+fn roadmap_event_canonical_text_for(e: RoadmapEvent, schema: String) -> String {
+  serialize_json(v: roadmap_event_canonical_json_for(e: e, schema: schema))
 }
 
 fn roadmap_event_canonical_text(e: RoadmapEvent) -> String {
-  serialize_json(v: roadmap_event_canonical_json(e: e))
+  roadmap_event_canonical_text_for(e: e, schema: roadmap_event_schema)
+}
+
+fn roadmap_event_id_for(e: RoadmapEvent, schema: String) -> RoadmapEventId {
+  (content_hash_atom(value: roadmap_event_canonical_text_for(e: e, schema: schema) as NonEmptyStr)).digest as String as RoadmapEventId
 }
 
 fn roadmap_event_id(e: RoadmapEvent) -> RoadmapEventId {
-  (content_hash_atom(value: roadmap_event_canonical_text(e: e) as NonEmptyStr)).digest as String as RoadmapEventId
+  roadmap_event_id_for(e: e, schema: roadmap_event_schema)
 }
 
 fn roadmap_event_envelope(e: RoadmapEvent) -> RoadmapEventEnvelope {
@@ -142,8 +182,24 @@ fn event_member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
   }
 }
 
-fn roadmap_event_kind_decode(doc: JsonValue, word: String) -> RoadmapEventKind? {
-  if word == "claimed" { Present { value: Claimed } }
+// THE KIND DECODE, per schema version. v2 requires the Claimed assignee and return_to members. v1's
+// Claimed had neither: it decodes as a self-claim (both = author), the only assignment v1 could
+// state, and its id still verifies against its v1 canonical bytes by the caller.
+fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, author: NonEmptyStr) -> RoadmapEventKind? {
+  if word == "claimed" {
+    if schema == roadmap_event_schema_v1 {
+      Present { value: Claimed { assignee: author, return_to: author } }
+    } else {
+      match event_member_nonempty(doc: doc, key: "assignee") {
+        Absent => none
+        Present { value: a } =>
+          match event_member_nonempty(doc: doc, key: "return_to") {
+            Absent => none
+            Present { value: r } => Present { value: Claimed { assignee: a, return_to: r } }
+          }
+      }
+    }
+  }
   else if word == "released" { Present { value: Released } }
   else if word == "progress" {
     match event_member_nonempty(doc: doc, key: "note") { Present { value: n } => Present { value: Progress { note: n } }  Absent => none }
@@ -186,7 +242,7 @@ fn roadmap_event_decode_body(ev: JsonValue, claimed_id: String) -> RoadmapEventD
   match event_member_string(doc: ev, key: "schema") {
     Absent => RoadmapEventUndecodable { reason: "event has no schema member" }
     Present { value: s } =>
-      if s != roadmap_event_schema { RoadmapEventUndecodable { reason: join(["schema is ", s, ", expected ", roadmap_event_schema], "") } }
+      if s != roadmap_event_schema && s != roadmap_event_schema_v1 { RoadmapEventUndecodable { reason: join(["schema is ", s, ", expected ", roadmap_event_schema, " or ", roadmap_event_schema_v1], "") } }
       else {
         match event_member_nonempty(doc: ev, key: "node") {
           Absent => RoadmapEventUndecodable { reason: "event has no node" }
@@ -197,7 +253,7 @@ fn roadmap_event_decode_body(ev: JsonValue, claimed_id: String) -> RoadmapEventD
                 match event_member_string(doc: ev, key: "kind") {
                   Absent => RoadmapEventUndecodable { reason: "event has no kind" }
                   Present { value: word } =>
-                    match roadmap_event_kind_decode(doc: ev, word: word) {
+                    match roadmap_event_kind_decode(doc: ev, word: word, schema: s, author: author) {
                       Absent => RoadmapEventUndecodable { reason: join(["kind ", word, " is unknown or missing its members"], "") }
                       Present { value: kind } => {
                         let parent = match event_member_string(doc: ev, key: "parent") {
@@ -211,7 +267,7 @@ fn roadmap_event_decode_body(ev: JsonValue, claimed_id: String) -> RoadmapEventD
                           kind: kind,
                           recorded_at: match event_member_string(doc: ev, key: "recorded_at") { Present { value: t } => t  Absent => "" },
                         }
-                        let id = roadmap_event_id(e: e)
+                        let id = roadmap_event_id_for(e: e, schema: s)
                         if (id as String) != claimed_id {
                           RoadmapEventUndecodable { reason: join(["id ", claimed_id, " does not match the event's content (", id as String, ")"], "") }
                         } else {
@@ -275,10 +331,15 @@ fn roadmap_event_chain(envs: List<RoadmapEventEnvelope>, head: RoadmapEventEnvel
   }
 }
 
+// THE FOLD'S CLAIM STEP NAMES THE HOLDER, NOT THE RECORDER. A Claimed event's author is the
+// authenticated identity who recorded it (kept on the event for the ledger); the standing's `by` is
+// the event's ASSIGNEE — who holds the node now. A self-claim names the same principal twice and
+// nothing changes; a reassignment is a newer Claimed, and because the chain folds oldest-first each
+// Claimed step replaces the holder, so the NEWEST Claimed wins by construction, never by clock.
 fn roadmap_standing_step(acc: RoadmapNodeStanding, env: RoadmapEventEnvelope) -> RoadmapNodeStanding {
   let e = env.event
   match e.kind {
-    Claimed => NodeClaimed { by: e.author, since: e.recorded_at }
+    Claimed { assignee, return_to: _ } => NodeClaimed { by: assignee, since: e.recorded_at }
     Released => NodeOpen
     Progress { note } => NodeInProgress { by: e.author, last_note: note }
     Blocked { reason } => NodeBlocked { by: e.author, reason: reason }
@@ -350,5 +411,100 @@ fn roadmap_node_standing_text(s: RoadmapNodeStanding) -> String {
     NodeHandedBack { by, reason } => join(["handed back (", by as String, "): ", reason as String], "")
     NodeForked { heads } => join(["forked history: ", to_string(value: count(heads)), " heads; two writers recorded without seeing each other"], "")
     NodeHistoryIncomplete { missing_parents } => join(["history incomplete: ", to_string(value: count(missing_parents)), " parent event(s) not present"], "")
+  }
+}
+
+// RECENTLY USED ASSIGNEES, the feed of the assignment field's autocomplete (owner ruling
+// 2026-09-25: assignment "autocompletes to recently used emails"): every Claimed assignee across
+// the ledger, most-recent-first by recorded_at, each principal exactly once — a principal
+// reassigned many times lists at their newest turn. Events whose recorded_at is empty (an unprobed
+// clock at write) sort oldest, honestly — absence is not a timestamp. The seeds the field always
+// offers (the requester and the fabric endpoint) are the interface's rows, assembled downstream of
+// this fold.
+fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<NonEmptyStr> {
+  let claimed = filter(envs, e => match e.event.kind {
+    Claimed { assignee: _, return_to: _ } => true
+    Released => false
+    Progress { note: _ } => false
+    Blocked { reason: _ } => false
+    HandedBack { reason: _ } => false
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+  })
+  roadmap_non_empty_dedup(map(roadmap_events_newest_first(envs: claimed), e => match e.event.kind {
+    Claimed { assignee, return_to: _ } => assignee
+    Released => "unused" as NonEmptyStr
+    Progress { note: _ } => "unused" as NonEmptyStr
+    Blocked { reason: _ } => "unused" as NonEmptyStr
+    HandedBack { reason: _ } => "unused" as NonEmptyStr
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => "unused" as NonEmptyStr
+  }))
+}
+
+// One principal exactly once, first occurrence kept — the newest, because the caller sorts first.
+fn roadmap_non_empty_dedup(xs: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(xs, init: [], f: (acc, x) => if any(acc, a => (a as String) == (x as String)) { acc } else { concat(acc, [x]) })
+}
+
+// Insertion sort by recorded_at, descending — the assignee population is small (the principals a
+// session ever assigned to), and the sort keeps the newest turn at the head without a general
+// ordering substrate.
+fn roadmap_events_newest_first(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
+  fold(envs, init: [], f: (acc, env) => roadmap_event_insert_newest(sorted: acc, env: env))
+}
+
+fn roadmap_event_insert_newest(sorted: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope) -> List<RoadmapEventEnvelope> {
+  match sorted.first() {
+    Absent => [ env ]
+    Present { value: head } =>
+      if head.event.recorded_at <= env.event.recorded_at {
+        concat([env], sorted)
+      } else {
+        concat([head], roadmap_event_insert_newest(sorted: sorted.skip(n: 1), env: env))
+      }
+  }
+}
+
+// THE ASSIGNMENT PROJECTION — the metadata rail's assignee and return-to rows, one pure fold over
+// the node's chain (owner ruling 2026-09-25: record requester, assignee and return_to explicitly,
+// default return_to = the requester — never derived from whichever event was first). The newest
+// Claimed wins by the same oldest-first chain fold as the standing; Released clears the hold. A
+// forked or incomplete history names no holder rather than fabricating one — the standing reports
+// the fork, and the rail reads the standing for that. THE PUBLICATION HANDOFF (its own slice)
+// extends the step: an observed publication moves the holder to the stored return_to.
+type IssueAssignmentProjection {
+  holder: NonEmptyStr?
+  return_to: NonEmptyStr?
+}
+
+fn roadmap_assignment_empty() -> IssueAssignmentProjection {
+  IssueAssignmentProjection { holder: none, return_to: none }
+}
+
+fn roadmap_assignment_step(acc: IssueAssignmentProjection, env: RoadmapEventEnvelope) -> IssueAssignmentProjection {
+  match env.event.kind {
+    Claimed { assignee, return_to } => IssueAssignmentProjection { holder: Present { value: assignee }, return_to: Present { value: return_to } }
+    Released => roadmap_assignment_empty()
+    Progress { note: _ } => acc
+    Blocked { reason: _ } => acc
+    HandedBack { reason: _ } => acc
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+  }
+}
+
+fn roadmap_issue_assignment(envs: List<RoadmapEventEnvelope>) -> IssueAssignmentProjection {
+  let missing = roadmap_event_missing_parents(envs: envs)
+  if count(missing) > 0 {
+    roadmap_assignment_empty()
+  } else {
+    let heads = roadmap_event_heads(envs: envs)
+    if count(envs) == 0 || count(heads) != 1 {
+      roadmap_assignment_empty()
+    } else {
+      match heads.first() {
+        Absent => roadmap_assignment_empty()
+        Present { value: head } =>
+          fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_assignment_empty(), f: (acc, env) => roadmap_assignment_step(acc: acc, env: env))
+      }
+    }
   }
 }

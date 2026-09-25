@@ -4,16 +4,25 @@ import std.types { Bool, String, Int, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
-  RoadmapEventEnvelope, RoadmapEventId, roadmap_event_id, roadmap_event_envelope, roadmap_event_wire_text,
+  RoadmapEventEnvelope, RoadmapEventId, roadmap_event_id, roadmap_event_id_for, roadmap_event_envelope, roadmap_event_wire_text,
+  roadmap_event_schema, roadmap_event_schema_v1,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  IssueAssignmentProjection, roadmap_issue_assignment,
+  roadmap_recent_claimed_assignees, roadmap_events_newest_first,
 }
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
 
+// A self-claim helper: assignee and return_to both name the author — the shape a CLI claim and a
+// v1 event share.
 fn ev(kind: RoadmapEventKind, parent: RoadmapEventId?, author: String, at: String) -> RoadmapEventEnvelope {
   roadmap_event_envelope(e: RoadmapEvent { node: node(), author: author as NonEmptyStr, parent: parent, kind: kind, recorded_at: at })
+}
+
+fn self_claim(parent: RoadmapEventId?, author: String, at: String) -> RoadmapEventEnvelope {
+  ev(kind: Claimed { assignee: author as NonEmptyStr, return_to: author as NonEmptyStr }, parent: parent, author: author, at: at)
 }
 
 // DISCRIMINATING: the id is a function of the event's content. The same event twice is one id; a
@@ -25,30 +34,72 @@ test fn the_event_id_is_content_addressed() -> Bool {
   (a.id as String) == (b.id as String) && (a.id as String) != (c.id as String) && string_length(s: a.id as String) > 8
 }
 
-// DISCRIMINATING: the wire form round-trips, and a wire whose id does not match its content refuses.
-test fn the_wire_form_round_trips_and_a_mismatched_id_refuses() -> Bool {
-  let claimed = ev(kind: Claimed, parent: none, author: "session-a", at: "2026-09-05T20:00:00Z")
+// DISCRIMINATING: the v2 wire form round-trips the Claimed assignee AND return_to, and a wire whose
+// id does not match its content refuses. The id moves with the assignee: reassignment is a
+// different event, never a silent edit.
+test fn the_v2_wire_form_round_trips_the_assignment_and_a_mismatched_id_refuses() -> Bool {
+  let claimed = ev(kind: Claimed { assignee: "teammate@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: none, author: "lead@gunb.ai", at: "2026-09-05T20:00:00Z")
   let receipt = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "verification/86dd.json" as NonEmptyStr, verdict: "passed" as NonEmptyStr }, parent: Present { value: claimed.id }, author: "belt", at: "t2")
   let ok = match roadmap_event_decode(text: roadmap_event_wire_text(env: receipt)) {
     RoadmapEventDecoded { envelope } => (envelope.id as String) == (receipt.id as String) && (match envelope.event.parent { Present { value: p } => (p as String) == (claimed.id as String)  Absent => false })
     RoadmapEventUndecodable { reason: _ } => false
   }
-  let forged = replace(s: roadmap_event_wire_text(env: claimed), from: "session-a", to: "session-b")
+  let forged = replace(s: roadmap_event_wire_text(env: claimed), from: "teammate@gunb.ai", to: "someone-else@gunb.ai")
   let refused = match roadmap_event_decode(text: forged) {
     RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "does not match")
     RoadmapEventDecoded { envelope: _ } => false
   }
-  let unknown = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v1\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"celebrated\",\"recorded_at\":\"\"}}") {
+  let different_assignee_different_id = (claimed.id as String) != (self_claim(parent: none, author: "lead@gunb.ai", at: "2026-09-05T20:00:00Z").id as String)
+  ok && refused && different_assignee_different_id
+}
+
+// THE MIGRATION DECISION, pinned by execution: the codec is versioned, so the assignee slice BUMPED
+// the schema to v2 and reads v1 BY READ COMPATIBILITY — no log is rewritten. A v1 Claimed (no
+// assignee/return_to members) still decodes, as a self-claim (both name the author — the only
+// assignment v1 could state), its id verifies against its OWN v1 canonical bytes, and re-encoding
+// it under v2 yields a DIFFERENT id — the bytes moved, the stored event did not.
+test fn a_v1_claimed_event_still_reads_as_a_self_claim() -> Bool {
+  let e = RoadmapEvent { node: node(), author: "session-a" as NonEmptyStr, parent: none, kind: Claimed { assignee: "session-a" as NonEmptyStr, return_to: "session-a" as NonEmptyStr }, recorded_at: "t1" }
+  let id = roadmap_event_id_for(e: e, schema: roadmap_event_schema_v1)
+  let wire = join(["{\"id\":\"", id as String, "\",\"event\":{\"schema\":\"roadmap-event/v1\",\"node\":\"demo-node\",\"author\":\"session-a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"t1\"}}"], "")
+  match roadmap_event_decode(text: wire) {
+    RoadmapEventDecoded { envelope } =>
+      (envelope.id as String) == (id as String)
+        && (match envelope.event.kind {
+          Claimed { assignee, return_to } => (assignee as String) == "session-a" && (return_to as String) == "session-a"
+          Released => false
+          Progress { note: _ } => false
+          Blocked { reason: _ } => false
+          HandedBack { reason: _ } => false
+          ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+        })
+        && (roadmap_event_id(e: envelope.event) as String) != (id as String)
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+}
+
+// DISCRIMINATING: a v2 Claimed with a missing member refuses, and a schema outside both versions
+// refuses naming the expected pair.
+test fn a_v2_claimed_missing_its_members_or_an_unknown_schema_refuses() -> Bool {
+  let missing_return_to = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\",\"assignee\":\"b@gunb.ai\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown or missing")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  let wrong_schema = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v3\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "roadmap-event/v2") && string_contains(s: reason, pattern: "roadmap-event/v1")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  let unknown_kind = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"celebrated\",\"recorded_at\":\"\"}}") {
     RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown")
     RoadmapEventDecoded { envelope: _ } => false
   }
-  ok && refused && unknown
+  missing_return_to && wrong_schema && unknown_kind
 }
 
 // DISCRIMINATING: a linear chain folds in causal order regardless of list order; receipts do not
 // change the holder's state; release returns to open.
 test fn a_linear_history_folds_in_causal_order() -> Bool {
-  let e1 = ev(kind: Claimed, parent: none, author: "s1", at: "t1")
+  let e1 = self_claim(parent: none, author: "s1", at: "t1")
   let e2 = ev(kind: Progress { note: "half done" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t2")
   let e3 = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "v.json" as NonEmptyStr, verdict: "failed" as NonEmptyStr }, parent: Present { value: e2.id }, author: "belt", at: "t3")
   let e4 = ev(kind: Blocked { reason: "oracle needs a fixture" as NonEmptyStr }, parent: Present { value: e3.id }, author: "s1", at: "t4")
@@ -65,7 +116,7 @@ test fn a_linear_history_folds_in_causal_order() -> Bool {
 // DISCRIMINATING: two writers on the same parent are a fork, named as such, never resolved by clock;
 // an event whose parent is absent makes the history incomplete rather than a root.
 test fn a_fork_and_a_missing_parent_are_their_own_standings() -> Bool {
-  let e1 = ev(kind: Claimed, parent: none, author: "s1", at: "t1")
+  let e1 = self_claim(parent: none, author: "s1", at: "t1")
   let a = ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t9")
   let b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s2", at: "t2")
   let forked = roadmap_node_standing(envs: [e1, a, b])
@@ -73,4 +124,68 @@ test fn a_fork_and_a_missing_parent_are_their_own_standings() -> Bool {
   let incomplete = roadmap_node_standing(envs: [e1, orphan])
   (match forked { NodeForked { heads } => count(heads) == 2  _ => false })
     && roadmap_node_standing_key(s: incomplete) == "history_incomplete"
+}
+
+// THE STANDING'S CLAIM STEP NAMES THE HOLDER, NOT THE RECORDER: a reassignment is a newer Claimed,
+// and the newest wins — the standing's `by` is the latest assignee, the recording author stays on
+// the event.
+test fn reassignment_is_newest_claimed_wins() -> Bool {
+  let e1 = ev(kind: Claimed { assignee: "first@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: none, author: "lead@gunb.ai", at: "t1")
+  let e2 = ev(kind: Claimed { assignee: "second@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: Present { value: e1.id }, author: "lead@gunb.ai", at: "t2")
+  let shuffled = [e2, e1]
+  (match roadmap_node_standing(envs: shuffled) { NodeClaimed { by, since: _ } => (by as String) == "second@gunb.ai"  _ => false })
+    && roadmap_node_standing_key(s: roadmap_node_standing(envs: [e1])) == "claimed"
+}
+
+// THE ASSIGNMENT PROJECTION carries the return_to explicitly (default recorded by the caller as the
+// requester — never derived here), reports no holder on open/forked histories, and clears on
+// release.
+test fn the_assignment_projection_carries_return_to_and_clears_on_release() -> Bool {
+  let e1 = ev(kind: Claimed { assignee: "worker@gunb.ai" as NonEmptyStr, return_to: "lead@gunb.ai" as NonEmptyStr }, parent: none, author: "lead@gunb.ai", at: "t1")
+  let e2 = ev(kind: Released, parent: Present { value: e1.id }, author: "lead@gunb.ai", at: "t2")
+  let held = roadmap_issue_assignment(envs: [e1])
+  let released = roadmap_issue_assignment(envs: [e1, e2])
+  let fork_b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s2", at: "t9")
+  let forked = roadmap_issue_assignment(envs: [e1, ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t8"), fork_b])
+  let open_none = roadmap_issue_assignment(envs: [])
+  (match held { IssueAssignmentProjection { holder, return_to } =>
+    (match holder { Present { value: h } => (h as String) == "worker@gunb.ai"  Absent => false })
+      && (match return_to { Present { value: r } => (r as String) == "lead@gunb.ai"  Absent => false })
+    _ => false })
+    && (match released { IssueAssignmentProjection { holder, return_to: _ } => match holder { Present { value: _ } => false  Absent => true }  _ => false })
+    && (match forked { IssueAssignmentProjection { holder, return_to: _ } => match holder { Present { value: _ } => false  Absent => true }  _ => false })
+    && (match open_none { IssueAssignmentProjection { holder, return_to: _ } => match holder { Present { value: _ } => false  Absent => true }  _ => false })
+}
+
+// THE RECENTS DERIVATION (the autocomplete's feed): every Claimed assignee across the ledger,
+// most-recent-first, each principal exactly once (a principal reassigned lists at their newest
+// turn), only Claimed events feed it, and an unprobed-clock event (empty recorded_at) sorts
+// oldest — absence is not a timestamp.
+test fn the_recents_derivation_dedupes_newest_first_only_claimed() -> Bool {
+  let a_old = ev(kind: Claimed { assignee: "a@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: none, author: "op", at: "2026-09-01T00:00:00Z")
+  let b = ev(kind: Claimed { assignee: "b@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: Present { value: a_old.id }, author: "op", at: "2026-09-03T00:00:00Z")
+  let a_new = ev(kind: Claimed { assignee: "a@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: Present { value: b.id }, author: "op", at: "2026-09-02T00:00:00Z")
+  let unprobed = ev(kind: Claimed { assignee: "c@gunb.ai" as NonEmptyStr, return_to: "a@gunb.ai" as NonEmptyStr }, parent: none, author: "op", at: "")
+  let note = ev(kind: Progress { note: "not an assignment" as NonEmptyStr }, parent: none, author: "op", at: "2026-09-04T00:00:00Z")
+  let recents = roadmap_recent_claimed_assignees(envs: [note, a_new, unprobed, b, a_old])
+  let strings = map(recents, r => r as String)
+  (match strings.first() { Present { value: f } => f == "b@gunb.ai"  Absent => false })
+    && (match strings.skip(n: 1).first() { Present { value: s2 } => s2 == "a@gunb.ai"  Absent => false })
+    && (match strings.skip(n: 2).first() { Present { value: s3 } => s3 == "c@gunb.ai"  Absent => false })
+    && count(strings) == 3
+    && !any(strings, s => s == "op")
+    && count(roadmap_recent_claimed_assignees(envs: [note])) == 0
+}
+
+// THE NEWEST-FIRST ORDER is a total sort by recorded_at, descending, so the fold's head is the
+// latest turn even when the input arrives shuffled.
+test fn the_newest_first_sort_orders_the_whole_population() -> Bool {
+  let a = self_claim(parent: none, author: "a", at: "t1")
+  let b = self_claim(parent: none, author: "b", at: "t5")
+  let c = self_claim(parent: none, author: "c", at: "t3")
+  let sorted = roadmap_events_newest_first(envs: [a, b, c])
+  let authors = map(sorted, e => e.event.author as String)
+  (match authors.first() { Present { value: f } => f == "b"  Absent => false })
+    && (match authors.skip(n: 1).first() { Present { value: s2 } => s2 == "c"  Absent => false })
+    && (match authors.skip(n: 2).first() { Present { value: s3 } => s3 == "a"  Absent => false })
 }

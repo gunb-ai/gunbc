@@ -24,10 +24,11 @@ import gunbc.roadmap.roadmap_event_carrier {
 // srv1 and srv2 writes to the same shared branch and reads the same events. The parent of the new
 // event is the current head of the node's history when there is exactly one; a fork or an incomplete
 // history refuses the write, because recording on top of a state the writer could not read is how a
-// fork becomes three.
-fn roadmap_event_kind_from_words(kind: String, text: String) -> RoadmapEventKind? {
+// fork becomes three. A CLI `claim` records the caller as the assignee — a self-claim; assignment to
+// ANOTHER principal is the served assign route's shape (POST /issue/<id>/assign), not the CLI's.
+fn roadmap_event_kind_from_words(kind: String, text: String, author: NonEmptyStr) -> RoadmapEventKind? {
   let t = trim(text)
-  if kind == "claim" { Present { value: Claimed } }
+  if kind == "claim" { Present { value: Claimed { assignee: author, return_to: author } } }
   else if kind == "release" { Present { value: Released } }
   else if kind == "progress" { if t == "" { none } else { Present { value: Progress { note: t as NonEmptyStr } } } }
   else if kind == "block" { if t == "" { none } else { Present { value: Blocked { reason: t as NonEmptyStr } } } }
@@ -39,7 +40,7 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: w } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: no dashboard instance is rooted at ", w], "") }
     DashboardInstanceResolved { instance } =>
-      match roadmap_event_kind_from_words(kind: kind, text: text) {
+      match roadmap_event_kind_from_words(kind: kind, text: text, author: trim(author) as NonEmptyStr) {
         Absent => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: kind must be claim|release|progress|block|handback, and progress/block/handback need text; got kind=", kind], "") }
         Present { value: k } => {
           if trim(author) == "" { ExitFailure { code: 1, reason: "roadmap_event_record_cli: author is empty" } } else {

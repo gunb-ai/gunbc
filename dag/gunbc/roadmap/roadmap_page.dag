@@ -94,8 +94,11 @@ import extdeps.google.issue_tracker {
   issue_assignee_unassigned_display,
   IssueResultsColumn, IssueResultsColumnKind,
   IssueColumnPriority, IssueColumnType, IssueColumnTitle, IssueColumnAssignee,
-  IssueColumnStatus, IssueColumnDViews, IssueColumnId, IssueColumnLastModified,
+  IssueColumnStatus, IssueColumnDViews, IssueColumnLastModified,
   issue_results_columns, issue_results_column_kind_wire,
+  QualifiedPrincipal, issue_assign_suggestions, avatar_initials_of,
+  principal_from_email,
+  issue_principal_kind_wire, issue_avatar_standing_wire,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
@@ -492,32 +495,134 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
     el_attrs("button", dispatch_button_attributes(view: view, a: a), [ txt("dispatch") ]))
 }
 
-// THE DURABLE ASSIGN ACTION: always available (any issue can be assigned), flat text idiom, POSTs
-// the assign route which records the Claimed event. The assignment is a recorded fact read back
-// through the standing — the assignee field shows the holder the record names. THE START WORK
-// BUTTON IS RETIRED (owner ruling 2026-09-25: "scrap the button stuff we have here for now — just
-// copy buganizer"): the Buganizer row and the detail page carry no execution buttons; the durable
-// Assign remains the detail header's one action, and the execution entry points will be re-modeled
-// later. The /dispatch route and its launch admission stay live — the retired surface is the
-// button, not the seam (the emitted client keeps the action bind so the modeled action's route
-// mapping survives; nothing on the tracker surfaces renders a Start Work button to press).
-fn issue_assign_action_nodes(view: WorkRowView) -> List<Fragment> {
-  [ el_attrs("button", [
-      attr(name: "class", value: "issue-action issue-action-text" ),
-      attr(name: "type", value: "button" ),
-      attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
-      attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
-      attr(name: "data-action-route", value: "assign" ),
-      attr(name: "data-action-state", value: issue_action_availability_wire(a: IssueActionEnabled) ),
-      attr(name: "data-node", value: view.node_id ),
-      attr(name: "title", value: "record an assignment: who this issue is assigned to" ),
-    ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]) ]
+// THE DURABLE ASSIGN ACTION, the Buganizer autocomplete idiom (owner ruling 2026-09-25:
+// assignment works "via email ... autocompletes to recently used emails"): an email input with a
+// datalist of the always-present seeds — the request's authenticated identity and the fabric
+// endpoint — followed by the ledger's recently-used assignees, then the model's Assign label on
+// the submit. The suggestions roster renders each principal avatar-backed (initials, or the
+// workflow badge for Fabric — never-blocks: every standing renders). The form POSTs the assign
+// route natively (method + action + enctype text/plain — newline-delimited fields, no
+// percent-encoding for the route to undo): honest-before-JS, no client program involved. The
+// hidden expected_revision field carries the chain head the page rendered under; the route refuses
+// a stale write with 409 rather than chaining onto a history the writer never saw. The submit
+// deliberately does NOT wear the .issue-action class — the emitted client's action bind would
+// otherwise intercept the click with a bodyless fetch and race
+// the native submit; the model's vocabulary still derives the data attributes (data-action,
+// data-idiom, data-action-route), and the client bind stays live for any surface that renders a
+// modeled .issue-action button. THE START WORK BUTTON STAYS RETIRED (the 2026-09-25 ruling): no
+// execution button renders here — but assigning TO THE FABRIC ENDPOINT is the execution entry
+// point now (owner: "the workflow should be figuring out for us which model to use"): the assign
+// route records the Claimed event and then drives the SAME launch admission the /dispatch route
+// answers (see gunbc.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
+// typed vocabulary when fabric cannot start.
+fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<String>, expected_revision: String) -> List<Fragment> {
+  let suggestions = issue_assign_suggestions(viewer: viewer, recent_emails: recents)
+  [ el_attrs("form", [
+      attr(name: "class", value: "issue-assign-form" ),
+      attr(name: "method", value: "post" ),
+      attr(name: "enctype", value: "text/plain" ),
+      attr(name: "action", value: join(["/issue/", view.node_id, "/assign"], "") ),
+    ], [
+      el_attrs("input", [
+        attr(name: "class", value: "issue-assign-input" ),
+        attr(name: "name", value: "assignee" ),
+        attr(name: "id", value: "issue-assign-input" ),
+        attr(name: "type", value: "text" ),
+        attr(name: "list", value: "issue-assign-recents" ),
+        attr(name: "placeholder", value: "assignee email" ),
+        attr(name: "autocomplete", value: "off" ),
+      ], []),
+      el_attrs("datalist", [
+        attr(name: "id", value: "issue-assign-recents" ),
+      ], map(suggestions, p =>
+        el_attrs("option", [ attr(name: "value", value: p.primary_email as String) ], []))),
+      el_attrs("input", [
+        attr(name: "name", value: "expected_revision" ),
+        attr(name: "type", value: "hidden" ),
+        attr(name: "value", value: expected_revision ),
+      ], []),
+      el_class("div", "issue-assign-suggestions", map(suggestions, issue_assign_suggestion_nodes)),
+      el_attrs("button", [
+        attr(name: "class", value: "issue-assign-submit issue-action-text" ),
+        attr(name: "type", value: "submit" ),
+        attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
+        attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
+        attr(name: "data-action-route", value: "assign" ),
+        attr(name: "data-action-state", value: issue_action_availability_wire(a: IssueActionEnabled) ),
+        attr(name: "data-node", value: view.node_id ),
+        attr(name: "title", value: "record an assignment: who this issue is assigned to" ),
+      ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]),
+    ]) ]
 }
 
-// THE DETAIL ACTION BAR: the durable Assign action alone (owner ruling 2026-09-25 — the table rows
+// ONE SUGGESTION ROW, avatar-backed per the mandate: the avatar chip (initials under the
+// never-blocks law — the /avatar image endpoint is the realization, follow-up), the display name,
+// the email selector, and the kind badge for the workflow endpoint so Fabric never masquerades as
+// human.
+fn issue_assign_suggestion_nodes(p: QualifiedPrincipal) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: "issue-assign-suggestion" ),
+    attr(name: "data-principal", value: p.subject as String ),
+    attr(name: "data-kind", value: issue_principal_kind_wire(k: p.kind) ),
+  ], concat(
+    [ issue_avatar_chip_node(p: p) ],
+    concat(
+      [ el_class("span", "issue-assign-name", [ txt(p.display_name as String) ]),
+        el_class("span", "issue-assign-email", [ txt(p.primary_email as String) ]) ],
+      [ el_class("span", "issue-assign-kind", [ txt(issue_principal_kind_wire(k: p.kind)) ]) ])))
+}
+
+// THE AVATAR CHIP: initials under every standing (never-blocks law); the workflow endpoint wears
+// the badge. A resolved human avatar renders the same initials chip until the /avatar realization
+// lands — the standing rides the row for the upgrade, never a block.
+fn issue_avatar_chip_node(p: QualifiedPrincipal) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: join([
+      "issue-avatar",
+      if issue_principal_kind_wire(k: p.kind) == "workflow" { " issue-avatar-workflow" } else { "" },
+    ], "") ),
+    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: p.avatar) ),
+  ], concat(
+    [ txt(avatar_initials_of(display_name: p.display_name as String)) ],
+    if issue_principal_kind_wire(k: p.kind) == "workflow" {
+      [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
+    } else {
+      []
+    }))
+}
+
+// THE RESULTS TABLE'S ASSIGNEE CHIP (owner ruling 2026-09-25, "make assignee always be the pfp (or
+// a default/placeholder) of the email account"): the principal's circular chip — initials under
+// the avatar law, the workflow badge for Fabric — NEVER the email text (the full identity rides
+// the title attribute, and the detail page). The cell passes the standing's holder email through
+// the principal model, so an unparseable value fails closed to the unassigned placeholder rather
+// than a broken chip.
+fn issue_assignee_chip_node(email: String) -> Fragment {
+  match principal_from_email(email: email) {
+    Present { value: p } =>
+      el_attrs("span", [
+        attr(name: "class", value: join([
+          "issue-avatar",
+          if issue_principal_kind_wire(k: p.kind) == "workflow" { " issue-avatar-workflow" } else { "" },
+        ], "") ),
+        attr(name: "data-avatar", value: issue_avatar_standing_wire(a: p.avatar) ),
+        attr(name: "title", value: join([p.display_name as String, " <", p.primary_email as String, ">"], "") ),
+      ], concat(
+        [ txt(avatar_initials_of(display_name: p.display_name as String)) ],
+        if issue_principal_kind_wire(k: p.kind) == "workflow" {
+          [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
+        } else {
+          []
+        }))
+    Absent =>
+      el_class("span", "issue-cell-assignee-missing", [ txt(issue_assignee_unassigned_display as String) ])
+  }
+}
+
+// THE DETAIL ACTION BAR: the durable Assign form alone (owner ruling 2026-09-25 — the table rows
 // and the detail header carry no execution buttons; see issue_assign_action_nodes for the ruling).
-fn issue_detail_action_bar_nodes(view: WorkRowView) -> List<Fragment> {
-  issue_assign_action_nodes(view: view)
+fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<String>, expected_revision: String) -> List<Fragment> {
+  issue_assign_action_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision)
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -1330,7 +1435,8 @@ fn issue_controls_markup() -> Fragment {
 
 // THE DENSE ISSUE LINE derives its anatomy FROM the extdeps model (owner ruling 2026-09-24, the
 // derivation law): one cell per declared results column, in roster order — P · TYPE · TITLE ·
-// ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED — then the workflow's trailing actions region
+// ASSIGNEE · STATUS · D VIEWS · LAST MODIFIED (the 2026-09-25 ruling dropped the ID column: the
+// TITLE cell IS the link) — then the workflow's trailing actions region
 // (the last grid track), which the 2026-09-25 Buganizer ruling made STATUS ONLY (the k-of-n /
 // attempt-count chip — see issue_row_actions_nodes; the row's action buttons retired with it). The
 // template lands ONCE, on the .issue-table container (the stylesheet's
@@ -1339,11 +1445,12 @@ fn issue_controls_markup() -> Fragment {
 // row's tracks ARE the header's by construction — a second grid spelling, here or in the sheet,
 // is a derivation defect, never a styling choice (owner column-alignment fix 2026-09-24). Cells
 // the domain has no fact for render EMPTY and keep their track — emptiness never re-orders a row.
-// The cells: TITLE reads the headline; ASSIGNEE reads the standing's holder (who holds the work
+// The cells: TITLE reads the headline AND links the issue's detail route — the capture's
+// ID-links-to-detail idiom, the link following the words (owner ruling 2026-09-25); ASSIGNEE reads
+// the standing's holder (who holds the work
 // now — the attempt identity lives on the Work tab) and falls back to the model's "--"
 // unassigned placeholder when no holder exists (the capture's unassigned spelling); STATUS reads
-// the decided bar signal; the ID cell links the issue's detail route (the capture's
-// ID-links-to-detail). The table's row is NOT the taskbar — the taskbar is the /roadmap and
+// the decided bar signal. The table's row is NOT the taskbar — the taskbar is the /roadmap and
 // /sandbox component; the table reads the SAME decided bar view
 // (one authority) onto the contract's dense line. No id anchor on the row's li: the #node-* ids
 // were the forest rows' anchors, and the dense table rows carry none — the row's stable identity
@@ -1364,20 +1471,23 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
   match col.kind {
     IssueColumnPriority => []
     IssueColumnType => []
-    IssueColumnTitle => inline_md_nodes(text: view.headline)
+    IssueColumnTitle =>
+      [ el_attrs("a", [
+          attr(name: "class", value: "issue-title-link" ),
+          attr(name: "href", value: join(["/issue/", view.node_id], "") ),
+        ], inline_md_nodes(text: view.headline)) ]
     IssueColumnAssignee =>
       let assignee = issue_assignee_value(view: view, attempts: [])
-      [ txt(if assignee == "" { issue_assignee_unassigned_display as String } else { assignee }) ]
+      if assignee == "" {
+        [ txt(issue_assignee_unassigned_display as String) ]
+      } else {
+        [ issue_assignee_chip_node(email: assignee) ]
+      }
     IssueColumnStatus =>
       if bar.signal == "" { [] } else {
         [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
       }
     IssueColumnDViews => []
-    IssueColumnId =>
-      [ el_attrs("a", [
-          attr(name: "class", value: "issue-id-link" ),
-          attr(name: "href", value: join(["/issue/", view.node_id], "") ),
-        ], [ txt(view.node_id) ]) ]
     IssueColumnLastModified => []
   }
 }
@@ -1529,9 +1639,17 @@ fn issue_event_row_node(env: RoadmapEventEnvelope) -> Fragment {
   ])
 }
 
+// THE EVENT ROW'S PAYLOAD WORDS. A Claimed row names its assignee: a self-claim reads as claiming,
+// a reassignment (assignee ≠ author) reads as assigned-to, so the history tells the two apart
+// without hiding who recorded the event — the author column already names them.
 fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
   match env.event.kind {
-    Claimed => "claimed the issue"
+    Claimed { assignee } =>
+      if (assignee as String) == (env.event.author as String) {
+        "claimed the issue"
+      } else {
+        join(["assigned the issue to ", assignee as String], "")
+      }
     Released => "released the issue"
     Progress { note } => join(["progress: ", note as String], "")
     Blocked { reason } => join(["blocked: ", reason as String], "")
@@ -1627,7 +1745,7 @@ fn issue_tab_chip(label: String, tab: String) -> Fragment {
   ], [ txt(label) ])
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> Fragment {
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<String>, expected_revision: String) -> Fragment {
   let bar = task_bar_view_of(view: view, observation: observation)
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
@@ -1645,7 +1763,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
               [ el_attrs("span", [
                   attr(name: "class", value: join(["issue-status ", activity_line_prefix_class, bar.signal_class], "") ),
                 ], [ txt(bar.signal) ]) ],
-              el_class("div", "issue-action-bar", issue_detail_action_bar_nodes(view: view))))))))
+              el_class("div", "issue-action-bar", issue_detail_action_bar_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision))))))))
     el_class("div", "issue-tabs", [
       issue_tab_chip(label: "issue", tab: "issue"),
       issue_tab_chip(label: "work", tab: "work"),
@@ -1678,7 +1796,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
   ])
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<String>, expected_revision: String) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
@@ -1691,7 +1809,7 @@ fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observatio
       ]),
       el("body", [
         roadmap_header(page: "issue"),
-        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events),
+        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision),
         dispatch_client_script(),
       ]),
     ],
@@ -1713,6 +1831,16 @@ fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -
   }
 }
 
+// THE CHAIN HEAD the rendered page pins into the assign form's expected_revision: the envelope no
+// other envelope parents. An empty or forked history pins "" — the route then refuses nothing (the
+// fork refusal below governs writes), and any write on empty is a root.
+fn issue_chain_head_id(envs: List<RoadmapEventEnvelope>) -> String {
+  match (filter(envs, e => !any(envs, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))).first() {
+    Present { value: h } => h.id as String
+    Absent => ""
+  }
+}
+
 fn issue_detail_page_for(
   proj: RoadmapAuthorityProjection,
   node_id: String,
@@ -1722,6 +1850,8 @@ fn issue_detail_page_for(
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
   events: List<RoadmapEventEnvelope>,
+  viewer: String,
+  recents: List<String>,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -1749,7 +1879,10 @@ fn issue_detail_page_for(
             panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
             observation: observation,
             attempts: attempts,
-            events: events)
+            events: events,
+            viewer: viewer,
+            recents: recents,
+            expected_revision: issue_chain_head_id(envs: events))
       }
   }
 }

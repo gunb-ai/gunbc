@@ -1004,15 +1004,18 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-cell-title" }, decls: [
       decl(prop: Color, value: "var(--issue-text)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-cell-id" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: MinWidth, value: scale_var(t: width_status)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-id-link" }, decls: [
+    StaticRule { selector: ClassSelector { name: "issue-title-link" }, decls: [
       decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: TextDecoration, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-title-link:hover" }, decls: [
+      decl(prop: TextDecoration, value: "underline"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-cell-assignee" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-cell-assignee-missing" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: Color, value: "var(--issue-text-dim)"),
@@ -1166,6 +1169,60 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: MarginLeft, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-form" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-input" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_2, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-suggestions" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-suggestion" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-name" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-email" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-assign-kind" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-avatar" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Width, value: scale_var(t: space_24)),
+      decl(prop: Height, value: scale_var(t: space_24)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--issue-bg-subtle)"),
+      decl(prop: Background, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-avatar-workflow" }, decls: [
+      decl(prop: Background, value: "var(--issue-action)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-avatar-badge" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: MarginLeft, value: scale_var(t: space_2)),
+      decl(prop: Color, value: "var(--issue-action)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-event-history" }, decls: [
       decl(prop: Display, value: "flex"),

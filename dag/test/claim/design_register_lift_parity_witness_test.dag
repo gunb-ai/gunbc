@@ -358,7 +358,24 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_issue_table_assignee_renders_identity_or_placeholder (the capture's "--" cell),
 // the frontier suite's band-vocabulary re-law, the register censuses unchanged. Derived by
 // execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "a1155d6444e4ac0e"
+// Re-pinned 2026-09-25 for the assignment vertical (owner rulings 2026-09-25 + the issue-page
+// mandate): the issue-table grid moves to the FIXED-TRACK roster (extdeps.google.issue_tracker
+// issue_results_columns: short columns fixed at declared content bounds — 4ch P, 6ch TYPE, the
+// avatar-chip calc for ASSIGNEE, 6ch D VIEWS, 12ch LAST MODIFIED, 24ch actions — TITLE the
+// dominant minmax(0, 2fr) against STATUS's minmax(0, 1fr), no max-content track survives, so band
+// filtering never re-measures the geometry); the retired ID column's two rules (.issue-cell-id,
+// .issue-id-link) delete with the column; the TITLE link gains .issue-title-link (+ hover) painted
+// from --issue-action; the ASSIGNEE cell becomes the avatar chip (flex-centered, the chip's
+// 24px-token circle + workflow badge + the fail-closed .issue-cell-assignee-missing); and the
+// durable Assign control lands (.issue-assign-form/-input/-suggestions/-suggestion/-name/-email/
+// -kind + .issue-avatar family). Behavioral receipts: w_issue_results_row_tracks_derive_from_the_
+// roster, w_issue_results_tracks_take_no_population_and_never_re_measures, w_title_is_the_primary_
+// column_with_the_dominant_share, witness_issue_table_assignee_renders_the_avatar_chip_or_
+// placeholder, witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee (the form),
+// witness_issue_table_rows_share_the_header_template (7 cells + the title link), the register
+// censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// c71edd8bb8d7e8e0); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "c71edd8bb8d7e8e0"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the
