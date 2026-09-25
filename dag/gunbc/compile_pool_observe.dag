@@ -2,7 +2,7 @@ module gunbc.compile_pool_observe
 
 import std.types { String, NonEmptyStr, Bool }
 import std.measure { ByteSize }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.algebra { trim }
 import extdeps.systemd {
   SystemdUnitProperty,
@@ -37,7 +37,7 @@ import gunbc.host_compile_pool {
   CompilePoolObservationUnavailable,
 }
 
-data compile_pool_observe_scope_disposition: Disposition = SingleAuthority
+data compile_pool_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE MISSING PRODUCER. gunbc.host_compile_pool declares CompilePoolObservation and gunbc.compile_pool_ensure
 // consumes it, and until this module existed every value of that type in the tree was hand-authored inside a

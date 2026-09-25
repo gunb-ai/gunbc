@@ -56,6 +56,33 @@ de-fork — that sequence, not the {node,coercion} exemption, gates activation.
 
 ---
 
+## 2D. 2026-09-24 — the shared type-name census, classified by what the body's names RESOLVE to (the one list)
+
+**This is the single census of type names declared in both `dag/std` and `src/v2/std`; it supersedes the per-basename `shared type-names` column of §2A and no second list exists.** Population: every top-level `type` declaration name under each tree, joined by name — 32 names at this writing. Each side is classified by resolving every capitalized name in its body to the declaration it binds (its own module's `type`/`data`/`fn`, else the module whose `import` list carries it) and comparing the resolved referents, NOT the body text: `Float = Float64` is byte-identical on both sides and binds two different `Float64`s, and `IntPlatform` differs by one space while every referent differs. Text comparison is what misclassified six pairs before. A **meaning fork** is one name for materially different concepts (DESIGN §3); it is resolved by renaming or deleting one side at its declaration, delete-first with no alias, and the new name is taken from the cited framework rather than coined.
+
+| name(s) | dag/std side (resolved) | src/v2/std side (resolved) | class | disposition |
+| --- | --- | --- | --- | --- |
+| `ProjectionKind` | `std.planar_projection` — drawing views (`PlanFromAbove`, `ElevationFromSouth`, …) | `v2.std.projection` — compiler lens kinds; module imported by nobody | MEANING FORK | **RESOLVED (this change):** v2 module deleted — it had zero importers, so deletion, not rename, is the repair |
+| `AlgebraCarrier` | `std.algebra` — record: `name`, `AlgebraProfile`, `List<CarrierSpelling>` | `v2.std.rust_leaf_model_claim` — one-arm enum `AlgebraCarrierOrderedRing`; its only datum was imported and never read | MEANING FORK | **RESOLVED (this change):** v2 type + datum deleted (dead); `std.algebra` `AlgebraProfile` `OrderedRingProfile` already names that structure |
+| `ApproximateField` | `std.approximate_field` — wrapper: `Field<F>` + rounding/precision/special values | `v2.std.algebra` — ops record (`add`/`zero`/`mul`/`compare`); zero consumers | MEANING FORK | **RESOLVED (this change):** v2 record deleted (dead; ops come from inhabitance, DESIGN §4) |
+| `EffectRequest` | `std.authorization_profile` — authorization request: subject / effect / target / context / evidence (XACML Request shape) | `v2.std.runtime` — a performed effect operation with its arguments and continuation frame | MEANING FORK | **RESOLVED (this change):** v2 renamed `OperationCall` (+ `OperationCallKind`), Plotkin–Pretnar *Handling Algebraic Effects* (LMCS 2013) `op(v; y.c)` = *operation call* |
+| `Float32` / `Float64` | `std.float` — aliases `= Real32` / `= Real64` (algebraic reals at a width) | `v2.std.float` — records over `FloatBody` (sign / biased exponent / trailing significand) | MEANING FORK | **RESOLVED (this change):** v2 renamed `Binary32` / `Binary64`, IEEE 754-2019 §3.6 interchange-format names; v2 `Float = Binary64` |
+| `RankingDimension` | `std.termination` — kinds of well-founded measure (`TreeSize`, `ListLength`, …) | `v2.std.cardinality` — record `measured: Symbol`, one entry of a lexicographic tuple | MEANING FORK | **RESOLVED (this change):** v2 renamed `RankingComponent`, Ben-Amram & Genaim *Ranking Functions for Linear-Constraint Loops* (JACM 2014): a lexicographic ranking function's *components* |
+| `NonNegativeInt` / `PositiveInt` | `std.integer` — `= Nat` / `= Nat where gt_zero` (refinement of `std.nat` `Nat`) | `v2.std.refinement` — record `refined: Refined<Int>` (smart-constructor over `v2.std.integer` `Int`), consumed by the formatter extdeps | MEANING FORK | OPEN — next PR of this wave (v2 side has ~40 consumer sites across `v2.extdeps.formatters.*`) |
+| `Float` | `= Float64` → `std.float` `Float64` | `= Binary64` → `v2.std.float` `Binary64` (was `= Float64`, byte-identical text, different referent) | resolution-divergent (text was identical) | OUT OF SCOPE — seed kernel name, awaiting operator ruling |
+| `String` | `= FreeMonoid<Char>` → `std.algebra` `FreeMonoid`, `std.types` `Char` | same referents | one concept, two declarations (duplicate) | OUT OF SCOPE — seed kernel name, awaiting operator ruling |
+| `List` | `= FreeMonoid<element>` → `std.algebra` `FreeMonoid` | `= std.algebra.FreeMonoid<T>` → same | one concept, two declarations (duplicate) | OUT OF SCOPE — seed kernel name, awaiting operator ruling |
+| `Bool` | `std.types` `= True \| False` | `v2.std.logic` `= True \| False` (arms are two more same-name declarations) | one concept, two declarations (duplicate) | OUT OF SCOPE — seed kernel name, awaiting operator ruling |
+| `Nat` | `= CommutativeSemiring<Magnitude>` | `= Zero \| Succ` (Peano coproduct) | same concept, divergent model | NEEDS A DECISION RECORD (integer family root) |
+| `Int`, `UInt` | → `std.nat` `Nat` (via `std.algebra` `GroupCompletion`) | → `v2.std.nat` `Nat` | same concept, divergent referent | NEEDS A DECISION RECORD (integer family) |
+| `Int8`…`Int128`, `UInt8`…`UInt128` | → `std.machine_constraints` `Compose` / `MachineWidth<N>` + `std.integer` `Int`/`UInt` | → `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth<WordN>` + `v2.std.integer` `Int`/`UInt` | same concept, every referent divergent | NEEDS A DECISION RECORD (integer family) |
+| `IntPlatform`, `UIntPlatform` | → `std.machine_constraints` `Compose`/`MachineWidth`/`PointerWidth` | → `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth`/`PointerWidth` | text near-identical, every referent divergent | NEEDS A DECISION RECORD (integer family) |
+| `Compose`, `MachineWidth` | `std.machine_constraints` — phantom composition / width over `WidthResolution` | `v2.std.integer` / `v2.std.machine` — opaque, unconstrained parameter | same concept, divergent constraint | NEEDS A DECISION RECORD (integer family) |
+| `TerminationProof` | `std.termination` — `dimensions: List<RankingDimension>` | `v2.std.cardinality` — `non_increasing: List<RankingComponent>`, `strict: RankingComponent` | same question, divergent model | NEEDS A DECISION RECORD |
+| `Unit` | `std.types` — empty record | `v2.std.cardinality` — empty record | one concept, two declarations | NEEDS A DECISION RECORD |
+
+---
+
 ## 0. Thesis — the only duplication is v2's bootstrap copies of dag
 
 `dag/` is the single authority (the standard library + the grounded `extdeps/` domain models + the CI spec). `src/v2/` is the **compiler**, and a compiler needs a standard library to run. During bootstrap it made copies of pieces of `dag/std` inside `src/v2/std`. Those copies are the fork surface.

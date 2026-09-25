@@ -19,7 +19,7 @@ import gunbc.witness_v2_native_route {
   RouteIdentityUnrecorded, UniverseUnderived, UniverseDuplicatesPresent, UniversePrefixViolationsPresent,
   PopulationDuplicatesPresent, PopulationForeignRowsPresent, PopulationOmissionsPresent,
   PositivePopulationEmpty, RequiredNativePassRegressed, DivergencesPresent, UnattributedExclusionsPresent,
-  UnattributedFileRefusalsPresent, UnattributedHeadAdvisoriesPresent, ContextRefusalsUnbacked,
+  UnattributedFileRefusalsPresent, UnattributedHeadAdvisoriesPresent, ContextRefusalsUnbacked, FrontierRetirementCausesUnowned,
   FalseControlNotObserved, TrueControlNotObserved, LivePairObservedWhileEnrolledRed,
   MalformedControlAcceptedByRoute, OldRouteControlNeverInstalled, EmittedBuildRustcUnrecorded,
   EmittedBuildCompilerUnbound, EmittedBuildWarningsNotDenied, EmittedBuildNotClean,
@@ -230,6 +230,7 @@ fn native_frontier_clause_is_integrity(cause: NativeRouteAdmissionRefusalCause) 
     UnattributedFileRefusalsPresent => true
     UnattributedHeadAdvisoriesPresent => true
     ContextRefusalsUnbacked => true
+    FrontierRetirementCausesUnowned => true
     FalseControlNotObserved => true
     TrueControlNotObserved => true
     LivePairObservedWhileEnrolledRed => true

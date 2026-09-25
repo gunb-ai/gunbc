@@ -26,10 +26,10 @@ fn git_worktree_type_and_colliding_service() -> &'static str {
      }\n"
 }
 
-fn git_worktree_type_and_distinct_service() -> &'static str {
+fn a_type_authored_into_the_dotted_service_space() -> &'static str {
     "module esc.probe\n\
-     type GitWorktree { n: Int }\n\
-     service git.Other {\n\
+     type Git__Worktree { n: Int }\n\
+     service git.Worktree {\n\
        operation Add {\n\
          input { n: Int }\n\
          output { success: Bool from \"exit_success\" }\n\
@@ -38,10 +38,17 @@ fn git_worktree_type_and_distinct_service() -> &'static str {
      }\n"
 }
 
-#[test]
-fn type_gitworktree_and_service_git_worktree_refuse_rather_than_e0428() {
-    let red = compile("esc/probe.dag", git_worktree_type_and_colliding_service());
-    let collisions: Vec<_> = red
+fn emitted_text(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> String {
+    result
+        .files
+        .iter()
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn collision_count(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> usize {
+    result
         .diagnostics
         .iter()
         .filter(|d| {
@@ -50,37 +57,48 @@ fn type_gitworktree_and_service_git_worktree_refuse_rather_than_e0428() {
                 CompilerDiagnostic::EmittedSymbolCollision { .. }
             )
         })
-        .collect();
+        .count()
+}
+
+/// The live `extdeps.git` shape: the dotted service keeps its segment boundary, so the type and the
+/// service emit two structs and nothing refuses.
+#[test]
+fn type_gitworktree_and_service_git_worktree_emit_two_distinct_structs() {
+    let green = compile("esc/probe.dag", git_worktree_type_and_colliding_service());
+    assert_eq!(collision_count(&green), 0, "{:?}", green.diagnostics);
+    assert!(green.diagnostics.is_empty(), "{:?}", green.diagnostics);
+    let joined = emitted_text(&green);
     assert_eq!(
-        collisions.len(),
+        joined.matches("pub struct GitWorktree ").count(),
         1,
-        "expected EmittedSymbolCollision, got {:?}",
-        red.diagnostics
+        "{joined}"
     );
+    assert_eq!(
+        joined.matches("pub struct Git__Worktree ").count(),
+        1,
+        "{joined}"
+    );
+    assert_eq!(
+        joined
+            .matches("#[allow(non_camel_case_types)]\npub struct Git__Worktree ")
+            .count(),
+        1,
+        "the `__` symbol carries its lint allowance at the definition: {joined}"
+    );
+}
+
+/// The authored residue still refuses: a type spelled with `__` lands in the dotted-service space,
+/// and the wall -- not rustc's E0428 -- is what observes it.
+#[test]
+fn a_type_spelled_into_the_service_space_still_refuses_rather_than_e0428() {
+    let red = compile(
+        "esc/probe.dag",
+        a_type_authored_into_the_dotted_service_space(),
+    );
+    assert_eq!(collision_count(&red), 1, "{:?}", red.diagnostics);
     assert!(
         red.files.is_empty(),
         "a colliding pair must not emit a crate rustc would refuse with E0428: {} files",
         red.files.len()
-    );
-}
-
-#[test]
-fn distinct_emitted_symbols_still_emit_one_gitworktree_struct() {
-    let green = compile("esc/probe.dag", git_worktree_type_and_distinct_service());
-    assert!(
-        green.diagnostics.is_empty(),
-        "distinct identities must emit: {:?}",
-        green.diagnostics
-    );
-    let joined = green
-        .files
-        .iter()
-        .map(|f| f.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let count = joined.matches("pub struct GitWorktree").count();
-    assert_eq!(
-        count, 1,
-        "one type declaration must emit one struct; got {count} in {joined}"
     );
 }

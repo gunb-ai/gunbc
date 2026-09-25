@@ -2,7 +2,7 @@ module gunbc.runner_microvm_network_converge
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
 import extdeps.exec.command { ArgvCommand }
@@ -48,7 +48,7 @@ import gunbc.runner_microvm_network {
   render_converged_slot_network,
 }
 
-data runner_microvm_network_converge_disposition: Disposition = SingleAuthority
+data runner_microvm_network_converge_disposition: ConstructionMechanism = SingleAuthority
 
 // THE CONVERGE INSTALLS WHAT THE MODEL DECLARES AND THEN READS THE HOST, NOT ITS OWN INTENT.
 //
