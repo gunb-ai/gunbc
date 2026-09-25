@@ -618,11 +618,11 @@ type FileIdentity {
 fn file_identity(text: String) -> FileIdentity? {
   let words = filter(split(s: trim(s: text), delimiter: " "), w => w != "")
   if count(words) < 4 { none } else {
-    match get(xs: words, index: 0) {
+    match first(words) {
       Absent => none
-      Present { value: inode } => match get(xs: words, index: 1) {
+      Present { value: inode } => match first(skip(words, n: 1)) {
         Absent => none
-        Present { value: c } => match get(xs: words, index: 2) {
+        Present { value: c } => match first(skip(words, n: 2)) {
           Absent => none
           Present { value: b } => match parse_int(s: c) {
             Absent => none
