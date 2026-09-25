@@ -450,23 +450,7 @@ pub fn emit_simple_expr(
                     let field_strs = Rc::new({
                         let mut __result = Vec::new();
                         for f in expr.children.clone().iter().cloned() {
-                            __result.push(v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "\"".to_string(),
-                                        crate::v1_std_core::field_init_node_name_at(
-                                            f.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                    ),
-                                    "\": ".to_string(),
-                                ),
-                                emit_simple_expr(
-                                    crate::v1_std_core::field_init_node_value(f.clone()),
-                                    target.clone(),
-                                    source_indices.clone(),
-                                ),
-                            ));
+                            __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat("\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(crate::v1_std_core::field_init_node_name_at(f.clone(), source_indices.clone()))), "\": ".to_string()), emit_simple_expr(crate::v1_std_core::field_init_node_value(f.clone()), target.clone(), source_indices.clone())));
                         }
                         __result
                     });
@@ -7116,27 +7100,7 @@ pub fn emit_typed_record_lit_unified(
                         let field_strs = Rc::new({
                             let mut __result = Vec::new();
                             for f in fields.iter().cloned() {
-                                __result.push(v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    rls.anon_field_indent.clone(),
-                                                    "\"".to_string(),
-                                                ),
-                                                crate::v1_std_core::field_init_node_name_at(
-                                                    f.clone(),
-                                                    source_indices.clone(),
-                                                ),
-                                            ),
-                                            "\": ".to_string(),
-                                        ),
-                                        recurse(crate::v1_std_core::field_init_node_value(
-                                            f.clone(),
-                                        )),
-                                    ),
-                                    ",".to_string(),
-                                ));
+                                __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rls.anon_field_indent.clone(), "\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(crate::v1_std_core::field_init_node_name_at(f.clone(), source_indices.clone()))), "\": ".to_string()), recurse(crate::v1_std_core::field_init_node_value(f.clone()))), ",".to_string()));
                             }
                             __result
                         });
