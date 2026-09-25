@@ -1,9 +1,9 @@
 module gunbc.runner.runner_jit_admission
 
 import std.types { NonEmptyStr, Bool }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 
-data runner_jit_admission_disposition: Disposition = SingleAuthority
+data runner_jit_admission_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE IS THE AXIS-DEFINITION AUTHORITY for the six host-printed admission names
 // (signature, expiry, replay, unit-binding, boot-binding, attempt-binding). The names originated as

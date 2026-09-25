@@ -2,7 +2,7 @@ module gunbc.runner_microvm_lifecycle
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import v2.std.optional { Present, Absent }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.fabric.sanitation {
   CellId, SandboxId, CellReadiness, SanitationFact, SanitationReadback, SanitationObservation,
   FactConfirmed, FactRefuted, FactUnobservable,
@@ -30,7 +30,7 @@ import gunbc.runner_microvm_cell_readiness {
   bind_attempt_to_cell, in_flight_attempt_unit,
 }
 
-data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
+data runner_microvm_lifecycle_disposition: ConstructionMechanism = SingleAuthority
 
 // THE HOST-SIDE PER-ATTEMPT LIFECYCLE CONTROLLER, AS THE DECISIONS IT MAKES.
 //

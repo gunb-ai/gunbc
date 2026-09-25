@@ -2,7 +2,6 @@ module extdeps.standards.webauthn_authenticator_data
 
 import std.types { Int, List }
 import std.logic { Bool }
-import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -100,13 +99,13 @@ fn authenticator_flags_of(octet: Int) -> AuthenticatorFlags {
 }
 
 type AttestedCredentialData {
-  aaguid: List<UInt8>
-  credential_id: List<UInt8>
+  aaguid: List<Int>
+  credential_id: List<Int>
   credential_public_key: CborValue
 }
 
 type AuthenticatorData {
-  rp_id_hash: List<UInt8>
+  rp_id_hash: List<Int>
   flags: AuthenticatorFlags
   sign_count: Int
   attested_credential: AttestedCredentialData?
@@ -126,14 +125,14 @@ type AuthenticatorDataDecode
 // An octet read that refuses on absence rather than answering zero (review 69598 of
 // gunbc#11970): every caller has already established the length, and the read still owes a
 // located refusal instead of a fabricated value should that ever stop being true.
-fn octet_at(octets: List<UInt8>, at: Int) -> Int? {
+fn octet_at(octets: List<Int>, at: Int) -> Int? {
   match octets |> get(at) {
     null => none
     o => Present { value: o }
   }
 }
 
-fn big_endian_at(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Int? {
+fn big_endian_at(octets: List<Int>, at: Int, n: Int, acc: Int) -> Int? {
   if n <= 0 { Present { value: acc } } else {
     match octet_at(octets: octets, at: at) {
       Absent => none
@@ -142,11 +141,11 @@ fn big_endian_at(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Int? {
   }
 }
 
-fn slice(octets: List<UInt8>, at: Int, n: Int) -> List<UInt8> {
+fn slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
   octets |> skip(at) |> take(n)
 }
 
-fn truncated_if_short(octets: List<UInt8>, at: Int, needed: Int) -> AuthenticatorDataRefusal? {
+fn truncated_if_short(octets: List<Int>, at: Int, needed: Int) -> AuthenticatorDataRefusal? {
   let available = count(octets) - at
   if available < needed { Present { value: AuthenticatorDataTruncated { at: at, needed: byte_size(count: needed), available: byte_size(count: if available < 0 { 0 } else { available }) } } } else { none }
 }
@@ -157,7 +156,7 @@ type AttestedCredentialRead
 
 // aaguid || credentialIdLength || credentialId || credentialPublicKey, from `at`. The COSE key is
 // one CBOR item whose end the CBOR decoder reports, which is what lets extensions follow it.
-fn read_attested_credential(octets: List<UInt8>, at: Int) -> AttestedCredentialRead {
+fn read_attested_credential(octets: List<Int>, at: Int) -> AttestedCredentialRead {
   match truncated_if_short(octets: octets, at: at, needed: byte_size_count(b: authenticator_data_aaguid_size) + byte_size_count(b: authenticator_data_credential_id_length_size)) {
     Present { value: r } => AttestedCredentialRefused { cause: r }
     Absent => {
@@ -186,7 +185,7 @@ type ExtensionsRead
   = ExtensionsRead { extensions: CborValue?, next: Int }
   | ExtensionsRefused { cause: AuthenticatorDataRefusal }
 
-fn read_extensions(octets: List<UInt8>, at: Int, included: Bool) -> ExtensionsRead {
+fn read_extensions(octets: List<Int>, at: Int, included: Bool) -> ExtensionsRead {
   if !included { ExtensionsRead { extensions: none, next: at } } else {
     match cbor_decode_item(octets: octets, at: at, depth: 0) {
       CborRefused { cause: c } => ExtensionsRefused { cause: AuthenticatorDataExtensionsRefused { cause: c } }
@@ -195,7 +194,7 @@ fn read_extensions(octets: List<UInt8>, at: Int, included: Bool) -> ExtensionsRe
   }
 }
 
-fn authenticator_data_finish(octets: List<UInt8>, rp_id_hash: List<UInt8>, flags: AuthenticatorFlags, sign_count: Int, credential: AttestedCredentialData?, at: Int) -> AuthenticatorDataDecode {
+fn authenticator_data_finish(octets: List<Int>, rp_id_hash: List<Int>, flags: AuthenticatorFlags, sign_count: Int, credential: AttestedCredentialData?, at: Int) -> AuthenticatorDataDecode {
   match read_extensions(octets: octets, at: at, included: flags.extension_data_included) {
     ExtensionsRefused { cause: r } => AuthenticatorDataRefused { cause: r }
     ExtensionsRead { extensions: ext, next: n } =>
@@ -208,7 +207,7 @@ fn authenticator_data_finish(octets: List<UInt8>, rp_id_hash: List<UInt8>, flags
 
 // THE WHOLE STRUCTURE, consuming every octet: what the flags say is present must be present and
 // nothing else may follow. For the assertion reading see decode_authenticator_data_prefix.
-fn decode_authenticator_data(octets: List<UInt8>) -> AuthenticatorDataDecode {
+fn decode_authenticator_data(octets: List<Int>) -> AuthenticatorDataDecode {
   match truncated_if_short(octets: octets, at: 0, needed: byte_size_count(b: authenticator_data_prefix_size)) {
     Present { value: r } => AuthenticatorDataRefused { cause: r }
     Absent => {
@@ -234,7 +233,7 @@ fn decode_authenticator_data(octets: List<UInt8>) -> AuthenticatorDataDecode {
 // interpreted as a promise of what follows. This is the assertion reading; a longer input is
 // refused as trailing rather than parsed, because the caller asked for the prefix form.
 type AuthenticatorDataPrefix {
-  rp_id_hash: List<UInt8>
+  rp_id_hash: List<Int>
   flags: AuthenticatorFlags
   sign_count: Int
 }
@@ -243,7 +242,7 @@ type AuthenticatorDataPrefixDecode
   = AuthenticatorDataPrefixDecoded { prefix: AuthenticatorDataPrefix }
   | AuthenticatorDataPrefixRefused { cause: AuthenticatorDataRefusal }
 
-fn decode_authenticator_data_prefix(octets: List<UInt8>) -> AuthenticatorDataPrefixDecode {
+fn decode_authenticator_data_prefix(octets: List<Int>) -> AuthenticatorDataPrefixDecode {
   match truncated_if_short(octets: octets, at: 0, needed: byte_size_count(b: authenticator_data_prefix_size)) {
     Present { value: r } => AuthenticatorDataPrefixRefused { cause: r }
     Absent =>

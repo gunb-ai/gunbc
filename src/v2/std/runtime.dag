@@ -501,19 +501,19 @@ type ResourceEffectBoundary {
   identity_reference: BoundaryAllowance
 }
 
-type EffectRequestKind
+type OperationCallKind
   = ReadResource
   | WriteResource
 
-type EffectRequest {
-  kind: EffectRequestKind
+type OperationCall {
+  kind: OperationCallKind
   operation: PrimitiveOperationRef
   arguments: List<RuntimeValue>
   continuation: EvaluationFrame
 }
 
 type EffectHandler {
-  handle: fn(EffectRequest) -> Outcome<RuntimeValue>
+  handle: fn(OperationCall) -> Outcome<RuntimeValue>
 }
 
 type EffectHandlerBinding {
@@ -521,7 +521,7 @@ type EffectHandlerBinding {
   write_resource: EffectHandler
 }
 
-fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKind) -> EffectHandler {
+fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: OperationCallKind) -> EffectHandler {
   match kind {
     ReadResource => binding.read_resource
     WriteResource => binding.write_resource
@@ -529,7 +529,7 @@ fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKin
 }
 
 type EffectReceipt {
-  request: EffectRequest
+  request: OperationCall
   result: Outcome<RuntimeValue>
 }
 

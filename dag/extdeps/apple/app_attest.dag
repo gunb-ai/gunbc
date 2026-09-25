@@ -3,7 +3,7 @@ module extdeps.apple.app_attest
 import std.types { NonEmptyStr, String, Int, List, Timestamp }
 import std.logic { Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.measure { byte_size_count }
 import std.encoding { base64_decode, base64_encode, base64_octets, Standard, UrlSafe }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -294,7 +294,7 @@ data app_attest_aaguid_development: String = "appattestdevelop"
 data app_attest_validation_category_extension_key: String = "apple_validation_category_01"
 data app_attest_bundle_version_extension_key: String = "apple_bundle_version_01"
 
-fn app_attest_aaguid_octets(environment: AppAttestEnvironment) -> List<UInt8> {
+fn app_attest_aaguid_octets(environment: AppAttestEnvironment) -> List<Int> {
   match environment {
     AppAttestDevelopment => bytes_octets(b: utf8_encode_bytes(s: app_attest_aaguid_development))
     AppAttestProduction => concat(bytes_octets(b: utf8_encode_bytes(s: "appattest")), [0, 0, 0, 0, 0, 0, 0])
@@ -322,7 +322,7 @@ fn app_attest_member(v: CborValue, key: String) -> CborValue? {
   }
 }
 
-fn app_attest_member_octets(v: CborValue, key: String) -> List<UInt8>? {
+fn app_attest_member_octets(v: CborValue, key: String) -> List<Int>? {
   match app_attest_member(v: v, key: key) {
     Absent => none
     Present { value: m } => cbor_byte_string_octets(v: m)
@@ -331,17 +331,17 @@ fn app_attest_member_octets(v: CborValue, key: String) -> List<UInt8>? {
 
 // The decoded object's parts, once the shape is established.
 type AttestationParts {
-  leaf: List<UInt8>
-  ca: List<UInt8>
-  receipt: List<UInt8>
-  auth_data: List<UInt8>
+  leaf: List<Int>
+  ca: List<Int>
+  receipt: List<Int>
+  auth_data: List<Int>
 }
 
 type AttestationPartsRead
   = AttestationPartsOk { parts: AttestationParts }
   | AttestationPartsRefused { cause: AttestationRefusal }
 
-fn attestation_parts(object: List<UInt8>) -> AttestationPartsRead {
+fn attestation_parts(object: List<Int>) -> AttestationPartsRead {
   match cbor_decode_document(octets: object) {
     CborDocumentRefused { cause: _ } => AttestationPartsRefused { cause: app_attest_undecodable(cause: "attestation object is not one CBOR item") }
     CborDocumentDecoded { value: att } => {
@@ -399,7 +399,7 @@ fn attestation_parts(object: List<UInt8>) -> AttestationPartsRead {
 }
 
 // Step 3's extension value: DER SEQUENCE { [1] { OCTET STRING nonce } }.
-fn credential_certificate_nonce(leaf: X509Certificate) -> List<UInt8>? {
+fn credential_certificate_nonce(leaf: X509Certificate) -> List<Int>? {
   match x509_extension(cert: leaf, oid: app_attest_nonce_extension_oid as String) {
     X509ExtensionFound { extension: x } =>
       match der_expect_sequence(octets: x.value, at: 0) {
@@ -418,7 +418,7 @@ fn credential_certificate_nonce(leaf: X509Certificate) -> List<UInt8>? {
   }
 }
 
-fn app_attest_certificate(octets: List<UInt8>) -> X509Certificate? {
+fn app_attest_certificate(octets: List<Int>) -> X509Certificate? {
   match decode_certificate(octets: octets) {
     X509Decoded { certificate: c } => Present { value: c }
     X509Refused { cause: _ } => none
@@ -444,7 +444,7 @@ fn app_attest_root() -> X509Certificate? {
 // THE DIGEST IS COMPUTED ONLY AFTER BOTH ENCODING REFUSALS HAVE BEEN ASKED: the algorithm and the
 // curve are facts of the two certificates' fields, and a link that will refuse on its issuer's
 // curve owes no hash of its subject's TBS.
-fn chain_link_digest_of(subject: X509Certificate) -> List<UInt8> {
+fn chain_link_digest_of(subject: X509Certificate) -> List<Int> {
   if subject.signature_algorithm == oid_ecdsa_with_sha256 { sha256(message: subject.tbs.tbs_octets) } else { sha384(message: subject.tbs.tbs_octets) }
 }
 
@@ -470,7 +470,7 @@ fn issuer_curve(named_curve: String) -> PrimeCurve? {
   else { none }
 }
 
-fn ecdsa_verifies_on(c: PrimeCurve, key: List<UInt8>, signature_octets: List<UInt8>, digest: List<UInt8>) -> Bool? {
+fn ecdsa_verifies_on(c: PrimeCurve, key: List<Int>, signature_octets: List<Int>, digest: List<Int>) -> Bool? {
   match ecdsa_sig_value(octets: signature_octets, width: c.coordinate_octets) {
     EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: c, key: key, signature: rs, digest: digest)
     _ => none
@@ -596,7 +596,7 @@ fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> Atte
   }
 }
 
-fn base64_of(octets: List<UInt8>, url_safe: Bool) -> String? {
+fn base64_of(octets: List<Int>, url_safe: Bool) -> String? {
   match base64_octets(values: octets) {
     QualifiedOctetsRefused { observed: _ } => none
     QualifiedOctetsReady { value: q } => Present { value: base64_encode(octets: q, variant: if url_safe { UrlSafe } else { Standard }) }
@@ -632,7 +632,7 @@ fn attestation_step_order() -> List<AttestationStep> {
   ]
 }
 
-fn expected_key_id_octets(e: AttestationExpectation) -> List<UInt8> {
+fn expected_key_id_octets(e: AttestationExpectation) -> List<Int> {
   match base64_decode(s: e.key_id as String, variant: Standard) {
     Present { value: o } => o
     Absent => []
@@ -803,7 +803,7 @@ type AttestationDecode
   = AttestationDecodeOk { decoded: AttestationDecoded }
   | AttestationDecodeRefused { cause: AttestationRefusal }
 
-fn decode_attestation(object: List<UInt8>) -> AttestationDecode {
+fn decode_attestation(object: List<Int>) -> AttestationDecode {
   match attestation_parts(object: object) {
     AttestationPartsRefused { cause: c } => AttestationDecodeRefused { cause: c }
     AttestationPartsOk { parts: parts } =>
@@ -843,7 +843,7 @@ fn attestation_refusal(d: AttestationDecoded, e: AttestationExpectation) -> Atte
 // THE SUPPLIER of attestation_verification_from_implementation. On success the verified facts
 // are the credential certificate's public key (SEC 1 point, base64url), the receipt (base64) and
 // the environment the AAGUID named, over exactly the client data supplied.
-fn verify_attestation(object: List<UInt8>, e: AttestationExpectation) -> AttestationVerification {
+fn verify_attestation(object: List<Int>, e: AttestationExpectation) -> AttestationVerification {
   match decode_attestation(object: object) {
     AttestationDecodeRefused { cause: c } => AttestationRefused { cause: c }
     AttestationDecodeOk { decoded: d } =>
@@ -873,7 +873,7 @@ type AssertionAuthenticatorData {
   extensions: CborValue?
 }
 
-fn apple_assertion_authenticator_data(octets: List<UInt8>) -> AssertionAuthenticatorData? {
+fn apple_assertion_authenticator_data(octets: List<Int>) -> AssertionAuthenticatorData? {
   match decode_authenticator_data_prefix(octets: octets |> take(byte_size_count(b: authenticator_data_prefix_size))) {
     AuthenticatorDataPrefixRefused { cause: _ } => none
     AuthenticatorDataPrefixDecoded { prefix: p } =>
@@ -898,16 +898,16 @@ type AssertionExpectation {
 }
 
 type AssertionParts {
-  signature: List<UInt8>
+  signature: List<Int>
   auth: AssertionAuthenticatorData
-  auth_octets: List<UInt8>
+  auth_octets: List<Int>
 }
 
 type AssertionPartsRead
   = AssertionPartsOk { parts: AssertionParts }
   | AssertionPartsRefused { cause: AssertionRefusal }
 
-fn assertion_parts(object: List<UInt8>) -> AssertionPartsRead {
+fn assertion_parts(object: List<Int>) -> AssertionPartsRead {
   match cbor_decode_document(octets: object) {
     CborDocumentRefused { cause: _ } => AssertionPartsRefused { cause: AssertionUndecodable { cause: "assertion is not one CBOR item" } }
     CborDocumentDecoded { value: v } =>
@@ -997,7 +997,7 @@ fn assertion_signature_verifies(parts: AssertionParts, e: AssertionExpectation) 
   }
 }
 
-fn assertion_signature_verifies_for(object: List<UInt8>, e: AssertionExpectation) -> Bool? {
+fn assertion_signature_verifies_for(object: List<Int>, e: AssertionExpectation) -> Bool? {
   match assertion_parts(object: object) {
     AssertionPartsRefused { cause: _ } => none
     AssertionPartsOk { parts: parts } => assertion_signature_verifies(parts: parts, e: e)
@@ -1008,7 +1008,7 @@ fn assertion_signature_verifies_for(object: List<UInt8>, e: AssertionExpectation
 // both the counter and the refusal are read from that decode. A refusal is built as the refusal
 // arm directly; the seam is reached only with the facts a success carries, so no stand-in counter
 // or key ever exists (review 69652 of gunbc#11989).
-fn verify_assertion(object: List<UInt8>, e: AssertionExpectation) -> AssertionVerification {
+fn verify_assertion(object: List<Int>, e: AssertionExpectation) -> AssertionVerification {
   match assertion_parts(object: object) {
     AssertionPartsRefused { cause: c } => AssertionRefused { cause: c }
     AssertionPartsOk { parts: parts } =>
