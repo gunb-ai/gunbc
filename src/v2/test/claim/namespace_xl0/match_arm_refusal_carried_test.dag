@@ -1,0 +1,163 @@
+module v2.test.claim.namespace_xl0.match_arm_refusal_carried
+
+import v2.compiler.compile { NativeTestContext, native_test_context_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN ARM THAT REFUSES FOR ITS OWN CAUSE KEEPS THAT CAUSE, IN EVERY ARM POSITION.
+//
+// THE SUBJECT IS THE NATIVE LANE'S FRONT END: which fatal cause a module's file refusal carries.
+// v2.compiler.body_lowering_fold body_lower_extract_comma_list_arm_head used to wire a repeat
+// element as an arm and, on ANY refusal, discard the diagnostics and retry the same node as a
+// comma-repeat element. The first arm does not pass through that reader, so a list literal there
+// refused located; in the second arm, or in a comma-separated arm, the list literal's own refusal
+// was discarded and the retry under the wrong shape answered body_lowering_reason_match_arm_navigation_refused
+// with the arm as its only locus. The reader now decides the shape first (a separator on the left is
+// a repeat element; an arm's left is its pattern) and wires the arm once, so its Rejected stands.
+//
+// The two red modules are the list literal in a second arm, on its own line and comma-separated.
+// The controls: the same literal in the FIRST arm refuses under the same cause on both sides (so
+// the red claims assert the cause the first arm already reached, not a new one); and the same two
+// layouts with no refusable value are not refused at all, so the shape decision did not stop
+// reading ordinary arms.
+data marc_second_arm_list_source: String = "module v2.test.marc_second_arm_list\n\nimport v2.std.logic { Bool }\n\nfn marc_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marc_probe(b: Bool, acc: List<Int>) -> List<Int> {\n  match b {\n    false => acc\n    true => marc_g(acc: [])\n  }\n}\n"
+
+data marc_comma_arm_list_source: String = "module v2.test.marc_comma_arm_list\n\nimport v2.std.logic { Bool }\n\nfn marc_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marc_probe(b: Bool, acc: List<Int>) -> List<Int> {\n  match b { false => acc, true => marc_g(acc: []) }\n}\n"
+
+data marc_first_arm_list_source: String = "module v2.test.marc_first_arm_list\n\nimport v2.std.logic { Bool }\n\nfn marc_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marc_probe(b: Bool, acc: List<Int>) -> List<Int> {\n  match b {\n    true => marc_g(acc: [])\n    false => acc\n  }\n}\n"
+
+data marc_second_arm_ctl_source: String = "module v2.test.marc_second_arm_ctl\n\nimport v2.std.logic { Bool }\n\nfn marc_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marc_probe(b: Bool, acc: List<Int>) -> List<Int> {\n  match b {\n    false => acc\n    true => marc_g(acc: acc)\n  }\n}\n"
+
+data marc_comma_arm_ctl_source: String = "module v2.test.marc_comma_arm_ctl\n\nimport v2.std.logic { Bool }\n\nfn marc_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marc_probe(b: Bool, acc: List<Int>) -> List<Int> {\n  match b { false => acc, true => marc_g(acc: acc) }\n}\n"
+
+fn marc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data marc_ingest: SourceRootIngest = Cons {
+    head: marc_read(source: marc_second_arm_list_source, id: ^marc_second_arm_list_artifact, unit: ^marc_second_arm_list_cu, path: "src/v2/test/fixture/namespace_xl0/marc_second_arm_list.dag"),
+    tail: Cons {
+    head: marc_read(source: marc_comma_arm_list_source, id: ^marc_comma_arm_list_artifact, unit: ^marc_comma_arm_list_cu, path: "src/v2/test/fixture/namespace_xl0/marc_comma_arm_list.dag"),
+    tail: Cons {
+    head: marc_read(source: marc_first_arm_list_source, id: ^marc_first_arm_list_artifact, unit: ^marc_first_arm_list_cu, path: "src/v2/test/fixture/namespace_xl0/marc_first_arm_list.dag"),
+    tail: Cons {
+    head: marc_read(source: marc_second_arm_ctl_source, id: ^marc_second_arm_ctl_artifact, unit: ^marc_second_arm_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/marc_second_arm_ctl.dag"),
+    tail: Cons {
+    head: marc_read(source: marc_comma_arm_ctl_source, id: ^marc_comma_arm_ctl_artifact, unit: ^marc_comma_arm_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/marc_comma_arm_ctl.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM. The stored value is one verdict per module: the fatal cause of its
+// file refusal, or that it was not refused. No context, Node or closure is kept.
+type MarcVerdict
+  = MarcNotRefused
+  | MarcFileRefused { fatal_reason: Symbol }
+
+type MarcOutcomes
+  = MarcContextRefused
+  | MarcOutcomesDecided {
+      second_arm_list: MarcVerdict
+      comma_arm_list: MarcVerdict
+      first_arm_list: MarcVerdict
+      second_arm_ctl: MarcVerdict
+      comma_arm_ctl: MarcVerdict
+    }
+
+fn marc_verdict_in(context: NativeTestContext, unit: Symbol) -> MarcVerdict {
+  fold_list(
+    xs: context.file_refusals,
+    empty: MarcNotRefused,
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { MarcFileRefused { fatal_reason: refusal.fatal_reason } } else { acc }
+    }
+  )
+}
+
+fn marc_outcomes() -> MarcOutcomes {
+  match native_test_context_from_ingest(ingest: marc_ingest) {
+    Rejected { diagnostics: _ } => MarcContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      MarcOutcomesDecided {
+        second_arm_list: marc_verdict_in(context: context, unit: ^marc_second_arm_list_cu),
+        comma_arm_list: marc_verdict_in(context: context, unit: ^marc_comma_arm_list_cu),
+        first_arm_list: marc_verdict_in(context: context, unit: ^marc_first_arm_list_cu),
+        second_arm_ctl: marc_verdict_in(context: context, unit: ^marc_second_arm_ctl_cu),
+        comma_arm_ctl: marc_verdict_in(context: context, unit: ^marc_comma_arm_ctl_cu)
+      }
+  }
+}
+
+fn marc_is_list_literal_refused(v: MarcVerdict) -> Bool {
+  match v {
+    MarcFileRefused { fatal_reason: r } => r == ^body_lowering_reason_list_literal_unlowered
+    MarcNotRefused => false
+  }
+}
+
+fn marc_is_not_refused(v: MarcVerdict) -> Bool {
+  match v {
+    MarcNotRefused => true
+    MarcFileRefused { fatal_reason: _ } => false
+  }
+}
+
+test fn a_list_literal_in_a_second_arm_refuses_under_its_own_cause() -> Bool {
+  match marc_outcomes() {
+    MarcOutcomesDecided { second_arm_list: v, comma_arm_list: _, first_arm_list: _, second_arm_ctl: _, comma_arm_ctl: _ } =>
+      marc_is_list_literal_refused(v: v)
+    MarcContextRefused => false
+  }
+}
+
+test fn a_list_literal_in_a_comma_separated_arm_refuses_under_its_own_cause() -> Bool {
+  match marc_outcomes() {
+    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: v, first_arm_list: _, second_arm_ctl: _, comma_arm_ctl: _ } =>
+      marc_is_list_literal_refused(v: v)
+    MarcContextRefused => false
+  }
+}
+
+test fn a_list_literal_in_a_first_arm_refuses_under_the_same_cause() -> Bool {
+  match marc_outcomes() {
+    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: _, first_arm_list: v, second_arm_ctl: _, comma_arm_ctl: _ } =>
+      marc_is_list_literal_refused(v: v)
+    MarcContextRefused => false
+  }
+}
+
+test fn a_second_arm_with_no_refusable_value_is_not_refused() -> Bool {
+  match marc_outcomes() {
+    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: _, first_arm_list: _, second_arm_ctl: v, comma_arm_ctl: _ } =>
+      marc_is_not_refused(v: v)
+    MarcContextRefused => false
+  }
+}
+
+test fn a_comma_separated_arm_with_no_refusable_value_is_not_refused() -> Bool {
+  match marc_outcomes() {
+    MarcOutcomesDecided { second_arm_list: _, comma_arm_list: _, first_arm_list: _, second_arm_ctl: _, comma_arm_ctl: v } =>
+      marc_is_not_refused(v: v)
+    MarcContextRefused => false
+  }
+}
