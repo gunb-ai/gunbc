@@ -37,7 +37,7 @@ import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
-// callee Arrow's type parameters (v2.std.node arrow_type_param_names) is a DECLARED TYPE VARIABLE:
+// callee Arrow's type parameters (v2.std.type_binder type_param_names) is a DECLARED TYPE VARIABLE:
 // universally quantified at the declaration and instantiated afresh at each application. It is
 // its own constructor, never an inference variable -- the conflation
 // gunbc.recurring_failure_mode type_variable_means_both_declared_generic_and_inference_variable

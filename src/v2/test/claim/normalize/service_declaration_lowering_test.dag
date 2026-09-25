@@ -17,8 +17,8 @@ import std.algebra { Cons, Empty, FreeMonoid }
 
 // DECLARATION-GRADE SERVICE LOWERING (v2.compiler.body_lowering_fold body_lower_service_decl). A
 // service lowers to its interface -- a named product of function types -- and sets its realization
-// members and its unmodeled interface members aside under two counted reasons. The census door
-// admits a service module; the full door, whose carrier reaches resolution, eval and emission,
+// members and its unmodeled interface members aside under two counted reasons. Census grade admits a
+// service module; the full normalize route, whose product reaches resolution, eval and emission,
 // refuses it, so no consumer can act on a set-aside realization. The fixture is the smallest service
 // carrying one member of each kind in dag/extdeps/access/posix_effective_principal_read_op.dag, the
 // first gen-two census wall: that file itself is admitted by the census run over the real tree, not
@@ -95,14 +95,14 @@ test fn census_counts_realization_and_unmodeled_interface_apart_holds() -> Bool 
   }
 }
 
-// THE SET-ASIDE IS UNREACHABLE AS LOWERED. The full door is what resolution, eval and emission
+// THE SET-ASIDE IS UNREACHABLE AS LOWERED. Full normalize is what resolution, eval and emission
 // consume; it refuses the same service, and the pending diagnostics carry the set-aside members at
 // their own loci, so no consumer is handed a service whose realization it would have to assume.
 test fn full_door_refuses_a_service_with_a_set_aside_realization_holds() -> Bool {
   match full_of_stream(tokens: posix_service_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
-      carries(ne: r, reason: ^normalized_tree_reason_service_realization_unreachable)
+      carries(ne: r, reason: ^body_lowering_reason_service_realization_unreachable)
         && carries(ne: r, reason: ^body_lowering_reason_realization_member_set_aside)
   }
 }

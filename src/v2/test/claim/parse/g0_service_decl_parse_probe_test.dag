@@ -197,16 +197,16 @@ test fn type_field_from_key_still_refuses_holds() -> Bool {
 
 // ROUTE, not only parse. A service now LOWERS at declaration grade (v2.compiler.body_lowering_fold
 // body_lower_service_decl): its interface onto existing connectives, its realization members set
-// aside, typed and located. The normalized-tree door (normalized_tree admit_normalized_tree) is what
-// resolution, eval and emission consume, so it still refuses a service with a set-aside realization,
-// now for that reason rather than for retention; an empty service sets nothing aside and is
-// admitted. This pair was the retention route before the lowering landed; the climb keeps it as the
-// permanent control that the door discriminates on what a service carries (DESIGN section 4b(4)).
+// aside, typed and located. Full normalize is what resolution, eval and emission consume, so it
+// refuses a service with a set-aside realization, for that reason rather than for retention; an
+// empty service sets nothing aside and is admitted. This pair was the retention route before the
+// lowering landed; the climb keeps it as the permanent control that normalize discriminates on what a
+// service carries (DESIGN section 4b(4)).
 fn refused_for_set_aside_realization(ne: NonEmptyDiagnostics) -> Bool {
   fold_list(
     xs: ne.tail,
-    empty: ne.head.reason == ^normalized_tree_reason_service_realization_unreachable,
-    cons: fn(found, d) { found || d.reason == ^normalized_tree_reason_service_realization_unreachable }
+    empty: ne.head.reason == ^body_lowering_reason_service_realization_unreachable,
+    cons: fn(found, d) { found || d.reason == ^body_lowering_reason_service_realization_unreachable }
   )
 }
 

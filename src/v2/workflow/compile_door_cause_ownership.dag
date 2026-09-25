@@ -132,10 +132,10 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
   },
   CauseOwnership {
-    cause: ^normalized_tree_reason_service_realization_unreachable,
+    cause: ^body_lowering_reason_service_realization_unreachable,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; the full normalized-tree door refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
+    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
