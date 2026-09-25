@@ -7,11 +7,14 @@ import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
 import extdeps.vllm.engram_layout { VllmEngramRankRows }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
+import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of, v41_magic_octets,
   V41ReadbackSample, V41SampleMagic, V41SampleStoreRecord, V41SampleSourceWeight, V41SampleSourceScale,
   V41ReadbackReading, V41StoreReadbackRead, V41StoreReadback, V41StoreReadbackVerified, V41StoreReadbackUnread, V41StoreReadbackRefused,
   v41_readback_samples, v41_store_readback,
+  V41StoreReadbackReadingsUnread, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_row_store_spec, v41_published_store_readback_readings,
 }
 
 // ── THE BOUNDARY-STRATIFIED READBACK, AT FIXTURE SCALE ──────────────────────────────────────────
@@ -155,3 +158,57 @@ test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool {
   w_refused_naming(v: missing, fragment: "owes magic layer.14.rank.1")
     && w_refused_naming(v: foreign, fragment: "record layer.1.rank.0 row 1 is not a sample the spec owes")
 }
+
+// THE LIVE READBACK VERIFIES, ONE STORE PER CLAIM: srv5's eight stores, read at every seam by fleet-converge
+// run 36126002186 (gunbc.spark.v41_engram_row_store v41_published_store_readback_readings), are
+// v41_place_row of the published rows at every sampled row, and no seam is undiscriminating. The spec is the
+// live one over SUPPLIED head sizes (test.claim.vllm.vllm_engram_layout_witness w_published_head_sizes, whose
+// own claims draw them from the real prime search), so these claims pay for the readback and not for the
+// layout search; the whole-spec route runs for real in gunbc.spark.v41_runtime_candidate v41_live_store_readback,
+// which the D0 live-subject claim executes. One store per claim because decoding a store's seven samples
+// is the claim's cost, and a layer per claim exceeded the new-witness budget (v2.workflow.required_floor
+// claim_eval_step_budget_for_identity, as the floor's measured_eval_steps reports it). A store's slice is its own rank's range, so it cannot see the row before its start: the
+// undiscriminating-seam guard is NOT exercised here. It runs over the whole live spec in
+// v41_live_store_readback (executed for real by the D0 live-subject claim), and its discriminating RED is
+// identical_rows_across_a_seam_refuse_as_undiscriminating above.
+fn w_live_store_readback(layer: Nat, rank: Nat) -> V41StoreReadback {
+  match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: w_published_head_sizes()) {
+    V41RowStoreSpecRefused { defects: d } => V41StoreReadbackRefused { defects: d }
+    V41RowStoreSpecAdmitted { spec: spec } => match v41_published_store_readback_readings {
+      V41StoreReadbackReadingsUnread { obligation: o } => V41StoreReadbackUnread { obligation: o }
+      V41StoreReadbackRead { host: h, observed_at: at, readings: rs } =>
+        v41_store_readback(
+          spec: v41_encoding_spec_of_layers(partition: v41_candidate_partition, layers: map(filter(spec.layers, t => t.layer == layer), t => v41_layer_table(layer: t.layer, weight: t.weight, scale: t.scale, rows: t.rows, ranks: filter(t.ranks, r => r.rank == rank))), geometry: spec.geometry),
+          readings: V41StoreReadbackRead { host: h, observed_at: at, readings: filter(rs, r => w_sample_in_store(s: r.sample, layer: layer, spec: spec, rank: rank)) },
+        )
+    }
+  }
+}
+
+// A SAMPLE BELONGS TO A STORE'S SLICE when it is that store's magic or record, or a source row inside the
+// rank's range.
+fn w_sample_in_store(s: V41ReadbackSample, layer: Nat, spec: V41RowStoreEncodingSpec, rank: Nat) -> Bool {
+  let ranges = flat_map(filter(spec.layers, t => t.layer == layer), t => filter(t.ranks, r => r.rank == rank))
+  match s {
+    V41SampleMagic { layer: l, rank: k } => l == layer && k == rank
+    V41SampleStoreRecord { layer: l, rank: k, local_row: _ } => l == layer && k == rank
+    V41SampleSourceWeight { layer: l, global_row: g } => l == layer && any(ranges, r => r.start <= g && g < r.end)
+    V41SampleSourceScale { layer: l, global_row: g } => l == layer && any(ranges, r => r.start <= g && g < r.end)
+  }
+}
+
+fn w_store_verified(layer: Nat, rank: Nat) -> Bool {
+  match w_live_store_readback(layer: layer, rank: rank) {
+    V41StoreReadbackVerified { host: h, observed_at: _, samples: n } => (h as String) == "srv5" && n == 7
+    _ => false
+  }
+}
+
+test fn the_live_readback_of_layer_1_rank_0_verifies() -> Bool { w_store_verified(layer: 1, rank: 0) }
+test fn the_live_readback_of_layer_1_rank_1_verifies() -> Bool { w_store_verified(layer: 1, rank: 1) }
+test fn the_live_readback_of_layer_1_rank_2_verifies() -> Bool { w_store_verified(layer: 1, rank: 2) }
+test fn the_live_readback_of_layer_1_rank_3_verifies() -> Bool { w_store_verified(layer: 1, rank: 3) }
+test fn the_live_readback_of_layer_14_rank_0_verifies() -> Bool { w_store_verified(layer: 14, rank: 0) }
+test fn the_live_readback_of_layer_14_rank_1_verifies() -> Bool { w_store_verified(layer: 14, rank: 1) }
+test fn the_live_readback_of_layer_14_rank_2_verifies() -> Bool { w_store_verified(layer: 14, rank: 2) }
+test fn the_live_readback_of_layer_14_rank_3_verifies() -> Bool { w_store_verified(layer: 14, rank: 3) }

@@ -611,6 +611,9 @@ import v2.std.collection { List }
 // THE XL-2 BOUND-VALUE RESOLVE ROW IS THE SAME GROUND AT ELEVEN SPECIMENS:
 // v2.test.claim.namespace_xl0.bound_value_resolve_refusal bvr_outcomes drives one front end over
 // eleven inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 WILDCARD-ARM RESOLVE ROW IS THE SAME GROUND AT FOUR SPECIMENS:
+// v2.test.claim.namespace_xl0.wildcard_arm_resolve wc_outcomes drives one front end over four inline
+// modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -683,6 +686,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
+  "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
@@ -789,6 +793,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.type_param_binder_frame.tpb_type_param_as_value",
   "v2.test.claim.type_param_binder_frame.tpb_emitted_add_twin",
   "v2.test.claim.type_param_binder_frame.tpb_emitted_add_generic",
+  "v2.test.claim.anonymous_param_binder.apb_two_anonymous",
+  "v2.test.claim.anonymous_param_binder.apb_body_reference",
+  "v2.test.claim.anonymous_param_binder.apb_two_sites",
+  "v2.test.claim.anonymous_param_binder.apb_mixed",
   "v2.test.claim.body_type_annotation_refusal.btar_let_annotated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_plain",
   "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_annotated",
@@ -802,6 +810,13 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_non_generic",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_emit_twin",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_emit_generic",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_generic_alias_instantiation",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_generic_alias_colliding",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_generic_alias_undeclared",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_generic_opaque",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_generic_single_variant_after_separator",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_plain_single_variant_after_separator",
+  "v2.test.claim.type_param_binder_frame.tpb_type_decl_plain_single_alias",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_generic_alias",
   "v2.test.claim.type_param_binder_frame.tpb_type_decl_nullary_tag",
   "v2.test.claim.type_param_binder_frame.tpb_semantic_emit_twin",
@@ -841,6 +856,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.where_refinement_predicate_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.match_later_arm_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.statement_let_binder_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.anonymous_slots_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",
