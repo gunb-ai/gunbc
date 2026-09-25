@@ -5103,7 +5103,24 @@ fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<N
   }
 }
 
+// A CAST IS NEVER AN OPERAND. The operand reader answered `x as Q` with `x`, so a cast in a let value
+// or an arm was Accepted with `Q` dropped before the fold could refuse it; it declines here, and the
+// caller's fold reaches body_lower_postfix_expr, which refuses at `Q`.
 fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
+  match body_lower_shell_cast_target_optional(node: arm) {
+    Present { value: _ } => optional_absent()
+    Absent => body_lower_arm_operand_resolved_uncast_optional(arm: arm)
+  }
+}
+
+fn body_lower_shell_cast_target_optional(node: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: node, emitted: ^dag_surface_postfix_expr) {
+    ParseSubtreeFound { captured: postfix } => body_lower_postfix_cast_target_optional(captured: postfix)
+    ParseSubtreeAbsent => optional_absent()
+  }
+}
+
+fn body_lower_arm_operand_resolved_uncast_optional(arm: Node) -> Optional<Node> {
   match body_lower_materialize_int_literal_operand_optional(node: arm) {
     Present { value: lit } => Present { value: lit }
     Absent =>

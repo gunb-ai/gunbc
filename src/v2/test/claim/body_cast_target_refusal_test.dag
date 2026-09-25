@@ -29,6 +29,14 @@ fn bctr_call_argument_cast() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Q)\n}\n")
 }
 
+fn bctr_if_arm_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Q } else { x }\n}\n")
+}
+
+fn bctr_match_arm_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n")
+}
+
 fn bctr_uncast() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x\n}\n")
 }
@@ -47,6 +55,16 @@ test fn bctr_let_value_cast_refuses_at_q() -> Bool {
 // (3) A cast as a named call argument refuses at the authored `Q`.
 test fn bctr_call_argument_cast_refuses_at_q() -> Bool {
   btar_refused_at_authored_q(o: bctr_call_argument_cast())
+}
+
+// (5) A cast in an if arm refuses at the authored `Q`.
+test fn bctr_if_arm_cast_refuses_at_q() -> Bool {
+  btar_refused_at_authored_q(o: bctr_if_arm_cast())
+}
+
+// (6) A cast in a match arm refuses at the authored `Q`.
+test fn bctr_match_arm_cast_refuses_at_q() -> Bool {
+  btar_refused_at_authored_q(o: bctr_match_arm_cast())
 }
 
 // (4) The same body without the cast still lowers, so the refusal is the cast's.
