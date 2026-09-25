@@ -353,6 +353,10 @@ fn incarnation_after_container(
   }
 }
 
+// started_at is the launch's coarse start instant (extdeps.linux.proc_pid_stat
+// process_start_epoch_seconds), floored to whole seconds -- the grain VllmServingLaunch.started_at
+// carries. The sub-second part is what the exported field and the tick equality keep, so this
+// orders launches and is not their identity.
 fn incarnation_after_process(
   transport: HostEffectTransport,
   target: SshTarget,
@@ -379,9 +383,6 @@ fn incarnation_after_process(
           match docker_cgroup_membership(relative_path: path) {
             NotADockerContainerCgroup { relative_path: p } => IncarnationRefused { refusal: IncarnationProcessNotInDockerContainer { pid: pid, cgroup_path: p } }
             DockerContainerScope { container_id: id } => {
-              // The launch's coarse start instant, floored to whole seconds -- the grain
-              // VllmServingLaunch.started_at carries; the sub-second part is what the exported field and
-              // the tick equality keep, so this orders launches and is not their identity.
               let seconds = process_start_epoch_seconds(boot_epoch_seconds: boot, ticks_per_second: ticks, start_ticks: start_ticks)
               if seconds < 0 {
                 IncarnationRefused { refusal: IncarnationStartBeforeEpoch { seconds: seconds } }
