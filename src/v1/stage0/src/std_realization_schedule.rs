@@ -275,8 +275,16 @@ pub struct RunnableBatchClamp {
 }
 
 pub fn runnable_batch_clamp_ms(clamp: Rc<RunnableBatchClamp>, units: i64) -> i64 {
-    ((crate::std_measure::second_count(clamp.overhead.clone()) * 1000)
-        + (units.clone() * crate::std_measure::millisecond_count(clamp.per_unit.clone())))
+    v1_rt::int_add(
+        v1_rt::int_mul(
+            crate::std_measure::second_count(clamp.overhead.clone()),
+            1000,
+        ),
+        v1_rt::int_mul(
+            units.clone(),
+            crate::std_measure::millisecond_count(clamp.per_unit.clone()),
+        ),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -463,7 +471,7 @@ pub type FloorWorkerObservationReceiptPath = String;
 pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptPath {
     thread_local! {
         static CACHED: FloorWorkerObservationReceiptPath = {
-            serde_json::from_value(serde_json::json!("target/floor-worker-observation-receipt.tsv"))
+            serde_json::from_str("\"target/floor-worker-observation-receipt.tsv\"")
                 .expect("valid data definition")
         };
     }

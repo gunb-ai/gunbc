@@ -1,7 +1,7 @@
 module gunbc.roadmap_serve
 
 import extdeps.tailscale.identity { tailnet_identity_of }
-import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
+import std.types { String, Int, Bool, List, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -108,6 +108,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
 // The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B,
 // parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler

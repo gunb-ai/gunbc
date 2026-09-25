@@ -1466,6 +1466,16 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
   }
 
+  operation FetchForcedRefInRepoTrustingDirectory {
+    input { repo: FilePath, remote: String, refspec: String, trusted_directory: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-c", "safe.directory={trusted_directory}", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
   operation PushForcedRefInRepo {
     input { repo: FilePath, remote: String, refspec: String }
     output {

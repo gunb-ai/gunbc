@@ -227,7 +227,7 @@ pub fn occurrence_identity_acceptance_law_rebuilt_reference() -> Rc<OccurrenceId
 {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "rebuilt-reference-identity-preservation", "required_receipt": "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED."}))
+            serde_json::from_str("{\"id\": \"rebuilt-reference-identity-preservation\", \"required_receipt\": \"A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.\"}")
                 .expect("valid data definition")
         };
     }
@@ -238,7 +238,7 @@ pub fn occurrence_identity_acceptance_law_collector_dedupe() -> Rc<OccurrenceIde
 {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "one-occurrence-collector-dedupe", "required_receipt": "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure."}))
+            serde_json::from_str("{\"id\": \"one-occurrence-collector-dedupe\", \"required_receipt\": \"Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.\"}")
                 .expect("valid data definition")
         };
     }
@@ -249,7 +249,7 @@ pub fn occurrence_identity_acceptance_law_distinct_occurrences(
 ) -> Rc<OccurrenceIdentityAcceptanceLaw> {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "structurally-equal-distinct-occurrences", "required_receipt": "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries."}))
+            serde_json::from_str("{\"id\": \"structurally-equal-distinct-occurrences\", \"required_receipt\": \"Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.\"}")
                 .expect("valid data definition")
         };
     }
@@ -260,7 +260,7 @@ pub fn occurrence_identity_acceptance_law_pattern_reachability(
 ) -> Rc<OccurrenceIdentityAcceptanceLaw> {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "pattern-declaration-reachability", "required_receipt": "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders."}))
+            serde_json::from_str("{\"id\": \"pattern-declaration-reachability\", \"required_receipt\": \"Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.\"}")
                 .expect("valid data definition")
         };
     }
@@ -271,7 +271,7 @@ pub fn occurrence_identity_acceptance_law_parser_isolation() -> Rc<OccurrenceIde
 {
     thread_local! {
         static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
-            serde_json::from_value(serde_json::json!({"id": "same-spelling-parser-declaration-isolation", "required_receipt": "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite."}))
+            serde_json::from_str("{\"id\": \"same-spelling-parser-declaration-isolation\", \"required_receipt\": \"Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.\"}")
                 .expect("valid data definition")
         };
     }
@@ -379,7 +379,7 @@ pub fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> Rc<OccurrenceIdAlloc
             value: alloc.next_id.clone(),
         },
         alloc: OccurrenceIdAllocator {
-            next_id: (alloc.next_id.clone() + 1),
+            next_id: v1_rt::int_add(alloc.next_id.clone(), 1),
         },
     })
 }

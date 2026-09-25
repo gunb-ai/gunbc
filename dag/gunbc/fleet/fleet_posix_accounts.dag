@@ -6,6 +6,9 @@ import std.types { Timestamp }
 import gunbc.fleet_lifecycle_observation { ProcessReceipt }
 import extdeps.ssh { SshPublicKey }
 import extdeps.netfilter.nfct { nfct_installed_path }
+import extdeps.tools.conntrack { conntrack_installed_path }
+import extdeps.netfilter.iptables_legacy { iptables_legacy_save_installed_path }
+import extdeps.nftables.ruleset { nft_installed_path }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdProbeKind,
@@ -237,16 +240,16 @@ data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
 
 // nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
 // readback of the installed ruleset is a granted command like any mutation.
-data fleet_nft_binary_path: NonEmptyStr = "/usr/sbin/nft"
+data fleet_nft_binary_path: NonEmptyStr = nft_installed_path() as NonEmptyStr
 
 // conntrack(8) READS AND WRITES THE KERNEL'S CONNECTION TRACKING TABLE, both of which need
 // CAP_NET_ADMIN -- listing the expectation table is as privileged as flushing a flow.
-data fleet_conntrack_binary_path: NonEmptyStr = "/usr/sbin/conntrack"
+data fleet_conntrack_binary_path: NonEmptyStr = conntrack_installed_path() as NonEmptyStr
 
 // THE LEGACY xtables SAVE BINARY AND THE USERSPACE HELPER TOOL, both privileged readers. A ruleset
 // created through iptables-legacy is invisible to `nft list ruleset`, and a userspace helper is
 // registered with the kernel rather than written in any ruleset, so each needs its own probe.
-data fleet_iptables_legacy_save_binary_path: NonEmptyStr = "/usr/sbin/iptables-legacy-save"
+data fleet_iptables_legacy_save_binary_path: NonEmptyStr = iptables_legacy_save_installed_path() as NonEmptyStr
 
 data fleet_nfct_binary_path: NonEmptyStr = nfct_installed_path() as NonEmptyStr
 

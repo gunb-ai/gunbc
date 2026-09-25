@@ -34,7 +34,6 @@ import v2.std.node {
   arrow_body_target_lookup,
   named_edge_target_lookup,
   arrow_type_param_names,
-  arrow_type_params_target_lookup,
   node_subtree_nodes
 }
 import v2.std.node_query {
@@ -101,10 +100,11 @@ data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\ni
 data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_arm\n\nimport v2.std.logic { Bool }\n\nfn vpw_then(o: Bool, f: Bool) -> Bool { o }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match p {\n    true =>\n      vpw_then(\n        o: p,\n        f: fn(token_stream) {\n          match token_stream {\n            true => token_stream\n            false => p\n          }\n        }\n      )\n    false => p\n  }\n}\n"
 
 // FN LITERALS AS RECORD FIELDS INSIDE A CALL ARGUMENT (warm-bear-132's 02_parse c01376 / c02555 and
-// grammar c01874 shapes): the argument value is folded bottom-up before it is read, and a function
+// grammar c01874 shapes, and c01376's `fn(_, _)` wildcards): the argument value is folded bottom-up
+// before it is read, and a function
 // value must reach its producer unfolded. A single-atom body once came back unread, and a
 // record-construct body as an Arrow the post-normalize well-formedness gate refused.
-data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
+data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      wild: fn(_, _) { false },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
 
 // TWO LAMBDAS, ONE PARAMETER NAME: each must carry its OWN fresh type parameter, not share one.
 data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_two(f: Bool, g: Bool) -> Bool { g }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_two(f: x => x, g: x => p) }\n"
@@ -542,22 +542,6 @@ test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_forme
   vpw_any_function_value_binding(binder: ^l)
 }
 
-// The occurrence of an Arrow's first type-parameter binder, if it declares one.
-fn vpw_first_type_binder(arrow: Node) -> Optional<Node> {
-  match arrow_type_params_target_lookup(children: arrow.children) {
-    Found { target: conj } =>
-      match arrow_type_param_names(n: arrow) {
-        Cons { head: first, tail: _ } =>
-          match named_edge_target_lookup(children: conj.children, name: first) {
-            Found { target: b } => optional_present(value: b)
-            _ => optional_absent()
-          }
-        Empty => optional_absent()
-      }
-    _ => optional_absent()
-  }
-}
-
 fn vpw_is_arrow(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } => true
@@ -565,26 +549,21 @@ fn vpw_is_arrow(n: Node) -> Bool {
   }
 }
 
-// A call to `callee` with exactly two Arrow arguments, each declaring a type binder, the two binders
-// at DIFFERENT occurrences. One fresh type parameter shared across the two lambdas -- a single
-// module-wide `'x`, say -- fails it.
+// Each lambda binds `x` in its own domain, typed by a type parameter declared on ITS OWN Arrow
+// (vpw_domain_binds reads the type variable against that Arrow's arrow_type_param_names). A fresh
+// type parameter shared across the two -- declared on one Arrow and referenced from the other, or a
+// domain typed by a variable no Arrow in the pair declares -- fails it.
+fn vpw_binds_x_in_own_frame(a: Node) -> Bool {
+  vpw_is_arrow(n: a) && (match vpw_domain_binds(arrow: a, binder: ^x) {
+    Present { value: _ } => true
+    Absent => false
+  })
+}
+
 fn vpw_two_distinct_type_binders(n: Node, callee: Symbol) -> Bool {
-  vpw_is_call_to(n: n, callee: callee) && (
-    match fold_list(xs: call_argument_targets(node: n), empty: Empty, cons: fn(acc, a) {
-      if vpw_is_arrow(n: a) { Cons { head: a, tail: acc } } else { acc }
-    }) {
-      Cons { head: f, tail: Cons { head: g, tail: Empty } } =>
-        match vpw_first_type_binder(arrow: f) {
-          Present { value: bf } =>
-            match vpw_first_type_binder(arrow: g) {
-              Present { value: bg } => bf.occurrence_id != bg.occurrence_id
-              Absent => false
-            }
-          Absent => false
-        }
-      _ => false
-    }
-  )
+  vpw_is_call_to(n: n, callee: callee)
+    && (length(xs: call_argument_targets(node: n)) == 2)
+    && fold_list(xs: call_argument_targets(node: n), empty: true, cons: fn(acc, a) { acc && vpw_binds_x_in_own_frame(a: a) })
 }
 
 test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_parameter() -> Bool {
@@ -653,5 +632,21 @@ test fn a_two_step_projection_on_a_call_result_lowers_every_step() -> Bool {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
       a || vpw_is_two_step_projection_of_call(n: n)
     })
+  })
+}
+
+// `fn(_, _)`: two wildcard parameters in one domain. A domain is a record (every edge Named, every
+// name distinct), so the wildcards take unspellable distinct names; two edges named `_` failed the
+// post-normalize well-formedness gate and refused the whole ingest (02_parse c01376 / c02555).
+fn vpw_is_two_wildcard_arrow(n: Node) -> Bool {
+  vpw_is_arrow(n: n) && (match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+    Present { value: domain } => (length(xs: domain.children) == 2) && (length(xs: arrow_type_param_names(n: n)) == 3)
+    Absent => false
+  })
+}
+
+test fn a_fn_literal_with_two_wildcard_parameters_lowers_well_formed() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_two_wildcard_arrow(n: n) })
   })
 }

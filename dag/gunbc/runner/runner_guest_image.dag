@@ -7,6 +7,7 @@ import std.measure { Mebibyte, mebibyte }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.crypto.hash { Digest, sha256_digest }
