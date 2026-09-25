@@ -1,0 +1,1228 @@
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/02_parse.dag /tmp/tidy-otter-instr/src/v2/compiler/02_parse.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/02_parse.dag	2026-09-25 15:26:02.883704934 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/02_parse.dag	2026-09-25 15:35:49.141523411 +0000
+@@ -936,7 +936,7 @@
+     empty: Node {
+       kind: TypeNode { connective: Conj },
+       children: [],
+-      occurrence_id: OccurrenceSynthetic
++      occurrence_id: xl2_site_identity(n: 1000001)
+     },
+     snoc: fn(tail_node, item) {
+       Node {
+@@ -945,7 +945,7 @@
+           grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: item),
+           grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: tail_node)
+         ],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000002)
+       }
+     }
+   )
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/04_infer.dag /tmp/tidy-otter-instr/src/v2/compiler/04_infer.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/04_infer.dag	2026-09-25 15:26:02.885704943 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/04_infer.dag	2026-09-25 15:35:49.150523456 +0000
+@@ -671,7 +671,7 @@
+                   derived_type: Node {
+                     kind: node.kind,
+                     children: evidence_edges,
+-                    occurrence_id: OccurrenceSynthetic
++                    occurrence_id: xl2_site_identity(n: 1000003)
+                   },
+                   descent: Holds { value: descent_proof }
+                 )
+@@ -880,7 +880,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000004)
+   }
+ }
+ 
+@@ -1973,7 +1973,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: ^infer_gather_fold_failure } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000005)
+   }
+ }
+ 
+@@ -2425,7 +2425,7 @@
+       derived_type: Node {
+         kind: TypeNode { connective: Conj },
+         children: [],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000006)
+       },
+       descent: infer_descent_witness_for_node(n: domain)
+     ),
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/05_emit_orchestration.dag /tmp/tidy-otter-instr/src/v2/compiler/05_emit_orchestration.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/05_emit_orchestration.dag	2026-09-25 15:26:02.885704943 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/05_emit_orchestration.dag	2026-09-25 15:35:49.153523471 +0000
+@@ -133,7 +133,7 @@
+ data orch_emit_unsupported_step_anchor: Node = Node {
+   kind: TypeNode { connective: Atom { identity: ^orch_emit_unsupported_step } },
+   children: [],
+-  occurrence_id: OccurrenceSynthetic
++  occurrence_id: xl2_site_identity(n: 1000007)
+ }
+ 
+ fn orch_emit_registry_emitted_root(
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/05_eval.dag /tmp/tidy-otter-instr/src/v2/compiler/05_eval.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/05_eval.dag	2026-09-25 15:26:02.886704947 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/05_eval.dag	2026-09-25 15:35:49.158523495 +0000
+@@ -215,7 +215,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: sym } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000008)
+ }
+ }
+ 
+@@ -549,7 +549,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: tag } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000009)
+ }
+ }
+ 
+@@ -782,7 +782,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: ^eval_grounding_not_derived_digest_tag } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000010)
+   }
+ }
+ 
+@@ -1454,7 +1454,7 @@
+       Edge { label: Positional, target: locator },
+       Edge { label: Positional, target: payload }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000011)
+   }
+ }
+ 
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/06_translate.dag /tmp/tidy-otter-instr/src/v2/compiler/06_translate.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/06_translate.dag	2026-09-25 15:26:02.886704947 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/06_translate.dag	2026-09-25 15:35:49.165523530 +0000
+@@ -1215,7 +1215,7 @@
+     at: node_locus(node: Node {
+       kind: TypeNode { connective: Atom { identity: token_class } },
+       children: [],
+-      occurrence_id: OccurrenceSynthetic
++      occurrence_id: xl2_site_identity(n: 1000012)
+ }),
+     correction: Unavailable { reason: ExternalContractUnknown }
+   }
+@@ -1226,7 +1226,7 @@
+     at: node_locus(node: Node {
+       kind: TypeNode { connective: Atom { identity: binding } },
+       children: [],
+-      occurrence_id: OccurrenceSynthetic
++      occurrence_id: xl2_site_identity(n: 1000013)
+ }),
+     correction: Unavailable { reason: ExternalContractUnknown }
+   }
+@@ -3420,7 +3420,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: binding } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000014)
+ }
+ }
+ 
+@@ -4193,7 +4193,7 @@
+                 Node {
+                   kind: TypeNode { connective: Atom { identity: sym } },
+                   children: [],
+-                  occurrence_id: OccurrenceSynthetic
++                  occurrence_id: xl2_site_identity(n: 1000015)
+                 }
+               }
+             )
+@@ -4222,14 +4222,14 @@
+                     target: Node {
+                       kind: TypeNode { connective: Atom { identity: sym } },
+                       children: [],
+-                      occurrence_id: OccurrenceSynthetic
++                      occurrence_id: xl2_site_identity(n: 1000016)
+                     }
+                   }
+                 ]
+               )
+             }
+           ),
+-          occurrence_id: OccurrenceSynthetic
++          occurrence_id: xl2_site_identity(n: 1000017)
+         }
+       )
+     }
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/body_lowering_fold.dag /tmp/tidy-otter-instr/src/v2/compiler/body_lowering_fold.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/body_lowering_fold.dag	2026-09-25 15:26:02.888704956 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/body_lowering_fold.dag	2026-09-25 15:35:49.180523605 +0000
+@@ -1350,7 +1350,7 @@
+     Present { value: id } =>
+       if (binary && body_lower_is_binary_operator_token(id: id))
+         || (!binary && body_lower_is_prefix_operator_token(id: id)) {
+-        optional_present(value: node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: []))
++        optional_present(value: node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000018), kind: TypeNode { connective: Atom { identity: id } }, children: []))
+       } else {
+         optional_absent()
+       }
+@@ -3457,7 +3457,7 @@
+ }
+ 
+ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000019), 
+     kind: ComputationNode { behavior: Transform },
+     children: list_append(
+       left: [Edge { label: Positional, target: operator }],
+@@ -3469,7 +3469,7 @@
+ }
+ 
+ fn body_lower_method_operator_atom(sym: Symbol) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000020), 
+     kind: TypeNode { connective: Atom { identity: sym } },
+     children: []
+   )
+@@ -4649,7 +4649,7 @@
+ }
+ 
+ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000021), 
+     kind: TypeNode { connective: Conj },
+     children: [
+       Edge { label: Named { name: match_arm_pattern }, target: pat_node },
+@@ -5289,7 +5289,7 @@
+         Rejected { diagnostics: r } => Rejected { diagnostics: r }
+         Accepted { value: children, diagnostics: d } =>
+           outcome_with_diagnostics(
+-            value: node_synthetic(
++            value: node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000022), 
+               kind: ComputationNode { behavior: Branch },
+               children: children
+             ),
+@@ -6874,16 +6874,16 @@
+ }
+ 
+ fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
+-  let match_kw = node_synthetic(
++  let match_kw = node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000023), 
+     kind: TypeNode { connective: Atom { identity: ^dag_token_kw_match } },
+     children: []
+   )
+-  let lbrace = node_synthetic(
++  let lbrace = node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000024), 
+     kind: TypeNode { connective: Atom { identity: ^dag_token_lbrace } },
+     children: []
+   )
+-  let empty_interior = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+-  let braced = node_synthetic(
++  let empty_interior = node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000025), kind: TypeNode { connective: Conj }, children: [])
++  let braced = node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000026), 
+     kind: TypeNode { connective: Conj },
+     children: [
+       Edge {
+@@ -6896,7 +6896,7 @@
+       }
+     ]
+   )
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000027), 
+     kind: TypeNode { connective: Conj },
+     children: [
+       Edge {
+@@ -6918,12 +6918,12 @@
+ }
+ 
+ fn body_lowering_match_field_name_spine() -> Node {
+-  let match_kw = node_synthetic(
++  let match_kw = node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000028), 
+     kind: TypeNode { connective: Atom { identity: ^dag_token_kw_match } },
+     children: []
+   )
+-  let empty_suffix = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+-  node_synthetic(
++  let empty_suffix = node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000029), kind: TypeNode { connective: Conj }, children: [])
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000030), 
+     kind: TypeNode { connective: Conj },
+     children: [
+       Edge {
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/body_producer_forward.dag /tmp/tidy-otter-instr/src/v2/compiler/body_producer_forward.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/body_producer_forward.dag	2026-09-25 15:26:02.889704961 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/body_producer_forward.dag	2026-09-25 15:35:49.181523610 +0000
+@@ -133,7 +133,7 @@
+ }
+ 
+ fn body_producer_forward_row_obligation_witness_shell(surface_identity: Symbol) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000031), 
+     kind: TypeNode { connective: Atom { identity: surface_identity } },
+     children: []
+   )
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/emit_produced.dag /tmp/tidy-otter-instr/src/v2/compiler/emit_produced.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/emit_produced.dag	2026-09-25 15:26:02.891704970 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/emit_produced.dag	2026-09-25 15:35:49.186523635 +0000
+@@ -110,7 +110,7 @@
+ }
+ 
+ fn produced_decl_node_for_edge(edge: Edge) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000032), 
+     kind: TypeNode { connective: Conj },
+     children: [edge]
+   )
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/fold_lowering.dag /tmp/tidy-otter-instr/src/v2/compiler/fold_lowering.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/fold_lowering.dag	2026-09-25 15:26:02.891704970 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/fold_lowering.dag	2026-09-25 15:35:49.187523640 +0000
+@@ -43,7 +43,7 @@
+ data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_iteration_body finds the sole ^dag_surface_fn_literal argument and lifts its ^dag_surface_fn_body into the canonical seam Loop (matching body_producer_loop_body) bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to a terminating Loop. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
+ 
+ fn fold_iteration_measure_atom() -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000033), 
+     kind: TypeNode { connective: Atom { identity: ^dag_surface_fold_iteration_measure } },
+     children: []
+   )
+@@ -314,14 +314,14 @@
+ }
+ 
+ fn fold_carrier_binder_atom(binder: Symbol) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000034), 
+     kind: TypeNode { connective: Atom { identity: binder } },
+     children: []
+   )
+ }
+ 
+ fn fold_call_seam_loop(body: Node, carrier: Symbol) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000035), 
+     kind: ComputationNode { behavior: Loop },
+     children: [
+       Edge { label: Positional, target: body },
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/ingested_fixture_arrows.dag /tmp/tidy-otter-instr/src/v2/compiler/ingested_fixture_arrows.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/ingested_fixture_arrows.dag	2026-09-25 15:26:02.892704975 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/ingested_fixture_arrows.dag	2026-09-25 15:35:49.188523645 +0000
+@@ -215,7 +215,7 @@
+     o: ingested_add_arrow_with_body(),
+     f: fn(arrow_with_body) {
+       outcome_accepted(
+-        value: node_synthetic(
++        value: node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000036), 
+           kind: TypeNode { connective: Conj },
+           children: [
+             Edge {
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/namespace_graft.dag /tmp/tidy-otter-instr/src/v2/compiler/namespace_graft.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/namespace_graft.dag	2026-09-25 15:26:02.892704975 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/namespace_graft.dag	2026-09-25 15:35:49.190523655 +0000
+@@ -273,7 +273,7 @@
+         children: fold(units, init: [], f: fn(acc, unit) {
+           list_snoc_item(xs: acc, item: namespace_graft_reconstruct_unit_edge(node: unit))
+         }),
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000037)
+       }
+     }
+   ]
+@@ -648,7 +648,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: id } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000038)
+   }
+ }
+ 
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/trait_derive_completeness.dag /tmp/tidy-otter-instr/src/v2/compiler/trait_derive_completeness.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/trait_derive_completeness.dag	2026-09-25 15:26:02.904705029 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/trait_derive_completeness.dag	2026-09-25 15:35:49.199523700 +0000
+@@ -102,7 +102,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: ^int_kernel_type_atom } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000039)
+   }
+ }
+ 
+@@ -110,7 +110,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: ^unit_kernel_type_atom } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000040)
+   }
+ }
+ 
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/use_site_verdict.dag /tmp/tidy-otter-instr/src/v2/compiler/use_site_verdict.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/compiler/use_site_verdict.dag	2026-09-25 15:26:02.904705029 +0000
++++ /tmp/tidy-otter-instr/src/v2/compiler/use_site_verdict.dag	2026-09-25 15:35:49.200523705 +0000
+@@ -39,14 +39,14 @@
+ data use_site_verdict_unclassified_tag: Symbol = ^use_site_verdict_unclassified
+ 
+ fn use_site_verdict_atom(tag: Symbol) -> Node {
+-  node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: [])
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000041), kind: TypeNode { connective: Atom { identity: tag } }, children: [])
+ }
+ 
+ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
+   match verdict {
+     MoveWhole => use_site_verdict_atom(tag: use_site_verdict_move_whole_tag)
+     MoveField { field: f } =>
+-      node_synthetic(
++      node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000042), 
+         kind: TypeNode { connective: Atom { identity: use_site_verdict_move_field_tag } },
+         children: [
+           Edge { label: Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/extdeps/languages/dag.dag /tmp/tidy-otter-instr/src/v2/extdeps/languages/dag.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/extdeps/languages/dag.dag	2026-09-25 15:26:02.913705070 +0000
++++ /tmp/tidy-otter-instr/src/v2/extdeps/languages/dag.dag	2026-09-25 15:35:49.211523760 +0000
+@@ -619,7 +619,7 @@
+       connective: Atom { identity: id }
+     },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000043)
+ }
+ }
+ 
+@@ -671,7 +671,7 @@
+         )
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000044)
+ }
+ }
+ 
+@@ -2339,7 +2339,7 @@
+         target: qualified_name
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000045)
+ }
+ }
+ 
+@@ -2384,7 +2384,7 @@
+         )
+       Absent => prefix
+     },
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000046)
+ }
+ }
+ 
+@@ -2430,7 +2430,7 @@
+         target: target
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000047)
+   }
+ }
+ 
+@@ -2476,7 +2476,7 @@
+         target: expr
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000048)
+ }
+ }
+ 
+@@ -2894,7 +2894,7 @@
+       xs: dag_grammar_root().productions,
+       f: dag_grammar_production_roster_edge
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000049)
+   }
+ }
+ 
+@@ -3085,7 +3085,7 @@
+             target: dag_trivia_normalization_feature_node(feature: feature)
+           )
+         ],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000050)
+       }
+     FailClosed { feature: feature } =>
+       Node {
+@@ -3100,7 +3100,7 @@
+             target: dag_trivia_normalization_feature_node(feature: feature)
+           )
+         ],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000051)
+       }
+   }
+ }
+@@ -3122,7 +3122,7 @@
+         target: dag_fidelity_disposition_node(disposition: dag_block_comment_fidelity())
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000052)
+   }
+ }
+ 
+@@ -3143,7 +3143,7 @@
+         target: dag_fidelity_disposition_node(disposition: Modeled)
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000053)
+   }
+ }
+ 
+@@ -3172,7 +3172,7 @@
+         target: quotient
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000054)
+   }
+ }
+ 
+@@ -3236,7 +3236,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: id } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000055)
+ }
+ }
+ 
+@@ -3250,7 +3250,7 @@
+         target: dag_inhabitant_atom(id: ^dag_surface_spelling_int)
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000056)
+ }
+ }
+ 
+@@ -3264,7 +3264,7 @@
+         target: namespace_graft_module_body_marker_node()
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000057)
+ }
+ }
+ 
+@@ -3277,7 +3277,7 @@
+     Edge { label: Positional, target: dag_fixture_int_inhabitant },
+     Edge { label: Positional, target: dag_fixture_int_inhabitant }
+   ],
+-  occurrence_id: OccurrenceSynthetic
++  occurrence_id: xl2_site_identity(n: 1000058)
+ }
+ 
+ fn dag_pick_zip_fold_closure_edges() -> List<Edge> {
+@@ -3358,7 +3358,7 @@
+       left: dag_declared_inhabitants_core().children,
+       right: dag_zip_fold_closure_edges()
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000059)
+ }
+ }
+ 
+@@ -3533,7 +3533,7 @@
+         )
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000060)
+   }
+ }
+ 
+@@ -3569,7 +3569,7 @@
+           target: dag_type_decl_productions_only_translation_rules()
+         )
+       ],
+-      occurrence_id: OccurrenceSynthetic
++      occurrence_id: xl2_site_identity(n: 1000061)
+     },
+     lex: dag_type_decl_structural_lex(),
+     binding_spellings: empty_map(),
+@@ -3598,7 +3598,7 @@
+         target: dag_add_grammar_relation_row_node()
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000062)
+ }
+ }
+ 
+@@ -3627,7 +3627,7 @@
+         target: dag_fidelity_quotient_node()
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000063)
+ }
+ }
+ 
+@@ -3708,7 +3708,7 @@
+         target: dag_loop_measure_node()
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000064)
+   }
+ }
+ 
+@@ -3866,7 +3866,7 @@
+         target: Node {
+           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+           children: [],
+-          occurrence_id: OccurrenceSynthetic
++          occurrence_id: xl2_site_identity(n: 1000065)
+         }
+       }
+     ],
+@@ -3973,7 +3973,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: identity } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000066)
+   }
+ }
+ 
+@@ -3996,7 +3996,7 @@
+       },
+       Edge { label: Named { name: ^arrow_body_edge }, target: body }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000067)
+   }
+ }
+ 
+@@ -4021,7 +4021,7 @@
+   Node {
+     kind: TypeNode { connective: Conj },
+     children: children,
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000068)
+   }
+ }
+ 
+@@ -4039,7 +4039,7 @@
+         target: dag_type_atom_node(identity: right_binding)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000069)
+   }
+ }
+ 
+@@ -4060,7 +4060,7 @@
+         target: dag_type_atom_node(identity: ^dag_binding_type_int)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000070)
+   }
+ }
+ 
+@@ -4106,7 +4106,7 @@
+   Node {
+     kind: TypeNode { connective: Conj },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000071)
+   }
+ }
+ 
+@@ -4122,7 +4122,7 @@
+       Edge { label: Positional, target: then_arm },
+       Edge { label: Positional, target: else_arm }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000072)
+   }
+ }
+ 
+@@ -4131,7 +4131,7 @@
+     magnitude: DecimalNonZero {
+       magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
+     },
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000073)
+   )
+ }
+ 
+@@ -4140,12 +4140,12 @@
+     magnitude: DecimalNonZero {
+       magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
+     },
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000074)
+   )
+ }
+ 
+ fn dag_int_literal_fixture_node(lexeme: String) -> Outcome<Node> {
+-  dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic)
++  dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: xl2_site_identity(n: 1000075))
+ }
+ 
+ fn dag_pick_if_body_node() -> Node {
+@@ -4217,7 +4217,7 @@
+         target: dag_type_atom_node(identity: body_lit)
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000076)
+   }
+ }
+ 
+@@ -4233,7 +4233,7 @@
+       Edge { label: Positional, target: true_arm },
+       Edge { label: Positional, target: false_arm }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000077)
+   }
+ }
+ 
+@@ -4300,7 +4300,7 @@
+         target: dag_type_atom_node(identity: ^dag_rec_lit_nine)
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000078)
+   }
+ }
+ 
+@@ -4329,7 +4329,7 @@
+         target: dag_type_atom_node(identity: value_lit)
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000079)
+   }
+ }
+ 
+@@ -4347,7 +4347,7 @@
+         target: dag_type_atom_node(identity: body_lit)
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000080)
+   }
+ }
+ 
+@@ -4426,7 +4426,7 @@
+         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000081)
+   }
+ }
+ 
+@@ -4488,7 +4488,7 @@
+         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000082)
+   }
+ }
+ 
+@@ -4572,7 +4572,7 @@
+         target: dag_type_atom_node(identity: ^dag_binding_rec_v)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000083)
+   }
+ }
+ 
+@@ -4585,7 +4585,7 @@
+         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000084)
+   }
+ }
+ 
+@@ -4622,7 +4622,7 @@
+         target: dag_type_atom_node(identity: body_binding)
+       }
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000085)
+   }
+ }
+ 
+@@ -4794,7 +4794,7 @@
+         )
+       ]
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000086)
+   }
+ }
+ 
+@@ -4817,7 +4817,7 @@
+       ),
+       right: dag_bodied_fn_zip_fold_closure_edges(spec: spec)
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000087)
+   }
+ }
+ 
+@@ -4837,7 +4837,7 @@
+         )
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000088)
+   }
+ }
+ 
+@@ -4885,7 +4885,7 @@
+         target: dag_operator_realizations_catalog_node()
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000089)
+   }
+ }
+ 
+@@ -5273,7 +5273,7 @@
+ 
+ fn dag_round_trip_atom(s: Symbol) -> Node {
+   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+- occurrence_id: OccurrenceSynthetic
++ occurrence_id: xl2_site_identity(n: 1000090)
+ }
+ }
+ 
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/anti_unification.dag /tmp/tidy-otter-instr/src/v2/std/anti_unification.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/anti_unification.dag	2026-09-25 15:26:02.944705210 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/anti_unification.dag	2026-09-25 16:15:24.490375380 +0000
+@@ -15,7 +15,7 @@
+   TypeNode { connective: Atom { identity: anti_unification_hole_symbol } }
+ }
+ fn hole_node() -> Node {
+-  node_synthetic(kind: hole_kind(), children: [])
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000122), kind: hole_kind(), children: [])
+ }
+ fn is_hole(n: Node) -> Bool {
+   n.kind == hole_kind()
+@@ -50,7 +50,7 @@
+       if is_leaf(a) {
+         if is_leaf(b) {
+           if exact_structural_equality_zip_fold(source_facts: a, candidate: b) {
+-            node_synthetic(kind: a.kind, children: [])
++            node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000123), kind: a.kind, children: [])
+           } else {
+             hole_node()
+           }
+@@ -62,7 +62,7 @@
+           hole_node()
+         } else {
+           if children_aligned(a: a, b: b) {
+-            node_synthetic(kind: a.kind, children: anti_unify_children(a: a.children, b: b.children))
++            node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000124), kind: a.kind, children: anti_unify_children(a: a.children, b: b.children))
+           } else {
+             hole_node()
+           }
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/compilers/body_lowering.dag /tmp/tidy-otter-instr/src/v2/std/compilers/body_lowering.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/compilers/body_lowering.dag	2026-09-25 15:26:02.946705220 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/compilers/body_lowering.dag	2026-09-25 16:15:24.488375370 +0000
+@@ -51,7 +51,7 @@
+ }
+ 
+ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000114), 
+     kind: ComputationNode { behavior: Transform },
+     children: [
+       Edge { label: Positional, target: operator },
+@@ -64,7 +64,7 @@
+ // A PREFIX OPERATOR APPLIED TO ONE OPERAND: the same Transform shape lower_binary_infix builds, with
+ // the operator first and the single operand after it.
+ fn lower_unary_prefix(operator: Node, operand: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000115), 
+     kind: ComputationNode { behavior: Transform },
+     children: [
+       Edge { label: Positional, target: operator },
+@@ -74,7 +74,7 @@
+ }
+ 
+ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000116), 
+     kind: ComputationNode { behavior: Branch },
+     children: [
+       Edge { label: Positional, target: condition },
+@@ -85,7 +85,7 @@
+ }
+ 
+ fn lower_loop(value: Node, bound: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000117), 
+     kind: ComputationNode { behavior: Loop },
+     children: [
+       Edge { label: Positional, target: value },
+@@ -95,7 +95,7 @@
+ }
+ 
+ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000118), 
+     kind: ComputationNode { behavior: Bind },
+     children: [
+       Edge { label: Positional, target: key_binding },
+@@ -106,7 +106,7 @@
+ }
+ 
+ fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000119), 
+     kind: ComputationNode { behavior: Match },
+     children: list_append(
+       left: [Edge { label: Positional, target: scrutinee }],
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/fold_assembly.dag /tmp/tidy-otter-instr/src/v2/std/fold_assembly.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/fold_assembly.dag	2026-09-25 15:26:02.953705251 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/fold_assembly.dag	2026-09-25 16:15:24.487375365 +0000
+@@ -24,7 +24,7 @@
+ }
+ 
+ fn conj_record(children: FreeMonoid<Edge>) -> Node {
+-  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000112), kind: TypeNode { connective: Conj }, children: children)
+ }
+ 
+ fn fold_decode_reject<T>(node: Node, reason: Symbol) -> Outcome<T> {
+@@ -78,7 +78,7 @@
+ 
+ fn apply_fills_rebuild(kind_source: Node, acc: ApplyEdgesAcc) -> ApplyResult {
+   ApplyResult {
+-    node: node_synthetic(kind: kind_source.kind, children: acc.edges),
++    node: node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000113), kind: kind_source.kind, children: acc.edges),
+     rest: acc.rest
+   }
+ }
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/grammar.dag /tmp/tidy-otter-instr/src/v2/std/grammar.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/grammar.dag	2026-09-25 15:26:02.954705256 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/grammar.dag	2026-09-25 15:35:49.216523785 +0000
+@@ -367,7 +367,7 @@
+       connective: Atom { identity: identity }
+     },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000091)
+ }
+ }
+ 
+@@ -450,7 +450,7 @@
+     children: [
+       grammar_named_edge(name: ^formal_terminal_identity_node_projection, target: grammar_atom(identity: terminal.identity))
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000092)
+ }
+ }
+ 
+@@ -471,7 +471,7 @@
+             target: grammar_atom(identity: binding)
+           )
+         ],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000093)
+ }
+     Absent => formal_terminal_to_node(terminal: terminal)
+   }
+@@ -485,7 +485,7 @@
+     children: [
+       grammar_named_edge(name: ^formal_nonterminal_identity_node_projection, target: grammar_atom(identity: nonterminal.identity))
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000094)
+ }
+ }
+ 
+@@ -502,7 +502,7 @@
+             target: formal_terminal_occurrence_to_node(terminal: terminal, binding: binding)
+           )
+         ],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000095)
+ }
+     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+       Node {
+@@ -512,7 +512,7 @@
+         children: [
+           grammar_named_edge(name: ^formal_symbol_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal))
+         ],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000096)
+ }
+   }
+ }
+@@ -544,11 +544,11 @@
+             connective: Conj
+           },
+           children: formal_rhs_to_edges(symbols: production.rhs),
+-          occurrence_id: OccurrenceSynthetic
++          occurrence_id: xl2_site_identity(n: 1000097)
+ }
+       )
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000098)
+ }
+ }
+ 
+@@ -857,7 +857,7 @@
+         )
+       }
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000099)
+   }
+ }
+ 
+@@ -926,7 +926,7 @@
+       grammar_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+       grammar_named_edge(name: ^grammar_relation_field_tokens, target: tokens)
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000100)
+ }
+ }
+ 
+@@ -1911,7 +1911,7 @@
+       connective: Conj
+     },
+     children: children,
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000101)
+ }
+ }
+ 
+@@ -1984,7 +1984,7 @@
+       grammar_named_edge(name: ^grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
+       grammar_named_edge(name: ^grammar_production_emitted_node_projection, target: production.emitted)
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000102)
+ }
+ }
+ 
+@@ -2010,7 +2010,7 @@
+         grammar_production_to_list_step(acc: acc, production: production)
+       }
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000103)
+ }
+ }
+ 
+@@ -2023,7 +2023,7 @@
+       grammar_named_edge(name: ^grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
+       grammar_named_edge(name: ^grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
+     ],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000104)
+ }
+ }
+ 
+@@ -2129,7 +2129,7 @@
+   Node {
+     kind: TypeNode { connective: Atom { identity: identity } },
+     children: [],
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000105)
+   }
+ }
+ 
+@@ -2146,7 +2146,7 @@
+         )
+       }
+     ),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000106)
+   }
+ }
+ 
+@@ -2746,7 +2746,7 @@
+       node: Node {
+         kind: TypeNode { connective: Atom { identity: surface_identity } },
+         children: [],
+-        occurrence_id: OccurrenceSynthetic
++        occurrence_id: xl2_site_identity(n: 1000107)
+       }
+     ),
+     correction: Unavailable { reason: ExternalContractUnknown }
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/inhabitance.dag /tmp/tidy-otter-instr/src/v2/std/inhabitance.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/inhabitance.dag	2026-09-25 15:26:02.955705260 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/inhabitance.dag	2026-09-25 16:15:24.491375385 +0000
+@@ -135,7 +135,7 @@
+ }
+ 
+ fn inhabitance_cardinality_type(inner: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000126), 
+     kind: TypeNode { connective: Cardinality },
+     children: [
+       Edge { label: Positional, target: inner }
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/node.dag /tmp/tidy-otter-instr/src/v2/std/node.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/node.dag	2026-09-25 15:26:02.958705274 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/node.dag	2026-09-25 16:15:24.495375404 +0000
+@@ -148,7 +148,7 @@
+   node_with_occurrence_id(
+     kind: kind,
+     children: children,
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 999999)
+   )
+ }
+ 
+@@ -156,12 +156,12 @@
+   node_with_occurrence_id(
+     kind: n.kind,
+     children: n.children,
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000127)
+   )
+ }
+ 
+ fn strip_provenance_fold_init(n: Node) -> Node {
+-  node_synthetic(kind: n.kind, children: [])
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000128), kind: n.kind, children: [])
+ }
+ 
+ fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
+@@ -813,7 +813,7 @@
+   Node {
+     kind: base.kind,
+     children: canonicalize_edges_for_content_hash(kind: base.kind, children: base.children),
+-    occurrence_id: OccurrenceSynthetic
++    occurrence_id: xl2_site_identity(n: 1000129)
+   }
+ }
+ 
+@@ -1433,7 +1433,7 @@
+ }
+ 
+ fn node_offset_atom(sym: Symbol) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000130), 
+     kind: TypeNode { connective: Atom { identity: sym } },
+     children: []
+   )
+@@ -1444,7 +1444,7 @@
+ }
+ 
+ fn node_offset_conj(children: List<Edge>) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000131), 
+     kind: TypeNode { connective: Conj },
+     children: children
+   )
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/qualified_name.dag /tmp/tidy-otter-instr/src/v2/std/qualified_name.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/qualified_name.dag	2026-09-25 15:26:02.960705283 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/qualified_name.dag	2026-09-25 16:15:24.486375360 +0000
+@@ -302,7 +302,7 @@
+   let spine = fold_list_node(
+     xs: qn,
+     item_node: fn(sym) {
+-      node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
++      node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000110), kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+     }
+   )
+   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: occurrence_id)
+@@ -330,7 +330,7 @@
+     children: [
+       Edge {
+         label: Named { name: declaration_reference_marker() },
+-        target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
++        target: qualified_name_spine_node(qn: qn, occurrence_id: xl2_site_identity(n: 1000111))
+       },
+     ],
+     occurrence_id: occurrence_id
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/runtime.dag /tmp/tidy-otter-instr/src/v2/std/runtime.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/runtime.dag	2026-09-25 15:26:02.961705288 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/runtime.dag	2026-09-25 16:15:24.490375380 +0000
+@@ -126,11 +126,11 @@
+ }
+ 
+ fn runtime_value_conj_node(children: List<Edge>) -> Node {
+-  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000120), kind: TypeNode { connective: Conj }, children: children)
+ }
+ 
+ fn runtime_value_symbol_atom(sym: Symbol) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000121), 
+     kind: TypeNode { connective: Atom { identity: sym } },
+     children: []
+   )
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/type_binder.dag /tmp/tidy-otter-instr/src/v2/std/type_binder.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/std/type_binder.dag	2026-09-25 15:26:02.962705292 +0000
++++ /tmp/tidy-otter-instr/src/v2/std/type_binder.dag	2026-09-25 16:15:24.491375385 +0000
+@@ -63,7 +63,7 @@
+ // type_binder_labels_conform refuses it on any tree resolve is handed (gunbc#12240 review 71065
+ // ruled the mixed-in shape a hidden sum). THE ONE PRODUCER of the wrapper.
+ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
+-  node_synthetic(
++  node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000125), 
+     kind: TypeNode { connective: Conj },
+     children: [
+       Edge { label: Named { name: type_params_marker() }, target: binders },
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/workflow/realization_attempt.dag /tmp/tidy-otter-instr/src/v2/workflow/realization_attempt.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/src/v2/workflow/realization_attempt.dag	2026-09-25 15:26:03.133706068 +0000
++++ /tmp/tidy-otter-instr/src/v2/workflow/realization_attempt.dag	2026-09-25 16:15:24.485375356 +0000
+@@ -132,7 +132,7 @@
+       Named { name: decl_name } =>
+         match first_arrow_in(root: e.target) {
+           Present { value: arrow } =>
+-            concat(inner, [node_synthetic(
++            concat(inner, [node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000108), 
+               kind: TypeNode { connective: Conj },
+               children: [Edge { label: Named { name: decl_name }, target: arrow }]
+             )])
+@@ -236,7 +236,7 @@
+       Named { name: n } =>
+         if n == fn_name {
+           match first_arrow_in(root: e.target) {
+-            Present { value: _ } => concat(inner, [node_synthetic(
++            Present { value: _ } => concat(inner, [node_with_occurrence_id(occurrence_id: xl2_site_identity(n: 1000109), 
+               kind: TypeNode { connective: Conj },
+               children: [Edge { label: Named { name: n }, target: e.target }]
+             )])
+diff -ru /home/briansrls/.worktrees/gunbc/tidy-otter-111/dag/std/occurrence_identity.dag /tmp/tidy-otter-instr/dag/std/occurrence_identity.dag
+--- /home/briansrls/.worktrees/gunbc/tidy-otter-111/dag/std/occurrence_identity.dag	2026-09-25 15:26:02.169701694 +0000
++++ /tmp/tidy-otter-instr/dag/std/occurrence_identity.dag	2026-09-25 15:35:49.224523825 +0000
+@@ -825,3 +825,7 @@
+ data authored_token_ordinal_value_bridge_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.")
+ 
+ data occurrence_containment_storage_projection_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.")
++
++fn xl2_site_identity(n: Int) -> NodeOccurrenceIdentity {
++  OccurrenceProjected { id: OccurrenceId { value: n }, caused_by: ScopedOccurrenceRef { scope: Fnv1a64Structural { digest: "0000000000000000" }, occurrence: OccurrenceId { value: n } } }
++}

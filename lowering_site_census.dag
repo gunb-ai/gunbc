@@ -1,0 +1,202 @@
+module xl2probe.lowering_site_census
+
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  AuthoredAtom,
+  AuthoredAtomPopulation,
+  ReferenceConservationSubject,
+  authored_atom_population,
+  declared_token_classes,
+  reference_conservation_subject_of_read,
+  occurrence_identity_index,
+  minted_occurrence_of,
+  node_atom_identity_of,
+  module_body_optional,
+  pool_add,
+  body_lower_resolved_type_binding,
+  authored_atom_context_text,
+  reference_conservation_of_subject,
+  reference_conservation_report_lines
+}
+import v2.compiler.reference_conservation_admission { conservation_read_of }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.std.algebra { fold_list }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.optional { Optional }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+
+// Two pools per declaration: rebuilt (non-minted) atoms, and Named edge labels.
+type SitePools {
+  atoms: Map<Symbol, FreeMonoid<Int>>
+  labels: Map<Symbol, Int>
+}
+
+fn tag_of(node: Node) -> Int {
+  match node.occurrence_id {
+    OccurrenceProjected { id: id, caused_by: _ } => id.value
+    OccurrenceSynthetic => 0 - 1
+    OccurrenceMinted { id: _ } => 0 - 3
+  }
+}
+
+fn tpool_add(pool: Map<Symbol, FreeMonoid<Int>>, sym: Symbol, tag: Int) -> Map<Symbol, FreeMonoid<Int>> {
+  match map_lookup(m: pool, key: sym) {
+    Present { value: xs } => map_insert(m: pool, key: sym, value: Cons { head: tag, tail: xs })
+    Absent => map_insert(m: pool, key: sym, value: Cons { head: tag, tail: Empty })
+  }
+}
+
+type Taken {
+  tag: Int
+  rest: FreeMonoid<Int>
+}
+
+fn tpool_take(pool: Map<Symbol, FreeMonoid<Int>>, sym: Symbol) -> Optional<Taken> {
+  match map_lookup(m: pool, key: sym) {
+    Present { value: xs } =>
+      match xs {
+        Cons { head: h, tail: t } => Present { value: Taken { tag: h, rest: t } }
+        Empty => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn site_pools_walk(acc: SitePools, node: Node, popmap: Map<OccurrenceId, Symbol>) -> SitePools {
+  let here = match node_atom_identity_of(node: node) {
+    Absent => acc
+    Present { value: identity } =>
+      match minted_occurrence_of(node: node) {
+        Present { value: oid } =>
+          match map_lookup(m: popmap, key: oid) {
+            Present { value: own } =>
+              if own == identity { acc } else { SitePools { atoms: tpool_add(pool: acc.atoms, sym: identity, tag: 0 - 4), labels: acc.labels } }
+            Absent => SitePools { atoms: tpool_add(pool: acc.atoms, sym: identity, tag: 0 - 3), labels: acc.labels }
+          }
+        Absent => SitePools { atoms: tpool_add(pool: acc.atoms, sym: identity, tag: tag_of(node: node)), labels: acc.labels }
+      }
+  }
+  fold(node.children, init: here, f: fn(inner, edge) {
+    let labelled = match edge.label {
+      Named { name: name } => SitePools { atoms: inner.atoms, labels: pool_add(pool: inner.labels, sym: name) }
+      Positional => inner
+    }
+    site_pools_walk(acc: labelled, node: edge.target, popmap: popmap)
+  })
+}
+
+fn innermost_text(atom: AuthoredAtom) -> String {
+  fold_list(xs: atom.context, empty: "none", cons: fn(acc, p) { symbol_lexeme(sym: p) })
+}
+
+fn take(pool: Map<Symbol, Int>, sym: Symbol) -> Int {
+  match map_lookup(m: pool, key: sym) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+type SiteState {
+  pools: Map<Int, SitePools>
+  out: String
+}
+
+fn decl_pools(body_children: List<Edge>, popmap: Map<OccurrenceId, Symbol>) -> Map<Symbol, SitePools> {
+  fold(body_children, init: empty_map(), f: fn(acc, edge) {
+    match edge.label {
+      Named { name: name } =>
+        map_insert(m: acc, key: name, value: site_pools_walk(acc: SitePools { atoms: empty_map(), labels: pool_add(pool: empty_map(), sym: name) }, node: edge.target, popmap: popmap))
+      Positional => acc
+    }
+  })
+}
+
+fn site_lines(path: String, population: AuthoredAtomPopulation, root: Node) -> String {
+  let index = occurrence_identity_index(acc: empty_map(), node: root)
+  let popmap = fold_list(xs: population.atoms, empty: empty_map(), cons: fn(m, a) { map_insert(m: m, key: a.occurrence, value: a.identity) })
+  let decls = match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: _ } => empty_map()
+    Accepted { value: qn, diagnostics: _ } =>
+      match module_body_optional(root: root, module_qn: qn) {
+        Absent => empty_map()
+        Present { value: body } => decl_pools(body_children: body.children, popmap: popmap)
+      }
+  }
+  fold_list(
+    xs: population.atoms,
+    empty: SiteState { pools: empty_map(), out: "" },
+    cons: fn(state, atom) {
+      match map_lookup(m: index, key: atom.occurrence) {
+        Present { value: _ } => SiteState { pools: state.pools, out: state.out + "C\t" + innermost_text(atom: atom) + "\t" + symbol_lexeme(sym: atom.identity) + "\n" }
+        Absent =>
+          let pools = match map_lookup(m: state.pools, key: atom.item) {
+            Present { value: p } => p
+            Absent =>
+              match map_lookup(m: population.item_names, key: atom.item) {
+                Absent => SitePools { atoms: empty_map(), labels: empty_map() }
+                Present { value: name } =>
+                  match map_lookup(m: decls, key: name) {
+                    Present { value: p } => p
+                    Absent => SitePools { atoms: empty_map(), labels: empty_map() }
+                  }
+              }
+          }
+          let canon = body_lower_resolved_type_binding(sym: atom.identity)
+          let l1 = take(pool: pools.labels, sym: atom.identity)
+          let prefix = "E\t" + innermost_text(atom: atom) + "\t" + symbol_lexeme(sym: atom.identity) + "\t"
+          match tpool_take(pool: pools.atoms, sym: atom.identity) {
+            Present { value: tk } =>
+              SiteState { pools: map_insert(m: state.pools, key: atom.item, value: SitePools { atoms: map_insert(m: pools.atoms, key: atom.identity, value: tk.rest), labels: pools.labels }), out: state.out + prefix + "atom:" + integer_int_to_decimal_string(value: tk.tag) + "\t" + authored_atom_context_text(atom: atom) + "\n" }
+            Absent =>
+              match tpool_take(pool: pools.atoms, sym: canon) {
+                Present { value: tk } =>
+                  SiteState { pools: map_insert(m: state.pools, key: atom.item, value: SitePools { atoms: map_insert(m: pools.atoms, key: canon, value: tk.rest), labels: pools.labels }), out: state.out + prefix + "canon:" + integer_int_to_decimal_string(value: tk.tag) + "\t" + authored_atom_context_text(atom: atom) + "\n" }
+                Absent =>
+                  if l1 > 0 {
+                    SiteState { pools: map_insert(m: state.pools, key: atom.item, value: SitePools { atoms: pools.atoms, labels: map_insert(m: pools.labels, key: atom.identity, value: l1 - 1) }), out: state.out + prefix + "label\t" + authored_atom_context_text(atom: atom) + "\n" }
+                  } else {
+                    SiteState { pools: state.pools, out: state.out + "D\t" + innermost_text(atom: atom) + "\t" + symbol_lexeme(sym: atom.identity) + "\n" }
+                  }
+              }
+          }
+      }
+    }
+  ).out
+}
+
+fn site_census_for_path(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => "U\t" + path + "\n"
+    FilesystemReadSucceeded { content: text } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => "G\t" + path + "\n"
+        Accepted { value: prepared, diagnostics: residue } =>
+          let lm = dag_language_model()
+          let subject = reference_conservation_subject_of_read(read: conservation_read_of(path: path, text: text), lm: lm, prepared: prepared, residue: residue)
+          match subject.parsed {
+            Rejected { diagnostics: _ } => "P\t" + path + "\n"
+            Accepted { value: artifact, diagnostics: _ } =>
+              let tc = declared_token_classes(lm: lm)
+              let population = authored_atom_population(artifact: artifact, token_classes: tc)
+              let summary = fold_list(xs: reference_conservation_report_lines(report: reference_conservation_of_subject(subject: subject, token_classes: tc)), empty: "", cons: fn(acc, l) { acc + "S\t" + l + "\n" })
+              match subject.normalized {
+                Rejected { diagnostics: _ } => "R\t" + path + "\n" + summary
+                Accepted { value: tree, diagnostics: _ } => "M\t" + path + "\n" + summary + site_lines(path: path, population: population, root: tree.root)
+              }
+          }
+      }
+  }
+}
+
+fn site_census_for_paths(paths_csv: String) -> String {
+  fold_list(xs: split(s: paths_csv, delimiter: ","), empty: "", cons: fn(acc, p) { acc + site_census_for_path(path: p) })
+}
