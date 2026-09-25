@@ -126,6 +126,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_sub,
   canonical_operation_op_mul,
   canonical_operation_op_div,
+  canonical_operation_op_coerce,
   canonical_operation_op_and,
   canonical_operation_op_or,
   canonical_operation_op_lt,
@@ -407,6 +408,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_mul())
   } else if surface_token == ^dag_token_slash {
     outcome_accepted(canonical_operation_op_div())
+  } else if surface_token == ^dag_token_kw_as {
+    outcome_accepted(canonical_operation_op_coerce())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)

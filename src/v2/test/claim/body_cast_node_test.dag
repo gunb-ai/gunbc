@@ -1,0 +1,393 @@
+module v2.test.claim.body_cast_node
+
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_snoc_item }
+import v2.std.coercion { NoTargetCandidate }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
+import v2.compiler.emit { emit }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_node_from_lexeme, dag_type_atom_node }
+import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  None,
+  Outcome,
+  Rejected,
+  diagnostics_fatal,
+  diagnostics_fatal_reason,
+  diagnostics_list_has_reason
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  node_subtree_nodes,
+  node_synthetic
+}
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.runtime { RuntimeValue }
+import v2.std.type_binder { cast_target_edge, cast_target_optional }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: `e as T` is carried as the typed cast node -- Transform[coerce, e] with the
+// v2.std.type_binder <cast-target> edge -> T -- through lowering, resolve, infer, translate and eval
+// (gunbc.recurring_failure_mode as_cast_has_no_lowered_form). BOUNDARY: source text in, assembled
+// program out through v2.test.claim.type_param_binder_frame tpb_assemble -- the production route --
+// for lowering and resolve; the later stages are driven over that output or over a supplied node
+// whose shape rows (1)-(5) establish the real producer emits.
+//
+// RED BEFORE: on the parent of this change every row (1)-(5) refused
+// body_lowering_reason_type_annotation_not_carried at `T` (the as-cast refusal), and before that
+// they were Accepted with `T` dropped: no cast node, so the count in bcn_one_cast_to_int was 0.
+
+fn bcn_tail_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
+}
+
+fn bcn_let_value_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
+}
+
+fn bcn_call_argument_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n")
+}
+
+fn bcn_if_arm_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Int } else { x }\n}\n")
+}
+
+fn bcn_match_arm_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n")
+}
+
+fn bcn_call_operand_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n")
+}
+
+fn bcn_tail_undeclared() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
+}
+
+fn bcn_match_arm_undeclared() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n")
+}
+
+fn bcn_generic_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  x as T\n}\n")
+}
+
+fn bcn_value_param_as_type() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  Q as Q\n}\n")
+}
+
+fn bcn_int_sum_as_int() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  (x + x) as Int\n}\n")
+}
+
+fn bcn_int_sum_as_bool() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n")
+}
+
+fn bcn_into_refinement() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n")
+}
+
+fn bcn_out_of_refinement() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
+}
+
+// The cast targets in a tree, in walk order.
+fn bcn_cast_targets(n: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: n), init: Empty, f: fn(acc, x) {
+    match cast_target_optional(n: x) {
+      Present { value: t } => Cons { head: t, tail: acc }
+      Absent => acc
+    }
+  })
+}
+
+fn bcn_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => Absent
+  }
+}
+
+// Accepted, with exactly one cast node whose target is a resolved atom: the lowering built the node
+// and resolve kept T.
+fn bcn_one_cast(o: Outcome<Node>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match bcn_cast_targets(n: root) {
+        Cons { head: t, tail: Empty } =>
+          match bcn_atom_identity(n: t) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        _ => false
+      }
+  }
+}
+
+fn bcn_cast_target_identity(o: Outcome<Node>) -> Optional<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match bcn_cast_targets(n: root) {
+        Cons { head: t, tail: Empty } => bcn_atom_identity(n: t)
+        _ => Absent
+      }
+  }
+}
+
+fn bcn_atom_in(n: Node, id: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, x) {
+    acc || match bcn_atom_identity(n: x) {
+      Present { value: s } => s == id
+      Absent => false
+    }
+  })
+}
+
+// Refused with `reason`, located at a node spelling `id` and not at the fn or the `as` token.
+fn bcn_refused_at(o: Outcome<Node>, reason: Symbol, id: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == reason)
+        && match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } =>
+            bcn_atom_in(n: a.at, id: id)
+              && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
+              && !bcn_atom_in(n: a.at, id: ^dag_token_kw_fn)
+          _ => false
+        }
+  }
+}
+
+// (1)-(5) A cast to a declared type lowers and resolves on every route the as-cast refusal stopped:
+// tail, let value, named call argument, if arm, match arm. Each carries exactly one cast node.
+test fn bcn_tail_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_tail_cast())
+}
+
+test fn bcn_let_value_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_let_value_cast())
+}
+
+test fn bcn_call_argument_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_call_argument_cast())
+}
+
+test fn bcn_if_arm_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_if_arm_cast())
+}
+
+test fn bcn_match_arm_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_match_arm_cast())
+}
+
+// (5b) A CAST WHOSE OPERAND IS A CALL is carried too. RED BEFORE (measured): the chain door
+// declined a head the operand reader does not read, and the tail reader behind it lowered only the
+// primary `g(v: x)` -- Accepted with no cast node. A chain carrying a cast now never declines.
+test fn bcn_call_operand_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_call_operand_cast())
+}
+
+// (6) An undeclared target refuses at resolve, located at the authored `Q` -- never dropped, and
+// never at the operand or the `as`. The discriminating red for (1)-(5): the same routes with `Q`.
+test fn bcn_undeclared_target_refuses_at_q() -> Bool {
+  bcn_refused_at(o: bcn_tail_undeclared(), reason: ^resolve_reason_unbound_symbol, id: ^Q)
+    && bcn_refused_at(o: bcn_match_arm_undeclared(), reason: ^resolve_reason_unbound_symbol, id: ^Q)
+}
+
+// (7) THE TARGET RESOLVES IN TYPE ROLE. In `fn f<T>` the target `T` binds to the fn's binder through
+// the type-role frame (v2.compiler.resolve resolve_type_role_target) ...
+test fn bcn_generic_target_binds_the_type_parameter() -> Bool {
+  bcn_cast_target_identity(o: bcn_generic_cast()) == optional_present(value: ^T)
+}
+
+// (8) ... and a VALUE binder never answers for a type: a parameter named `Q` leaves the target `Q`
+// unbound, refused at the target.
+test fn bcn_value_binder_does_not_answer_the_target() -> Bool {
+  match bcn_value_param_as_type() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+fn bcn_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
+}
+
+fn bcn_infers(o: Outcome<Node>) -> Outcome<Bool> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+// (9) INFER ADMITS THE CROSSING THROUGH v2.std.coercion OR REFUSES TYPED. An Int sum cast to Int is
+// an Identity crossing and admitted; the same sum cast to Bool has no structural witness and refuses
+// with coercion's own mismatch (coercion_cast_crossing), not a name-keyed cast table. RED BEFORE the
+// infer rule: the Bool cast was admitted.
+test fn bcn_infer_admits_int_to_int() -> Bool {
+  match bcn_infers(o: bcn_int_sum_as_int()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bcn_infer_refuses_int_to_bool() -> Bool {
+  tpb_accepts(o: bcn_int_sum_as_bool())
+    && match bcn_infers(o: bcn_int_sum_as_bool()) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+    }
+}
+
+// TRANSLATE AND EVAL are driven over the cast node the rows above establish lowering produces:
+// Transform[coerce, operand] + <cast-target>.
+fn bcn_cast_node(operator: Node, operand: Node, keep_target: Bool) -> Node {
+  let head = [Edge { label: Positional, target: operator }, Edge { label: Positional, target: operand }]
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: if keep_target {
+      list_snoc_item(xs: head, item: cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int)))
+    } else {
+      head
+    }
+  )
+}
+
+fn bcn_no_facts(key: Node) -> Optional<InferredFacts> {
+  Absent
+}
+
+fn bcn_emit_rust(body: Node) -> Outcome<String> {
+  match emit(
+    tree: InferredTree {
+      root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: body),
+      facts: PartialFunction { lookup: bcn_no_facts }
+    },
+    target: rust_binop_target_model_staging()
+  ) {
+    Accepted { value: m, diagnostics: d } => Accepted { value: m.carried, diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+// (10) TRANSLATE REALIZES THE CAST AS ITS OPERAND (the rust extdep's OperandUnchanged row -- how v1
+// spells a representation-preserving crossing, not Rust `as`) ...
+test fn bcn_rust_realizes_the_cast_as_its_operand() -> Bool {
+  bcn_emit_rust(body: bcn_cast_node(operator: dag_type_atom_node(identity: ^dag_token_kw_as), operand: dag_type_atom_node(identity: ^dag_binding_param_x), keep_target: true))
+    == Accepted { value: "fn add(x: i32, y: i32) -> i32 { x }", diagnostics: None }
+}
+
+// (11) ... and THE MUTANT THAT DROPS THE CAST TARGET is refused, typed: a coercion with no target is
+// not a cast, so the target is load-bearing on the translate route.
+test fn bcn_cast_without_its_target_refuses() -> Bool {
+  match bcn_emit_rust(body: bcn_cast_node(operator: dag_type_atom_node(identity: ^dag_token_kw_as), operand: dag_type_atom_node(identity: ^dag_binding_param_x), keep_target: false)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: ^target_value_expr_reason_transform_shape_invalid)
+  }
+}
+
+fn bcn_facts_int(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
+    resolved: key,
+    algebra: dag_type_atom_node(identity: ^dag_binding_type_int),
+    descent: termination_proof_witness_for_node(n: key)
+  ))
+}
+
+fn bcn_int(lexeme: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } => dag_type_atom_node(identity: ^bcn_int_literal_unread)
+  }
+}
+
+fn bcn_eval(root: Node) -> Outcome<RuntimeValue> {
+  eval(
+    tree: InferredTree { root: root, facts: PartialFunction { lookup: bcn_facts_int } },
+    interpretation: v2_evaluator_interpretation(),
+    inputs: inputs_root_only(root: root)
+  )
+}
+
+fn bcn_coerce_wire() -> Node {
+  target_model_canonical_operation_wire_node(operation: canonical_operation_op_coerce())
+}
+
+// (12) EVAL REALIZES THE CAST AS ITS OPERAND'S VALUE: `7 as Int` evaluates to the value `7` does,
+// and not to the value `8` does -- the result is the operand's, not a constant.
+test fn bcn_eval_realizes_the_operand_value() -> Bool {
+  let seven = bcn_eval(root: bcn_int(lexeme: "7"))
+  (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "7"), keep_target: true)) == seven)
+    && (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "8"), keep_target: true)) != seven)
+}
+
+// (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
+// PositionalPlusOneNamedEdges): the target first or last is one node.
+test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
+  let op = Edge { label: Positional, target: bcn_coerce_wire() }
+  let operand = Edge { label: Positional, target: bcn_int(lexeme: "7") }
+  let target = cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int))
+  content_hash(n: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [op, operand, target]))
+    == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [target, op, operand]))
+}
+
+// (14) THE STATED RESIDUE, ASSERTED: a cast INTO a refinement is not an exact structural crossing, and
+// v2.std.coercion does not yet decide a refinement's predicate on the operand, so infer REFUSES it --
+// loudly, with coercion's typed mismatch, located at the cast's operand -- rather than admitting it
+// by name (gunbc.recurring_failure_mode as_cast_has_no_lowered_form states the trigger). The cast
+// OUT of the same refinement is admitted. When the predicate is decided this row flips.
+fn bcn_mismatch_at_literal(x: Diagnostic) -> Bool {
+  (x.reason == discriminant(v: NoTargetCandidate))
+    && match x.at {
+      NodeLocus { anchor: a } => bcn_atom_in(n: a.at, id: ^dag_token_int_literal) && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
+      _ => false
+    }
+}
+
+test fn bcn_cast_into_a_refinement_refuses_at_infer() -> Bool {
+  tpb_accepts(o: bcn_into_refinement())
+    && match bcn_infers(o: bcn_into_refinement()) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bcn_mismatch_at_literal(x: d.head)
+          || fold(d.tail, init: false, f: fn(acc, x) { acc || bcn_mismatch_at_literal(x: x) })
+    }
+}
+
+test fn bcn_cast_out_of_a_refinement_admits() -> Bool {
+  match bcn_infers(o: bcn_out_of_refinement()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

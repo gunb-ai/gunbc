@@ -133,6 +133,8 @@ import v2.std.compilers.target_model {
   ValueStringLiteral,
   CanonicalOperation,
   InfixToken,
+  OperandUnchanged,
+  canonical_operation_op_coerce,
   canonical_operation_op_add,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
@@ -680,8 +682,19 @@ fn ts_add_operator_realization_row() -> Node {
   )
 }
 
+// A CAST'S CROSSING IS SPELLED AS ITS OPERAND. v2.compiler.infer admits only an Identity or Exact
+// crossing (v2.std.coercion coercion_cast_crossing), so source and target share one representation
+// and TypeScript needs no conversion; its own `as` would claim a numeric conversion the model did not
+// make.
+fn ts_coerce_operator_realization_row() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_coerce(),
+    shape: OperandUnchanged
+  )
+}
+
 fn ts_operator_realizations_catalog_node() -> Node {
-  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
+  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row(), ts_coerce_operator_realization_row()])
 }
 
 fn ts_block_evaluation_mode() -> BlockEvaluationMode {

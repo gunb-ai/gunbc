@@ -5,14 +5,18 @@ import std.algebra { Empty }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.node {
   Arrow,
+  Behavior,
+  ComputationNode,
   Conj,
   Edge,
   Named,
   Node,
   Positional,
   Symbol,
+  Transform,
   TypeNode,
   node_subtree_nodes,
   node_synthetic,
@@ -207,6 +211,64 @@ fn binder_conj_names(conj: Node) -> List<Symbol> {
   })
 }
 
+// THE EDGE THAT CARRIES A CAST'S TARGET TYPE. `e as T` lowers to Transform[coerce, e] with this
+// edge -> T beside its positional children (v2.compiler.body_lowering_fold). A cast is a COERCION
+// -- v2.std.coercion decides whether e's type crosses to T, and the value may change -- so it is its
+// own label and never a let's static ascription under a shared one (one name carrying two
+// obligations). Unauthorable for the reason type_params_marker is.
+fn cast_target_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<cast-target>")
+}
+
+// THE ONE PRODUCER of the edge.
+fn cast_target_edge(target_type: Node) -> Edge {
+  Edge { label: Named { name: cast_target_marker() }, target: target_type }
+}
+
+fn edge_is_cast_target(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == cast_target_marker()
+    Positional => false
+  }
+}
+
+// THE ONE ACCESSOR: the cast target a Transform carries, Absent on any other node. A reader that
+// folds a Transform's children as operands must view it through this and
+// v2.std.node positional children -- the named edge is never an argument.
+fn cast_target_optional(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      fold(n.children, init: optional_absent(), f: fn(acc, e) {
+        if edge_is_cast_target(e: e) { optional_present(value: e.target) } else { acc }
+      })
+    _ => optional_absent()
+  }
+}
+
+// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Bind or Transform by
+// SHAPE (PositionalPlusOneNamedEdges); this is the label half. A Bind's let annotation is the other
+// arm and lands with its producer (the let-annotation carrier); until then a Named edge on a Bind is
+// refused here.
+fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
+  match b {
+    Transform => optional_present(value: cast_target_marker())
+    _ => optional_absent()
+  }
+}
+
+fn computation_named_labels_conform(n: Node, b: Behavior) -> Bool {
+  fold(n.children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: sym } =>
+        acc && match behavior_marker_optional(b: b) {
+          Present { value: marker } => sym == marker
+          Absent => false
+        }
+    }
+  })
+}
+
 // WHERE THE MARKERS MAY STAND, stated over the whole tree. Which wrapper a node is, is decided ONCE,
 // by type_decl_view: a node the view classifies as none of the three generic shapes is PlainTypeDecl,
 // and a plain node carries no marker at all -- so a Conj holding <type-parameters> beside an
@@ -224,6 +286,7 @@ fn type_binder_node_conforms(n: Node) -> Bool {
   let params_ok = (params == 0) || ((params == 1) && marker_targets_conform(n: n))
   match n.kind {
     TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
+    ComputationNode { behavior: b } => (params == 0) && (bodies == 0) && computation_named_labels_conform(n: n, b: b)
     _ =>
       match type_decl_view(target: n) {
         PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
