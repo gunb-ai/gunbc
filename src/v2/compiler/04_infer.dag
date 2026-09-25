@@ -9,7 +9,7 @@ import v2.std.bounded_lattice_completeness {
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_wire_matches_operation,
-  target_model_canonical_operations_roster_root
+  target_model_canonical_operation_member_declared_type
 }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.inferred_tree {
@@ -26,7 +26,7 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
-  dag_grammar_productions_roster_root
+  dag_grammar_production_member_declared_type
 }
 import v2.extdeps.languages.python { python_declared_inhabitants_root }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root }
@@ -497,29 +497,18 @@ fn concat_inferred_facts_entries(
 // remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag,
 // to be EXTENDED with real candidate generation, never forked.
 
-// THE DECLARED-INHABITANT MEMBERSHIP DERIVATION, GENERAL OVER THE CLOSED INGEST SET. A language
+// THE DECLARED-INHABITANT MEMBERSHIP REFUSAL, GENERAL OVER THE CLOSED INGEST SET. A language
 // authority's declared-inhabitants roster (v2.extdeps.languages.dag dag_declared_inhabitants_root,
-// and the python/typescript analogues) already fixes what its members denote — the add fn Arrow,
-// the int/number inhabitant Conj, and the inhabitant, surface-spelling, representation and
-// std-projection Atoms are all declared there — so a node that IS a roster member derives its
-// grounding by LOOKUP, never by invention: the roster is the evidence, which is the
-// intersubjective-grounding move DESIGN section 1 requires (point at the shared framework, never
-// an internal taxonomy). This is the derivation the self-host candidate-generation add-slice
-// stall's original trigger named, at specimen scope: the slice's Arrow, Conj and Atom nodes derive,
-// while the KINDS stay frontier — a non-member Arrow, Conj or Atom carries GroundingNotDerived
-// exactly as before, so the enrolled refusal witnesses pinning other shapes (the bodied arrow, the
-// empty Conj, the rust grammar atom) are untouched. The membership check is DEEP
-// (node_subtree_nodes): a language's inhabitant node embeds its facts subtree, so the leaf fact
-// atoms of a declared inhabitant are roster members exactly as the inhabitant node itself is.
-// Growth is execution-driven: the lookup widened from the dag roster to the closed ingest set
-// (dag, python, typescript) when the python/typescript same-language round-trip witnesses named
-// that moment — their frontier is the grammar parse-product population, whose leaves are the
-// declared inhabitants' fact atoms. The set is the compiler's own closed ingest set, not a generic
-// hub enumerating upstream products: infer already fixes which languages it ingests, and each
-// roster stays in its own authority module (DESIGN section 3's external-upstream decomposition).
-// The end-state is the resolver handing infer declaration-resolved identities directly — the
-// namespace migration's completed state — at which point this lookup deletes in favor of consuming
-// resolution output.
+// and the python/typescript analogues) declares type denotations -- the add fn Arrow, the
+// int/number inhabitant Conj, and the inhabitant, surface-spelling, representation and
+// std-projection Atoms. The membership check is DEEP (node_subtree_nodes): an inhabitant node
+// embeds its facts subtree, so its leaf fact atoms are members too. A member's type is its KIND,
+// not the roster root it was found under and not itself (self-evidence), and std declares no kind
+// authority yet, so a member carries the typed GroundingNotDerived frontier. It also stays out of
+// product composition (infer_type_node_awaits_product_row), so a member Conj or Arrow cannot derive
+// by composing its children either. The set is the compiler's own closed ingest set, not a generic
+// hub enumerating upstream products; each roster stays in its own authority module (DESIGN
+// section 3's external-upstream decomposition).
 
 fn infer_language_inhabitants_roster_roots() -> List<Node> {
   [
@@ -529,34 +518,22 @@ fn infer_language_inhabitants_roster_roots() -> List<Node> {
   ]
 }
 
-// Returns the declaring roster ROOT as the evidence node (never the member itself, which would be
-// self-evidence), or Absent when no ingested language's roster declares the node.
-fn infer_node_declared_in_language_inhabitants(n: Node) -> Optional<Node> {
-  fold(
-    infer_language_inhabitants_roster_roots(),
-    init: optional_absent(),
-    f: fn(acc, roster_root) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if any(
-            xs: node_subtree_nodes(root: roster_root),
-            predicate: fn(member) { member == n }
-          ) {
-            optional_present(value: roster_root)
-          } else {
-            acc
-          }
-      }
+// A roster member IS a type denotation (the Int inhabitant is the type Int, the add fn Arrow is a
+// fn type), so its type would be its KIND -- and no kind/universe authority exists in std yet. So
+// membership answers only whether the node is declared, and infer_node_facts refuses it typed
+// (GroundingNotDerived) rather than passing the roster root, which is where the member was found,
+// not what it is. The named trigger: a kind authority in std, whose kind node becomes the derived
+// type here.
+fn infer_node_declared_in_language_inhabitants(n: Node) -> Bool {
+  any(
+    xs: infer_language_inhabitants_roster_roots(),
+    predicate: fn(roster_root) {
+      any(
+        xs: node_subtree_nodes(root: roster_root),
+        predicate: fn(member) { member == n }
+      )
     }
   )
-}
-
-fn infer_node_declared_in_language_inhabitants_bool(n: Node) -> Bool {
-  match infer_node_declared_in_language_inhabitants(n: n) {
-    Present { value: _ } => true
-    Absent => false
-  }
 }
 
 // THE PRODUCT-INTRODUCTION DERIVATION (Conj and Arrow kinds). A Conj node denotes the product of
@@ -569,47 +546,28 @@ fn infer_node_declared_in_language_inhabitants_bool(n: Node) -> Bool {
 // construction). When ANY child is still on the frontier or absent from the entries, the node
 // stays on the frontier with its typed diagnostic — the derivation discharges only when the whole
 // child spine is evidenced, so a partially-derived product can never masquerade as grounded
-// (DESIGN section 5). Roster members keep their roster evidence (the authority's declaration
-// outranks composition for what the language itself declares), and a childless Conj or Arrow has
+// (DESIGN section 5). Declared-inhabitant roster members stay on the frontier (their type is
+// a kind no std authority declares yet; see the membership refusal above), and a childless Conj or Arrow has
 // no evidence to compose and stays frontier. This discharges the frontier for these
 // two kinds: the kind-level rule the specimen-scope roster lookups stood in for.
 
 fn infer_type_node_awaits_product_row(n: Node) -> Bool {
-  (length(xs: n.children) > 0) && !infer_node_declared_in_language_inhabitants_bool(n: n)
+  (length(xs: n.children) > 0) && !infer_node_declared_in_language_inhabitants(n: n)
 }
 
-// THE CANONICAL-OPERATION ROSTER MEMBERSHIP DERIVATION. The resolver canonicalizes a dag surface
-// operator (e.g. `+`) to the target-model authority's declared canonical operation, and the
-// transform rule already validates operators by matching against that authority's wire nodes
-// (canonical_operation_wire_matches_operation). The wire atoms -- the operation discriminant and
-// its field references -- are declared components of those same wire nodes, gathered under the
-// authority's declared roster root (target_model_canonical_operations_roster_root). So a node
-// that IS a roster member derives by lookup with the roster root as evidence, never by invention
-// -- the same frame as the dag declared-inhabitants roster, and general over every declared
-// operation rather than add-narrow. The end-state deletes this lookup with the other
-// specimen-scope rules, when the resolver hands infer declaration-resolved identities directly.
+// THE CANONICAL-OPERATION AND GRAMMAR-PRODUCTION MEMBER DERIVATIONS. The resolver canonicalizes a
+// dag surface operator to a target-model CanonicalOperation wire node, and the bridge projects a
+// grammar production's identity atom (e.g. dag_surface_module) into the tree. Each such node is a
+// member of its authority's roster, and derives with the type that authority DECLARES for the
+// member (v2.std.compilers.target_model target_model_canonical_operation_member_declared_type,
+// v2.extdeps.languages.dag dag_grammar_production_member_declared_type) -- never the roster root,
+// which would make derived_type carry provenance where every reader expects a type (DESIGN §3).
 
-fn infer_node_declared_in_canonical_operations(n: Node) -> Bool {
-  any(
-    xs: node_subtree_nodes(root: target_model_canonical_operations_roster_root()),
-    predicate: fn(member) { member == n }
-  )
-}
-
-// THE GRAMMAR-PRODUCTION ROSTER MEMBERSHIP DERIVATION. The bridge projects a grammar production's
-// parse into the tree as (identity atom, captured content) pairs; the identity atom (e.g.
-// dag_surface_module) is the emitted surface atom the dag grammar authority declares for that
-// production, gathered under the authority's roster root (dag_grammar_productions_roster_root).
-// So a node that IS a roster member derives by lookup with the roster root as evidence, never by
-// invention -- the same frame as the declared-inhabitants roster, general over every declared
-// production. The end-state deletes this lookup with the other specimen-scope rules, when the
-// resolver hands infer declaration-resolved identities directly.
-
-fn infer_node_declared_in_dag_grammar_productions(n: Node) -> Bool {
-  any(
-    xs: node_subtree_nodes(root: dag_grammar_productions_roster_root()),
-    predicate: fn(member) { member == n }
-  )
+fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
+  match target_model_canonical_operation_member_declared_type(n: n) {
+    Present { value: member_type } => optional_present(value: member_type)
+    Absent => dag_grammar_production_member_declared_type(n: n)
+  }
 }
 
 fn infer_product_child_evidence_edges(
@@ -703,14 +661,12 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                 descent: Holds { value: descent_proof }
               )
             Rejected { diagnostics: _ } =>
-              match infer_node_declared_in_language_inhabitants(n: n) {
-                Present { value: inhabitants_roster } =>
-                  inferred_facts_from_derived_type(
-                    node: n,
-                    derived_type: inhabitants_roster,
-                    descent: Holds { value: descent_proof }
-                  )
-                Absent =>
+              if infer_node_declared_in_language_inhabitants(n: n) {
+                inferred_facts_not_derived(
+                  node: n,
+                  descent: Holds { value: descent_proof }
+                )
+              } else {
                 match infer_atom_binding_sym(node: n) {
                   Present { value: binding } =>
                     match dag_binding_denotation(sym: binding) {
@@ -721,20 +677,14 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                           descent: Holds { value: descent_proof }
                         )
                       Absent =>
-                        if infer_node_declared_in_canonical_operations(n: n) {
-                          inferred_facts_from_derived_type(
-                            node: n,
-                            derived_type: target_model_canonical_operations_roster_root(),
-                            descent: Holds { value: descent_proof }
-                          )
-                        } else {
-                          if infer_node_declared_in_dag_grammar_productions(n: n) {
+                        match infer_roster_member_declared_type(n: n) {
+                          Present { value: member_type } =>
                             inferred_facts_from_derived_type(
                               node: n,
-                              derived_type: dag_grammar_productions_roster_root(),
+                              derived_type: member_type,
                               descent: Holds { value: descent_proof }
                             )
-                          } else {
+                          Absent =>
                             match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
                               Present { value: domain_ty } =>
                                 inferred_facts_from_derived_type(
@@ -748,7 +698,6 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                                   descent: Holds { value: descent_proof }
                                 )
                             }
-                          }
                         }
                     }
                   Absent =>

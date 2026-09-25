@@ -157,7 +157,7 @@ import v2.std.compilers.target_model {
   derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, for_all, is_empty, length, list_append, list_map, list_snoc_item }
+import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_append, list_map, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -2810,29 +2810,23 @@ fn dag_grammar_root() -> GrammarRoot {
   }
 }
 
-// THE DECLARED GRAMMAR-PRODUCTION ROSTER, AS A NODE. Every production the grammar authority
-// declares, projected to its emitted surface atom and gathered under one Conj root keyed by the
-// production's name. This is the single authority an inference membership rule consults to ground
-// grammar-projection identity atoms (e.g. dag_surface_module) by lookup -- the same frame as the
-// declared-inhabitants roster: the roster root is the evidence, and it is never structurally equal
-// to any member atom, so the self-evidence wall holds by construction. The roster derives from
-// dag_grammar_root(), so a production added to the grammar joins the roster by construction.
+// THE DECLARED TYPE OF A GRAMMAR-PRODUCTION EMITTED ATOM. Each production's emitted node is the
+// surface atom a production emits into the parse tree, so its declared type is "a dag surface
+// production atom", named here by the grammar authority that emits it. An inference rule reads this
+// for a member; a production added to dag_grammar_root() is a member by construction.
 
-fn dag_grammar_production_roster_edge(production: GrammarProduction) -> Edge {
-  Edge {
-    label: Named { name: production.name },
-    target: production.emitted
-  }
+fn dag_grammar_surface_production_type_node() -> Node {
+  dag_grammar_atom(id: ^dag_grammar_surface_production_type_atom)
 }
 
-fn dag_grammar_productions_roster_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_map(
-      xs: dag_grammar_root().productions,
-      f: dag_grammar_production_roster_edge
-    ),
-    occurrence_id: OccurrenceSynthetic
+fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
+  if any(
+    xs: dag_grammar_root().productions,
+    predicate: fn(production) { production.emitted == n }
+  ) {
+    optional_present(value: dag_grammar_surface_production_type_node())
+  } else {
+    optional_absent()
   }
 }
 

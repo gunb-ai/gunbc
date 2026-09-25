@@ -11,10 +11,15 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
 import v2.extdeps.languages.dag {
-  dag_grammar_productions_roster_root
+  dag_grammar_surface_production_type_node,
+  dag_int_inhabitant_node
 }
 import v2.std.algebra { fold_list }
-import v2.std.compilers.target_model { target_model_canonical_operations_roster_root }
+import v2.std.compilers.target_model {
+  symbol_kernel_type_node,
+  target_model_canonical_operation_type_node,
+  target_model_canonical_operations_roster_root
+}
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -34,18 +39,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ENROLLED CONTROLS FOR THE THREE ATOM-GROUNDING DERIVATIONS (`v2.compiler.infer`
 // infer_node_facts): each is a lookup into a declared authority, never an invention.
 //   - canonical-operations roster: the resolver canonicalizes surface operators to the
-//     target-model authority's declared operations; the wire atoms (the AlgebraPrimitive
-//     discriminant and its ring_field_add field) are members of the authority's roster, and
-//     derive with the roster root as evidence.
-//   - grammar-productions roster: the bridge projects a production's parse into (identity atom,
+//     target-model authority's declared operations; the AlgebraPrimitive wire node derives with
+//     the authority's CanonicalOperation type and its ring_field_add field atom with the field's
+//     declared Symbol type -- each member's OWN declared type, never the roster root.
+//   - grammar productions: the bridge projects a production's parse into (identity atom,
 //     captured content); the identity atom (dag_surface_module) is the production's declared
-//     emitted atom, and derives with the grammar roster root as evidence.
+//     emitted atom, and derives with the grammar authority's surface-production type.
 //   - binding references: an operand atom (x, y) derives with the type its enclosing arrow's
 //     domain declares for its binding -- the declaration-site annotation, itself derived.
 // The specimen is the direct-rust-door fixture's ingest. Each control pins BOTH the derivation
 // and the evidence identity, and the census pins that the witness saw the population. The
 // boundary control pins that a bare atom with no authority membership and no domain declaration
-// stays on the frontier. The closing control pins the specimen's full closure: zero frontier
+// stays on the frontier. The roster-root red pins that no specimen node's derived type is the
+// canonical-operations roster root (provenance is not a type, DESIGN section 3), and the
+// declared-inhabitant control pins that a type-denoting roster member refuses typed, since its
+// type is a kind no std authority declares yet. The closing control pins the specimen's full closure: zero frontier
 // nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
 // the boundary control.
 
@@ -94,12 +102,31 @@ test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
+      let op_type = target_model_canonical_operation_type_node()
+      let field_type = symbol_kernel_type_node()
+      (fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: op_type, acc: acc, n: n) }
+      ) == 1)
+        && (fold_list(
+          xs: node_subtree_nodes(root: inferred.root),
+          empty: 0,
+          cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: field_type, acc: acc, n: n) }
+        ) == 1)
+  }
+}
+
+test fn no_node_derives_the_canonical_operations_roster_root_holds() -> Bool {
+  match direct_rust_door_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
       let roster = target_model_canonical_operations_roster_root()
       fold_list(
         xs: node_subtree_nodes(root: inferred.root),
         empty: 0,
         cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: roster, acc: acc, n: n) }
-      ) == 2
+      ) == 0
   }
 }
 
@@ -107,11 +134,11 @@ test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
-      let roster = dag_grammar_productions_roster_root()
+      let production_type = dag_grammar_surface_production_type_node()
       fold_list(
         xs: node_subtree_nodes(root: inferred.root),
         empty: 0,
-        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: roster, acc: acc, n: n) }
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: production_type, acc: acc, n: n) }
       ) == 1
   }
 }
@@ -163,6 +190,22 @@ test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match inferred.facts.lookup(unbound) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => true
+            DerivedGrounding { grounding: _ } => false
+          }
+      }
+  }
+}
+
+test fn declared_inhabitant_member_refuses_typed_holds() -> Bool {
+  let member = dag_int_inhabitant_node()
+  match infer(tree: member) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(member) {
         Absent => false
         Present { value: facts } =>
           match facts.grounding {
