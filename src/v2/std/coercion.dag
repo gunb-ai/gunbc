@@ -355,11 +355,14 @@ fn coercion_fold_exact_structural(
 // fold's own question with the candidate set fixed by the author -- the singleton {target}, so the
 // multiplicity is UniqueOnly and no target-selection policy applies -- answered by the same
 // procedure (find_witness under exact structural equality) and refused with the same typed
-// mismatch (coercion_wrap_find_witness_rejection). Only an Identity or Exact crossing is admitted:
-// a crossing into or out of a refinement (`String` to `NonEmptyStr = String where non_empty`) is
-// not structural equality, and v2.std.coercion models refinement crossings only with a value-set
-// predicate supplied per domain (coercion_fold_refinement_widening), so such a cast refuses here
-// rather than being admitted by name. This is v2.compiler.infer's authority for `e as T`; the
+// mismatch (coercion_wrap_find_witness_rejection). Only an Identity or Exact crossing is admitted.
+// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where non_empty`) is never structurally
+// equal to the operand's derived type -- v2.compiler.infer grounds a refinement-typed value as its
+// carrier -- so every cast INTO a refinement refuses here, the identity cast `x as Pos` from
+// `x: Pos` included; a cast from a refinement-typed value to its carrier crosses carrier to carrier
+// and is admitted. v2.std.coercion models refinement crossings only with a value-set predicate
+// supplied per domain (coercion_fold_refinement_widening), so the cast refuses rather than being
+// admitted by name. This is v2.compiler.infer's authority for `e as T`; the
 // name-keyed std.coercion dag_cast_rules is not consulted
 // (gunbc.guarantee_stall coercion_two_algebras_answer_one_question_stall).
 fn coercion_cast_target_singleton(target: Node) -> CandidateSet {
