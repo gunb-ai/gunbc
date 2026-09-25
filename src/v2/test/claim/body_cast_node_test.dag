@@ -301,17 +301,28 @@ fn bcn_emit_rust(body: Node) -> Outcome<String> {
   }
 }
 
+// THE EMITTED OUTCOMES ARE SHARE POINTS: each emit runs the rust target model once, over the
+// floor's new-witness budget on its own, so the two are nullary producers enrolled in
+// v2.workflow.floor_pure_producer_share and the rows below read them.
+fn bcn_emitted_cast() -> Outcome<String> {
+  bcn_emit_rust(body: bcn_cast_node(operator: dag_type_atom_node(identity: ^dag_token_kw_as), operand: dag_type_atom_node(identity: ^dag_binding_param_x), keep_target: true))
+}
+
+fn bcn_emitted_cast_without_target() -> Outcome<String> {
+  bcn_emit_rust(body: bcn_cast_node(operator: dag_type_atom_node(identity: ^dag_token_kw_as), operand: dag_type_atom_node(identity: ^dag_binding_param_x), keep_target: false))
+}
+
 // (10) TRANSLATE REALIZES THE CAST AS ITS OPERAND (the rust extdep's OperandUnchanged row -- how v1
 // spells a representation-preserving crossing, not Rust `as`) ...
 test fn bcn_rust_realizes_the_cast_as_its_operand() -> Bool {
-  bcn_emit_rust(body: bcn_cast_node(operator: dag_type_atom_node(identity: ^dag_token_kw_as), operand: dag_type_atom_node(identity: ^dag_binding_param_x), keep_target: true))
+  bcn_emitted_cast()
     == Accepted { value: "fn add(x: i32, y: i32) -> i32 { x }", diagnostics: None }
 }
 
 // (11) ... and THE MUTANT THAT DROPS THE CAST TARGET is refused, typed: a coercion with no target is
 // not a cast, so the target is load-bearing on the translate route.
 test fn bcn_cast_without_its_target_refuses() -> Bool {
-  match bcn_emit_rust(body: bcn_cast_node(operator: dag_type_atom_node(identity: ^dag_token_kw_as), operand: dag_type_atom_node(identity: ^dag_binding_param_x), keep_target: false)) {
+  match bcn_emitted_cast_without_target() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: ^target_value_expr_reason_transform_shape_invalid)
   }
@@ -367,6 +378,14 @@ test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
 // loudly, with coercion's typed mismatch, located at the cast's operand -- rather than admitting it
 // by name (gunbc.recurring_failure_mode as_cast_has_no_lowered_form states the trigger). The cast
 // OUT of the same refinement is admitted. When the predicate is decided this row flips.
+fn bcn_into_refinement_inferred() -> Outcome<Bool> {
+  bcn_infers(o: bcn_into_refinement())
+}
+
+fn bcn_out_of_refinement_inferred() -> Outcome<Bool> {
+  bcn_infers(o: bcn_out_of_refinement())
+}
+
 fn bcn_mismatch_at_literal(x: Diagnostic) -> Bool {
   (x.reason == discriminant(v: NoTargetCandidate))
     && match x.at {
@@ -377,7 +396,7 @@ fn bcn_mismatch_at_literal(x: Diagnostic) -> Bool {
 
 test fn bcn_cast_into_a_refinement_refuses_at_infer() -> Bool {
   tpb_accepts(o: bcn_into_refinement())
-    && match bcn_infers(o: bcn_into_refinement()) {
+    && match bcn_into_refinement_inferred() {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: d } =>
         bcn_mismatch_at_literal(x: d.head)
@@ -386,7 +405,7 @@ test fn bcn_cast_into_a_refinement_refuses_at_infer() -> Bool {
 }
 
 test fn bcn_cast_out_of_a_refinement_admits() -> Bool {
-  match bcn_infers(o: bcn_out_of_refinement()) {
+  match bcn_out_of_refinement_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

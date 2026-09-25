@@ -175,10 +175,9 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
   }
 }
 
-// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Bind or Transform by
-// SHAPE (PositionalPlusOneNamedEdges); this is the label half. A Bind's let annotation is the other
-// arm and lands with its producer (the let-annotation carrier); until then a Named edge on a Bind is
-// refused here.
+// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform by SHAPE
+// (PositionalPlusOneNamedEdges); this is the label half. A Bind admits no Named edge by shape until
+// the let-annotation carrier widens it together with its producer and adds its arm here.
 fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
   match b {
     Transform => optional_present(value: cast_target_marker())
