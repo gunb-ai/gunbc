@@ -8,7 +8,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
-  SystemdDaemonReload, SystemdEnableUnit,
+  SystemdDaemonReload, SystemdEnableUnit, EnsureOwnedDirectory,
 }
 import gunbc.runner_microvm_network {
   runner_slot_network, runner_slot_host_cidr,
@@ -237,12 +237,14 @@ test fn the_operations_install_slots_before_the_host_and_restart_the_loader() ->
     SystemdRestartUnit { unit: u } => join(["restart ", u as String], "")
     SystemdEnableUnit { unit: u } => join(["enable ", u as String], "")
     SystemdDaemonReload => "daemon-reload"
+    EnsureOwnedDirectory { path: p, owner: _, group: _, mode: _ } => join(["mkdir ", p as String], "")
     _ => "other"
   }) == [
     "/etc/systemd/network/50-gunbc-tap1.netdev",
     "/etc/systemd/network/50-gunbc-tap1.network",
     "/etc/sysctl.d/50-gunbc-tap1-ipv6.conf",
     "reload systemd-networkd",
+    "mkdir /etc/gunbc",
     "/etc/gunbc/microvm.nft",
     "/etc/systemd/system/gunbc-microvm-nft.service",
     "/etc/sysctl.d/50-gunbc-microvm-forward.conf",

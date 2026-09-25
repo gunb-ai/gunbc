@@ -5,7 +5,6 @@ import v2.compiler.reference_conservation_admission {
   StatementLetBinder,
   conservation_subject_of_text,
   conserved_normalize,
-  conserved_normalize_of_text,
   no_explained_drops
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -30,14 +29,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // greens, the sequence lowering has started fabricating a body for a statement that never produced
 // one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not
 // retire when the capability lands; it is the standing control that the capability stayed honest.
-
-fn normalize_outcome(src: String) -> String {
-  match conserved_normalize_of_text(path: "statement_let_bind_subject", text: src, explained: no_explained_drops()) {
-    Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-  }
-}
-
 
 // A statement-form let's binder -- and, when it has one, its type annotation -- is lost by
 // lowering today, pinned by
@@ -79,12 +70,18 @@ test fn statement_let_chain_lowers_holds() -> Bool {
 }
 
 test fn unbound_statement_prefix_refuses_holds() -> Bool {
-  normalize_outcome(src: unbound_statement_prefix_source)
-    == "body_lowering_reason_statement_precedes_without_binding"
+  match conserved_normalize(subject: unbound_prefix_subject(), explained: no_explained_drops()) {
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
 
 test fn single_statement_body_unchanged_holds() -> Bool {
-  normalize_outcome(src: single_statement_source) == "ACCEPTED"
+  match conserved_normalize(subject: single_statement_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn let_in_form_unchanged_holds() -> Bool {
@@ -113,6 +110,14 @@ fn let_chain_subject() -> ReferenceConservationSubject {
 
 fn let_in_form_subject() -> ReferenceConservationSubject {
   conservation_subject_of_text(path: "statement_let_bind_subject", text: let_in_form_source)
+}
+
+fn unbound_prefix_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: unbound_statement_prefix_source)
+}
+
+fn single_statement_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: single_statement_source)
 }
 
 fn typed_let_subject() -> ReferenceConservationSubject {

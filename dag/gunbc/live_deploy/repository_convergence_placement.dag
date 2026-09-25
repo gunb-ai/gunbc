@@ -52,9 +52,11 @@ import extdeps.systemd.unit_file {
   WorkingDirectory,
   EnvironmentFile,
   ExecStart,
+  TimeoutStartSec,
   NotInstallable,
   serialize_systemd_unit_file,
 }
+import std.measure { Second, second, second_count }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.spec {
@@ -556,6 +558,28 @@ fn convergence_exec_start(
 // both measured on srv1 by the first deploys through `gunbc converge --mode deploy`. systemd does
 // not expand environment variables in WorkingDirectory=, so the path is a parameter here and the
 // writer expands it from the deploying shell's PWD, exactly as the env file's value is written.
+// THE ONESHOT IS BOUNDED, BECAUSE THE DEPLOY WAITS ON IT SYNCHRONOUSLY AND A ONESHOT'S DEFAULT
+// START TIMEOUT IS INFINITY. The apply restarts this unit with a blocking `systemctl restart`
+// (gunbc.live_deploy.emit tree_sync_restart_step_with_diagnosis), and the whole apply runs as one
+// captured shell execution, so an unbounded convergence is an unbounded, SILENT apply: fleet-converge
+// run 36032847731 logged `started shell.Exec.Run` and nothing else until the workflow step's
+// ceiling killed the job, leaving no receipt and no cause. The convergence runs the interpreter over
+// the runner checkout inside the deployment slice it shares with the serve process, so a slice under
+// memory pressure makes it crawl rather than die -- a state only a start bound turns into a refusal.
+// With the bound, systemd kills a convergence that outlives it, the restart fails, and the step's
+// existing diagnosis arm prints the unit's own status tail before exiting 1 -- located, inside the
+// step, with the receipt still written.
+//
+// THE VALUE IS BOUNDED ABOVE BY THE STEP THAT WAITS ON IT, not measured from the convergence: no
+// receipt yet records this unit's duration (the instrument is its journal's start/finish lines).
+// gunbc.fleet_workflow_steps gunbc_ci_live_deploy_step_timeout_minutes is the ceiling of the step
+// that contains the restart, and that step also typechecks, derives the plan and polls readiness,
+// so the bound must leave room for them or the step ceiling fires first and the diagnosis is lost.
+// Half the ceiling is that reservation stated as a policy, not a derivation; the witness pins the
+// relation (strictly inside the step) rather than the number. Tighten it from the journal once a
+// converged deploy records a duration.
+data convergence_unit_start_timeout: Second = second(count: 900)
+
 fn convergence_unit_doc(
   spec: DeploymentSpec,
   candidate: String,
@@ -574,6 +598,9 @@ fn convergence_unit_doc(
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: working_directory as NonEmptyStr },
       EnvironmentFile { path: spec.names.tree_sync_env_path },
+      TimeoutStartSec {
+        duration: to_string(value: second_count(s: convergence_unit_start_timeout)) as NonEmptyStr,
+      },
       ExecStart {
         command: convergence_exec_start(
           spec: spec,

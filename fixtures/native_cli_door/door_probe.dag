@@ -20,11 +20,10 @@ module fixture.native_cli_door.door_probe
 // control's ingest a function of what some other fixture's author adds next to it.
 //
 // THE DECLARATION'S NAME AND VALUE ARE WHAT THE CONTROL READS. v2 lowers this `data` declaration to
-// a named member whose body is the literal, and the door refuses that body at translate
-// (`translate_arrow_body_not_a_type_expression`) rather than printing the member as its type with the
-// value dropped, which it did briefly on 2026-09-23. So the emit arm expects that refusal by name; an
-// exit 0 must emit Rust naming `native_cli_door_probe_value` AND carrying `606060`, and doing so is
-// the instruction to flip the arm back into an emission control.
+// a named member whose body is the literal, and the door renders it through the Rust target's
+// declared rows as `fn native_cli_door_probe_value() -> i32 { 606060 }`. The emit arm admits an exit 0
+// only when the text names `native_cli_door_probe_value`, carries `606060` AND is Rust the build's
+// compiler accepts; the body refusal it pinned from gunbc#12207 until then is now its regression.
 //
 // The declaration is deliberately trivial: one literal of a kernel type, with no imports.
 data native_cli_door_probe_value: Int = 606060

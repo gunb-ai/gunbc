@@ -168,21 +168,22 @@ fn self_host_label() -> Label {
 // EXECUTES -- which are different questions, and the second one was asked by nothing until the
 // built binary was spawned. It is spawned twice over `fixtures/native_cli_door`.
 //
-// THE EXECUTING EVIDENCE IS THE REFUSAL ARM, not an emission. `emit --source-root <root>` with no
+// THE REFUSAL ARM ESTABLISHES THE ENTRYPOINT EXECUTES. `emit --source-root <root>` with no
 // `--entry` is admitted only when the process exits non-zero carrying `cli_no_entry`'s located
 // sentence -- a cause only this program's own `.dag` fold produces, so reaching it establishes that
 // the process started, read argv, parsed it, decided, rendered its own cause and set its own status.
 //
-// THE OTHER ARM EXPECTS RED AGAIN, AND THE GREEN IT REPLACED WAS AN OVER-CLAIM. Until 2026-09-23
+// THE OTHER ARM IS AN EMISSION CONTROL, AND ITS FIRST GREEN WAS AN OVER-CLAIM. Until 2026-09-23
 // the built binary could not ground the fixture (`translate_rejected_grounding_not_derived`); once v2
 // lowered a `data` declaration to a named member and grounded it, the arm was flipped to admit exit 0
 // plus the declaration's NAME. That emission was a record rendering with the member printed as its
 // type and the value `606060` dropped -- not Rust, and not the program (gunbc.recurring_failure_mode
-// closure_emit_renders_an_arrow_without_its_body). The translate now refuses that body at the arrow
-// instead of dropping it, so the arm pins `translate_arrow_body_not_a_type_expression` by name
-// (gunbc#12207). An exit 0 is judged by a stronger oracle than the one it replaced: the text must name
-// the declaration, carry its value, and be Rust the build's own compiler accepts. That arm reports the
-// instruction to flip the probe back -- the day the Rust grammar rows render a module and its members.
+// closure_emit_renders_an_arrow_without_its_body). gunbc#12207 made translate refuse that body
+// instead of dropping it and pinned the refusal; the door now renders the module member by member
+// through the Rust target's declared rows, so the arm is an EMISSION control again under a stronger
+// oracle than the name-only one: the text must name the declaration, carry its value `606060`, and be
+// Rust the build's own compiler accepts. `translate_arrow_body_not_a_type_expression` returning is
+// reported as the regression.
 // Over the real corpus the door still stops at a located `parse_g0_tokens_remain` at the
 // `service ... { operation ... }` form, which `v2.cli.compile_cli` records. The second generation is
 // still unclaimed.
