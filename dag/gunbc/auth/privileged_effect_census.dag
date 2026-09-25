@@ -394,6 +394,18 @@ data interim_cloudflare_adapter_unlanded: DivergenceReason = DivergenceReason {
   dissolution: unbound_dissolution(description: "an approval-loop authority adapter that performs cloudflare.AccountTokens.Create for a one-off mint under a redeemed capability, so gunbc.cloudflare.r2_token_mint_run resolves no operator credential in any run; owner: this lane (nimble-otter-774), PR 2b after gunbc#11721 merges" as NonEmptyStr),
 }
 
+// THE GCP IAM CONVERGE'S RUNG, STATED WHERE THE CENSUS CAN SEE IT (operator decision B, 2026-09-25).
+// The selection asks for an operator-approved capability; what is realized is a federated grant to
+// iam-converge for one pinned job, with the approval enforced by that job's reviewed code refusing
+// before it impersonates. That is a divergence, and this is its reason: approval-necessity lives in
+// reviewed main code, not in the credential layer. The declared upgrade is the capability named in
+// the dissolution; a keyed minter on srv1 was the other route and was withdrawn because the
+// credential may not hard-depend on srv1.
+data gcp_iam_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceReason {
+  statement: "the GCP IAM converge federates to iam-converge through a pool pinned to fleet-converge.yml at main, a dispatch on main and the gcp-iam-converge environment, and refuses before impersonating unless a recorded approval matches the re-derived diff; approval-necessity is therefore enforced by reviewed main code, not by the credential layer -- a change merged to main that skipped the gate would federate without a tap" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "a keyless GCP-hosted minter that verifies a device-signed approval against the enrolled key before issuing an iam-converge token, so that no federated workload identity holds a path to iam-converge without the operator's signature" as NonEmptyStr),
+}
+
 // STRUCTURAL, AND BOUND TO THE THING THAT MAKES IT STRUCTURAL: the reason retires only if the
 // approval loop stops having a provisioned submission MAC key to bootstrap.
 data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
@@ -775,6 +787,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedHumanStep,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"),
+    effect: PrivilegedEffect {
+      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, under one operator approval of the exact diff" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
   },
 ]
 

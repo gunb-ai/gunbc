@@ -5,19 +5,17 @@ import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import v2.std.optional { Present, Absent }
-import std.algebra { trim }
-import extdeps.github.actions_environment { github_run_id_variable_name }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_runner_temp_variable_name }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { ensure_access_token, WorkloadIdentityToken, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused }
 import gunbc.auth.approval_gate {
   approval_refusal_text, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
-  approval_post_signed_envelope, SignedEnvelopeAnswered, SignedEnvelopeNotSent,
+  approval_standing_read, StandingReadAt, StandingClockUnreadable,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
-import gunbc.auth.approval_decision_store { StoredApprovalRequest, request_revision_of }
-import gunbc.auth.approval_broker_endpoint { approval_broker_actuation_mint_url, approval_broker_listen_port }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, provision_dedicated_federation }
 import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstateRefused,
@@ -26,15 +24,20 @@ import gunbc.auth.gcp_iam_converge {
 }
 
 // ── THE CONVERGING RUN (fleet-converge mode gcp_iam_converge, its own job on srv1) ────────────
-// Two credentials, never interchanged:
-//   OBSERVE -- the job's WIF token for iam-observe (the job's `environment` pins it). Every plan,
-//              every re-plan and the final readback read through it, so the evidence that the change
-//              landed is NOT produced by the credential that made it.
-//   ACTUATE -- a token for iam-converge minted by the approval broker after the operator's tap
-//              (gunbc.auth.gcp_iam_actuation_mint), used for exactly one call: the provisioning
-//              protocol over the approved targets.
-// There is no operator-token arm: the observe token resolves ONLY from the workload identity arm,
-// and a run with GUNBC_GCP_ACCESS_TOKEN_FILE set is not thereby admitted to anything.
+// Operator decision 2026-09-25, option B. The job is three steps, and the ORDER is the gate:
+//   request (gcp_iam_converge_request_wet) -- as iam-observe: plan, file, wait for the tap, and write
+//            the approval marker ONLY when the store records an approval over exactly this request.
+//            The workflow turns the marker into the job output the next step reads.
+//   impersonate -- the workflow's second auth step federates to iam-converge, and runs only when that
+//            output says approved. No Noop, refusal, denial or timeout reaches it.
+//   apply (gcp_iam_converge_apply_wet) -- re-plan under iam-observe, re-derive the request for this
+//            run, re-read the recorded decision and refuse unless it approves that revision; then
+//            provision under the iam-converge token and read back under iam-observe.
+//
+// Two credentials, never interchanged: every plan, re-plan and readback reads through iam-observe,
+// so the evidence that the change landed is not produced by the credential that made it. There is
+// no operator-token arm: both tokens resolve only from the workflow's auth-step variables. The job
+// runs on srv1 because the approval client files and polls over srv1's loopback.
 
 data gcp_iam_converge_file_window: Second = second(count: 1800)
 
@@ -44,19 +47,37 @@ data gcp_iam_converge_poll_ticks: Int = 120
 
 data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 
-// THE STEP BUDGET IS DERIVED FROM THE CONSENT WINDOW, not chosen beside it: the run waits at most the
-// filing window for the tap, and plan, mint, apply and readback are bounded API calls. Ten minutes
-// over the window is the actuation allowance, the same as the minted token's lifetime.
+// THE STEP BUDGET IS DERIVED FROM THE CONSENT WINDOW, not chosen beside it: the request step waits at
+// most the filing window for the tap, and plan, apply and readback are bounded API calls. Ten
+// minutes over the window is the actuation allowance, the same as the impersonated token's lifetime.
 fn gcp_iam_converge_step_timeout_minutes() -> Int {
   second_count(s: gcp_iam_converge_file_window) / 60 + 10
+}
+
+// THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply
+// step only; the request step never has it in its environment.
+data iam_converge_token_env: NonEmptyStr = "IAM_CONVERGE_ACCESS_TOKEN"
+
+// THE APPROVAL MARKER, under RUNNER_TEMP, owner-only, written by exactly one arm below. The workflow
+// reads its presence; the apply step does not trust it -- it re-reads the store.
+data gcp_iam_converge_approval_marker_name: String = "gcp-iam-converge-approved"
+
+fn approval_marker_path() -> String {
+  let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
+  if tmp == "" { "" } else { join([tmp, "/", gcp_iam_converge_approval_marker_name], "") }
 }
 
 fn observe_token() -> Secret? {
   match ensure_access_token(source: WorkloadIdentityToken) {
     AccessTokenReady { token: t } => Present { value: t }
-    AccessTokenUpsertRequired { plan: _ } => Absent
-    AccessTokenEnsureRefused { reason: _ } => Absent
+    AccessTokenUpsertRequired { plan: _ } => none
+    AccessTokenEnsureRefused { reason: _ } => none
   }
+}
+
+fn converge_token() -> Secret? {
+  let t = actions_variable_trimmed(name: iam_converge_token_env)
+  if t == "" { none } else { Present { value: t as Secret } }
 }
 
 fn run_attempt() -> AttemptIdentity? {
@@ -64,34 +85,67 @@ fn run_attempt() -> AttemptIdentity? {
   if id == "" { none } else { Present { value: concat("run-", id) as AttemptIdentity } }
 }
 
-// THE MINT ANSWER'S FIRST LINE IS THE TOKEN (gunbc.auth.approval_broker_serve
-// actuation_mint_response); curl's --fail-with-body makes a non-2xx `success: false`, so a refusal
-// body is never read as a token.
-type MintedToken
-  = MintedTokenReceived { token: Secret }
-  | MintedTokenRefused { reason: String }
+// ── The request step ─────────────────────────────────────────────────────────────────────────
 
-fn first_line(s: String) -> String {
-  match split(s: s, sep: "\n").first() {
-    Present { value: l } => trim(s: l)
-    Absent => ""
+fn mark_approved(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessExit
+{
+  let path = approval_marker_path()
+  if path == "" {
+    exit_failure(reason: "gcp iam converge: approved, but RUNNER_TEMP is unset so the approval cannot be handed to the impersonating step; nothing applied")
+  } else {
+    let w = Filesystem.WriteOwnerOnly(path: path, content: request.escalation_id as String)
+    if w.success { ExitSuccess } else { exit_failure(reason: concat("gcp iam converge: could not write the approval marker; nothing applied: ", w.error)) }
   }
 }
 
-fn request_actuation_token(stored: StoredApprovalRequest) -> MintedToken
+fn request_and_wait(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessExit
 {
-  match approval_post_signed_envelope(stored: stored, body_file_name: "gcp-iam-converge-mint.json", url: approval_broker_actuation_mint_url(port: approval_broker_listen_port), timeout: gcp_iam_converge_submit_timeout) {
-    SignedEnvelopeNotSent { reason: r } => MintedTokenRefused { reason: r }
-    SignedEnvelopeAnswered { success: ok, body: b } =>
-      if !ok {
-        MintedTokenRefused { reason: b }
-      } else if first_line(s: b) == "" {
-        MintedTokenRefused { reason: "the broker answered 200 with no token line" }
-      } else {
-        MintedTokenReceived { token: first_line(s: b) as Secret }
+  match approval_instant_now() {
+    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the request cannot be filed")
+    Present { value: issued } => {
+      let expires = approval_expires_at(issued: issued, window: gcp_iam_converge_file_window)
+      let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
+      match approval_file_stored_request(stored: stored, body_file_name: "gcp-iam-converge-submit.json", submit_timeout: gcp_iam_converge_submit_timeout) {
+        ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("gcp iam converge: filing refused: ", r))
+        ApprovalFiled =>
+          match approval_poll_ticks(remaining: gcp_iam_converge_poll_ticks, cadence: gcp_iam_converge_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
+            PollClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable while waiting for the decision")
+            PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "gcp iam converge: filed; no decision within the window, nothing applied")
+            PollObservedAt { standing: s, observed_at: _ } =>
+              match approval_recorded_from_poll(poll: s, request: request) {
+                ApprovalNotRecorded { cause: c } => exit_failure(reason: concat("gcp iam converge: not approved, nothing applied: ", approval_refusal_text(cause: c)))
+                ApprovalRecorded { authorization: _ } => mark_approved(request: request)
+              }
+          }
+      }
+    }
+  }
+}
+
+// PLANS, FILES AND WAITS. Noop and every refusal exit WITHOUT the marker, so the impersonating step
+// never runs for them.
+fn gcp_iam_converge_request_wet() -> ProcessExit
+{
+  match run_attempt() {
+    Absent => exit_failure(reason: "gcp iam converge: GITHUB_RUN_ID is unset; this entry runs only as the fleet-converge job")
+    Present { value: attempt } =>
+      match observe_token() {
+        Absent => exit_failure(reason: "gcp iam converge: no workload identity token for iam-observe; an operator token is not an admitted source")
+        Present { value: observe } =>
+          match observe_and_plan_estate(token: observe) {
+            GcpIamEstateNoop => ExitSuccess
+            GcpIamEstateRefused { reasons: rs } => exit_failure(reason: concat("gcp iam converge: refused, nothing requested: ", join(rs, "; ")))
+            GcpIamEstateApply { diff: d } =>
+              match gcp_iam_converge_request(d: d, attempt: attempt) {
+                GcpIamUnrequestable { reason: why } => exit_failure(reason: why as String)
+                GcpIamRequested { request: q } => request_and_wait(request: q)
+              }
+          }
       }
   }
 }
+
+// ── The apply step ───────────────────────────────────────────────────────────────────────────
 
 fn target_approved(f: DedicatedFederation, d: GcpIamEstateDiff) -> Bool {
   fold(diff_targets(d: d), init: false, f: (acc, t) => acc || t == f.label)
@@ -109,24 +163,6 @@ fn actuate_approved(d: GcpIamEstateDiff, token: Secret) -> ProcessExit
   )
 }
 
-// THE CONSENT STILL HOLDS iff re-planning under the observe credential yields the same revision.
-// Anything else -- the estate converged by someone else, drifted, or refuses now -- stops the run
-// before the minted token is used.
-fn replan_matches(approved: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret, attempt: AttemptIdentity) -> String
-{
-  match observe_and_plan_estate(token: observe) {
-    GcpIamEstateNoop => "the estate converged between the tap and the actuation; the minted token is unused"
-    GcpIamEstateRefused { reasons: rs } => concat("the estate now refuses: ", join(rs, "; "))
-    GcpIamEstateApply { diff: d } =>
-      match gcp_iam_converge_request(d: d, attempt: attempt) {
-        GcpIamUnrequestable { reason: why } => why as String
-        GcpIamRequested { request: now } =>
-          if request_revision_of(request: now) == request_revision_of(request: approved) { "" }
-          else { "the diff moved after the operator consented; refusing to apply a change they did not see" }
-      }
-  }
-}
-
 fn readback_converged(observe: Secret) -> ProcessExit
 {
   match observe_and_plan_estate(token: observe) {
@@ -136,63 +172,49 @@ fn readback_converged(observe: Secret) -> ProcessExit
   }
 }
 
-fn converge_approved(request: AuthorizationRequest<GcpIamEstateDiff>, stored: StoredApprovalRequest, observe: Secret, attempt: AttemptIdentity) -> ProcessExit
-{
-  match request_actuation_token(stored: stored) {
-    MintedTokenRefused { reason: r } => exit_failure(reason: concat("gcp iam converge: the broker did not mint the actuation credential: ", r))
-    MintedTokenReceived { token: t } => {
-      let moved = replan_matches(approved: request, observe: observe, attempt: attempt)
-      if moved != "" {
-        exit_failure(reason: concat("gcp iam converge: ", moved))
-      } else {
-        match actuate_approved(d: request.subject, token: t) {
-          ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-          ExitSuccess => readback_converged(observe: observe)
-        }
-      }
-    }
-  }
-}
-
-fn converge_requested(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret, attempt: AttemptIdentity) -> ProcessExit
+// THE RECORDED APPROVAL IS RE-READ HERE, not taken from the marker: the request this step derives
+// NOW -- from a fresh plan, for this run's attempt -- must be the one the store holds an approval for.
+// A diff that moved after the tap derives a different revision, and approval_recorded_from_poll
+// refuses a decision for another revision.
+fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret) -> ProcessExit
 {
   match approval_instant_now() {
-    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the request cannot be filed")
-    Present { value: issued } => {
-      let expires = approval_expires_at(issued: issued, window: gcp_iam_converge_file_window)
-      let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
-      match approval_file_stored_request(stored: stored, body_file_name: "gcp-iam-converge-submit.json", submit_timeout: gcp_iam_converge_submit_timeout) {
-        ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("gcp iam converge: filing refused: ", r))
-        ApprovalFiled =>
-          match approval_poll_ticks(remaining: gcp_iam_converge_poll_ticks, cadence: gcp_iam_converge_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
-            PollClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable while waiting for the decision")
-            PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "gcp iam converge: filed; no decision within the window, nothing applied")
-            PollObservedAt { standing: s, observed_at: _ } =>
-              match approval_recorded_from_poll(poll: s, request: request) {
-                ApprovalNotRecorded { cause: c } => exit_failure(reason: concat("gcp iam converge: not approved, nothing applied: ", approval_refusal_text(cause: c)))
-                ApprovalRecorded { authorization: _ } => converge_approved(request: request, stored: stored, observe: observe, attempt: attempt)
+    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the recorded approval cannot be read")
+    Present { value: now } =>
+      match approval_standing_read(escalation_id: request.escalation_id, expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
+        StandingClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable at the recorded-approval read")
+        StandingReadAt { standing: s, observed_at: _ } =>
+          match approval_recorded_from_poll(poll: s, request: request) {
+            ApprovalNotRecorded { cause: c } => exit_failure(reason: concat("gcp iam converge: no recorded approval for the diff as it stands now; nothing applied: ", approval_refusal_text(cause: c)))
+            ApprovalRecorded { authorization: _ } =>
+              match converge_token() {
+                Absent => exit_failure(reason: concat("gcp iam converge: approved, but no iam-converge token reached this step; nothing applied (", concat(iam_converge_token_env as String, " unset)")))
+                Present { value: t } =>
+                  match actuate_approved(d: request.subject, token: t) {
+                    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+                    ExitSuccess => readback_converged(observe: observe)
+                  }
               }
           }
       }
-    }
   }
 }
 
-fn gcp_iam_converge_wet() -> ProcessExit
+fn gcp_iam_converge_apply_wet() -> ProcessExit
 {
   match run_attempt() {
     Absent => exit_failure(reason: "gcp iam converge: GITHUB_RUN_ID is unset; this entry runs only as the fleet-converge job")
     Present { value: attempt } =>
       match observe_token() {
-        Absent => exit_failure(reason: "gcp iam converge: no workload identity token for iam-observe; an operator token is not an admitted source")
+        Absent => exit_failure(reason: "gcp iam converge: no workload identity token for iam-observe")
         Present { value: observe } =>
           match observe_and_plan_estate(token: observe) {
-            GcpIamEstateNoop => ExitSuccess
-            GcpIamEstateRefused { reasons: rs } => exit_failure(reason: concat("gcp iam converge: refused, nothing requested: ", join(rs, "; ")))
+            GcpIamEstateNoop => exit_failure(reason: "gcp iam converge: the estate converged between the tap and the apply; the iam-converge token is unused")
+            GcpIamEstateRefused { reasons: rs } => exit_failure(reason: concat("gcp iam converge: the estate now refuses; nothing applied: ", join(rs, "; ")))
             GcpIamEstateApply { diff: d } =>
               match gcp_iam_converge_request(d: d, attempt: attempt) {
                 GcpIamUnrequestable { reason: why } => exit_failure(reason: why as String)
-                GcpIamRequested { request: q } => converge_requested(request: q, observe: observe, attempt: attempt)
+                GcpIamRequested { request: q } => apply_under_recorded_approval(request: q, observe: observe)
               }
           }
       }

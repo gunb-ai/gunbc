@@ -27,6 +27,7 @@ import gunbc.auth.mtcollins1_boot_federation_provision { mtcollins1_boot_dedicat
 import gunbc.auth.mtcollins1_boot_federation { pinned_version_accessor_grant_for }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
+import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
   gcp_iam_observe_wif_pool_id, gcp_iam_observe_wif_pool_display_name, gcp_iam_observe_wif_provider_id,
   gcp_iam_observe_wif_attribute_mapping, gcp_iam_observe_wif_attribute_condition, gcp_iam_observe_wif_principal_set,
@@ -194,20 +195,12 @@ fn federation_resources(f: DedicatedFederation) -> List<String> {
   concat([service_account_resource(email: f.service_account)], map(f.secret_grants, g => grant_secret_resource(g: g)))
 }
 
-fn string_in(x: String, xs: List<String>) -> Bool {
-  fold(xs, init: false, f: (acc, y) => acc || y == x)
-}
-
-fn dedupe_strings(xs: List<String>) -> List<String> {
-  fold(xs, init: [], f: (acc, x) => if string_in(x: x, xs: acc) { acc } else { concat(acc, [x]) })
-}
-
 fn iam_converge_resource_population() -> List<String> {
-  dedupe_strings(xs: flat_map(gcp_iam_converge_targets, f => federation_resources(f: f)))
+  distinct_by_key(xs: flat_map(gcp_iam_converge_targets, f => federation_resources(f: f)), key: r => r)
 }
 
 fn iam_converge_population_excludes_the_actuation_chain() -> Bool {
-  !string_in(x: service_account_resource(email: iam_converge_service_account), xs: iam_converge_resource_population())
+  !list_member(xs: iam_converge_resource_population(), x: service_account_resource(email: iam_converge_service_account), eq: (a, b) => a == b)
 }
 
 fn iam_converge_resource_condition() -> IamCondition {
@@ -286,12 +279,17 @@ fn grant_secret_names(gs: List<SecretAccessGrant>) -> List<String> {
   map(gs, g => g.target.secret as String)
 }
 
+// SET EQUALITY AT IDENTITY GRAIN, ONE KEYED INDEX: neither side repeats a secret, the sides are the
+// same size, and every reading's secret is in the declared index -- which together give equality
+// without a nested scan (DESIGN §6: a quadratic fold is fixed regardless of n; review 71271).
 fn grant_readings_cover(declared: List<SecretAccessGrant>, readings: List<GrantPolicyReading>) -> Bool {
   let d = grant_secret_names(gs: declared)
   let r = grant_secret_names(gs: map(readings, x => x.grant))
-  d.length() == r.length()
-    && fold(d, init: true, f: (acc, x) => acc && string_in(x: x, xs: r))
-    && fold(r, init: true, f: (acc, x) => acc && string_in(x: x, xs: d))
+  let index = fold(d, init: empty_map(), f: (acc, x) => map_insert(acc, x, 1))
+  duplicated_by_key(xs: d, key: x => x).length() == 0
+    && duplicated_by_key(xs: r, key: x => x).length() == 0
+    && d.length() == r.length()
+    && all(r, x => match map_get(index, x) { Present { value: _ } => true  Absent => false })
 }
 
 fn delta_effects(ds: List<PolicyDelta>) -> List<GcpIamEffect> {

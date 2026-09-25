@@ -3,7 +3,7 @@ module gunbc.fleet_converge_workflow
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path }
 import std.measure { minute_count, second_count }
 
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, kv }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
@@ -12,7 +12,7 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
 import gunbc.action_use_admission {
-  checkout_action, download_artifact_action, upload_artifact_action,
+  checkout_action, download_artifact_action, upload_artifact_action, google_auth_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -82,8 +82,8 @@ import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_store_host }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
-import gunbc.auth.gcp_iam_converge { iam_observe_service_account }
-import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes }
+import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime_seconds }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approval_marker_name }
 import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
 import gunbc.auth.mtcollins1_boot_federation {
   mtcollins1_boot_environment, mtcollins1_boot_wif_provider_resource, mtcollins1_boot_service_account,
@@ -116,7 +116,8 @@ import gunbc.ci_spec {
   gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_microvm_runner_group_ensure_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
-  gunbc_ci_gcp_iam_converge_invoke,
+  gunbc_ci_gcp_iam_converge_request_invoke,
+  gunbc_ci_gcp_iam_converge_apply_invoke,
   gunbc_ci_pair_serving_d0_invoke,
   gunbc_ci_pair_serving_d0_admit_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
@@ -3359,19 +3360,25 @@ fn fleet_converge_jobs() -> List<Job> {
   ]
 }
 
-// ── THE GCP IAM CONVERGE JOB (operator requirement 2026-09-24; decisions A, A1 2026-09-25) ─────
+// ── THE GCP IAM CONVERGE JOB (operator requirement 2026-09-24; decision B 2026-09-25) ────────
 // Its own job for the boot's reason: OIDC tokens are minted per job, and this one federates through
-// its own pool as iam-observe, pinned by the `environment` claim (gunbc.auth.gcp_iam_converge_federation).
-// It runs on srv1 because the approval broker it redeems against listens on srv1's loopback only.
-// The job holds no write credential at all until the operator taps: the iam-converge token is
-// minted by the broker for one approved diff and lives only inside the converge step.
+// its own pool pinned by the `environment` claim (gunbc.auth.gcp_iam_converge_federation). It runs on
+// srv1 because the approval client files and polls over srv1's loopback. THE STEP ORDER IS THE GATE
+// (gunbc.auth.gcp_iam_converge_run): the job federates as iam-observe, plans and waits; only a
+// recorded approval over exactly the planned request writes the marker the output step publishes,
+// and only that output admits the second auth step, which federates as iam-converge. The apply step
+// re-reads the recorded approval itself before the token is used.
 data fleet_converge_gcp_iam_converge_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
 
-fn fleet_converge_gcp_iam_converge_step() -> Step {
+data fleet_converge_gcp_iam_approved_output: String = "approved"
+
+data fleet_converge_gcp_iam_approved_if: String = join([fleet_converge_gcp_iam_converge_step_if, " && steps.gcp_iam_gate.outputs.", fleet_converge_gcp_iam_approved_output, " == 'true'"], "")
+
+fn fleet_converge_gcp_iam_request_step() -> Step {
   RunStep {
-    name: Present { value: "GCP IAM converge: plan as iam-observe, one operator approval, broker-minted iam-converge token, apply, independent readback" },
-    id: Present { value: "gcp_iam_converge" },
-    run: gunbc_ci_gcp_iam_converge_invoke(),
+    name: Present { value: "GCP IAM converge: plan as iam-observe, file one request, wait for the operator (no write credential exists yet)" },
+    id: Present { value: "gcp_iam_request" },
+    run: gunbc_ci_gcp_iam_converge_request_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3380,6 +3387,68 @@ fn fleet_converge_gcp_iam_converge_step() -> Step {
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
+  }
+}
+
+fn fleet_converge_gcp_iam_gate_step() -> Step {
+  RunStep {
+    name: Present { value: "GCP IAM converge: publish whether a recorded approval admits impersonation" },
+    id: Present { value: "gcp_iam_gate" },
+    run: join([
+      "set -euo pipefail",
+      join(["if [ -s \"$RUNNER_TEMP/", gcp_iam_converge_approval_marker_name, "\" ]; then"], ""),
+      join(["  echo \"", fleet_converge_gcp_iam_approved_output, "=true\" >> \"$GITHUB_OUTPUT\""], ""),
+      "else",
+      join(["  echo \"", fleet_converge_gcp_iam_approved_output, "=false\" >> \"$GITHUB_OUTPUT\""], ""),
+      "  echo \"::notice::no recorded approval (converged, or refused before filing); iam-converge is not impersonated\"",
+      "fi",
+    ], "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE SECOND FEDERATION, as iam-converge, for the actuation token's lifetime and no longer. Its id is
+// not wif_auth, so no step that reads the job's observe token can read this one by accident.
+fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a recorded approval)" },
+    id: Present { value: "wif_auth_iam_converge" },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_observe_wif_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: iam_converge_service_account as String)),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(iam_converge_token_lifetime_seconds), "s"))),
+        kv(key: "create_credentials_file", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_gcp_iam_apply_step() -> Step {
+  RunStep {
+    name: Present { value: "GCP IAM converge: re-plan, re-read the recorded approval, apply as iam-converge, read back as iam-observe" },
+    id: Present { value: "gcp_iam_apply" },
+    run: gunbc_ci_gcp_iam_converge_apply_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
   }
 }
 
@@ -3398,13 +3467,16 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
         provider_resource: gcp_iam_observe_wif_provider_resource(),
         service_account: iam_observe_service_account as String,
       ),
-      fleet_converge_gcp_iam_converge_step(),
+      fleet_converge_gcp_iam_request_step(),
+      fleet_converge_gcp_iam_gate_step(),
+      fleet_converge_gcp_iam_actuate_auth_step(),
+      fleet_converge_gcp_iam_apply_step(),
     ],
     needs: fleet_converge_job_needs(id: "gcp-iam-converge" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
-    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() + 5 },
+    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() + 20 },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {

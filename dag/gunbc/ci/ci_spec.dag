@@ -921,9 +921,14 @@ data gunbc_ci_pair_serving_d0_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "pair_serving_d0_ci_wet",
 }
 
-data gunbc_ci_gcp_iam_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
-  function: "gcp_iam_converge_wet",
+  function: "gcp_iam_converge_request_wet",
+}
+
+data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
+  function: "gcp_iam_converge_apply_wet",
 }
 
 data gunbc_ci_pair_serving_d0_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1257,7 +1262,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_pair_serving_d0_target,
     gunbc_ci_pair_serving_d0_admit_target,
-    gunbc_ci_gcp_iam_converge_target
+    gunbc_ci_gcp_iam_converge_request_target,
+    gunbc_ci_gcp_iam_converge_apply_target
   ]
 }
 
@@ -2782,19 +2788,31 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
   gunbc_ci_submission_key_prelude(stem: "pair-serving-d0")
 }
 
-data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger")
+data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger")
 
-fn gunbc_ci_gcp_iam_converge_invoke() -> String {
+fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger), "\n")),
     gunbc_run_step_script_with_prelude(
       prelude: gunbc_ci_submission_key_prelude(stem: "gcp-iam-converge"),
       source_roots: witness_layer_roots,
-      entry: gunbc_ci_gcp_iam_converge_target.entry,
-      function: gunbc_ci_gcp_iam_converge_target.function,
+      entry: gunbc_ci_gcp_iam_converge_request_target.entry,
+      function: gunbc_ci_gcp_iam_converge_request_target.function,
       claim_run: false,
       receipt_rel: none
     )
+  )
+}
+
+// THE APPLY STEP READS NO SECRET: both tokens arrive by the workflow's auth-step variables, and the
+// recorded approval is read over the approval client's loopback status route.
+fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_gcp_iam_converge_apply_target.entry,
+    function: gunbc_ci_gcp_iam_converge_apply_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

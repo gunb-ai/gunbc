@@ -5,11 +5,7 @@ import std.types { Bool, List, NonEmptyStr, String, Timestamp }
 import std.scoped_authorization { AttemptIdentity }
 import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
-import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied, ExecutionObligation }
-import gunbc.auth.approval_decision_store {
-  StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
-  approval_mac_key_id, request_revision_of,
-}
+import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, heal_publisher_dedicated_federation, impersonation_cell }
 import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
 import gunbc.auth.gcp_iam_converge {
@@ -24,19 +20,24 @@ import gunbc.auth.gcp_iam_converge {
   iam_converge_denied_permissions, iam_converge_policy_role_permissions, iam_converge_create_role_permissions,
   service_account_resource,
 }
-import gunbc.auth.gcp_iam_actuation_mint {
-  MintAdmission, MintAdmitted, MintNotAdmitted,
-  MintEscalationOutsideFamily, MintEscalationNotFiled, MintEscalationPending, MintEscalationDenied,
-  MintStoreUnreadable, MintForAnotherIntent, MintApprovalExpired,
-  actuation_mint_admission,
+import gunbc.auth.privileged_effect_census {
+  PrivilegedEffectSite, privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code,
 }
+import gunbc.auth.authorization_pattern_selection { PatternSelected, OperatorApprovedCapability }
+import gunbc.fleet_converge_workflow {
+  fleet_converge_gcp_iam_request_step, fleet_converge_gcp_iam_actuate_auth_step, fleet_converge_gcp_iam_apply_step,
+  fleet_converge_gcp_iam_approved_if,
+}
+import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlKeyValue }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── WHAT THESE CLAIMS ARE ABOUT, AND WHAT THEY ARE NOT ───────────────────────────────────────
-// Every claim here supplies readings and slots at ONE interface -- the pure plan, the pure consent
-// preimage, the pure mint admission -- per DESIGN §3's witness rule. None of them executes the real
-// observation or the real mint; the inhabitance of that route is the first live converge through
+// Every claim here supplies readings at ONE interface -- the pure plan, the pure consent preimage,
+// the step gates, the census verdict -- per DESIGN §3's witness rule. None of them executes the real
+// observation or the real federation; the inhabitance of that route is the first live converge through
 // the gcp_iam_converge mode, which is the trigger the census cutover (PR 3 of this program) waits on
 // and records by run id. Until it runs, these claims establish the decisions and nothing about the
 // provider's answers.
@@ -205,86 +206,63 @@ test fn the_attempt_versions_the_escalation_and_not_the_revision() -> Bool {
     && starts_with(s: escalation_for(d: d, attempt: "run-1"), prefix: gcp_iam_converge_escalation_prefix as String)
 }
 
-// ── The mint admission ───────────────────────────────────────────────────────────────────────
+// ── The gate: no write credential before a recorded approval ─────────────────────────────────
 
-data at: Timestamp = "2026-09-25T12:00:00Z"
-data later: Timestamp = "2026-09-25T13:00:00Z"
-
-fn presented(escalation_id: String, revision: String) -> StoredApprovalRequest {
-  StoredApprovalRequest {
-    escalation_id: escalation_id as NonEmptyStr,
-    request_revision: revision as NonEmptyStr,
-    attempt: "run-1" as AttemptIdentity,
-    requester: "operator@example.invalid" as NonEmptyStr,
-    purpose: "GCP IAM converge" as NonEmptyStr,
-    destructive: false,
-    issued_at: "2026-09-25T11:55:00Z",
-    expires_at: "2026-09-25T12:25:00Z",
-    key_id: approval_mac_key_id,
+fn step_if(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
   }
 }
 
-data family_id: String = "gcp-iam-converge-abc-run-1"
-
-fn approved(revision: String, execute_by: Timestamp) -> EscalationSlot {
-  EscalationDecided { decision: BrokerApproved {
-    escalation_id: family_id as NonEmptyStr,
-    revision: revision as NonEmptyStr,
-    decided_by: "operator" as NonEmptyStr,
-    decided_at: "2026-09-25T11:58:00Z",
-    obligation: ExecutionObligation { authority: "gunbc.auth.scoped_authorization" as NonEmptyStr, intent_revision: revision as NonEmptyStr, execute_by: execute_by },
-  } }
-}
-
-fn refused_with(a: MintAdmission, want: String) -> Bool {
-  match a {
-    MintAdmitted { escalation_id: _, execute_by: _ } => false
-    MintNotAdmitted { refusal: r } => match r {
-      MintEscalationOutsideFamily { escalation_id: _ } => want == "family"
-      MintEscalationNotFiled => want == "not-filed"
-      MintEscalationPending => want == "pending"
-      MintEscalationDenied => want == "denied"
-      MintStoreUnreadable { detail: _ } => want == "unreadable"
-      MintForAnotherIntent { presented: _, approved: _ } => want == "intent"
-      MintApprovalExpired { execute_by: _, observed_at: _ } => want == "expired"
-    }
+fn step_env_keys(st: Step) -> List<String> {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match e { Present { value: kvs } => map(kvs, x => x.key)  Absent => [] }
+    UsesStep { name: _, id: _, uses: _, with: _, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match e { Present { value: kvs } => map(kvs, x => x.key)  Absent => [] }
   }
 }
 
-// THE POSITIVE CONTROL: an approved escalation of the family, the presented revision equal to the
-// approved one, inside its window.
-test fn an_approved_matching_live_escalation_admits_the_mint() -> Bool {
-  match actuation_mint_admission(presented: presented(escalation_id: family_id, revision: "sha256:r1"), slot: approved(revision: "sha256:r1", execute_by: "2026-09-25T12:25:00Z"), observed_at: at) {
-    MintAdmitted { escalation_id: e, execute_by: _ } => (e as String) == family_id
-    MintNotAdmitted { refusal: _ } => false
+// THE IMPERSONATING STEP AND THE APPLY STEP RUN ONLY ON THE APPROVAL OUTPUT, and the request step --
+// the one that plans and waits -- never has the iam-converge token in its environment. The RED is an
+// auth step gated only on the mode, which would federate as iam-converge before anyone tapped.
+test fn iam_converge_is_impersonated_only_after_a_recorded_approval() -> Bool {
+  step_if(st: fleet_converge_gcp_iam_actuate_auth_step()) == fleet_converge_gcp_iam_approved_if
+    && step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_approved_if
+    && string_contains(s: fleet_converge_gcp_iam_approved_if, pattern: "steps.gcp_iam_gate.outputs.approved == 'true'")
+    && !any(step_env_keys(st: fleet_converge_gcp_iam_request_step()), k => k == (iam_converge_token_env as String))
+    && any(step_env_keys(st: fleet_converge_gcp_iam_apply_step()), k => k == (iam_converge_token_env as String))
+}
+
+// ── The rung, as the census reads it ─────────────────────────────────────────────────────────
+
+fn gcp_iam_site() -> PrivilegedEffectSite? {
+  filter(privileged_effect_census, r => (r.site.decl_name as String) == "gcp_iam_converge_apply_wet").first()
+}
+
+// THE SELECTION ASKS FOR AN APPROVED CAPABILITY AND THE REALIZATION IS A FEDERATED GRANT, so the site
+// DIVERGES WITH ITS STATED REASON -- the census says in its own vocabulary that approval-necessity
+// lives in reviewed code. A row recorded as RealizedApprovalCapability would conform and inflate the
+// rung; that is the RED this discriminates.
+test fn the_converge_site_diverges_with_the_reviewed_code_reason() -> Bool {
+  match gcp_iam_site() {
+    Absent => false
+    Present { value: row } =>
+      match site_verdict(row: row) {
+        v => match v.selection {
+          PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
+            match v.conformance {
+              DivergesWithReason { reason: r } => r.statement == gcp_iam_approval_enforced_in_reviewed_code.statement
+              _ => false
+            }
+          _ => false
+        }
+      }
   }
-}
-
-// AN APPROVAL OF ANYTHING ELSE IS NOT REDEEMABLE HERE, even approved and even at the right revision.
-test fn an_approval_outside_the_family_refuses_the_mint() -> Bool {
-  refused_with(a: actuation_mint_admission(presented: presented(escalation_id: "mtcollins1-standing-ruling-abc", revision: "sha256:r1"), slot: approved(revision: "sha256:r1", execute_by: "2026-09-25T12:25:00Z"), observed_at: at), want: "family")
-}
-
-test fn a_pending_denied_absent_or_unreadable_slot_refuses_the_mint() -> Bool {
-  let p = presented(escalation_id: family_id, revision: "sha256:r1")
-  refused_with(a: actuation_mint_admission(presented: p, slot: EscalationNotFiled, observed_at: at), want: "not-filed")
-    && refused_with(a: actuation_mint_admission(presented: p, slot: EscalationPending { request: p }, observed_at: at), want: "pending")
-    && refused_with(a: actuation_mint_admission(presented: p, slot: EscalationUnreadable { detail: "x" }, observed_at: at), want: "unreadable")
-    && refused_with(a: actuation_mint_admission(presented: p, slot: EscalationDecided { decision: BrokerDenied { escalation_id: family_id as NonEmptyStr, revision: "sha256:r1", decided_by: "operator", decided_at: at, reason: "no" } }, observed_at: at), want: "denied")
-}
-
-// THE DIFF MOVED AFTER THE TAP: the presented revision is not the approved one.
-test fn a_presented_revision_other_than_the_approved_refuses_the_mint() -> Bool {
-  refused_with(a: actuation_mint_admission(presented: presented(escalation_id: family_id, revision: "sha256:r2"), slot: approved(revision: "sha256:r1", execute_by: "2026-09-25T12:25:00Z"), observed_at: at), want: "intent")
-}
-
-test fn an_approval_past_its_window_refuses_the_mint() -> Bool {
-  refused_with(a: actuation_mint_admission(presented: presented(escalation_id: family_id, revision: "sha256:r1"), slot: approved(revision: "sha256:r1", execute_by: "2026-09-25T12:25:00Z"), observed_at: later), want: "expired")
 }
 
 // ── The reach of setIamPolicy ────────────────────────────────────────────────────────────────
 
-// THE ACTUATION CHAIN IS NEVER IN THE POPULATION, and every target's account is.
+// THE ACTUATION PRINCIPAL IS NEVER IN THE POPULATION, and every target's account is.
 test fn the_population_excludes_the_actuation_chain_and_covers_every_target_account() -> Bool {
   iam_converge_population_excludes_the_actuation_chain()
     && all(gcp_iam_converge_targets, f => any(iam_converge_resource_population(), r => r == service_account_resource(email: f.service_account)))
