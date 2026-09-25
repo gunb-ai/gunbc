@@ -261,6 +261,14 @@ fn native_frontier_integrity_refusals(admission: NativeRouteAdmission) -> List<S
 // carries every finding at once. `Unminted` is a complete run with nothing to hold it to, so it
 // only proposes. `NotAMeasurement` is a receipt that failed an integrity clause, or a pattern
 // narrower than the universe: that run cannot speak for the frontier at all.
+// A LOST RUN PROPOSES NOTHING (review, 2026-09-25). Its observed state is the regression, so a
+// roster rendered from it would make the regression the new baseline if applied: a backward
+// ratchet dressed as a proposal. So `FrontierLost` carries findings only. It has no field a
+// proposal could be read from, and `native_frontier_proposal` answers Absent for it by
+// construction. The findings name every identity, stage and cause the reader needs. Proposals
+// exist for the initial mint, a strictly monotone advance, and an admitted identity
+// reconciliation (a rename or a disposed removal), and for nothing else.
+//
 // A PROPOSED ROSTER: the universe the run discovered and the debt it observed, both of which the
 // committed roster must equal. Either one alone would reopen the hole the persisted universe
 // closes.
@@ -272,7 +280,7 @@ type NativeFrontierProposal {
 type NativeFrontierVerdict
   = FrontierHeld
   | FrontierAdvanced { advanced: List<String>, proposal: NativeFrontierProposal }
-  | FrontierLost { findings: List<String>, proposal: NativeFrontierProposal }
+  | FrontierLost { findings: List<String> }
   | FrontierUnminted { proposal: NativeFrontierProposal }
   | FrontierNotAMeasurement { reasons: List<String> }
 
@@ -432,7 +440,7 @@ fn native_frontier_judge_minted(
   )
   let proposal = native_frontier_proposal_of(observed: observed_rows)
   if is_empty(xs: findings) == false {
-    FrontierLost { findings: findings, proposal: proposal }
+    FrontierLost { findings: findings }
   } else if is_empty(xs: stale) {
     FrontierHeld
   } else {
@@ -491,7 +499,7 @@ fn native_frontier_verdict_word(v: NativeFrontierVerdict) -> String {
   match v {
     FrontierHeld => "held"
     FrontierAdvanced { advanced: _, proposal: _ } => "advanced"
-    FrontierLost { findings: _, proposal: _ } => "lost"
+    FrontierLost { findings: _ } => "lost"
     FrontierUnminted { proposal: _ } => "unminted"
     FrontierNotAMeasurement { reasons: _ } => "not-a-measurement"
   }
@@ -509,7 +517,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
         ], "")],
         right: a
       )
-    FrontierLost { findings: fs, proposal: _ } => fs
+    FrontierLost { findings: fs } => fs
     FrontierUnminted { proposal: p } =>
       [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", integer_int_to_decimal_string(value: length(xs: p.universe)), " identities and ", integer_int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
     FrontierNotAMeasurement { reasons: rs } =>
@@ -529,7 +537,7 @@ fn native_frontier_proposal(v: NativeFrontierVerdict) -> Optional<NativeFrontier
   match v {
     FrontierHeld => optional_absent()
     FrontierAdvanced { advanced: _, proposal: p } => optional_present(value: p)
-    FrontierLost { findings: _, proposal: p } => optional_present(value: p)
+    FrontierLost { findings: _ } => optional_absent()
     FrontierUnminted { proposal: p } => optional_present(value: p)
     FrontierNotAMeasurement { reasons: _ } => optional_absent()
   }

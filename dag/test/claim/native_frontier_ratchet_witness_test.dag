@@ -29,7 +29,7 @@ import gunbc.native_frontier_debt {
 import gunbc.native_frontier_ratchet {
   NativeFrontierVerdict, FrontierHeld, FrontierAdvanced, FrontierLost, FrontierUnminted, FrontierNotAMeasurement,
   native_frontier_verdict_over, native_frontier_verdict_word, native_frontier_reading,
-  native_frontier_integrity_refusals, native_frontier_row_line, native_frontier_report_lines
+  native_frontier_integrity_refusals, native_frontier_row_line, native_frontier_report_lines, native_frontier_proposal
 }
 
 // WHAT THIS FILE DISCRIMINATES. The ratchet's boundary is a pair of supplied values, a roster
@@ -89,7 +89,7 @@ fn judge(standing: NativeFrontierRosterStanding, readings: List<NativeProgressOb
 
 fn is_lost(v: NativeFrontierVerdict) -> Bool {
   match v {
-    FrontierLost { findings: _, proposal: _ } => true
+    FrontierLost { findings: _ } => true
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -99,7 +99,7 @@ fn is_lost(v: NativeFrontierVerdict) -> Bool {
 
 fn lost_with(v: NativeFrontierVerdict, prefix: String) -> Bool {
   match v {
-    FrontierLost { findings: fs, proposal: _ } => any(xs: fs, predicate: fn(f) { starts_with(s: f, prefix: prefix) })
+    FrontierLost { findings: fs } => any(xs: fs, predicate: fn(f) { starts_with(s: f, prefix: prefix) })
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -116,7 +116,7 @@ test fn equality_holds() -> Bool {
   ) {
     FrontierHeld => native_frontier_verdict_word(v: FrontierHeld) == "held"
     FrontierAdvanced { advanced: _, proposal: _ } => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
@@ -135,7 +135,7 @@ test fn a_cleared_row_advances_and_the_proposal_drops_it() -> Bool {
           starts_with(s: l, prefix: "1 roster change(s) the run supports, NOT YET APPLIED")
         })
     FrontierHeld => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
@@ -150,7 +150,7 @@ test fn a_later_stage_refusal_advances_and_keeps_the_row() -> Bool {
   ) {
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.rows) == 1
     FrontierHeld => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
@@ -169,7 +169,7 @@ test fn a_deleted_subject_with_its_disposition_advances() -> Bool {
   ) {
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.universe) == 1 && is_empty(xs: p.rows)
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
@@ -232,7 +232,7 @@ test fn w_RED_an_unminted_roster_proposes_and_does_not_pass() -> Bool {
     FrontierUnminted { proposal: p } => length(xs: p.rows) == 1 && length(xs: p.universe) == 2 && native_frontier_verdict_word(v: v) == "unminted"
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
 }
@@ -247,7 +247,7 @@ test fn w_RED_a_narrower_pattern_is_not_a_measurement() -> Bool {
     FrontierNotAMeasurement { reasons: _ } => true
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
   }
 }
@@ -262,7 +262,7 @@ test fn w_RED_an_integrity_clause_makes_the_run_not_a_measurement() -> Bool {
     FrontierNotAMeasurement { reasons: rs } => length(xs: rs) == 1
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
   }
 }
@@ -305,7 +305,7 @@ test fn a_rename_target_holding_the_bar_is_not_new_debt() -> Bool {
   ) {
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.rows) == 1 && length(xs: p.universe) == 1
     FrontierHeld => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
@@ -329,10 +329,53 @@ test fn a_new_agreeing_subject_enrols_rather_than_holding() -> Bool {
   match judge(standing: minted(universe: [subject_a], rows: [], dispositions: []), readings: [agreed(identity: subject_a), agreed(identity: subject_b)]) {
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.universe) == 2 && is_empty(xs: p.rows)
     FrontierHeld => false
-    FrontierLost { findings: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
   }
+}
+
+// ═══ a lost run proposes nothing (review, 2026-09-25) ═══
+
+fn proposes_nothing(v: NativeFrontierVerdict) -> Bool {
+  match native_frontier_proposal(v: v) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A REGRESSION IS REPORTED IN FULL AND PROPOSES NO ROSTER. A fell from eval to prepare. A proposal
+// taken from this run would carry A at prepare, and applying it would ratchet the regression in.
+test fn w_RED_an_earlier_stage_regression_has_findings_and_no_proposal() -> Bool {
+  let v = judge(
+    standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
+    readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)]
+  )
+  lost_with(v: v, prefix: "REGRESSED") && proposes_nothing(v: v)
+}
+
+test fn w_RED_new_debt_has_findings_and_no_proposal() -> Bool {
+  let v = judge(standing: minted(universe: [], rows: [], dispositions: []), readings: [refused(identity: subject_b, stage: NativeTestStageEntry, cause: entry_cause)])
+  lost_with(v: v, prefix: "NEW DEBT") && proposes_nothing(v: v)
+}
+
+// THE PROPOSALS THAT REMAIN ARE THE THREE ADMITTED KINDS: the initial mint, a strictly monotone
+// advance, and an admitted identity reconciliation (a rename). Each still proposes.
+test fn mint_advance_and_rename_still_propose() -> Bool {
+  let mint = judge(standing: RosterUnminted, readings: [agreed(identity: subject_a)])
+  let advance = judge(
+    standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+    readings: [agreed(identity: subject_a)]
+  )
+  let rename = judge(
+    standing: minted(
+      universe: [subject_a],
+      rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)],
+      dispositions: [NativeProgressDispositionRow { identity: subject_a, disposition: SubjectRenamed { to: subject_c, authority: "gunbc#0" } }]
+    ),
+    readings: [refused(identity: subject_c, stage: NativeTestStagePrepare, cause: entry_cause)]
+  )
+  (proposes_nothing(v: mint) == false) && (proposes_nothing(v: advance) == false) && (proposes_nothing(v: rename) == false)
 }
 
 // ═══ complete measurement, not all-pass ═══
