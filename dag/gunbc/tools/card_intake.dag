@@ -1,4 +1,5 @@
 module gunbc.tools.card_intake
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 
 data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }

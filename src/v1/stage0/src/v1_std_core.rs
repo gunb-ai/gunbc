@@ -787,6 +787,12 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    ServiceOwnerMismatch {
+        name: String,
+        service_owner: String,
+        bound_owner: String,
+        span: Rc<SourceSpan>,
+    },
     AmbiguousAnonymousRecordLiteral {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
@@ -1036,6 +1042,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ServiceOwnerMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
@@ -1112,6 +1119,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the provider of '".to_string(), n.clone()), "' is present but its export could not be established: module '".to_string()), rm.clone()), "' references the name, the registry maps it to '".to_string()), p.clone()), "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold".to_string()),
     CompilerDiagnostic::UnlistedVariantValueUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted variant value use '".to_string(), n.clone()), "' (a coproduct arm referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::ServiceOwnerMismatch { name: n, service_owner: so, bound_owner: bo, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("receiver '".to_string(), n.clone()), "' is bound to '".to_string()), bo.clone()), ".".to_string()), n.clone()), "', not to the service '".to_string()), so.clone()), ".".to_string()), n.clone()), "': a service's operations are reached only through the declaration the module imports, never through a service that merely shares the name. Import the service from '".to_string()), so.clone()), "' if its operations are meant, or call the operations '".to_string()), bo.clone()), ".".to_string()), n.clone()), "' declares".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
@@ -1361,6 +1369,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::AmbiguousReference { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ServiceOwnerMismatch { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),

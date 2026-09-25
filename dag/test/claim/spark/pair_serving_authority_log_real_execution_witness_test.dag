@@ -40,6 +40,7 @@ import gunbc.spark.pair_serving_authority_log {
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
   authority_eq,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,5 @@
 module test.claim.random_bytes_csprng_witness
+import extdeps.entropy { Urandom }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

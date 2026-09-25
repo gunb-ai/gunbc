@@ -1,0 +1,6 @@
+module test.fixture.service_owner_identity.value
+
+import std.types { Int }
+
+// The second VALUE named OwnerIdentityProbe (see test.fixture.service_owner_identity.service).
+data OwnerIdentityProbe: Int = 1

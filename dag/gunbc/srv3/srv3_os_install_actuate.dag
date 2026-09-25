@@ -1,4 +1,5 @@
 module gunbc.srv3_os_install_actuate
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {

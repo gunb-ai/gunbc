@@ -241,7 +241,7 @@ use crate::v1_std_core::CompilerDiagnostic::{
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
+    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, ServiceOwnerMismatch,
     SiblingOperandEffectOrderUndetermined, SoleConstructorViolation, TypeArgumentArityMismatch,
     TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType,
     VariantCollision,
@@ -337,6 +337,7 @@ pub struct ModuleContext {
     pub resolved_items: Rc<Vec<Rc<Node>>>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub svc_owner_conflicts: Rc<HashMap<String, Rc<ServiceOwnerConflict>>>,
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -370,6 +371,7 @@ pub struct InferScope {
     pub match_bound_names: Rc<HashMap<String, bool>>,
     pub module_name: String,
     pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub service_owner_conflicts: Rc<HashMap<String, Rc<ServiceOwnerConflict>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub caller_decl_name: String,
@@ -569,7 +571,7 @@ pub fn merge_scope_from_imports(
                     let parent_result = typed_parent.items.clone().iter().cloned().fold(Rc::new(InferScopeComponents {
     svc_registry: svc_registry.clone(),
     svc_locals: svc_locals.clone(),
-}), |acc: Rc<InferScopeComponents>, titem: Rc<Node>| if ((titem.transport.clone() != std::option::Option::None) && ((titem.children.clone().len() as i64) > 0)) {
+}), |acc: Rc<InferScopeComponents>, titem: Rc<Node>| if (((titem.transport.clone() != std::option::Option::None) && ((titem.children.clone().len() as i64) > 0)) && imported_service_in_scope(imp.clone(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), titem.clone()), namespace_root_from_properties(titem.properties.clone(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), titem.clone()), env.source_indices.clone()))) {
             {
                 let entries = Rc::new({ let mut __result = Vec::new(); for c in titem.children.clone().iter().cloned() { __result.push(Rc::new(OpEntry {
     name: crate::v1_std_core::authored_name_at(env.source_indices.clone(), c.clone()),
@@ -1376,6 +1378,212 @@ pub fn local_is_service_root_binding(
                 == crate::v1_compiler_infer_types::nominal_type_ref(name.clone()))
         }
         std::option::Option::None => false,
+    }
+}
+
+pub fn import_names(imp: Rc<ResolvedImport>, name: String) -> bool {
+    (imp.is_all.clone() || {
+        let mut __found = false;
+        for n in imp.specific_names.clone().iter().cloned() {
+            if (n.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn imported_service_in_scope(imp: Rc<ResolvedImport>, name: String, root: String) -> bool {
+    ((root.clone() != name.clone()) || import_names(imp.clone(), name.clone()))
+}
+
+pub fn census_service_in_scope(
+    owner_module: String,
+    name: String,
+    root: String,
+    module_name: String,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+) -> bool {
+    (((root.clone() != name.clone()) || (owner_module.clone() == module_name.clone())) || {
+        let mut __found = false;
+        for imp in resolved_imports.iter().cloned() {
+            if ((imp.module_path.clone() == owner_module.clone())
+                && import_names(imp.clone(), name.clone()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceOwnerConflict {
+    pub service_owner: String,
+    pub bound_owner: String,
+    pub both_values: bool,
+}
+
+pub fn service_owner_conflicts_of(
+    services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<ServiceOwnerConflict>>> {
+    Rc::new(v1_rt::map_keys(&services)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<ServiceOwnerConflict>>(),
+        |acc: Rc<HashMap<String, Rc<ServiceOwnerConflict>>>, sname: String| match v1_rt::map_get(
+            &services,
+            sname.clone(),
+        ) {
+            Some(sentry) => {
+                if (namespace_root_from_properties(
+                    sentry.item.clone().properties.clone(),
+                    sname.clone(),
+                    source_indices.clone(),
+                ) != sname.clone())
+                {
+                    acc.clone()
+                } else {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for imp in resolved_imports.iter().cloned() {
+                            if ((imp.module_path.clone() != sentry.module_path.clone()) && {
+                                let mut __found = false;
+                                for n in imp.specific_names.clone().iter().cloned() {
+                                    if (n.clone() == sname.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            }) {
+                                __result.push(imp);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        std::option::Option::None => acc.clone(),
+                        Some(imp) => {
+                            let service_in_scope = census_service_in_scope(
+                                sentry.module_path.clone(),
+                                sname.clone(),
+                                sname.clone(),
+                                module_name.clone(),
+                                resolved_imports.clone(),
+                            );
+                            let other_is_value = module_declares_value_named(
+                                parent_index.clone(),
+                                imp.module_path.clone(),
+                                sname.clone(),
+                                source_indices.clone(),
+                            );
+                            if (service_in_scope.clone() && !other_is_value.clone()) {
+                                acc.clone()
+                            } else {
+                                v1_rt::rc_map_insert(
+                                    acc.clone(),
+                                    sname.clone(),
+                                    Rc::new(ServiceOwnerConflict {
+                                        service_owner: sentry.module_path.clone(),
+                                        bound_owner: imp.module_path.clone(),
+                                        both_values: service_in_scope.clone(),
+                                    }),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            std::option::Option::None => acc.clone(),
+        },
+    )
+}
+
+pub fn module_declares_value_named(
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    module_path: String,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match v1_rt::map_get(&parent_index, module_path.clone()) {
+        Some(typed_parent) => {
+            let mut __found = false;
+            for titem in typed_parent.items.clone().iter().cloned() {
+                if ((crate::v1_std_core::authored_name_at(source_indices.clone(), titem.clone())
+                    == name.clone())
+                    && match titem.module_item_kind.clone() {
+                        ParsedModuleItemKind::ModuleItemFunction => true,
+                        ParsedModuleItemKind::ModuleItemDataValue => true,
+                        _ => false,
+                    })
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn service_owner_mismatch_refusal(
+    name: String,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<InferResult>> {
+    match v1_rt::map_get(&scope.service_owner_conflicts.clone(), name.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(conflict) => {
+            if v1_rt::map_has(&scope.body_locals.clone(), name.clone()) {
+                std::option::Option::None
+            } else {
+                {
+                    let refuses = (conflict.both_values.clone()
+                        || match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+                            std::option::Option::None => true,
+                            Some(binding) => {
+                                (binding.resolved.clone()
+                                    == crate::v1_compiler_infer_types::nominal_type_ref(
+                                        name.clone(),
+                                    ))
+                            }
+                        });
+                    if !refuses.clone() {
+                        std::option::Option::None
+                    } else {
+                        Some(Rc::new(InferResult {
+                            typed: semantic_expr_error_node(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "service owner mismatch for '".to_string(),
+                                        name.clone(),
+                                    ),
+                                    "'".to_string(),
+                                ),
+                                span.clone(),
+                            ),
+                            diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::ServiceOwnerMismatch {
+                                    name: name.clone(),
+                                    service_owner: conflict.service_owner.clone(),
+                                    bound_owner: conflict.bound_owner.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )]),
+                        }))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -9397,6 +9605,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
+            service_owner_conflicts: scope.service_owner_conflicts.clone(),
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
@@ -9447,6 +9656,7 @@ pub fn extend_scope(
         match_bound_names: scope.match_bound_names.clone(),
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
+        service_owner_conflicts: scope.service_owner_conflicts.clone(),
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
@@ -9481,6 +9691,7 @@ pub fn extend_scope_match_bound(
         ),
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
+        service_owner_conflicts: scope.service_owner_conflicts.clone(),
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
@@ -9517,6 +9728,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
+            service_owner_conflicts: scope.service_owner_conflicts.clone(),
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
@@ -9942,6 +10154,7 @@ let fold_scope = Rc::new(InferScope {
     match_bound_names: scope.match_bound_names.clone(),
     module_name: scope.module_name.clone(),
     service_registry: scope.service_registry.clone(),
+    service_owner_conflicts: scope.service_owner_conflicts.clone(),
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: prov_map.clone(),
@@ -9970,6 +10183,7 @@ let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
     match_bound_names: scope.match_bound_names.clone(),
     module_name: scope.module_name.clone(),
     service_registry: scope.service_registry.clone(),
+    service_owner_conflicts: scope.service_owner_conflicts.clone(),
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: nf_prov_map.clone(),
@@ -10894,6 +11108,8 @@ pub fn infer_expr_body(
             let span = texpr.span.clone();
             match constructor_reference_admission_unshadowed(name.clone(), span.clone(), scope.clone()) {
     Some(refusal) => refusal.clone(),
+    std::option::Option::None => match service_owner_mismatch_refusal(name.clone(), span.clone(), scope.clone()) {
+    Some(refusal) => refusal.clone(),
     std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
     Some(binding) => {
             let scope_parent = lookup_variant_parent_enum(scope.clone(), name.clone());
@@ -11034,6 +11250,7 @@ Rc::new(InferResult {
                 }
 },
 }
+},
 },
 },
 },
@@ -13534,6 +13751,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 match_bound_names: lam_scope.match_bound_names.clone(),
                 module_name: lam_scope.module_name.clone(),
                 service_registry: lam_scope.service_registry.clone(),
+                service_owner_conflicts: lam_scope.service_owner_conflicts.clone(),
                 item_registry: lam_scope.item_registry.clone(),
                 caller_decl_name: lam_scope.caller_decl_name.clone(),
                 lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
@@ -20972,6 +21190,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         match_bound_names: fn_scope.match_bound_names.clone(),
                         module_name: fn_scope.module_name.clone(),
                         service_registry: fn_scope.service_registry.clone(),
+                        service_owner_conflicts: fn_scope.service_owner_conflicts.clone(),
                         item_registry: fn_scope.item_registry.clone(),
                         caller_decl_name: fn_decl_name.clone(),
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
@@ -26446,64 +26665,29 @@ pub fn build_module_context(
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
-        let census_scope = Rc::new(v1_rt::map_keys(&env.symbol_index.clone().services.clone()))
-            .iter()
-            .cloned()
-            .fold(
-                Rc::new(InferScopeComponents {
-                    svc_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
-                    svc_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                }),
-                |acc: Rc<InferScopeComponents>, sname: String| match v1_rt::map_get(
-                    &env.symbol_index.clone().services.clone(),
-                    sname.clone(),
-                ) {
-                    Some(sentry) => {
-                        let sitem = sentry.item.clone();
-                        let entries = Rc::new({
-                            let mut __result = Vec::new();
-                            for c in sitem.children.clone().iter().cloned() {
-                                __result.push(Rc::new(OpEntry {
-                                    name: crate::v1_std_core::authored_name_at(
-                                        env.source_indices.clone(),
-                                        c.clone(),
-                                    ),
-                                    outputs: crate::v1_compiler_infer_items::inferred_to_outputs(
-                                        crate::v1_compiler_infer_env::qualify_borrowed_inferred(
-                                            c.inferred.clone(),
-                                            sentry.module_path.clone(),
-                                            env.clone(),
-                                            v1_rt::rc_empty_map::<String, bool>(),
-                                        ),
-                                        c.span.clone(),
-                                        env.source_indices.clone(),
-                                    ),
-                                    params: c.params.clone(),
-                                }));
-                            }
-                            __result
-                        });
-                        let root = namespace_root_from_properties(
-                            sitem.properties.clone(),
-                            sname.clone(),
-                            env.source_indices.clone(),
-                        );
-                        Rc::new(InferScopeComponents {
-                            svc_registry: v1_rt::rc_map_insert(
-                                acc.svc_registry.clone(),
-                                sname.clone(),
-                                entries.clone(),
-                            ),
-                            svc_locals: v1_rt::rc_map_insert(
-                                acc.svc_locals.clone(),
-                                root.clone(),
-                                nominal_type_binding(root.clone()),
-                            ),
-                        })
-                    }
-                    std::option::Option::None => acc.clone(),
-                },
-            );
+        let census_scope = Rc::new(v1_rt::map_keys(&env.symbol_index.clone().services.clone())).iter().cloned().fold(Rc::new(InferScopeComponents {
+    svc_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+    svc_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+}), |acc: Rc<InferScopeComponents>, sname: String| match v1_rt::map_get(&env.symbol_index.clone().services.clone(), sname.clone()) {
+    Some(sentry) => if !census_service_in_scope(sentry.module_path.clone(), sname.clone(), namespace_root_from_properties(sentry.item.clone().properties.clone(), sname.clone(), env.source_indices.clone()), module_name.clone(), resolved_imports.clone()) {
+            acc.clone()
+        } else {
+            {
+                let sitem = sentry.item.clone();
+let entries = Rc::new({ let mut __result = Vec::new(); for c in sitem.children.clone().iter().cloned() { __result.push(Rc::new(OpEntry {
+    name: crate::v1_std_core::authored_name_at(env.source_indices.clone(), c.clone()),
+    outputs: crate::v1_compiler_infer_items::inferred_to_outputs(crate::v1_compiler_infer_env::qualify_borrowed_inferred(c.inferred.clone(), sentry.module_path.clone(), env.clone(), v1_rt::rc_empty_map::<String, bool>()), c.span.clone(), env.source_indices.clone()),
+    params: c.params.clone(),
+})); } __result });
+let root = namespace_root_from_properties(sitem.properties.clone(), sname.clone(), env.source_indices.clone());
+Rc::new(InferScopeComponents {
+    svc_registry: v1_rt::rc_map_insert(acc.svc_registry.clone(), sname.clone(), entries.clone()),
+    svc_locals: v1_rt::rc_map_insert(acc.svc_locals.clone(), root.clone(), nominal_type_binding(root.clone())),
+})
+}
+        },
+    std::option::Option::None => acc.clone(),
+});
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
             parent_index.clone(),
@@ -26556,6 +26740,13 @@ pub fn build_module_context(
                 module_name.clone(),
             ),
             svc_registry: merged_scope.svc_registry.clone(),
+            svc_owner_conflicts: service_owner_conflicts_of(
+                env.symbol_index.clone().services.clone(),
+                resolved_imports.clone(),
+                parent_index.clone(),
+                module_name.clone(),
+                env.source_indices.clone(),
+            ),
             locals: all_locals.clone(),
             variant_locals: env_variant_locals.clone(),
             item_registry: local.item_registry.clone(),
@@ -26704,6 +26895,7 @@ pub fn typecheck_module(
             match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
             module_name: resolved_module_name.clone(),
             service_registry: ctx.svc_registry.clone(),
+            service_owner_conflicts: ctx.svc_owner_conflicts.clone(),
             item_registry: ctx.item_registry.clone(),
             caller_decl_name: "".to_string(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),

@@ -1,0 +1,23 @@
+module test.fixture.service_owner_identity.service
+
+import std.types { String, Unit }
+
+// A bare-declared service -- its namespace root IS its name -- whose only purpose is to share a
+// spelling with test.fixture.service_owner_identity.value's data declaration, so
+// test.claim.service_owner_identity_witness can import two VALUES under one name and observe the
+// refusal. Designed, not real: no real pair of value declarations shares a bare service's name.
+service OwnerIdentityProbe {
+  operation Ping {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "pong" } "fixture op realizes hermetically"
+    }
+  }
+}

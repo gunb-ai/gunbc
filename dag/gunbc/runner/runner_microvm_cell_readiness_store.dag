@@ -6,7 +6,6 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.resources { Filesystem }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.stat {
@@ -43,6 +42,7 @@ import gunbc.runner_microvm_cell_readiness {
   CellReadinessWrite, CellReadinessWriteResult, WriteAccepted, apply_cell_readiness_write, record_of_write,
   record_cell,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthority
 
