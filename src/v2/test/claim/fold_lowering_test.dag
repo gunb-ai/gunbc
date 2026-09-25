@@ -372,18 +372,9 @@ test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
   }
 }
 
-// A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm.
+// A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm. Read off flp_outcomes below.
 test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
-  match lowering_of(source_text: non_fold_snippet, file: ^g_probe_file) {
-    Absent => false
-    Present { value: l } =>
-      match l {
-        FoldCallNotAFold { diagnostic: _ } => true
-        FoldCallLowered { seam_loop: _ } => false
-        FoldCallStepFormUnresolved { diagnostic: _ } => false
-        FoldCallStepShapeInvalid { diagnostic: _ } => false
-      }
-  }
+  flp_outcomes().non_fold_is_not_a_fold
 }
 
 // THE POSITIONAL STEP (MQ-1). `fold(xs, 0, fn(acc, x) { acc })` -- the spelling
@@ -416,7 +407,7 @@ fn loop_shape(n: Node) -> v2.std.node.Hash {
   v2.std.node.content_hash(n: n)
 }
 
-test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
+fn positional_loop_matches_named_loop() -> Bool {
   match lowered_loop_of(source_text: positional_fold_snippet, file: ^positional_probe_file) {
     Absent => false
     Present { value: positional } =>
@@ -427,13 +418,49 @@ test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
   }
 }
 
+fn non_fold_call_selects_not_a_fold() -> Bool {
+  match lowering_of(source_text: non_fold_snippet, file: ^g_probe_file) {
+    Absent => false
+    Present { value: l } =>
+      match l {
+        FoldCallNotAFold { diagnostic: _ } => true
+        FoldCallLowered { seam_loop: _ } => false
+        FoldCallStepFormUnresolved { diagnostic: _ } => false
+        FoldCallStepShapeInvalid { diagnostic: _ } => false
+      }
+  }
+}
+
+// ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Each claim below
+// inspects one verdict of a front end over a supplied snippet, and the front end alone is more than
+// one claim's new-witness budget -- the ingest is the expense, not the assertion (DESIGN section 3,
+// a witness discriminates at one interface). The stored value is three Bools: no Node, no context,
+// no closure, so it is portable.
+type FlpOutcomes {
+  positional_matches_named: Bool
+  positional_named_step_unresolved: Bool
+  non_fold_is_not_a_fold: Bool
+}
+
+fn flp_outcomes() -> FlpOutcomes {
+  FlpOutcomes {
+    positional_matches_named: positional_loop_matches_named_loop(),
+    positional_named_step_unresolved: is_step_form_unresolved(
+      source_text: positional_named_step_fold_snippet,
+      file: ^positional_named_step_probe_file
+    ),
+    non_fold_is_not_a_fold: non_fold_call_selects_not_a_fold()
+  }
+}
+
+test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
+  flp_outcomes().positional_matches_named
+}
+
 // THE RED CONTROL ON THE SAME POSITION: a step passed BY NAME at the declared
 // position is still a callee-resolution fact this stage does not have, so it
 // stays the counted unresolved state -- the positional reading must not widen
 // into accepting whatever sits in the slot.
 test fn positional_named_step_fold_is_step_form_unresolved() -> Bool {
-  is_step_form_unresolved(
-    source_text: positional_named_step_fold_snippet,
-    file: ^positional_named_step_probe_file
-  )
+  flp_outcomes().positional_named_step_unresolved
 }

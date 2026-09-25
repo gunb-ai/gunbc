@@ -605,6 +605,10 @@ import v2.std.collection { List }
 // THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
 // over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
+// THE FOLD-LOWERING DISPOSITION ROW IS THE SAME GROUND AT THREE SPECIMENS:
+// v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step and
+// non-fold snippets once and stores three Bool verdicts; MQ-1's first floor run refused each claim
+// that paid its own ingest against the new-witness budget. Portable for the same reason.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -678,6 +682,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_outcome",
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_missing_outcome",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
+  "v2.test.claim.fold_lowering.flp_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
