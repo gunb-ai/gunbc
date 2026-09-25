@@ -220,15 +220,15 @@ test fn witness_second_writer_group_derives_setgid_2770() -> Bool {
 
 test fn witness_second_writer_group_is_admitted() -> Bool {
   match managed_directory_admit(d: writers_dir(group: stranger_user())) {
-    ManagedDirectoryAdmitted { dir } => true
-    ManagedDirectoryRefused { member, path, writer } => false
+    ManagedDirectoryAdmitted { dir: _ } => true
+    ManagedDirectoryRefused { member: _, path: _, writer: _ } => false
   }
 }
 
 test fn witness_uncovered_writer_refuses_naming_it() -> Bool {
   match managed_directory_admit(d: writers_dir(group: owner_user())) {
-    ManagedDirectoryAdmitted { dir } => false
-    ManagedDirectoryRefused { member, path, writer } => (writer as String) == "outsider"
+    ManagedDirectoryAdmitted { dir: _ } => false
+    ManagedDirectoryRefused { member: _, path: _, writer } => (writer as String) == "outsider"
   }
 }
 

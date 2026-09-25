@@ -237,7 +237,7 @@ fn managed_directory_admit(d: ManagedDirectory) -> ManagedDirectoryAdmission {
 fn managed_directory_admission_path(a: ManagedDirectoryAdmission) -> FilePath {
   match a {
     ManagedDirectoryAdmitted { dir } => dir.path
-    ManagedDirectoryRefused { member, path, writer } => path
+    ManagedDirectoryRefused { member: _, path, writer: _ } => path
   }
 }
 
