@@ -16,37 +16,52 @@ import gunbc.spark.serving_capacity_intent {
 // THE FLEET IS WITHDRAWN, and the path back is NOT the re-convergence of the retired profile:
 // the 2026-09-19 row (sixteen sequences at 262144 tokens, 8400 basis points) is the configuration
 // whose live units crash-looped from 2026-09-18, and nothing measured since rehabilitates it. THE
-// RESTORATION SHAPE IS THE CONSERVATIVE ONE, and each field names its basis:
+// RESTORATION SHAPE IS THE DERIVED SIX-SEAT 262K WINDOW, and each field names its basis:
 //
-//   SEATS: the harness's interactive-quality seat count -- the same authority the pair floor reads
-//     (gunbc.spark.pair_serving_capacity_floor spark_pair_serving_minimum_cold_sessions), so the
-//     restored service seats exactly what the harness hands out and not a number chosen beside it.
-//     THE COUNT IS AUTHORED HERE, not imported: importing gunbc.harness.harness_seat closes a
-//     cycle through the serving enrollment chain back into the unit renderer, and a copied
-//     constant with a named drift check beats a cycle. THE WITNESS is the tie: the
-//     group_b_serving_capacity witness asserts this row EQUALS harness_interactive_quality_seats
-//     on every suite run, so the day the harness count moves, this row's next edit is located.
-//   CONTEXT: 65536 tokens per seat. A quarter of the retired 262K window, and UNDER the unified-
-//     memory exhaustion report the corpus carries for this hardware (vllm-project/vllm#55569,
-//     ~230K context on a GB10): the conservative restoration does not sit at the context the
-//     upstream report warns about.
+//   SEATS: DERIVED FROM THE ENGINE'S OWN GROUP-AWARE KV INVENTORY, not authored and not imported:
+//     floor(1,805,689 / 262,144) = 6. The inventory is the head EngineCore line of the converged
+//     bounded-experiment run (2026-09-25, engine v0.1.dev1+g8d09804c8, [kv_cache_utils.py:2312]):
+//     "GPU KV cache size: 1,805,689 tokens, Maximum concurrency for 65,536 tokens per request:
+//     27.55x". The engine derived that capacity FROM THE LIMITING RANK (TP3/srv11: the smallest
+//     envelope-minus-weights-minus-activation-minus-graph residual arena, 17.03 GiB against
+//     24.08 on TP0/srv9), so the derived count is the count the WORST rank admits, not the average
+//     rank's. THE DERIVATION IS TOKENS OVER TOKENS: the residual arena in GiB is supply evidence
+//     and never a demand input -- no seat count is ever computed from arena bytes. The forbidden
+//     linear route (scaling the inventory from TP0's larger arena) fabricates 9 seats and is
+//     pinned RED on the fit witness.
+//   WINDOW: 262144 tokens per seat -- the full window the arm has carried since the initial
+//     profile, now admissible BECAUSE the seat population is derived instead of over-provisioned:
+//     six cold seats at 262144 tokens total 1,572,864 resident tokens, inside the 1,805,689-token
+//     inventory with 232,825 tokens of slack.
 //   BATCH CEILING: 2048, unchanged from the arm's existing scheduler configuration -- the engine
 //     profiles its activation peak against the batch shape it will actually run.
+//   ENVELOPE: 8567 basis points (0.8567), the engine's own advice, unchanged.
+//
+// THE HARNESS-SEAT AUTHORITY GOVERNED THE PRE-MEASUREMENT SHAPE and is retired with it: the
+// 2026-09-24 conservative restoration (one harness seat at 65536) was the right wall while no
+// memory receipts existed; the converged experiment supersedes it, and the seat authority is now
+// the engine's measured inventory, not the harness handout. The witness asserts the derivation
+// (floor of the inventory over the window, the limiting rank named) on every suite run.
 //
 // THE INTENT IS DECLARED AS THE MINT'S ADMISSION, not unwrapped at declaration: a caller sees the
 // refusal arm rather than a fabricated degenerate intent if the seat population ever derives to
 // zero, and the accessor below is the one place the admitted arm is read.
-// THE SEAT COUNT, read from gunbc.harness.harness_seat harness_interactive_quality_seats on
-// 2026-09-24: it answers ONE. The restored service seats exactly what the harness hands out --
-// the same authority the pair floor reads -- and a single interactive-quality seat at a bounded
-// window IS the conservative restoration: one caller at 64K, not the sixteen-sequence 262K
-// configuration whose units crash-looped. The witness asserts this row still EQUALS the harness
-// constant on every suite run; the comment names the authority the import cannot reach without
-// closing a cycle through the serving enrollment chain.
-data group_b_restoration_seats: Nat = 1
+data group_b_kv_inventory_tokens: Nat = 1805689
+
+// THE INVENTORY'S PROVENANCE, quoted once where the derivation reads it: the head EngineCore line
+// of the converged run, 2026-09-25, engine v0.1.dev1+g8d09804c8, profile 64K window x 1 seat x
+// 2048 batched tokens x fp8 KV x 8567 basis points; the per-rank worker lines and the modeling
+// laws that keep the arena a supply fact are carried at gunbc.spark.arm_memory_fit's wet-bundle
+// witness, where the receipts join the fit subject.
+data group_b_restoration_window_tokens: Nat = 262144
+
+// THE SEAT COUNT IS THE DERIVATION, not a literal: the day the inventory reading is re-measured,
+// this expression moves with it and the witness pinning floor(1,805,689 / 262,144) = 6 goes red
+// at exactly the place the number changed.
+data group_b_restoration_seats: Nat = group_b_kv_inventory_tokens / group_b_restoration_window_tokens
 
 data group_b_restoration_intent_admission: ServingCapacityIntentAdmission = uniform_cold_seats(
-  each: token_count(count: 65536),
+  each: token_count(count: 262144),
   seats: group_b_restoration_seats,
   max_batched_tokens: token_count(count: 2048),
 )
