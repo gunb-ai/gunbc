@@ -93,7 +93,6 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool, bool_node }
 import v2.std.node {
-  arrow_type_param_names,
   Arrow,
   Atom,
   Bind,
@@ -123,6 +122,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
+import v2.std.type_binder { type_param_names }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 
@@ -1644,7 +1644,7 @@ fn infer_application_formals(node: Node) -> Optional<List<InhabitanceFormal>> {
 fn infer_application_type_params(node: Node) -> List<Symbol> {
   match infer_application_callee_arrow(node: node) {
     Absent => []
-    Present { value: arrow } => arrow_type_param_names(n: arrow)
+    Present { value: arrow } => type_param_names(n: arrow)
   }
 }
 

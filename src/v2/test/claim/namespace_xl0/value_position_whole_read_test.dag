@@ -33,9 +33,9 @@ import v2.std.node {
   TypeNode,
   arrow_body_target_lookup,
   named_edge_target_lookup,
-  arrow_type_param_names,
   node_subtree_nodes
 }
+import v2.std.type_binder { type_param_names }
 import v2.std.node_query {
   call_argument_targets,
   call_callee_target,
@@ -407,7 +407,7 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 
 // THE LAMBDA ARGUMENT'S SHAPE: a call to `callee` one of whose arguments is an Arrow whose first
 // positional child (the domain) has the Named edge `binder` typed by one of THAT Arrow's own type
-// parameters (v2.std.node arrow_type_param_names -- the fresh `'p` gunbc#12217's binder model
+// parameters (v2.std.type_binder type_param_names -- the fresh `'p` gunbc#12217's binder model
 // carries), and whose arrow_body_edge target is the atom `binder` at its AUTHORED occurrence -- the
 // body's own use, not the binder's position (the type variable carries the binder's occurrence).
 // Dropping the binder edge, narrowing the lambda to its parameter, carrying its shell, or typing
@@ -423,7 +423,7 @@ fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
         Found { target: t } =>
           match node_atom_identity_optional(node: t) {
             Present { value: tv } =>
-              if vpw_symbol_in(xs: arrow_type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
+              if vpw_symbol_in(xs: type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
             Absent => optional_absent()
           }
         _ => optional_absent()
@@ -550,7 +550,7 @@ fn vpw_is_arrow(n: Node) -> Bool {
 }
 
 // Each lambda binds `x` in its own domain, typed by a type parameter declared on ITS OWN Arrow
-// (vpw_domain_binds reads the type variable against that Arrow's arrow_type_param_names). A fresh
+// (vpw_domain_binds reads the type variable against that Arrow's type_param_names). A fresh
 // type parameter shared across the two -- declared on one Arrow and referenced from the other, or a
 // domain typed by a variable no Arrow in the pair declares -- fails it.
 fn vpw_binds_x_in_own_frame(a: Node) -> Bool {
@@ -580,7 +580,7 @@ fn vpw_is_let_bound_arrow(n: Node) -> Bool {
   match n.kind {
     ComputationNode { behavior: Bind } =>
       fold_list(xs: node_positional_child_targets(node: n), empty: false, cons: fn(acc, c) {
-        acc || (vpw_is_lambda_using_its_binder(n: c, binder: ^y) && (length(xs: arrow_type_param_names(n: c)) == 1))
+        acc || (vpw_is_lambda_using_its_binder(n: c, binder: ^y) && (length(xs: type_param_names(n: c)) == 1))
       })
     _ => false
   }
@@ -640,7 +640,7 @@ test fn a_two_step_projection_on_a_call_result_lowers_every_step() -> Bool {
 // post-normalize well-formedness gate and refused the whole ingest (02_parse c01376 / c02555).
 fn vpw_is_two_wildcard_arrow(n: Node) -> Bool {
   vpw_is_arrow(n: n) && (match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
-    Present { value: domain } => (length(xs: domain.children) == 2) && (length(xs: arrow_type_param_names(n: n)) == 3)
+    Present { value: domain } => (length(xs: domain.children) == 2) && (length(xs: type_param_names(n: n)) == 3)
     Absent => false
   })
 }

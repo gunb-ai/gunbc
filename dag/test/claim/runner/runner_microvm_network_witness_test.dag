@@ -34,7 +34,7 @@ import gunbc.runner_microvm_network {
   TapIpv6DisabledFact, GuestNeighbourAbsentFact, ExpectationTableEmptyFact,
   runner_slot_teardown_flush_commands, runner_slot_guest_neighbour_show_command, runner_host_expectation_list_command,
   runner_slot_ipv6_sysctl_text, runner_slot_ipv6_sysctl_path, runner_slot_network_install_operations, runner_slot_ipv6_disabled_proc_path,
-  runner_slot_guest_network_boot_args, guest_ipv6_disabled_readback_frontier, converged_slot_network_producer_frontier,
+  runner_slot_guest_network_boot_args, guest_ipv6_disabled_readback_frontier,
   TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
   RulesetListed, RulesetUnreadable, slot_network_readback,
   runner_slot_guest_originated_conntrack_list_command, runner_slot_guest_destined_conntrack_list_command,
@@ -492,10 +492,6 @@ test fn ipv6_is_disabled_on_the_tap_and_in_the_guest() -> Bool {
     && string_contains(s: runner_slot_guest_network_boot_args(net: net), pattern: " ipv6.disable=1")
     && string_contains(s: runner_slot_guest_network_boot_args(net: net), pattern: runner_slot_guest_ip_boot_arg(net: net))
     && match guest_ipv6_disabled_readback_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match converged_slot_network_producer_frontier {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }

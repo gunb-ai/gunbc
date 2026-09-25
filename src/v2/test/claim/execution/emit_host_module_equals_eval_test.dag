@@ -1,7 +1,8 @@
 module v2.test.execution.emit_host_module_equals_eval
 
 import v2.compiler.emit_host { run_test_claim_module_emit_vs_eval }
-import v2.compiler.emit_module { emit_module, emit_module_decl_separator }
+import v2.compiler.emit_module { emit_module }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.eval { TestClaimRun }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust {

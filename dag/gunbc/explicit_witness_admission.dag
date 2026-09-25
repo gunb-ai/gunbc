@@ -473,6 +473,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     reason: "Admitted RED whose cited boundary NO LONGER EXISTS: gunbc#10245 replaced the witness entry import closure with a caller-declared pool, so the population is exactly origin_probe_subject_files, and run_direct_rust_door_emit_write_compile_smoke lives in dag/test/claim/direct_rust_door_write_compile_witness_test.dag, which that subject does not name. The cause is the declared subject and is decidable by reading it; it is neither the marshal nor the reachability horizon. Owner: witness-evidence-lifecycle lane.",
     dissolution: unbound_dissolution(description: "a population authority enumerates fn-arrow declarations repository-wide within this lane's budget, so the direct-door smoke declaration is in the probe's subject without the witness naming its file one by one; this witness greens and this row deletes. Naming that one file in origin_probe_subject_files would also green it and is NOT the trigger: it would green the row without the capability the row stands for")
   ),
+  known_red_probe(
+    entry: "dag/test/claim/file_hold_plan_refusal_probe_witness_test.dag",
+    f: "the_harness_runs_and_a_clean_source_over_the_hold_store_is_clean",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "RED ON THIS STACK FOR A MAIN-WIDE COMPILER DEFECT, NOT FOR THE HOLD STORE. The claim asserts a census of the hold-store harness has zero blocking rows. Bisected to 9945e9268f1 (its parent is clean): cas_slot_keys began importing std.decimal, whose closure reaches std.measure through std.bytes and std.integer, and the census's measured compile (gunbc.type_ref_hit_ne_bind_measure) charges std.measure's own unit variants, passed as phantom type arguments in Measure<Memory, One, Nat>, as missing imports -- 38 blocking UnresolvedType rows here, and 147 for a source importing std.measure alone on plain main. The unmeasured resolve admits the same leaves, so the two routes of one compiler disagree; the measure is the wrong side. Kept enrolled rather than deleted or loosened: it is the discriminating red that shows the census is not yet fit for any closure reaching std.measure.",
+    dissolution: unbound_dissolution(description: "the measured compile's binding authority (v1.compiler.infer_env type_ref_measure_binding_authority) treats a zero-payload variant as bound exactly when the observed unit_variant_index keys it, and its regenerated stage0 mirror is what claim_batch executes -- SUFFICIENT FOR a census whose closure reaches std.measure to report zero blocking UnresolvedType rows for std.measure's own unit variants. Delivered by gunbc#12132; this row deletes when #12132 is merged into this branch and the claim reads green."),
+  ),
   source_root_ingest_gate_admitted_witness(
     entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
     f: "compiler_closure_scoped_ingest_module_count_ok_holds",

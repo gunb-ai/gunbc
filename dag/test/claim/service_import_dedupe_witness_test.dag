@@ -15,8 +15,8 @@ module test.claim.service_import_dedupe_witness_test
 // THE CONTROL SAYS WHAT THE DEDUPE MUST NOT SWALLOW. A service reached through a MODULE import
 // (`import extdeps.tools.diffutils`, then `shell.Diff.Recursive(...)`) has no authored line binding
 // its emitted name -- the module import renders as a glob, and the dotted service name is emitted
-// as `ShellDiff`, which no reference-derived line binds -- so its service import is the only thing
-// that brings `ShellDiff` into scope, and it must still be emitted.
+// as `Shell__Diff`, which no reference-derived line binds -- so its service import is the only
+// thing that brings `Shell__Diff` into scope, and it must still be emitted.
 //
 // These rows read the emitted module TEXT. The compile of the deduped crate under `-D warnings`, and
 // the E0252 refusal of the pre-dedupe crate, were executed when this landed and are recorded in the
@@ -39,7 +39,7 @@ test fn a_service_import_no_authored_line_binds_is_still_emitted() -> Bool {
   compile_dag_rust_emit_check(
     sid_module_imported_service_source,
     "src/sid_module_imported_service.rs",
-    ["pub use crate::extdeps_tools_diffutils::ShellDiff;", "shell_diff: &ShellDiff"],
+    ["pub use crate::extdeps_tools_diffutils::Shell__Diff;", "shell_diff: &Shell__Diff"],
     []
   )
 }
