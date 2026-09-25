@@ -11,14 +11,14 @@ import gunbc.spark.v41_engram_row_store {
 }
 import gunbc.spark.v41_engram_file_backed {
   V41StoreOpenReceipt, V41OpenReleased, V41OpenResidueRefused, V41Gathered, V41GatherRefused,
-  v41_open_residency_verdict, v41_gather_rows,
+  v41_store_open_receipt, v41_open_residency_verdict, v41_gather_rows,
 }
 import test.claim.spark.v41_engram_row_store_witness { w_tiny_spec, w_source, w_row }
 
 // ── OPEN: VERIFIED AND RELEASED, OR REFUSED ─────────────────────────────────────────────────────
 
 fn w_receipt(verified: Nat, after_release: Nat) -> V41StoreOpenReceipt {
-  V41StoreOpenReceipt { store_bytes: byte_size(count: 1000), verified_bytes: byte_size(count: verified), resident_after_verify: byte_size(count: 1000), resident_after_release: byte_size(count: after_release) }
+  v41_store_open_receipt(store_bytes: byte_size(count: 1000), verified_bytes: byte_size(count: verified), resident_after_verify: byte_size(count: 1000), resident_after_release: byte_size(count: after_release))
 }
 
 test fn a_verified_store_whose_cache_was_released_opens() -> Bool {

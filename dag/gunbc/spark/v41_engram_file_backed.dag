@@ -52,6 +52,10 @@ type V41StoreOpenReceipt sole_constructor {
   resident_after_release: ByteSize
 }
 
+fn v41_store_open_receipt(store_bytes: ByteSize, verified_bytes: ByteSize, resident_after_verify: ByteSize, resident_after_release: ByteSize) -> V41StoreOpenReceipt {
+  V41StoreOpenReceipt { store_bytes: store_bytes, verified_bytes: verified_bytes, resident_after_verify: resident_after_verify, resident_after_release: resident_after_release }
+}
+
 type V41OpenResidency
   = V41OpenReleased { receipt: V41StoreOpenReceipt }
   | V41OpenResidueRefused { defect: NonEmptyStr }
