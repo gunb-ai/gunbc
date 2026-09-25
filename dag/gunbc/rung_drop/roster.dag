@@ -108,6 +108,7 @@ import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_ad
 import gunbc.rung_drop.systemctl_show_property_input_type_wall { systemctl_show_property_input_type_wall }
 import gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure { compiler_change_refusals_land_outside_every_compiled_closure }
 import gunbc.rung_drop.retention_census_counts_one_retention_per_refused_module { retention_census_counts_one_retention_per_refused_module }
+import gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier { typed_statement_let_refuses_until_the_bind_annotation_carrier }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -199,6 +200,7 @@ data rung_drop_roster: List<RungDrop> = [
   systemctl_show_property_input_type_wall,
   compiler_change_refusals_land_outside_every_compiled_closure,
   retention_census_counts_one_retention_per_refused_module,
+  typed_statement_let_refuses_until_the_bind_annotation_carrier,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

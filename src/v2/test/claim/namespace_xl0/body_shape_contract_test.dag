@@ -1,0 +1,319 @@
+module v2.test.claim.namespace_xl0.body_shape_contract
+
+import v2.compiler.body_lowering_fold { body_lower_binary_operators, body_lower_prefix_operators }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.algebra { list_append }
+import v2.std.collection { List, list_at_optional }
+import v2.std.compilers.body_lowering {
+  AtomHead,
+  ArrowHead,
+  BindView,
+  BranchView,
+  Call,
+  CallRefused,
+  CallView,
+  MatchArmView,
+  MatchView,
+  NotCall,
+  NotOperator,
+  Operator,
+  OperatorRefused,
+  OperatorView,
+  bind_view,
+  branch_view,
+  call_read,
+  match_view,
+  operator_read
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node_query { find_arrow_body_child, find_named_child }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import std.occurrence_identity { OccurrenceSynthetic }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PRODUCTION-FED SHAPE CONTRACTS FOR THE LOWERED BODY (MQ-3). Each claim below starts from SOURCE
+// TEXT, runs it through the real front end -- dag_prepared_grammar, tokenize, parse_module_prepared,
+// normalize, which is where v2.compiler.body_lowering_fold runs -- and then asks an admitted view
+// in v2.std.compilers.body_lowering to read one lowered body. No Node below is built
+// by hand, so a claim cannot stay green over a shape the real producer no longer emits (DESIGN
+// section 3, the pairing obligation: these ARE the inhabitance claims for the views).
+//
+// WHAT "WHOLE" MEANS HERE, AND WHY THE OLDER ROWS NEARBY ARE NOT IT. The rows in
+// call_argument_mention_survival_test ask whether a spelling REACHES the tree or the collector --
+// a presence question, answered green by one surviving atom however much of the expression around
+// it was dropped. These claims compare the lowered body against the AUTHORED SOURCE: the exact
+// arity, every operand in authored order, each operand at its authored occurrence, and nothing
+// extra. That comparison is where completeness is established. The views only read the Node
+// consistently; a view alone would admit `f(x)` lowered to Transform[f] as a valid nullary
+// application, and it is the arity and operand assertions here that go red on it.
+//
+// THE CALL SHAPE IS ASKED ONCE, AS A CONTROL, NOT AS THE CALL CONTRACT. The full production-fed
+// call contract (callee, arity, argument at its authored atom, carried lambda arguments) is
+// v2.test.claim.namespace_xl0.value_position_whole_read, owned by that lane; the call rows here
+// exist because the match scrutinee and the bind value ARE calls, and each is read through the same
+// CallView.
+//
+// DISCRIMINATING RED, RUN RATHER THAN ARGUED, per producer. Each row reds when the producer it reads
+// truncates: the operator tail fold stopping at its first operand reds the infix row; the call
+// argument reader answering no arguments reds the call control and the match scrutinee row; the
+// match-arm collector keeping only its first arm reds the arm-pairing row. The PR that added this
+// file records the three runs. Mutating body_lower_operand_ref_optional to answer pair.left for
+// every sequence reds NONE of those rows on this base, because since gunbc#12145 an operator
+// expression is read by the tower reader and a call argument by the comma-list reader, neither of
+// which passes through that arm; it is recorded so nobody cites that mutation as this file's red.
+//
+// TWO ROWS ARE RED ON THE REAL PRODUCER, AND THEY ARE ENROLLED EXPECTED-RED, NOT PATCHED HERE.
+// A call in a LET VALUE and a call in an IF ARM lower to the bare callee atom `leaf` with the
+// argument gone, and the statement after a `let` stays an unlowered grammar sequence, which
+// bind_view refuses as surface residue. These are the positions the bottom-up fold does not reach,
+// where the sequence-operand reader in v2.compiler.body_lowering_fold still answers a first atom --
+// the same class v2.test.claim.namespace_xl0.reference_conservation reports as the if-arm call
+// argument and the block second statement being dropped. The rows red the build the day the value
+// positions are read whole, naming themselves for removal from v2.workflow.floor_expected_red.
+data body_shape_source: String = "module mq.shape\n\nimport v2.std.logic { Bool }\n\nfn leaf(v: Bool) -> Bool = v\n\nfn mq_call(v: Bool) -> Bool {\n  leaf(v)\n}\n\nfn mq_match(v: Bool) -> Bool {\n  match leaf(v) {\n    true => false\n    false => v\n  }\n}\n\nfn mq_infix(a: Bool, b: Bool, c: Bool) -> Bool {\n  a && b || c\n}\n\nfn mq_prefix(a: Bool) -> Bool {\n  !a\n}\n\nfn mq_bind(a: Bool) -> Bool {\n  let x = leaf(a)\n  x\n}\n\nfn mq_branch(a: Bool, b: Bool) -> Bool {\n  if a { b } else { leaf(b) }\n}\n"
+
+// Nullary and pure over an inline literal, so it is enrolled WARM in
+// v2.workflow.floor_pure_producer_share: the parse is not what any claim here is about, and the
+// views each claim runs stay per claim.
+fn body_shape_normalized_root() -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: body_shape_source, file: ^body_shape_contract_file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: tree, diagnostics: d } => Accepted { value: tree.root, diagnostics: d }
+              }
+          }
+        }
+      )
+  }
+}
+
+fn body_of(name: Symbol) -> Optional<Node> {
+  match body_shape_normalized_root() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: captured, diagnostics: _ } =>
+          match find_named_child(root: captured, name: ^mq) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: mq, diagnostics: _ } =>
+              match find_named_child(root: mq, name: ^shape) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: members, diagnostics: _ } =>
+                  match find_named_child(root: members, name: name) {
+                    Rejected { diagnostics: _ } => Absent
+                    Accepted { value: member, diagnostics: _ } =>
+                      match find_arrow_body_child(root: member) {
+                        Rejected { diagnostics: _ } => Absent
+                        Accepted { value: body, diagnostics: _ } => Present { value: body }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// An atom spelling `id`, with no children, carrying the occurrence the parse minted for it rather
+// than a synthetic one: the operand read is the authored token, not a rebuilt stand-in.
+fn is_authored_atom(n: Node, id: Symbol) -> Bool {
+  let spelled = match n.kind {
+    TypeNode { connective: Atom { identity: s } } => (s == id) && (count(n.children) == 0)
+    _ => false
+  }
+  let authored = match n.occurrence_id {
+    OccurrenceSynthetic => false
+    _ => true
+  }
+  spelled && authored
+}
+
+fn node_at(xs: List<Node>, index: Int) -> Optional<Node> {
+  list_at_optional(xs: xs, index: index)
+}
+
+fn operand_is(xs: List<Node>, index: Int, id: Symbol) -> Bool {
+  match node_at(xs: xs, index: index) {
+    Present { value: n } => is_authored_atom(n: n, id: id)
+    Absent => false
+  }
+}
+
+fn as_call(n: Node) -> Optional<CallView> {
+  match call_read(site: n, operators: list_append(left: body_lower_binary_operators, right: body_lower_prefix_operators)) {
+    Call { view: v } => Present { value: v }
+    NotCall => Absent
+    CallRefused { diagnostics: _ } => Absent
+  }
+}
+
+fn as_operator(n: Node) -> Optional<OperatorView> {
+  match operator_read(site: n, binary_operators: body_lower_binary_operators, prefix_operators: body_lower_prefix_operators) {
+    Operator { view: v } => Present { value: v }
+    NotOperator => Absent
+    OperatorRefused { diagnostics: _ } => Absent
+  }
+}
+
+fn callee_is(c: CallView, id: Symbol) -> Bool {
+  match c.callee_identity {
+    AtomHead { identity: s } => s == id
+    ArrowHead => false
+  }
+}
+
+// `leaf(<arg>)`, exactly: callee `leaf`, one argument, the authored atom `arg`, nothing more.
+fn is_leaf_of(n: Node, arg: Symbol) -> Bool {
+  match as_call(n: n) {
+    Absent => false
+    Present { value: c } =>
+      callee_is(c: c, id: ^leaf) && (count(c.arguments) == 1) && operand_is(xs: c.arguments, index: 0, id: arg)
+  }
+}
+
+// CONTROL: the call view admits the real lowered call. If this reds, every row below that reads a
+// call through the view is uninformative.
+test fn body_shape_call_control_holds() -> Bool {
+  match body_of(name: ^mq_call) {
+    Absent => false
+    Present { value: body } => is_leaf_of(n: body, arg: ^v)
+  }
+}
+
+// MATCH: the WHOLE scrutinee `leaf(v)` -- not its callee alone, which is what a first-atom read
+// leaves -- then exactly two arms in authored order, each pattern paired with its own body.
+test fn body_shape_match_scrutinee_is_the_whole_call_holds() -> Bool {
+  match body_of(name: ^mq_match) {
+    Absent => false
+    Present { value: body } =>
+      match match_view(site: body) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: m, diagnostics: _ } => is_leaf_of(n: m.scrutinee, arg: ^v)
+      }
+  }
+}
+
+fn arm_is(arms: List<MatchArmView>, index: Int, pattern: Symbol, body: Symbol) -> Bool {
+  match list_at_optional(xs: arms, index: index) {
+    Absent => false
+    Present { value: a } => is_authored_atom(n: a.pattern, id: pattern) && is_authored_atom(n: a.body, id: body)
+  }
+}
+
+test fn body_shape_match_arms_are_all_present_and_paired_holds() -> Bool {
+  match body_of(name: ^mq_match) {
+    Absent => false
+    Present { value: body } =>
+      match match_view(site: body) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: m, diagnostics: _ } =>
+          (count(m.arms) == 2)
+            && arm_is(arms: m.arms, index: 0, pattern: ^dag_token_kw_true, body: ^dag_token_kw_false)
+            && arm_is(arms: m.arms, index: 1, pattern: ^dag_token_kw_false, body: ^v)
+      }
+  }
+}
+
+// OPERATOR: `a && b || c` is `||` over (`&&` over (a, b), c) -- every operand, in authored order,
+// each at its authored atom. A reader that stops at the first operand of a sequence answers `a`.
+test fn body_shape_infix_operands_are_whole_and_ordered_holds() -> Bool {
+  match body_of(name: ^mq_infix) {
+    Absent => false
+    Present { value: body } =>
+      match as_operator(n: body) {
+        Absent => false
+        Present { value: outer } =>
+          (count(outer.operands) == 2)
+            && operand_is(xs: outer.operands, index: 1, id: ^c)
+            && match node_at(xs: outer.operands, index: 0) {
+                 Absent => false
+                 Present { value: left } =>
+                   match as_operator(n: left) {
+                     Absent => false
+                     Present { value: inner } =>
+                       (inner.operator != outer.operator)
+                         && operand_is(xs: inner.operands, index: 0, id: ^a)
+                         && operand_is(xs: inner.operands, index: 1, id: ^b)
+                   }
+               }
+      }
+  }
+}
+
+test fn body_shape_prefix_operand_is_whole_holds() -> Bool {
+  match body_of(name: ^mq_prefix) {
+    Absent => false
+    Present { value: body } =>
+      match as_operator(n: body) {
+        Absent => false
+        Present { value: op } => (count(op.operands) == 1) && operand_is(xs: op.operands, index: 0, id: ^a)
+      }
+  }
+}
+
+// BIND: key `x`, value the whole call `leaf(a)`, body the authored `x`.
+test fn body_shape_bind_is_key_value_body_holds() -> Bool {
+  match body_of(name: ^mq_bind) {
+    Absent => false
+    Present { value: body } =>
+      match bind_view(site: body) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: b, diagnostics: _ } =>
+          (b.key_identity == ^x) && is_leaf_of(n: b.value, arg: ^a) && is_authored_atom(n: b.body, id: ^x)
+      }
+  }
+}
+
+// BRANCH: condition `a`, then `b`, else the whole call `leaf(b)`.
+test fn body_shape_branch_is_condition_then_else_holds() -> Bool {
+  match body_of(name: ^mq_branch) {
+    Absent => false
+    Present { value: body } =>
+      match branch_view(site: body) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: br, diagnostics: _ } =>
+          is_authored_atom(n: br.condition, id: ^a)
+            && is_authored_atom(n: br.then_arm, id: ^b)
+            && is_leaf_of(n: br.else_arm, arg: ^b)
+      }
+  }
+}
+
+// CONTROLS OVER THE SAME REAL TREE: an operator is NotCall and a match is NotOperator -- the honest
+// "not this" arms, distinct from a refusal -- and the Outcome views refuse a body of another
+// behavior, so the greens above are admissions and not a view that accepts anything.
+test fn body_shape_views_refuse_the_wrong_shape_holds() -> Bool {
+  match body_of(name: ^mq_match) {
+    Absent => false
+    Present { value: m } =>
+      match body_of(name: ^mq_infix) {
+        Absent => false
+        Present { value: op } =>
+          let call_is_not_operator = match call_read(site: op, operators: list_append(left: body_lower_binary_operators, right: body_lower_prefix_operators)) { NotCall => true  Call { view: _ } => false  CallRefused { diagnostics: _ } => false }
+          let operator_is_not_match = match operator_read(site: m, binary_operators: body_lower_binary_operators, prefix_operators: body_lower_prefix_operators) { NotOperator => true  Operator { view: _ } => false  OperatorRefused { diagnostics: _ } => false }
+          let match_refuses_operator = match match_view(site: op) { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
+          let bind_refuses_match = match bind_view(site: m) { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
+          let branch_refuses_match = match branch_view(site: m) { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
+          call_is_not_operator && operator_is_not_match && match_refuses_operator && bind_refuses_match && branch_refuses_match
+      }
+  }
+}
+
