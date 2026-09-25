@@ -3,7 +3,7 @@ module gunbc.build_cache_endpoint_observe
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decimal { decimal_digit_char }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.linux.procfs { ProcfsPath, ProcNetUnix, procfs_path_literal }
@@ -75,7 +75,7 @@ import gunbc.runner_slot_allocation {
 }
 import product.placement_supply { HostIdentity }
 
-data build_cache_endpoint_observe_scope_disposition: Disposition = SingleAuthority
+data build_cache_endpoint_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON.
 // gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an
