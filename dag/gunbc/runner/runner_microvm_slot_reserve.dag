@@ -3,7 +3,7 @@ module gunbc.runner_microvm_slot_reserve
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { money_amount_micro, MoneyPerSecond }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.currency.currency { Usd }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -32,7 +32,7 @@ import gunbc.runner_microvm_slot_start {
   microvm_slot_start_admitted,
 }
 
-data runner_microvm_slot_reserve_disposition: Disposition = SingleAuthority
+data runner_microvm_slot_reserve_disposition: ConstructionMechanism = SingleAuthority
 
 // THE SHAKEDOWN CELL IS RESERVED BY A BROKER, AND THE SLOT CONTROLLER ONLY OBSERVES IT.
 //

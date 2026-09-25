@@ -16,7 +16,9 @@ import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash, d0_frozen_filing_text, parse_d0_frozen_filing }
-import gunbc.spark.v41_runtime_candidate { V41CandidateRefused, V41CandidateUnestablished }
+import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateRefused, V41CandidateUnestablished, V41CandidateKeyed, V41DerivationEvidence }
+import gunbc.spark.v41_engram_row_store { V41StoreReadbackUnread, V41StoreReadbackVerified }
+import std.content_hash { content_hash_atom, Fnv1a64 }
 import gunbc.spark.pair_serving_d0_authorization {
   D0SubjectFor, D0SubjectUnestablished, D0SubjectRefused, d0_live_subject, d0_subject_of_candidate,
   D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
@@ -36,19 +38,48 @@ fn w_request(intent: ContentHash) -> AuthorizationRequest<D0Subject> {
   d0_request(escalation_id: "d0-esc-1" as NonEmptyStr, subject: D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: intent, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }, transaction: "tx-1" as NonEmptyStr, intent: intent)
 }
 
-// THE LIVE SUBJECT FOLLOWS THE CANDIDATE: while gunbc.spark.v41_runtime_candidate leaves an axis
-// unestablished there is no subject and the obligations are the candidate's own (the row-store
-// digest, at this writing); a keyed candidate is the successor. The claim is exhaustive over
-// both so it flips, rather than rots, when Cut 0 completes.
-test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed() -> Bool {
+// THE LIVE SUBJECT FOLLOWS THE CANDIDATE AND ITS DERIVATION EVIDENCE: the candidate is keyed, and until
+// the boundary-stratified readback of the produced row stores is transcribed there is no subject and the
+// obligation is the readback's own; once it is verified the keyed candidate is the successor. The claim is
+// exhaustive over both so it flips, rather than rots, when the readback lands.
+test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back() -> Bool {
   let live = match d0_live_subject(group: FabricGroupA) {
-    D0SubjectUnestablished { obligations: o } => length(o) >= 1 && any(o, x => (x as String).contains("row-store"))
+    D0SubjectUnestablished { obligations: o } => length(o) >= 1 && any(o, x => (x as String).contains("read back"))
     D0SubjectFor { subject: s } => length(s.hosts) == 4
     D0SubjectRefused { defects: _ } => false
   }
-  let refused = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateRefused { defects: ["weight manifest: path declared more than once" as NonEmptyStr] }) { D0SubjectRefused { defects: d } => length(d) == 1  _ => false }
-  let pending = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateUnestablished { obligations: ["row-store digest" as NonEmptyStr] }) { D0SubjectUnestablished { obligations: o } => length(o) == 1  _ => false }
+  let refused = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateRefused { defects: ["weight manifest: path declared more than once" as NonEmptyStr] }, derivation: w_read_back()) { D0SubjectRefused { defects: d } => length(d) == 1  _ => false }
+  let pending = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateUnestablished { obligations: ["row-store digest" as NonEmptyStr] }, derivation: w_read_back()) { D0SubjectUnestablished { obligations: o } => length(o) == 1  _ => false }
   live && refused && pending
+}
+
+fn w_keyed() -> V41CandidateStanding {
+  V41CandidateKeyed {
+    runtime_artifact: Fnv1a64(content_hash_atom(value: "runtime" as NonEmptyStr)), model_source: Fnv1a64(content_hash_atom(value: "source" as NonEmptyStr)),
+    engram_realization: Fnv1a64(content_hash_atom(value: "engram" as NonEmptyStr)), execution_profile: Fnv1a64(content_hash_atom(value: "profile" as NonEmptyStr)),
+    candidate: Fnv1a64(content_hash_atom(value: "candidate" as NonEmptyStr)), authorization_obligation: "an experiment authorization" as NonEmptyStr,
+  }
+}
+
+fn w_read_back() -> V41DerivationEvidence {
+  V41DerivationEvidence { row_store_readback: V41StoreReadbackVerified { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, samples: 40 } }
+}
+
+// A KEYED CANDIDATE WHOSE STORES WERE NOT READ BACK CANNOT BE AUTHORIZED (proud-deer-538, 2026-09-24): the
+// same keyed standing that is a subject once its readback is verified is no subject while it is unread, and
+// the refusal names the readback's obligation. The derivation is an input, so no caller reaches a consent
+// by forgetting to look.
+test fn a_keyed_candidate_with_an_unread_readback_cannot_be_authorized() -> Bool {
+  let unread = V41DerivationEvidence { row_store_readback: V41StoreReadbackUnread { obligation: "the stores have not been read back" as NonEmptyStr } }
+  let blocked = match d0_subject_of_candidate(group: FabricGroupA, standing: w_keyed(), derivation: unread) {
+    D0SubjectUnestablished { obligations: o } => length(o) == 1 && any(o, x => (x as String) == "the stores have not been read back")
+    _ => false
+  }
+  let admitted = match d0_subject_of_candidate(group: FabricGroupA, standing: w_keyed(), derivation: w_read_back()) {
+    D0SubjectFor { subject: s } => length(s.hosts) == 4
+    _ => false
+  }
+  blocked && admitted
 }
 
 // THE FILED REQUEST IS THE FROZEN TEXT, EXACTLY, AND THE EXECUTABLE THAT FILED IT. The intent

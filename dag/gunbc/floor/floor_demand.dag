@@ -7,7 +7,7 @@ import std.measure {
   MeasureSubtraction, measure_sub, Memory, One, HardwareThreadCount, hardware_thread_count,
   GrainRounding, GrainRounded, GrainUnrepresentable, round_up_to_grain, gibibyte_grain,
 }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic {
   CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results,
@@ -16,7 +16,7 @@ import extdeps.storage.types { Ephemeral }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import product.fabric.envelope { MemoryRequirement, StorageRequirement }
 
-data floor_demand_disposition: Disposition = SingleAuthority
+data floor_demand_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THE FLOOR JOB DEMANDS OF A MACHINE, IN ONE PLACE, AS RECEIPTS RATHER THAN AS PROSE.
 //

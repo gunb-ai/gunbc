@@ -3,7 +3,7 @@ module gunbc.runner_microvm_slot_controller
 import std.durable_compare_and_set { cas_unreadable_slot_detail }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem, Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -87,7 +87,7 @@ import gunbc.runner_microvm_lifecycle_realize {
   ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
 }
 
-data runner_microvm_slot_controller_disposition: Disposition = SingleAuthority
+data runner_microvm_slot_controller_disposition: ConstructionMechanism = SingleAuthority
 
 // THE PROCESS THE microVM SLOT UNIT EXECS AS ITS MainPID (gunbc.runner_microvm_slot_unit): the one
 // production route into gunbc.runner_microvm_lifecycle_realize run_controller, and the consumer

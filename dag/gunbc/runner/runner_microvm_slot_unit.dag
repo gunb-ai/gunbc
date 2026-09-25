@@ -1,7 +1,7 @@
 module gunbc.runner_microvm_slot_unit
 
 import std.types { String, NonEmptyStr, List, Bool }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SliceUnitFile, SystemdServiceDirective,
   Description, After, Wants,
@@ -26,7 +26,7 @@ import gunbc.runner_microvm_attempt_bounds {
   attempt_unit_stop_slack,
 }
 
-data runner_microvm_slot_unit_disposition: Disposition = SingleAuthority
+data runner_microvm_slot_unit_disposition: ConstructionMechanism = SingleAuthority
 
 // THE microVM SLOT UNIT: WHAT systemd STARTS FOR A microVM SLOT, AND WHERE THE CONTROLLER IT EXECS
 // LIVES. This module is deliberately small and imports nothing wet, because two consumers on
