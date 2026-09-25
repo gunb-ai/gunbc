@@ -1,0 +1,125 @@
+module v2.test.claim.occurrence_role.occurrence_role
+
+import std.occurrence_identity { CallableOccurrence, DeclarationRole, FieldOccurrence, LexicalValueOccurrence, OccurrenceCategory, OccurrenceRole, ReferenceRole, TypeOccurrence }
+import v2.compiler.occurrence_role {
+  NameProductionRow,
+  NameProductionTableAdmitted,
+  NameProductionTableRefused,
+  NameRoleRead,
+  NamesAreReferences,
+  OccurrenceRoleOutcome,
+  OccurrenceRoleTableRefused,
+  OccurrenceRolesRead,
+  ReadKwThenIdent,
+  dag_name_production_rows,
+  name_production_table_admission,
+  name_row,
+  occurrence_roles_of_tree
+}
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
+import v2.extdeps.languages.dag { dag_grammar_root }
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { GrammarProduction, GrammarRoot, grammar_atom, grammar_expr_terminal_lexeme }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS FOR v2.compiler.occurrence_role. The table is checked against the grammar in both
+// directions; each refusal is planted at the interface (a supplied grammar root or row list) rather
+// than by editing the language, and the positive control is the real table against the real grammar.
+
+test fn the_dag_name_table_covers_the_dag_grammar_holds() -> Bool {
+  match name_production_table_admission(root: dag_grammar_root(), rows: dag_name_production_rows()) {
+    NameProductionTableAdmitted { rows: _ } => true
+    NameProductionTableRefused { unlisted: _, unknown: _ } => false
+  }
+}
+
+// A PLANTED BINDER PRODUCTION: the real grammar plus one production whose expression holds an
+// identifier terminal and which no row lists. It must refuse and name exactly that production.
+fn planted_grammar() -> GrammarRoot {
+  let root = dag_grammar_root()
+  GrammarRoot {
+    start: root.start,
+    productions: list_snoc_item(xs: root.productions, item: GrammarProduction {
+      name: ^occurrence_role_planted_binder_production,
+      expression: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident),
+      emitted: grammar_atom(identity: ^occurrence_role_planted_binder_surface)
+    }),
+    sync_tokens: root.sync_tokens
+  }
+}
+
+test fn a_planted_unlisted_binder_production_refuses_by_name_holds() -> Bool {
+  match name_production_table_admission(root: planted_grammar(), rows: dag_name_production_rows()) {
+    NameProductionTableAdmitted { rows: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k } => u == [^occurrence_role_planted_binder_production] && length(xs: k) == 0
+  }
+}
+
+// A ROW REMOVED: the table without its fn_decl row refuses and names fn_decl.
+fn rows_without(production: Symbol) -> List<NameProductionRow> {
+  fold(dag_name_production_rows(), init: [], f: fn(acc, row) { if row.production == production { acc } else { list_snoc_item(xs: acc, item: row) } })
+}
+
+test fn a_missing_row_refuses_by_name_holds() -> Bool {
+  match name_production_table_admission(root: dag_grammar_root(), rows: rows_without(production: ^dag_production_fn_decl)) {
+    NameProductionTableAdmitted { rows: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k } => u == [^dag_production_fn_decl] && length(xs: k) == 0
+  }
+}
+
+// A STALE ROW: a row naming a production the grammar does not have refuses as unknown.
+test fn a_row_for_an_absent_production_refuses_as_unknown_holds() -> Bool {
+  let rows = list_snoc_item(xs: dag_name_production_rows(), item: name_row(production: ^occurrence_role_absent_production, disposition: NamesAreReferences))
+  match name_production_table_admission(root: dag_grammar_root(), rows: rows) {
+    NameProductionTableAdmitted { rows: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k } => length(xs: u) == 0 && k == [^occurrence_role_absent_production]
+  }
+}
+
+// ---- the walk on a controlled fixture -----------------------------------------------------------
+
+data roles_fixture_source: String = "module v2.test.occurrence_role_fixture\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_callee(k: Int) -> Int { k }\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: rc_callee(k: n) } }\n\ndata rc_row: Int = 3\n"
+
+fn roles_fixture_outcome() -> OccurrenceRoleOutcome {
+  let subject = conservation_subject(id_tail: "occurrence_role", source: roles_fixture_source)
+  match subject.parsed {
+    Rejected { diagnostics: _ } => OccurrenceRoleTableRefused { unlisted: [^occurrence_role_fixture_unparsed], unknown: [] }
+    Accepted { value: artifact, diagnostics: _ } => occurrence_roles_of_tree(tree: artifact.tree, root: dag_grammar_root(), rows: dag_name_production_rows())
+  }
+}
+
+fn roles_count(outcome: OccurrenceRoleOutcome, role: OccurrenceRole, category: OccurrenceCategory) -> Int {
+  match outcome {
+    OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => 0 - 1
+    OccurrenceRolesRead { roles: r } =>
+      fold_list(xs: r.roles, empty: 0, cons: fn(acc, a) { if a.role == role && a.category == category { acc + 1 } else { acc } })
+  }
+}
+
+// The fixture declares a type (RcRow), two fns (rc_callee, rc_make) and a data (rc_row); it labels
+// one record field (`v:` in RcRow { v: .. }) and one call argument (`k:` in rc_callee(k: n)). Every
+// other name in it -- the parameters, the field declaration, the references -- is either a
+// reference (not recorded) or a production whose reader has not landed (counted, not recorded).
+test fn the_fixture_declarations_and_labels_are_recorded_holds() -> Bool {
+  let o = roles_fixture_outcome()
+  roles_count(outcome: o, role: DeclarationRole, category: TypeOccurrence) == 1
+    && roles_count(outcome: o, role: DeclarationRole, category: CallableOccurrence) == 2
+    && roles_count(outcome: o, role: DeclarationRole, category: LexicalValueOccurrence) == 1
+    && roles_count(outcome: o, role: ReferenceRole, category: FieldOccurrence) == 1
+    && roles_count(outcome: o, role: ReferenceRole, category: LexicalValueOccurrence) == 1
+}
+
+// The references are not recorded: exactly the six names above and nothing else.
+test fn the_fixture_records_no_reference_to_a_module_scope_name_holds() -> Bool {
+  match roles_fixture_outcome() {
+    OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => false
+    OccurrenceRolesRead { roles: r } => length(xs: r.roles) == 6 && r.unminted == 0
+  }
+}

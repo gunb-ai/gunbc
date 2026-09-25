@@ -1,0 +1,339 @@
+module v2.compiler.occurrence_role
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.occurrence_identity {
+  CallableOccurrence,
+  DeclarationRole,
+  FieldOccurrence,
+  LexicalValueOccurrence,
+  OccurrenceCategory,
+  OccurrenceId,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  OccurrenceRole,
+  OccurrenceSynthetic,
+  ReferenceRole,
+  TypeOccurrence
+}
+import v2.compiler.parse { ParseArtifact }
+import v2.compiler.body_lowering_fold { body_lower_deep_unwrap_optional, body_lower_param_binding_atom_optional }
+import v2.extdeps.languages.dag {
+  dag_grammar_root,
+  dag_named_arg_name_node_optional,
+  dag_surface_kw_then_ident_node_from_captured,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.integer { Int }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Optional, Present }
+
+// WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
+// LoweringOccurrenceProjection, docs/plans/lowering-occurrence-projection-design.md section 3).
+//
+// The conservation census must tell a binder (a name a declaration introduces) and a label (a field
+// or argument name, resolved against its type or callee) apart from a reference to a module-scope
+// declaration, because only the last is in the XL-2 residual: stripping imports cannot make resolve
+// refuse at a binder or a label. The vocabulary is std.occurrence_identity's, not a new one:
+// OccurrenceRole says declaration or reference, OccurrenceCategory says what kind of name, and
+// occurrence_category_module_scope_exposure_verdict already says which categories are module-scope.
+// v1 records the same facts in its parser (v1 02_parse ParsedOccurrenceDeclaration); this is the v2
+// producer.
+//
+// THE ROLE IS READ BY THE READERS THAT ALREADY FIND THE NAME, NOT BY A GRAMMAR POSITION. A v2 parse
+// tree does not record which Choice alternative was taken, so a walker keyed on grammar position
+// would have to guess the arm (`arg` is `name: expr` or a bare `expr`). Each row below instead calls
+// the decoder that stage already trusts for that production -- the kw-then-ident decoder for
+// declarations, the named-argument decoder, body lowering's binding reader -- so where a binder sits
+// has one authority. CEILING, AND ITS TRIGGER: the role belongs in the grammar, stamped by the parser
+// at the one place the token is read, as v1 does. That climb needs the parser to record choice arms;
+// when it does, this dispatch table is deleted and the rows become grammar annotations.
+
+// One authored name with its role.
+type AtomOccurrenceRole {
+  occurrence: OccurrenceId
+  role: OccurrenceRole
+  category: OccurrenceCategory
+}
+
+// WHAT A PRODUCTION'S NAMES ARE. Every production whose own expression holds a name terminal has a
+// row; the table is checked against the grammar (name_production_table_admission), so a production
+// added without a row refuses rather than being read as holding only references.
+//   NamesAreReferences: its names are references and stay in the counted population (primary
+//     expressions, postfix chains, qualified names, where predicates).
+//   NamesAreImportChannel / NamesAreMarkers: consumed by a channel the census already counts.
+//   NameRoleRead: `read` returns the name atoms this production binds or labels, each carrying its
+//     token's occurrence, with the role and category they all share.
+//   NameRoleNotYetRead: a binder-bearing production whose reader has not landed. Loud: the walk
+//     counts every node of it, so the gap is a number, never a silence.
+// WHICH DECODER READS A PRODUCTION'S NAMES: a closed set, dispatched by one exhaustive match
+// (read_names), so a new reader is a new arm the compiler makes every consumer handle.
+type NameReader
+  = ReadKwThenIdent
+  | ReadFieldInitLabel
+  | ReadNamedArgLabel
+  | ReadFieldPatternName
+
+type NameProductionDisposition
+  = NamesAreReferences
+  | NamesAreImportChannel
+  | NamesAreMarkers
+  | NameRoleRead { role: OccurrenceRole, category: OccurrenceCategory, reader: NameReader }
+  | NameRoleNotYetRead
+
+// A row names the production; the symbol the parse tree carries for it is the grammar's own
+// (GrammarProduction.emitted), joined in occurrence_roles_of_tree, never restated here.
+type NameProductionRow {
+  production: Symbol
+  disposition: NameProductionDisposition
+}
+
+fn name_row(production: Symbol, disposition: NameProductionDisposition) -> NameProductionRow {
+  NameProductionRow { production: production, disposition: disposition }
+}
+
+fn one_atom(atom: Optional<Node>) -> FreeMonoid<Node> {
+  match atom {
+    Present { value: a } => Cons { head: a, tail: Empty }
+    Absent => Empty
+  }
+}
+
+// `kw name ...`: fn, data, type and alias declarations.
+fn read_kw_then_ident(captured: Node) -> FreeMonoid<Node> {
+  match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: ident, diagnostics: _ } => one_atom(atom: body_lower_param_binding_atom_optional(node: ident))
+  }
+}
+
+// `name: value` in a record literal: the field label.
+fn read_field_init_label(captured: Node) -> FreeMonoid<Node> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => Empty
+    Present { value: pair } => one_atom(atom: body_lower_param_binding_atom_optional(node: pair.left))
+  }
+}
+
+// `name: value` in a call: the argument label, read by the named-argument decoder, which answers
+// Absent for a positional argument.
+fn read_named_arg_label(captured: Node) -> FreeMonoid<Node> {
+  match dag_named_arg_name_node_optional(arg_capture: captured) {
+    Absent => Empty
+    Present { value: name_node } => one_atom(atom: body_lower_param_binding_atom_optional(node: name_node))
+  }
+}
+
+// A field pattern is `name: pattern` (the label) or the shorthand `name`, where the one token is
+// both the label and a new binder. Both are outside the XL-2 population; the shorthand is recorded
+// as the declaration it also is.
+fn read_field_pattern_name(captured: Node) -> FreeMonoid<Node> {
+  let unwrapped = body_lower_deep_unwrap_optional(node: captured)
+  match sugar_sequence_pair_optional(node: unwrapped) {
+    Absent => one_atom(atom: body_lower_param_binding_atom_optional(node: unwrapped))
+    Present { value: pair } => one_atom(atom: body_lower_param_binding_atom_optional(node: pair.left))
+  }
+}
+
+fn read_names(reader: NameReader, captured: Node) -> FreeMonoid<Node> {
+  match reader {
+    ReadKwThenIdent => read_kw_then_ident(captured: captured)
+    ReadFieldInitLabel => read_field_init_label(captured: captured)
+    ReadNamedArgLabel => read_named_arg_label(captured: captured)
+    ReadFieldPatternName => read_field_pattern_name(captured: captured)
+  }
+}
+
+fn dag_name_production_rows() -> List<NameProductionRow> {
+  [
+    name_row(production: ^dag_production_fn_decl, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_data_decl, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_type_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_alias_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_field_init, disposition: NameRoleRead { role: ReferenceRole, category: FieldOccurrence, reader: ReadFieldInitLabel }),
+    name_row(production: ^dag_production_arg, disposition: NameRoleRead { role: ReferenceRole, category: LexicalValueOccurrence, reader: ReadNamedArgLabel }),
+    name_row(production: ^dag_production_field_pattern, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldPatternName }),
+    name_row(production: ^dag_production_test_fn_decl, disposition: NamesAreMarkers),
+    name_row(production: ^dag_production_import_block, disposition: NamesAreImportChannel),
+    name_row(production: ^dag_production_qualified_name, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_primary_expr, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_postfix_expr, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_where_predicate, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_status_pattern, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_param_list, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_field_decl_block, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_generic_params, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_let_expr, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_fn_literal, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_operation, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_transport, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_io_block, disposition: NameRoleNotYetRead)
+  ]
+}
+
+// ---- the table against the grammar -------------------------------------------------------------
+
+// A production holds a name when its own expression has a lexeme-stamped identifier terminal: the
+// token whose spelling becomes the name. A nonterminal is not followed, so a name is owed a row at
+// the production that holds its terminal.
+fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
+  fold_grammar_expr(expr: expr, algebra: GrammarExprFold {
+    terminal: fn(token_class, stamp) {
+      match stamp {
+        StampLexeme => token_class == ^dag_token_ident
+        StampClass => false
+        StampBinding { binding: _ } => false
+      }
+    },
+    literal_terminal: fn(token_class, lexeme) { false },
+    nonterminal: fn(production) { false },
+    sequence: fn(a, b) { a || b },
+    choice: fn(a, b) { a || b },
+    optional: fn(a) { a },
+    repeat: fn(a) { a }
+  })
+}
+
+// Both directions refuse, typed: a name-holding production with no row (the silent skip this check
+// exists to prevent), and a row naming a production the grammar does not have (a stale row that
+// would make the table claim coverage it cannot exercise).
+type NameProductionTableAdmission
+  = NameProductionTableAdmitted { rows: List<NameProductionRow> }
+  | NameProductionTableRefused { unlisted: List<Symbol>, unknown: List<Symbol> }
+
+fn name_production_table_admission(root: GrammarRoot, rows: List<NameProductionRow>) -> NameProductionTableAdmission {
+  let listed = fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.production, value: true) })
+  let declared = fold(root.productions, init: empty_map(), f: fn(acc, p) { map_insert(m: acc, key: p.name, value: true) })
+  let unlisted = fold(root.productions, init: Empty, f: fn(acc, p) {
+    if production_holds_name_terminal(expr: p.expression) {
+      match map_lookup(m: listed, key: p.name) {
+        Present { value: _ } => acc
+        Absent => list_snoc_item(xs: acc, item: p.name)
+      }
+    } else {
+      acc
+    }
+  })
+  let unknown = fold(rows, init: Empty, f: fn(acc, row) {
+    match map_lookup(m: declared, key: row.production) {
+      Present { value: _ } => acc
+      Absent => list_snoc_item(xs: acc, item: row.production)
+    }
+  })
+  if length(xs: unlisted) == 0 && length(xs: unknown) == 0 {
+    NameProductionTableAdmitted { rows: rows }
+  } else {
+    NameProductionTableRefused { unlisted: unlisted, unknown: unknown }
+  }
+}
+
+// ---- the walk ------------------------------------------------------------------------------------
+
+// `roles` lists each recorded name once, in walk order; a consumer that needs a lookup builds one
+// index from it (occurrence_role_index), so there is one representation, not a map and a list
+// that could disagree. `not_yet_read` counts nodes of NameRoleNotYetRead productions by production.
+// `unminted` counts names a reader returned whose token carries no minted occurrence -- nothing to
+// key them by, so counted rather than dropped.
+type OccurrenceRoles {
+  roles: FreeMonoid<AtomOccurrenceRole>
+  not_yet_read: Map<Symbol, Int>
+  unminted: Int
+}
+
+type OccurrenceRoleOutcome
+  = OccurrenceRolesRead { roles: OccurrenceRoles }
+  | OccurrenceRoleTableRefused { unlisted: List<Symbol>, unknown: List<Symbol> }
+
+fn occurrence_roles_empty() -> OccurrenceRoles {
+  OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), unminted: 0 }
+}
+
+fn count_symbol(m: Map<Symbol, Int>, key: Symbol) -> Map<Symbol, Int> {
+  match map_lookup(m: m, key: key) {
+    Present { value: n } => map_insert(m: m, key: key, value: n + 1)
+    Absent => map_insert(m: m, key: key, value: 1)
+  }
+}
+
+fn record_name(acc: OccurrenceRoles, atom: Node, role: OccurrenceRole, category: OccurrenceCategory) -> OccurrenceRoles {
+  match atom.occurrence_id {
+    OccurrenceMinted { id: id } =>
+      OccurrenceRoles {
+        roles: list_snoc_item(xs: acc.roles, item: AtomOccurrenceRole { occurrence: id, role: role, category: category }),
+        not_yet_read: acc.not_yet_read,
+        unminted: acc.unminted
+      }
+    OccurrenceProjected { id: _, caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, unminted: acc.unminted + 1 }
+    OccurrenceSynthetic => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, unminted: acc.unminted + 1 }
+  }
+}
+
+fn roles_at_production(acc: OccurrenceRoles, node: Node, emitted: Symbol, by_emitted: Map<Symbol, NameProductionDisposition>) -> OccurrenceRoles {
+  match map_lookup(m: by_emitted, key: emitted) {
+    Absent => acc
+    Present { value: disposition } =>
+      match disposition {
+        NamesAreReferences => acc
+        NamesAreImportChannel => acc
+        NamesAreMarkers => acc
+        NameRoleNotYetRead => OccurrenceRoles { roles: acc.roles, not_yet_read: count_symbol(m: acc.not_yet_read, key: emitted), unminted: acc.unminted }
+        NameRoleRead { role: role, category: category, reader: reader } =>
+          match parse_production_captured_child_optional(node: node) {
+            Absent => acc
+            Present { value: captured } =>
+              fold_list(xs: read_names(reader: reader, captured: captured), empty: acc, cons: fn(inner, atom) { record_name(acc: inner, atom: atom, role: role, category: category) })
+          }
+      }
+  }
+}
+
+// THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).
+fn roles_walk(acc: OccurrenceRoles, node: Node, by_emitted: Map<Symbol, NameProductionDisposition>) -> OccurrenceRoles {
+  let here = match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } => roles_at_production(acc: acc, node: node, emitted: emitted, by_emitted: by_emitted)
+    Absent => acc
+  }
+  fold(node.children, init: here, f: fn(inner, edge) { roles_walk(acc: inner, node: edge.target, by_emitted: by_emitted) })
+}
+
+// The table keyed by what the parse tree carries: each admitted row joined to its grammar
+// production's emitted identity.
+fn dispositions_by_emitted(root: GrammarRoot, rows: List<NameProductionRow>) -> Map<Symbol, NameProductionDisposition> {
+  let by_production = fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.production, value: row.disposition) })
+  fold(root.productions, init: empty_map(), f: fn(acc, p) {
+    match map_lookup(m: by_production, key: p.name) {
+      Absent => acc
+      Present { value: disposition } =>
+        match node_atom_identity_optional(node: p.emitted) {
+          Present { value: emitted } => map_insert(m: acc, key: emitted, value: disposition)
+          Absent => acc
+        }
+    }
+  })
+}
+
+fn occurrence_roles_of_tree(tree: Node, root: GrammarRoot, rows: List<NameProductionRow>) -> OccurrenceRoleOutcome {
+  match name_production_table_admission(root: root, rows: rows) {
+    NameProductionTableRefused { unlisted: u, unknown: k } => OccurrenceRoleTableRefused { unlisted: u, unknown: k }
+    NameProductionTableAdmitted { rows: admitted } =>
+      OccurrenceRolesRead {
+        roles: roles_walk(acc: occurrence_roles_empty(), node: tree, by_emitted: dispositions_by_emitted(root: root, rows: admitted))
+      }
+  }
+}
+
+fn occurrence_role_index(roles: OccurrenceRoles) -> Map<OccurrenceId, AtomOccurrenceRole> {
+  fold_list(xs: roles.roles, empty: empty_map(), cons: fn(acc, r) { map_insert(m: acc, key: r.occurrence, value: r) })
+}
+
+// The `.dag` language's roles for one parsed module.
+fn dag_occurrence_roles(artifact: ParseArtifact) -> OccurrenceRoleOutcome {
+  occurrence_roles_of_tree(tree: artifact.tree, root: dag_grammar_root(), rows: dag_name_production_rows())
+}
