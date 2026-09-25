@@ -1,0 +1,31 @@
+module test.claim.long.mtcollins1_boot_admission_closure
+
+import std.types { Bool, String, List }
+import v2.lens.module_graph { import_closure_live }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ADMISSION STEP'S COST IS ITS ENTRY'S IMPORT CLOSURE, because `gunbc run` typechecks the whole
+// closure before evaluating (run 36170715248 timed out typechecking the boot run's closure to read
+// one host input). gunbc.machine_intake_mtcollins1_boot_admission exists so that closure stays small.
+// This control derives the closure from the live tree and requires the boot run to be outside it:
+// an import that pulls the boot run (or anything that does) back in turns it red. The positive
+// control shows the same derivation DOES reach the boot run from the boot run's own entry, so a
+// green here is the exclusion and not an empty derivation.
+data admission_entry: String = "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag"
+
+data boot_run_entry: String = "dag/gunbc/machine_intake/mtcollins1_boot_run.dag"
+
+data closure_roots: List<String> = ["dag", "src/v2"]
+
+fn closure_has(closure: FreeMonoid<String>, path: String) -> Bool {
+  any(closure, p => p == path)
+}
+
+test fn the_boot_admission_closure_excludes_the_boot_run() -> Bool {
+  let admission = import_closure_live(entry_path: admission_entry, pool_roots: closure_roots)
+  let boot = import_closure_live(entry_path: boot_run_entry, pool_roots: closure_roots)
+  closure_has(closure: admission, path: admission_entry)
+    && !closure_has(closure: admission, path: boot_run_entry)
+    && closure_has(closure: boot, path: admission_entry)
+}
