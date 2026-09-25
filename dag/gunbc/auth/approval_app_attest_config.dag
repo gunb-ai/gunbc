@@ -40,8 +40,9 @@ data approval_app_attest_verifier: AppAttestVerifierConfig = AppAttestVerifierCo
   expected_bundle_version: approval_app_bundle_version,
 }
 
-// CFBundleShortVersionString of the operator's build: the same literal apps/approve-ios/project.yml
-// sets as MARKETING_VERSION, which is hand-authored Swift/XcodeGen seed and cannot read this row.
+// CFBundleShortVersionString of the operator's build. gunbc.approve_ios_project reads this row as the
+// Approve target's MARKETING_VERSION (and approval_app_bundle_id as PRODUCT_BUNDLE_IDENTIFIER), so
+// apps/approve-ios/project.yml is derived from it and cannot drift from the verifier.
 data approval_app_bundle_version: NonEmptyStr = "1"
 
 fn approval_app_attest_app_id(c: AppAttestVerifierConfig) -> NonEmptyStr? {

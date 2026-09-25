@@ -33,6 +33,7 @@ import v2.extdeps.languages.dag {
   dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
+  dag_lex_keyword_symbol,
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
@@ -3344,11 +3345,36 @@ fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
           match body_lower_literal_int_atom_optional(node: captured) {
             Present { value: lit } => OperandRefLowered { lowered: lit }
             Absent =>
-              body_lower_operand_ref_read_of(found: body_lower_pattern_first_atom_optional(node: captured))
+              match body_lower_pattern_first_atom_optional(node: captured) {
+                Present { value: first } =>
+                  if body_lower_atom_is_keyword_token(node: first) { OperandRefAbsent } else { OperandRefLowered { lowered: first } }
+                Absent => OperandRefAbsent
+              }
           }
       }
     OperandRefLowered { lowered: lowered } => OperandRefLowered { lowered: lowered }
     OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
+  }
+}
+
+// A LEXER KEYWORD TOKEN IS NEVER AN OPERAND. The first-atom fallback in
+// body_lower_operand_or_atom_read (above) answered a shell with its
+// first atom whatever it was, so a function literal `fn(y) { zz }` in an if arm lowered to the atom
+// dag_token_kw_fn and the literal was erased (gunbc.recurring_failure_mode
+// body_type_annotation_dropped_before_resolve_in_v2). `true` / `false` are keyword tokens that ARE
+// literal operands, and they need no exception here: body_lower_literal_bool_atom_optional reads them
+// in body_lower_operand_or_atom_read BEFORE this fallback, so a boolean the fallback would meet is the
+// first atom of something larger, and standing it in for the whole is the part-for-whole erasure this
+// guard exists to refuse. The keyword/operand distinction is the lex rules' alone.
+// KEYWORD, not token: an int literal reaches this fallback as an atom whose identity is the token CLASS
+// dag_token_int_literal (`let x = 1 in x` binds exactly that), so asking whether the atom is any lexer
+// token refused every such literal (v2.test.claim.body_lowering.statement_let_bind
+// let_in_form_unchanged_holds). The keyword classes are the rules lexed by a KeywordPattern
+// (v2.extdeps.languages.dag dag_lex_keyword_symbol).
+fn body_lower_atom_is_keyword_token(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => dag_lex_keyword_symbol(sym: id)
+    Absent => false
   }
 }
 
@@ -6143,6 +6169,48 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
 // only the diagnostic does. A coproduct whose sole consumer immediately
 // collapses it would be a second representation of a fact the reason symbol
 // already carries.
+// A LET ANNOTATION BODY LOWERING CANNOT CARRY REFUSES; IT IS NEVER DROPPED. `let y: T = e` lowers
+// to Bind[binder, value, body], which has no position for `T`, so dropping the annotation made it
+// invisible to v2.compiler.resolve and `let y: Q = x` was Accepted with `Q` declared nowhere
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). It refuses
+// body_lowering_reason_type_annotation_not_carried, located at the annotation, until a Bind
+// annotation carrier exists. A fn literal's return annotation, that row's other route, is no longer
+// refused: gunbc#12210 carries it as the literal's Arrow codomain (body_lower_function_value).
+fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: at)
+  )
+}
+
+// `let NAME : type_expr = value` -- the colon is the first element after NAME, read positionally the
+// way the `<T>` slot is; the unannotated arm has `=` there.
+fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: body_lower_unwrap_surface_shell(node: captured)) {
+    Absent => optional_absent()
+    Present { value: after_let } =>
+      match body_lower_fn_decl_spine_right(node: after_let) {
+        Absent => optional_absent()
+        Present { value: after_name } =>
+          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_name)) {
+            Absent => optional_absent()
+            Present { value: pair } =>
+              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+                Present { value: id } =>
+                  if id == ^dag_token_colon {
+                    match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+                      Present { value: type_rest } => optional_present(value: type_rest.left)
+                      Absent => optional_present(value: pair.right)
+                    }
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -6263,10 +6331,6 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-// A bound value is an ordinary expression, so it lowers as one. The operand
-// path is tried first because a literal or a plain reference has a settled
-// operand form; anything else is a real expression and goes through the same
-// fold every other expression does.
 // A BOUND VALUE IS AN EXPRESSION, SO IT LOWERS WHOLE THROUGH THE FOLD -- and so does the statement
 // spine's LAST statement, through this same function. It was read by the operand reader first, whose
 // first-match readers stand a part in for the whole: `let x = g(p: u)` bound the callee `g`, and
@@ -6274,7 +6338,11 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 // refusal is the statement's refusal. A FUNCTION VALUE is read by its own producer first: the fold
 // defers it (body_lower_is_deferred_lower_emitted), so `let g = fn(y) -> Q { y }` is lowered whole by
 // body_lower_function_value, and one it cannot lower is its located refusal
-// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2).
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). A fn literal's
+// written return type is CARRIED as its Arrow's codomain (body_lower_function_value_codomain_optional),
+// so it reaches resolve at its authored occurrence; gunbc#12248's interim refusal of that annotation
+// (body_lowering_reason_type_annotation_not_carried, 'until gunbc#12210 lowers function values') is
+// retired with it.
 fn body_lower_expression_whole(node: Node) -> Outcome<Node> {
   match body_lower_function_value_captured_optional(node: node) {
     Present { value: capture } =>
@@ -6322,6 +6390,9 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                         )
                       )
                     Present { value: key } =>
+                      match body_lower_let_annotation_optional(captured: let_captured) {
+                      Present { value: annotation } => body_lower_type_annotation_not_carried(at: annotation)
+                      Absent =>
                       match body_lower_let_statement_value_optional(captured: let_captured) {
                         Absent =>
                           outcome_rejected(
@@ -6348,6 +6419,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                               )
                             }
                           )
+                      }
                       }
                   }
               }

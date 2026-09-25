@@ -1,7 +1,7 @@
 module gunbc.fabric_cell_effect
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdSliceDirective,
   slice_memory_max,
@@ -42,7 +42,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_address_wire,
 }
 
-data fabric_cell_effect_authority_disposition: Disposition = SingleAuthority
+data fabric_cell_effect_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THIS FAMILY CAN ACTUALLY DO TO A HOST, AS A CLOSED SUM. Before this module the fabric cell
 // family emitted NO effects at all -- gunbc.fabric_cell_converge has no membership_effects and no

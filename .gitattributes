@@ -24,6 +24,7 @@
 .gitignore merge=generated-artifact
 DESIGN.md merge=generated-artifact
 ROADMAP.md merge=generated-artifact
+apps/approve-ios/project.yml merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_layout_generated.dag merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_partition_generated.dag merge=generated-artifact
 dag/gunbc/stage0/stage0_executable_assembly_generated.dag merge=generated-artifact

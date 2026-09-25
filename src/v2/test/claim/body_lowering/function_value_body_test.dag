@@ -38,11 +38,11 @@ type FvbOutcomes {
   curried: Bool
 }
 
+// fn_body: a fn whose whole body is a fn literal (no let above it, so no Bind carries it).
+// curried: a curried lambda argument, whose outer lambda's body is itself a lambda.
 fn fvb_outcomes() -> FvbOutcomes {
   FvbOutcomes {
-    // A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
     fn_body: fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n"),
-    // A curried lambda: the outer lambda's body is itself a lambda.
     curried: fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n")
   }
 }
