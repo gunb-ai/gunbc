@@ -1,7 +1,7 @@
 module test.claim.spark.execution_cell_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.execution_cell {
@@ -29,23 +29,28 @@ import gunbc.spark.systemd_execution_cell {
   SystemdExecutionMember, systemd_member_key,
   systemd_inventory_script, systemd_quiescence_script, systemd_disposal_script, systemd_settlement_script,
   systemd_readback_script, systemd_prepare_script, systemd_activate_script, systemd_rollback_script,
-  systemd_collective_readback_script,
+  systemd_profile_readback_script,
   SystemdResidueClass, SystemdResidueUnitFailed, SystemdResidueStartRateTripped, SystemdResidueOrphanContainer,
   systemd_residue_repair_phase,
 }
 import gunbc.spark.native_experiment_apply {
   ArmExperimentActuationAdmission, ArmExperimentActuationAdmitted, ArmExperimentActuationRefused,
-  spark_native_experiment_default_actuation, spark_experiment_route,
-  spark_native_experiment_profile_anchor,
+  spark_native_experiment_default_actuation, spark_experiment_route, spark_native_experiment_actuation_dry,
+  spark_native_experiment_profile_anchor, spark_native_experiment_rank_profile_anchor,
+  spark_profile_readback_verdict,
+  SparkProfileReadbacksConverged, SparkProfileReadbackHalted,
+  SparkHeadProfileReadbackRefused, SparkRankProfileReadbackRefused,
+  SparkExperimentRouteResult,
 }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyPlan, SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed,
   spark_pair_apply_all_applied,
 }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
-import gunbc.spark.native_serving_realization { glm_native_head_unit_name, glm_native_rank_unit_name }
+import gunbc.spark.native_serving_realization { glm_native_head_unit_name, glm_native_rank_unit_name, glm_native_head_log_path, glm_native_rank_log_path }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.serving_arm { serving_launch_profile_key }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds }
 
 // ── WHAT THIS SUITE ESTABLISHES ──────────────────────────────────────────────────────────────────
 //
@@ -66,7 +71,7 @@ fn fx_member(host: String, unit: NonEmptyStr) -> SystemdExecutionMember {
     host: fx_host(raw: host),
     unit_name: unit,
     container_name: "glm-native-tp4" as NonEmptyStr,
-    log_path: "/var/log/gunbc/glm-native-rank.log" as NonEmptyStr,
+    log_path: if (unit as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
     unit_text: "[Unit]\nfx\n",
   }
 }
@@ -270,16 +275,29 @@ test fn w_settlement_disposal_and_prepare_carry_the_run2_repair() -> Bool {
     && string_contains(s: prepare, pattern: "systemctl daemon-reload")
 }
 
-test fn w_activation_is_non_blocking_and_the_wait_is_collective() -> Bool {
+// ACTIVATION IS NON-BLOCKING AND THE WAIT IS THE READBACK PHASE'S, one leg per host. The start
+// leg carries no wait of its own; the head leg greps the head's log for the cohort anchor; each
+// rank leg greps its own rank log for the rank profile line; and every leg polls the same way —
+// anchored grep, unit-active assertion, five-second sleep — so the head leg and the rank legs are
+// one script inhabited per host, not two wait spellings that can drift.
+test fn w_activation_is_non_blocking_and_the_profile_wait_is_one_leg_per_host() -> Bool {
   let m = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let rank = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
   let activate = systemd_activate_script(member: m)
-  let readback = systemd_collective_readback_script(head: m, profile_anchor: spark_native_experiment_profile_anchor, admitted_seconds: 3600)
+  let head_readback = systemd_profile_readback_script(member: m, profile_anchor: spark_native_experiment_profile_anchor, admitted_seconds: 3600)
+  let rank_readback = systemd_profile_readback_script(member: rank, profile_anchor: spark_native_experiment_rank_profile_anchor, admitted_seconds: 3600)
   string_contains(s: activate, pattern: "systemctl start")
     && !string_contains(s: activate, pattern: spark_native_experiment_profile_anchor)
+    && !string_contains(s: activate, pattern: spark_native_experiment_rank_profile_anchor)
     && !string_contains(s: activate, pattern: "sleep")
-    && string_contains(s: readback, pattern: spark_native_experiment_profile_anchor)
-    && string_contains(s: readback, pattern: "sleep 5")
-    && string_contains(s: readback, pattern: "systemctl is-active")
+    && string_contains(s: head_readback, pattern: spark_native_experiment_profile_anchor)
+    && string_contains(s: head_readback, pattern: glm_native_head_log_path as String)
+    && !string_contains(s: head_readback, pattern: spark_native_experiment_rank_profile_anchor)
+    && string_contains(s: rank_readback, pattern: spark_native_experiment_rank_profile_anchor)
+    && string_contains(s: rank_readback, pattern: glm_native_rank_log_path as String)
+    && !string_contains(s: rank_readback, pattern: spark_native_experiment_profile_anchor)
+    && string_contains(s: rank_readback, pattern: "sleep 5")
+    && string_contains(s: rank_readback, pattern: "systemctl is-active")
 }
 
 // ── THE PLANTED RESIDUE ROUTES TO THE PHASE THAT REPAIRS IT, AHEAD OF PREPARATION ────────────────
@@ -304,11 +322,12 @@ fn w_admitted_shape(
 ) -> Bool {
   match admission {
     ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: readback, stop_legs: stop, admitted_seconds: admitted } =>
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, stop_legs: stop, admitted_seconds: admitted } =>
       length(cohort.members) == 4
         && length(prior) == 20
         && length(prep) == 4
         && length(act) == 4
+        && length(ranks) == 3
         && length(stop) == 4
         && order_ok(concat(prior, concat(prep, act)))
         && all(prior, a => {
@@ -317,8 +336,12 @@ fn w_admitted_shape(
             _ => true
           })
         })
-        && all(act, a => !string_contains(s: a.body, pattern: spark_native_experiment_profile_anchor) && !string_contains(s: a.body, pattern: "sleep"))
-        && (readback.host as String) != ""
+        && all(act, a => !string_contains(s: a.body, pattern: spark_native_experiment_profile_anchor) && !string_contains(s: a.body, pattern: spark_native_experiment_rank_profile_anchor) && !string_contains(s: a.body, pattern: "sleep"))
+        && string_contains(s: head.plan.script, pattern: spark_native_experiment_profile_anchor)
+        && !string_contains(s: head.plan.script, pattern: spark_native_experiment_rank_profile_anchor)
+        && all(ranks, l => string_contains(s: l.plan.script, pattern: spark_native_experiment_rank_profile_anchor)
+          && !string_contains(s: l.plan.script, pattern: spark_native_experiment_profile_anchor))
+        && (head.member.host as String) != ""
         && admitted > 0
   }
 }
@@ -335,7 +358,7 @@ test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bo
 test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } =>
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, stop_legs: _, admitted_seconds: _ } =>
       match group_b_restoration_executable() {
         Absent => false
         Present { value: executable } =>
@@ -349,17 +372,18 @@ test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
 
 // ── THE ROUTE'S SEQUENCING, DRIVEN BY A SUPPLIED LEG RUNNER ──────────────────────────────────────
 
-fn fx_route_outcomes(run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> List<SparkPairHostApplyOutcome> {
+fn fx_route_result(run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> SparkExperimentRouteResult? {
   match spark_native_experiment_default_actuation() {
-    ArmExperimentActuationRefused { cause: _ } => [] as List<SparkPairHostApplyOutcome>
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: readback, stop_legs: stop, admitted_seconds: _ } =>
-      spark_experiment_route(
+    ArmExperimentActuationRefused { cause: _ } => none
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, stop_legs: stop, admitted_seconds: _ } =>
+      Present { value: spark_experiment_route(
         prior_generation_actuations: prior,
         preparation_actuations: prep,
         activation_actuations: act,
-        collective_readback: readback,
+        head_readback: head,
+        rank_readbacks: ranks,
         stop_legs: stop,
-        run_leg: run_leg)
+        run_leg: run_leg) }
   }
 }
 
@@ -375,23 +399,157 @@ fn fx_run_fail_rank_activation(plan: SparkPairHostApplyPlan) -> SparkPairHostApp
   }
 }
 
+// PLANTED READBACK FAILURES, discriminated by the anchor each leg waits on — the exact vocabulary
+// the readback legs carry, which no activation, preparation, prior-generation, or stop leg
+// carries (the activation non-blocking arm above asserts the starts carry no anchor).
+fn fx_run_fail_rank_readback(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: spark_native_experiment_rank_profile_anchor) {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+fn fx_run_fail_head_readback(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: spark_native_experiment_profile_anchor) && string_contains(s: plan.script, pattern: "sleep 5") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
 // A PREPARATION FAILURE STARTS NONE: 20 prior-generation legs + 4 halted preparations, no
 // activation, no readback, no stop — the all-or-nothing law, observed at the route boundary.
 test fn w_route_prepare_failure_starts_none() -> Bool {
-  let outcomes = fx_route_outcomes(run_leg: fx_run_fail_prepare)
-  length(outcomes) == 24 && !spark_pair_apply_all_applied(outcomes: outcomes)
+  match fx_route_result(run_leg: fx_run_fail_prepare) {
+    Present { value: result } => length(result.outcomes) == 24 && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+    Absent => false
+  }
 }
 
 // A PARTIAL ACTIVATION ROLLS BACK BEFORE IT REFUSES: 20 prior + 4 prepared + 4 activation attempts
-// + exactly 1 rollback leg for the started head = 28 outcomes, and the run refuses.
+// + exactly 1 rollback leg for the started head (the three rank starts were the planted failures)
+// = 29 outcomes, and the run refuses. No readback leg ran — the cohort never converged.
 test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool {
-  let outcomes = fx_route_outcomes(run_leg: fx_run_fail_rank_activation)
-  length(outcomes) == 29 && !spark_pair_apply_all_applied(outcomes: outcomes)
+  match fx_route_result(run_leg: fx_run_fail_rank_activation) {
+    Present { value: result } => length(result.outcomes) == 29 && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+    Absent => false
+  }
 }
 
-// THE POSITIVE CONTROL: every leg applies, 20 prior + 4 prepared + 4 activated + 1 collective
-// readback + 4 stopped = 33 outcomes, and the run reports convergence.
+// THE POSITIVE CONTROL: every leg applies, 20 prior + 4 prepared + 4 activated + 1 head readback
+// + 3 rank readbacks + 4 stopped = 36 outcomes, the run reports convergence, and no halt is
+// minted.
 test fn w_route_full_success_runs_prior_prepare_activate_readback_stop() -> Bool {
-  let outcomes = fx_route_outcomes(run_leg: fx_applied)
-  length(outcomes) == 33 && spark_pair_apply_all_applied(outcomes: outcomes)
+  match fx_route_result(run_leg: fx_applied) {
+    Present { value: result } =>
+      length(result.outcomes) == 36
+        && spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt { Absent => true  Present { value: _ } => false })
+    Absent => false
+  }
+}
+
+// A RANK THAT DIES BEFORE PRINTING refuses located: the runner plants a failure in exactly the
+// rank readback legs. The head leg applies, all three rank legs are issued (a halt does not
+// short-circuit the cohort's observation), every rank leg reports the planted failure, the four
+// stop legs then run as the rollback — 20 + 4 + 4 + 1 + 3 + 4 = 36 outcomes — the run refuses, and
+// the halt is located on a rank host by the rank-profile variant.
+test fn w_route_rank_readback_failure_refuses_located_on_the_rank() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_rank_readback) {
+    Present { value: result } =>
+      length(result.outcomes) == 36
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt {
+          Present { value: SparkRankProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_rank_unit_name as String) && (m.host as String) != ""
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+// THE HEAD'S ANCHOR GATES THE RANK LEGS: a runner that plants a failure in exactly the head
+// readback leg yields 20 + 4 + 4 + 1 + 0 + 4 = 33 outcomes — the count itself proves no rank leg
+// was issued, because the head's anchor never appeared — and the halt is located on the head by
+// the head-anchor variant.
+test fn w_route_head_readback_failure_issues_no_rank_legs() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_head_readback) {
+    Present { value: result } =>
+      length(result.outcomes) == 33
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt {
+          Present { value: SparkHeadProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_head_unit_name as String)
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+
+// THE VERDICT FOLD, at the unit boundary: every leg applied is the only converged arm; a failed
+// head outcome halts located on the head with no rank outcome beside it; and one failed rank leg
+// halts located on THAT leg's member — discriminated by changing exactly one outcome of the
+// converged control, the located-refusal wall the route's rollback consumes.
+test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, stop_legs: _, admitted_seconds: _ } =>
+      let first_rank_host = match first(ranks) { Present { value: l } => l.member.host as String  Absent => "" }
+      let all_applied = spark_profile_readback_verdict(head_leg: head, head_outcome: fx_applied(plan: head.plan), rank_legs: ranks, rank_outcomes: map(ranks, l => fx_applied(plan: l.plan)))
+      let head_failed = spark_profile_readback_verdict(head_leg: head, head_outcome: fx_failed(plan: head.plan), rank_legs: ranks, rank_outcomes: [] as List<SparkPairHostApplyOutcome>)
+      let first_rank_failed = spark_profile_readback_verdict(head_leg: head, head_outcome: fx_applied(plan: head.plan), rank_legs: ranks, rank_outcomes: map(ranks, l => if (l.member.host as String) == first_rank_host { fx_failed(plan: l.plan) } else { fx_applied(plan: l.plan) }))
+      (match all_applied { SparkProfileReadbacksConverged => true  _ => false })
+        && (match head_failed {
+          SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.host as String) == (head.member.host as String)
+          _ => false
+        })
+        && (match first_rank_failed {
+          SparkProfileReadbackHalted { refusal: SparkRankProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.host as String) == first_rank_host && first_rank_host != ""
+          _ => false
+        })
+  }
+}
+
+// THE DRY RENDERING ORDERS THE READBACK PHASE: filtering the dry text to exactly the lines that
+// carry a readback bound or the stop block's banner yields, in order, the head leg's banner, one
+// banner per rank leg in cohort order, and the stop banner — no stop line before any readback, no
+// rank leg before the head's, and every leg the admission planned present in the rendering.
+test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, stop_legs: _, admitted_seconds: admitted } =>
+      let dry = spark_native_experiment_actuation_dry()
+      let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: " bounded_seconds=") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
+      let expected = concat(
+        [join(["HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")],
+        concat(
+          map(ranks, l => join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")),
+          ["STOP (deterministic end on every rank)"]))
+      length(actual) == length(expected)
+        && join(actual, "\n") == join(expected, "\n")
+  }
+}
+
+// THE SHARED BUDGET, PINNED: the plan admits ONE experiment duration — the engine's own multi-node
+// ready timeout (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime_seconds, the same figure
+// every rank unit's RuntimeMaxSec carries) — and the readbacks share it. The admission's seconds
+// equal that one authority, and every leg's poll loop — head's and ranks' alike — is derived from
+// the admission's single admitted_seconds with the identical (seconds + 4) / 5 iteration
+// arithmetic, so the cohort is charged one duration in total, never one per leg: a bracket that
+// minted a fresh budget per leg would count a single run four times.
+test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, stop_legs: _, admitted_seconds: admitted } =>
+      let expected_loop = join(["for i in ", join(map(nat_range_inclusive(lo: 1, hi: (admitted + 4) / 5), n => to_string(n)), " "), "; do"], "")
+      admitted == arm_memory_experiment_runtime_seconds()
+        && string_contains(s: head.plan.script, pattern: expected_loop)
+        && string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], ""))
+        && all(ranks, l => string_contains(s: l.plan.script, pattern: expected_loop))
+        && all(ranks, l => string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")))
+  }
 }

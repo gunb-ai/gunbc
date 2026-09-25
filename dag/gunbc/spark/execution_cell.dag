@@ -26,7 +26,8 @@ import v2.std.optional { Present, Absent }
 // srv9's head did not start until 22:43 — the ranks and head were never alive simultaneously, and a
 // rendezvous arm cannot converge that way. Settlement (systemctl reset-failed) is therefore a
 // MODELED LEG here, not an operator action, and activation is a cohort verb whose starts are
-// non-blocking with ONE collective readback, never per-host blocking waits.
+// non-blocking, with the bounded per-host profile readbacks after them — never a wait inside a
+// start leg itself.
 //
 // REALIZATION-NEUTRAL, BY CONSTRUCTION. This module names phases and the verbs a realization must
 // supply; it never names systemd, docker, or Firecracker. systemd/Docker is the current Group B
@@ -375,8 +376,8 @@ fn execution_cell_preparation_verdict<M>(results: List<ExecutionCellPhaseResult<
 // PartiallyActivated — the caller owes those started members a rollback before it refuses. A
 // refusal before any start is RefusedBeforeStart, and owes nothing. Modeling the concurrency as
 // ONE verb is the run-3 repair: the realization's activate is non-blocking, so issuing the legs
-// sequentially still starts the cohort concurrently, and the single collective readback — not
-// per-host waits — is what witnesses convergence.
+// sequentially still starts the cohort concurrently, and the bounded readback phase that follows —
+// one wait per host, never a wait inside a start — is what witnesses convergence.
 type ExecutionCellActivation<M>
   = ExecutionCellConverged { started: List<ExecutionCellActuation<M>> }
   | ExecutionCellPartiallyActivated { started: List<ExecutionCellActuation<M>>, refusal: ExecutionCellRefusal<M> }
@@ -424,7 +425,7 @@ fn execution_cell_rollback_members<M>(activation: ExecutionCellActivation<M>) ->
 
 // ── SUCCESS IS ONE EXACT GENERATION OBSERVED ON EVERY MEMBER ─────────────────────────────────────
 //
-// THE CONVERGENCE WITNESS. The realization's collective readback hands back one observation per
+// THE CONVERGENCE WITNESS. The realization's readback hands back one observation per
 // member — the generation that member is actually running — and convergence is the fold that
 // checks them against the admitted generation. All equal on a complete roster is
 // ExecutionCellOneGeneration; a member observed on any other identity is ExecutionCellGenerationSplit

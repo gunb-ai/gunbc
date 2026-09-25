@@ -31,8 +31,11 @@ import gunbc.spark.execution_cell {
 // settlement (systemctl reset-failed) and disposal (docker rm -f) are MODELED LEGS that run ahead
 // of preparation, never hooks downstream of start. Run 3 died because each leg blocked on its own
 // wait loop and the four ranks were never alive together — so here activation is a NON-BLOCKING
-// start and the one bounded wait lives in a single collective readback leg the bracket issues after
-// all four starts.
+// start and the bounded waits live in the profile-readback legs the bracket issues after all four
+// starts. THE 262144x6 RUN (2026-09-25) then showed one collective wait on the head's log was not
+// enough: the ranks print their own profile lines on their own clocks, tens of seconds after the
+// head's on the big allocation, and the stops fired in the gap — so the readback is ONE LEG PER
+// HOST (see the readback section below).
 
 // A MEMBER OF THE systemd/Docker CELL: one host, the unit it converges, the container the unit
 // supervises, the log the engine appends, and the rendered unit text preparation installs. The
@@ -174,9 +177,10 @@ fn systemd_prepare_script(member: SystemdExecutionMember) -> String {
 
 // ACTIVATION IS A NON-BLOCKING START — the run-3 repair. systemctl start admits the unit and
 // returns while the engine loads; there is deliberately no wait loop here, so the bracket can issue
-// the four starts sequentially and still have all four ranks alive together, with the single
-// bounded wait living in the collective readback leg. Failure to admit the start exits non-zero
-// under `set -e`, which is what makes a partial activation observable and rollbackable.
+// the four starts sequentially and still have all four ranks alive together, with the bounded
+// waits living in the per-host profile-readback legs the bracket issues after all four starts.
+// Failure to admit the start exits non-zero under `set -e`, which is what makes a partial
+// activation observable and rollbackable.
 fn systemd_activate_script(member: SystemdExecutionMember) -> String {
   join([
     "set -e\n",
@@ -246,25 +250,44 @@ fn systemd_execution_realization() -> ExecutionCellRealization<SystemdExecutionM
   }
 }
 
-// ── THE COLLECTIVE READBACK: ONE LEG, ON THE HEAD, BOUNDED BY THE ADMITTED SECONDS ───────────────
+// ── THE PROFILE READBACK: ONE LEG PER HOST, EVERY LEG BOUNDED BY THE ONE ADMITTED DURATION ────────
 //
-// THE CONVERGENCE WITNESS, and it is ONE leg — the run-3 repair. It runs on the head and polls the
-// head's log for the engine's own memory-profiling anchor, the same prefix extdeps.vllm.memory_profile
-// parses, so a captured line is parseable by construction. The poll is bounded by the experiment
-// plan's admitted runtime seconds (the same figure RuntimeMaxSec carries), and each iteration also
-// asserts the head unit is still active: a rank that dies after its non-blocking start strands the
-// head's rendezvous, the head never reaches its profiling line, the bound expires, and the bracket
-// rolls the cohort back. "All ranks alive" is established before this leg is issued — every
-// activation leg has already returned success, and systemd's start admission is what "alive" means
-// here — and is what the anchor line then witnesses, since the head cannot profile without its
-// ranks at the store.
-fn systemd_collective_readback_script(head: SystemdExecutionMember, profile_anchor: String, admitted_seconds: Nat) -> String {
+// THE CONVERGENCE WITNESS, per rank — the Sep-25 repair of the run-3 collective wait. The head leg
+// greps the head's log for the cohort's memory-profile anchor, the same prefix
+// extdeps.vllm.memory_profile parses, so a captured line is parseable by construction. The head's
+// anchor is the cohort's rendezvous — the head cannot profile without its ranks at the store — but
+// on the 262144x6 run it was NOT the ranks' own evidence: the head printed its profile line at
+// 19:41:57 and the rank workers on srv10/11/12 printed their own per-rank profile lines ("Free
+// memory on device", gpu_worker.py:867) in their own rank logs TENS OF SECONDS LATER, after the
+// stop legs had already fired. Each rank's byte-wall reading lives in that rank's log and prints
+// on that rank's own clock (on the earlier 64K run all four printed within the same second, which
+// is why the one-head wait accidentally sufficed there). So the readback phase is ONE LEG PER
+// HOST: the head leg waits the cohort anchor in the head's log, and one leg per rank host waits
+// that host's own profile line in that host's own rank log. Only after every leg holds may the
+// stop legs run.
+//
+// THE BUDGET IS THE PLAN'S ONE ADMITTED DURATION, SHARED — never minted per leg. Every leg — head
+// and ranks alike — derives its poll-iteration backstop from the same admitted_seconds with the
+// same arithmetic, because the plan admits exactly one experiment duration and every rank unit
+// carries the same RuntimeMaxSec (gunbc.spark.native_serving_realization): the engines stop
+// together, and the four waits observe ONE bounded run. A leg's actual consumption is never its
+// backstop: each iteration breaks the moment its anchor appears, and exits the moment its unit
+// goes inactive, so a dead engine's leg returns within one poll and the sequential legs' waits
+// telescope against the engines' one shared lifetime. Charging the plan's duration once per leg
+// would count a single run four times.
+//
+// A RANK THAT DIES BEFORE PRINTING fails its own host's leg: the inactivity exit fires, the leg
+// exits non-zero, and the bracket's verdict fold (gunbc.spark.native_experiment_apply
+// spark_profile_readback_verdict) locates the refusal on that host. The anchor and the log path
+// are parameters, so the head leg and the rank legs are one script inhabited twice, not two
+// spellings that can drift.
+fn systemd_profile_readback_script(member: SystemdExecutionMember, profile_anchor: String, admitted_seconds: Nat) -> String {
   let iterations = nat_range_inclusive(lo: 1, hi: (admitted_seconds + 4) / 5)
-  let unit = head.unit_name as String
+  let unit = member.unit_name as String
   join([
     "set -e\n",
-    "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if grep -q \"", profile_anchor, "\" ", head.log_path as String, " 2>/dev/null; then echo profile-line-seen; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-profile; exit 1; fi; sleep 5; done\n",
-    "grep \"", profile_anchor, "\" ", head.log_path as String, " | tail -1\n",
+    "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if grep -q \"", profile_anchor, "\" ", member.log_path as String, " 2>/dev/null; then echo profile-line-seen; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-profile; exit 1; fi; sleep 5; done\n",
+    "grep \"", profile_anchor, "\" ", member.log_path as String, " | tail -1\n",
     "systemctl is-active ", unit, "\n",
   ], "")
 }

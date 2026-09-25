@@ -7,6 +7,7 @@ import gunbc.spark.native_experiment_apply {
   ArmExperimentActuationAdmission, ArmExperimentActuationAdmitted, ArmExperimentActuationRefused,
   arm_experiment_actuation_admission, spark_native_experiment_default_actuation,
   spark_native_experiment_actuation_dry, spark_native_experiment_profile_anchor,
+  spark_native_experiment_rank_profile_anchor,
 }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.serving_arm {
@@ -80,27 +81,27 @@ test fn w_the_actuation_refuses_without_the_unestablished_verdict_with_named_obl
     verdict: ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) },
     plan: fx_restoration_plan()) {
     ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "PROVED")
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, stop_legs: _, admitted_seconds: _ } => false
   })
     && (match arm_experiment_actuation_admission(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
       verdict: ArmMemoryFitRefused { rank: 1, phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1), cause: "fx" as NonEmptyStr },
       plan: fx_restoration_plan()) {
       ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "REFUSED")
-      ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } => false
+      ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, stop_legs: _, admitted_seconds: _ } => false
     })
     && (match arm_experiment_actuation_admission(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
       verdict: ArmMemoryFitUnestablished { obligations: [] },
       plan: fx_restoration_plan()) {
       ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "NO named obligations")
-      ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } => false
+      ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, stop_legs: _, admitted_seconds: _ } => false
     })
     && (match arm_experiment_actuation_admission(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
       verdict: fx_unestablished(), plan: none) {
       ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "typed experiment plan")
-      ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } => false
+      ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, stop_legs: _, admitted_seconds: _ } => false
     })
 }
 
@@ -122,7 +123,7 @@ test fn w_the_actuation_refuses_a_plan_that_skips_an_open_obligation() -> Bool {
                 checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
                 verdict: arm_memory_fit_verdict(subject: subject), plan: Present { value: partial }) {
                 ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "does not target every open obligation")
-                ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } => false
+                ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, stop_legs: _, admitted_seconds: _ } => false
               }
           }
       }
@@ -133,27 +134,32 @@ test fn w_the_actuation_refuses_a_plan_that_skips_an_open_obligation() -> Bool {
 //
 // The reshape's load-bearing shape, stated where the admission is the subject: four members, five
 // prior-generation phases ahead of four preparations, every settlement leg carrying reset-failed,
-// every preparation installing without starting, and the activation legs carrying no wait of their
-// own. The deeper order, rollback and one-generation arms live in the execution-cell suite.
+// every preparation installing without starting, and the activation legs carrying no wait of
+// their own — and, ahead of the stops, the readback phase: the head's anchor leg plus one
+// per-rank profile leg per rank host. The deeper order, rollback, readback-halt and one-generation
+// arms live in the execution-cell suite.
 test fn w_the_admitted_actuation_prepares_all_ranks_before_any_start() -> Bool {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: _, stop_legs: _, admitted_seconds: _ } =>
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: _, rank_readbacks: ranks, stop_legs: _, admitted_seconds: _ } =>
       length(prior) == 20
         && length(prep) == 4
         && length(act) == 4
+        && length(ranks) == 3
         && all(prep, p => !string_contains(s: p.body, pattern: "systemctl start"))
-        && all(act, a => !string_contains(s: a.body, pattern: spark_native_experiment_profile_anchor))
+        && all(act, a => !string_contains(s: a.body, pattern: spark_native_experiment_profile_anchor) && !string_contains(s: a.body, pattern: spark_native_experiment_rank_profile_anchor))
         && any(prior, p => (match p.phase { CellPhaseSettlement => string_contains(s: p.body, pattern: "systemctl reset-failed")  _ => false }))
   }
 }
 
 test fn w_the_actuation_receipt_waits_on_the_parser_anchor() -> Bool {
   string_contains(s: spark_native_experiment_profile_anchor, pattern: "Desired GPU memory utilization is (")
+    && string_contains(s: spark_native_experiment_rank_profile_anchor, pattern: "Free memory on device")
     && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "inventory")
     && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "settlement")
     && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "ACTIVATE COHORT concurrently")
-    && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "COLLECTIVE READBACK")
+    && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "HEAD READBACK")
+    && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "RANK READBACK")
     && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "STOP")
 }
 

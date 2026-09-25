@@ -7,7 +7,7 @@ import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { serialize_content_hash }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -57,7 +57,7 @@ import gunbc.spark.execution_cell {
 }
 import gunbc.spark.systemd_execution_cell {
   SystemdExecutionMember, systemd_execution_realization, systemd_member_key,
-  systemd_collective_readback_script, systemd_rollback_script,
+  systemd_profile_readback_script, systemd_rollback_script,
 }
 
 // ── THE BOUNDED EXPERIMENT'S ACTUATION, AS ONE EXECUTION CELL ────────────────────────────────────
@@ -78,10 +78,15 @@ import gunbc.spark.systemd_execution_cell {
 // downstream of every cleanup hook the new unit carries. Preparation then installs every rank's
 // rendered unit and starts NOTHING; a preparation failure on any rank activates none. Activation is
 // the cohort verb — four non-blocking starts the run-3 receipts demanded, so the ranks and head are
-// alive together for the first time — and ONE collective readback on the head, bounded by the
-// plan's admitted seconds, waits for the engine's memory-profile anchor. A rank that fails after
-// others started rolls the started ranks back before the route refuses, and success is one exact
-// generation — the launch-profile hash every unit renders from — observed across all four ranks.
+// alive together for the first time — and the readback phase then waits the profile pass on EVERY
+// host: the head leg holds the cohort's memory-profile anchor, and one leg per rank host holds
+// that host's own per-rank profile line, every leg bounded by the plan's one admitted duration
+// shared across the cohort. Only after all four readbacks succeed do the deterministic stop legs
+// run. A rank that fails after others started rolls the started ranks back before the route
+// refuses; a rank that dies before printing its profile line fails its own host's readback leg and
+// rolls the cohort back the same way. Success is one exact generation — the launch-profile hash
+// every unit renders from — observed across all four ranks, and the observation IS the readback
+// holding on every host's own profile line.
 //
 // THE TRUST BRACKET IS THE PAIR APPLY'S, unchanged: the same credential materialization, the same
 // fleet known-hosts anchor, the same spark_pair_privileged_leg transport, because a third spelling
@@ -91,12 +96,22 @@ data spark_native_experiment_apply_receipt_path: String = "target/spark-native-e
 
 data spark_native_experiment_apply_attempt_raw: String = "spark-native-experiment-apply"
 
-// THE MEMORY-PROFILE ANCHOR, spelled where the collective readback script and the parser can be
-// compared: the readback greps for the exact prefix extdeps.vllm.memory_profile parses ("Desired
-// GPU memory utilization is ("), so a captured line is parseable by construction rather than by
-// hope. The head is the rank whose log the collective readback greps: rank 0 exports the endpoint
-// and its profiling line is the one the receipt layer classifies.
+// THE MEMORY-PROFILE ANCHOR, spelled where the readback script and the parser can be
+// compared: the head readback greps for the exact prefix extdeps.vllm.memory_profile parses
+// ("Desired GPU memory utilization is ("), so a captured line is parseable by construction rather
+// than by hope. The head is the rank whose log the cohort anchor waits on: rank 0 exports the
+// endpoint and its profiling line is the one the receipt layer classifies.
 data spark_native_experiment_profile_anchor: String = "Desired GPU memory utilization is ("
+
+// THE RANK PROFILE ANCHOR: the per-rank worker line's stable prefix — the same prefix
+// extdeps.vllm.log_lines cites for MemoryProfileSummary, and the line the 64K wet bundle quotes
+// from gpu_worker.py:867. Every rank host prints its own in its own rank log on its own clock:
+// the Sep-25 262144x6 run printed the head's anchor at 19:41:57 and ranks 1-3's lines tens of
+// seconds later, after the stops had fired on the one-head readback — the gap that left the
+// byte-wall subproof open on ranks 1-3 (gunbc commit 0fd1d463f5's message). The rank readback
+// legs wait this prefix in each rank host's own log; the head leg keeps the cohort anchor above
+// (the head unit's worker is rank 0, so the head's log carries its line too).
+data spark_native_experiment_rank_profile_anchor: String = "Free memory on device"
 
 // ── THE COHORT'S MEMBERS AND THE PER-PHASE LEGS ──────────────────────────────────────────────────
 
@@ -167,6 +182,29 @@ fn spark_result_of_outcome(actuation: ExecutionCellActuation<SystemdExecutionMem
 
 // ── THE ADMISSION ────────────────────────────────────────────────────────────────────────────────
 
+// ONE PROFILE-READBACK LEG: the member it observes — the host the leg runs on and whose log it
+// greps — beside the plan the transport runs. Carrying the member beside the plan is what lets a
+// failed leg's refusal name its host, exactly as a failed activation leg's refusal names the
+// member that refused.
+type SparkProfileReadbackLeg {
+  member: SystemdExecutionMember
+  plan: SparkPairHostApplyPlan
+}
+
+// THE PROFILE-READBACK VERDICT, the readback phase's analogue of the preparation and activation
+// verdicts: every readback leg must hold — the head's cohort anchor AND each rank's own profile
+// line — before the run converges. The first leg that fails halts the phase with a refusal located
+// twice: the member names the host, and the variant names the phase — the head's anchor wait or a
+// rank's own-profile wait. The route rolls the started cohort back on a halt exactly as a failed
+// activation leg does.
+type SparkProfileReadbackRefusal
+  = SparkHeadProfileReadbackRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+  | SparkRankProfileReadbackRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+
+type SparkProfileReadbackVerdict
+  = SparkProfileReadbacksConverged
+  | SparkProfileReadbackHalted { refusal: SparkProfileReadbackRefusal }
+
 // THE ADMITTED ARM, as an execution cell. Every leg the route will run is present, grouped by
 // phase in contract order, so the dry entry renders the whole shape and the wet entry folds the
 // runtime outcomes back through the cohort verdicts. The generation and the admitted seconds are
@@ -177,7 +215,8 @@ type ArmExperimentActuationAdmission
       prior_generation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
       preparation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
       activation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
-      collective_readback: SparkPairHostApplyPlan,
+      head_readback: SparkProfileReadbackLeg,
+      rank_readbacks: List<SparkProfileReadbackLeg>,
       stop_legs: List<SparkPairHostApplyPlan>,
       admitted_seconds: Nat,
     }
@@ -267,15 +306,16 @@ fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecution
           spark_actuations_of(verb: realization.readback, ops: ops)))))
   let preparation_actuations = spark_actuations_of(verb: realization.prepare, ops: ops)
   let activation_actuations = spark_actuations_of(verb: realization.activate, ops: ops)
-  match spark_collective_readback_plan(cohort: cohort, admitted_seconds: plan.max_runtime_seconds) {
-    Absent => ArmExperimentActuationRefused { cause: "the cohort admitted no head member, so no collective readback leg could be planned: the convergence witness needs the head's log" as NonEmptyStr }
-    Present { value: collective_readback } =>
+  match spark_head_readback_leg(cohort: cohort, admitted_seconds: plan.max_runtime_seconds) {
+    Absent => ArmExperimentActuationRefused { cause: "the cohort admitted no head member, so no head readback leg could be planned: the convergence witness needs the head's log" as NonEmptyStr }
+    Present { value: head_readback } =>
       ArmExperimentActuationAdmitted {
         cohort: cohort,
         prior_generation_actuations: prior_generation_actuations,
         preparation_actuations: preparation_actuations,
         activation_actuations: activation_actuations,
-        collective_readback: collective_readback,
+        head_readback: head_readback,
+        rank_readbacks: spark_rank_readback_legs(cohort: cohort, admitted_seconds: plan.max_runtime_seconds),
         stop_legs: map(cohort.members, m => spark_stop_plan_of_member(member: m)),
         admitted_seconds: plan.max_runtime_seconds,
       }
@@ -293,17 +333,81 @@ fn spark_actuations_of(verb: fn(ExecutionCellOperation<SystemdExecutionMember>) 
   })
 }
 
-// THE ONE COLLECTIVE READBACK, ON THE HEAD. It is a single leg — the run-3 repair — bounded by the
-// plan's admitted seconds, grepping the head's log for the engine's own memory-profile anchor.
-fn spark_collective_readback_plan(cohort: ExecutionCellCohort<SystemdExecutionMember>, admitted_seconds: Nat) -> SparkPairHostApplyPlan? {
+// THE HEAD'S READBACK LEG: the cohort's convergence anchor, waited in the head's log. The head
+// member is the one whose unit renders the head unit name; a cohort that admitted no head member
+// refuses the actuation before any credential is reached for, exactly as a missing render does.
+fn spark_head_readback_leg(cohort: ExecutionCellCohort<SystemdExecutionMember>, admitted_seconds: Nat) -> SparkProfileReadbackLeg? {
   match first(filter(cohort.members, m => (m.unit_name as String) == (glm_native_head_unit_name as String))) {
     Absent => none
     Present { value: head } =>
-      Present { value: SparkPairHostApplyPlan {
-        host: head.host,
-        unit_name: head.unit_name,
-        script: systemd_collective_readback_script(head: head, profile_anchor: spark_native_experiment_profile_anchor, admitted_seconds: admitted_seconds),
+      Present { value: SparkProfileReadbackLeg {
+        member: head,
+        plan: SparkPairHostApplyPlan {
+          host: head.host,
+          unit_name: head.unit_name,
+          script: systemd_profile_readback_script(member: head, profile_anchor: spark_native_experiment_profile_anchor, admitted_seconds: admitted_seconds),
+        },
       } }
+  }
+}
+
+// ONE READBACK LEG PER RANK HOST, in cohort order. Each leg greps THAT host's own rank log for
+// the rank profile line — the line the rank's own worker prints — so a rank that dies before
+// printing fails THIS host's leg, and the halt is located on that host by construction. Every leg
+// renders through the realization's one readback script with the same admitted seconds: the plan's
+// one duration is shared across the cohort, not minted per leg.
+fn spark_rank_readback_legs(cohort: ExecutionCellCohort<SystemdExecutionMember>, admitted_seconds: Nat) -> List<SparkProfileReadbackLeg> {
+  map(
+    filter(cohort.members, m => (m.unit_name as String) != (glm_native_head_unit_name as String)),
+    m => SparkProfileReadbackLeg {
+      member: m,
+      plan: SparkPairHostApplyPlan {
+        host: m.host,
+        unit_name: m.unit_name,
+        script: systemd_profile_readback_script(member: m, profile_anchor: spark_native_experiment_rank_profile_anchor, admitted_seconds: admitted_seconds),
+      },
+    })
+}
+
+// THE READBACK PHASE VERDICT. The head leg's outcome folds first — the rank legs are only issued
+// once the head's anchor has appeared, so a failed head leg halts the phase with nothing issued
+// beside it — and the first failed rank outcome halts the phase located on the leg that minted
+// it. The leg is recovered through the cohort's own key, the host: execution_cell_cohort_admit
+// refuses duplicate member keys and systemd_member_key IS the host, so a failed outcome's host
+// names exactly one admitted leg. (The leg-outcome pairing is deliberately NOT spelled zip_map:
+// measured 2026-09-25, a generic function's result feeding first/filter poisons their downstream
+// instantiation in the current interpreter — first returns the bare head instead of the optional
+// it declares — while first and filter over map/filter-built lists behave as declared. The
+// host join says the same thing the zip would, on the cohort key the admission already vouches.)
+// A leg fails exactly as the activation legs fail: the remote script exits non-zero, the
+// transport reports SparkPairHostApplyFailed, and this fold maps it onto the typed refusal. All
+// outcomes applied is the only converged arm; the unresolvable-host arm is unreachable from the
+// route, whose rank outcomes are minted by exactly these legs.
+fn spark_profile_readback_verdict(head_leg: SparkProfileReadbackLeg, head_outcome: SparkPairHostApplyOutcome, rank_legs: List<SparkProfileReadbackLeg>, rank_outcomes: List<SparkPairHostApplyOutcome>) -> SparkProfileReadbackVerdict {
+  match head_outcome {
+    SparkPairHostApplyFailed { host: _, cause: c } =>
+      SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: head_leg.member, cause: c as NonEmptyStr } }
+    SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+      match first(filter(rank_outcomes, o => match o { SparkPairHostApplyFailed { host: _, cause: _ } => true  SparkPairHostApplied { host: _, detail: _, standing: _ } => false })) {
+        Present { value: SparkPairHostApplyFailed { host: failed_host, cause: c } } =>
+          match first(filter(rank_legs, l => host_identity_eq(a: l.member.host, b: failed_host))) {
+            Present { value: l } =>
+              SparkProfileReadbackHalted { refusal: SparkRankProfileReadbackRefused { member: l.member, cause: c as NonEmptyStr } }
+            Absent => SparkProfileReadbacksConverged
+          }
+        Present { value: SparkPairHostApplied { host: _, detail: _, standing: _ } } => SparkProfileReadbacksConverged
+        Absent => SparkProfileReadbacksConverged
+      }
+  }
+}
+
+// THE HALT, RENDERED WHERE THE RECEIPT CAN CARRY IT. On a halt the route has already rolled the
+// started cohort back; this wire is the located one-liner the failure reason names beside the full
+// outcome body — host from the member, phase from the variant.
+fn spark_profile_readback_halt_wire(r: SparkProfileReadbackRefusal) -> String {
+  match r {
+    SparkHeadProfileReadbackRefused { member: m, cause: c } => join(["profile readback halted on head ", m.host as String, ": ", c as String, "\n"], "")
+    SparkRankProfileReadbackRefused { member: m, cause: c } => join(["profile readback halted on rank ", m.host as String, ": ", c as String, "\n"], "")
   }
 }
 
@@ -323,39 +427,63 @@ fn spark_stop_plan_of_member(member: SystemdExecutionMember) -> SparkPairHostApp
 // THE SEQUENCING THE RECEIPTS DEMAND, as one fold-friendly spine the wet entry drives with its
 // privileged leg. Prior-generation legs must all apply before anything prepares; a preparation
 // halt starts none; a partial activation rolls its started members back before the route refuses;
-// a converged activation takes the one collective readback and then stops every rank however the
-// measurement went. The full outcome list is returned so the receipt records every leg that ran.
+// a converged activation takes the readback phase — the head's anchor leg, then one per-rank
+// profile leg, each issued only after the head's anchor has appeared — and then stops every rank
+// however the measurement went: the stops are the deterministic end on convergence and the
+// rollback on a readback halt, and they are the same legs because a converged cohort started
+// every member. The full outcome list is returned so the receipt records every leg that ran, and
+// the halt carries the located readback refusal when the phase ran and did not converge — absent
+// everywhere else, because a phase that was never reached mints no verdict about it.
+type SparkExperimentRouteResult {
+  outcomes: List<SparkPairHostApplyOutcome>
+  halt: SparkProfileReadbackRefusal?
+}
+
 fn spark_experiment_route(
   prior_generation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
   preparation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
   activation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
-  collective_readback: SparkPairHostApplyPlan,
+  head_readback: SparkProfileReadbackLeg,
+  rank_readbacks: List<SparkProfileReadbackLeg>,
   stop_legs: List<SparkPairHostApplyPlan>,
   run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome,
-) -> List<SparkPairHostApplyOutcome> {
+) -> SparkExperimentRouteResult {
   let prior_outcomes = map(prior_generation_actuations, a => run_leg(spark_plan_of_actuation(a: a)))
   if !spark_pair_apply_all_applied(outcomes: prior_outcomes) {
-    prior_outcomes
+    SparkExperimentRouteResult { outcomes: prior_outcomes, halt: none }
   } else {
     let preparation_outcomes = map(preparation_actuations, a => run_leg(spark_plan_of_actuation(a: a)))
     match execution_cell_preparation_verdict(results: zip_map(a: preparation_actuations, b: preparation_outcomes, f: fn(a, o) { spark_result_of_outcome(actuation: a, outcome: o) })) {
       ExecutionCellPrepareHalted { prepared: _, refusal: _ } =>
-        concat(prior_outcomes, preparation_outcomes)
+        SparkExperimentRouteResult { outcomes: concat(prior_outcomes, preparation_outcomes), halt: none }
       ExecutionCellAllPrepared { actuations: _ } => {
         let activation_outcomes = map(activation_actuations, a => run_leg(spark_plan_of_actuation(a: a)))
         let activation = execution_cell_activation_verdict(results: zip_map(a: activation_actuations, b: activation_outcomes, f: fn(a, o) { spark_result_of_outcome(actuation: a, outcome: o) }))
         match activation {
           ExecutionCellConverged { started: _ } => {
-            let readback_outcome = run_leg(collective_readback)
+            let head_outcome = run_leg(head_readback.plan)
+            let rank_outcomes = match head_outcome {
+              SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+                map(rank_readbacks, l => run_leg(l.plan))
+              SparkPairHostApplyFailed { host: _, cause: _ } =>
+                [] as List<SparkPairHostApplyOutcome>
+            }
+            let halt = match spark_profile_readback_verdict(head_leg: head_readback, head_outcome: head_outcome, rank_legs: rank_readbacks, rank_outcomes: rank_outcomes) {
+              SparkProfileReadbacksConverged => none
+              SparkProfileReadbackHalted { refusal: r } => Present { value: r }
+            }
             let stop_outcomes = map(stop_legs, leg => run_leg(leg))
-            concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, concat([readback_outcome], stop_outcomes)))
+            SparkExperimentRouteResult {
+              outcomes: concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, concat([head_outcome], concat(rank_outcomes, stop_outcomes)))),
+              halt: halt,
+            }
           }
           ExecutionCellPartiallyActivated { started: _, refusal: _ } => {
             let rollback_outcomes = map(execution_cell_rollback_members(activation: activation), m => run_leg(spark_stop_plan_of_member(member: m)))
-            concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, rollback_outcomes))
+            SparkExperimentRouteResult { outcomes: concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, rollback_outcomes)), halt: none }
           }
           ExecutionCellActivationRefusedBeforeStart { refusal: _ } =>
-            concat(concat(prior_outcomes, preparation_outcomes), activation_outcomes)
+            SparkExperimentRouteResult { outcomes: concat(concat(prior_outcomes, preparation_outcomes), activation_outcomes), halt: none }
         }
       }
     }
@@ -373,19 +501,21 @@ fn spark_dry_actuation_line(a: ExecutionCellActuation<SystemdExecutionMember>) -
 
 // THE DRY ENTRY: renders the admission and its legs as text, touching nothing. This is what the
 // operator reads before the go, and what the review reads as the actuation's shape: phases in
-// contract order per host, the cohort activation shown as one concurrent step, the single bounded
-// collective readback, and the deterministic stop.
+// contract order per host, the cohort activation shown as one concurrent step, the readback phase
+// — the head's bounded anchor leg, then one bounded per-rank profile leg per rank host, every leg
+// carrying the same shared bounded_seconds — and the deterministic stop.
 fn spark_native_experiment_actuation_dry() -> String {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: c } => join(["REFUSED: ", c as String], "")
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: readback, stop_legs: stop, admitted_seconds: admitted } =>
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, stop_legs: stop, admitted_seconds: admitted } =>
       join([
         "EXECUTION CELL members=", to_string(length(cohort.members)), " generation=", serialize_content_hash(hash: cohort.generation.identity), "\n",
         join(map(prior, a => spark_dry_actuation_line(a: a)), ""),
         join(map(prep, a => spark_dry_actuation_line(a: a)), ""),
-        "ACTIVATE COHORT concurrently (non-blocking starts; one collective readback follows)\n",
+        "ACTIVATE COHORT concurrently (non-blocking starts; the readback phase follows)\n",
         join(map(act, a => spark_dry_actuation_line(a: a)), ""),
-        "COLLECTIVE READBACK ", readback.host as String, " ", readback.unit_name as String, " bounded_seconds=", to_string(admitted), "\n", readback.script, "\n",
+        "HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted), "\n", head.plan.script, "\n",
+        join(map(ranks, l => join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted), "\n", l.plan.script, "\n"], "")), ""),
         "STOP (deterministic end on every rank)\n",
         join(map(stop, p => join(["STOP ", p.host as String, " ", p.unit_name as String, "\n", p.script, "\n"], "")), ""),
       ], "")
@@ -426,15 +556,16 @@ fn spark_native_experiment_default_actuation() -> ArmExperimentActuationAdmissio
 // THE WET ENTRY. Built, reviewed, and NOT RUN: the owner's go is the gate. The trust bracket is
 // the pair apply's exactly — the same credential materialization, the same known-hosts anchor, the
 // same privileged leg — and the sequencing inside is the execution-cell route: prior-generation
-// legs, then all preparations, then the cohort's non-blocking activations with one collective
-// readback, rolling the started ranks back on any failure before the receipt records the outcome.
+// legs, then all preparations, then the cohort's non-blocking activations with the per-rank
+// readback phase, rolling the started ranks back on any failure before the receipt records the
+// outcome.
 fn spark_native_experiment_apply_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: c } => exit_failure(reason: c as String)
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: readback, stop_legs: stop, admitted_seconds: _ } =>
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, stop_legs: stop, admitted_seconds: _ } =>
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_native_experiment_apply: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -457,21 +588,26 @@ fn spark_native_experiment_apply_wet() -> ProcessExit
                             prior_generation_actuations: prior,
                             preparation_actuations: prep,
                             activation_actuations: act,
-                            collective_readback: readback,
+                            head_readback: head,
+                            rank_readbacks: ranks,
                             stop_legs: stop,
                             run_leg: run_leg)
                         },
                       ) {
                         MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                        MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
-                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: outcomes)
+                        MaterializedSshKeyFileBracketCompleted { value: result } => {
+                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: result.outcomes)
                           let wr = Filesystem.Write(path: spark_native_experiment_apply_receipt_path, content: body)
+                          let located = match result.halt {
+                            Present { value: refusal } => spark_profile_readback_halt_wire(r: refusal)
+                            Absent => ""
+                          }
                           if !wr.success {
                             exit_failure(reason: join(["spark native experiment apply receipt write failed: ", wr.error], ""))
-                          } else if spark_pair_apply_all_applied(outcomes: outcomes) {
+                          } else if spark_pair_apply_all_applied(outcomes: result.outcomes) {
                             ExitSuccess
                           } else {
-                            exit_failure(reason: join(["spark native experiment apply did not converge:\n", body], ""))
+                            exit_failure(reason: join(["spark native experiment apply did not converge:\n", body, located], ""))
                           }
                         }
                       }
