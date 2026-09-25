@@ -100,7 +100,6 @@ src/v1/stage0/src/v2_compiler_body_producer.rs !merge
 src/v1/stage0/src/v2_compiler_compile.rs !merge
 src/v1/stage0/src/v2_compiler_discovery_enumeration.rs !merge
 src/v1/stage0/src/v2_compiler_infer.rs !merge
-src/v1/stage0/src/v2_compiler_normalize.rs !merge
 src/v1/stage0/src/v2_compiler_parse_engine_hooks.rs !merge
 src/v1/stage0/src/v2_compiler_program_assembly.rs !merge
 src/v1/stage0/src/v2_compiler_program_partition.rs !merge
