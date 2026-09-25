@@ -2,9 +2,9 @@ module v2.test.emit.emit_module_contribution
 
 import v2.compiler.emit_module {
   emit_module_contribution,
-  emit_module_decl_separator,
   emit_module_text
 }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_source_text }
@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // All three contribution arms are REAL at this seam, none is a stand-in:
 //   EmissionAuthoredFragment    the separator, whose bytes are the literal declared at
-//                               v2.compiler.emit_module emit_module_decl_separator
+//                               v2.compiler.target_carriers emit_module_decl_separator
 //   EmissionSourceComposition   the module fold, and one composition per declaration
 //   EmissionUnobservedFragment  v2.compiler.emit returns Medium<String>: the fold OBSERVES the
 //                               bytes but emit reports no contribution structure for them, so

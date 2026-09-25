@@ -109,6 +109,7 @@ fn blp_upper_bool_form() -> TargetBoolLiteralShape {
 fn blp_projection_with(bool_form: TargetBoolLiteralShape) -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     bool_literal_form: bool_form,
+    int_literal_form: rust_value_expression_projection().int_literal_form,
     binding_ref_form: rust_value_expression_projection().binding_ref_form,
     primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
     callable_apply_form: rust_value_expression_projection().callable_apply_form,

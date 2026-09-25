@@ -5,7 +5,6 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https, uri_wire }
-import v2.std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -233,8 +232,8 @@ fn grant_is_tag_ci_quarantine(g: TailscaleGrant) -> Bool {
 
 fn tag_ci_quarantine_holds(policy: TailscaleAclPolicy) -> Bool {
   let ci_grants = policy.grants |> filter(g => grant_src_is_tag_ci(g: g))
-  (length(ci_grants) == 1) && match ci_grants.first() {
-    Present { value: g } => grant_is_tag_ci_quarantine(g: g)
+  match first(ci_grants) {
+    Present { value: g } => (length(ci_grants) == 1) && grant_is_tag_ci_quarantine(g: g)
     Absent => false
   }
 }
@@ -263,8 +262,8 @@ fn tag_dashboard_admin_plane_holds(policy: TailscaleAclPolicy) -> Bool {
 
 fn dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: TailscaleAclPolicy) -> Bool {
   let ci_grants = policy.grants |> filter(g => grant_src_is_tag_ci(g: g))
-  (length(ci_grants) == 1) && match ci_grants.first() {
-    Present { value: g } => selector_list_contains(items: g.dst, needle: sel_ipv4(address: dashboard_cutover_mac_ip))
+  match first(ci_grants) {
+    Present { value: g } => (length(ci_grants) == 1) && selector_list_contains(items: g.dst, needle: sel_ipv4(address: dashboard_cutover_mac_ip))
     Absent => false
   }
 }
