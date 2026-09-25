@@ -6,12 +6,15 @@ import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
 import extdeps.vllm.engram_layout { VllmEngramRankRows }
-import gunbc.spark.v41_runtime_candidate { v41_candidate_partition, v41_live_store_readback }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
+import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of, v41_magic_octets,
   V41ReadbackSample, V41SampleMagic, V41SampleStoreRecord, V41SampleSourceWeight, V41SampleSourceScale,
   V41ReadbackReading, V41StoreReadbackRead, V41StoreReadback, V41StoreReadbackVerified, V41StoreReadbackUnread, V41StoreReadbackRefused,
   v41_readback_samples, v41_store_readback,
+  V41StoreReadbackReadingsUnread, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_row_store_spec, v41_published_store_readback_readings,
 }
 
 // ── THE BOUNDARY-STRATIFIED READBACK, AT FIXTURE SCALE ──────────────────────────────────────────
@@ -156,12 +159,47 @@ test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool {
     && w_refused_naming(v: foreign, fragment: "record layer.1.rank.0 row 1 is not a sample the spec owes")
 }
 
-// THE LIVE READBACK VERIFIES: srv5's eight stores, read at every seam by fleet-converge run 36126002186,
-// are v41_place_row of the published rows at every sampled row, no seam is undiscriminating, and all 56
-// owed samples were read. A reading that stopped matching, or a spec whose seams moved, turns this red.
-test fn the_live_readback_of_the_eight_stores_verifies() -> Bool {
-  match v41_live_store_readback() {
-    V41StoreReadbackVerified { host: h, observed_at: _, samples: n } => (h as String) == "srv5" && n == 56
+// THE LIVE READBACK VERIFIES, ONE LAYER PER CLAIM: srv5's eight stores, read at every seam by fleet-converge
+// run 36126002186 (gunbc.spark.v41_engram_row_store v41_published_store_readback_readings), are
+// v41_place_row of the published rows at every sampled row, and no seam is undiscriminating. The spec is the
+// live one over SUPPLIED head sizes (test.claim.vllm.vllm_engram_layout_witness w_published_head_sizes, whose
+// own claims draw them from the real prime search), so these claims pay for the readback and not for the
+// layout search; the whole-spec route runs for real in gunbc.spark.v41_runtime_candidate v41_live_store_readback,
+// which the D0 live-subject claim executes. Split per layer because decoding a layer's 28 samples is the
+// claim's cost; each layer's readings and seams are independent.
+fn w_live_layer_readback(layer: Nat) -> V41StoreReadback {
+  match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: w_published_head_sizes()) {
+    V41RowStoreSpecRefused { defects: d } => V41StoreReadbackRefused { defects: d }
+    V41RowStoreSpecAdmitted { spec: spec } => match v41_published_store_readback_readings {
+      V41StoreReadbackReadingsUnread { obligation: o } => V41StoreReadbackUnread { obligation: o }
+      V41StoreReadbackRead { host: h, observed_at: at, readings: rs } =>
+        v41_store_readback(
+          spec: v41_encoding_spec_of_layers(partition: v41_candidate_partition, layers: filter(spec.layers, t => t.layer == layer), geometry: spec.geometry),
+          readings: V41StoreReadbackRead { host: h, observed_at: at, readings: filter(rs, r => w_sample_layer(s: r.sample) == layer) },
+        )
+    }
+  }
+}
+
+fn w_sample_layer(s: V41ReadbackSample) -> Nat {
+  match s {
+    V41SampleMagic { layer: l, rank: _ } => l
+    V41SampleStoreRecord { layer: l, rank: _, local_row: _ } => l
+    V41SampleSourceWeight { layer: l, global_row: _ } => l
+    V41SampleSourceScale { layer: l, global_row: _ } => l
+  }
+}
+
+test fn the_live_readback_of_layer_1_verifies() -> Bool {
+  match w_live_layer_readback(layer: 1) {
+    V41StoreReadbackVerified { host: h, observed_at: _, samples: n } => (h as String) == "srv5" && n == 28
+    _ => false
+  }
+}
+
+test fn the_live_readback_of_layer_14_verifies() -> Bool {
+  match w_live_layer_readback(layer: 14) {
+    V41StoreReadbackVerified { host: h, observed_at: _, samples: n } => (h as String) == "srv5" && n == 28
     _ => false
   }
 }
