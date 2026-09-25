@@ -118,7 +118,7 @@ fn ddl_fn_brace_resolved() -> Outcome<Node> {
 
 // THE CHECK READS INFER'S OWN FRONTIER DIAGNOSTICS, ONE PASS. Infer carries a typed
 // `infer_grounding_not_derived` on its Accepted path for every node it leaves on the frontier
-// (v2.compiler.infer node_grounding_frontier_note), so "no such diagnostic" is "every recorded node
+// (v2.compiler.inferred_tree NodeGrounding), so "no such diagnostic" is "every recorded node
 // derived", which is what translate's gate reads. An earlier cut looked every node up in the facts
 // map, which is a linear scan per node, and cost 81k eval steps per claim on the required floor
 // against a 72.3k budget. The claim's subject is infer's verdict, not the lookup.

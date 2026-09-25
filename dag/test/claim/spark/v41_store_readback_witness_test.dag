@@ -1,0 +1,157 @@
+module test.claim.spark.v41_store_readback_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.numeric.base16 { byte_hex_lower }
+import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
+import extdeps.vllm.engram_layout { VllmEngramRankRows }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of, v41_magic_octets,
+  V41ReadbackSample, V41SampleMagic, V41SampleStoreRecord, V41SampleSourceWeight, V41SampleSourceScale,
+  V41ReadbackReading, V41StoreReadbackRead, V41StoreReadback, V41StoreReadbackVerified, V41StoreReadbackUnread, V41StoreReadbackRefused,
+  v41_readback_samples, v41_store_readback,
+}
+
+// ── THE BOUNDARY-STRATIFIED READBACK, AT FIXTURE SCALE ──────────────────────────────────────────
+//
+// Two layers of two ranks, three-byte records (two F8 weights, one F8 scale), ranks of unequal size so a
+// swap or a shift lands on different rows. The source bytes are a function of (layer, global row), so
+// every row is distinct unless a fixture makes two equal. The readings are SUPPLIED -- what a host that
+// produced the stores in a given (possibly wrong) way would print -- and the verdict is the fold's.
+
+fn w_spec() -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_of_layers(
+    partition: v41_candidate_partition,
+    layers: [
+      v41_layer_table(layer: 1, weight: "layers.1.engram.embed.weight" as NonEmptyStr, scale: "layers.1.engram.embed.scale" as NonEmptyStr, rows: 5, ranks: [VllmEngramRankRows { rank: 0, start: 0, end: 3 }, VllmEngramRankRows { rank: 1, start: 3, end: 5 }]),
+      v41_layer_table(layer: 14, weight: "layers.14.engram.embed.weight" as NonEmptyStr, scale: "layers.14.engram.embed.scale" as NonEmptyStr, rows: 5, ranks: [VllmEngramRankRows { rank: 0, start: 0, end: 2 }, VllmEngramRankRows { rank: 1, start: 2, end: 5 }]),
+    ],
+    geometry: v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 2, scale_width: 1),
+  )
+}
+
+// HOW THE STORES WERE (MIS)PRODUCED.
+type WProduction
+  = WHonest
+  | WRanksSwapped
+  | WLayer14FromLayer1
+  | WRank1ShiftedByOne
+  | WBadMagic
+  | WSeamRowsIdentical
+
+fn w_rank_start(layer: Nat, rank: Nat) -> Int {
+  if layer == 1 { if rank == 0 { 0 } else { 3 } } else { if rank == 0 { 0 } else { 2 } }
+}
+
+// THE SOURCE: weight [layer, row + 10], scale [row + 50]; WSeamRowsIdentical makes layer 1's rows 2 and 3
+// (its rank seam) the same bytes.
+fn w_source_row(p: WProduction, layer: Nat, g: Int) -> Int {
+  match p { WSeamRowsIdentical => if layer == 1 && g == 3 { 2 } else { g }  _ => g }
+}
+
+fn w_weight(p: WProduction, layer: Nat, g: Int) -> List<Int> {
+  [layer, w_source_row(p: p, layer: layer, g: g) + 10]
+}
+
+fn w_scale(p: WProduction, layer: Nat, g: Int) -> List<Int> {
+  [w_source_row(p: p, layer: layer, g: g) + 50]
+}
+
+// WHICH (layer, global row) THE PRODUCER WROTE INTO (layer, rank) AT local row k.
+fn w_written_layer(p: WProduction, layer: Nat) -> Nat {
+  match p { WLayer14FromLayer1 => 1  _ => layer }
+}
+
+fn w_written_row(p: WProduction, layer: Nat, rank: Nat, k: Int) -> Int {
+  match p {
+    WRanksSwapped => if layer == 1 { w_rank_start(layer: layer, rank: 1 - rank) + k } else { w_rank_start(layer: layer, rank: rank) + k }
+    WRank1ShiftedByOne => if rank == 1 { w_rank_start(layer: layer, rank: rank) + k + 1 } else { w_rank_start(layer: layer, rank: rank) + k }
+    _ => w_rank_start(layer: layer, rank: rank) + k
+  }
+}
+
+fn w_hex(bytes: List<Int>) -> String {
+  join(map(bytes, b => byte_hex_lower(v: b)), "")
+}
+
+fn w_read(p: WProduction, s: V41ReadbackSample) -> V41ReadbackReading {
+  match s {
+    V41SampleMagic { layer: _, rank: _ } => V41ReadbackReading { sample: s, hex: match p { WBadMagic => "454e4752320a"  _ => w_hex(bytes: v41_magic_octets()) } }
+    V41SampleStoreRecord { layer: l, rank: r, local_row: k } => {
+      let wl = w_written_layer(p: p, layer: l)
+      let g = w_written_row(p: p, layer: l, rank: r, k: k)
+      V41ReadbackReading { sample: s, hex: w_hex(bytes: concat(w_weight(p: p, layer: wl, g: g), w_scale(p: p, layer: wl, g: g))) }
+    }
+    V41SampleSourceWeight { layer: l, global_row: g } => V41ReadbackReading { sample: s, hex: w_hex(bytes: w_weight(p: p, layer: l, g: g)) }
+    V41SampleSourceScale { layer: l, global_row: g } => V41ReadbackReading { sample: s, hex: w_hex(bytes: w_scale(p: p, layer: l, g: g)) }
+  }
+}
+
+fn w_readback(p: WProduction) -> V41StoreReadback {
+  v41_store_readback(spec: w_spec(), readings: V41StoreReadbackRead {
+    host: "fixture" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr,
+    readings: map(v41_readback_samples(spec: w_spec()), s => w_read(p: p, s: s)),
+  })
+}
+
+fn w_refused_naming(v: V41StoreReadback, fragment: String) -> Bool {
+  match v {
+    V41StoreReadbackRefused { defects: d } => any(d, x => (x as String).contains(fragment))
+    _ => false
+  }
+}
+
+// THE SAMPLE IS THE SEAMS: per store its magic, its first and its last record, and the source rows at the
+// same global rows -- which, over a layer, are row 0, the last row and both sides of every rank boundary.
+test fn the_sample_is_every_store_edge_and_both_sides_of_every_seam() -> Bool {
+  let keys = map(v41_readback_samples(spec: w_spec()), s => match s {
+    V41SampleSourceWeight { layer: l, global_row: g } => join([to_string(l), ":", to_string(g)], "")
+    _ => ""
+  })
+  let rows = filter(keys, k => k != "")
+  length(v41_readback_samples(spec: w_spec())) == 4 + 4 * 2 * 3
+    && rows == ["1:0", "1:2", "1:3", "1:4", "14:0", "14:1", "14:2", "14:4"]
+}
+
+test fn honestly_produced_stores_verify() -> Bool {
+  match w_readback(p: WHonest) {
+    V41StoreReadbackVerified { host: _, observed_at: _, samples: n } => n == 28
+    _ => false
+  }
+}
+
+// THE RED THE PARENT NAMED: two ranks' plans swapped. Rank 0's store holds rank 1's rows and vice versa;
+// every digest and size would still be self-consistent, and the readback refuses at the seam.
+test fn two_ranks_swapped_plans_refuse() -> Bool {
+  w_refused_naming(v: w_readback(p: WRanksSwapped), fragment: "store layer.1.rank.0 row 0 (global row 0): the stored record is not v41_place_row")
+    && w_refused_naming(v: w_readback(p: WRanksSwapped), fragment: "store layer.1.rank.1 row 0 (global row 3)")
+}
+
+test fn layer_14_encoded_from_layer_1_offsets_refuses() -> Bool {
+  w_refused_naming(v: w_readback(p: WLayer14FromLayer1), fragment: "store layer.14.rank.0 row 0")
+}
+
+test fn an_off_by_one_rank_boundary_refuses() -> Bool {
+  w_refused_naming(v: w_readback(p: WRank1ShiftedByOne), fragment: "store layer.1.rank.1 row 0 (global row 3)")
+    && !w_refused_naming(v: w_readback(p: WRank1ShiftedByOne), fragment: "store layer.1.rank.0")
+}
+
+test fn a_wrong_header_refuses() -> Bool {
+  w_refused_naming(v: w_readback(p: WBadMagic), fragment: "store layer.1.rank.0: the header is not the row-store magic")
+}
+
+// A SHIFT THAT CANNOT BE SEEN MUST REFUSE, NOT PASS: the stores are honest, but rows 2 and 3 of layer 1
+// are the same bytes, so the seam between its ranks is undiscriminating and the readback refuses there.
+test fn identical_rows_across_a_seam_refuse_as_undiscriminating() -> Bool {
+  w_refused_naming(v: w_readback(p: WSeamRowsIdentical), fragment: "layer 1 rows 2 and 3 (the rank 1 boundary) are byte-identical")
+}
+
+test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool {
+  let all = map(v41_readback_samples(spec: w_spec()), s => w_read(p: WHonest, s: s))
+  let missing = v41_store_readback(spec: w_spec(), readings: V41StoreReadbackRead { host: "f" as NonEmptyStr, observed_at: "f" as NonEmptyStr, readings: filter(all, r => match r.sample { V41SampleMagic { layer: l, rank: k } => !(l == 14 && k == 1)  _ => true }) })
+  let foreign = v41_store_readback(spec: w_spec(), readings: V41StoreReadbackRead { host: "f" as NonEmptyStr, observed_at: "f" as NonEmptyStr, readings: concat(all, [w_read(p: WHonest, s: V41SampleStoreRecord { layer: 1, rank: 0, local_row: 1 })]) })
+  w_refused_naming(v: missing, fragment: "owes magic layer.14.rank.1")
+    && w_refused_naming(v: foreign, fragment: "record layer.1.rank.0 row 1 is not a sample the spec owes")
+}

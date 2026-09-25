@@ -1926,9 +1926,11 @@ pub fn declared_type_conformance_diags(
                     scope.module_name.clone(),
                 )])
             } else {
-                if ((type_node_is_arrow(declared.clone()) && type_node_is_arrow(produced.clone()))
-                    && callable_signature_mismatch(declared.clone(), produced.clone(), si.clone()))
-                {
+                if coproduct_payload_where_parent_required(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.clone(),
+                ) {
                     Rc::new(vec![type_mismatch_error(
                         crate::v1_compiler_infer_types::node_type_shape(
                             declared.clone(),
@@ -1942,28 +1944,50 @@ pub fn declared_type_conformance_diags(
                         scope.module_name.clone(),
                     )])
                 } else {
-                    if !both_ground.clone() {
-                        Rc::new(vec![])
-                    } else {
-                        if crate::v1_compiler_infer_types::node_type_compatible(
+                    if ((type_node_is_arrow(declared.clone())
+                        && type_node_is_arrow(produced.clone()))
+                        && callable_signature_mismatch(
                             declared.clone(),
                             produced.clone(),
                             si.clone(),
-                        ) {
+                        ))
+                    {
+                        Rc::new(vec![type_mismatch_error(
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                declared.clone(),
+                                si.clone(),
+                            ),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                produced.clone(),
+                                si.clone(),
+                            ),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )])
+                    } else {
+                        if !both_ground.clone() {
                             Rc::new(vec![])
                         } else {
-                            Rc::new(vec![type_mismatch_error(
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    declared.clone(),
-                                    si.clone(),
-                                ),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    produced.clone(),
-                                    si.clone(),
-                                ),
-                                span.clone(),
-                                scope.module_name.clone(),
-                            )])
+                            if crate::v1_compiler_infer_types::node_type_compatible(
+                                declared.clone(),
+                                produced.clone(),
+                                si.clone(),
+                            ) {
+                                Rc::new(vec![])
+                            } else {
+                                Rc::new(vec![type_mismatch_error(
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        declared.clone(),
+                                        si.clone(),
+                                    ),
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        produced.clone(),
+                                        si.clone(),
+                                    ),
+                                    span.clone(),
+                                    scope.module_name.clone(),
+                                )])
+                            }
                         }
                     }
                 }
@@ -7459,10 +7483,21 @@ pub fn one_sided_callable_value_mismatch(
     produced: Rc<Node>,
     type_env: Rc<TypeEnv>,
 ) -> bool {
-    ((((type_node_is_arrow(declared.clone()) != type_node_is_arrow(produced.clone()))
-        && !direct_call_formal_has_unbound_type_variable(declared.clone()))
-        && !direct_call_formal_has_unbound_type_variable(produced.clone()))
+    (((type_node_is_arrow(declared.clone()) != type_node_is_arrow(produced.clone()))
+        && !one_sided_non_arrow_side_is_open(declared.clone(), declared.clone(), produced.clone()))
         && one_sided_callable_mismatch(declared.clone(), produced.clone(), type_env.clone()))
+}
+
+pub fn one_sided_non_arrow_side_is_open(
+    formal: Rc<Node>,
+    formal_basis: Rc<Node>,
+    actual: Rc<Node>,
+) -> bool {
+    if type_node_is_arrow(formal.clone()) {
+        direct_call_formal_has_unbound_type_variable(actual.clone())
+    } else {
+        direct_call_formal_has_unbound_type_variable(formal_basis.clone())
+    }
 }
 
 pub fn one_sided_callable_mismatch(
@@ -7478,22 +7513,6 @@ pub fn one_sided_callable_mismatch(
 
 pub fn type_node_is_arrow(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Arrow)
-}
-
-pub fn expression_is_local_value(e: Rc<Node>) -> bool {
-    match (*e.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: kind, ..
-        } => binding_kind_is_local_value(kind.clone()),
-        _ => false,
-    }
-}
-
-pub fn binding_kind_is_local_value(kind: Option<Rc<VarBindingKind>>) -> bool {
-    match kind.clone().as_deref().cloned() {
-        Some(VarBindingKind::LocalValueBinding) => true,
-        _ => false,
-    }
 }
 
 pub fn direct_call_arg_type_mismatch(
@@ -7518,17 +7537,21 @@ pub fn direct_call_arg_type_mismatch(
             if (type_node_is_arrow(formal.clone()) && type_node_is_arrow(actual.clone())) {
                 callable_signature_mismatch(formal.clone(), actual.clone(), source_indices.clone())
             } else {
-                if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
-                    || direct_call_formal_has_unbound_type_variable(actual.clone()))
-                {
-                    false
+                if (type_node_is_arrow(formal.clone()) || type_node_is_arrow(actual.clone())) {
+                    (!one_sided_non_arrow_side_is_open(
+                        formal.clone(),
+                        substitution_basis.clone(),
+                        actual.clone(),
+                    ) && one_sided_callable_mismatch(
+                        formal.clone(),
+                        actual.clone(),
+                        type_env.clone(),
+                    ))
                 } else {
-                    if (type_node_is_arrow(formal.clone()) || type_node_is_arrow(actual.clone())) {
-                        (one_sided_callable_mismatch(
-                            formal.clone(),
-                            actual.clone(),
-                            type_env.clone(),
-                        ) && !expression_is_local_value(actual_expr.clone()))
+                    if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
+                        || direct_call_formal_has_unbound_type_variable(actual.clone()))
+                    {
+                        false
                     } else {
                         if (type_node_is_callable(formal.clone())
                             || type_node_is_callable(actual.clone()))
@@ -13027,7 +13050,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             };
             let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
             let val_typed = val_result.typed.clone();
-            let val_type = crate::v1_compiler_infer_types::resolved_type(val_typed.clone());
+            let val_type = expression_value_type(val_typed.clone());
             let val_annotation_diags = match declared_let_type.clone() {
                 Some(declared) => {
                     let produced_value_type = expression_value_type(val_typed.clone());
@@ -13040,12 +13063,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     if ((conformance.clone().len() as i64) > 0) {
                         conformance.clone()
                     } else {
-                        if (one_sided_callable_value_mismatch(
+                        if one_sided_callable_value_mismatch(
                             declared.clone(),
                             produced_value_type.clone(),
                             scope.type_env.clone(),
-                        ) && !expression_is_local_value(val_typed.clone()))
-                        {
+                        ) {
                             Rc::new(vec![type_mismatch_error(
                                 crate::v1_compiler_infer_types::node_type_shape(
                                     declared.clone(),

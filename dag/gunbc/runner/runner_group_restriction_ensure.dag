@@ -1,0 +1,98 @@
+module gunbc.runner_group_restriction_ensure
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, runner_group_visibility_wire }
+import gunbc.repository { gunbc_repository_numeric_identity }
+import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
+import gunbc.runner_group_restriction_observation {
+  ShakedownRunnerGroupRestriction, MicrovmRunnerGroupStanding,
+  RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionRefused,
+  RunnerGroupAbsent, observe_shakedown_runner_group_restriction, microvm_shakedown_runner_group_name,
+  microvm_shakedown_selected_workflow, runner_group_restriction_refusal_text,
+}
+
+// THE MICROVM RUNNER GROUP, ENSURED: read first, create only when absent, read back after.
+//
+// The group gunbc.runner_jit_mint plan_jit_mint requires is one the organization does not have
+// until it is created, and creating it is an org-admin effect. This module owns the PLAN -- what
+// the group must be, and which of three things a read of the organization's groups says to do --
+// so the effect is never performed on a guess: a group already restricted to exactly the shakedown
+// workflow is left alone (no request is filed, no operator is asked), an absent one is created, and
+// a group holding the name with any other restriction is REFUSED rather than edited, because the
+// update is a different effect that nobody has modeled or approved. After a create, the
+// organization is read again and the same sealed observer
+// (gunbc.runner_group_restriction_observation) must hold, or the create is refused: a 201 is
+// GitHub saying it accepted the request, and only the readback says the group is what the mint
+// needs.
+
+// Every member of the create body, as policy. Visibility is SELECTED with this repository alone,
+// public repositories are refused, and the workflow restriction names the shakedown file: three
+// independent walls, so no single wrong member reopens the group to other work.
+type RunnerGroupCreateSubject {
+  organization: NonEmptyStr
+  name: NonEmptyStr
+  visibility: RunnerGroupVisibility
+  selected_repository_id: Int
+  allows_public_repositories: Bool
+  restricted_to_workflows: Bool
+  selected_workflow: NonEmptyStr
+}
+
+fn microvm_runner_group_create_subject() -> RunnerGroupCreateSubject {
+  RunnerGroupCreateSubject {
+    organization: org_actions_organization,
+    name: microvm_shakedown_runner_group_name,
+    visibility: SelectedRepositories,
+    selected_repository_id: gunbc_repository_numeric_identity.repository_id,
+    allows_public_repositories: false,
+    restricted_to_workflows: true,
+    selected_workflow: microvm_shakedown_selected_workflow(),
+  }
+}
+
+// The subject as one line, the text the operator reads and the intent a request digests.
+fn runner_group_create_subject_text(s: RunnerGroupCreateSubject) -> String {
+  join([
+    "create runner group ", s.name as String, " in org ", s.organization as String,
+    ": visibility=", runner_group_visibility_wire(v: s.visibility) as String,
+    " repository_id=", to_string(s.selected_repository_id),
+    " allows_public_repositories=", if s.allows_public_repositories { "true" } else { "false" },
+    " restricted_to_workflows=", if s.restricted_to_workflows { "true" } else { "false" },
+    " selected_workflows=[", s.selected_workflow as String, "]",
+  ], "")
+}
+
+type RunnerGroupEnsurePlan
+  = GroupAlreadyRestricted { restriction: ShakedownRunnerGroupRestriction }
+  | GroupCreateRequired { subject: RunnerGroupCreateSubject }
+  | GroupEnsureRefused { cause: NonEmptyStr }
+
+// Absent is the ONE refusal that plans the create; every other refusal of the observer -- an
+// unreadable list, a duplicated name, a group holding the name with another restriction -- refuses
+// the ensure, because the update is a different effect nobody has modeled or approved.
+fn plan_runner_group_ensure(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupEnsurePlan {
+  match observe_shakedown_runner_group_restriction(name: subject.name, listed: listed) {
+    RunnerGroupRestrictedToShakedownWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } => GroupCreateRequired { subject: subject }
+    RunnerGroupRestrictionRefused { name, cause } =>
+      GroupEnsureRefused { cause: join([
+        "RunnerGroupNotEnsurable: ", name as String, ": ", runner_group_restriction_refusal_text(cause: cause),
+        "; updating an existing group is an effect this module does not perform",
+      ], "") as NonEmptyStr }
+  }
+}
+
+// THE READBACK AFTER A CREATE. The only admitted outcome is the sealed restriction; an absent group
+// after a 201 is as much a refusal as a wrongly restricted one.
+type RunnerGroupCreateReadback
+  = CreatedGroupRestricted { restriction: ShakedownRunnerGroupRestriction }
+  | CreatedGroupNotRestricted { cause: NonEmptyStr }
+
+fn readback_after_create(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupCreateReadback {
+  match plan_runner_group_ensure(subject: subject, listed: listed) {
+    GroupAlreadyRestricted { restriction } => CreatedGroupRestricted { restriction: restriction }
+    GroupCreateRequired { subject: _ } =>
+      CreatedGroupNotRestricted { cause: "RunnerGroupAbsentAfterCreate: the create returned success and the readback names no such group" as NonEmptyStr }
+    GroupEnsureRefused { cause } => CreatedGroupNotRestricted { cause: cause }
+  }
+}
