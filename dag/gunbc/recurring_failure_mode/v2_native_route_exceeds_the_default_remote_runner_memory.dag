@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.v2_native_route_exceeds_the_default_remote_runner_memory
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data v2_native_route_exceeds_the_default_remote_runner_memory: RecurringFailureMode = RecurringFailureMode {
+  identity: "v2_native_route_exceeds_the_default_remote_runner_memory" as NonEmptyStr,
+
+  receipts: [
+    "neither route that runs the v2 emit pipeline over a real dag/ closure fits the default remote build runner's memory. The two routes are the seed interpreter evaluating v2.compiler.self_host.compiler_closure_emit, and the seed emitting and building v2.cli.compile_cli for //gunbc/instruments:v2-native-cli (INVALID STATE: the instrument that establishes the v2-exclusive door, and the only v2 route that emits a named module's closure, cannot execute on the executor sessions are directed to use. HARM: a session that asks the v2 route what it refuses for a module gets an OOM kill with no stage marker instead of a located diagnostic, so the v2 emitter's refusals for real modules stay unmeasured, and a v2 change that breaks the door is caught only on a larger host).",
+
+    "RECEIPT, measured 2026-09-24/25 while sizing the approve-ios Swift target (dashboard node adhoc-1a935b07-173). Both runs were on the BuildBuddy linux/amd64 runner (7 GB RAM, 6 CPUs, no cgroup memory limit, so the seed refuses to start with HostBudgetUnreadable until the shell is placed in a cgroup; the probe capped memory.max at 6.8 GB). (1) Interpreter route: a probe calling emit_compiler_import_closure_from_ingest_located over the 90-file import closure of gunbc.auth.approval_device_wire was OOM-killed (137) for the rust, c and swift target models alike, after 322 s, 1174 s and 361 s. (2) Built-CLI route: gunbc test //gunbc/instruments:v2-native-cli was OOM-killed (137) after 748 s, while the seed was emitting src/v2/cli/compile_cli.dag in-process, right after compile.normalize and before any crate was assembled (BuildBuddy invocation 40ebdf1e-9699-43e2-9975-83a1f0cad1a6). Neither kill left a stage marker, and memory.peak read back empty.",
+
+    "WHY THIS IS A FAILURE MODE AND NOT A SIZING NOTE. An executor too small for the instrument does not produce a typed refusal. It produces a SIGKILL that looks the same as a hang or a crash, and every reader has to rediscover it at the cost of an hour of remote time per attempt. The honest arms are to name the executor class the instrument requires and refuse on a smaller one, or to shrink the route's working set. Retrying on the same runner answers nothing.",
+
+    "RUNG FOUND AT: silent -- nothing declares the memory an instrument needs, and nothing refuses to dispatch it to an executor that lacks it. ATTAINABLE CEILING: mechanically preventable -- an instrument row can declare its required executor memory, and dispatch can refuse an executor below it with a typed cause. NEXT-RUNG TRIGGER, stated as the capability: gunbc.instrument_targets rows carry a declared executor memory floor that the remote dispatch reads and refuses against, SUFFICIENT FOR an under-sized dispatch of //gunbc/instruments:v2-native-cli to refuse before building instead of being OOM-killed. Routing is with the parent lane (eager-owl-205).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "v2_native_cli_label", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.self_host.compiler_closure_emit", decl_name: "emit_compiler_import_closure_from_ingest_located", field: WholeDeclaration },
+  ],
+}

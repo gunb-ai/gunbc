@@ -148,8 +148,15 @@ const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived
 /// `exit_failure`, which is `ExitFailure { code: exit_code_general_error }` -- and
 /// `extdeps.process.posix_exit` declares that as `1`. So a refusal this harness pins takes exactly
 /// 1. Accepting any non-zero admitted `101` (a Rust panic's status) beside plausible stderr, which
-/// is a crash wearing a refusal's clothes. Both door arms compare against this.
+/// is a crash wearing a refusal's clothes. The emit arm compares against this; the no-entry
+/// control is a parse refusal and compares against `CLI_DOOR_USAGE_REFUSAL_EXIT`.
 const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
+
+/// THE STATUS A PARSE REFUSAL TAKES, WHICH IS NOT THE EMIT REFUSAL'S. `v2_cli_exit` maps a
+/// `CliUsageRefused` -- a command line that was not usable, decided before any walk -- to
+/// `extdeps.process.gnu_bash_exit` `exit_code_misuse`, which is `2`, the same split
+/// `v2.compiler.compile` `native_driver_plan_exit` makes. The no-entry control is such a refusal.
+const CLI_DOOR_USAGE_REFUSAL_EXIT: i32 = 2;
 
 /// THE THREE MARKERS OF THE CLI'S REFUSAL RECORD, named so each is required rather than sought.
 /// The rendered main prints `REFUSED: <reason>`; for an emit refusal that reason is
@@ -161,7 +168,7 @@ const CLI_REFUSAL_PREFIX: &str = "REFUSED: ";
 /// detail, a ` -- ` boundary, and the module's DECLARED usage line -- not the detail alone.
 const CLI_DETAIL_USAGE_BOUNDARY: &str = " -- ";
 const CLI_DOOR_DECLARED_USAGE: &str =
-    "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]...";
+    "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]";
 const CLI_EMIT_REFUSAL_HEAD: &str = "the closure did not emit; diagnostic chain: ";
 const CLI_FATAL_AT_MARKER: &str = " | FATAL AT ";
 
@@ -1837,16 +1844,16 @@ fn walk_cli_door(
             root_arg.clone(),
         ],
     )?;
-    // THE SAME EXIT RULE AS THE EMIT ARM. `cli_no_entry` is a `CliRunRefused` like any other, so it
-    // exits `exit_code_general_error`; accepting any non-zero here would admit a panic or a spawn
-    // convention as the located refusal this arm exists to observe.
+    // THE PARSE-REFUSAL EXIT RULE. `cli_no_entry` is a `CliUsageRefused`, so it exits
+    // `exit_code_misuse`; accepting any non-zero here would admit a panic or a spawn convention as
+    // the located refusal this arm exists to observe.
     match refused.status {
-        Some(CLI_DOOR_REFUSAL_EXIT) => {}
+        Some(CLI_DOOR_USAGE_REFUSAL_EXIT) => {}
         other => {
             return Err(format!(
                 "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotDiscriminating — the built CLI \
-                 exited {other:?} on an argv naming no --entry, and this door's refusals exit \
-                 {CLI_DOOR_REFUSAL_EXIT}. A zero accepts the argv its own `cli_no_entry` arm exists \
+                 exited {other:?} on an argv naming no --entry, and this door's parse refusals \
+                 exit {CLI_DOOR_USAGE_REFUSAL_EXIT}. A zero accepts the argv its own `cli_no_entry` arm exists \
                  to refuse; a signal or any other status is not a refusal at all."
             ))
         }
