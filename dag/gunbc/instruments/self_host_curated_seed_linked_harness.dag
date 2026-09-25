@@ -36,7 +36,7 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 // Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings
 // consumers.
 
-// LANDED (2026-07-17): generic seed-shim closure assembly via cssl_assemble bin +
+// LANDED (2026-07-17): generic closure assembly via cssl_assemble bin +
 // cssl_seed_linked_closure_assembly.rs (typed Refused final arm; explicit dag/std · lens ·
 // peripheral emit-retain). Former assembly Refused arms (compiler dep absent from seed lib.rs;
 // v2_std module without shared std-bridge shim) fold into byte-untouched emit-retain — refusal
