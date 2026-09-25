@@ -37,7 +37,7 @@ import std.primitive_projection {
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_pure_dag_seam_unreachable,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1241,6 +1241,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "data_init_decl_facts_live",
   "bytes_octets",
   "utf8_encode_bytes",
+  "pure_dag_seam_unreachable",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1608,6 +1609,9 @@ data primitive_bytes_octets_traversal: PrimitiveTraversalOrderFact = PrimitiveTr
 
 data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_utf8_encode_bytes, order: SourcePreservingOrder }
 
+// pure_dag_seam_unreachable produces no value at all -- it diverges -- so no order is consulted.
+data primitive_pure_dag_seam_unreachable_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_pure_dag_seam_unreachable, order: OrderFreeResult }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1626,6 +1630,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_data_init_decl_facts_live_traversal,
   primitive_bytes_octets_traversal,
   primitive_utf8_encode_bytes_traversal,
+  primitive_pure_dag_seam_unreachable_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
 // ONE PROGRAM, RUN TWICE: interpreted (`gunbc run`) and emitted (`gunbc compile --target rust`, then
 // the crate built and executed). The two outputs must be byte-identical, and the expected line is
-// `T F T F T 6 2962370309 97 0`. Each field discriminates one emitter defect the native App Attest
+// `T F T F T 6 2962370309 97 0 989`. Each field discriminates one emitter defect the native App Attest
 // closure hit (stern-raven-24, gunbc#12251):
 //   1-5  String ordering over the Timestamp alias (extdeps.standards.rfc_5280 x509_validity_at).
 //        `"Z" < "a"` is T and `"é" < "z"` is F only under byte-lexicographic UTF-8 order, which is
@@ -17,6 +17,9 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 //        answers 3.
 //   8-9  A binding arm after an unguarded absent arm binds the PRESENT value (v1.compiler.infer
 //        match_unguarded_absent_arm_index); the emitted `o => o` bound the whole Option<i64>.
+//   10   The same arm shape inside a TAIL-RECURSIVE function, whose matches the tail-call
+//        lowering renders by its own arm emitter (extdeps.standards.rfc_5280
+//        read_extensions_list was the specimen): the octet sum 97+195+169+226+130+172.
 fn ts_before(a: Timestamp, b: Timestamp) -> Bool {
   a < b
 }
@@ -29,6 +32,13 @@ fn first_or_zero(xs: List<Int>) -> Int {
   match xs |> first {
     null => 0
     o => o
+  }
+}
+
+fn octet_sum_from(xs: List<Int>, i: Int, acc: Int) -> Int {
+  match xs |> get(i) {
+    null => acc
+    x => octet_sum_from(xs: xs, i: i + 1, acc: acc + x)
   }
 }
 
@@ -51,12 +61,13 @@ fn observed_line() -> String {
     to_string(value: count(o)),
     to_string(value: positional_fold(xs: o)),
     to_string(value: first_or_zero(xs: o)),
-    to_string(value: first_or_zero(xs: []))
+    to_string(value: first_or_zero(xs: [])),
+    to_string(value: octet_sum_from(xs: o, i: 0, acc: 0))
   ]
   join(parts, separator: " ")
 }
 
-data expected_line: String = "T F T F T 6 2962370309 97 0"
+data expected_line: String = "T F T F T 6 2962370309 97 0 989"
 
 fn main() -> ProcessExit {
   let line = observed_line()

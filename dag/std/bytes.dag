@@ -5,8 +5,19 @@ import std.integer { UInt8, QualifiedOctetsResult, uint8_octets_of_ints }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+// THE DIVERGENT SEAM IS A DECLARED HOST SEAM, NOT A DIVISION. Its job is to be bottom: a value an
+// arm the author proved unreachable can hold, which diverges if the proof was wrong. It was spelled
+// `1 / 0`, and that spelling carried a meaning to each realization that it did not declare: the
+// interpreter refused with DivisionByZero only if reached, while rustc's deny-by-default
+// unconditional_panic lint refused every emitted crate whose closure contained the module, reached
+// or not (native App Attest, gunbc#12251). Relaxing that lint for generated code would have removed
+// a real check to admit one placeholder (review 71098 of gunbc#12261). As a rostered
+// HostRealizedSeam each realization states the divergence itself: the interpreter's
+// free_call.pure_dag_seam_unreachable arm refuses with a typed error naming the seam, and
+// v1_rt::pure_dag_seam_unreachable panics with the same name -- an intentional divergence, which is
+// what `!` is for, rather than a constant expression the target's own checker must reject.
 fn pure_dag_seam_unreachable() -> Int {
-  1 / 0
+  pure_dag_seam_unreachable()
 }
 
 fn pure_dag_seam_unreachable_float() -> Float {

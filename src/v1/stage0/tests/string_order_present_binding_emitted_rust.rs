@@ -3,7 +3,8 @@
 //! section 7). Before the repair the first refused at emission as an operand "whose declaration
 //! could not be read" (compile_error!, the corpus String reaching the ordering operators with no
 //! host-text-carrier arm in v1.compiler.emit_rust rust_operand_realization_of_type), and the second
-//! bound the whole Option in `o => o` (rustc E0308). Found on the native App Attest closure
+//! bound the whole Option in `o => o` (rustc E0308), in ordinary matches and in the tail-call
+//! lowering's own match rendering alike. Found on the native App Attest closure
 //! (extdeps.standards.rfc_5280 x509_validity_at; x690_der der_unsigned_integer). The ordering rows
 //! discriminate byte-lexicographic UTF-8 order, the interpreter's (Str, Str) arm: "Z" < "a" and
 //! NOT "é" < "z". Run with cargo test -p v1-compiler --test string_order_present_binding_emitted_rust.
@@ -33,8 +34,16 @@ fn first_or_zero(xs: List<Int>) -> Int {
   }
 }
 
+fn total_from(xs: List<Int>, i: Int, acc: Int) -> Int {
+  match xs |> get(i) {
+    null => acc
+    x => total_from(xs: xs, i: i + 1, acc: acc + x)
+  }
+}
+
 fn probe() -> Int {
-  first_or_zero(xs: [97, 5]) * 100000
+  total_from(xs: [97, 5], i: 0, acc: 0) * 100000000
+    + first_or_zero(xs: [97, 5]) * 100000
     + first_or_zero(xs: []) * 10000
     + bit(b: before(a: "2026-01-02T00:00:00Z", b: "2026-01-10T00:00:00Z")) * 1000
     + bit(b: before(a: "b", b: "a")) * 100
@@ -87,7 +96,7 @@ fn string_order_and_present_binding_emit_buildable_rust_equal_to_the_interpreter
         Ok(Value::Int(n)) => n,
         other => panic!("interpreter did not produce an Int: {other:?}"),
     };
-    assert_eq!(interpreted, 9701010, "interpreter control");
+    assert_eq!(interpreted, 10209701010, "interpreter control");
 
     let result = compile_sources(source(), RenderTarget::Rust);
     let modules: Vec<_> = result

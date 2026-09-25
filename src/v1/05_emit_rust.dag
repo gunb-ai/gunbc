@@ -3813,18 +3813,7 @@ data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
 // written by hand. So the crate-root block is emitted only for a root whose modules are ALL
 // generated, and where hand-maintained siblings share the root each generated item carries the
 // relaxation as an outer attribute instead.
-//
-// unconditional_panic IS A REACHABILITY DISAGREEMENT, NOT A STYLE LINT, and it is relaxed because the
-// interpreter is the semantics the emitted crate owes. `1 / 0` in an ACCEPTED program is a refusal
-// only IF REACHED: the interpreter evaluates it lazily and refuses with a typed division-by-zero
-// error at that moment, and the emitted host division panics at exactly the same moment. rustc's
-// deny-by-default lint instead refuses the WHOLE crate at compile time because a constant operand
-// makes the panic statically certain -- so std.bytes pure_dag_seam_unreachable, the corpus's
-// declared divergent seam, took down every crate whose closure reached std.bytes although no
-// execution calls it (native App Attest, stern-raven-24). Relaxing the lint changes no behaviour
-// that runs: the refusal still fires, loudly, where the interpreter's does.
 data generated_rust_lint_relaxations: List<String> = [
-  "unconditional_panic",
   "unused_imports",
   "unused_variables",
   "unused_mut",
@@ -13574,7 +13563,8 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
 // (E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>). The narrowing is read
 // from the checker's own predicate, never re-derived here, so the pattern and the typing cannot
 // disagree about which arm narrows: in exactly that arm the binding is emitted `Some(v)`, which the
-// earlier `None` arm keeps exhaustive.
+// earlier `None` arm keeps exhaustive. The tail-call lowering's own arm emitter
+// (emit_typed_tco_match_arm) reads the same predicate, so the two match renderings agree.
 fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
@@ -15020,8 +15010,10 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
-      let arm_strs = arm_list |> map(arm =>
-        emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
+      let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
+      let arm_strs = arm_list |> enumerate |> map(pair =>
+        emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_rc_option_ref {
@@ -15098,7 +15090,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registr
     emit_default_return: frame => emit_rust_tco_default_return(frame: frame, registry: registry, shared_types: shared_types, emit_info: emit_info))
 }
 
-fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
+fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -15107,6 +15099,8 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let rc_analysis = rc_pattern_analysis_with_box_fields(rc_analysis: rc_analysis_raw, arm_pat: arm_pat, shared_types: shared_types, emit_info: emit_info, scope: scope)
   let pat_str = if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+  } else if present_binding {
+    concat("Some(", emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info), ")")
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }

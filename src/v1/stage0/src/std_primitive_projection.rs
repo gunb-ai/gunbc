@@ -236,6 +236,15 @@ pub fn primitive_utf8_encode_bytes() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_pure_dag_seam_unreachable() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("pure_dag_seam_unreachable".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn symbol_lexeme_seam_disposition_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -348,6 +357,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_utf8_encode_bytes(),
             "std.bytes".to_string(),
             "utf8_encode_bytes".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_pure_dag_seam_unreachable(),
+            "std.bytes".to_string(),
+            "pure_dag_seam_unreachable".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

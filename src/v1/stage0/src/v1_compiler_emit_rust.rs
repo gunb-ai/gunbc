@@ -7490,7 +7490,7 @@ pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
 pub fn generated_rust_lint_relaxations() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["unconditional_panic".to_string(), "unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
+            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -33986,11 +33986,26 @@ pub fn emit_rust_tco_match(
                         emit_info.clone(),
                         frame.scope.clone().type_env.clone().source_indices.clone(),
                     );
+                    let absent_arm_index =
+                        crate::v1_compiler_infer::match_unguarded_absent_arm_index(
+                            arm_list.clone(),
+                        );
                     let arm_strs = Rc::new({
                         let mut __result = Vec::new();
-                        for arm in arm_list.iter().cloned() {
+                        for pair in Rc::new(
+                            arm_list
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .enumerate()
+                                .map(|(i, v)| (i as i64, v))
+                                .collect::<Vec<_>>(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
                             __result.push(emit_typed_tco_match_arm(
-                                arm.clone(),
+                                pair.1.clone(),
                                 fn_name.clone(),
                                 params.clone(),
                                 registry.clone(),
@@ -33999,6 +34014,12 @@ pub fn emit_rust_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                                 tco_scrut_type.clone(),
+                                crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                                    crate::v1_compiler_infer_types::resolved_type(s.clone()),
+                                    crate::v1_std_core::arm_pattern(pair.1.clone()),
+                                    pair.0.clone(),
+                                    absent_arm_index.clone(),
+                                ),
                             ));
                         }
                         __result
@@ -34366,6 +34387,7 @@ pub fn emit_typed_tco_match_arm(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
+    present_binding: bool,
 ) -> String {
     {
         let arm_pat = crate::v1_std_core::arm_pattern(arm.clone());
@@ -34397,14 +34419,31 @@ pub fn emit_typed_tco_match_arm(
                 emit_info.clone(),
             )
         } else {
-            emit_pattern(
-                arm_pat.clone(),
-                Rc::new(vec![]),
-                shared_types.clone(),
-                scrut_type.clone(),
-                si.clone(),
-                emit_info.clone(),
-            )
+            if present_binding.clone() {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Some(".to_string(),
+                        emit_pattern(
+                            arm_pat.clone(),
+                            Rc::new(vec![]),
+                            shared_types.clone(),
+                            scrut_type.clone(),
+                            si.clone(),
+                            emit_info.clone(),
+                        ),
+                    ),
+                    ")".to_string(),
+                )
+            } else {
+                emit_pattern(
+                    arm_pat.clone(),
+                    Rc::new(vec![]),
+                    shared_types.clone(),
+                    scrut_type.clone(),
+                    si.clone(),
+                    emit_info.clone(),
+                )
+            }
         };
         let field_guards =
             collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());

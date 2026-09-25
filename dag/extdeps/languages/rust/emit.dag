@@ -331,7 +331,8 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "symbol_lexeme",        bridge_name: "symbol_lexeme",        passes_by_ref: false, wraps_result: false },
   { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false },
   { name: "bytes_octets",         bridge_name: "bytes_octets",         passes_by_ref: false, wraps_result: false },
-  { name: "utf8_encode_bytes",    bridge_name: "utf8_encode_bytes",    passes_by_ref: false, wraps_result: false }
+  { name: "utf8_encode_bytes",    bridge_name: "utf8_encode_bytes",    passes_by_ref: false, wraps_result: false },
+  { name: "pure_dag_seam_unreachable", bridge_name: "pure_dag_seam_unreachable", passes_by_ref: false, wraps_result: false }
 ]
 
 fn rt_functions() -> Map<String, Bool> {

@@ -4,7 +4,6 @@
 #![recursion_limit = "256"]
 
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -17,7 +16,6 @@
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -30,7 +28,6 @@ use im::{OrdSet as BTreeSet, Vector as Vec};
 pub use v1_stage0_v1_infer::*;
 
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -42,7 +39,6 @@ pub use v1_stage0_v1_infer::*;
 )]
 pub mod extdeps_cargo;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -54,7 +50,6 @@ pub mod extdeps_cargo;
 )]
 pub mod extdeps_cargo_version;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -66,7 +61,6 @@ pub mod extdeps_cargo_version;
 )]
 pub mod extdeps_filesystem_rust_realization;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -78,7 +72,6 @@ pub mod extdeps_filesystem_rust_realization;
 )]
 pub mod extdeps_languages_rust_derive_contracts;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -90,7 +83,6 @@ pub mod extdeps_languages_rust_derive_contracts;
 )]
 pub mod extdeps_version;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -102,7 +94,6 @@ pub mod extdeps_version;
 )]
 pub mod extdeps_version_semver;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -114,7 +105,6 @@ pub mod extdeps_version_semver;
 )]
 pub mod gunbc_cli_dispatch_generated;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -126,7 +116,6 @@ pub mod gunbc_cli_dispatch_generated;
 )]
 pub mod gunbc_cli_dispatch_surface;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -138,7 +127,6 @@ pub mod gunbc_cli_dispatch_surface;
 )]
 pub mod gunbc_namespace_reference_derived_closure_admission;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -150,7 +138,6 @@ pub mod gunbc_namespace_reference_derived_closure_admission;
 )]
 pub mod gunbc_reference_derived_candidate;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -162,7 +149,6 @@ pub mod gunbc_reference_derived_candidate;
 )]
 pub mod gunbc_rust_crate_package_ident;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -174,7 +160,6 @@ pub mod gunbc_rust_crate_package_ident;
 )]
 pub mod gunbc_rust_decl_type_overlay;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -186,7 +171,6 @@ pub mod gunbc_rust_decl_type_overlay;
 )]
 pub mod gunbc_stage0_crate_layout_generated;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -198,7 +182,6 @@ pub mod gunbc_stage0_crate_layout_generated;
 )]
 pub mod gunbc_stage0_crate_partition_generated;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -210,7 +193,6 @@ pub mod gunbc_stage0_crate_partition_generated;
 )]
 pub mod gunbc_stage0_emitted_edge_admission;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -222,7 +204,6 @@ pub mod gunbc_stage0_emitted_edge_admission;
 )]
 pub mod gunbc_stage0_emitted_population_manifest;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -234,7 +215,6 @@ pub mod gunbc_stage0_emitted_population_manifest;
 )]
 pub mod gunbc_stage0_executable_assembly_generated;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -246,7 +226,6 @@ pub mod gunbc_stage0_executable_assembly_generated;
 )]
 pub mod gunbc_stage0_partition_package_graph;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -258,7 +237,6 @@ pub mod gunbc_stage0_partition_package_graph;
 )]
 pub mod std_compiler_entry;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -270,7 +248,6 @@ pub mod std_compiler_entry;
 )]
 pub mod std_constructors;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -282,7 +259,6 @@ pub mod std_constructors;
 )]
 pub mod std_integer;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -294,7 +270,6 @@ pub mod std_integer;
 )]
 pub mod std_machine_constraints;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -306,7 +281,6 @@ pub mod std_machine_constraints;
 )]
 pub mod std_occurrence_binding;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -318,7 +292,6 @@ pub mod std_occurrence_binding;
 )]
 pub mod std_occurrence_binding_candidates;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -330,7 +303,6 @@ pub mod std_occurrence_binding_candidates;
 )]
 pub mod std_occurrence_binding_resolve;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -342,7 +314,6 @@ pub mod std_occurrence_binding_resolve;
 )]
 pub mod std_reference_binding_observation;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -354,7 +325,6 @@ pub mod std_reference_binding_observation;
 )]
 pub mod std_repair_input_origin;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -366,7 +336,6 @@ pub mod std_repair_input_origin;
 )]
 pub mod std_serialization;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -378,7 +347,6 @@ pub mod std_serialization;
 )]
 pub mod std_workspace_artifact;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -390,7 +358,6 @@ pub mod std_workspace_artifact;
 )]
 pub mod v1_compiler_annotation_bind;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -402,7 +369,6 @@ pub mod v1_compiler_annotation_bind;
 )]
 pub mod v1_compiler_closure_stub_v2_std_integer_rust;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -414,7 +380,6 @@ pub mod v1_compiler_closure_stub_v2_std_integer_rust;
 )]
 pub mod v1_compiler_closure_stub_v2_std_text_rust;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -426,7 +391,6 @@ pub mod v1_compiler_closure_stub_v2_std_text_rust;
 )]
 pub mod v1_compiler_compile;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -438,7 +402,6 @@ pub mod v1_compiler_compile;
 )]
 pub mod v1_compiler_complexity;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -450,7 +413,6 @@ pub mod v1_compiler_complexity;
 )]
 pub mod v1_compiler_dag_collect;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -462,7 +424,6 @@ pub mod v1_compiler_dag_collect;
 )]
 pub mod v1_compiler_dag_collect_support;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -474,7 +435,6 @@ pub mod v1_compiler_dag_collect_support;
 )]
 pub mod v1_compiler_effect_derivation;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -486,7 +446,6 @@ pub mod v1_compiler_effect_derivation;
 )]
 pub mod v1_compiler_emit;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -498,7 +457,6 @@ pub mod v1_compiler_emit;
 )]
 pub mod v1_compiler_emit_go;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -510,7 +468,6 @@ pub mod v1_compiler_emit_go;
 )]
 pub mod v1_compiler_emit_python;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -522,7 +479,6 @@ pub mod v1_compiler_emit_python;
 )]
 pub mod v1_compiler_emit_rust;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -534,7 +490,6 @@ pub mod v1_compiler_emit_rust;
 )]
 pub mod v1_compiler_expected_red_roster_join;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -546,7 +501,6 @@ pub mod v1_compiler_expected_red_roster_join;
 )]
 pub mod v1_compiler_frontend_observation;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -558,7 +512,6 @@ pub mod v1_compiler_frontend_observation;
 )]
 pub mod v1_compiler_normalize;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -570,7 +523,6 @@ pub mod v1_compiler_normalize;
 )]
 pub mod v1_compiler_runtime_go;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -582,7 +534,6 @@ pub mod v1_compiler_runtime_go;
 )]
 pub mod v1_compiler_runtime_rust;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -594,7 +545,6 @@ pub mod v1_compiler_runtime_rust;
 )]
 pub mod v1_compiler_stage0_crates;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -606,7 +556,6 @@ pub mod v1_compiler_stage0_crates;
 )]
 pub mod v1_compiler_tokenize;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -618,7 +567,6 @@ pub mod v1_compiler_tokenize;
 )]
 pub mod v1_compiler_trace;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -630,7 +578,6 @@ pub mod v1_compiler_trace;
 )]
 pub mod v1_compiler_trait_bound_witness;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -642,7 +589,6 @@ pub mod v1_compiler_trait_bound_witness;
 )]
 pub mod v1_compiler_trait_derive_emit;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -654,7 +600,6 @@ pub mod v1_compiler_trait_derive_emit;
 )]
 pub mod v1_compiler_workspace_members;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -666,7 +611,6 @@ pub mod v1_compiler_workspace_members;
 )]
 pub mod v1_gunbc_namespace_reference_derived_closure_production_observations;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -678,7 +622,6 @@ pub mod v1_gunbc_namespace_reference_derived_closure_production_observations;
 )]
 pub mod v1_gunbc_occurrence_binding_parser_walk;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -690,7 +633,6 @@ pub mod v1_gunbc_occurrence_binding_parser_walk;
 )]
 pub mod v1_gunbc_parsed_import_statements;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -702,7 +644,6 @@ pub mod v1_gunbc_parsed_import_statements;
 )]
 pub mod v1_probe_emit_interp;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -714,7 +655,6 @@ pub mod v1_probe_emit_interp;
 )]
 pub mod v1_test_non_ascii_perf_fixture;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -726,7 +666,6 @@ pub mod v1_test_non_ascii_perf_fixture;
 )]
 pub mod v1_tests_claim_bare_variant_reference_occurrence_control_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -738,7 +677,6 @@ pub mod v1_tests_claim_bare_variant_reference_occurrence_control_test;
 )]
 pub mod v1_tests_claim_carrier_realization_census;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -750,7 +688,6 @@ pub mod v1_tests_claim_carrier_realization_census;
 )]
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -762,7 +699,6 @@ pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
 )]
 pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -774,7 +710,6 @@ pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 )]
 pub mod v1_tests_claim_production_fed_exposure_discrimination_control_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -786,7 +721,6 @@ pub mod v1_tests_claim_production_fed_exposure_discrimination_control_test;
 )]
 pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -798,7 +732,6 @@ pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
 )]
 pub mod v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -810,7 +743,6 @@ pub mod v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness;
 )]
 pub mod v1_tests_claim_transport_roster_closure_witness_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -822,7 +754,6 @@ pub mod v1_tests_claim_transport_roster_closure_witness_test;
 )]
 pub mod v1_tests_claim_type_declaration_occurrence_control_test;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -834,7 +765,6 @@ pub mod v1_tests_claim_type_declaration_occurrence_control_test;
 )]
 pub mod wt_a;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -846,7 +776,6 @@ pub mod wt_a;
 )]
 pub mod wt_b;
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
@@ -949,7 +878,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 
 #[cfg(test)]
 #[allow(
-    unconditional_panic,
     unused_imports,
     unused_variables,
     unused_mut,
