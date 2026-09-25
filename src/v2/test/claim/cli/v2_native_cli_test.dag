@@ -15,7 +15,6 @@ import v2.cli.compile_cli {
   CliEmitTarget,
   CliTargetC,
   CliTargetRust,
-  CliTargetSwift,
   CliUsageRefused,
   cli_emit_target_spelling,
   v2_cli_exit,
@@ -238,7 +237,8 @@ fn argv_emit_with_target(target: String) -> FreeMonoid<String> {
   }
 }
 
-data argv_emit_unknown_target: FreeMonoid<String> = argv_emit_with_target(target: "kotlin")
+// `swift` is the discriminating unknown: a real target with a model, not yet rostered in this door.
+data argv_emit_unknown_target: FreeMonoid<String> = argv_emit_with_target(target: "swift")
 
 data argv_emit_dangling_target: FreeMonoid<String> = Cons {
   head: "emit",
@@ -267,10 +267,6 @@ test fn the_rust_target_spelling_selects_rust_holds() -> Bool {
 
 test fn the_c_target_spelling_selects_c_holds() -> Bool {
   plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "c")), expected: CliTargetC)
-}
-
-test fn the_swift_target_spelling_selects_swift_holds() -> Bool {
-  plan_is_target(plan: v2_cli_parse(argv: argv_emit_with_target(target: "swift")), expected: CliTargetSwift)
 }
 
 // NO --target IS THE PLAN'S DECLARED DEFAULT, which is the argv every existing caller spawns.

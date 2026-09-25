@@ -11,7 +11,6 @@ import v2.compiler.self_host.compiler_closure_emit {
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.algebra { fold_list, length, list_reverse }
 
@@ -131,18 +130,25 @@ data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 // to the emitter, and a misspelt one is refused where it was typed instead of reaching the emitter
 // as a name it has no model for. Adding a target is one arm, one spelling row and one model arm;
 // the exhaustive matches below refuse to compile until all three exist.
+//
+// SWIFT IS NOT ROSTERED YET, AND THE REASON IS MEASURED. A rostered target's model is in this
+// module's closure, so the seed must emit it to Rust for //gunbc/instruments:v2-native-cli to build
+// this door. `v2.extdeps.languages.swift` does not emit cleanly today: the first build carrying it
+// failed rustc with E0308 at `swift_bool_grounding` (declared `BooleanAlgebra<Bool>`, emitted as
+// `BooleanAlgebra<bool>` while its initializer returns the v2 `Bool` carrier) plus two further
+// errors the harness's stderr tail truncated (CI run 36078559948). The trigger that adds the
+// `CliTargetSwift` arm is that module becoming seed-emittable, SUFFICIENT FOR the v2-native-cli
+// instrument to build this closure with Swift in it.
 type CliEmitTarget
   = CliTargetRust
   | CliTargetC
-  | CliTargetSwift
 
-data cli_emit_targets: List<CliEmitTarget> = [CliTargetRust, CliTargetC, CliTargetSwift]
+data cli_emit_targets: List<CliEmitTarget> = [CliTargetRust, CliTargetC]
 
 fn cli_emit_target_spelling(t: CliEmitTarget) -> String {
   match t {
     CliTargetRust => "rust"
     CliTargetC => "c"
-    CliTargetSwift => "swift"
   }
 }
 
@@ -150,7 +156,6 @@ fn cli_emit_target_model(t: CliEmitTarget) -> TargetModel {
   match t {
     CliTargetRust => rust_target_model()
     CliTargetC => c_target_model()
-    CliTargetSwift => swift_target_model()
   }
 }
 
