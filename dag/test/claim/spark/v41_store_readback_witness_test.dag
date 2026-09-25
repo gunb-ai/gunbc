@@ -166,8 +166,8 @@ test fn a_missing_or_foreign_reading_refuses_by_identity() -> Bool {
 // own claims draw them from the real prime search), so these claims pay for the readback and not for the
 // layout search; the whole-spec route runs for real in gunbc.spark.v41_runtime_candidate v41_live_store_readback,
 // which the D0 live-subject claim executes. One store per claim because decoding a store's seven samples
-// (about 1,850 bytes of hex) is the claim's cost: a layer per claim measured ~144k eval steps against the
-// 72,300 budget. A store's slice is its own rank's range, so it cannot see the row before its start: the
+// is the claim's cost, and a layer per claim exceeded the new-witness budget (v2.workflow.required_floor
+// claim_eval_step_budget_for_identity, as the floor's measured_eval_steps reports it). A store's slice is its own rank's range, so it cannot see the row before its start: the
 // undiscriminating-seam guard is NOT exercised here. It runs over the whole live spec in
 // v41_live_store_readback (executed for real by the D0 live-subject claim), and its discriminating RED is
 // identical_rows_across_a_seam_refuse_as_undiscriminating above.
