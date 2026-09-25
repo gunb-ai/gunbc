@@ -105,14 +105,8 @@ fn ntfy_role_of_word(word: String) -> NtfyRole? {
   else { none } } }
 }
 
-fn listing_line_ends_with(s: String, suffix: String) -> Bool {
-  let n = string_length(s: s)
-  let m = string_length(s: suffix)
-  n >= m && substring(s: s, start: n - m, end: n) == suffix
-}
-
 fn strip_suffix_if(s: String, suffix: String) -> String {
-  if listing_line_ends_with(s: s, suffix: suffix) { substring(s: s, start: 0, end: string_length(s: s) - string_length(s: suffix)) } else { s }
+  if s.ends_with(suffix: suffix) { substring(s: s, start: 0, end: string_length(s: s) - string_length(s: suffix)) } else { s }
 }
 
 fn after_prefix(s: String, prefix: String) -> String {
@@ -158,7 +152,7 @@ fn ntfy_access_item_line(item: String) -> NtfyAccessLine {
   if item == "read-write access to all topics (admin role)" { LineAdminAllTopics }
   else { if item == "no topic-specific permissions" { LineNoTopicGrants }
   else { if item == "no access to any (other) topics (server config)" { LineDefaultAccess { permission: NtfyDenyAll } }
-  else { if listing_line_ends_with(s: item, suffix: " access to all (other) topics (server config)") {
+  else { if item.ends_with(suffix: " access to all (other) topics (server config)") {
     match ntfy_permission_of_words(words: strip_suffix_if(s: item, suffix: " access to all (other) topics (server config)")) {
       Present { value: p } => LineDefaultAccess { permission: p }
       Absent => LineUnrecognized { cause: "unknown default permission" }
