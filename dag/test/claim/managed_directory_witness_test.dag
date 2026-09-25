@@ -198,7 +198,7 @@ test fn an_unreadable_octal_mode_refuses_rather_than_reading_as_all_denied() -> 
 // gid writes too. Naming that writer as the group principal admits it as group and sets setgid
 // (2770); leaving the group at the owner's puts it in the other class, and admission REFUSES naming
 // it -- the model-level RED for an ensure the claim principal could not write. The derivation alone
-// would have answered 0777 there, which is the world-writable arm the admission exists to close.
+// would have granted the other class write (0707) there, which is the world-writable arm the admission exists to close.
 
 fn writers_dir(group: PosixUser) -> ManagedDirectory {
   ManagedDirectory {
@@ -233,5 +233,5 @@ test fn witness_uncovered_writer_refuses_naming_it() -> Bool {
 }
 
 test fn witness_uncovered_writer_would_have_derived_world_write() -> Bool {
-  managed_directory_mode_octal(d: writers_dir(group: owner_user())) == "0777"
+  managed_directory_permissions(d: writers_dir(group: owner_user())).mode.other.write
 }
