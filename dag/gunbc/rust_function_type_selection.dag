@@ -50,7 +50,7 @@ import extdeps.languages.rust.function_type_forms {
 // owns the question, the axes, the hard constraint and the policy -- never the facts.
 //
 // The target model's rows (v2.extdeps.languages.rust rust_function_type_realization_rows) carry the
-// winner of each position; v2.test.emit.rust_function_type_selection_pin executes these selections
+// winner of each position; test.claim.rust_function_type_selection_witness executes these selections
 // and pins every row's realization to its SelectedWithin receipt. DIVERGENCE, STATED: the
 // selection runs here, offline, and the row carries its answer, rather than the emitter selecting
 // per signature. TRIGGER (the capability): the self-emitted target_model can consume
