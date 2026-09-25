@@ -13493,31 +13493,31 @@ fn target_value_expr_arrow_has_record_construct_body(arrow: Node) -> Bool {
   }
 }
 
-// A BODY THAT IS ITSELF A FUNCTION VALUE (v2.std.node FunctionValueBody) projects as a closure
-// returned by the enclosing function, through target_project_closure_in_arrow_scope -- the same
-// projector a closure in subexpression position uses, so a curried body renders nested closures.
-fn target_value_expr_arrow_has_function_value_body(arrow: Node) -> Bool {
+// VALUE-EXPRESSION ADMISSION CONSUMES THE BODY'S ArrowBodyForm, the same classification the
+// projector (target_project_arrow_body_to_value_expression) dispatches on, so the two cannot hold
+// different answers for which forms project. A function-value body projects as a returned closure;
+// every other form keeps its per-kind admission.
+fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match classify_arrow_body_form(target: body) {
         FunctionValueBody => true
-        DirectAtomBody => false
-        RecordConstructBody => false
-        ComputationBody { behavior: _ } => false
-        UnsupportedArrowBody => false
+        DirectAtomBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        RecordConstructBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        ComputationBody { behavior: _ } => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        UnsupportedArrowBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
       }
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
+fn target_value_expr_arrow_has_value_expression_body_by_kind(arrow: Node) -> Bool {
   target_value_expr_arrow_has_transform_body(arrow: arrow)
     || target_value_expr_arrow_has_branch_body(arrow: arrow)
     || target_value_expr_arrow_has_bind_body(arrow: arrow)
     || target_value_expr_arrow_has_loop_body(arrow: arrow)
     || target_value_expr_arrow_has_match_body(arrow: arrow)
     || target_value_expr_arrow_has_record_construct_body(arrow: arrow)
-    || target_value_expr_arrow_has_function_value_body(arrow: arrow)
 }
 
 fn target_value_expr_binding_in_declared_param_list(
