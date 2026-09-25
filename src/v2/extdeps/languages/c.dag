@@ -60,6 +60,7 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.target_model {
+  IntLiteralUnwired,
   InfixToken,
   canonical_operation_op_add,
   Prepend,
@@ -1152,6 +1153,7 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^c_token_kw_true,
       false_token: ^c_token_kw_false
     },
+    int_literal_form: IntLiteralUnwired,
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon

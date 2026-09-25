@@ -2,7 +2,6 @@ module test.claim.p384_dag_ecdsa_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List }
-import std.integer { UInt8 }
 import std.bignat { BigNat, bignat_from_octets }
 import extdeps.crypto.sha2 { sha256, sha384 }
 import extdeps.crypto.nist_p384 { p384_curve, p384_on_curve, p384_point_octets_on_curve, p384_ecdsa_verify_octets, p384_gx, p384_gy, p384_p_octets, p384_gy_octets }
@@ -36,7 +35,7 @@ fn p384_member_value(v: CborValue, key: String) -> CborValue {
   }
 }
 
-fn p384_sample_x5c(i: Int) -> List<UInt8> {
+fn p384_sample_x5c(i: Int) -> List<Int> {
   match cbor_decode_document(octets: sample_attestation_octets) {
     CborDocumentRefused { cause: _ } => []
     CborDocumentDecoded { value: att } =>
@@ -54,7 +53,7 @@ fn p384_sample_x5c(i: Int) -> List<UInt8> {
   }
 }
 
-fn p384_cert(octets: List<UInt8>) -> X509Certificate? {
+fn p384_cert(octets: List<Int>) -> X509Certificate? {
   match decode_certificate(octets: octets) {
     X509Decoded { certificate: c } => Present { value: c }
     X509Refused { cause: _ } => none
