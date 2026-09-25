@@ -2424,7 +2424,7 @@ mod tests {
         let stdout = format!(
             "{REAL_REFUSED_ROW}\n{}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":1,\"universe\":1,\
-             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}"
+             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}"
         );
         let out = parse_native_run_output(&stdout).expect("the real row must decode");
         assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
@@ -2555,7 +2555,7 @@ mod tests {
     /// fire, which is the state this PR has already had to repair twice.
     #[test]
     fn a_nonzero_exit_claiming_admitted_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 1")],
@@ -2575,7 +2575,7 @@ mod tests {
     /// discriminates on the disagreement rather than on the fixture.
     #[test]
     fn a_zero_exit_claiming_admitted_is_accepted() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let parsed = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2589,7 +2589,7 @@ mod tests {
     /// carrying a REFUSED receipt is equally a disagreement between two observations of one run.
     #[test]
     fn a_zero_exit_claiming_refused_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2635,7 +2635,7 @@ mod tests {
         let stdout = concat!(
             "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\"}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
-            "\"file_refusals\":1,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\"}\n"
+            "\"file_refusals\":1,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
         let parsed = parse_native_run_output(stdout).expect("the marker parses");
         assert!(!parsed.terminal.admitted);
@@ -2655,6 +2655,17 @@ mod tests {
         let stdout =
             "{\"identity\":{\"module\":\"v2.test.a\",\"declaration\":\"t\"},\"verdict\":\"NativeTestPassed\"}\n";
         assert!(parse_native_run_output(stdout).is_err());
+    }
+
+    /// AN ADJUDICATE MARKER WITHOUT THE FRONTIER WORD REFUSES. The emitted main always prints
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
+    /// the binary is not the one this host was built against; defaulting it would be the
+    /// absorbing arm.
+    #[test]
+    fn an_adjudicate_marker_without_frontier_refuses() {
+        let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}\n";
+        let cause = parse_native_run_output(stdout).expect_err("a marker without frontier");
+        assert!(cause.contains("carries no frontier"), "got: {cause}");
     }
 }
 
