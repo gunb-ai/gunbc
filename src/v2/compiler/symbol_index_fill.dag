@@ -48,7 +48,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view }
+import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -73,10 +73,26 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
 // unwrapped for its readers, through the typed view, so `Box` resolves to its Disj and `Box.Full` is a
 // declared variant, while the binders -- scoped by v2.compiler.resolve over the wrapper -- are never
 // declared identities.
+//
+// A GENERIC ALIAS OR BODYLESS DECLARATION DECLARES NO MEMBERS. Its name is bound to its wrapper --
+// which keeps the binders an instantiation of `List<Int>` must substitute through -- and the index does
+// not descend into it: an aliased expression's parts (a qualified head's spine, its arguments) are not
+// declarations of the alias, and a binder is never a declared identity.
 fn symbol_index_declared_member(target: Node) -> Node {
   match type_decl_view(target: target) {
     GenericTypeDecl { binders: _, member: m } => m
+    GenericTypeAlias { binders: _, aliased: _ } => target
+    GenericOpaqueTypeDecl { binders: _ } => target
     PlainTypeDecl { member: m } => m
+  }
+}
+
+fn symbol_index_declares_members(target: Node) -> Bool {
+  match type_decl_view(target: target) {
+    GenericTypeDecl { binders: _, member: _ } => true
+    GenericTypeAlias { binders: _, aliased: _ } => false
+    GenericOpaqueTypeDecl { binders: _ } => false
+    PlainTypeDecl { member: _ } => true
   }
 }
 
@@ -107,11 +123,15 @@ fn symbol_index_fill_containment_edge(
           qualified_path: child_path,
           resolved: member
         )
-        symbol_index_fill_containment_node(
-          index: with_binding,
-          path: child_path,
-          node: member
-        )
+        if symbol_index_declares_members(target: edge.target) {
+          symbol_index_fill_containment_node(
+            index: with_binding,
+            path: child_path,
+            node: member
+          )
+        } else {
+          with_binding
+        }
       }
     Positional =>
       symbol_index_fill_containment_node(
