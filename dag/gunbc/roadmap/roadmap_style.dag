@@ -1018,6 +1018,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-cell-assignee" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-cell-assignee-missing" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),

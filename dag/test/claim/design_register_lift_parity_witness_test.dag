@@ -380,7 +380,12 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // 9ch from its header, D VIEWS 8ch), and the header cells (.issue-col) carry the same containment
 // chain as the data cells (min-width 0, nowrap, ellipsis). Derived by execution
 // (roadmap_css_derived_digest on this tree, 262ca57491c99cde); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "262ca57491c99cde"
+// Re-pinned 2026-09-25 for assignee-cell centering (owner: the chip and the "--" placeholder read
+// off left-aligned): .issue-cell-assignee centers its content horizontally (justify-content
+// center on the existing flex cell — the chip, the bare "--", and the unparseable-email
+// placeholder all center). Derived by execution (roadmap_css_derived_digest on this tree,
+// bcdf59bc15e39d80); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "bcdf59bc15e39d80"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the
