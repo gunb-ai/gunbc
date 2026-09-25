@@ -1722,7 +1722,9 @@ fn target_model_canonical_operation_type_node() -> Node {
 // A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
 // under it carries the variant field's declared type, Symbol (symbol_kernel_type_node). A predicate
 // atom encodes an OrderingPredicate or EqualityPredicate, and this authority names no type node for
-// either, so it answers Absent: the caller refuses typed rather than fabricating a type.
+// either, so it answers Absent rather than fabricating one. Absent derives nothing here: infer
+// falls through to its remaining rules (the arrow-domain binding lookup), which end in the typed
+// GroundingNotDerived frontier unless the tree binds that very symbol.
 
 fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Optional<Node> {
   match edge.label {
