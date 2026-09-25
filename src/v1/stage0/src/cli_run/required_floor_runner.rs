@@ -2241,11 +2241,19 @@ fn unimported_bare_provider_roster_source_at_base(
         "unimported_bare_provider_roster_at_base",
         &args,
     )?;
-    let v1_interpreter::Value::Record { fields, .. } = &shown else {
-        return Err(format!(
-            "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
-            floor_value_shape(Some(&shown))
-        ));
+    // UnimportedBareProviderBaseRoster is a COPRODUCT (BaseRosterShown | BaseRosterUnreadable), so
+    // the interpreter answers with a Variant carrying the arm's fields -- never a Record. Reading
+    // only a Record refused every well-formed answer the first time a change edited the roster.
+    let fields = match &shown {
+        v1_interpreter::Value::Variant { fields, .. } | v1_interpreter::Value::Record { fields, .. } => {
+            fields
+        }
+        _ => {
+            return Err(format!(
+                "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
+                floor_value_shape(Some(&shown))
+            ))
+        }
     };
     match (ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
         (Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
