@@ -2,6 +2,7 @@ module test.claim.long.mtcollins1_boot_admission_closure
 
 import std.types { Bool, String, List }
 import v2.lens.module_graph { import_closure_live }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
