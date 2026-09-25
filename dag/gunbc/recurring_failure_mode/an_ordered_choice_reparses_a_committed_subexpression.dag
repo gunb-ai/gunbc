@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.an_ordered_choice_reparses_a_committed_subexpression
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_ordered_choice_reparses_a_committed_subexpression: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_ordered_choice_reparses_a_committed_subexpression" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an ordered grammar Choice re-parses a sub-expression that an earlier alternative already parsed in full. The alternatives are tried in declared order; an alternative that parses a complete nested body before the enclosing choice can fail leaves that body to be parsed again by every later alternative. Nothing records that position and production were already attempted, so the recomputation is invisible and the cost of one construct becomes multiplicative in its own nesting depth. The class is named for the RE-PARSE rather than for backtracking, because backtracking is admissible and the defect is the absent memo of what a committed alternative established.",
+
+    "THE DISTINGUISHING OBSERVATION, and it is a two-shape discriminator rather than a slope. Hold nesting depth, file size class, binary and command constant and vary only WHICH construct nests. Nested function literals in argument position cost 0.2, 0.6, 3.2 and 24.1 seconds at depths 1 through 4 -- a factor of about 7.5 per level. Nested match arms at the same depths are FLAT at 0.2 seconds. A cost that tracked tree size, spine depth or a walker's re-entry would move in both shapes. It moves in one, which locates the defect in the production rather than in the traversal.",
+
+    "THE MECHANISM, READ FROM THE GRAMMAR AND NOT INFERRED FROM THE NUMBER. `v2.extdeps.languages.dag` `dag_grammar_expr_expr` orders the expression alternatives match, if, loop, fn_literal, block, arrow_lambda, binary. `match_expr` is FIRST, so a match commits on its keyword and no later alternative re-reads its body -- which is exactly why the match shape is flat and is the control that makes this reading falsifiable. `dag_grammar_fn_literal_expr` sits FOURTH and parses a full `dag_production_fn_body` before the enclosing choice can fail, so a later alternative re-parses that body, and each nesting level re-parses every level inside it once per surviving alternative.",
+
+    "THE RESOURCE SHAPE RULES OUT THE COMPETING EXPLANATIONS. At depth 3 wall is 3.07s against cpu_user 3.06s; at depth 4 wall is 23.86s against cpu_user 23.82s; maxrss is 11264 kB at BOTH depths. CPU equals wall, so it is not contention or IO; resident memory does not move with depth, so it is not allocation growth, tree retention or a sharing failure. It is recomputation.",
+
+    "RECEIPT, 2026-09-25, reducing the #12210 native cost blocker. Declaration-level reduction of `v2.compiler.body_lowering_fold` under isolated census: 333 blocks at 348s, prefix 187 at 10s, prefix 188 at 84s, and the one added declaration `body_lower_comma_list_repeat_items` ALONE at 45.3s in 140 lines while its neighbour alone is 0.2s. That declaration nests four `bind_outcome(o:, f: fn(...) {...})` closures. Its recursive and non-recursive variants time identically at 0.5 and 2.8 against 0.5 and 2.7 seconds for depths 1 and 2, which removed recursion as the variable. Import-free fixtures of 9 to 17 lines reproduce the whole curve, so no part of this needs the closure present.",
+
+    "WHAT THIS RECEIPT DOES NOT ESTABLISH. The v1 seed front end reports `compile.frontend done in 0ms` at every one of these depths, so the exponential is v2-specific -- and that is a fact about v1 against v2, NOT evidence about whether the INTERPRETED v2 front end shares it. Whether it does decides whether the repair belongs to the grammar model, shared by both realizations, or to emission alone. The grammar reading above predicts shared; that prediction is a bet and is recorded as one. Isolated census also has none of the subject file's imports, so this class explains the PARSE cost and makes no claim about the route's zero-split-row behaviour.",
+
+    "RUNG FOUND AT: mitigatable, and only by a human noticing a route did not finish. The invalid state is fully writable -- any authored nesting of a non-first alternative expresses it -- and nothing bounds a production's re-parse of a position it already attempted.",
+
+    "ATTAINABLE CEILING: STRUCTURALLY GUARANTEED. Production and token position are both available where the choice is taken, so a parse that attempts a given production at a given position at most once is derivable from the prepared grammar rather than validated after the fact, and DESIGN section 4's bounded forward execution is the contract it would restore. It is not structurally IMPOSSIBLE while an ordered Choice may re-enter a production at a position it has already attempted.",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: one prepared plan per authored Choice, under which attempting a production at a token position at most once is a property of the plan rather than of the input, so parse cost is bounded by the source and not by its nesting. This is DESIGN section 6b specimen B1, gunbc#11422. A per-site memo table retires nothing: it makes the redundant parse cheap and suppresses the signal that would rank it for deletion, which is DESIGN section 2. Neither does reordering the alternatives so fn_literal commits earlier -- that moves which construct pays, and leaves every later alternative exponential. And FLATTENING THE AUTHORED NESTING lowers the number while leaving the production exponential, which is DESIGN section 5's workaround.",
+
+    "WHAT IS EXPLICITLY NOT THIS CLASS: `body_producer_work_is_not_bounded_by_its_declared_input` is the adjacent row and is about a PRODUCER's work tracking a population it does not own. This row is about a PARSE re-establishing a fact an earlier alternative already established. The separating experiment that row names ran here, and its answer was neither of that row's two candidates -- not node count and not spine depth, but which construct nests -- so a specimen attributed to that row on census cost alone should be re-read against this one."
+  ],
+
+  evidence: [],
+}
