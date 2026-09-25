@@ -81,9 +81,10 @@ data posix_effective_principal_service_source: String = "module m\nservice acces
 
 data remaining_arms_service_source: String = "module m\nservice S {\n  transport rest { base: \"u\" }\n  operation Op {\n    input { x: Int }\n    idempotent\n    hermetic\n    response {\n      200 => Int\n      404 => String \"missing\"\n    }\n  }\n}\n"
 
-// The config block of dag/extdeps/github/workflow_runs.dag service github.WorkflowRuns:
-// newline-separated fields, one of them a struct literal.
-data service_config_source: String = "module m\nservice S {\n  config {\n    endpoint: default_api_base\n    auth: Bearer\n    auth_source: EnvVar { name: \"GITHUB_TOKEN\" }\n  }\n  operation Op { input { x: Int } }\n}\n"
+// The shape of the config block in dag/extdeps/github/workflow_runs.dag service
+// github.WorkflowRuns: newline-separated fields, one of them a struct literal. Trimmed to two
+// fields and no operation so the claim pays only for the production it is about.
+data service_config_source: String = "module m\nservice S {\n  config {\n    endpoint: e\n    auth_source: EnvVar { name: \"T\" }\n  }\n}\n"
 
 // v1 parse_config_fields refuses a field outside endpoint/auth/auth_input/auth_source/rate_limit
 // by name; the grammar's closed choice must refuse it too.
@@ -94,7 +95,7 @@ data service_config_without_colon_red_source: String = "module m\nservice S {\n 
 // Parsing is not lowering: a service whose only entry is config still lands wrapper-retained and
 // is refused at the normalized-tree door, so the config entry is carried to a typed refusal, never
 // dropped on the way to resolve.
-data config_only_service_source: String = "module m\nservice S {\n  config { endpoint: e }\n}\n"
+data config_only_service_source: String = "module m\nservice S { config {} }\n"
 
 data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  operation Op {\n    exit {\n      0 Unit\n    }\n  }\n}\n"
 
@@ -226,7 +227,9 @@ test fn type_field_from_key_still_refuses_holds() -> Bool {
 // land it on the declared lowered | wrapper-retained frontier (body_lowering_fold
 // body_lower_wrapper_retained_shell) and the normalized-tree door must REFUSE it with a typed reason
 // (normalized_tree admit_normalized_tree) -- never admit an unlowered service shell to resolve.
-// The fn control is the positive half: the same door admits a module with nothing retained.
+// The type control is the positive half: the same door admits a module with nothing retained. A
+// lowered type declaration is the cheapest lowered item; the fn control it replaced paid for
+// lowering a fn body this claim never inspects and ran over the new-witness step budget.
 fn refused_for_retention(ne: NonEmptyDiagnostics) -> Bool {
   fold_list(
     xs: ne.tail,
@@ -268,8 +271,8 @@ test fn parsed_service_is_refused_at_the_normalized_tree_door_holds() -> Bool {
   normalize_refuses_for_retention(src: empty_service_source)
 }
 
-test fn fn_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
-  normalize_admits(src: fn_control_source)
+test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
+  normalize_admits(src: plain_type_source)
 }
 
 test fn config_only_service_is_refused_at_the_normalized_tree_door_holds() -> Bool {
