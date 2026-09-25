@@ -7586,10 +7586,24 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     // specific is only HOW the payload is reached: an optional's value has two runtime
     // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
     // `Present { value }`) -- and `optional_present_payload` peels either.
-    let scrutinee_type = scrutinee
-        .inferred
-        .as_ref()
-        .map(|_| crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()));
+    // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
+    // bare value (every arm then sees the same value either way) and a silent wrong answer when it
+    // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
+    // variant), so that one case refuses, located, rather than falling back (DESIGN section 5).
+    let scrutinee_type = match scrutinee.inferred.as_ref() {
+        Some(_) => Some(crate::v1_compiler_infer_types::resolved_type(
+            scrutinee.clone(),
+        )),
+        None if is_optional_variant(&scrutinee_val, ctx) => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "match at {}:{}: the scrutinee is an Optional variant but carries no inferred type, so which arms see its present value (v1.compiler.infer optional_match_arm_sees_present_value) cannot be read",
+                    node.span.file, node.span.start
+                ),
+            });
+        }
+        None => None,
+    };
     let absent_arm_index = crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
 
     for (arm_index, arm) in arms.iter().enumerate() {
@@ -7603,7 +7617,7 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             )
         });
         let arm_value = if sees_present_value {
-            match optional_present_payload(&scrutinee_val, ctx) {
+            match optional_present_payload(&scrutinee_val, ctx)? {
                 Some(payload) => payload,
                 None => continue,
             }
@@ -7621,23 +7635,32 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
+fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
+    matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
+}
+
 /// The present payload of an optional value in either runtime representation, `None` when it
-/// is absent (`Null` or `Optional.Absent`).
-fn optional_present_payload(value: &Value, ctx: &InterpContext) -> Option<Value> {
+/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
+/// malformed and refuses rather than reading as absent.
+fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
     match value {
-        Value::Null => None,
+        Value::Null => Ok(None),
         Value::Variant {
-            type_name,
             variant_name,
             fields,
-        } if *type_name == ctx.sym("Optional") => {
-            if *variant_name == ctx.sym("Present") {
-                fields_get(fields, ctx.sym("value")).cloned()
-            } else {
-                None
+            ..
+        } if is_optional_variant(value, ctx) => {
+            if *variant_name != ctx.sym("Present") {
+                return Ok(None);
+            }
+            match fields_get(fields, ctx.sym("value")) {
+                Some(payload) => Ok(Some(payload.clone())),
+                None => Err(InterpError::TypeError {
+                    msg: format!("malformed Optional.Present without a `value` field: {value}"),
+                }),
             }
         }
-        other => Some(other.clone()),
+        other => Ok(Some(other.clone())),
     }
 }
 
