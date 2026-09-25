@@ -2,7 +2,6 @@ module extdeps.standards.x690_der
 
 import std.types { Int, String, List }
 import std.logic { Bool }
-import std.integer { UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -76,14 +75,14 @@ type DerRead
   = DerElementRead { element: DerElement }
   | DerRefused { cause: DerRefusal }
 
-fn der_octet(octets: List<UInt8>, at: Int) -> Int? {
+fn der_octet(octets: List<Int>, at: Int) -> Int? {
   match octets |> get(at) {
     null => none
     o => Present { value: o }
   }
 }
 
-fn der_slice(octets: List<UInt8>, at: Int, n: Int) -> List<UInt8> {
+fn der_slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
   octets |> skip(at) |> take(n)
 }
 
@@ -92,7 +91,7 @@ fn der_class_of(identifier: Int) -> DerTagClass {
   if c == 0 { DerUniversal } else if c == 1 { DerApplication } else if c == 2 { DerContextSpecific } else { DerPrivate }
 }
 
-fn der_big_endian(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Int {
+fn der_big_endian(octets: List<Int>, at: Int, n: Int, acc: Int) -> Int {
   if n <= 0 { acc } else {
     match der_octet(octets: octets, at: at) {
       Absent => acc
@@ -109,7 +108,7 @@ type DerLength
 // many following octets carry it. 0x80 is the indefinite form; lengths wider than four octets
 // name a value no certificate has; a long form for a value under 128, or with a leading zero
 // octet, is not minimal (§10.1).
-fn der_read_length(octets: List<UInt8>, at: Int) -> DerLength {
+fn der_read_length(octets: List<Int>, at: Int) -> DerLength {
   match der_octet(octets: octets, at: at) {
     Absent => DerLengthRefused { cause: DerTruncated { at: at, needed: 1, available: 0 } }
     Present { value: first } =>
@@ -136,7 +135,7 @@ fn der_read_length(octets: List<UInt8>, at: Int) -> DerLength {
 }
 
 // ONE ELEMENT AT ONE OFFSET.
-fn der_read_element(octets: List<UInt8>, at: Int) -> DerRead {
+fn der_read_element(octets: List<Int>, at: Int) -> DerRead {
   match der_octet(octets: octets, at: at) {
     Absent => DerRefused { cause: DerTruncated { at: at, needed: 1, available: 0 } }
     Present { value: identifier } => {
@@ -188,7 +187,7 @@ fn der_class_matches(a: DerTagClass, b: DerTagClass) -> Bool {
 }
 
 // An element that must carry a given class, tag and form.
-fn der_expect(octets: List<UInt8>, at: Int, class: DerTagClass, tag_number: Int, constructed: Bool) -> DerRead {
+fn der_expect(octets: List<Int>, at: Int, class: DerTagClass, tag_number: Int, constructed: Bool) -> DerRead {
   match der_read_element(octets: octets, at: at) {
     DerRefused { cause: c } => DerRefused { cause: c }
     DerElementRead { element: e } =>
@@ -216,7 +215,7 @@ fn der_element_expect_universal(e: DerElement, tag_number: Int) -> DerRefusal? {
   der_element_expect(e: e, class: DerUniversal, tag_number: tag_number, constructed: false)
 }
 
-fn der_expect_sequence(octets: List<UInt8>, at: Int) -> DerRead {
+fn der_expect_sequence(octets: List<Int>, at: Int) -> DerRead {
   der_expect(octets: octets, at: at, class: DerUniversal, tag_number: der_tag_sequence, constructed: true)
 }
 
@@ -225,7 +224,7 @@ type DerChildren
   = DerChildrenRead { elements: List<DerElement> }
   | DerChildrenRefused { cause: DerRefusal }
 
-fn der_children_from(octets: List<UInt8>, at: Int, end: Int, acc: List<DerElement>) -> DerChildren {
+fn der_children_from(octets: List<Int>, at: Int, end: Int, acc: List<DerElement>) -> DerChildren {
   if at >= end {
     if at == end { DerChildrenRead { elements: acc } } else { DerChildrenRefused { cause: DerTrailingOctets { consumed: at, total: end } } }
   } else {
@@ -238,7 +237,7 @@ fn der_children_from(octets: List<UInt8>, at: Int, end: Int, acc: List<DerElemen
   }
 }
 
-fn der_children(octets: List<UInt8>, parent: DerElement) -> DerChildren {
+fn der_children(octets: List<Int>, parent: DerElement) -> DerChildren {
   der_children_from(octets: octets, at: parent.value_at, end: parent.next, acc: [])
 }
 
@@ -249,12 +248,12 @@ fn der_child_at(children: List<DerElement>, i: Int, at: Int) -> DerRead {
   }
 }
 
-fn der_value(octets: List<UInt8>, e: DerElement) -> List<UInt8> {
+fn der_value(octets: List<Int>, e: DerElement) -> List<Int> {
   der_slice(octets: octets, at: e.value_at, n: e.value_len)
 }
 
 // The whole TLV, header included: what a signature over a DER structure is computed over.
-fn der_tlv(octets: List<UInt8>, e: DerElement) -> List<UInt8> {
+fn der_tlv(octets: List<Int>, e: DerElement) -> List<Int> {
   der_slice(octets: octets, at: e.header_at, n: e.next - e.header_at)
 }
 
@@ -263,10 +262,10 @@ fn der_tlv(octets: List<UInt8>, e: DerElement) -> List<UInt8> {
 // ones or all zeros). Only NON-NEGATIVE integers are read here -- serial numbers, ECDSA r and s --
 // so a leading bit set refuses, and a single 0x00 pad before a high-bit magnitude is stripped.
 type DerUnsigned
-  = DerUnsignedRead { magnitude: List<UInt8> }
+  = DerUnsignedRead { magnitude: List<Int> }
   | DerUnsignedRefused { cause: DerRefusal }
 
-fn der_unsigned_integer(octets: List<UInt8>, e: DerElement) -> DerUnsigned {
+fn der_unsigned_integer(octets: List<Int>, e: DerElement) -> DerUnsigned {
   let v = der_value(octets: octets, e: e)
   if count(v) == 0 { DerUnsignedRefused { cause: DerIntegerMalformed { at: e.value_at } } }
   else {
@@ -322,7 +321,7 @@ type DerOid
   = DerOidRead { dotted: String }
   | DerOidRefused { cause: DerRefusal }
 
-fn der_object_identifier(octets: List<UInt8>, e: DerElement) -> DerOid {
+fn der_object_identifier(octets: List<Int>, e: DerElement) -> DerOid {
   let v = der_value(octets: octets, e: e)
   if count(v) == 0 { DerOidRefused { cause: DerObjectIdentifierMalformed { at: e.value_at } } }
   else {
@@ -337,10 +336,10 @@ fn der_object_identifier(octets: List<UInt8>, e: DerElement) -> DerOid {
 // at value_at with no contents would be the next element's identifier, review 69616 of
 // gunbc#11975). Keys and signatures are whole octets, so any unused count but zero refuses.
 type DerBits
-  = DerBitsRead { octets: List<UInt8> }
+  = DerBitsRead { octets: List<Int> }
   | DerBitsRefused { cause: DerRefusal }
 
-fn der_bit_string_octets(octets: List<UInt8>, e: DerElement) -> DerBits {
+fn der_bit_string_octets(octets: List<Int>, e: DerElement) -> DerBits {
   if e.value_len < 1 { DerBitsRefused { cause: DerTruncated { at: e.value_at, needed: 1, available: 0 } } } else {
   match der_octet(octets: octets, at: e.value_at) {
     Absent => DerBitsRefused { cause: DerTruncated { at: e.value_at, needed: 1, available: 0 } }
@@ -356,7 +355,7 @@ type DerBool
   = DerBoolRead { value: Bool }
   | DerBoolRefused { cause: DerRefusal }
 
-fn der_boolean(octets: List<UInt8>, e: DerElement) -> DerBool {
+fn der_boolean(octets: List<Int>, e: DerElement) -> DerBool {
   if e.value_len != 1 { DerBoolRefused { cause: DerBooleanMalformed { at: e.value_at } } }
   else {
     match der_octet(octets: octets, at: e.value_at) {
@@ -374,7 +373,7 @@ type DerDocument
   = DerDocumentRead { element: DerElement }
   | DerDocumentRefused { cause: DerRefusal }
 
-fn der_read_document(octets: List<UInt8>) -> DerDocument {
+fn der_read_document(octets: List<Int>) -> DerDocument {
   match der_read_element(octets: octets, at: 0) {
     DerRefused { cause: c } => DerDocumentRefused { cause: c }
     DerElementRead { element: e } =>

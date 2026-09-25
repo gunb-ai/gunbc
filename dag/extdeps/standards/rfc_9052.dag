@@ -2,7 +2,6 @@ module extdeps.standards.rfc_9052
 
 import std.types { Int, List }
 import std.logic { Bool }
-import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.crypto.signature { EcdsaP256Sha256, signature_suite_public_key_size }
 import extdeps.external_authority { ExternalAuthority }
@@ -96,7 +95,7 @@ type CoseKeyRefusal
 // output is the SEC 1 uncompressed point 0x04 || x || y, which is extdeps.crypto.signature's
 // Sec1Uncompressed encoding and the input extdeps.crypto.nist_p256 p256_ecdsa_verify_octets takes.
 type CoseEc2P256Key
-  = CoseEc2P256KeyRead { sec1_uncompressed: List<UInt8> }
+  = CoseEc2P256KeyRead { sec1_uncompressed: List<Int> }
   | CoseEc2P256KeyRefused { cause: CoseKeyRefusal }
 
 fn cose_required_integer(key: CborValue, label: Int) -> CoseKeyRefusal? {
@@ -120,7 +119,7 @@ fn cose_integer_at(key: CborValue, label: Int) -> Int? {
 }
 
 type CoseCoordinate
-  = CoseCoordinateRead { octets: List<UInt8> }
+  = CoseCoordinateRead { octets: List<Int> }
   | CoseCoordinateRefused { cause: CoseKeyRefusal }
 
 fn cose_coordinate(key: CborValue, label: Int) -> CoseCoordinate {

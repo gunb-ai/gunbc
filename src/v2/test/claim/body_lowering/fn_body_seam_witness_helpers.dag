@@ -2,6 +2,8 @@ module v2.test.claim.body_lowering.fn_body_seam_witness_helpers
 
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.compiler.body_lowering_fold {
+  BodyLowered,
+  BodyWrapperRetained,
   BodyLoweringLowered,
   BodyLoweringRejected,
   BodyLoweringWrapperRetained,
@@ -111,8 +113,9 @@ fn wave1_gate1_a1_fn_body_seam_shell_lowers_identity_holds() -> Bool {
     Present { value: shell } =>
       match body_lower_fn_body_shell(shell: shell) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: lowered, diagnostics: _ } =>
+        Accepted { value: BodyLowered { node: lowered }, diagnostics: _ } =>
           fn_body_seam_tree_has_transform(root: lowered)
+        Accepted { value: BodyWrapperRetained { retention: _ }, diagnostics: _ } => false
       }
   }
 }
@@ -128,7 +131,7 @@ fn wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds() -> Boo
     children: []
   )
   match body_lower_outcome_frontier_disposition(o: body_lower_fn_body_shell(shell: shell)) {
-    BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
+    BodyLoweringWrapperRetained { retention: _ } => true
     BodyLoweringLowered => false
     BodyLoweringRejected { diagnostics: _ } => false
   }

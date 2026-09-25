@@ -181,6 +181,16 @@ enum WireEncode {
     }
     /// push_update_json
     static func pushUpdate(_ p: ApnsRegistration) -> String { push(p).serialized }
+    /// read_authentication_json_value
+    static func readAuthentication(_ a: ReadAuth) -> WireJson {
+        .object([("enrollment_id", .string(a.enrollmentId)), ("requested_at", .string(a.requestedAt)), ("assertion_b64", .string(a.assertionB64))])
+    }
+    /// read_authentication_json: the body of the three authenticated reads
+    static func readRequest(_ a: ReadAuth) -> String { readAuthentication(a).serialized }
+    /// push_update_request_json: { auth, push }
+    static func pushUpdateRequest(_ a: ReadAuth, _ p: ApnsRegistration) -> String {
+        WireJson.object([("auth", readAuthentication(a)), ("push", push(p))]).serialized
+    }
 }
 
 enum WireDecode {
@@ -393,14 +403,12 @@ enum OutcomeName {
     ]
 }
 
-// ── Headers, paths ───────────────────────────────────────────────────────────────────────────
-enum ReadHeader {
-    static let enrollment = "X-Approval-Enrollment"
-    static let requestedAt = "X-Approval-Requested-At"
-    static let assertion = "X-Approval-Assertion"
-}
-
-/// The credentials an authenticated GET or PUT carries; produced by the caller so this file signs nothing.
+// ── Paths ────────────────────────────────────────────────────────────────────────────────────
+/// EVERY DEVICE OPERATION IS A POST WHOSE BODY CARRIES ITS AUTHENTICATION (gunbc.auth.approval_device_wire
+/// ReadAuthentication): the server hands a route no request header but the tailnet login, so the
+/// enrolment id, the claimed time and the assertion travel in the JSON body. The assertion's client
+/// data (device_read_client_data) is unchanged by where the carrier rides.
+/// The credentials an authenticated read or push update carries; produced by the caller so this file signs nothing.
 struct ReadAuth {
     var enrollmentId: String
     var requestedAt: String
@@ -476,14 +484,9 @@ struct Client {
     let config: ServerConfig
     let session = URLSession(configuration: .ephemeral)
 
-    private func send(_ method: String, _ path: String, body: String? = nil, read: ReadAuth? = nil) async throws -> Data {
+    private func send(_ method: String, _ path: String, body: String? = nil) async throws -> Data {
         var req = URLRequest(url: try config.url(path))
         req.httpMethod = method
-        if let read {
-            req.setValue(read.enrollmentId, forHTTPHeaderField: ReadHeader.enrollment)
-            req.setValue(read.requestedAt, forHTTPHeaderField: ReadHeader.requestedAt)
-            req.setValue(read.assertionB64, forHTTPHeaderField: ReadHeader.assertion)
-        }
         if let body {
             req.httpBody = Data(body.utf8)
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -501,21 +504,24 @@ struct Client {
     func enrol(_ r: EnrolmentRequest) async throws -> EnrolmentGrant {
         try WireDecode.enrolmentGrant(await send("POST", Route.enrol, body: WireEncode.enrolmentRequest(r)))
     }
+    /// POST /approve/device/pending, body = read_authentication_json
     func pending(_ read: ReadAuth) async throws -> [PendingApproval] {
-        try WireDecode.pendingList(await send("GET", Route.pending, read: read))
+        try WireDecode.pendingList(await send("POST", Route.pending, body: WireEncode.readRequest(read)))
     }
+    /// POST /approve/device/requests/<id>, body = read_authentication_json
     func fetch(_ path: String, _ read: ReadAuth) async throws -> FetchedRequest {
-        try WireDecode.fetchedRequest(await send("GET", path, read: read))
+        try WireDecode.fetchedRequest(await send("POST", path, body: WireEncode.readRequest(read)))
     }
     func redeem(_ r: SignedRedemption) async throws -> RedemptionOutcome {
         try WireDecode.redemptionResponse(await send("POST", Route.redeem, body: WireEncode.signedRedemption(r)))
     }
-    /// GET /approve/device/enrollments/<enrollment_id>, read-assertion authenticated.
+    /// POST /approve/device/enrollments/<enrollment_id>, body = read_authentication_json.
     func readback(_ path: String, _ read: ReadAuth) async throws -> EnrolmentReadback {
-        try WireDecode.enrolmentReadback(await send("GET", path, read: read))
+        try WireDecode.enrolmentReadback(await send("POST", path, body: WireEncode.readRequest(read)))
     }
-    /// PUT /approve/device/push; the body is the exact JSON the assertion's client data framed.
-    func updatePush(bodyJson: String, _ read: ReadAuth) async throws {
-        _ = try await send("PUT", Route.push, body: bodyJson, read: read)
+    /// POST /approve/device/push, body = push_update_request_json { auth, push }; the assertion's
+    /// client data frames push_update_json(push) alone, exactly as the server re-renders it.
+    func updatePush(_ push: ApnsRegistration, _ read: ReadAuth) async throws {
+        _ = try await send("POST", Route.push, body: WireEncode.pushUpdateRequest(read, push))
     }
 }

@@ -2,7 +2,6 @@ module test.claim.app_attest_sample_decode_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List, NonEmptyStr }
-import std.integer { UInt8 }
 import std.measure { byte_size_count }
 import std.encoding { base64_decode, Standard }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -31,14 +30,14 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 // any of the three decoders reds these; a decoder that agrees with its own fixtures but not with
 // Apple's bytes reds these too.
 
-fn octets_or_empty(b64: String) -> List<UInt8> {
+fn octets_or_empty(b64: String) -> List<Int> {
   match base64_decode(s: b64, variant: Standard) {
     Present { value: o } => o
     Absent => []
   }
 }
 
-fn sample_ascii(s: String) -> List<UInt8> {
+fn sample_ascii(s: String) -> List<Int> {
   bytes_octets(b: utf8_encode_bytes(s: s))
 }
 
@@ -49,7 +48,7 @@ fn sample_attestation() -> CborValue {
   }
 }
 
-fn member_octets(v: CborValue, key: String) -> List<UInt8> {
+fn member_octets(v: CborValue, key: String) -> List<Int> {
   match cbor_map_unique_text_member(v: v, key: key) {
     CborMemberFound { value: m } =>
       match cbor_byte_string_octets(v: m) {

@@ -233,7 +233,8 @@ data rust_visibility: String = "pub "
 // `+ - * / %` and negation with checked arithmetic and refuses with IntegerOverflow or
 // DivisionByZero (v1.interpreter eval_int_binop, eval_unaryop). Rust's infix `+ - *` and prefix `-`
 // on i64 trap only under overflow-checks, and the EMITTED crate's release profile -- its own
-// manifest, independent of this workspace's -- leaves them off, so there they wrap in two's
+// manifest, independent of this workspace's, whose [profile.release] sets overflow-checks for the
+// seed and workspace members only -- leaves them off, so there they wrap in two's
 // complement: the fact extdeps.languages.rust.primitives records on the i64 row as
 // `overflow: TwoComplementWrap`. For those four the emitted program returns a fabricated value
 // where the interpreter refuses. `/` and `%` are a different partition: they were already terminal

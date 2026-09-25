@@ -143,6 +143,7 @@ import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
 import v2.std.compilers.target_model {
+  IntLiteralDecimal,
   TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
@@ -1273,6 +1274,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^rust_token_kw_true,
       false_token: ^rust_token_kw_false
     },
+    int_literal_form: IntLiteralDecimal { literal_token: ^rust_token_int_literal },
     block_evaluation_mode: ValueProducing
   }
 }

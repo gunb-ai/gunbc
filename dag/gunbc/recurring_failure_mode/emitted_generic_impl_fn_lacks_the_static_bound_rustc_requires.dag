@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.emitted_generic_impl_fn_lacks_the_static_bound_rustc_requires
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emitted_generic_impl_fn_lacks_the_static_bound_rustc_requires: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitted_generic_impl_fn_lacks_the_static_bound_rustc_requires" as NonEmptyStr,
+
+  receipts: [
+    "**the seed Rust emitter renders a `.dag` function whose closure-typed value is generic in a type parameter as `impl Fn(..) -> Rc<..<R>> + Clone` with no lifetime bound, and rustc refuses the crate** (INVALID STATE: `std.emission_provenance`'s fold `emission_append_operations_compose(acc, emission_contribution_fold(part, read))` emits into `src/std_emission_provenance.rs` a returned/captured `impl Fn(Rc<EmissionContribution>) -> Rc<EmissionAppendOperation<R>> + Clone`, and rustc answers E0310, the parameter type may not live long enough. That run also reported one E0599 whose line was not captured here; it is not yet attributed to this class).",
+
+    "RECEIPT. gunbc#12239 at bba28e7f2eb, `gunbc test //gunbc/instruments:v2-native-cli` on srv1: the seed-emitted crate `gunbc-emitted-closure-src-v2-cli-compile-cli-dag` failed `cargo build` with E0310 at `src/std_emission_provenance.rs:81`, so the instrument never reached the door. The module had entered the CLI closure only because `v2.compiler.emit_produced` imported `v2.compiler.emit_module` for one literal; that PR moved the literal to `v2.compiler.target_carriers` and the closure no longer reaches the module. So the defect was AVOIDED, not repaired: `std.emission_provenance` is unchanged since gunbc#10929, and any closure the seed emits that reaches it -- gen-two's among them -- fails the same way.",
+
+    "HARM. Loud, not silent: rustc refuses the emitted crate and the instrument reports the build failure. The cost is reach -- a module whose `.dag` typechecks and evaluates is unemittable, and the refusal lands in the emitted crate, far from the `.dag` link that owns the omission, so the natural reading is a defect in the module rather than in the emitter. DISTINGUISHING FACTS: this is not `gunbc.guarantee_stall` `emission_apply_generic_r_uninstantiated_stall`, which is about `R` left uninstantiated at the module's public call sites in v2's own typecheck; here the `.dag` is accepted and the Rust realization omits a bound rustc requires for a generic parameter captured in a returned `impl Fn`.",
+
+    "RUNG FOUND AT: 1 -- mitigated by rustc's refusal of the emitted crate, which the instrument surfaces. CEILING: structurally guaranteed -- whether an emitted `impl Fn` return or capture mentions a generic parameter is decidable at emission, so the emitter can derive the bound rather than rustc discovering its absence. NEXT-RUNG TRIGGER, named as a capability: the seed Rust emitter adds the lifetime bound (`R: 'static`, or `+ 'a` tied to the captures) for every returned or captured `impl Fn` whose signature mentions a generic parameter, so `std.emission_provenance` builds inside an emitted closure. Its discriminating RED is that module emitted in a closure and built; its positive control is the same closure building clean.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.emission_provenance", decl_name: "emission_append_operations_compose", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.target_carriers", decl_name: "emit_module_decl_separator", field: WholeDeclaration },
+  ],
+}
