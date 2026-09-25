@@ -3,7 +3,7 @@ module extdeps.ntfy.ntfy
 import std.types { NonEmptyStr, String, Int, Secret, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, mutation_status_is_commit_ambiguous }
 import extdeps.ietf.http_semantics { POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -125,6 +125,42 @@ fn ntfy_publish_outcome_of(rest: RestOutcome, message_id: String) -> NtfyPublish
     RestStatusRefused { status, body } => NtfyPublishRefused { status: status, detail: body }
     RestTransportRefused { cause } => NtfyPublishUnreached { cause: cause as String }
     RestBodyUndecodable { status, cause } => NtfyPublishUndecodable { status: status, cause: cause as String }
+  }
+}
+
+// The one sentence for a publish outcome, consumed by every operator-facing renderer of it.
+fn ntfy_publish_outcome_sentence(o: NtfyPublishOutcome) -> String {
+  match o {
+    NtfyPublished { message_id: m } => "published as " + (m as String)
+    NtfyPublishRefused { status: s, detail: d } => "refused " + to_string(s) + " " + d
+    NtfyPublishUnreached { cause: c } => "unreached: " + c
+    NtfyPublishUndecodable { status: s, cause: c } => "undecodable " + to_string(s) + ": " + c
+  }
+}
+
+// WHAT A PUBLISH OUTCOME ESTABLISHES ABOUT ACCEPTANCE, three answers and never two (review of
+// gunbc#12013). A publish is a mutation, so only an explicit decision establishes that the message
+// was NOT accepted: a 4xx refusal. A body that could not be read under a success status is an
+// ACCEPTANCE whose receipt is unread -- accepted, without a message id. A transport refusal, a 5xx,
+// or an unreadable body under a non-success status does not say whether the message landed
+// (extdeps.transports.rest mutation_status_is_commit_ambiguous), so it is INDETERMINATE. Folding
+// the last two into "not published" reports a degradation as a clean negative, and a consumer that
+// re-sends a fresh secret on that negative may leave two live secrets on the subscriber's phone.
+type NtfyPublishAcceptance
+  = NtfyAccepted { message_id: NonEmptyStr? }
+  | NtfyRefusedExplicitly { status: Int, detail: String }
+  | NtfyAcceptanceIndeterminate { detail: String }
+
+fn ntfy_publish_acceptance(o: NtfyPublishOutcome) -> NtfyPublishAcceptance {
+  match o {
+    NtfyPublished { message_id: m } => NtfyAccepted { message_id: Present { value: m } }
+    NtfyPublishRefused { status: s, detail: d } =>
+      if mutation_status_is_commit_ambiguous(status: s) { NtfyAcceptanceIndeterminate { detail: ntfy_publish_outcome_sentence(o: o) } }
+      else { NtfyRefusedExplicitly { status: s, detail: d } }
+    NtfyPublishUnreached { cause: _ } => NtfyAcceptanceIndeterminate { detail: ntfy_publish_outcome_sentence(o: o) }
+    NtfyPublishUndecodable { status: s, cause: _ } =>
+      if s >= 200 && s < 300 { NtfyAccepted { message_id: none } }
+      else { NtfyAcceptanceIndeterminate { detail: ntfy_publish_outcome_sentence(o: o) } }
   }
 }
 

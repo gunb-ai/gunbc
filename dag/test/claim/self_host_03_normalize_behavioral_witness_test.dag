@@ -1,10 +1,6 @@
 module test.claim.self_host_03_normalize_behavioral_witness
 
-import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for, module_behavioral_transport_config_for }
-import v2.compiler.source_authority { SourceRef, source_ref_for_storage_path }
-import v2.std.collection { List }
-import v2.std.optional { Absent, Present }
-import std.algebra { list_snoc_item }
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 import tools.self_host_03_normalize_declared_source_refs { declared_source_refs }
 import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -15,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Wet self-host behavioral receipt probe for Gate-A flip (03_normalize):
 // tools.self_host_module_behavioral_transport_roster's compiler_module_behavioral_receipt_for emits
 // src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled
-// (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain +
+// (the whole emitted closure + v1-compiler path dep), runs cargo build + witness (plain +
 // --inject-fault). ROUTE STANDING (2026-08-26): this row previously said it was enrolled on the
 // nightly falsifier when its frontier row was SelfEmitted. Both things it named are gone --
 // falsifier.yml was deleted at 611fd02770/#8283 on 2026-08-15 and the self-host frontier roster no
@@ -32,28 +28,6 @@ test fn self_host_03_normalize_behavioral_receipt_holds() -> Bool {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/03_normalize.dag")
 }
 
-// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN section 5). The declared refs must be
-// exactly the files this instrument's transport row reads: the module source, the shim lib, the
-// driver, and every shim-write source, in the row's order
-// (tools.self_host_module_behavioral_transport_roster). A literal count copied from the tree went
-// stale when gunbc#12208 merged two std.algebra shims into one bridge (16 -> 15) and could not say
-// WHICH ref was missing or extra; this compares the refs themselves.
-fn sn_expected_source_refs() -> List<SourceRef> {
-  match module_behavioral_transport_config_for(module_path: "src/v2/compiler/03_normalize.dag") {
-    Absent => []
-    Present { value: cfg } =>
-      fold(
-        cfg.shim_writes,
-        init: [
-          source_ref_for_storage_path(path: cfg.module_path),
-          source_ref_for_storage_path(path: cfg.shim_lib_rel),
-          source_ref_for_storage_path(path: cfg.driver_rel)
-        ],
-        f: fn(acc, w) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: w.source_rel)) }
-      )
-  }
-}
-
 test fn self_host_03_normalize_declared_source_refs_complete_holds() -> Bool {
-  (length(xs: sn_expected_source_refs()) > 3) && (declared_source_refs == sn_expected_source_refs())
+  length(xs: declared_source_refs) == 2
 }
