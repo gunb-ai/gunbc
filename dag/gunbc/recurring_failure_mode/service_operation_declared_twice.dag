@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.service_operation_declared_twice
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data service_operation_declared_twice: RecurringFailureMode = RecurringFailureMode {
+  identity: "service_operation_declared_twice" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: one `service` declares two operations with the same name. v1 accepts it silently and keeps the later declaration, so the earlier operation is unreachable by name and one spelling carries two contracts -- a DESIGN section 3 meaning fork, not a style issue.",
+    "SPECIMEN: `dag/extdeps/bmc/http.dag` `redfish.Http` declared `GetManager` twice: a `/redfish/v1/Managers/{manager_id}` read added for the Mt. Jade first contact (gunbc#11758), and the fixed `/redfish/v1/Managers/bmc` read `gunbc.fleet.fleet_health_observe` calls (gunbc#11681). The id form was dead by name from the day it landed. Renamed to `GetManagerById` (DMTF DSP0268 Manager resource), with the jade frontier row repointed.",
+    "FOUND BY: the first full gen-two census (srv1, gen-one `emit --entry v2.compiler.compile` over a combine including gunbc#12277), where v2's declaration-grade service lowering produced two identically labelled operation edges and the module refused. gunbc#12277 makes that refusal located at the second declaration under its own cause, `body_lowering_reason_service_operation_repeated`.",
+    "RUNG FOUND AT: mitigated on the v2 route (a located census refusal); SILENT on the v1 route, which is the harm. CEILING: structurally guaranteed -- no accepted program declares an operation name twice in one service. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v1 refuses a service that declares an operation name twice, OR the v1 seed is retired so the v2 route is the only one that accepts service declarations; either makes every accepted service's operation names unique.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "a_repeated_operation_name_refuses_located_RED", field: WholeDeclaration },
+  ],
+}

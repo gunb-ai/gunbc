@@ -88,6 +88,15 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // exit_code beside the body because curl exit 7 (connection refused or unreachable), 28
 // (timeout) and 22 with "error: 401" (authentication refused) are different diagnoses, and it
 // takes --max-time as an input so the caller's deadline and the transport's bound are one value.
+//
+// TWO MANAGER READS, TWO NAMES. GetManagerById reads the Redfish Manager resource at
+// /redfish/v1/Managers/{ManagerId} (DMTF DSP0268, the Manager schema) for a caller-supplied id, the
+// read the Mt. Jade first contact names (gunbc.machine_intake.jade_first_contact_frontier).
+// GetManager reads the fixed /redfish/v1/Managers/bmc member OpenBMC exposes, which
+// gunbc.fleet.fleet_health_observe calls. Both were declared as GetManager: v1 kept the later one
+// without a word, so the id form was unreachable by name and one spelling carried two contracts
+// (DESIGN section 3, a meaning fork). The v2 census refuses the duplicate
+// (gunbc.recurring_failure_mode service_operation_declared_twice).
 service redfish.Http {
 
   operation GetServiceRoot {
@@ -133,7 +142,7 @@ service redfish.Http {
     }
   }
 
-  operation GetManager {
+  operation GetManagerById {
     input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
