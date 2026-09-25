@@ -452,6 +452,12 @@ fn ts_inhabitant_boolean_node() -> Node {
   ts_bool_inhabitant_node(id: ^ts_inhabitant_boolean, facts: ts_facts_boolean)
 }
 
+// The field of an inhabitant record whose target is the type the record declares; every other
+// field states a fact about that type (std.kind roster_member_kind).
+fn ts_declared_inhabitants_subject_field() -> Symbol {
+  ^ts_inhabitant_field_atom
+}
+
 fn ts_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },

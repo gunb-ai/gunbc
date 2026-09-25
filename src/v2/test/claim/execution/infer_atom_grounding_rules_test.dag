@@ -10,8 +10,12 @@ import v2.compiler.infer {
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
+import std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 import v2.extdeps.languages.dag {
-  dag_grammar_surface_production_type_node
+  dag_declared_inhabitants_root,
+  dag_grammar_surface_production_type_node,
+  dag_inhabitant_atom,
+  dag_int_inhabitant_node
 }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.target_model {
@@ -51,7 +55,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the evidence identity, and the census pins that the witness saw the population. The
 // boundary control pins that a bare atom with no authority membership and no domain declaration
 // stays on the frontier. The roster-root red pins that no specimen node's derived type is the
-// canonical-operations roster root (provenance is not a type, DESIGN section 3). The closing control pins the specimen's full closure: zero frontier
+// canonical-operations roster root (provenance is not a type, DESIGN section 3). The
+// declared-inhabitant controls pin that a record derives its KIND (std.kind TypeDenotationKind),
+// a fact hung off a record derives TypeFactKind, and neither derives the roster root. The closing control pins the specimen's full closure: zero frontier
 // nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
 // the boundary control.
 
@@ -195,6 +201,34 @@ test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
             DerivedGrounding { grounding: _ } => false
           }
       }
+  }
+}
+
+fn atom_grounding_standalone_evidence(n: Node) -> Optional<Node> {
+  match infer(tree: n) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: inferred, diagnostics: _ } => atom_grounding_node_evidence(inferred: inferred, n: n)
+  }
+}
+
+test fn declared_inhabitant_record_derives_type_denotation_kind_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: dag_int_inhabitant_node()) {
+    Absent => false
+    Present { value: evidence } => evidence == kind_node(kind: TypeDenotationKind)
+  }
+}
+
+test fn declared_inhabitant_fact_derives_type_fact_kind_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: dag_inhabitant_atom(id: ^dag_surface_spelling_int)) {
+    Absent => false
+    Present { value: evidence } => evidence == kind_node(kind: TypeFactKind)
+  }
+}
+
+test fn declared_inhabitant_never_derives_the_roster_root_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: dag_int_inhabitant_node()) {
+    Absent => false
+    Present { value: evidence } => !(evidence == dag_declared_inhabitants_root())
   }
 }
 

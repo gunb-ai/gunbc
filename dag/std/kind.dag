@@ -1,0 +1,108 @@
+module std.kind
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { any }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.optional { Optional, optional_absent, optional_present }
+
+// THE KIND OF A TYPE-LEVEL NODE, AT ONE LEVEL (Type_0 only, no universe tower). A node that DENOTES
+// a type -- the Int inhabitant, a fn Arrow between inhabitants -- has a type too, and that type is
+// its kind, never itself (self-evidence) and never the roster it was found under (provenance, which
+// is not a type). Two kinds, because a language authority's declared-inhabitants roster carries two
+// different sorts of node: the types it declares, and the facts it states ABOUT each type (surface
+// spelling, representation, std projection). Giving both one kind would give that kind two
+// meanings (DESIGN section 3's meaning fork), so each has its own.
+//
+// Checked and rejected as a home: std.syllogism Proposition, an argument record (a String
+// statement with premises), which is a different concept from the kind of a fact node.
+type Kind
+  = TypeDenotationKind
+  | TypeFactKind
+
+fn kind_node(kind: Kind) -> Node {
+  match kind {
+    TypeDenotationKind =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^kind_type_denotation } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    TypeFactKind =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^kind_type_fact } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}
+
+// WHAT INHABITS EACH KIND, stated by structure so a new member's kind is derived, not chosen. A
+// TYPE-DENOTATION RECORD is a Conj carrying an edge labelled with its language's SUBJECT FIELD; that
+// edge's target is the type the record declares. Within a roster:
+//   - TypeFactKind: every node reachable through a record's OTHER edges -- a facts Conj and its
+//     atoms, or a spelling atom hung directly off the record. They describe the subject; none is a
+//     type.
+//   - TypeDenotationKind: every other member -- the records themselves, their subject atoms, and
+//     composites built from records (e.g. a fn Arrow whose positions are records).
+// A node that is not a member of the roster has no kind here (Absent).
+
+fn kind_record_edge_is_subject(edge: Edge, subject_field: Symbol) -> Bool {
+  match edge.label {
+    Named { name: name } => name == subject_field
+    _ => false
+  }
+}
+
+fn kind_is_type_denotation_record(record: Node, subject_field: Symbol) -> Bool {
+  match record.kind {
+    TypeNode { connective: Conj } =>
+      any(
+        xs: record.children,
+        predicate: fn(edge) { kind_record_edge_is_subject(edge: edge, subject_field: subject_field) }
+      )
+    _ => false
+  }
+}
+
+fn kind_node_is_in_subtree(root: Node, n: Node) -> Bool {
+  any(xs: node_subtree_nodes(root: root), predicate: fn(member) { member == n })
+}
+
+fn kind_node_is_fact_under_record_edge(edge: Edge, subject_field: Symbol, n: Node) -> Bool {
+  if kind_record_edge_is_subject(edge: edge, subject_field: subject_field) {
+    false
+  } else {
+    kind_node_is_in_subtree(root: edge.target, n: n)
+  }
+}
+
+fn kind_node_is_fact_of_record(record: Node, subject_field: Symbol, n: Node) -> Bool {
+  if kind_is_type_denotation_record(record: record, subject_field: subject_field) {
+    any(
+      xs: record.children,
+      predicate: fn(edge) {
+        kind_node_is_fact_under_record_edge(edge: edge, subject_field: subject_field, n: n)
+      }
+    )
+  } else {
+    false
+  }
+}
+
+fn roster_member_kind(roster: Node, subject_field: Symbol, n: Node) -> Optional<Kind> {
+  let members = node_subtree_nodes(root: roster)
+  if any(xs: members, predicate: fn(member) { member == n }) {
+    if any(
+      xs: members,
+      predicate: fn(record) {
+        kind_node_is_fact_of_record(record: record, subject_field: subject_field, n: n)
+      }
+    ) {
+      optional_present(value: TypeFactKind)
+    } else {
+      optional_present(value: TypeDenotationKind)
+    }
+  } else {
+    optional_absent()
+  }
+}
