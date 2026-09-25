@@ -30,7 +30,7 @@ import v2.extdeps.languages.rust_execution_test {
   rust_execution_match_runtime_target
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   List,
   Map,
@@ -109,7 +109,7 @@ fn emit_match_eval_generic_facts(node: Node) -> InferredFacts {
     descent: Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: v2.std.cardinality.RankingDimension { measured: ^emit_match_eval_generic_descent }
+        strict: v2.std.cardinality.RankingComponent { measured: ^emit_match_eval_generic_descent }
       }
     }
   )
