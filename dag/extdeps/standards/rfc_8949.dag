@@ -2,7 +2,6 @@ module extdeps.standards.rfc_8949
 
 import std.types { Int, String, List }
 import std.logic { Bool }
-import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.encoding { utf8_decode_octets }
 import extdeps.external_authority { ExternalAuthority }
@@ -40,7 +39,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = rfc_8949_external_au
 type CborValue
   = CborUnsigned { value: Int }
   | CborNegative { value: Int }
-  | CborByteString { octets: List<UInt8> }
+  | CborByteString { octets: List<Int> }
   | CborTextString { text: String }
   | CborArray { items: List<CborValue> }
   | CborMap { entries: List<CborEntry> }
@@ -73,7 +72,7 @@ data cbor_nesting_limit: Int = 16
 // 2^53: the largest magnitude Int carries exactly.
 data cbor_exact_integer_bound: Int = 9007199254740992
 
-fn cbor_octet_at(octets: List<UInt8>, at: Int) -> Int? {
+fn cbor_octet_at(octets: List<Int>, at: Int) -> Int? {
   match octets |> get(at) {
     null => none
     o => Present { value: o }
@@ -100,7 +99,7 @@ type CborArgument
 // BEFORE the multiply so a 64-bit host Int is never asked to overflow. A missing octet is a
 // located refusal, never a shorter value read as the argument (review 69598 of gunbc#11970): the
 // caller's length guard makes it unreachable today, and a guard is not what keeps an arm honest.
-fn cbor_big_endian_value(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> CborArgument {
+fn cbor_big_endian_value(octets: List<Int>, at: Int, n: Int, acc: Int) -> CborArgument {
   if n <= 0 { CborArgumentRead { value: acc } } else {
     match cbor_octet_at(octets: octets, at: at) {
       Absent => CborArgumentTruncated { at: at }
@@ -111,7 +110,7 @@ fn cbor_big_endian_value(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Cbor
   }
 }
 
-fn cbor_read_head(octets: List<UInt8>, at: Int) -> CborHead {
+fn cbor_read_head(octets: List<Int>, at: Int) -> CborHead {
   match cbor_octet_at(octets: octets, at: at) {
     Absent => CborHeadRefused { cause: CborTruncated { at: at, needed: byte_size(count: 1), available: byte_size(count: 0) } }
     Present { value: initial } => {
@@ -142,11 +141,11 @@ fn cbor_read_head(octets: List<UInt8>, at: Int) -> CborHead {
   }
 }
 
-fn cbor_slice(octets: List<UInt8>, at: Int, n: Int) -> List<UInt8> {
+fn cbor_slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
   octets |> skip(at) |> take(n)
 }
 
-fn cbor_text_of_octets(octets: List<UInt8>) -> String? {
+fn cbor_text_of_octets(octets: List<Int>) -> String? {
   match utf8_decode_octets(octets: octets) {
     Absent => none
     Present { value: cps } => Present { value: fold(cps, init: "", f: (acc, cp) => acc + from_code_point(cp: cp)) }
@@ -157,7 +156,7 @@ type CborItemsAcc
   = CborItemsOk { items: List<CborValue>, next: Int }
   | CborItemsRefused { cause: CborRefusal }
 
-fn cbor_decode_items(octets: List<UInt8>, at: Int, remaining: Int, depth: Int, acc: List<CborValue>) -> CborItemsAcc {
+fn cbor_decode_items(octets: List<Int>, at: Int, remaining: Int, depth: Int, acc: List<CborValue>) -> CborItemsAcc {
   if remaining <= 0 { CborItemsOk { items: acc, next: at } } else {
     match cbor_decode_item(octets: octets, at: at, depth: depth) {
       CborRefused { cause: c } => CborItemsRefused { cause: c }
@@ -170,7 +169,7 @@ type CborEntriesAcc
   = CborEntriesOk { entries: List<CborEntry>, next: Int }
   | CborEntriesRefused { cause: CborRefusal }
 
-fn cbor_decode_entries(octets: List<UInt8>, at: Int, remaining: Int, depth: Int, acc: List<CborEntry>) -> CborEntriesAcc {
+fn cbor_decode_entries(octets: List<Int>, at: Int, remaining: Int, depth: Int, acc: List<CborEntry>) -> CborEntriesAcc {
   if remaining <= 0 { CborEntriesOk { entries: acc, next: at } } else {
     match cbor_decode_item(octets: octets, at: at, depth: depth) {
       CborRefused { cause: c } => CborEntriesRefused { cause: c }
@@ -184,14 +183,14 @@ fn cbor_decode_entries(octets: List<UInt8>, at: Int, remaining: Int, depth: Int,
   }
 }
 
-fn cbor_decode_string_payload(octets: List<UInt8>, at: Int, n: Int) -> CborRefusal? {
+fn cbor_decode_string_payload(octets: List<Int>, at: Int, n: Int) -> CborRefusal? {
   let available = count(octets) - at
   if available < n { Present { value: CborTruncated { at: at, needed: byte_size(count: n), available: byte_size(count: available) } } } else { none }
 }
 
 // ONE ITEM AT ONE OFFSET (Appendix C well-formedness, as a fold). `depth` counts the arrays, maps
 // and tags this item sits inside; it is the structural descent the nesting limit bounds.
-fn cbor_decode_item(octets: List<UInt8>, at: Int, depth: Int) -> CborDecode {
+fn cbor_decode_item(octets: List<Int>, at: Int, depth: Int) -> CborDecode {
   if depth > cbor_nesting_limit {
     CborRefused { cause: CborDepthExceeded { at: at, limit: cbor_nesting_limit } }
   } else {
@@ -248,7 +247,7 @@ type CborDocument
   = CborDocumentDecoded { value: CborValue }
   | CborDocumentRefused { cause: CborRefusal }
 
-fn cbor_decode_document(octets: List<UInt8>) -> CborDocument {
+fn cbor_decode_document(octets: List<Int>) -> CborDocument {
   match cbor_decode_item(octets: octets, at: 0, depth: 0) {
     CborRefused { cause: c } => CborDocumentRefused { cause: c }
     CborDecoded { value: v, next: n } =>
@@ -292,7 +291,7 @@ fn cbor_map_unique_text_member(v: CborValue, key: String) -> CborMemberLookup {
   }
 }
 
-fn cbor_byte_string_octets(v: CborValue) -> List<UInt8>? {
+fn cbor_byte_string_octets(v: CborValue) -> List<Int>? {
   match v {
     CborByteString { octets: o } => Present { value: o }
     _ => none

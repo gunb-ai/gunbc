@@ -21,6 +21,10 @@ import std.algebra { PartialFunction }
 // v2.compiler.infer imports these back; this is a relocation of one
 // authority, never a second declaration of it (DESIGN.md §3).
 
+// Why GroundingNotDerived exists: before this arm, a node no derivation rule covered was routed
+// through solve_constraints with the singleton candidate set [root], and the resulting grounding
+// carried the SOURCE NODE as its resolved type. Every literal, binding and operation was typed as
+// itself, and every downstream consumer read that as an established judgment.
 type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }
   | GroundingNotDerived { node: Node }

@@ -2,7 +2,6 @@ module test.claim.cbor_rfc8949_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List }
-import std.integer { UInt8 }
 import std.measure { byte_size_count }
 import extdeps.standards.rfc_8949 {
   CborValue, CborUnsigned, CborNegative, CborByteString, CborTextString, CborArray, CborMap, CborTagged, CborSimple, CborEntry,
@@ -18,14 +17,14 @@ import extdeps.standards.rfc_8949 {
 // Items); the refused ones are the same appendix's indefinite-length and floating-point rows,
 // plus truncations and a trailing octet the appendix does not list because they are not items.
 
-fn cbor_decodes_to(octets: List<UInt8>, expected: CborValue) -> Bool {
+fn cbor_decodes_to(octets: List<Int>, expected: CborValue) -> Bool {
   match cbor_decode_document(octets: octets) {
     CborDocumentDecoded { value: v } => cbor_values_equal(a: v, b: expected)
     CborDocumentRefused { cause: _ } => false
   }
 }
 
-fn cbor_refuses(octets: List<UInt8>) -> CborRefusal? {
+fn cbor_refuses(octets: List<Int>) -> CborRefusal? {
   match cbor_decode_document(octets: octets) {
     CborDocumentDecoded { value: _ } => none
     CborDocumentRefused { cause: c } => Present { value: c }
@@ -200,7 +199,7 @@ test fn text_string_not_utf8_refuses() -> Bool {
   }
 }
 
-fn nested_arrays(n: Int, acc: List<UInt8>) -> List<UInt8> {
+fn nested_arrays(n: Int, acc: List<Int>) -> List<Int> {
   if n <= 0 { acc |> list_push(128) } else { nested_arrays(n: n - 1, acc: acc |> list_push(129)) }
 }
 
@@ -219,7 +218,7 @@ test fn nesting_past_the_limit_refuses_and_at_the_limit_decodes() -> Bool {
   }
 }
 
-fn text_keyed_map(octets: List<UInt8>) -> CborValue {
+fn text_keyed_map(octets: List<Int>) -> CborValue {
   match cbor_decode_document(octets: octets) {
     CborDocumentDecoded { value: v } => v
     CborDocumentRefused { cause: _ } => CborSimple { value: 23 }

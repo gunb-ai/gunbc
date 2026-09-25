@@ -8,6 +8,7 @@ import std.dissolution {
 import std.emit_model {
   SimpleMethodSpec
 }
+import std.syntax { BinOp }
 import std.trait_derive_shape {
   PairCompletionOp,
   PairCompletionOpNeg,
@@ -227,6 +228,38 @@ data rust_tuple_separator: String = ", "
 data rust_source_extension: String = ".rs"
 data rust_source_dir: String = "src/"
 data rust_visibility: String = "pub "
+
+// THE SUBSTRATE'S Int REFUSES ON OVERFLOW; RUST'S i64 OPERATORS DO NOT. The interpreter evaluates
+// `+ - * / %` and negation with checked arithmetic and refuses with IntegerOverflow or
+// DivisionByZero (v1.interpreter eval_int_binop, eval_unaryop). Rust's infix `+ - *` and prefix `-`
+// on i64 trap only under overflow-checks, and the EMITTED crate's release profile -- its own
+// manifest, independent of this workspace's, whose [profile.release] sets overflow-checks for the
+// seed and workspace members only -- leaves them off, so there they wrap in two's
+// complement: the fact extdeps.languages.rust.primitives records on the i64 row as
+// `overflow: TwoComplementWrap`. For those four the emitted program returns a fabricated value
+// where the interpreter refuses. `/` and `%` are a different partition: they were already terminal
+// in release on a zero divisor and on MIN / -1, MIN % -1, but under rustc's own text and
+// classification rather than the interpreter's DivisionByZero / IntegerOverflow split
+// (gunbc.recurring_failure_mode emitted_int_arithmetic_wraps_where_the_interpreter_refuses). Both
+// partitions route through the same rows:
+// one realization, and one refusal text, for every Int operator.
+//
+// A row answers only for the operand realization named by rust_refusing_int_target_type; the
+// helpers are realized by v1.compiler.runtime_rust rt_checked_int_ops.
+data rust_refusing_int_target_type: String = "i64"
+
+fn rust_refusing_int_operator_helper(op: BinOp) -> String? {
+  match op {
+    Add => Present { value: "v1_rt::int_add" }
+    Sub => Present { value: "v1_rt::int_sub" }
+    Mul => Present { value: "v1_rt::int_mul" }
+    Div => Present { value: "v1_rt::int_div" }
+    Mod => Present { value: "v1_rt::int_rem" }
+    _ => none
+  }
+}
+
+data rust_refusing_int_negation_helper: String = "v1_rt::int_neg"
 
 type RuntimeFunction {
   name: String

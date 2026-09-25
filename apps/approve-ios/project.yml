@@ -23,6 +23,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.gunb.approve
+        MARKETING_VERSION: "1"
+        CURRENT_PROJECT_VERSION: 1
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Approving a request signs it with a key that only unlocks with Face ID."
         INFOPLIST_KEY_CFBundleDisplayName: Approve

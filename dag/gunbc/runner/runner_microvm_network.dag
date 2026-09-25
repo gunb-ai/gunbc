@@ -577,15 +577,9 @@ fn runner_microvm_nft_ruleset_text_for(host: HostEgressGrain) -> String {
 // ruling A, 2026-09-19), and a plan with no host identity could only ever render one host's grain.
 // The installer is the host converge, which knows which host it is converging.
 //
-// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the microVM host converge (the microvm_host_converge
-// fleet-converge mode) installing the table on srvN. TRIGGER: that converge installs
-// runner_microvm_nft_ruleset_text_for(host: <the converged host's HostEgressGrain>), reads the
-// listing back with runner_microvm_nft_list_command and records its digest as the converged digest
-// slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by a
-// witness folding a grain, and not by any per-attempt step installing a table.
-data host_ruleset_installer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_network_apply, which HAS LANDED -- it installs this ruleset as the host administrator over the fleet SSH edge and reads the listing back. microvm_network_observe still reads and records and installs NOTHING, because granting the job user install+restart over files it also stages would be granting root (review 69104). WHAT REMAINS: no run has dispatched that apply mode, so no ruleset has been installed on any host and no listing has been read back as the converged digest. TRIGGER: the capability named by microvm_network_host_mutation_principal_frontier holds and that route installs runner_microvm_nft_ruleset_text_for(the host's HostEgressGrain), reads the listing back with runner_microvm_nft_list_command, and records that digest as the converged digest slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by the observe mode running, by the fold existing, or by a witness folding a grain." as NonEmptyStr,
-)
+// THE INSTALLER IS gunbc.runner_microvm_network_apply, executing as the host administrator: fleet-converge
+// run 36043010087 (microvm_network_apply, srv1) installed this ruleset and read its listing back, and
+// run 36045264008 (microvm_network_observe, srv1) recorded that digest in ConvergedSlotNetwork.
 
 fn runner_microvm_shared_host_nft_ruleset_text() -> String {
   runner_microvm_nft_ruleset_text_for(host: runner_microvm_shared_host_grain)
@@ -1036,21 +1030,9 @@ type ConvergedSlotNetwork {
   nft_digest: Sha256Digest
 }
 
-// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the microvm_host_converge fleet-converge mode on
-// srvN, which produces ConvergedSlotNetwork. TRIGGER: that converge installs each slot's .netdev,
-// .network and v6 sysctl file and the ruleset from runner_microvm_nft_ruleset_text_for(the host's
-// HostEgressGrain), then reads back every field of the receipt -- tap, address, route, disable_ipv6,
-// helper standing, the nft listing digest -- and records it at a generation. SUFFICIENT FOR
-// deleting this row and host_ruleset_installer_frontier together. NOT satisfied by a witness
-// building a receipt.
-//
-// AMENDED 2026-09-21: the observe mode HAS executed on srv1 (fleet-converge run 35646413870) and
-// refused, naming the fact -- srv1's gunbc-tap1 has no disable_ipv6 to read, because no route had
-// ever installed the slot network. The installing route is now gunbc.runner_microvm_network_apply
-// rather than microvm_host_converge, and it has not been dispatched. Both rows stand.
-data converged_slot_network_producer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_network_converge runner_microvm_network_observe_wet, which HAS LANDED: it binds the dispatched host to the machine, reads the taps, addresses, routes, v6 standing, forwarding, ruleset digest and helper standing, and folds them into ConvergedSlotNetwork or a typed refusal. WHAT REMAINS: no run has produced a receipt, so no ConvergedSlotNetwork exists for any host. The staging and install folds beside it are NOT executed by that mode and are covered by microvm_network_host_mutation_principal_frontier, not by this row. THE MODE HAS NOW EXECUTED AND THE ROW STAYS, WHICH IS THE HONEST READING OF ITS OWN TRIGGER. fleet-converge run 35646413870, mode microvm_network_observe, host srv1, 2026-09-21: it bound to srv1, read the host, and wrote a receipt (artifact runner-microvm-network-observe-receipt, id 10661755164) whose whole content is `microvm-network-observe REFUSED: slot srv1-01: tap disable_ipv6 could not be read`. That is a real reading and it names the real fact -- srv1 carries no gunbc-tap1, because NOTHING HAS EVER INSTALLED THE SLOT NETWORK on any host. So the mode is proven to execute and to refuse where it should; what this row asserts is still true unchanged, that no ConvergedSlotNetwork exists for any host, and narrowing the required facts to mint one from that host would be the fabrication the observe module is written to refuse. TRIGGER: the observe mode executes on a host that has been converged -- gunbc.runner_microvm_network_apply having installed the slot and host network files there -- and records a receipt carrying the live readings at a generation. SUFFICIENT FOR deleting this row. NOT satisfied by a witness building a receipt, by the module compiling, or by a refusal receipt however well it names its fact." as NonEmptyStr,
-)
+// THE PRODUCER HAS EXECUTED: gunbc.runner_microvm_network_converge runner_microvm_network_observe_wet
+// minted a ConvergedSlotNetwork for srv1 at generation 36045264008 (fleet-converge run 36045264008),
+// after gunbc.runner_microvm_network_apply installed the slot and host network (run 36043010087).
 
 // --- the sanitation subject: sealed, and joined to the receipt ---
 
