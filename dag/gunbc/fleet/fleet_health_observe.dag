@@ -132,7 +132,7 @@ fn health_redfish_read(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHea
 {
   match read {
     ReadManager => {
-      r = redfish.Http.GetManager(bmc_host: bmc_host, netrc_file: netrc)
+      r = redfish.Http.GetManager(bmc_host: bmc_host, manager_id: "bmc", netrc_file: netrc)
       return HealthReadResponse { body: r.body, success: r.success }
     }
     ReadChassisThermal { chassis_id: c } => {
