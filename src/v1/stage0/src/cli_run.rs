@@ -9589,7 +9589,9 @@ fn visit_bare_reference_providers(
         // (`explicit_import_member_names`). The import closure already pulls the named
         // module, so there is nothing for the census to add -- and asking it anyway is
         // what would report AMBIGUOUS for a name the author disambiguated by hand.
-        if !service_head && explicit_imports.contains(&name) {
+        // The same holds for a service head: an explicit import names the one declaration meant,
+        // so the census -- which may hold several declarations of that name -- is not asked.
+        if explicit_imports.contains(&name) {
             continue;
         }
         if !service_head && is_substrate_vocabulary(&name) {
@@ -9615,8 +9617,7 @@ fn visit_bare_reference_providers(
             |census: &Rc<SymbolIndex>| -> Result<(Option<String>, &'static str), String> {
                 if service_head {
                     return Ok((
-                        v1_rt::map_get(&census.services, name.clone())
-                            .map(|entry| entry.module_path.clone()),
+                        census_single_service_owner(census, &name, &file_rel)?,
                         "service",
                     ));
                 }
@@ -9678,8 +9679,7 @@ fn visit_bare_reference_providers(
                     },
                     None => (
                         if in_call_position {
-                            v1_rt::map_get(&census.services, name.clone())
-                                .map(|entry| entry.module_path.clone())
+                            census_single_service_owner(census, &name, &file_rel)?
                         } else {
                             None
                         },
@@ -21999,6 +21999,31 @@ pub enum ClosureBareDisposition {
     /// `global_bare_is_ambiguous` answers false (ModulePathBindingMiss), so the semantic result
     /// is UNRESOLVED and the closure must not fabricate a provider. It pulls nothing.
     NoOnChainCandidate,
+}
+
+/// THE SERVICES CENSUS HOLDS EVERY DECLARATION OF A NAME (v1.compiler.infer_env
+/// service_census_candidates), so the one module a bare pull resolves to is decided over that
+/// whole set: none, exactly one, or a located refusal naming every candidate. Taking any single
+/// element of a plural set would make the pulled closure depend on census order.
+fn census_single_service_owner(
+    census: &Rc<SymbolIndex>,
+    name: &str,
+    file_rel: &str,
+) -> Result<Option<String>, String> {
+    let Some(entries) = v1_rt::map_get(&census.services, name.to_string()) else {
+        return Ok(None);
+    };
+    let owners: BTreeSet<String> = entries.iter().map(|e| e.module_path.clone()).collect();
+    match owners.len() {
+        0 => Ok(None),
+        1 => Ok(owners.into_iter().next()),
+        n => Err(format!(
+            "bare_reference_closure: service '{name}' in '{file_rel}' is AMBIGUOUS -- {n} modules \
+             declare a service of that name ({}), and this resolver does not rank candidates. \
+             Name the one you mean with an explicit import.",
+            owners.into_iter().collect::<Vec<_>>().join(", ")
+        )),
+    }
 }
 
 pub fn closure_bare_disposition(

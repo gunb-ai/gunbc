@@ -218,7 +218,7 @@ type ServiceCensusEntry {
 type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
-  services: Map<String, ServiceCensusEntry>
+  services: Map<String, List<ServiceCensusEntry>>
   transparent_alias_rep: Map<String, String>
   type_head_exposures: Map<String, TypeHeadExposure>
 }
@@ -307,11 +307,23 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
   }
 }
 
+// ONE ROW PER DECLARATION, NOT PER SPELLING. A service's census key is its authored name, and two
+// modules may each declare a service of that name; keying the value by name alone made the second
+// insertion REPLACE the first, so which declaration a name reached depended on census order. The
+// value is therefore every declaration of that name -- identity is (module_path, name) -- and the
+// consumer that must pick one decides over the whole set: exactly one, or a typed refusal.
+fn service_census_candidates(services: Map<String, List<ServiceCensusEntry>>, name: String) -> List<ServiceCensusEntry> {
+  match map_get(services, name) {
+    Present { value: entries } => entries
+    Absent => []
+  }
+}
+
 fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: String, item: Node) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
+    services: map_insert(index.services, name, list_push(service_census_candidates(services: index.services, name: name), ServiceCensusEntry { module_path: module_path, item: item })),
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures
   }

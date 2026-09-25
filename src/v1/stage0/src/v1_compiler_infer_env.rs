@@ -339,7 +339,7 @@ pub struct ServiceCensusEntry {
 pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
+    pub services: Rc<HashMap<String, Rc<Vec<Rc<ServiceCensusEntry>>>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
 }
@@ -353,7 +353,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
         entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-        services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
+        services: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ServiceCensusEntry>>>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
     })
@@ -512,6 +512,16 @@ pub fn symbol_index_insert_decl(
     })
 }
 
+pub fn service_census_candidates(
+    services: Rc<HashMap<String, Rc<Vec<Rc<ServiceCensusEntry>>>>>,
+    name: String,
+) -> Rc<Vec<Rc<ServiceCensusEntry>>> {
+    match v1_rt::map_get(&services, name.clone()) {
+        Some(entries) => entries.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
 pub fn symbol_index_insert_service(
     index: Rc<SymbolIndex>,
     name: String,
@@ -524,10 +534,13 @@ pub fn symbol_index_insert_service(
         services: v1_rt::rc_map_insert(
             index.services.clone(),
             name.clone(),
-            Rc::new(ServiceCensusEntry {
-                module_path: module_path.clone(),
-                item: item.clone(),
-            }),
+            v1_rt::rc_list_push(
+                service_census_candidates(index.services.clone(), name.clone()),
+                Rc::new(ServiceCensusEntry {
+                    module_path: module_path.clone(),
+                    item: item.clone(),
+                }),
+            ),
         ),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),

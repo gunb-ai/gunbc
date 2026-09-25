@@ -54,6 +54,7 @@ pub use crate::v1_compiler_emit_core_support::{
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::ServiceOwnerConflict;
+use crate::v1_compiler_infer::ServiceOwnerConflict::*;
 pub use crate::v1_compiler_infer::{
     build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
 };

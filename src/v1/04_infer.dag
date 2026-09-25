@@ -426,7 +426,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             svc_registry: svc_registry,
             svc_locals: svc_locals
           }, f: (acc, titem) =>
-            if titem.transport != none && titem.children |> count > 0 && imported_service_in_scope(imp: imp, name: authored_name_at(source_indices: env.source_indices, node: titem), root: namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices)) {
+            if titem.transport != none && titem.children |> count > 0 && import_path_decides_service(name: authored_name_at(source_indices: env.source_indices, node: titem), root: namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices), census: env.symbol_index.services) {
               let entries = titem.children |> map(c =>
                 OpEntry { name: authored_name_at(source_indices: env.source_indices, node: c), outputs: inferred_to_outputs(inferred: c.inferred, span: c.span, source_indices: env.source_indices), params: c.params }
               )
@@ -951,50 +951,85 @@ fn import_names(imp: ResolvedImport, name: String) -> Bool {
   imp.is_all || (imp.specific_names |> any(n => n == name))
 }
 
-fn imported_service_in_scope(imp: ResolvedImport, name: String, root: String) -> Bool {
-  root != name || import_names(imp: imp, name: name)
+// The import fold registers an imported module's services one import at a time, so a name two
+// imports both supply would be decided by import order. It keeps only what that order cannot
+// change: a dotted service with exactly one declaration in the census. Every bare-declared service
+// and every plural name is decided by the census fold over the whole candidate set.
+fn import_path_decides_service(name: String, root: String, census: Map<String, List<ServiceCensusEntry>>) -> Bool {
+  root != name && (service_census_candidates(services: census, name: name) |> count) <= 1
 }
 
 fn census_service_in_scope(owner_module: String, name: String, root: String, module_name: String, resolved_imports: List<ResolvedImport>) -> Bool {
   root != name || owner_module == module_name || (resolved_imports |> any(imp => imp.module_path == owner_module && import_names(imp: imp, name: name)))
 }
 
-type ServiceOwnerConflict {
-  service_owner: String
-  bound_owner: String
-  both_values: Bool
+// WHAT A SERVICE NAME MEANS IN ONE MODULE IS DECIDED OVER EVERY CANDIDATE, NEVER OVER THE FIRST.
+// The census holds every declaration of a service name (v1.compiler.infer_env
+// service_census_candidates), and a module's candidates are the ones it declares or imports --
+// by name or by `import *` (census_service_in_scope). The decision is taken only after the whole
+// set is collected, so no insertion or import order can pick a winner:
+//   - exactly one service candidate, and nothing else the imports bind to that name as a VALUE:
+//     admitted (a type or a resource under the same name is a different position, not a rival);
+//   - two or more service candidates, or one service beside a function or data value of that
+//     name: ServiceCandidatesAmbiguous, refused as AmbiguousReference wherever the name is read;
+//   - no service candidate while another declaration of that name is imported and a service of
+//     that name is in the closure: ServiceNotInScope, refused as ServiceOwnerMismatch where the
+//     old bare-name join would have answered.
+type ServiceOwnerConflict
+  = ServiceNotInScope { service_owners: List<String>, bound_owners: List<String> }
+  | ServiceCandidatesAmbiguous { candidates: List<String> }
+
+fn service_scope_candidates(entries: List<ServiceCensusEntry>, name: String, module_name: String, resolved_imports: List<ResolvedImport>, source_indices: Map<String, NewlineIndex>) -> List<ServiceCensusEntry> {
+  entries |> filter(e => census_service_in_scope(owner_module: e.module_path, name: name, root: namespace_root_from_properties(properties: e.item.properties, name: name, source_indices: source_indices), module_name: module_name, resolved_imports: resolved_imports))
 }
 
-// A NAME THIS MODULE IMPORTS BY NAME FROM ONE MODULE WHILE A BARE-DECLARED SERVICE OF THAT NAME IS
-// OWNED BY ANOTHER. Only an explicit name list counts: it is the one import form that states which
-// declaration the name means. Two cases, and they are not the same fact:
-//   - the service is NOT in scope: the name means the other declaration, and a receiver that would
-//     have reached the old bare-name join refuses at the receiver;
-//   - the service IS in scope as well: the import pair is a collision only when the other
-//     declaration is itself a VALUE (a function or data). A type or a resource is not a value in
-//     receiver position -- a resource becomes one only through a `uses` binder, which is a body local
-//     and judged by its own type -- so `import std.resources { Filesystem }` for a `uses fs:
-//     Filesystem` requirement beside the imported service names two declarations in two positions,
-//     not two answers to one question. Two VALUES under one name have no position to tell them
-//     apart, so that pair refuses rather than being decided by insertion order.
-fn service_owner_conflicts_of(services: Map<String, ServiceCensusEntry>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, module_name: String, source_indices: Map<String, NewlineIndex>) -> Map<String, ServiceOwnerConflict> {
+// Every module OTHER than a service owner that this module's imports bind `name` from: a name
+// list that states it, or an `import *` of a module that declares it.
+fn non_service_import_owners(name: String, service_owners: List<String>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  sorted_distinct_names(names: resolved_imports
+    |> filter(imp => !(service_owners |> any(o => o == imp.module_path)))
+    |> filter(imp => (imp.specific_names |> any(n => n == name)) || (imp.is_all && module_declares_named(parent_index: parent_index, module_path: imp.module_path, name: name, source_indices: source_indices)))
+    |> map(imp => imp.module_path))
+}
+
+// Order-free and duplicate-free: a module set, not a sequence, so no caller can read a winner off it.
+fn sorted_distinct_names(names: List<String>) -> List<String> {
+  let members: Map<String, Bool> = fold(names, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  sorted_map_keys(members)
+}
+
+fn service_owner_conflicts_of(services: Map<String, List<ServiceCensusEntry>>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, module_name: String, source_indices: Map<String, NewlineIndex>) -> Map<String, ServiceOwnerConflict> {
   fold(services |> map_keys, init: empty_map(), f: (acc, sname) =>
     match map_get(services, sname) {
-      Present { value: sentry } =>
-        if namespace_root_from_properties(properties: sentry.item.properties, name: sname, source_indices: source_indices) != sname { acc } else {
-          match resolved_imports |> filter(imp => imp.module_path != sentry.module_path && (imp.specific_names |> any(n => n == sname))) |> first {
-            Absent => acc
-            Present { value: imp } =>
-              let service_in_scope = census_service_in_scope(owner_module: sentry.module_path, name: sname, root: sname, module_name: module_name, resolved_imports: resolved_imports)
-              let other_is_value = module_declares_value_named(parent_index: parent_index, module_path: imp.module_path, name: sname, source_indices: source_indices)
-              if service_in_scope && !other_is_value { acc } else {
-                map_insert(acc, sname, ServiceOwnerConflict { service_owner: sentry.module_path, bound_owner: imp.module_path, both_values: service_in_scope })
-              }
+      Absent => acc
+      Present { value: entries } =>
+        let in_scope = service_scope_candidates(entries: entries, name: sname, module_name: module_name, resolved_imports: resolved_imports, source_indices: source_indices)
+        let scope_owners = sorted_distinct_names(names: in_scope |> map(e => e.module_path))
+        if (scope_owners |> count) >= 2 {
+          map_insert(acc, sname, ServiceCandidatesAmbiguous { candidates: scope_owners |> map(o => concat(o, ".", sname)) })
+        } else {
+          let all_owners = sorted_distinct_names(names: entries |> map(e => e.module_path))
+          let others = non_service_import_owners(name: sname, service_owners: all_owners, resolved_imports: resolved_imports, parent_index: parent_index, source_indices: source_indices)
+          if (others |> count) == 0 { acc }
+          else if (scope_owners |> count) == 0 {
+            map_insert(acc, sname, ServiceNotInScope { service_owners: all_owners, bound_owners: others })
+          } else {
+            let value_owners = others |> filter(o => module_declares_value_named(parent_index: parent_index, module_path: o, name: sname, source_indices: source_indices))
+            if (value_owners |> count) == 0 { acc } else {
+              map_insert(acc, sname, ServiceCandidatesAmbiguous { candidates: concat(scope_owners, value_owners) |> map(o => concat(o, ".", sname)) })
+            }
           }
         }
-      Absent => acc
     }
   )
+}
+
+fn module_declares_named(parent_index: Map<String, TypedModule>, module_path: String, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match map_get(parent_index, module_path) {
+    Present { value: typed_parent } =>
+      typed_parent.items |> any(titem => authored_name_at(source_indices: source_indices, node: titem) == name)
+    Absent => false
+  }
 }
 
 fn module_declares_value_named(parent_index: Map<String, TypedModule>, module_path: String, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1021,15 +1056,20 @@ fn service_owner_mismatch_refusal(name: String, span: SourceSpan, scope: InferSc
     Absent => none
     Present { value: conflict } =>
       if map_has(scope.body_locals, name) { none } else {
-        let refuses = conflict.both_values || match map_get(scope.locals, name) {
-          Absent => true
-          Present { value: binding } => binding.resolved == nominal_type_ref(name: name)
-        }
-        if !refuses { none } else {
-          Present { value: InferResult {
-            typed: semantic_expr_error_node(message: concat("service owner mismatch for '", name, "'"), span: span),
-            diagnostics: [make_error_node(diagnostic: ServiceOwnerMismatch { name: name, service_owner: conflict.service_owner, bound_owner: conflict.bound_owner, span: span }, module_name: scope.module_name)]
-          } }
+        match conflict {
+          ServiceCandidatesAmbiguous { candidates: cs } =>
+            Present { value: ambiguous_reference_refusal(name: name, candidates: cs, span: span, scope: scope) }
+          ServiceNotInScope { service_owners: sos, bound_owners: bos } =>
+            let reaches_join = match map_get(scope.locals, name) {
+              Absent => true
+              Present { value: binding } => binding.resolved == nominal_type_ref(name: name)
+            }
+            if !reaches_join { none } else {
+              Present { value: InferResult {
+                typed: semantic_expr_error_node(message: concat("service owner mismatch for '", name, "'"), span: span),
+                diagnostics: [make_error_node(diagnostic: ServiceOwnerMismatch { name: name, service_owner: join(sos, separator: " | "), bound_owner: join(bos, separator: " | "), span: span }, module_name: scope.module_name)]
+              } }
+            }
         }
       }
   }
@@ -6955,6 +6995,9 @@ fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceS
   match qualified_value_projection(texpr: texpr, scope: scope, span: span, expected: expected) {
     Present { value: proj } => Present { value: proj }
     Absent =>
+      match dotted_service_ambiguity_refusal(texpr: texpr, scope: scope, span: span) {
+        Present { value: refusal } => Present { value: refusal }
+        Absent =>
       match service_spine_projection(texpr: texpr, scope: scope) {
         Absent => none
         Present { value: svc_type } =>
@@ -6968,6 +7011,24 @@ fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceS
             span: span,
             name_span: kernel_span(name: svc_name),
           )) }
+      }
+      }
+  }
+}
+
+// A dotted service name with two or more declarations in scope refuses at the spine, over the
+// whole candidate set, exactly as a bare one does at its receiver: the registry holds no row for a
+// plural name, so without this the reference would fall through to an unrelated arm.
+fn dotted_service_ambiguity_refusal(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
+  match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
+    Absent => none
+    Present { value: spine } =>
+      if spine_root_is_shadowed(scope: scope, root: spine.root) { none } else {
+        match map_get(scope.service_owner_conflicts, spine.dotted) {
+          Present { value: ServiceCandidatesAmbiguous { candidates: cs } } =>
+            Present { value: ambiguous_reference_refusal(name: spine.dotted, candidates: cs, span: span, scope: scope) }
+          _ => none
+        }
       }
   }
 }
@@ -13700,9 +13761,9 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
   let service_keys = sorted_map_keys(index.services)
   let services2 = fold(service_keys, init: index.services, f: (acc, k) =>
     match map_get(index.services, k) {
-      Present { value: sentry } =>
-        let upgraded = census_upgrade_service_item(item: sentry.item, module_path: sentry.module_path, census: index, source_indices: source_indices)
-        if upgraded == sentry.item { acc } else { map_insert(acc, k, ServiceCensusEntry { module_path: sentry.module_path, item: upgraded }) }
+      Present { value: sentries } =>
+        let upgraded = sentries |> map(sentry => ServiceCensusEntry { module_path: sentry.module_path, item: census_upgrade_service_item(item: sentry.item, module_path: sentry.module_path, census: index, source_indices: source_indices) })
+        if upgraded == sentries { acc } else { map_insert(acc, k, upgraded) }
       Absent => acc
     }
   )
@@ -14730,8 +14791,10 @@ fn build_module_context(contributions: List<ItemContribution>,
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
   let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
     match map_get(env.symbol_index.services, sname) {
-      Present { value: sentry } =>
-        if !census_service_in_scope(owner_module: sentry.module_path, name: sname, root: namespace_root_from_properties(properties: sentry.item.properties, name: sname, source_indices: env.source_indices), module_name: module_name, resolved_imports: resolved_imports) { acc } else {
+      Present { value: sentries } =>
+        let candidates = service_scope_candidates(entries: sentries, name: sname, module_name: module_name, resolved_imports: resolved_imports, source_indices: env.source_indices)
+        if (candidates |> count) != 1 { acc } else {
+        fold(candidates, init: acc, f: (acc, sentry) =>
         let sitem = sentry.item
         let entries = sitem.children |> map(c =>
           OpEntry {
@@ -14749,6 +14812,7 @@ fn build_module_context(contributions: List<ItemContribution>,
           svc_registry: map_insert(acc.svc_registry, sname, entries),
           svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
         }
+        )
         }
       Absent => acc
     }

@@ -110,5 +110,63 @@ test fn a_resource_beside_the_imported_service_does_not_collide() -> Bool {
 data two_values_source: String = "module probe_service_owner_identity_two_values\nimport std.types { String }\nimport test.fixture.service_owner_identity.service { OwnerIdentityProbe }\nimport test.fixture.service_owner_identity.value { OwnerIdentityProbe }\nfn ping() -> String {\n  let r = OwnerIdentityProbe.Ping()\n  r.ok\n}\n"
 
 test fn two_values_under_one_name_refuse_at_the_receiver() -> Bool {
-  keyed_count(source: two_values_source, wanted_class: "ServiceOwnerMismatch", wanted_subject: "OwnerIdentityProbe") == 1
+  keyed_count(source: two_values_source, wanted_class: "AmbiguousReference", wanted_subject: "OwnerIdentityProbe") == 1
+}
+
+// THE PLURAL HOMONYM, decided over the whole candidate set. Two modules declare a service named
+// OwnerIdentityProbe (test.fixture.service_owner_identity.service and .service_b); a data value and a
+// resource of that name live beside them. One producer, whose only axis is the ORDERED list of
+// import lines, so every order is the same program up to import order -- and the verdict may not
+// move with it.
+fn owner_probe_source(import_lines: String) -> String {
+  "module probe_service_owner_plural\nimport std.types { String }\n"
+    + import_lines
+    + "fn ping() -> String {\n  let r = OwnerIdentityProbe.Ping()\n  r.ok\n}\n"
+}
+
+data svc_a_named: String = "import test.fixture.service_owner_identity.service { OwnerIdentityProbe }\n"
+data svc_b_named: String = "import test.fixture.service_owner_identity.service_b { OwnerIdentityProbe }\n"
+data svc_a_all: String = "import test.fixture.service_owner_identity.service\n"
+data svc_b_all: String = "import test.fixture.service_owner_identity.service_b\n"
+data resource_named: String = "import test.fixture.service_owner_identity.resource { OwnerIdentityProbe }\n"
+data value_named: String = "import test.fixture.service_owner_identity.value { OwnerIdentityProbe }\n"
+
+fn ambiguous_count(import_lines: String) -> Int {
+  keyed_count(source: owner_probe_source(import_lines: import_lines), wanted_class: "AmbiguousReference", wanted_subject: "OwnerIdentityProbe")
+}
+
+// ADMITTED, and by the route: no ambiguity, no owner refusal, and Ping's existence established --
+// the key the unresolved arm reports, so a zero here is not vacuous.
+fn admitted(import_lines: String) -> Bool {
+  let src = owner_probe_source(import_lines: import_lines)
+  keyed_count(source: src, wanted_class: "AmbiguousReference", wanted_subject: "OwnerIdentityProbe") == 0
+    && keyed_count(source: src, wanted_class: "ServiceOwnerMismatch", wanted_subject: "OwnerIdentityProbe") == 0
+    && keyed_count(source: src, wanted_class: "MethodExistenceUndecided", wanted_subject: "Ping") == 0
+}
+
+test fn two_same_named_services_refuse_in_either_order() -> Bool {
+  ambiguous_count(import_lines: svc_a_named + svc_b_named) == 1
+    && ambiguous_count(import_lines: svc_b_named + svc_a_named) == 1
+}
+
+test fn two_same_named_services_through_import_all_refuse_in_either_order() -> Bool {
+  ambiguous_count(import_lines: svc_a_all + svc_b_all) == 1
+    && ambiguous_count(import_lines: svc_b_all + svc_a_all) == 1
+}
+
+test fn either_service_alone_is_admitted_while_both_exist() -> Bool {
+  admitted(import_lines: svc_a_named) && admitted(import_lines: svc_b_named)
+}
+
+test fn either_service_alone_through_import_all_is_admitted() -> Bool {
+  admitted(import_lines: svc_a_all) && admitted(import_lines: svc_b_all)
+}
+
+test fn a_service_beside_a_same_named_resource_is_admitted_in_either_order() -> Bool {
+  admitted(import_lines: svc_a_named + resource_named) && admitted(import_lines: resource_named + svc_a_named)
+}
+
+test fn service_resource_and_value_refuse_in_either_order() -> Bool {
+  ambiguous_count(import_lines: svc_a_named + resource_named + value_named) == 1
+    && ambiguous_count(import_lines: value_named + resource_named + svc_a_named) == 1
 }
