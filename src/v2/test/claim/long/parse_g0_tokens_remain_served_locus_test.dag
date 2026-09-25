@@ -1,0 +1,20 @@
+module v2.test.claim.long.parse_g0_tokens_remain_served_locus
+
+import v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus { tokens_remain_start, treatment_stream }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE LOCUS DOES NOT DEPEND ON CACHE WARMTH. The seed serves parse memo entries across parses of one
+// token stream (v1_interpreter parse_table_memo_scope_and_key), so the second parse meets entries
+// the first stored; each entry carries its own subparse's furthest record, and the served parse
+// must land on the same token as the cold one. It is here, not beside the cold treatment in
+// v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus, because two parses of even a
+// sixteen-token stream cost more than the floor's enrolment budget (floor_enrolment_margin_budget_ms).
+test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool {
+  let cold = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
+  let warm = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
+  cold == 37 && warm == 37
+}
