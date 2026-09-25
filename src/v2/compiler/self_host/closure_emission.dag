@@ -96,6 +96,11 @@ import v2.std.text { String }
 // a member's refusal kept beside the others rather than aborting them -- and anything that wants
 // text renders that fact (closure_emission_json).
 //
+// IT REPLACES v2.compiler.self_host.compiler_closure_emit emit_compiler_import_closure_from_ingest,
+// which emitted the entry module alone and lowered every file. The door is cut over here; that module
+// is frozen with its remaining consumers enumerated and its retirement trigger declared in
+// compiler_closure_emit_frozen_dissolve_on. The two do not coexist as alternatives.
+//
 // TWO RESOLUTIONS PER MEMBER, AND WHY THE SECOND IS NOT REDUNDANT. The closure phase resolves each
 // member against the census index of every file, which is all that can exist before membership is
 // known. The emission phase resolves against the members' FULL projections plus the non-members'
