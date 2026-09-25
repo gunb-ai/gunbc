@@ -1131,15 +1131,11 @@ fn repository_bootstrap_wet(
 // arm also called unobservable, now reaches the bootstrap that can make it observable. The stall
 // this closes rules out relaxing the refusal, and this does not: it separates two states the
 // refusal had collapsed.
-// The one trusted path both convergence fetches pass: the object source's git dir, derived by
+// The one upload-pack command both convergence fetches pass, trusting the object source's git dir, derived by
 // extdeps.git git_local_fetch_source_grant. Contrast #12242's deployed-tree reads, which run
 // INSIDE /opt/gunbc/gunbc through `-C` and so are trusted at its worktree (git_in_trusted_repository_args):
 // setup_git_directory compares the worktree for a repository git operates in, upload-pack the git
 // dir of a repository it serves.
-fn convergence_fetch_trusted_directory(remote: String) -> String {
-  git_local_fetch_source_grant(source: remote as NonEmptyStr).path as String
-}
-
 fn convergence_fetch_upload_pack(remote: String) -> String {
   git_local_fetch_upload_pack_command(grant: git_local_fetch_source_grant(source: remote as NonEmptyStr))
 }
