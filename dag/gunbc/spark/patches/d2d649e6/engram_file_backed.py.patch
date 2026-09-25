@@ -1,9 +1,9 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..16abb9b
+index 0000000..4026664
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,289 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -30,7 +30,9 @@ index 0000000..16abb9b
 +#
 +# The open and gather contracts are gunbc.spark.v41_engram_file_backed:
 +# v41_open_residency_verdict (verification's page-cache residue is released and
-+# read back as zero, else open refuses) and v41_gather_rows (one batched gather
++# read back as zero over the whole file, else open refuses; its two refusal
++# branches are the two raises in _verify_and_release, and the receipt's fields
++# are V41StoreOpenReceipt's) and v41_gather_rows (one batched gather
 +# at record-aligned offsets, in request order; a misaligned offset refuses).
 +
 +from __future__ import annotations
@@ -81,6 +83,7 @@ index 0000000..16abb9b
 +    before and after the release (gunbc.spark.v41_engram_file_backed
 +    V41StoreOpenReceipt)."""
 +
++    store_bytes: int
 +    verified_bytes: int
 +    resident_bytes_after_verify: int
 +    resident_bytes_after_release: int
@@ -158,7 +161,12 @@ index 0000000..16abb9b
 +
 +    def _verify_and_release(self) -> EngramStoreOpenReceipt:
 +        # Verification stays fail-closed and whole-file; only its cache residue goes.
++        store = os.fstat(self._fd).st_size
 +        opened, head, verified = _sha256_fd(self._fd, len(self.expected.magic))
++        if verified != store:
++            raise EngramRowStoreIdentityMismatch(
++                f"verified {verified} of {store} store bytes; verification is over the whole file"
++            )
 +        if opened != self.expected.rank_digest_hex:
 +            raise EngramRowStoreIdentityMismatch(
 +                f"opened {self.path} digest {opened}, expected rank digest "
@@ -170,6 +178,7 @@ index 0000000..16abb9b
 +        os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
 +        after_release = resident_bytes(self._fd, verified)
 +        receipt = EngramStoreOpenReceipt(
++            store_bytes=store,
 +            verified_bytes=verified,
 +            resident_bytes_after_verify=after_verify,
 +            resident_bytes_after_release=after_release,

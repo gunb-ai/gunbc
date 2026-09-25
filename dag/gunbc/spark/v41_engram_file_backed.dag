@@ -27,11 +27,21 @@ import gunbc.spark.v41_engram_row_store {
 // would read the tail of one record and the head of the next, a plausible row of the wrong bytes,
 // so it refuses rather than being read.
 //
-// FRONTIER. No live receipt exists yet: the wiring patch that constructs FileBackedEngramStorage in
-// ParallelEngramEmbedding._allocate_weights (gunbc.spark.v41_engram_row_store names that trigger)
-// is the first producer of a real EngramStoreOpenReceipt on a Spark rank. Until then the verdicts
-// here are exercised by test.claim.spark.v41_engram_file_backed_witness over supplied receipts and
-// fixture stores. The patch's `measure_fetch_rows` / `__main__` is the named instrument for
+// THE REALIZATION MIRRORS THIS, BRANCH FOR BRANCH. FileBackedEngramStorage._verify_and_release raises
+// on exactly the two refusals of v41_open_residency_verdict (verified != fstat size; any residue after
+// release), and EngramStoreOpenReceipt carries V41StoreOpenReceipt's four fields. _record_index raises
+// on exactly the non-record offsets v41_is_record_offset rejects. The Python refuses at runtime because
+// a Spark rank cannot call this fold; the fold is the declaration those raises realize.
+//
+// CONSUMER: A DECLARED FRONTIER, NOT YET IN THIS CLOSURE. The consumer of v41_open_residency_verdict is
+// the (layer, rank) open-receipt reading the wiring patch introduces: when
+// ParallelEngramEmbedding._allocate_weights constructs FileBackedEngramStorage (the trigger
+// gunbc.spark.v41_engram_row_store already names), each rank's EngramStoreOpenReceipt is read back into
+// gunbc.spark.v41_runtime_candidate beside v41_published_store_readback_readings and folded through this
+// verdict, so a rank that verified but stayed resident refuses the candidate, not only its own open.
+// v41_gather_rows' consumer is the same change's differential over boundary rows of a published store.
+// Until then both are exercised by test.claim.spark.v41_engram_file_backed_witness over supplied
+// receipts and fixture stores. The patch's measure_fetch_rows / __main__ is the named instrument for
 // fetch_rows time; its readings are not transcribed here.
 
 type V41StoreOpenReceipt sole_constructor {
