@@ -23,8 +23,9 @@ import extdeps.crypto.mac {
 }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
 import std.scoped_authorization { AttemptIdentity }
-import std.types { NonEmptyStr, Timestamp, HttpMethod, GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE }
+import std.types { NonEmptyStr, Timestamp }
 import std.logic { Bool }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE, TRACE, CONNECT }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -121,6 +122,32 @@ test fn a_get_at_the_approval_url_does_not_decide() -> Bool {
 test fn head_and_options_do_not_decide_either() -> Bool {
   !is_admitted(r: redeem_with(method: HEAD, identity: operator_identity()))
     && !is_admitted(r: redeem_with(method: OPTIONS, identity: operator_identity()))
+}
+
+// TRACE is safe (RFC 9110 section 9.3.8), so it is refused exactly as GET is: it retrieves and
+// never decides. CONNECT (9.3.6) is neither safe nor a decision, so it is refused as UNSUPPORTED.
+// Each is asserted at its exact refusal arm: the method gate is the wall under test, so a mutation
+// that let either method commit must turn one of these red.
+test fn trace_is_refused_as_a_safe_method() -> Bool {
+  match redeem_with(method: TRACE, identity: operator_identity()) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionMethodNotCommitting { method: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
+}
+
+test fn connect_is_refused_as_unsupported() -> Bool {
+  match redeem_with(method: CONNECT, identity: operator_identity()) {
+    RedemptionRefused { cause: c } =>
+      match c {
+        RedemptionMethodUnsupported { method: _ } => true
+        _ => false
+      }
+    RedemptionAdmitted { claims: _, decided_by: _ } => false
+  }
 }
 
 // The safe-method refusal must READ as "not here", because the operator will see it when their

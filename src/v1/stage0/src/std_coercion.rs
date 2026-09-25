@@ -135,7 +135,7 @@ pub struct CastSyntax {
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}]))
+            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Int\"}, {\"from_type\": \"Int\", \"to_type\": \"Float\"}, {\"from_type\": \"Float\", \"to_type\": \"Int\"}, {\"from_type\": \"Float\", \"to_type\": \"Float\"}, {\"from_type\": \"Bool\", \"to_type\": \"Int\"}]")
                 .expect("valid data definition")
         };
     }
@@ -145,7 +145,7 @@ pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
 pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}, {"from_type": "String", "to_type": "FreeMonoid"}]))
+            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Nat\"}, {\"from_type\": \"String\", \"to_type\": \"FreeMonoid\"}]")
                 .expect("valid data definition")
         };
     }
@@ -155,7 +155,7 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
 pub fn refinement_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}]))
+            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Nat\"}]")
                 .expect("valid data definition")
         };
     }

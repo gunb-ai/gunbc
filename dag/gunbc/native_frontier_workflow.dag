@@ -353,7 +353,8 @@ fn native_frontier_job() -> Job {
     timeout_minutes: Present { value: native_frontier_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present { value: native_frontier_permissions }
+    permissions: Present { value: native_frontier_permissions },
+    environment: none
   }
 }
 
