@@ -19,6 +19,7 @@ import v2.compiler.self_host.closure_emission {
   ClosureMemberEmission,
   ClosureMemberEmitted,
   ClosureMemberRefused,
+  closure_census_refusals_json,
   closure_emission_json,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
@@ -343,5 +344,37 @@ test fn two_files_declaring_one_module_refuse_the_emission_at_the_census_holds()
   match ce_emission_duplicate_module().outcome {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^closure_census_duplicate_module
+  }
+}
+
+// Whether some parsed census row names exactly this file and carries a non-empty reason.
+fn ce_census_row_names(rows: FreeMonoid<JsonValue>, path: String) -> Bool {
+  fold_list(xs: rows, empty: false, cons: fn(found, row) {
+    found || ((match json_field_string(obj: row, key: "file") {
+      FieldRead { value: f } => f == path
+      _ => false
+    }) && (match json_field_string(obj: row, key: "reason") {
+      FieldRead { value: r } => !(r == "")
+      _ => false
+    }))
+  })
+}
+
+// THE CENSUS REFUSAL SET THROUGH ITS CODEC, AT IDENTITY GRAIN: the rendering parses back through the
+// codec's other direction as exactly one row per refused file, each naming its own file with a
+// non-empty reason. A serializer that dropped a row, repeated one file, or emptied the reason reds
+// here (review 71289: the payload was carried end to end but pinned by no claim).
+test fn the_census_refusal_set_renders_one_row_per_refused_file_holds() -> Bool {
+  let located = ce_emission_outsider_unparseable()
+  match parse_json_document(s: closure_census_refusals_json(refusals: located.census_refusals, spans: located.spans)) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: doc } =>
+      match json_field(obj: doc, key: "census_refused") {
+        FieldRead { value: JsonArray { elements: rows } } =>
+          length(xs: rows) == 2
+            && ce_census_row_names(rows: rows, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
+            && ce_census_row_names(rows: rows, path: "src/v2/test/fixture/closure_emission/unparseable_two.dag")
+        _ => false
+      }
   }
 }
