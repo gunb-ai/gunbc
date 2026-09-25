@@ -1,0 +1,19 @@
+module chunk
+
+test fn witness_root_tree_standing_refuses_a_mismatched_tree() -> Bool {
+  let a = "fedcba9876543210fedcba9876543210fedcba98"
+  let b = "0000000000000000000000000000000000000001"
+  match git_object_id_from_untagged_hex(hex: observe_fixture_r) {
+    Absent => false
+    Present { value: rev } =>
+      match git_object_id_from_untagged_hex(hex: a) {
+        Absent => false
+        Present { value: tree } => {
+          let obs = DeployedTreeObserved { revision: rev, tree: tree, content: DeployedScopeMatchesCommit }
+          (match deployed_root_tree_standing(candidate_tree_hex: a, observation: obs) { DeployedRootTreeMatches { tree_hex: h } => h == a  _ => false })
+            && (match deployed_root_tree_standing(candidate_tree_hex: b, observation: obs) { DeployedRootTreeMismatch { candidate_hex: c, deployed_hex: d } => c == b && d == a  _ => false })
+        }
+      }
+  }
+}
+

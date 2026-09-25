@@ -1,0 +1,3 @@
+module chunk
+
+data fixture_v3_tick_wire: String = "{\"schema\":\"roadmap-belt-tick-receipt/v3\",\"observed_at\":\"2026-08-30T12:01:00Z\",\"launches\":[],\"spawn_pass\":{\"outcome\":\"recorded\"},\"teardown_pass\":{\"outcome\":\"recorded\"},\"verify_pass\":{\"outcome\":\"recorded\"},\"publish_pass\":{\"outcome\":\"recorded\"}}"

@@ -1,0 +1,37 @@
+module chunk
+
+fn provider_live_request_succeeded_inference(
+  observed_fact: RecordedFact<ProviderReadinessObservation>,
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessEvidenceInference {
+  let claim = provider_ready_claim(provider: provider, bound: bound)
+  let observation = observed_fact.value
+  match observation.result {
+    ProviderLiveModelResponseReceived { response: _ } =>
+      if (observation.provider == provider
+        && observation.bound == bound) {
+        provider_live_request_support(
+          fact: observed_fact,
+          claim: claim,
+        )
+      } else {
+        provider_observation_insufficient(
+          fact: observed_fact,
+          claim: claim,
+          inference_rule: "provider-live-request-succeeded",
+          probe: provider_live_request_probe,
+          reason: "live-request fact does not belong to this provider attempt or did not authenticate",
+        )
+      }
+    _ =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-live-request-succeeded",
+        probe: provider_live_request_probe,
+        reason: "operation result is not a live model response",
+      )
+  }
+}
+

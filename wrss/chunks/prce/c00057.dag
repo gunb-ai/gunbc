@@ -1,0 +1,4 @@
+module chunk
+
+type ProviderReadinessEvidenceInference = EvidenceInference<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
+

@@ -1,0 +1,16 @@
+module chunk
+
+fn provider_readiness_evidence_admission_policy(
+) -> EvidenceAdmissionPolicy<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe> {
+  EvidenceAdmissionPolicy {
+    fact_claim: provider_readiness_fact_claim,
+    inference_rule_claim: provider_readiness_rule_claim,
+    authority_claim: provider_readiness_authority_claim,
+    provenance_claim: provider_readiness_provenance_claim,
+    freshness_claim: provider_readiness_freshness_claim,
+    fidelity_claim: provider_readiness_fidelity_claim,
+    independence_claim: provider_readiness_independence_claim,
+    relation: provider_readiness_link_relation,
+  }
+}
+

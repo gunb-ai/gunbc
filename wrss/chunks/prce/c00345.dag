@@ -1,0 +1,12 @@
+module chunk
+
+fn provider_readiness_fact_claim(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  fact.value.provider == claim.subject
+    && fact.value.provider == claim.target
+    && fact.value.provider.kind == claim.scope
+    && fact.value.bound == claim.bound
+}
+

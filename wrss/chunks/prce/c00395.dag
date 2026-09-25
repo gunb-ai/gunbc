@@ -1,0 +1,14 @@
+module chunk
+
+fn provider_readiness_fidelity_claim(
+  fidelity: EvidenceFidelity<ProviderReadiness>,
+  _: ProviderReadinessClaim,
+) -> Bool {
+  match fidelity.boundary {
+    ProviderCredentialsRecordedUnverified => fidelity.losses.length() == 2
+    ProviderAuthenticated => fidelity.losses.length() == 0
+    ProviderRefreshFailed { reason: _ } => fidelity.losses.length() == 0
+    _ => false
+  }
+}
+

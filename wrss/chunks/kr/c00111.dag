@@ -1,0 +1,7 @@
+module chunk
+
+type StateRelation<Relation, Subject, State> {
+  state_of: fn(Subject) -> State
+  state_eq: fn(State, State) -> Bool
+}
+

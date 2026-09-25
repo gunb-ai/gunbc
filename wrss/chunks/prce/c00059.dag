@@ -1,0 +1,8 @@
+module chunk
+
+data provider_login_status_probe: ReadBackProbe = ReadBackProbe {
+  label: "codex login status",
+  subject: "credential material is recorded for one provider instance",
+  effect_on_subject: ProbeInert,
+}
+

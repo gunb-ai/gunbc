@@ -1,0 +1,6 @@
+module chunk
+
+fn global_key_scope() -> GlobalKeyScope {
+  global_key_scope_marker
+}
+

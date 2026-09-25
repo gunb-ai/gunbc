@@ -1,0 +1,257 @@
+module chunk
+
+service redfish.Http {
+
+  operation GetServiceRoot {
+    input { bmc_host: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "https://{bmc_host}/redfish/v1"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish service root GET failed"
+    }
+  }
+
+  operation ProbeServiceRoot {
+    input { bmc_host: NonEmptyStr, write_out: String }
+    output {
+      body: String from "stdout",
+      transport_stderr: String from "stderr",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-w", "{write_out}", "https://{bmc_host}/redfish/v1/"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish service root probe failed to reach the host"
+    }
+  }
+
+  operation GetManagers {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish Managers collection GET failed"
+    }
+  }
+
+  operation GetManager {
+    input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/{manager_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish Manager GET failed"
+    }
+  }
+
+  operation GetSystem {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/system"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system GET failed"
+    }
+  }
+
+  operation GetChassisSensors {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis sensors GET failed"
+    }
+  }
+
+  operation GetPower {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Power"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish power GET failed"
+    }
+  }
+
+  operation GetThermal {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish thermal GET failed"
+    }
+  }
+
+  operation GetManager {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/bmc"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish manager GET failed"
+    }
+  }
+
+  operation GetChassisThermal {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Thermal"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis thermal GET failed"
+    }
+  }
+
+  operation GetChassisSensor {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, sensor_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors/{sensor_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis sensor GET failed"
+    }
+  }
+
+  operation GetSystemEventLogEntries {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/system/LogServices/EventLog/Entries"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system event log GET failed"
+    }
+  }
+
+  operation GetAccounts {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish accounts collection GET failed"
+    }
+  }
+
+  operation GetAccount {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish account GET failed"
+    }
+  }
+
+  operation CreateAccount {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish account POST failed"
+    }
+  }
+
+  operation SetAccountPassword {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish account password PATCH failed"
+    }
+  }
+
+  operation SetBootSourceOverride {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish boot source override PATCH failed"
+    }
+  }
+
+  operation ResetSystem {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system reset POST failed"
+    }
+  }
+
+  operation GetResourceByPath {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, max_seconds: NonEmptyStr }
+    output {
+      body: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "5", "--max-time", "{max_seconds}", "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish resource GET failed"
+    }
+  }
+}
+

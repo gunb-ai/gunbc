@@ -1,0 +1,14 @@
+module chunk
+
+fn key_resource_relation_global<Relation, Subject, Key, State>(
+  key_of: fn(Subject) -> Key,
+  key_eq: fn(Key, Key) -> Bool,
+  state_of: fn(Subject) -> State,
+  state_eq: fn(State, State) -> Bool,
+) -> KeyedResourceRelation<Relation, Subject, GlobalKeyScope, Key, State> {
+  KeyedResourceRelation {
+    key: key_relation_global(key_of: key_of, key_eq: key_eq),
+    state: StateRelation { state_of: state_of, state_eq: state_eq },
+  }
+}
+

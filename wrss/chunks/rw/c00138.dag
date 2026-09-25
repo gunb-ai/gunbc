@@ -1,0 +1,9 @@
+module chunk
+
+test fn witness_root_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: deployed_tree_root_tree_argv(repo: "/opt/gunbc/gunbc" as NonEmptyStr)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+

@@ -1,0 +1,31 @@
+module chunk
+
+fn provider_login_status_support(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  claim: ProviderReadinessClaim,
+) -> ProviderReadinessEvidenceInference {
+  infer_probe_evidence(
+    fact: fact,
+    direction: EvidenceSupports,
+    inference_rule: "provider-login-status-records-credential-only",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "provider-login-status-output",
+      activity: "provider-login-status-request",
+      agent: "codex-cli",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "captured inside the named provider attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderCredentialsRecordedUnverified,
+      losses: [
+        "refresh acceptance is not exercised",
+        "live model request capability is not exercised",
+      ],
+    },
+    probe: provider_login_status_probe,
+  )
+}
+

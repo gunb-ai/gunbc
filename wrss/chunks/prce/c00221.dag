@@ -1,0 +1,56 @@
+module chunk
+
+fn provider_login_status_inference(
+  observed_fact: RecordedFact<ProviderReadinessObservation>,
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessEvidenceInference {
+  let claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: bound,
+  )
+  let observation = observed_fact.value
+  match observation.result {
+    ProviderLoginCredentialRecorded { response: _ } =>
+      if (observation.provider == provider
+        && observation.bound == bound) {
+        provider_login_status_support(
+          fact: observed_fact,
+          claim: claim,
+        )
+      } else {
+        provider_observation_insufficient(
+          fact: observed_fact,
+          claim: claim,
+          inference_rule: "provider-login-status-records-credential-only",
+          probe: provider_login_status_probe,
+          reason: "login-status fact does not belong to this provider attempt or does not record credentials",
+        )
+      }
+    ProviderLoginCredentialAbsent { response: _ } =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-login-status-records-credential-only",
+        probe: provider_login_status_probe,
+        reason: "login-status operation did not report recorded credentials",
+      )
+    ProviderLoginStatusUnrecognized { response: _ } =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-login-status-records-credential-only",
+        probe: provider_login_status_probe,
+        reason: "login-status operation result was not classified",
+      )
+    _ =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-login-status-records-credential-only",
+        probe: provider_login_status_probe,
+        reason: "a live-request observation is not a login-status observation",
+      )
+  }
+}
+

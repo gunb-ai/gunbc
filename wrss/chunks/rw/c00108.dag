@@ -1,0 +1,10 @@
+module chunk
+
+test fn witness_v3_tick_receipt_refuses_the_v4_decoder() -> Bool {
+  match belt_tick_receipt_decode(raw: fixture_v3_tick_wire) {
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+    BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "schema is unknown")
+  }
+}
+

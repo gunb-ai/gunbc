@@ -1,0 +1,16 @@
+module chunk
+
+fn provider_credential_recorded_claim(
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessClaim {
+  Claim {
+    id: "provider-credential-recorded",
+    subject: provider,
+    target: provider,
+    proposition: ProviderCredentialsRecordedUnverified,
+    scope: provider.kind,
+    bound: bound,
+  }
+}
+

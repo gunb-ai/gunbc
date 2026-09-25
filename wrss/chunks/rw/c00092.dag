@@ -1,0 +1,10 @@
+module chunk
+
+test fn witness_workflow_document_without_a_tick_is_absent_and_refused_ledger_is_carried() -> Bool {
+  match roadmap_workflow_document_decode(raw: workflow_wire(observe_refused: "true", belt_tick: "{\"present\":false}")) {
+    WorkflowDocumentServed { document: d } =>
+      d.observe_refused && (match d.belt_tick { BeltTickReceiptAbsent => true  _ => false })
+    WorkflowDocumentRefused { detail: _ } => false
+  }
+}
+

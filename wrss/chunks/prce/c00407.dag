@@ -1,0 +1,10 @@
+module chunk
+
+fn provider_readiness_independence_claim(
+  probe: ReadBackProbe,
+  _: ProviderReadinessClaim,
+  _: EvidenceDirection,
+) -> Bool {
+  readback_probe_is_independent(p: probe)
+}
+

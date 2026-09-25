@@ -1,0 +1,6 @@
+module m
+
+fn f() -> Bool {
+  let listed = cron.Tab.List()
+  true
+}

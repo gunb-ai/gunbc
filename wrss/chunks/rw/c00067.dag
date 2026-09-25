@@ -1,0 +1,15 @@
+module chunk
+
+test fn witness_workflow_document_decodes_an_embedded_v4_tick() -> Bool {
+  let tick = serialize_json(v: belt_tick_receipt_wire_json_from_read(tick_read: BeltTickReceiptPresent { receipt: fixture_v4_tick() }))
+  match roadmap_workflow_document_decode(raw: workflow_wire(observe_refused: "false", belt_tick: tick)) {
+    WorkflowDocumentServed { document: d } =>
+      !d.observe_refused
+        && (match d.belt_tick {
+          BeltTickReceiptPresent { receipt: r } => belt_tick_receipt_identity_hex(receipt: r) == belt_tick_receipt_identity_hex(receipt: fixture_v4_tick())
+          _ => false
+        })
+    WorkflowDocumentRefused { detail: _ } => false
+  }
+}
+

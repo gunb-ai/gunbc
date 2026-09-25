@@ -1,0 +1,10 @@
+module chunk
+
+test fn witness_instance_document_decodes_the_served_members() -> Bool {
+  let body = dashboard_instance_json(instance: srv1_live_dashboard_instance())
+  match dashboard_instance_document_decode(raw: body) {
+    InstanceDocumentServed { document: d } => d.instance_id == "srv1-live" && d.host_identity == "srv1" && d.actuation == "actuating"
+    InstanceDocumentRefused { detail: _ } => false
+  }
+}
+

@@ -1,0 +1,8 @@
+module chunk
+
+data provider_live_request_probe: ReadBackProbe = ReadBackProbe {
+  label: "one live provider model request",
+  subject: "the provider accepts or refuses one request for this instance",
+  effect_on_subject: ProbeInert,
+}
+

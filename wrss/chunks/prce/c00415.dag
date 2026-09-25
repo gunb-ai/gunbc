@@ -1,0 +1,42 @@
+module chunk
+
+fn provider_readiness_link_relation(
+  link: ProviderReadinessEvidenceLink,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  let supports = evidence_direction_fold(
+    direction: link.direction,
+    fold: EvidenceDirectionFold {
+      supports: true,
+      challenges: false,
+    },
+  )
+  match link.fact.value.result {
+    ProviderLoginCredentialRecorded { response: _ } =>
+      supports
+        && link.inference_rule == "provider-login-status-records-credential-only"
+        && claim == provider_credential_recorded_claim(
+          provider: link.fact.value.provider,
+          bound: link.fact.value.bound,
+        )
+        && link.fidelity.boundary == ProviderCredentialsRecordedUnverified
+    ProviderLiveRefreshRefused { reason } =>
+      !supports
+        && link.inference_rule == "provider-live-request-refresh-refusal"
+        && claim == provider_ready_claim(
+          provider: link.fact.value.provider,
+          bound: link.fact.value.bound,
+        )
+        && link.fidelity.boundary == ProviderRefreshFailed { reason: reason }
+    ProviderLiveModelResponseReceived { response: _ } =>
+      supports
+        && link.inference_rule == "provider-live-request-succeeded"
+        && claim == provider_ready_claim(
+          provider: link.fact.value.provider,
+          bound: link.fact.value.bound,
+        )
+        && link.fidelity.boundary == ProviderAuthenticated
+    _ => false
+  }
+}
+

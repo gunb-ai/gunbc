@@ -1,0 +1,9 @@
+module chunk
+
+test fn witness_workflow_document_of_another_schema_refuses() -> Bool {
+  match roadmap_workflow_document_decode(raw: "{\"schema\":\"roadmap-workflow/v0\",\"observe_refused\":false}") {
+    WorkflowDocumentServed { document: _ } => false
+    WorkflowDocumentRefused { detail: d } => string_contains(s: d, pattern: "schema is not")
+  }
+}
+

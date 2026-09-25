@@ -1,0 +1,28 @@
+module chunk
+
+fn provider_live_request_support(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  claim: ProviderReadinessClaim,
+) -> ProviderReadinessEvidenceInference {
+  infer_probe_evidence(
+    fact: fact,
+    direction: EvidenceSupports,
+    inference_rule: "provider-live-request-succeeded",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "provider-live-request-success",
+      activity: "provider-model-request",
+      agent: "codex-cli",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "provider response belongs to the named request attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderAuthenticated,
+      losses: [],
+    },
+    probe: provider_live_request_probe,
+  )
+}
+

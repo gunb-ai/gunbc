@@ -1,0 +1,4 @@
+module chunk
+
+data global_key_scope_marker: GlobalKeyScope = GlobalKeyScope {}
+

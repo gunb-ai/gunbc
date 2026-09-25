@@ -1,0 +1,10 @@
+module chunk
+
+type ProviderReadinessOperationResult
+  = ProviderLoginCredentialRecorded { response: NonEmptyStr }
+  | ProviderLoginCredentialAbsent { response: NonEmptyStr }
+  | ProviderLoginStatusUnrecognized { response: NonEmptyStr }
+  | ProviderLiveModelResponseReceived { response: NonEmptyStr }
+  | ProviderLiveRefreshRefused { reason: NonEmptyStr }
+  | ProviderLiveRequestRefused { reason: NonEmptyStr }
+

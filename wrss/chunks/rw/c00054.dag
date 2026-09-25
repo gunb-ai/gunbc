@@ -1,0 +1,9 @@
+module chunk
+
+test fn witness_instance_document_refuses_another_schema() -> Bool {
+  match dashboard_instance_document_decode(raw: "{\"schema\":\"roadmap-dashboard-instance/v0\",\"instance_id\":\"srv1-live\"}") {
+    InstanceDocumentServed { document: _ } => false
+    InstanceDocumentRefused { detail: d } => string_contains(s: d, pattern: "schema is not")
+  }
+}
+

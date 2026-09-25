@@ -1,0 +1,29 @@
+module chunk
+
+fn provider_live_request_challenge(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  claim: ProviderReadinessClaim,
+  reason: NonEmptyStr,
+) -> ProviderReadinessEvidenceInference {
+  infer_probe_evidence(
+    fact: fact,
+    direction: EvidenceChallenges,
+    inference_rule: "provider-live-request-refresh-refusal",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "provider-live-request-refusal",
+      activity: "provider-model-request",
+      agent: "codex-cli",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "provider response belongs to the named request attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderRefreshFailed { reason: reason },
+      losses: [],
+    },
+    probe: provider_live_request_probe,
+  )
+}
+

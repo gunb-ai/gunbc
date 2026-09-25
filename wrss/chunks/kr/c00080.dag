@@ -1,0 +1,11 @@
+module chunk
+
+fn key_relation_scoped_key<Relation, Subject, Scope, Key>(
+  relation: KeyRelation<Relation, Subject, Scope, Key>,
+  subject: Subject,
+) -> ScopedKey<Relation, Scope, Key> {
+  let scope_of = relation.scope_of
+  let key_of = relation.key_of
+  ScopedKey { scope: scope_of(subject), key: key_of(subject) }
+}
+

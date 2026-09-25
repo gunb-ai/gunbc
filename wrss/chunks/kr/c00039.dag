@@ -1,0 +1,5 @@
+module chunk
+
+data key_relation_identity_wall_first_consumer: DeclarationRef = decl_ref(module_path: "v1.std.core", decl_name: "authored_name_at")
+
+

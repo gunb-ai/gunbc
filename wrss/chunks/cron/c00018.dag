@@ -1,0 +1,9 @@
+module chunk
+
+fn upsert_tagged_entries(current: String, tag: String, entry_line: String) -> String {
+  let marker = cron_tag_marker(tag: tag)
+  let lines = current |> split(delimiter: "\n") |> filter(line => !contains(line, marker))
+  let kept = lines |> filter(line => line != "")
+  append(kept, items: [entry_line]) |> join(separator: "\n")
+}
+

@@ -1,0 +1,13 @@
+module chunk
+
+fn provider_readiness_rule_claim(
+  rule: InferenceRuleId,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  (rule == "provider-login-status-records-credential-only"
+      && claim.proposition == ProviderCredentialsRecordedUnverified)
+    || ((rule == "provider-live-request-refresh-refusal"
+        || rule == "provider-live-request-succeeded")
+      && claim.proposition == ProviderAuthenticated)
+}
+

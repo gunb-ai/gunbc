@@ -1,0 +1,4 @@
+module chunk
+
+type ProviderReadinessEvidenceLink = EvidenceLink<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
+

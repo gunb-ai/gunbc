@@ -1,0 +1,11 @@
+module chunk
+
+data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.bmc.http",
+    decl_name: "redfish.Http",
+    field: WholeDeclaration
+  }
+}
+

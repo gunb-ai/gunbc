@@ -1,0 +1,17 @@
+module chunk
+
+fn provider_readiness_provenance_claim(
+  provenance: EvidenceProvenance,
+  _: ProviderReadinessClaim,
+) -> Bool {
+  provenance.agent == "codex-cli"
+    && (
+      (provenance.entity == "provider-login-status-output"
+        && provenance.activity == "provider-login-status-request")
+      || (provenance.entity == "provider-live-request-refusal"
+        && provenance.activity == "provider-model-request")
+      || (provenance.entity == "provider-live-request-success"
+        && provenance.activity == "provider-model-request")
+    )
+}
+

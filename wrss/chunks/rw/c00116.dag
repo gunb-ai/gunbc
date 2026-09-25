@@ -1,0 +1,12 @@
+module chunk
+
+test fn witness_v4_tick_receipt_round_trips_execution_and_identity() -> Bool {
+  let t = fixture_v4_tick()
+  match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: t))) {
+    BeltTickReceiptPresent { receipt: back } =>
+      belt_tick_receipt_identity_hex(receipt: back) == belt_tick_receipt_identity_hex(receipt: t)
+        && (match back.execution { TickExecuted { instance_id: i, deployed_revision: r, spawn_mode: ManualReady } => i == "srv1-live" && r == observe_fixture_r  _ => false })
+    _ => false
+  }
+}
+

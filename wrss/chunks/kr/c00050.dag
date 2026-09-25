@@ -1,0 +1,4 @@
+module chunk
+
+data key_relation_brand_type_tag_note: String = "Relation brand types (e.g. TailscaleServeRouteKeyRelation) are uninhabited phantom tags — legitimate under the hollow-alias rule because they are never construction-reached, only used as type parameters to keep unrelated relations non-substitutable when Subject/Scope/Key carriers coincide."
+

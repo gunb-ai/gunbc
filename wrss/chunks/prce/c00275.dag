@@ -1,0 +1,37 @@
+module chunk
+
+fn provider_live_request_failed_inference(
+  observed_fact: RecordedFact<ProviderReadinessObservation>,
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessEvidenceInference {
+  let claim = provider_ready_claim(provider: provider, bound: bound)
+  let observation = observed_fact.value
+  match observation.result {
+    ProviderLiveRefreshRefused { reason } =>
+      if observation.provider == provider && observation.bound == bound {
+        provider_live_request_challenge(
+          fact: observed_fact,
+          claim: claim,
+          reason: reason,
+        )
+      } else {
+        provider_observation_insufficient(
+          fact: observed_fact,
+          claim: claim,
+          inference_rule: "provider-live-request-refresh-refusal",
+          probe: provider_live_request_probe,
+          reason: "live-request refusal does not belong to this provider attempt",
+        )
+      }
+    _ =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-live-request-refresh-refusal",
+        probe: provider_live_request_probe,
+        reason: "operation result is not a live refresh refusal",
+      )
+  }
+}
+

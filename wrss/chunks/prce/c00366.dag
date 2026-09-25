@@ -1,0 +1,9 @@
+module chunk
+
+fn provider_readiness_authority_claim(
+  authority: ExternalAuthority,
+  _: ProviderReadinessClaim,
+) -> Bool {
+  authority == codex_cli_auth_external_authority
+}
+

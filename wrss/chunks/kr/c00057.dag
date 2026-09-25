@@ -1,0 +1,9 @@
+module chunk
+
+type KeyRelation<Relation, Subject, Scope, Key> {
+  scope_of: fn(Subject) -> Scope
+  key_of: fn(Subject) -> Key
+  scope_eq: fn(Scope, Scope) -> Bool
+  key_eq: fn(Key, Key) -> Bool
+}
+

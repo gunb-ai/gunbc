@@ -1,0 +1,7 @@
+module chunk
+
+type KeyedResourceRelation<Relation, Subject, Scope, Key, State> {
+  key: KeyRelation<Relation, Subject, Scope, Key>
+  state: StateRelation<Relation, Subject, State>
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn build_cron_entry_line(
+  schedule: String,
+  command: String,
+  log_path: String,
+  tag: String
+) -> String {
+  let marker = cron_tag_marker(tag: tag)
+  "{schedule} {command} >> {log_path} 2>&1 {marker}"
+}
+

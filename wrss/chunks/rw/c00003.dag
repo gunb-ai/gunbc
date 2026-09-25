@@ -1,0 +1,4 @@
+module chunk
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+

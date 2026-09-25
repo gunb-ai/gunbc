@@ -1,0 +1,4 @@
+module chunk
+
+type ProviderReadinessClaim = Claim<ProviderInstance, ProviderInstance, ProviderReadiness, ProviderKind, RunKey>
+

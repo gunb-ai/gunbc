@@ -1,0 +1,20 @@
+module chunk
+
+fn provider_observation_insufficient(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  claim: ProviderReadinessClaim,
+  inference_rule: InferenceRuleId,
+  probe: ReadBackProbe,
+  reason: NonEmptyStr,
+) -> ProviderReadinessEvidenceInference {
+  insufficient_evidence_inference(
+    insufficiency: EvidenceInsufficiency {
+      fact: fact,
+      claim: claim,
+      inference_rule: inference_rule,
+      probe_independence: probe,
+      reason: reason,
+    },
+  )
+}
+

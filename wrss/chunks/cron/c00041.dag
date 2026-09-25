@@ -1,0 +1,7 @@
+module chunk
+
+fn cron_tag_upsert_protocol_keystone_holds() -> Bool {
+  witness_upsert_tagged_entries_swaps_tagged_line()
+    && witness_upsert_tagged_entries_appends_when_tag_absent()
+}
+

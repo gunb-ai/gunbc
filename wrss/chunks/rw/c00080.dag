@@ -1,0 +1,14 @@
+module chunk
+
+test fn witness_workflow_document_with_embedded_v3_tick_is_unreadable() -> Bool {
+  let tick = join(["{\"present\":true,\"receipt\":", fixture_v3_tick_wire, "}"], "")
+  match roadmap_workflow_document_decode(raw: workflow_wire(observe_refused: "false", belt_tick: tick)) {
+    WorkflowDocumentServed { document: d } =>
+      match d.belt_tick {
+        BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "schema is unknown")
+        _ => false
+      }
+    WorkflowDocumentRefused { detail: _ } => false
+  }
+}
+

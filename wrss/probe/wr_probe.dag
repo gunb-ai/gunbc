@@ -1,0 +1,225 @@
+module probe.wr_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize, normalize_node, normalize_module_graft_finish, bind_retention_free }
+import v2.std.node { Node, Edge, NodeFold, fold_node, locally_well_formed, well_formed }
+import v2.workflow.body_lowering_retention_census { node_shape_label, emitted_production_label }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.algebra { fold_list }
+import v2.workflow.body_lowering_retention_census { retention_census, retention_census_render, diagnostic_ledger_render }
+
+fn probe(path: String) -> String {
+  let src = filesystem_read(path: path).content
+  match tokenize(text: src, file: ^wr_probe, rules: dag_lex()) {
+    Rejected { diagnostics: r } => concat("TOKENIZE REJECTED\n", diagnostic_ledger_render(ds: r))
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: r } => "GRAMMAR REJECTED"
+        Accepted { value: prepared, diagnostics: residue } =>
+          match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => concat("PARSE REJECTED\n", diagnostic_ledger_render(ds: r))
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: r } =>
+                  concat(retention_census_render(families: retention_census(ds: r)), diagnostic_ledger_render(ds: r))
+                Accepted { value: _, diagnostics: _ } => "NORMALIZED OK"
+              }
+          }
+      }
+  }
+}
+
+
+fn verdict(path: String) -> String {
+  let r = probe(path: path)
+  if r == "NORMALIZED OK" { "" } else { concat("\n##### ", concat(path, concat("\n", r))) }
+}
+
+fn whole() -> String {
+  fold_list(xs: [
+    "dag/gunbc/tools/cron_tag.dag",
+    "dag/extdeps/bmc/http.dag",
+    "dag/gunbc/provider_readiness_claim_evidence.dag",
+    "dag/std/key_relation.dag",
+    "dag/test/claim/roadmap/roadmap_launch_deployment_observe_witness_test.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, verdict(path: p)) })
+}
+
+fn edge_label_text(e: Edge) -> String {
+  match e.label {
+    Positional => "_"
+    Named { name: s } => symbol_lexeme(sym: s)
+  }
+}
+
+fn node_brief(n: Node) -> String {
+  concat(node_shape_label(kind: n.kind), concat("[", concat(emitted_production_label(node: n), concat("]", concat(" n=", to_string(length(xs: n.children)))))))
+}
+
+fn node_describe(n: Node) -> String {
+  concat(node_brief(n: n), concat(" {", concat(fold_list(xs: n.children, empty: "", cons: fn(acc, e) {
+    edge_step(acc: acc, e: e)
+  }), " }")))
+}
+
+fn first_ill(root: Node) -> String {
+  fold_node(n: root, algebra: NodeFold {
+    init: fn(n0) { if locally_well_formed(n: n0) { "" } else { concat("ILL ", node_describe(n: n0)) } },
+    step: fn(acc, e, child) {
+      if acc != "" { acc } else if child == "" { "" } else {
+        concat("  via ", concat(edge_label_text(e: e), concat(" <- ", concat(node_brief(n: e.target), concat("\n", child)))))
+      }
+    }
+  })
+}
+
+fn locate(path: String) -> String {
+  let src = filesystem_read(path: path).content
+  match tokenize(text: src, file: ^wr_probe, rules: dag_lex()) {
+    Rejected { diagnostics: r } => "TOKENIZE REJECTED"
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: r } => "GRAMMAR REJECTED"
+        Accepted { value: prepared, diagnostics: residue } =>
+          match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => "PARSE REJECTED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match bind_retention_free(o: normalize_node(n: artifact.tree)) {
+                Rejected { diagnostics: r } => concat("RETENTION/LOWER REJECTED\n", diagnostic_ledger_render(ds: r))
+                Accepted { value: normalized, diagnostics: d } =>
+                  match normalize_module_graft_finish(folded: normalized, cd: d) {
+                    Rejected { diagnostics: r } => "GRAFT REJECTED"
+                    Accepted { value: grafted, diagnostics: _ } =>
+                      if well_formed(n: grafted) { "WELL FORMED" } else { first_ill(root: grafted) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn locate_all() -> String {
+  fold_list(xs: [
+    "dag/extdeps/bmc/http.dag",
+    "dag/gunbc/provider_readiness_claim_evidence.dag",
+    "dag/std/key_relation.dag",
+    "dag/test/claim/roadmap/roadmap_launch_deployment_observe_witness_test.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+
+fn chunks_cron() -> String {
+  fold_list(xs: [
+    "wrss/chunks/cron/c00004.dag",
+    "wrss/chunks/cron/c00008.dag",
+    "wrss/chunks/cron/c00018.dag",
+    "wrss/chunks/cron/c00025.dag",
+    "wrss/chunks/cron/c00033.dag",
+    "wrss/chunks/cron/c00041.dag",
+    "wrss/chunks/cron/c00046.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+
+fn chunks_http() -> String {
+  fold_list(xs: [
+    "wrss/chunks/http/c00009.dag",
+    "wrss/chunks/http/c00016.dag",
+    "wrss/chunks/http/c00025.dag",
+    "wrss/chunks/http/c00091.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+
+fn chunks_prce() -> String {
+  fold_list(xs: [
+    "wrss/chunks/prce/c00039.dag",
+    "wrss/chunks/prce/c00041.dag",
+    "wrss/chunks/prce/c00049.dag",
+    "wrss/chunks/prce/c00055.dag",
+    "wrss/chunks/prce/c00057.dag",
+    "wrss/chunks/prce/c00059.dag",
+    "wrss/chunks/prce/c00065.dag",
+    "wrss/chunks/prce/c00071.dag",
+    "wrss/chunks/prce/c00085.dag",
+    "wrss/chunks/prce/c00099.dag",
+    "wrss/chunks/prce/c00121.dag",
+    "wrss/chunks/prce/c00139.dag",
+    "wrss/chunks/prce/c00168.dag",
+    "wrss/chunks/prce/c00195.dag",
+    "wrss/chunks/prce/c00221.dag",
+    "wrss/chunks/prce/c00275.dag",
+    "wrss/chunks/prce/c00310.dag",
+    "wrss/chunks/prce/c00345.dag",
+    "wrss/chunks/prce/c00355.dag",
+    "wrss/chunks/prce/c00366.dag",
+    "wrss/chunks/prce/c00373.dag",
+    "wrss/chunks/prce/c00388.dag",
+    "wrss/chunks/prce/c00395.dag",
+    "wrss/chunks/prce/c00407.dag",
+    "wrss/chunks/prce/c00415.dag",
+    "wrss/chunks/prce/c00455.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+
+fn chunks_kr() -> String {
+  fold_list(xs: [
+    "wrss/chunks/kr/c00022.dag",
+    "wrss/chunks/kr/c00039.dag",
+    "wrss/chunks/kr/c00050.dag",
+    "wrss/chunks/kr/c00052.dag",
+    "wrss/chunks/kr/c00057.dag",
+    "wrss/chunks/kr/c00064.dag",
+    "wrss/chunks/kr/c00066.dag",
+    "wrss/chunks/kr/c00068.dag",
+    "wrss/chunks/kr/c00072.dag",
+    "wrss/chunks/kr/c00076.dag",
+    "wrss/chunks/kr/c00080.dag",
+    "wrss/chunks/kr/c00089.dag",
+    "wrss/chunks/kr/c00099.dag",
+    "wrss/chunks/kr/c00111.dag",
+    "wrss/chunks/kr/c00116.dag",
+    "wrss/chunks/kr/c00121.dag",
+    "wrss/chunks/kr/c00129.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+
+fn chunks_rw() -> String {
+  fold_list(xs: [
+    "wrss/chunks/rw/c00003.dag",
+    "wrss/chunks/rw/c00005.dag",
+    "wrss/chunks/rw/c00007.dag",
+    "wrss/chunks/rw/c00020.dag",
+    "wrss/chunks/rw/c00021.dag",
+    "wrss/chunks/rw/c00024.dag",
+    "wrss/chunks/rw/c00037.dag",
+    "wrss/chunks/rw/c00046.dag",
+    "wrss/chunks/rw/c00054.dag",
+    "wrss/chunks/rw/c00063.dag",
+    "wrss/chunks/rw/c00067.dag",
+    "wrss/chunks/rw/c00080.dag",
+    "wrss/chunks/rw/c00092.dag",
+    "wrss/chunks/rw/c00100.dag",
+    "wrss/chunks/rw/c00108.dag",
+    "wrss/chunks/rw/c00116.dag",
+    "wrss/chunks/rw/c00126.dag",
+    "wrss/chunks/rw/c00138.dag",
+    "wrss/chunks/rw/c00145.dag"
+  ], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+
+fn edge_step(acc: String, e: Edge) -> String {
+  concat(acc, concat(" ", concat(edge_label_text(e: e), concat(":", node_brief(n: e.target)))))
+}
+
+fn locate_kr() -> String { locate(path: "dag/std/key_relation.dag") }
+fn probe_kr() -> String { probe(path: "dag/std/key_relation.dag") }
+
+fn mins() -> String {
+  fold_list(xs: ["wrss/min/anon_ret.dag", "wrss/min/ret_stmt.dag", "wrss/min/svc_call.dag"], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+fn mins2() -> String {
+  fold_list(xs: ["wrss/min/anon.dag", "wrss/min/named.dag"], empty: "", cons: fn(acc, p) { concat(acc, concat("\n##### ", concat(p, concat("\n", locate(path: p))))) })
+}
+fn cron46() -> String { locate(path: "wrss/chunks/cron/c00046.dag") }

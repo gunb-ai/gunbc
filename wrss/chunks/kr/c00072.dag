@@ -1,0 +1,6 @@
+module chunk
+
+fn global_key_scope_eq(_: GlobalKeyScope, _: GlobalKeyScope) -> Bool {
+  true
+}
+

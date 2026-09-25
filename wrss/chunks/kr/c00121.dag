@@ -1,0 +1,10 @@
+module chunk
+
+fn keyed_resource_subject_value_eq<M, Relation, Scope, Key, State>(
+  resource: KeyedResourceRelation<Relation, M, Scope, Key, State>,
+) -> fn(M, M) -> Bool {
+  let state_of = resource.state.state_of
+  let state_eq = resource.state.state_eq
+  fn(a, b) { state_eq(state_of(a), state_of(b)) }
+}
+

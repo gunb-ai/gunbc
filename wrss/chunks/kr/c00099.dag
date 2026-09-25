@@ -1,0 +1,14 @@
+module chunk
+
+fn key_relation_global<Relation, Subject, Key>(
+  key_of: fn(Subject) -> Key,
+  key_eq: fn(Key, Key) -> Bool,
+) -> KeyRelation<Relation, Subject, GlobalKeyScope, Key> {
+  KeyRelation {
+    scope_of: key_relation_global_scope_of,
+    key_of: key_of,
+    scope_eq: global_key_scope_eq,
+    key_eq: key_eq,
+  }
+}
+

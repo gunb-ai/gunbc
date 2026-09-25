@@ -1,0 +1,9 @@
+module chunk
+
+fn provider_readiness_freshness_claim(
+  freshness: EvidenceFreshness<ProviderReadinessClaim>,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  freshness.maximum_conclusion == claim
+}
+

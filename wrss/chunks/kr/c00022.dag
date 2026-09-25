@@ -1,0 +1,4 @@
+module chunk
+
+data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: key_relation_identity_wall — introduce SubjectKey<K> / ResourceLocator<L> / ContentIdentity<H> impostor carriers (keying-relation-design.md Separating the impostors) and constrain production key_of projections to return SubjectKey only, so a content-derived key stops compiling. Until then KeyRelation remains a naming authority only; identity-not-content stays an author/review obligation, not a construction refusal.")
+

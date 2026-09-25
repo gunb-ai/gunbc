@@ -1,0 +1,2 @@
+module m
+fn g(_: Int, _: Bool) -> Bool { true }

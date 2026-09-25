@@ -1,0 +1,16 @@
+module chunk
+
+fn provider_ready_claim(
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessClaim {
+  Claim {
+    id: "provider-live-request-ready",
+    subject: provider,
+    target: provider,
+    proposition: ProviderAuthenticated,
+    scope: provider.kind,
+    bound: bound,
+  }
+}
+

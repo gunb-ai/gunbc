@@ -1,0 +1,6 @@
+module chunk
+
+fn workflow_wire(observe_refused: String, belt_tick: String) -> String {
+  join(["{\"schema\":\"roadmap-workflow/v1\",\"observe_refused\":", observe_refused, ",\"attempts\":[],\"belt_tick\":", belt_tick, "}"], "")
+}
+

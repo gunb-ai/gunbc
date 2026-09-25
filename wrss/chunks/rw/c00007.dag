@@ -1,0 +1,15 @@
+module chunk
+
+fn fixture_v4_tick() -> BeltTickReceipt {
+  BeltTickReceipt {
+    observed_at: "2026-08-30T12:01:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: observe_fixture_r, spawn_mode: ManualReady },
+    launches: [],
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
+    verify_pass: BeltPassRecorded,
+    publish_pass: BeltPassRecorded,
+  }
+}
+

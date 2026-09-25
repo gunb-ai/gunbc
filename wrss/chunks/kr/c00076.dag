@@ -1,0 +1,6 @@
+module chunk
+
+fn key_relation_global_scope_of<Subject>(_subject: Subject) -> GlobalKeyScope {
+  global_key_scope()
+}
+

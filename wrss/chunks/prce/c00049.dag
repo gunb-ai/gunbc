@@ -1,0 +1,8 @@
+module chunk
+
+type ProviderReadinessObservation {
+  provider: ProviderInstance
+  bound: RunKey
+  result: ProviderReadinessOperationResult
+}
+

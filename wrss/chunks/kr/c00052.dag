@@ -1,0 +1,7 @@
+module chunk
+
+type ScopedKey<Relation, Scope, Key> {
+  scope: Scope
+  key: Key
+}
+
