@@ -589,12 +589,10 @@ fn body_lower_operand_fold_children_read(node: Node) -> OperandRefRead {
 }
 
 // A FUNCTION VALUE'S INTERIOR IS NOT FOLDED FROM OUTSIDE IT. `p => body` and `fn(..) { .. }` are
-// lowered as a unit, from their raw parse, by body_lower_function_value_arrow (via
-// body_lower_value_lowered) -- the named fn's top-down body lowering reads their body, exactly as it
-// reads a fn_decl's, and fold_lowering reads a fold step. A bottom-up fold that descended into one
-// first (body_lower_fold over an argument or record value, or normalize over a data initializer)
-// handed those readers an already-folded body the top-down walker does not read: a single-atom body
-// `fn(t) { t }` came back unread and a record-construct body came back as an ill-formed Arrow.
+// lowered as a unit, from their raw parse, by body_lower_function_value -- which body_lower_fold
+// dispatches to on meeting one, before this deferral is consulted. The deferral itself governs
+// normalize over a module's data initializers (body_lower_is_deferred_lower_at_normalize): there the
+// shell is kept raw for the field-initializer reader to lower, never folded from outside.
 fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_match_arm)
@@ -2577,12 +2575,72 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
   }
 }
 
+// THE BOTTOM-UP FOLD LOWERS A FUNCTION VALUE WHERE IT MEETS IT, AND A FOLD-FAMILY CALL BEFORE ITS
+// CHILDREN. A function value (`p => body`, `fn(..) { .. }`) reaches this dispatch UNFOLDED -- the
+// fold descends top-down and a child is dispatched before anything folds it -- so its producer,
+// body_lower_function_value, reads its own raw parse once and lowers its body once, through its own
+// captured slots (gunbc.recurring_failure_mode producer_reenters_a_general_subtree_walker). Because
+// the fold now lowers function values, a fold-family call is tried on its RAW node first, while its
+// step argument is still the literal fold_lowering reads; a call that is not a fold, or whose step
+// is not an inline literal, folds as any other expression.
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
   } else {
     match parse_production_emitted_identity_optional(node: node) {
       Present { value: emitted } =>
+        if (emitted == ^dag_surface_arrow_lambda) || (emitted == ^dag_surface_fn_literal) {
+          body_lower_function_value_in_fold(node: node)
+        } else {
+          match body_lower_fold_family_call_first(node: node) {
+            Present { value: lowered } => lowered
+            Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
+          }
+        }
+      Absent => body_lower_fold_identity_absent(node: node)
+    }
+  }
+}
+
+fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
+  let unread: Outcome<Node> = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: node)
+  )
+  match body_lower_function_value_captured_optional(node: node) {
+    Absent => unread
+    Present { value: capture } =>
+      match body_lower_function_value(shell: node, capture: capture) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: Present { value: arrow }, diagnostics: d } => outcome_with_diagnostics(value: arrow, diagnostics: d)
+        Accepted { value: Absent, diagnostics: _ } => unread
+      }
+  }
+}
+
+// A fold-family call, read off the node's own captured sequence (fold_lowering fold_call_head_symbol
+// reads its head atom directly -- no search), lowered to its seam Loop while the step is raw.
+fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
+  match parse_production_captured_child_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match fold_call_head_symbol(fold_call: captured) {
+        Absent => optional_absent()
+        Present { value: head } =>
+          if fold_family_head(sym: head) {
+            match fold_call_lowering(fold_call: captured) {
+              FoldCallLowered { seam_loop: loop_node } => optional_present(value: outcome_accepted(value: loop_node))
+              FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
+              FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
+              FoldCallNotAFold { diagnostic: _ } => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
         if emitted == ^dag_surface_match_expr {
           body_lower_match_expr(shell: node)
         } else if emitted == ^dag_surface_if_expr {
@@ -2600,9 +2658,6 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
         } else {
           body_lower_fold_reduce(node: node)
         }
-      Absent => body_lower_fold_identity_absent(node: node)
-    }
-  }
 }
 
 fn body_lower_fold_reduce(node: Node) -> Outcome<Node> {
@@ -3629,19 +3684,15 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_lowered_behind_shells_optional(node: node) {
     Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
     Absent =>
-      match body_lower_function_value_captured_optional(node: node) {
-        Present { value: capture } => body_lower_function_value(shell: node, capture: capture)
-        Absent =>
-          let raw = body_lower_deep_unwrap_optional(node: node)
-          match body_lower_fold(node: raw) {
-            Accepted { value: folded, diagnostics: d } =>
-              match body_lower_lowered_behind_shells_optional(node: folded) {
-                Present { value: lowered } =>
-                  outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
-                Absent => body_lower_body_subtree_lower(captured: raw)
-              }
-            Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
+      let raw = body_lower_deep_unwrap_optional(node: node)
+      match body_lower_fold(node: raw) {
+        Accepted { value: folded, diagnostics: d } =>
+          match body_lower_lowered_behind_shells_optional(node: folded) {
+            Present { value: lowered } =>
+              outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+            Absent => body_lower_body_subtree_lower(captured: raw)
           }
+        Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
       }
   }
 }
@@ -3780,13 +3831,47 @@ fn body_lower_function_value_codomain_optional(ret: Node) -> Optional<FunctionVa
   }
 }
 
-// THE BODY, BY ITS FORM. An expression body (`p => e`) is read by the value reader; a block body
-// (`fn(..) { .. }`) by the named fn's own body lowering (body_lower_body_from_fn_captured), so let-
-// and block-tails lower exactly as they do in a named fn -- no second walker.
+// THE BODY, BY ITS FORM, THROUGH ITS OWN SLOT AND NOTHING ELSE. An expression body (`p => e`) is
+// folded once and peeled of the pass-through shells the fold leaves; a block body (`fn(..) { .. }`)
+// is its fn_body's stmt_seq slot -- fn_body = seq(`{`, seq(stmt_seq, `}`)), read positionally -- lowered
+// by the statement spine (body_lower_stmt_seq: lets as Binds, the last statement folded), the same
+// authority a named fn's multi-statement body uses. Neither route enters the general walker
+// (body_lower_body_subtree_lower) or searches the subtree: a body the fold cannot bring to a lowered
+// node is Absent, and the caller refuses it located at the body
+// (gunbc.recurring_failure_mode producer_reenters_a_general_subtree_walker).
 fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional<Node>> {
   match body {
-    FunctionLiteralExprBody { expr: e } => body_lower_value_lowered(node: e)
-    FunctionLiteralBlockBody { fn_body: b } => body_lower_body_from_fn_captured(captured: b)
+    FunctionLiteralExprBody { expr: e } => body_lower_function_value_lowered_whole(o: body_lower_fold(node: body_lower_deep_unwrap_optional(node: e)))
+    FunctionLiteralBlockBody { fn_body: b } =>
+      match body_lower_fn_body_stmt_seq_optional(fn_body: b) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: stmt_seq } => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: stmt_seq))
+      }
+  }
+}
+
+fn body_lower_function_value_lowered_whole(o: Outcome<Node>) -> Outcome<Optional<Node>> {
+  match o {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: d } =>
+      outcome_with_diagnostics(value: body_lower_lowered_behind_shells_optional(node: folded), diagnostics: d)
+  }
+}
+
+// fn_body's captured child is seq(`{`, seq(stmt_seq, `}`)); the stmt_seq production is the LEFT of
+// its right projection.
+fn body_lower_fn_body_stmt_seq_optional(fn_body: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: body_lower_deep_unwrap_optional(node: fn_body)) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => optional_absent()
+        Present { value: brace_rest } =>
+          match sugar_sequence_pair_optional(node: brace_rest.right) {
+            Absent => optional_absent()
+            Present { value: seq_close } => optional_present(value: body_lower_deep_unwrap_optional(node: seq_close.left))
+          }
+      }
   }
 }
 
@@ -6408,30 +6493,6 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-// A BOUND VALUE IS AN EXPRESSION, SO IT LOWERS WHOLE THROUGH THE FOLD -- and so does the statement
-// spine's LAST statement, through this same function. It was read by the operand reader first, whose
-// first-match readers stand a part in for the whole: `let x = g(p: u)` bound the callee `g`, and
-// `let x = b && (u)` bound `b`, so `u` reached no reference site and the module resolved. The fold's
-// refusal is the statement's refusal. A FUNCTION VALUE is read by its own producer first: the fold
-// defers it (body_lower_is_deferred_lower_emitted), so `let g = fn(y) -> Q { y }` is lowered whole by
-// body_lower_function_value, and one it cannot lower is its located refusal
-// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). A fn literal's
-// written return type is CARRIED as its Arrow's codomain (body_lower_function_value_codomain_optional),
-// so it reaches resolve at its authored occurrence; gunbc#12248's interim refusal of that annotation
-// (body_lowering_reason_type_annotation_not_carried, 'until gunbc#12210 lowers function values') is
-// retired with it.
-fn body_lower_expression_whole(node: Node) -> Outcome<Node> {
-  match body_lower_function_value_captured_optional(node: node) {
-    Present { value: capture } =>
-      match body_lower_function_value(shell: node, capture: capture) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: Present { value: arrow }, diagnostics: d } => outcome_with_diagnostics(value: arrow, diagnostics: d)
-        Accepted { value: Absent, diagnostics: _ } =>
-          outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: node))
-      }
-    Absent => body_lower_fold(node: node)
-  }
-}
 
 fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
   match body_lower_stmt_spine_head_optional(spine: spine) {
@@ -6444,10 +6505,10 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
       )
     Present { value: head } =>
       match body_lower_stmt_spine_rest_optional(spine: spine) {
-        Absent => body_lower_expression_whole(node: head)
+        Absent => body_lower_fold(node: head)
         Present { value: rest } =>
           match body_lower_stmt_spine_head_optional(spine: rest) {
-            Absent => body_lower_expression_whole(node: head)
+            Absent => body_lower_fold(node: head)
             Present { value: _ } =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
@@ -6480,7 +6541,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                           )
                         Present { value: value_capture } =>
                           bind_outcome(
-                            o: body_lower_expression_whole(node: value_capture),
+                            o: body_lower_fold(node: value_capture),
                             f: fn(value) {
                               bind_outcome(
                                 o: body_lower_stmt_spine(spine: rest),
@@ -6528,8 +6589,8 @@ fn body_lower_stmt_spine_has_successor(spine: Node) -> Bool {
 // statement-sequence authority and not two.
 // A BODY THAT IS ONE FUNCTION VALUE -- `fn f(..) -> fn(A) -> B { fn(a) { .. } }` or `{ a => .. }` --
 // lowers through the function-value producer, as the same value does as a tail statement or a let
-// value (body_lower_expression_whole). The walker below reads expressions, and a function value
-// is deferred from its folds, so without this arm the body lowered to nothing and the fn retained.
+// value (the fold lowers it through body_lower_function_value). The walker below reads expressions,
+// so without this arm a body that is only a function value lowered to nothing and the fn retained.
 fn body_lower_sole_function_value_statement(spine: Node) -> Outcome<Optional<Node>> {
   match body_lower_stmt_spine_head_optional(spine: spine) {
     Absent => outcome_accepted(value: optional_absent())
@@ -6538,7 +6599,7 @@ fn body_lower_sole_function_value_statement(spine: Node) -> Outcome<Optional<Nod
         Absent => outcome_accepted(value: optional_absent())
         Present { value: _ } =>
           bind_outcome(
-            o: body_lower_expression_whole(node: head),
+            o: body_lower_fold(node: head),
             f: fn(lowered) { outcome_accepted(value: optional_present(value: lowered)) }
           )
       }
