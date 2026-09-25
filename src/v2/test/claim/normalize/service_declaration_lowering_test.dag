@@ -1,0 +1,129 @@
+module v2.test.claim.normalize.service_declaration_lowering
+
+import v2.compiler.normalize { normalize, normalize_census }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.tokenize { tokenize }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
+import v2.std.algebra { fold_list }
+import v2.std.optional { Absent, Present }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+// DECLARATION-GRADE SERVICE LOWERING (v2.compiler.body_lowering_fold body_lower_service_decl). A
+// service lowers to its interface -- a named product of function types -- and sets its realization
+// members and its unmodeled interface members aside under two counted reasons. The census door
+// admits a service module; the full door, whose carrier reaches resolution, eval and emission,
+// refuses it, so no consumer can act on a set-aside realization. The fixture is the smallest service
+// carrying one member of each kind in dag/extdeps/access/posix_effective_principal_read_op.dag, the
+// first gen-two census wall: that file itself is admitted by the census run over the real tree, not
+// here, where parsing all of it would cost the claim its enrolment budget (DESIGN section 3).
+
+data posix_service_source: String = "module m\nservice access.P {\n  operation Read {\n    input { read: R }\n    output { stdout: String from \"stdout\" }\n    readonly\n    transport shell { argv: [] }\n  }\n}\n"
+
+// Two services sharing the `shell` prefix in one module, the dag/extdeps/shell.dag shape: each is
+// ONE label spelled as declared, so they stay distinct at the module.
+data shared_prefix_source: String = "module m\nservice shell.Find {\n  operation Run { input { path: String } }\n}\nservice shell.Env {\n  operation Read { output { value: String } }\n}\n"
+
+// The discriminating RED: an operation declaring its input twice has no single domain, so the
+// lowering refuses located at the second block rather than keeping either.
+data repeated_input_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    input { y: Int }\n  }\n}\n"
+
+fn parse_of(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: tokenize(text: source, file: ^service_lowering_probe, rules: dag_lex()),
+    f: fn(tokens) { supplied_stream_parse(tokens: tokens) }
+  )
+}
+
+fn census_of(source: String) -> Outcome<CensusTree> {
+  bind_outcome(o: parse_of(source: source), f: fn(tree) { normalize_census(parse_tree: tree) })
+}
+
+fn full_of(source: String) -> Outcome<NormalizedTree> {
+  bind_outcome(o: parse_of(source: source), f: fn(tree) { normalize(parse_tree: tree) })
+}
+
+fn index_of(t: CensusTree) -> SymbolIndex {
+  symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
+}
+
+fn declares(index: SymbolIndex, service: String, member: String) -> Bool {
+  match symbol_index_lookup(
+    index: index,
+    qualified_path: Cons { head: ^m, tail: Cons { head: symbol_intern_lexeme(lexeme: service), tail: Cons { head: symbol_intern_lexeme(lexeme: member), tail: Empty } } }
+  ) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn reason_count(d: Diagnostics, reason: Symbol) -> Int {
+  match d {
+    None => 0
+    Some { diagnostics: ne } =>
+      fold_list(
+        xs: ne.tail,
+        empty: if ne.head.reason == reason { 1 } else { 0 },
+        cons: fn(n, x) { if x.reason == reason { n + 1 } else { n } }
+      )
+  }
+}
+
+fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  reason_count(d: Some { diagnostics: ne }, reason: reason) > 0
+}
+
+test fn census_admits_the_posix_service_and_indexes_its_operation_holds() -> Bool {
+  match census_of(source: posix_service_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      declares(index: index_of(t: t), service: "access.P", member: "Read")
+  }
+}
+
+// Both set-aside reasons, counted apart: the transport is realization (1); the readonly modifier and
+// the `from` key are unmodeled interface facts (2).
+test fn census_counts_realization_and_unmodeled_interface_apart_holds() -> Bool {
+  match census_of(source: posix_service_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      (reason_count(d: d, reason: ^body_lowering_reason_realization_member_set_aside) == 1)
+        && (reason_count(d: d, reason: ^body_lowering_reason_interface_member_unmodeled) == 2)
+  }
+}
+
+// THE SET-ASIDE IS UNREACHABLE AS LOWERED. The full door is what resolution, eval and emission
+// consume; it refuses the same service, and the pending diagnostics carry the set-aside members at
+// their own loci, so no consumer is handed a service whose realization it would have to assume.
+test fn full_door_refuses_a_service_with_a_set_aside_realization_holds() -> Bool {
+  match full_of(source: posix_service_source) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      carries(ne: r, reason: ^normalized_tree_reason_service_realization_unreachable)
+        && carries(ne: r, reason: ^body_lowering_reason_realization_member_set_aside)
+  }
+}
+
+test fn two_services_sharing_a_prefix_admit_with_distinct_labels_holds() -> Bool {
+  match census_of(source: shared_prefix_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      declares(index: index_of(t: t), service: "shell.Find", member: "Run")
+        && declares(index: index_of(t: t), service: "shell.Env", member: "Read")
+  }
+}
+
+test fn a_repeated_input_block_refuses_located_RED() -> Bool {
+  match census_of(source: repeated_input_source) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_io_block_repeated
+  }
+}

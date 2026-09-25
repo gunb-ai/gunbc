@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.service_interface_member_has_no_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data service_interface_member_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "service_interface_member_has_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an interface fact of a v2 service declaration has no typed carrier, so the declaration-grade lowering (`v2.compiler.body_lowering_fold` `body_lower_service_decl`) cannot lower it with the interface. The members are the operation modifiers `readonly` / `idempotent` / `hermetic` and an io field's `from \"key\"` wire-key and `= default` tails. They are set aside as `body_lowering_reason_interface_member_unmodeled`, typed, located and counted apart from the realization members (`body_lowering_reason_realization_member_set_aside`: transport, exit, response, mock_response), which are realization per DESIGN section 3 and are never part of the interface.",
+    "HARM: these are safety-relevant interface facts, not decoration. `idempotent` decides whether an automatic retry is admissible (DESIGN section 4b names a non-idempotent effect under retry as a class the ladder must reach), and a `from` key decides which wire field fills a declared output. A consumer that read the lowered interface without them would retry what it must not, or read a field it was not given.",
+    "CONTAINED, NOT SILENT: a set-aside member is unreachable as lowered. Only the census door (`v2.compiler.normalized_tree` `admit_census_tree`, whose carrier has no route to eval or emission) admits the diagnostics; the full door (`admit_normalized_tree`) refuses a service carrying any of them as `normalized_tree_reason_service_realization_unreachable`, with each member's own located diagnostic pending. So no stage that would act on a service can assume a modifier's absence or a default transport.",
+    "RELATED FRONTIER ON THE SAME LOWERING: a service's name is lowered as ONE label with the whole declared spelling (`shell.Find`) rather than a per-segment spine, because sixteen services in `dag/extdeps/shell.dag` share the `shell` prefix and a spine needs a prefix merge in `v2.compiler.namespace_graft`. The dotted label hides named parts (DESIGN section 2) and a dotted reference to it does not resolve. TRIGGER: v2 resolving service CALLS; then the spine plus a graft prefix merge is the required shape, and the label migrates in one transition.",
+    "RUNG FOUND AT: mitigated (typed, located, counted set-aside with a refusing full door). CEILING: structurally impossible -- each modifier and wire-key is a field of a typed operation carrier, so a lowered operation cannot exist without them. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a typed operation-modifier carrier (and io wire-key / default carrier) in the v2 interface model that `body_lower_service_decl` lowers onto, so that every interface member of every service in the corpus lowers with the interface and `body_lowering_reason_interface_member_unmodeled` has no producer.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "census_counts_realization_and_unmodeled_interface_apart_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "full_door_refuses_a_service_with_a_set_aside_realization_holds", field: WholeDeclaration },
+  ],
+}
