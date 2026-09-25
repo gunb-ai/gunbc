@@ -1,7 +1,7 @@
 module v2.compiler.normalize
 
-import v2.std.algebra { fold_list, list_snoc_item }
-import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree }

@@ -25,7 +25,8 @@ import gunbc.seed_growth_admission {
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { Bool, Int, List, String }
-import v2.std.algebra { length, list_append, list_map }
+import v2.std.algebra { length, list_map }
+import std.algebra { list_append }
 
 // THE NAMED INSTRUMENT FOR THE ITEM-GRAIN CENSUS.
 //

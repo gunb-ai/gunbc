@@ -25,7 +25,8 @@ import v2.workflow.bash_emit {
   BashEmitStmt,
   BashEmitTagged
 }
-import v2.std.algebra { list_append, list_map }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }

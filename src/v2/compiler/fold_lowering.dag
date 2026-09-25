@@ -1,19 +1,18 @@
 module v2.compiler.fold_lowering
 
 import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
   dag_call_named_arg_value_optional,
   dag_call_positional_arg_value_optional,
   dag_lex_token_symbol,
   parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
+  parse_production_emitted_identity_optional
 }
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.diagnostic {
   Accepted,
@@ -28,9 +27,12 @@ import v2.std.diagnostic {
 }
 import std.algebra { collection_fold_shape, template_step_position }
 import v2.std.grammar { node_atom_identity_optional }
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
 import v2.std.node {
   Atom,
   ComputationNode,
+  Conj,
   Edge,
   Loop,
   Named,
@@ -38,6 +40,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  is_empty_conj_root,
   node_synthetic
 }
 import v2.std.node_query { find_named_child }
@@ -196,16 +199,6 @@ fn fold_call_positional_step_form(fold_call: Node, head: Symbol) -> FoldStepForm
   }
 }
 
-fn step_fn_iteration_body(fn_literal: Node) -> Optional<Node> {
-  match parse_subtree_find_production_captured(
-    root: fn_literal,
-    emitted: ^dag_surface_fn_body
-  ) {
-    ParseSubtreeAbsent => Absent
-    ParseSubtreeFound { captured: body } => Present { value: body }
-  }
-}
-
 fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: node, name: name) {
     Accepted { value: child, diagnostics: _ } => Present { value: child }
@@ -213,115 +206,377 @@ fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
   }
 }
 
-// The step fn's FIRST param is the fold's accumulator binder (fn(acc, item) { .. }). fn_literal
-// params are untyped lexeme-stamped idents (dag_grammar_untyped_params_helper =
-// comma_list(terminal_lexeme(ident))), so the binder NAME is the captured atom's identity.
-// Navigation follows the fn_literal grammar expression Seq(kw_fn, Seq(lparen, Seq(Optional(params),
-// ..))): right, right, left lands on the params capture (Optional-absent = empty Conj -> Absent),
-// whose comma_list capture is Conj[left -> first item]. A step fn with no readable first param
-// cannot be a fold step: the caller refuses ^fold_lowering_shape_invalid, never fabricates a
-// carrier.
+fn fold_seq_right(node: Node) -> Optional<Node> {
+  fold_seq_child(node: fv_unwrap(node: node), name: ^grammar_sequence_right_node_projection)
+}
 
-fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
-  match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
-    Absent => Absent
-    Present { value: after_kw_fn } =>
-      match fold_seq_child(node: after_kw_fn, name: ^grammar_sequence_right_node_projection) {
-        Absent => Absent
+fn fold_seq_left(node: Node) -> Optional<Node> {
+  fold_seq_child(node: fv_unwrap(node: node), name: ^grammar_sequence_left_node_projection)
+}
+
+// THE ONE READER OF A FUNCTION VALUE'S PARSE. v2.extdeps.languages.dag declares two function-value
+// productions, and every stage that needs a function value's binders, return clause or body reads
+// them HERE, off the declared grammar rows, and nowhere else: this stage's fold step (carrier = the
+// first binder, iteration body = the body) and v2.compiler.body_lowering_fold's value-position
+// producer (body_lower_function_value_arrow). A change to either grammar row is one edit to this
+// reader. The rows, as sequences read LEFT/RIGHT (an elided optional is the empty conj):
+//
+//   dag_grammar_arrow_lambda_expr, a Choice returned WITHOUT a choice wrapper, told apart by the
+//   first slot (a lexical token there IS the `(`; an ident-lexeme atom is the bare binder):
+//     bare           seq(ident, seq(`=>`, expr))
+//     parenthesised  seq(`(`, seq(ident, seq(`,`, seq(ident, seq(repeat(seq(`,`, ident)),
+//                      seq(`)`, seq(`=>`, expr)))))))
+//   dag_grammar_fn_literal_expr:
+//     seq(`fn`, seq(`(`, seq(opt(comma_list(ident)), seq(`)`, seq(opt(seq(`->`, type_expr)), fn_body)))))
+//   dag_grammar_comma_list_expr(item) = seq(item, seq(repeat(seq(opt(`,`), item)), opt(`,`)))
+//
+// Absent means the capture is not one of those shapes. Callers refuse on it; nothing here guesses.
+type FunctionValueBinder {
+  name: Symbol
+  at: Node
+}
+
+type FunctionValueBody
+  = FunctionValueExprBody { expr: Node }
+  | FunctionValueBlockBody { fn_body: Node }
+
+type FunctionValueParts {
+  binders: List<FunctionValueBinder>
+  return_clause: Node
+  body: FunctionValueBody
+}
+
+fn fv_unwrap(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => fv_unwrap(node: child)
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn fv_token_is(node: Node, token: Symbol) -> Bool {
+  match node_atom_identity_optional(node: fv_unwrap(node: node)) {
+    Present { value: id } => id == token
+    Absent => false
+  }
+}
+
+// A binder is an ident-lexeme atom; a lexical token in its slot is not a binder.
+fn fv_binder_optional(node: Node) -> Optional<FunctionValueBinder> {
+  let at = fv_unwrap(node: node)
+  match node_atom_identity_optional(node: at) {
+    Present { value: sym } =>
+      if dag_lex_token_symbol(sym: sym) { optional_absent() } else { optional_present(value: FunctionValueBinder { name: sym, at: at }) }
+    Absent => optional_absent()
+  }
+}
+
+fn fv_no_binders() -> List<FunctionValueBinder> {
+  Empty
+}
+
+// repeat(seq(sep, ident)): the empty conj, or seq(seq(sep, ident), repeat). The separator is a
+// required `,` in the lambda row and an optional one in comma_list.
+fn fv_repeat_binders_optional(repeat: Node, comma_required: Bool) -> Optional<List<FunctionValueBinder>> {
+  let r = fv_unwrap(node: repeat)
+  if is_empty_conj_root(n: r) {
+    optional_present(value: fv_no_binders())
+  } else {
+    match fold_seq_left(node: r) {
+      Absent => optional_absent()
+      Present { value: element } =>
+        match fold_seq_left(node: element) {
+          Absent => optional_absent()
+          Present { value: sep } =>
+            if fv_token_is(node: sep, token: ^dag_token_comma)
+              || ((!comma_required) && is_empty_conj_root(n: fv_unwrap(node: sep))) {
+              match fold_seq_right(node: element) {
+                Absent => optional_absent()
+                Present { value: item } =>
+                  match fv_binder_optional(node: item) {
+                    Absent => optional_absent()
+                    Present { value: b } =>
+                      match fold_seq_right(node: r) {
+                        Absent => optional_absent()
+                        Present { value: rest_repeat } =>
+                          match fv_repeat_binders_optional(repeat: rest_repeat, comma_required: comma_required) {
+                            Absent => optional_absent()
+                            Present { value: rest } => optional_present(value: Cons { head: b, tail: rest })
+                          }
+                      }
+                  }
+              }
+            } else {
+              Absent
+            }
+        }
+    }
+  }
+}
+
+// seq(`=>`, expr) -> the expr.
+fn fv_after_fat_arrow_optional(node: Node) -> Optional<Node> {
+  match fold_seq_left(node: node) {
+    Absent => optional_absent()
+    Present { value: arrow } =>
+      if fv_token_is(node: arrow, token: ^dag_token_fat_arrow) { fold_seq_right(node: node) } else { optional_absent() }
+  }
+}
+
+fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Optional<FunctionValueParts> {
+  match fv_after_fat_arrow_optional(node: after_binders) {
+    Absent => optional_absent()
+    Present { value: expr } =>
+      Present {
+        value: FunctionValueParts {
+          binders: binders,
+          return_clause: fv_empty_return_clause(),
+          body: FunctionValueExprBody { expr: expr }
+        }
+      }
+  }
+}
+
+// A lambda writes no return clause; the empty conj is the grammar's own elided-optional value.
+fn fv_empty_return_clause() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+fn arrow_lambda_parts_optional(lambda: Node) -> Optional<FunctionValueParts> {
+  match fold_seq_left(node: lambda) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      if fv_token_is(node: head, token: ^dag_token_lparen) {
+        match fold_seq_right(node: lambda) {
+          Absent => optional_absent()
+          Present { value: s1 } =>
+            match fold_seq_left(node: s1) {
+              Absent => optional_absent()
+              Present { value: first_node } =>
+                match fold_seq_right(node: s1) {
+                  Absent => optional_absent()
+                  Present { value: s2 } =>
+                    match fold_seq_right(node: s2) {
+                      Absent => optional_absent()
+                      Present { value: s3 } =>
+                        match fold_seq_right(node: s3) {
+                          Absent => optional_absent()
+                          Present { value: s4 } =>
+                            match fold_seq_right(node: s4) {
+                              Absent => optional_absent()
+                              Present { value: s5 } =>
+                                match fv_seq_parts(first: first_node, comma: fold_seq_left(node: s2), second: fold_seq_left(node: s3), repeat: fold_seq_left(node: s4), close: fold_seq_left(node: s5)) {
+                                  Absent => optional_absent()
+                                  Present { value: binders } =>
+                                    match fold_seq_right(node: s5) {
+                                      Absent => optional_absent()
+                                      Present { value: after } => fv_expr_parts(binders: binders, after_binders: after)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      } else {
+        match fv_binder_optional(node: head) {
+          Absent => optional_absent()
+          Present { value: b } =>
+            match fold_seq_right(node: lambda) {
+              Absent => optional_absent()
+              Present { value: after } => fv_expr_parts(binders: Cons { head: b, tail: Empty }, after_binders: after)
+            }
+        }
+      }
+  }
+}
+
+// The parenthesised lambda's slots: first binder, `,`, second binder, repeat, `)`.
+fn fv_seq_parts(
+  first: Node,
+  comma: Optional<Node>,
+  second: Optional<Node>,
+  repeat: Optional<Node>,
+  close: Optional<Node>
+) -> Optional<List<FunctionValueBinder>> {
+  match comma {
+    Absent => optional_absent()
+    Present { value: c } =>
+      match close {
+        Absent => optional_absent()
+        Present { value: rp } =>
+          if fv_token_is(node: c, token: ^dag_token_comma) && fv_token_is(node: rp, token: ^dag_token_rparen) {
+            match fv_binder_optional(node: first) {
+              Absent => optional_absent()
+              Present { value: b1 } =>
+                match second {
+                  Absent => optional_absent()
+                  Present { value: s } =>
+                    match fv_binder_optional(node: s) {
+                      Absent => optional_absent()
+                      Present { value: b2 } =>
+                        match repeat {
+                          Absent => optional_absent()
+                          Present { value: rep } =>
+                            match fv_repeat_binders_optional(repeat: rep, comma_required: true) {
+                              Absent => optional_absent()
+                              Present { value: rest } => optional_present(value: Cons { head: b1, tail: Cons { head: b2, tail: rest } })
+                            }
+                        }
+                    }
+                }
+            }
+          } else {
+            Absent
+          }
+      }
+  }
+}
+
+// opt(comma_list(ident)): the empty conj (no params), or seq(first, seq(repeat, opt(`,`))).
+fn fv_comma_list_binders_optional(params: Node) -> Optional<List<FunctionValueBinder>> {
+  let p = fv_unwrap(node: params)
+  if is_empty_conj_root(n: p) {
+    optional_present(value: fv_no_binders())
+  } else {
+    match fold_seq_left(node: p) {
+      Absent => optional_absent()
+      Present { value: first_node } =>
+        match fv_binder_optional(node: first_node) {
+          Absent => optional_absent()
+          Present { value: first } =>
+            match fold_seq_right(node: p) {
+              Absent => optional_absent()
+              Present { value: tail } =>
+                match fold_seq_left(node: tail) {
+                  Absent => optional_absent()
+                  Present { value: rep } =>
+                    match fv_repeat_binders_optional(repeat: rep, comma_required: false) {
+                      Absent => optional_absent()
+                      Present { value: rest } => optional_present(value: Cons { head: first, tail: rest })
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn fn_literal_parts_optional(fn_literal: Node) -> Optional<FunctionValueParts> {
+  match fold_seq_right(node: fn_literal) {
+    Absent => optional_absent()
+    Present { value: after_fn } =>
+      match fold_seq_right(node: after_fn) {
+        Absent => optional_absent()
         Present { value: after_lparen } =>
-          match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
-            Absent => Absent
+          match fold_seq_left(node: after_lparen) {
+            Absent => optional_absent()
             Present { value: params } =>
-              match fold_seq_child(node: params, name: ^grammar_sequence_left_node_projection) {
-                Absent => Absent
-                Present { value: first_param } => node_atom_identity_optional(node: first_param)
+              match fold_seq_right(node: after_lparen) {
+                Absent => optional_absent()
+                Present { value: after_params } =>
+                  match fold_seq_left(node: after_params) {
+                    Absent => optional_absent()
+                    Present { value: rparen } =>
+                      if fv_token_is(node: rparen, token: ^dag_token_rparen) {
+                        match fold_seq_right(node: after_params) {
+                          Absent => optional_absent()
+                          Present { value: after_rparen } =>
+                            match fold_seq_left(node: after_rparen) {
+                              Absent => optional_absent()
+                              Present { value: ret } =>
+                                match fold_seq_right(node: after_rparen) {
+                                  Absent => optional_absent()
+                                  Present { value: fn_body } =>
+                                    match fv_comma_list_binders_optional(params: params) {
+                                      Absent => optional_absent()
+                                      Present { value: binders } =>
+                                        Present {
+                                          value: FunctionValueParts {
+                                            binders: binders,
+                                            return_clause: ret,
+                                            body: FunctionValueBlockBody { fn_body: fn_body }
+                                          }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                      } else {
+                        Absent
+                      }
+                  }
               }
           }
       }
   }
 }
 
-// ARROW-LAMBDA NAVIGATION, READ OFF THE DECLARED GRAMMAR RATHER THAN GUESSED BY DFS.
-// dag_grammar_arrow_lambda_expr is a Choice of exactly two alternatives, and the parser returns
-// the CHOSEN alternative's sequence node directly (no choice wrapper), so the two are told apart
-// by the one slot that differs -- the sequence's LEFT:
-//
-//   bare form   `acc => e`            Seq(ident_lex, Seq(fat_arrow, expr))
-//   parenthesised `(acc, x) => e`     Seq(lparen, Seq(ident, Seq(comma, Seq(ident,
-//                                       Seq(repeat, Seq(rparen, Seq(fat_arrow, expr)))))))
-//
-// A lexical token identity in that slot IS the `(`, so dag_lex_token_symbol decides it; an
-// ident-lexeme atom is the bare form's single binder. A first `=>` slot that is neither refuses
-// (Absent) -- the reading never falls through to a DFS for "the first ident that looks right",
-// which would re-open the decline-without-cause this repair closes.
-//
-// THE BARE FORM CANNOT BE A FOLD STEP and is deliberately not given a carrier here: a fold step
-// takes (accumulator, item), and the grammar admits the single-binder form for ordinary
-// one-argument lambdas. Reading its sole binder as an accumulator would fabricate a carrier the
-// source never declared, which is the one thing this stage has never done.
-
-fn arrow_lambda_is_parenthesised(lambda: Node) -> Optional<Bool> {
-  match fold_seq_child(node: lambda, name: ^grammar_sequence_left_node_projection) {
-    Absent => Absent
-    Present { value: head } =>
-      match node_atom_identity_optional(node: head) {
-        Absent => Absent
-        Present { value: sym } => Present { value: dag_lex_token_symbol(sym: sym) }
-      }
+// The captured child of a function-value production, by its emitted identity.
+fn function_value_parts_optional(captured: Node, emitted: Symbol) -> Optional<FunctionValueParts> {
+  if emitted == ^dag_surface_arrow_lambda {
+    arrow_lambda_parts_optional(lambda: captured)
+  } else if emitted == ^dag_surface_fn_literal {
+    fn_literal_parts_optional(fn_literal: captured)
+  } else {
+    Absent
   }
 }
 
-fn fold_seq_right(node: Node) -> Optional<Node> {
-  fold_seq_child(node: node, name: ^grammar_sequence_right_node_projection)
-}
-
-fn fold_seq_right_n(node: Optional<Node>) -> Optional<Node> {
-  match node {
-    Absent => Absent
-    Present { value: n } => fold_seq_right(node: n)
+// THE FOLD STEP IS A PROJECTION OF THOSE PARTS. The accumulator carrier is the step's FIRST binder
+// and the iteration body is its body. THE BARE LAMBDA CANNOT BE A FOLD STEP: a fold step takes
+// (accumulator, item), and the grammar admits the single-binder form for ordinary one-argument
+// lambdas; reading its sole binder as an accumulator would fabricate a carrier the source never
+// declared. So an arrow-lambda step needs the parenthesised (two or more binder) form. A fn literal
+// step's body is its fn_body block's captured child, as body_producer_loop_body reads it.
+fn fold_step_first_binder(parts: FunctionValueParts) -> Optional<Symbol> {
+  match parts.binders {
+    Cons { head: b, tail: _ } => optional_present(value: b.name)
+    Empty => optional_absent()
   }
 }
 
-// `(a, b, ...) => e`: seven right steps reach the body expression, one per declared sequence
-// slot after the opening paren -- ident, comma, ident, repeat(more idents), rparen, fat_arrow.
-fn arrow_lambda_paren_body(lambda: Node) -> Optional<Node> {
-  fold_seq_right_n(
-    node: fold_seq_right_n(
-      node: fold_seq_right_n(
-        node: fold_seq_right_n(
-          node: fold_seq_right_n(
-            node: fold_seq_right_n(node: fold_seq_right(node: lambda))
-          )
-        )
-      )
-    )
-  )
+fn fold_step_has_two_binders(parts: FunctionValueParts) -> Bool {
+  match parts.binders {
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => true
+    _ => false
+  }
 }
 
-fn arrow_lambda_paren_carrier(lambda: Node) -> Optional<Symbol> {
-  match fold_seq_right(node: lambda) {
-    Absent => Absent
-    Present { value: after_lparen } =>
-      match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
-        Absent => Absent
-        Present { value: first_param } => node_atom_identity_optional(node: first_param)
-      }
+fn fold_step_body(parts: FunctionValueParts) -> Optional<Node> {
+  match parts.body {
+    FunctionValueExprBody { expr: e } => optional_present(value: e)
+    FunctionValueBlockBody { fn_body: b } => parse_production_captured_child_optional(node: fv_unwrap(node: b))
+  }
+}
+
+fn step_fn_iteration_body(fn_literal: Node) -> Optional<Node> {
+  match fn_literal_parts_optional(fn_literal: fn_literal) {
+    Absent => optional_absent()
+    Present { value: parts } => fold_step_body(parts: parts)
+  }
+}
+
+fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
+  match fn_literal_parts_optional(fn_literal: fn_literal) {
+    Absent => optional_absent()
+    Present { value: parts } => fold_step_first_binder(parts: parts)
   }
 }
 
 fn arrow_lambda_iteration_body(lambda: Node) -> Optional<Node> {
-  match arrow_lambda_is_parenthesised(lambda: lambda) {
-    Absent => Absent
-    Present { value: parenthesised } =>
-      if parenthesised { arrow_lambda_paren_body(lambda: lambda) } else { Absent }
+  match arrow_lambda_parts_optional(lambda: lambda) {
+    Absent => optional_absent()
+    Present { value: parts } =>
+      if fold_step_has_two_binders(parts: parts) { fold_step_body(parts: parts) } else { optional_absent() }
   }
 }
 
 fn arrow_lambda_carrier_binder_symbol(lambda: Node) -> Optional<Symbol> {
-  match arrow_lambda_is_parenthesised(lambda: lambda) {
-    Absent => Absent
-    Present { value: parenthesised } =>
-      if parenthesised { arrow_lambda_paren_carrier(lambda: lambda) } else { Absent }
+  match arrow_lambda_parts_optional(lambda: lambda) {
+    Absent => optional_absent()
+    Present { value: parts } =>
+      if fold_step_has_two_binders(parts: parts) { fold_step_first_binder(parts: parts) } else { optional_absent() }
   }
 }
 

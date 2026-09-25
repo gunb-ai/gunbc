@@ -42,7 +42,6 @@ data declared_source_refs: List<SourceRef> = [
   sn_source_ref,
   sn_shim_lib_ref,
   sn_shim_driver_ref,
-  source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_algebra.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_collection.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/v2_std_grammar.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_diagnostic.rs"),
@@ -51,7 +50,7 @@ data declared_source_refs: List<SourceRef> = [
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"),
-  source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/std_algebra.rs"),
+  source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_std_bridge_shims/std_algebra.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/std_types.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_integer.rs"),
   source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/v2_compiler_namespace_graft.rs")

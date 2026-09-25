@@ -22,7 +22,8 @@ import v2.extdeps.formats.sql_target {
   sql_target_model_bundle,
   sql_token_class_emit_transforms
 }
-import v2.std.algebra { fold_list, list_append }
+import v2.std.algebra { fold_list }
+import std.algebra { list_append }
 import v2.std.collection {
   List,
   Map,

@@ -1,8 +1,8 @@
 module test.claim.jq_invocation_lowering_witness
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_snoc_item }
 import std.types { Bool, String }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.compilers.cli_surface { cli_argument_text, cli_surface_arguments }
 import v2.std.diagnostic { Accepted, Rejected }
