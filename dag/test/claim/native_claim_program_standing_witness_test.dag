@@ -61,3 +61,38 @@ test fn a_signal_is_no_observation_even_with_every_row_held() -> Bool {
 test fn a_report_with_no_roster_is_no_observation() -> Bool {
   code_of(e: native_claim_program_standing(stdout: "case a held observed=x\n", status: 0)) == 2
 }
+
+// ── THE WHOLE-REPORT GRAMMAR (review 5311497200 of gunbc#12250). Each of these was ACCEPTED by the
+// earlier reader, which flat-mapped unparseable lines to nothing; each must now be no observation.
+
+test fn a_row_with_an_unknown_verdict_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a,z\ncase a held observed=x\ncase z nonsense observed=q\n", status: 0)) == 2
+}
+
+test fn a_row_without_an_observed_field_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a\ncase a held\n", status: 0)) == 2
+}
+
+test fn a_noise_line_among_the_rows_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a\ncase a held observed=x\nwarning: something\n", status: 0)) == 2
+}
+
+test fn a_second_roster_line_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a\ncase a held observed=x\nroster a,b\n", status: 0)) == 2
+}
+
+test fn a_roster_naming_an_identity_twice_is_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: "roster a,a\ncase a held observed=x\n", status: 0)) == 2
+}
+
+// ── THE TERMINAL (same review): only 0 with every row held is held. The closed NativeClaimTerminal
+// means a program cannot produce any other code, but the reader refuses one anyway, so a regression
+// in the rendered main surfaces here instead of reading as held.
+
+test fn an_out_of_vocabulary_status_is_no_observation_even_with_every_row_held() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: two_held, status: 3)) == 2
+}
+
+test fn the_programs_own_no_observation_terminal_stays_no_observation() -> Bool {
+  code_of(e: native_claim_program_standing(stdout: two_held, status: 2)) == 2
+}

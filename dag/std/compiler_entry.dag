@@ -7,7 +7,6 @@ import std.measure {
   millisecond,
   millisecond_to_nanosecond
 }
-import std.process { ProcessExit }
 
 // WHICH MODULE IS THE COMPILER PIPELINE ENTRY IS A FACT ABOUT THE MODULE, CARRIED BY IT.
 //
@@ -90,7 +89,7 @@ import std.process { ProcessExit }
 // NativeClaimDriver -- a PROGRAM WHOSE WHOLE JOB IS ONE DECIDED EXIT, and the smallest rendered main
 // this partition admits. Its `.dag` entry declares one fold, `native_claim_report() ->
 // NativeClaimReport`, which computes every case, renders one row per case identity and decides the
-// status;
+// terminal;
 // the rendered main performs only the two operations no fold can -- writing stdout and setting the
 // status -- and reads no argv and no file. It exists because a claim that must EXECUTE natively has
 // no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
@@ -99,12 +98,24 @@ import std.process { ProcessExit }
 // meanings (DESIGN section 3). First consumer: gunbc.instruments.native_crypto_vectors, run by
 // `gunbc test //gunbc/instruments:native-crypto-vectors`, which executes the emitted .dag verifiers
 // over their published vectors.
-// WHAT A NativeClaimDriver ENTRY HANDS ITS RENDERED MAIN: the text to write and the decided exit, as
-// one value. They are one fact -- the rows ARE the observation the status summarizes -- so they cross
-// the host boundary together rather than through two calls that could disagree.
+// WHAT A NativeClaimDriver ENTRY HANDS ITS RENDERED MAIN: the text to write and the decided terminal,
+// as one value. They are one fact -- the rows ARE the observation the terminal summarizes -- so they
+// cross the host boundary together rather than through two calls that could disagree.
+//
+// THE TERMINAL IS CLOSED, NOT A ProcessExit (review 5311497200 of gunbc#12250). A ProcessExit
+// admits ExitFailure { code: 0 }, which crosses the process boundary as status 0 and would read as
+// held, and any other code, which bypasses gunbc test's 0/1/2 vocabulary. So the program chooses
+// among exactly the three outcomes the reader distinguishes, and the rendered main owns the one
+// mapping to a status: held 0, not held 1, no observation 2. There is no arm a program can write
+// that reaches a fourth status.
+type NativeClaimTerminal
+  = NativeClaimHeld
+  | NativeClaimNotHeld { reason: String }
+  | NativeClaimNoObservation { reason: String }
+
 type NativeClaimReport {
   stdout: String
-  exit: ProcessExit
+  terminal: NativeClaimTerminal
 }
 
 type CompilerEntryDriver

@@ -80,9 +80,12 @@ test fn an_unmodeled_entry_driver_refuses() -> Bool {
 // std.compiler_entry NativeClaimDriver: the rendered main makes ONE call and does only the two
 // things no fold can -- write stdout and set the status. The forbidden spellings are the other host
 // operations a main could reach for (argv, a file read, a directory walk), so a main that grew any of
-// them fails here even if it still calls the fold.
+// them fails here even if it still calls the fold. The status comes only from the closed
+// NativeClaimTerminal, each arm to a FIXED code (0, 1, 2), and `*code as i32` is forbidden: a main
+// that passed a program-chosen code through could turn a failure spelled as 0 into held (review
+// 5311497200 of gunbc#12250).
 test fn a_native_claim_entry_renders_a_one_call_main_that_only_writes_and_exits() -> Bool {
-  compile_dag_rust_emit_check(ea_native_claim_source, "src/main.rs", ["let report = native_claim_report();", "print!(\"\{\}\", report.stdout);", "std::process::exit("], ["std::env::args", "read_to_string", "read_dir", ea_absent_entry_marker])
+  compile_dag_rust_emit_check(ea_native_claim_source, "src/main.rs", ["let report = native_claim_report();", "print!(\"\{\}\", report.stdout);", "NativeClaimTerminal::NativeClaimHeld => std::process::exit(0)", "std::process::exit(1)", "std::process::exit(2)"], ["std::env::args", "read_to_string", "read_dir", "*code as i32", ea_absent_entry_marker])
 }
 
 // The exactly-one rule holds across driver kinds: a NativeClaimDriver entry beside a NativeCliDriver

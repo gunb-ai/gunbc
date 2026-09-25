@@ -17320,9 +17320,11 @@ fn emit_host_source_root_read_rs() -> String {
 // legitimately empty emission as a failure.
 // THE NATIVE CLAIM DRIVER'S MAIN: ONE CALL, ONE WRITE, ONE STATUS. std.compiler_entry
 // NativeClaimDriver declares the contract: the entry's `native_claim_report` fold computes every case
-// and decides the exit, so this main reads no argv and no file, and it adds no decision -- it writes
-// the report's text and sets the status the fold chose. An ExitFailure's reason goes to stderr so the
-// case rows on stdout stay the whole observation a reader joins by identity.
+// and decides the closed NativeClaimTerminal, so this main reads no argv and no file, and it adds no
+// decision -- it writes the report's text and maps the three terminal arms to the three statuses
+// gunbc test reads (0 held, 1 not held, 2 no observation). No code is taken from the program, so no
+// program can reach a fourth status or a failure spelled as 0. The reason goes to stderr so the case
+// rows on stdout stay the whole observation a reader joins by identity.
 fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   TextFile {
@@ -17332,17 +17334,21 @@ fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String)
       "\n",
       "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
       "\n",
-      "use ", crate_name, "::std_process::ProcessExit;", "\n",
+      "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_claim_report;", "\n",
       "\n",
       "fn main() \{", "\n",
       "    let report = native_claim_report();", "\n",
       "    print!(\"\{\}\", report.stdout);", "\n",
-      "    match &*report.exit \{", "\n",
-      "        ProcessExit::ExitSuccess => std::process::exit(0),", "\n",
-      "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",
-      "            eprintln!(\"REFUSED: \{reason\}\");", "\n",
-      "            std::process::exit(*code as i32);", "\n",
+      "    match &*report.terminal \{", "\n",
+      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
+      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
+      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
+      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
+      "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \}", "\n",
       "\}", "\n")

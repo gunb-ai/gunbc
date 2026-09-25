@@ -1,8 +1,7 @@
 module gunbc.instruments.native_crypto_vectors
 
 import std.types { Int, List, String, Bool }
-import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub }
 import extdeps.numeric.base16 { base16_encode_lower }
@@ -32,7 +31,7 @@ import extdeps.wycheproof.ecdsa_secp256r1_sha256_p1363 {
 // ecdsa_verification_realization_frontier names both).
 //
 // THE OUTPUT IS JOINED BY IDENTITY, NOT COUNTED. The first line names every case identity the program
-// will report, derived from the same case list the rows are; the producer refuses a run whose rows do
+// will report, from the DECLARED native_crypto_expected_identities, not from the case list; the producer refuses a run whose rows do
 // not match that roster one-for-one, so a case that crashed or was skipped is a missing row and no
 // observation, never a pass. Exit 0 means every case held and 1 means at least one did not; anything
 // else -- a panic, a signal, a truncated report -- is the producer's "no observation".
@@ -164,10 +163,54 @@ fn case_row(c: NativeCryptoCase) -> String {
   concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
 }
 
+// THE EXPECTED IDENTITIES, DECLARED RATHER THAN DERIVED FROM THE CASES (review 5311497200 of
+// gunbc#12250). The roster this program prints is THIS list, not a projection of
+// native_crypto_cases(), so the reader's identity join is against an authority the computation
+// cannot silently shrink: deleting a case function, or a filter that drops a case, leaves its
+// identity on the roster with no row, and the run is NO OBSERVATION rather than a smaller green.
+// Growing the program means adding the case AND its identity here; a case computed but not rostered
+// is an extra row, which refuses the same way. It is monotone by review: removing an identity is
+// retiring a check and is visible as a deleted line here.
+data native_crypto_expected_identities: List<String> = [
+  "sha256_empty",
+  "sha256_empty_red_one_octet_appended",
+  "sha256_abc",
+  "sha256_abc_red_one_octet_appended",
+  "sha256_448_bit",
+  "sha256_448_bit_red_one_octet_appended",
+  "sha384_empty",
+  "sha384_empty_red_one_octet_appended",
+  "sha384_abc",
+  "sha384_abc_red_one_octet_appended",
+  "sha384_896_bit",
+  "sha384_896_bit_red_one_octet_appended",
+  "p256_rfc6979_sample",
+  "p256_rfc6979_test",
+  "p256_red_signature_for_a_different_message",
+  "p256_red_wrong_key_rfc7515_a3",
+  "p256_red_key_off_the_curve",
+  "p256_wycheproof_tc1",
+  "p256_wycheproof_tc60",
+  "p256_wycheproof_tc4",
+  "p256_wycheproof_tc11",
+  "p256_wycheproof_tc26",
+  "p256_wycheproof_tc2",
+  "p256_the_base_point_has_order_n",
+  "p256_red_n_minus_one_times_g_is_finite"
+]
+
 fn native_claim_report() -> NativeClaimReport {
   let cases = native_crypto_cases()
-  let roster = concat("roster ", concat(cases |> map(c => c.identity) |> join(separator: ","), "\n"))
+  let roster = concat("roster ", concat(native_crypto_expected_identities |> join(separator: ","), "\n"))
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let exit = if (failed |> count) == 0 { ExitSuccess } else { ExitFailure { code: 1, reason: concat("not held: ", failed |> join(separator: ",")) } }
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), exit: exit }
+  let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
+}
+
+fn held_terminal() -> NativeClaimTerminal {
+  NativeClaimHeld
+}
+
+fn not_held_terminal(reason: String) -> NativeClaimTerminal {
+  NativeClaimNotHeld { reason: reason }
 }

@@ -11,8 +11,8 @@ import std.types { Int, List }
 // THE OPERANDS ARE TYPED Int, NOT std.integer UInt32, BECAUSE Int IS WHAT THEY HOLD. UInt32 is
 // Compose<UInt, MachineWidth<32>>, a Phantom with no inhabitant, so typing a value with it asserts a
 // width that nothing checks. The arithmetic here also passes THROUGH values outside [0, 2^32):
-// word32_xor forms a + b (up to 2^33 - 2) before subtracting, and word32_add reduces (a + b) only at
-// the end. Under the interpreter the brand was transparent and the claim went unnoticed. Under
+// word32_add forms a + b (up to 2^33 - 2) and reduces it only at the end. (The bitwise operations
+// are nibble-folded and stay inside the width; see below.) Under the interpreter the brand was transparent and the claim went unnoticed. Under
 // emission the Rust realization refused every infix operator on the structural operand
 // (gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int, whose ruling
 // is that the emitter was right and the SITES should stop claiming the phantom). No enforced rung
