@@ -11,7 +11,7 @@ import v2.extdeps.languages.swift.syntax {
 }
 import v2.extdeps.languages.swift.print { print_swift_source_file }
 import gunbc.auth.approval_device_redemption_fixtures { surface_vectors }
-import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
+import gunbc.approve_ios_swift_protocol_vector_tests { approve_ios_surface_spelled_decl }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -53,16 +53,13 @@ test fn a_changed_node_changes_the_text() -> Bool {
   print_swift_source_file(f: changed) != print_swift_source_file(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String")), sw_field(n: "b", t: sw_t(n: "Int"))])] })
 }
 
-// THE SURFACE SET IS THE FIXTURE'S, on the real route: the committed ProtocolVectorTests.swift
-// (printed by gunbc.approve_ios_swift_protocol_vector_tests) spells exactly the names
-// gunbc.auth.approval_device_redemption_fixtures surface_vectors emits into vectors.json, in its
-// order, and none of the header rows #12000 removed -- the defect that left the Mac run at 18/19.
-test fn the_printed_tests_spell_exactly_the_fixture_surface_names() -> Bool {
+// THE SURFACE SET IS THE FIXTURE'S. The declaration testSurfaceMatchesTheFixture uses
+// (gunbc.approve_ios_swift_protocol_vector_tests approve_ios_surface_spelled_decl), printed, spells
+// exactly the names gunbc.auth.approval_device_redemption_fixtures surface_vectors emits into
+// vectors.json, in its order, and none of the header rows #12000 removed -- the defect that left the
+// Mac run at 18/19. That the committed file carries this declaration is the drift gate's claim.
+test fn the_spelled_surface_set_is_the_fixtures_names() -> Bool {
   let names = map(surface_vectors, v => concat(concat("\"", v.name as String), "\""))
-  let spelled = concat(concat("let spelled: Set<String> = [", join(names, ", ")), "]")
-  let text = expected_approve_ios_protocol_vector_tests_swift()
-  string_contains(s: text, pattern: spelled)
-    && !string_contains(s: text, pattern: "\"header_enrollment\"")
-    && !string_contains(s: text, pattern: "\"header_requested_at\"")
-    && !string_contains(s: text, pattern: "\"header_assertion\"")
+  let expected = concat(concat("let spelled: Set<String> = [", join(names, ", ")), "]\n")
+  print_swift_source_file(f: SwiftSourceFile { declarations: [approve_ios_surface_spelled_decl()] }) == expected
 }

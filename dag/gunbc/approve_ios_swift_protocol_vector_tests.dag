@@ -8,7 +8,7 @@ import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftDeclarationModifier,
   SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
   SwiftImportDecl, SwiftAttribute, SwiftClassDecl, SwiftFunctionDecl,
-  SwiftFinalModifier, SwiftPrivateModifier, SwiftVar,
+  SwiftFinalModifier, SwiftPrivateModifier, SwiftVar, SwiftLet, SwiftVariableDecl, SwiftIdentifierPattern,
   SwiftLogicalAndOperator, SwiftDeclarationStmt,
   sw_t, sw_tg, sw_tarr, sw_topt,
   sw_id, sw_dot, sw_mem, sw_path, sw_chain, sw_call, sw_calln, sw_callt, sw_sub, sw_arg, sw_pos,
@@ -133,6 +133,12 @@ fn at_throws(decoder: String, e: SwiftExpr) -> SwiftStmt { at_assert(n: "XCTAsse
 // ["name_a", "name_b", ...]: the surface rows the fixture carries, by name, in the fixture's order.
 fn at_surface_names() -> SwiftExpr {
   sw_arr(e: map(surface_vectors, v => sw_str(s: v.name as String)))
+}
+
+// `let spelled: Set<String> = [...]`: the declaration testSurfaceMatchesTheFixture joins the fixture's
+// rows against, exposed so its witness reads it at this interface rather than printing the file.
+fn approve_ios_surface_spelled_decl() -> SwiftDecl {
+  SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: "spelled" }, annotation: Present { value: sw_tg(n: "Set", a: [at_s()]) }, initializer: Present { value: at_surface_names() } }
 }
 
 fn at_surface_route(route: String, row: String) -> SwiftStmt {
@@ -344,7 +350,7 @@ fn at_tests() -> List<SwiftDecl> {
             "generated from gunbc.auth.approval_device_redemption_fixtures surface_vectors, the rows",
             "vectors.json is emitted from.",
           ],
-          s: sw_let_typed(n: "spelled", t: sw_tg(n: "Set", a: [at_s()]), e: at_surface_names())
+          s: SwiftDeclarationStmt { decl: approve_ios_surface_spelled_decl() }
         ),
         at_assert(n: "XCTAssertEqual", a: [
           sw_calln(f: "Set", a: [sw_pos(v: sw_path(b: "rows", m: "keys"))]),
