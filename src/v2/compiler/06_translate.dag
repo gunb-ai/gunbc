@@ -2,6 +2,7 @@ module v2.compiler.translate
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag {
+  namespace_graft_node_is_module_body,
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
   emit_import_decl_emitted_node,
@@ -3937,6 +3938,32 @@ fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> O
     f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
   )
 }
+// A MODULE IS NOT A TYPE EXPRESSION. A module body reaching this projection used to render as a
+// record of its members' types (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body): the type projection accepts any node no grammar
+// relation row matches, so it widened where it should have refused. A module is rendered only by
+// `v2.compiler.emit_produced` `emit_produced_module`, which the partition emit routes a module to
+// when every member is a bodied declaration; a module that reaches this projection is one that fold
+// cannot render whole, and it refuses here, located at its body, rather than printing a record.
+fn translate_module_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_module_not_a_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_first_module_body_optional(node: Node) -> Optional<Node> {
+  if namespace_graft_node_is_module_body(node: node) {
+    optional_present(value: node)
+  } else {
+    fold(node.children, init: optional_absent(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => translate_first_module_body_optional(node: e.target)
+      }
+    })
+  }
+}
 fn translate_type_expression_tree(
   node: Node,
   tree: InferredTree,
@@ -3949,6 +3976,10 @@ fn translate_type_expression_tree(
       if target_value_expr_arrow_has_value_expression_body(arrow: node) {
         translate_bodied_arrow_shortcut_after_subtree_gate(tree: tree, arrow: node)
       } else {
+      match translate_first_module_body_optional(node: node) {
+        Present { value: body } =>
+          outcome_rejected(translate_module_not_a_type_expression_diagnostic(node: body))
+        Absent =>
         bind_outcome(
           o: translate_fold_acc_rebuilt(
             o: fold_node(
@@ -3970,6 +4001,7 @@ fn translate_type_expression_tree(
             }
           }
         )
+      }
       }
     }
   )
@@ -4345,6 +4377,7 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
   | ArrowBodyNotATypeExpression
+  | ModuleNotATypeExpression
 
 fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   [
@@ -4365,7 +4398,8 @@ fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
     TargetTypeExprEmittedShapeMalformed,
-    ArrowBodyNotATypeExpression
+    ArrowBodyNotATypeExpression,
+    ModuleNotATypeExpression
   ]
 }
 
@@ -4389,6 +4423,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
     TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
     TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
     ArrowBodyNotATypeExpression => ^translate_arrow_body_not_a_type_expression
+    ModuleNotATypeExpression => ^translate_module_not_a_type_expression
   }
 }
 
