@@ -14,9 +14,9 @@ import extdeps.linux.usb_gadget {
   UsbGadget,
   MassStorageLun,
   ConfigfsOp,
+  ConfigfsOpCommandOutcome,
   usb_gadget_setup_ops,
-  usb_gadget_setup_script,
-  usb_gadget_teardown_script,
+  usb_gadget_op_commands,
 }
 import extdeps.bmc.virtual_media {
   VirtualMediaIntent,
@@ -135,10 +135,17 @@ fn srv4_vm_gadget_setup_ops() -> List<ConfigfsOp> {
   usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
-fn srv4_vm_gadget_setup_script() -> String {
-  usb_gadget_setup_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
-}
-
-fn srv4_vm_gadget_teardown_script() -> String {
-  usb_gadget_teardown_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+// THE SETUP IS DESCRIBED, NOT SCRIPTED. This is the fixture surface the shell→DAG acceptance
+// oracle reads: the typed configfs ops carried to typed commands (argv invocations and file
+// writes), with the gadget's own configfs directory as the root the mapping enforces. There is no
+// `setup_script` beside this any more — the shell text it used to assemble (the `set -e` prefix,
+// the `2>/dev/null || true` joins) is deleted, not stubbed; a transport that needs a remote script
+// gets it from the one translator, which is shell-effectplan-to-bash's row, not from this module.
+// The teardown script was deleted with it: it had no consumers, and its typed ops remain the
+// authority through the same usb_gadget_op_commands mapping.
+fn srv4_vm_gadget_setup_commands() -> List<ConfigfsOpCommandOutcome> {
+  usb_gadget_op_commands(
+    gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan),
+    ops: usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan)),
+  )
 }
