@@ -17826,6 +17826,12 @@ pub enum RestResponseDecodeCause {
     NotAString { json_kind: &'static str },
     /// The string names no arm under the contract's naming policy.
     UnknownSpelling { spelling: String },
+    /// A record member is spelled as a renamed field's AUTHORED name rather than its declared
+    /// wire key (`from`). The authored name is reserved: it is not a wire spelling of that field.
+    AuthoredNameIsNotTheWireKey { authored: String, wire: String },
+    /// Both the wire key and the authored name of one renamed field are present; which one
+    /// populates the field would be decided by iteration order.
+    AmbiguousWireSpelling { authored: String, wire: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -17856,6 +17862,16 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::NotAString { json_kind } => {
                 write!(f, "expected a JSON string, found {}", json_kind)
             }
+            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!(
+                f,
+                "member `{}` is the authored name of a field whose declared wire key is `{}`",
+                authored, wire
+            ),
+            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!(
+                f,
+                "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
+                wire, authored
+            ),
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
@@ -18102,6 +18118,33 @@ fn decode_json_by_declared_type(
             // oidc.issuerUri, attributeCondition and attributeMapping all matched and refused it
             // as "issuer is null" (gunbc.recurring_failure_mode
             // rest_response_nested_from_key_ignored).
+            // A renamed field's AUTHORED name is reserved: it is not a wire spelling, so a member
+            // carrying it refuses rather than populating the field around `from` and the typed
+            // decode, and a body carrying both spellings refuses rather than letting iteration
+            // order choose.
+            for f in ty.children.iter() {
+                if let Some(wire) = extract_from_key(f, ctx) {
+                    let authored = authored_name_at(ctx.si(), f.clone());
+                    if authored != wire && obj.contains_key(&authored) {
+                        let cause = if obj.contains_key(&wire) {
+                            RestResponseDecodeCause::AmbiguousWireSpelling {
+                                authored: authored.clone(),
+                                wire,
+                            }
+                        } else {
+                            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
+                                authored: authored.clone(),
+                                wire,
+                            }
+                        };
+                        return Err(RestResponseDecodeRefusal {
+                            field_path: format!("{}.{}", path, authored),
+                            coproduct: name.clone(),
+                            cause,
+                        });
+                    }
+                }
+            }
             for (key, value) in obj.iter() {
                 let declared = ty.children.iter().find(|f| {
                     extract_from_key(f, ctx)

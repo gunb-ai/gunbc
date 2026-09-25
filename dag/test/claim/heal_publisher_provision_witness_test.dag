@@ -19,7 +19,7 @@ import gunbc.auth.heal_publisher_provision {
 import extdeps.cloud.gcp.gcp { WifPoolWire, WifProviderWire, WifOidcWire }
 import gunbc.auth.github_gcp_federation { github_wif_issuer_uri }
 import v2.std.optional { Present, Absent }
-import extdeps.transports.rest { RestResponseObserved, RestBodyRead }
+import extdeps.transports.rest { RestResponseObserved, RestBodyRead, RestBodyUndecodable }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }
 import test.fixture.rest_exchange_replay_probe
@@ -286,4 +286,38 @@ test fn the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present(
   let f = mtcollins1_boot_dedicated_federation()
   let c = classify_dedicated_federation(f: f, pool: decoded_pool(), providers: decoded_providers(), account: AccountObserved { email: f.service_account as String })
   classified(c: c) && federation_fully_present(c: c)
+}
+
+// ── the authored name of a renamed field is RESERVED, not a second wire spelling ──────────────
+//
+// A member spelled `issuer_uri` is not the wire key of WifOidcWire.issuer_uri (`issuerUri`), so it
+// may not populate the field around `from` and the typed decode; a body carrying both spellings
+// refuses rather than letting member order choose which one the classifier reads.
+data authored_only_issuer_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"oidc\":{\"issuer_uri\":\"https://token.actions.githubusercontent.com\"}}]}"
+
+data both_issuer_spellings_body: String = "{\"workloadIdentityPoolProviders\":[{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc\",\"state\":\"ACTIVE\",\"oidc\":{\"issuerUri\":\"https://token.actions.githubusercontent.com\",\"issuer_uri\":\"https://attacker.invalid\"}}]}"
+
+fn providers_body_refusal(body: String) -> String {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "WifProvidersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.WifProvidersPage() }
+  )
+  match result {
+    WitnessReturned { value } => match value.outcome {
+      RestBodyUndecodable { status: _, cause } => cause as String
+      _ => ""
+    }
+    WitnessRefused { diagnostic: _ } => ""
+  }
+}
+
+test fn an_authored_only_issuer_spelling_refuses_rather_than_populating_the_field() -> Bool {
+  string_contains(s: providers_body_refusal(body: authored_only_issuer_body), pattern: "is the authored name of a field whose declared wire key is `issuerUri`")
+}
+
+test fn both_issuer_spellings_refuse_as_ambiguous() -> Bool {
+  string_contains(s: providers_body_refusal(body: both_issuer_spellings_body), pattern: "the field's spelling is ambiguous")
 }
