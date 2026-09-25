@@ -3831,6 +3831,8 @@ fn native_demand_binding(plan: NativeDemandPlan, id: DemandIdentity) -> Optional
 type NativeDemandTransition {
   key: String
   settled: String
+  stage: String
+  nanos: Int
 }
 
 type NativeDemandRun {
@@ -4007,6 +4009,7 @@ fn native_demand_step(
   match native_demand_binding(plan: plan, id: identity) {
     Absent => run
     Present { value: subject } =>
+      let started = observed_monotonic_nanos("native-demand-step-start")
       let settled = native_demand_execute(
         run: run,
         subject: subject,
@@ -4014,13 +4017,16 @@ fn native_demand_step(
         refusal_index: refusal_index,
         compiler: compiler
       )
+      let elapsed = observed_monotonic_nanos("native-demand-step-finish") - started
       NativeDemandRun {
         engine: demand_engine_settle(e: run.engine, id: identity, state: settled),
         transitions: list_snoc_item(
           xs: run.transitions,
           item: NativeDemandTransition {
             key: demand_identity_key(id: identity),
-            settled: native_demand_settled_label(state: settled)
+            settled: native_demand_settled_label(state: settled),
+            stage: native_demand_stage_label(plan: plan, identity: identity),
+            nanos: elapsed
           }
         ),
         rows: native_demand_collect_rows(rows: run.rows, settled: settled)
@@ -4206,6 +4212,59 @@ fn native_demand_tested_tree_input(tree: String) -> DeclaredInput {
 // The two counts the cost partition reports beside its spans: how many module preparations reached
 // a prepared module and how many decided rows instead. Derived from the settled engine rather than
 // tallied by the driver, so the driver counts nothing it does not time.
+// THE EXCLUSIVE ROWS, DERIVED FROM THE TRANSITIONS THE STEPS TIMED THEMSELVES.
+//
+// The host used to bracket every step with Instant::now() and add the span to one of two mutable
+// accumulators, which meant the rendered main both DRAINED the graph and CLASSIFIED each demand's
+// stage -- two decisions that are the engine's and the plan's respectively. It held them only
+// because a .dag fold was assumed unable to read a clock. It can: observed_monotonic_nanos is an
+// ordinary builtin with no resource requirement, and std.realization_measurement models it as
+// ObserveElapsedAtSubject's realization seam.
+//
+// So the spans are taken where the work is, summed here by stage, and the driver reads two
+// integers. The exclusive partition keeps its prepare and eval rows without the host deciding what
+// a stage is.
+fn native_demand_stage_nanos(run: NativeDemandRun, stage: String) -> Int {
+  fold_list(
+    xs: run.transitions,
+    empty: 0,
+    cons: fn(acc, t) { if t.stage == stage { acc + t.nanos } else { acc } }
+  )
+}
+
+fn native_demand_prepare_nanos(run: NativeDemandRun) -> Int {
+  native_demand_stage_nanos(run: run, stage: "resolve")
+    + native_demand_stage_nanos(run: run, stage: "infer")
+}
+
+fn native_demand_eval_nanos(run: NativeDemandRun) -> Int {
+  native_demand_stage_nanos(run: run, stage: "eval")
+}
+
+// One sample per settled eval demand, so the driver's quantile rows describe the same population
+// the engine ran rather than a list the host rebuilt beside it.
+fn native_demand_eval_samples(run: NativeDemandRun) -> List<Int> {
+  fold_list(
+    xs: run.transitions,
+    empty: [],
+    cons: fn(acc, t) { if t.stage == "eval" { list_snoc_item(xs: acc, item: t.nanos) } else { acc } }
+  )
+}
+
+fn native_demand_prepare_samples(run: NativeDemandRun) -> List<Int> {
+  fold_list(
+    xs: run.transitions,
+    empty: [],
+    cons: fn(acc, t) {
+      if (t.stage == "resolve") || (t.stage == "infer") {
+        list_snoc_item(xs: acc, item: t.nanos)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
 fn native_demand_prepare_ok(run: NativeDemandRun) -> Int {
   length(
     xs: filter(
@@ -4240,6 +4299,11 @@ fn native_demand_plan_size(plan: NativeDemandPlan) -> Int {
 // it through here rather than reaching into the engine inside the run: a caller that walked two
 // records deep would be coupled to the engine's shape, and the engine's shape is not the driver's
 // business.
+// The planned population, read from the run so the driver needs no second handle on the plan.
+fn native_demand_run_demand_count(run: NativeDemandRun) -> Int {
+  length(xs: run.engine.entries)
+}
+
 fn native_demand_run_readiness_derivations(run: NativeDemandRun) -> Int {
   run.engine.readiness_computations
 }
@@ -4253,5 +4317,13 @@ fn native_demand_run_transition_count(run: NativeDemandRun) -> Int {
 }
 
 fn native_demand_run_receipt_lines(run: NativeDemandRun) -> List<String> {
-  list_map(xs: run.transitions, f: fn(t) { concat(concat(t.key, " "), t.settled) })
+  list_map(
+    xs: run.transitions,
+    f: fn(t) {
+      concat(
+        concat(concat(t.key, " "), t.settled),
+        concat(concat(" ", t.stage), concat(" ", to_string(t.nanos)))
+      )
+    }
+  )
 }
