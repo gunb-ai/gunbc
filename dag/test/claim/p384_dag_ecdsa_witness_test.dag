@@ -68,12 +68,20 @@ fn p384_root() -> X509Certificate? {
 }
 
 // SP 800-186 §3.2.1.4: the base point satisfies the curve equation.
-test fn the_p384_base_point_is_on_the_curve() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p384_the_base_point_is_on_the_curve evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn the_p384_base_point_is_on_the_curve() -> Bool {
   p384_on_curve(x: p384_gx, y: p384_gy)
 }
 
 // A point with the y coordinate of G incremented by one is not.
-test fn a_point_beside_the_base_point_is_off_the_curve() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p384_red_a_point_beside_the_base_point_is_off_the_curve evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn a_point_beside_the_base_point_is_off_the_curve() -> Bool {
   !p384_on_curve(x: p384_gx, y: bignat_from_octets(octets: [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 96]))
 }
 
@@ -82,7 +90,11 @@ test fn a_point_beside_the_base_point_is_off_the_curve() -> Bool {
 // inversion; and G + (−G) reaches curve_add's exceptional arm and is infinity. A transcription
 // defect in either formula (the class review 69614 caught once in this fold) lands 2G or 3G off
 // the curve.
-test fn doubling_and_adding_the_base_point_stay_on_the_curve() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p384_doubling_and_adding_the_base_point_stay_on_the_curve evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn doubling_and_adding_the_base_point_stay_on_the_curve() -> Bool {
   let g = curve_affine(c: p384_curve, x: p384_gx, y: p384_gy)
   let g2 = curve_double(c: p384_curve, p: g)
   let g3 = curve_add(c: p384_curve, p: g2, q: g)
@@ -97,7 +109,11 @@ test fn doubling_and_adding_the_base_point_stay_on_the_curve() -> Bool {
 // incremented by one) lands off the curve -- the formulas preserve the curve a point is on, so a
 // point on no curve of this b stays on none. A doubling that returned its input, or infinity,
 // would pass the claim above and fail here.
-test fn doubling_an_off_curve_point_stays_off_the_curve() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p384_red_doubling_an_off_curve_point_stays_off_the_curve evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn doubling_an_off_curve_point_stays_off_the_curve() -> Bool {
   let bad = curve_affine(c: p384_curve, x: p384_gx, y: bignat_from_octets(octets: [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 96]))
   let bad2 = curve_double(c: p384_curve, p: bad)
   !curve_jacobian_on_curve(c: p384_curve, p: bad2) && !jacobian_is_infinity(p: bad2)
@@ -106,13 +122,21 @@ test fn doubling_an_off_curve_point_stays_off_the_curve() -> Bool {
 // A 97-octet point whose x coordinate is p itself (an unreduced residue) is NOT admitted, whatever
 // its y: the Montgomery routines assume reduced operands, so the predicate refuses before the
 // arithmetic rather than computing on it (review 69664 of gunbc#11981).
-test fn a_point_with_a_coordinate_at_p_is_not_admitted() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p384_red_a_point_with_a_coordinate_at_p_is_not_admitted evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn a_point_with_a_coordinate_at_p_is_not_admitted() -> Bool {
   !p384_point_octets_on_curve(point: concat([4], concat(p384_p_octets, p384_gy_octets)))
 }
 
 // Apple's real P-384 keys -- CA 1's from the sample chain, the root's from the pinned PEM -- are
 // points on this curve. A wrong parameter row would reject them.
-test fn apples_ca_and_root_keys_are_on_p384() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p384_apples_ca_and_root_keys_are_on_the_curve evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn apples_ca_and_root_keys_are_on_p384() -> Bool {
   match p384_cert(octets: p384_sample_x5c(i: 1)) {
     Absent => false
     Present { value: ca } =>
@@ -124,8 +148,8 @@ test fn apples_ca_and_root_keys_are_on_p384() -> Bool {
 }
 
 // THE THREE VERIFICATIONS BELOW ARE NOT FLOOR CLAIMS (merge-queue run 35678328407 of gunbc#11981:
-// each was BUDGET-REFUSED at the 8 s wall deadline, and the eval-step drop that keeps the point
-// checks above on the floor may not cover a wall crossing). They are ordinary fns here so the floor
+// each was BUDGET-REFUSED at the 8 s wall deadline, and no eval-step drop may cover a wall
+// crossing; the point checks above have since left the floor too, for the native row). They are ordinary fns here so the floor
 // does not plan them, and their consumer is the native gunbc test row that
 // gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names -- the
 // declared frontier, executing once MachineWidth<N> reification lets this closure emit. Until then

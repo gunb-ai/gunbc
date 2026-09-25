@@ -40,7 +40,11 @@ fn is_absent(v: Bool?) -> Bool {
 // verdict (run 35708011844, INTERRUPTED-BEFORE-VERDICT, cost UNMEASURED with no upper bound). An
 // interrupted claim establishes NOTHING, so while these two facts shared one claim the cheap one
 // was lost with the expensive one. Split, the on-curve fact keeps executing on the acceptance path.
-test fn the_base_point_is_on_the_curve() -> Bool {
+// OFF THE INTERPRETED FLOOR, EXECUTED NATIVELY: `gunbc test //gunbc/instruments:native-crypto-vectors`
+// case p256_the_base_point_is_on_the_curve evaluates this fact on the emitted closure (retiring gunbc.rung_drop
+// app_attest_interpreted_crypto_new_witness_eval_step_cost by its trigger). An ordinary fn here, so
+// the floor does not plan it; it stays callable by name as the interpreted cross-check.
+fn the_base_point_is_on_the_curve() -> Bool {
   p256_on_curve(x: p256_gx, y: p256_gy)
 }
 
