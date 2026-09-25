@@ -465,8 +465,6 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
       if (emitted == ^dag_surface_data_decl) || (emitted == ^dag_surface_test_fn_decl) {
         Accepted { value: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()), diagnostics: None }
       } else if emitted == ^dag_surface_service_decl {
-        // Census grade admits a service's set-aside members as located advisories; every other route
-        // refuses them (v2.compiler.body_lowering_fold body_lower_service_decl).
         body_lowered_tree_then(
           t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
           f: fn(shell) { body_lower_service_decl(shell: shell, admit_set_aside: true) }
