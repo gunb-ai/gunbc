@@ -1,89 +1,250 @@
 module gunbc.principal_projection
 
-import std.types { NonEmptyStr }
-import extdeps.auth.jwt { JwtStringOrUri }
-import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import std.types { String, NonEmptyStr, Bool, Int, Email }
+import std.decl_ref { decl_ref }
+import extdeps.auth.jwt { jwt_string_or_uri_wire }
+import extdeps.auth.oidc {
+  OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal,
+  OidcStandardClaims, OidcHostedDomain,
+}
+import extdeps.uri { Uri }
 import product.data_category { PersonalIdentity }
 import product.data_class { Classified, classify_personal_identity }
-import extdeps.access.posix_effective_principal {
-  EffectivePosixPrincipalObservation, effective_posix_principal_name,
-}
 
-// A gunbc principal is a projection of external authentication evidence, never an independently authored identity. OidcProjectedPrincipal reads issuer and subject directly from extdeps.auth.oidc.OidcIdTokenClaims (whose vocabulary is extdeps.auth.jwt.JwtStringOrUri). PosixProjectedPrincipal reads extdeps.access.posix_effective_principal.EffectivePosixPrincipalObservation, whose opaque name is constructible only by that authority's successful non-empty read decoder. PrincipalProjection couples each evidence kind to its only matching constructor, and projected_principal derives rather than stores the principal, so contradictory principal/evidence pairs are unrepresentable. Future policy vocabulary must project the named external authorities rather than mint local substitutes: extdeps.access.aws_iam.PolicyDocument, extdeps.access.rbac.RbacPolicy, and extdeps.access.zanzibar.CheckRequest.
-type OidcProjectedPrincipal {
-  issuer: JwtStringOrUri
-  subject: JwtStringOrUri
-}
-
-type PosixProjectedPrincipal {
-  effective_name: NonEmptyStr
-}
-
-type GunbcPrincipal
-  = OidcPrincipal { principal: OidcProjectedPrincipal }
-  | PosixPrincipal { principal: PosixProjectedPrincipal }
-
-// THE OIDC INGEST BOUNDARY (product.data_class). An ID token's standard claims -- email,
-// email_verified, name -- are the identity of the account or admin principal who signed in, and
-// this is where they enter our program. The projection no longer carries the raw
-// OidcIdTokenClaims onward: the pseudonymous principal identity (issuer, subject) is carried in the
-// clear, because it is what a principal IS to every consumer, and the standard claims are carried
-// as Classified<PersonalIdentity, OidcStandardClaims>, minted here and only here
-// (classify_personal_identity is admit_callers-sealed to oidc_projection). A consumer
-// that wants an email out of a projection cannot spell it (test.probe.bare_string_from_boundary_probe);
-// it must admit a data effect and hold the permit. The upstream schema in extdeps is untouched:
-// the wall is at OUR ingest, not in the vendor's carrier.
+// THE PRINCIPAL AUTHORITY (owner directive 2026-09-25, lane A1). A gunbc principal is a
+// projection of VERIFIED external authentication evidence, never an independently authored
+// identity. PrincipalRef { authority, namespace, subject } is the one qualified-principal
+// carrier (docs/plans/qualified-subject-identity.md): every object names itself with one
+// construction while preserving its owning authority.
 //
-// Whether the subject claim is itself personal identity is a policy question the data-handling map
-// answers, not this module: it is a stable pseudonymous identifier the product cannot function
-// without, and it is left in the clear here on that basis, stated rather than assumed.
-type OidcProjection {
-  issuer: JwtStringOrUri
-  subject: JwtStringOrUri
-  standard: Classified<PersonalIdentity, OidcStandardClaims>
+// TWO AUTHORITIES EXIST TODAY, exactly the two the directive names:
+//
+//   principal:google-oidc/accounts/<sub>   -- a human; authority google-oidc denotes the issuer
+//     https://accounts.google.com, and subject is the ID token's sub claim. A human PrincipalRef
+//     is mintable ONLY by mint_human_principal_from_verdict, whose sole input is an
+//     OidcIdTokenVerdict from extdeps.auth.oidc.verify_oidc_id_token: signature/JWKS, iss, aud,
+//     exp, nonce, email_verified, hd == gunb.ai, each check a typed refusal arm. There is NO
+//     principal_from_email and no other constructor of a human PrincipalRef anywhere in gunbc:
+//     the a3fd5eb shape (subject := email) is unconstructible here, stated as a fact about the
+//     module's vocabulary rather than as a convention.
+//   principal:gunbc/workflows/fabric       -- the ONE internal workflow principal. fabric@gunb.ai
+//     is its display alias (fabric_display_alias): a rendering string, never a Google user,
+//     never model-specific, never an identity input.
+//
+// THE CONSEQUENCES THE DIRECTIVE REQUIRES ARE CONSTRUCTION, not comments. Same sub + changed
+// email = same principal: the mint reads only claims.subject, and the changed email lands in
+// the mutable PrincipalProfile. Same email + different sub != same principal: nothing in the
+// mint reads email. Avatar/directory failure cannot affect an authorization verdict: the mint
+// and every write law in gunbc.auth.request_authentication read the PrincipalRef and the
+// session, never the profile.
+//
+// THE PREDECESSOR SKETCH IS FOLDED, not kept beside: the open OidcProjectedPrincipal /
+// PosixProjectedPrincipal / GunbcPrincipal / PrincipalProjection carrier (whose boundary the
+// old module comment recorded as OPEN, review 65270) is replaced by the verdict-sealed mint
+// below. The posix projection arm had no production consumer; the directive's authority roster
+// names the google-oidc human and the fabric workflow, and a third arm would be a second name
+// for a fact no consumer demands (DESIGN 3c).
+
+type PrincipalRef {
+  authority: NonEmptyStr
+  namespace: NonEmptyStr
+  subject: NonEmptyStr
 }
 
-type PrincipalProjection
-  = OidcProjected { projection: OidcProjection }
-  | PosixProjection { observation: EffectivePosixPrincipalObservation }
+// THE TWO AUTHORITY NAMES AND THEIR NAMESPACES, as data: the label spelling in the ruling
+// (principal:google-oidc/accounts/<sub>, principal:gunbc/workflows/fabric) is derived from these
+// rows by principal_ref_label, never re-spelled at a consumer.
+data google_oidc_principal_authority: NonEmptyStr = "google-oidc" as NonEmptyStr
 
-// THE BOUNDARY RETURNS THE NARROW TYPE, AND THE BOUNDARY IS OPEN (review 65270): oidc_projection
-// is the admitted caller of classify_personal_identity -- the mint is reachable only through it --
-// but it is itself an exported function over any OidcIdTokenClaims, so any importer holding a
-// claim set can mint Classified<PersonalIdentity, _> by calling it, as the probes and witnesses
-// do. The label establishes "these claims entered through the OIDC projection", not that a
-// verified ID token produced them; that becomes a construction fact when a production ID-token
-// decoder (none exists on main) is this function's sole admitted caller. It answers OidcProjection
-// directly, so a consumer that holds OIDC
-// claims never has to eliminate the posix arm of PrincipalProjection to reach the classified
-// claims -- an arm oidc_principal_projection can never produce (review 65254: an unreachable arm
-// realised by hand at every call site is a fabricated answer waiting to be reached).
-fn oidc_projection(claims: OidcIdTokenClaims) -> OidcProjection {
-  OidcProjection {
-    issuer: claims.issuer,
-    subject: claims.subject,
-    standard: classify_personal_identity(value: claims.standard),
+data google_accounts_principal_namespace: NonEmptyStr = "accounts" as NonEmptyStr
+
+data gunbc_principal_authority: NonEmptyStr = "gunbc" as NonEmptyStr
+
+data gunbc_workflows_principal_namespace: NonEmptyStr = "workflows" as NonEmptyStr
+
+data fabric_workflow_principal_subject: NonEmptyStr = "fabric" as NonEmptyStr
+
+// THE ISSUER THE google-oidc AUTHORITY DENOTES. PrincipalRef.authority carries the short
+// authority name; this row binds it to https://accounts.google.com once, and the gunb.ai login
+// policy (gunbc.auth.google_workspace_login) cites THIS row as its verdict policy's expected
+// issuer, so the issuer string is authored in exactly one place.
+data google_oidc_issuer: NonEmptyStr = "https://accounts.google.com" as NonEmptyStr
+
+// THE ONE INTERNAL WORKFLOW PRINCIPAL. Fabric's writes name this principal and authenticate by
+// Fabric's own service evidence (gunbc.auth.request_authentication.FabricServiceEvidence) --
+// never by a human Google session, which a service writer cannot present as workload identity:
+// the two evidence arms are different constructors of the request-security context.
+data fabric_workflow_principal: PrincipalRef = PrincipalRef {
+  authority: gunbc_principal_authority,
+  namespace: gunbc_workflows_principal_namespace,
+  subject: fabric_workflow_principal_subject,
+}
+
+// THE DISPLAY ALIAS IS RENDERING VOCABULARY, not identity: the assignee picker and notification
+// rows spell the workflow principal fabric@gunb.ai, and the alias is the one string they use.
+// Nothing mints a principal from it; nothing matches a principal against it. The selector the
+// tracker interface accepts is owned by extdeps.google.issue_tracker (issue_assign_fabric_*).
+data fabric_display_alias: NonEmptyStr = "fabric@gunb.ai" as NonEmptyStr
+
+fn principal_ref_eq(a: PrincipalRef, b: PrincipalRef) -> Bool {
+  (a.authority as String) == (b.authority as String)
+    && (a.namespace as String) == (b.namespace as String)
+    && (a.subject as String) == (b.subject as String)
+}
+
+// THE RULING'S LABEL SPELLING, derived: principal:<authority>/<namespace>/<subject>. Event
+// history written before the v3 migration carries this label beside the v2 email form, so the
+// durable record of an authenticated write names the stable principal in a spelling the A4 lane
+// promotes to the typed PrincipalRef.
+fn principal_ref_label(p: PrincipalRef) -> String {
+  join(
+    [
+      "principal:",
+      p.authority as String,
+      "/",
+      p.namespace as String,
+      "/",
+      p.subject as String,
+    ],
+    "",
+  )
+}
+
+// ── The sealed human-principal mint ────────────────────────────────────────────────────────────
+// THE CONSTRUCTION WALL the directive names. The input is a VERDICT, not claims: an
+// OidcIdTokenVerdict is only produced by verify_oidc_id_token, whose first arm is the
+// realization-supplied signature check and whose remaining arms are iss/aud/exp/nonce/
+// email_verified/hd. The mint reads ONLY claims.subject for the subject (a JwtStringOrUri
+// projected to its wire form), so email, name and picture can change without minting a new
+// principal, and a different sub under the same email mints a different principal. The
+// admit_callers roster is the second half of the wall: the production caller is
+// gunbc.auth.session.mint_authenticated_session (the session mint turns a completed login into an
+// AuthenticatedSession seated on this principal), and the witness wrapper admitted beside it is
+// the boundary's executed evidence.
+type HumanPrincipalMint
+  = HumanPrincipalMinted { principal: PrincipalRef }
+  | HumanPrincipalRefused { cause: OidcIdTokenRefusal }
+
+fn mint_human_principal_from_verdict(verdict: OidcIdTokenVerdict) -> HumanPrincipalMint
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.session", decl_name: "mint_authenticated_session"),
+    decl_ref(module_path: "test.claim.principal_projection_witness_test", decl_name: "witness_mint_human_principal"),
+  ]
+{
+  match verdict {
+    OidcIdTokenVerified { claims } =>
+      HumanPrincipalMinted {
+        principal: PrincipalRef {
+          authority: google_oidc_principal_authority,
+          namespace: google_accounts_principal_namespace,
+          subject: jwt_string_or_uri_wire(value: claims.subject),
+        },
+      }
+    OidcIdTokenRefused { cause } => HumanPrincipalRefused { cause: cause }
   }
 }
 
-fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
-  OidcProjected { projection: oidc_projection(claims: claims) }
+// ── The mutable profile projection ─────────────────────────────────────────────────────────────
+// PROFILE FACTS ARE MUTABLE PROJECTIONS, NEVER IDENTITY INPUTS. Email, display name and picture
+// change; the principal does not. The profile is minted from the SAME verdict that mints the
+// principal, so a profile can never name a principal the evidence did not establish; the A9
+// directory lane then moves the mutable facts forward with principal_profile_with_revision,
+// which cannot mint a principal and cannot revise the PrincipalRef itself.
+type PrincipalProfile {
+  principal: PrincipalRef
+  primary_email: Email?
+  email_verified: Bool?
+  hosted_domain: OidcHostedDomain?
+  display_name: String?
+  picture: Uri?
+  profile_revision: Int
 }
 
-fn posix_principal_projection(
-  observation: EffectivePosixPrincipalObservation,
-) -> PrincipalProjection {
-  PosixProjection { observation: observation }
+type PrincipalProfileProjection
+  = PrincipalProfileProjected { profile: PrincipalProfile }
+  | PrincipalProfileRefused { cause: OidcIdTokenRefusal }
+
+fn project_principal_profile(verdict: OidcIdTokenVerdict) -> PrincipalProfileProjection
+  admit_callers: [
+    decl_ref(module_path: "test.claim.principal_projection_witness_test", decl_name: "witness_project_principal_profile"),
+  ]
+{
+  match verdict {
+    OidcIdTokenVerified { claims } =>
+      PrincipalProfileProjected {
+        profile: PrincipalProfile {
+          principal: PrincipalRef {
+            authority: google_oidc_principal_authority,
+            namespace: google_accounts_principal_namespace,
+            subject: jwt_string_or_uri_wire(value: claims.subject),
+          },
+          primary_email: claims.standard.email,
+          email_verified: claims.standard.email_verified,
+          hosted_domain: claims.hosted_domain,
+          display_name: claims.standard.name,
+          picture: claims.standard.picture,
+          profile_revision: 1,
+        },
+      }
+    OidcIdTokenRefused { cause } => PrincipalProfileRefused { cause: cause }
+  }
 }
 
-fn projected_principal(projection: PrincipalProjection) -> GunbcPrincipal {
-  match projection {
-    OidcProjected { projection: projection } => OidcPrincipal { principal: OidcProjectedPrincipal {
-      issuer: projection.issuer,
-      subject: projection.subject,
-    } }
-    PosixProjection { observation: observation } => PosixPrincipal { principal: PosixProjectedPrincipal {
-      effective_name: effective_posix_principal_name(observation: observation),
-    } }
+// THE MUTABLE-PROJECTION UPDATE: the directory/avatar lane (A9) lands new email/name/picture
+// facts here and the revision advances, so a consumer that cached a profile can tell it moved.
+// The principal field is carried through untouched: THERE IS NO PARAMETER that changes it, which
+// is the whole law -- a profile revision can redecorate a principal, never re-identify one.
+fn principal_profile_with_revision(
+  profile: PrincipalProfile,
+  primary_email: Email?,
+  email_verified: Bool?,
+  hosted_domain: OidcHostedDomain?,
+  display_name: String?,
+  picture: Uri?,
+) -> PrincipalProfile {
+  PrincipalProfile {
+    principal: profile.principal,
+    primary_email: primary_email,
+    email_verified: email_verified,
+    hosted_domain: hosted_domain,
+    display_name: display_name,
+    picture: picture,
+    profile_revision: profile.profile_revision + 1,
+  }
+}
+
+// ── The classified-claims ingest boundary ──────────────────────────────────────────────────────
+// WHERE THE STANDARD CLAIMS ENTER THE PROGRAM, at the verdict rather than at raw claims: the
+// personal-identity classification (product.data_class classify_personal_identity, whose
+// admit_callers roster names THIS declaration) now happens only behind the same wall as the
+// principal mint, closing the boundary the predecessor module recorded as open (review 65270).
+// Rung honesty (DESIGN 4b): on the interpretation path a witness may still construct the
+// realization-supplied signature input, so this wall is a typed decision, rung 1-2, with the
+// construction wall arriving as the production JWKS realization (frontier:
+// extdeps.auth.oidc.oidc_jwks_verification_frontier) -- no production login path exists until
+// then, and none is claimed.
+type VerifiedOidcProjection {
+  principal: PrincipalRef
+  standard: Classified<PersonalIdentity, OidcStandardClaims>
+}
+
+type VerifiedOidcProjectionResult
+  = VerifiedOidcProjectionProjected { projection: VerifiedOidcProjection }
+  | VerifiedOidcProjectionRefused { cause: OidcIdTokenRefusal }
+
+fn verified_oidc_projection(verdict: OidcIdTokenVerdict) -> VerifiedOidcProjectionResult {
+  match verdict {
+    OidcIdTokenVerified { claims } =>
+      VerifiedOidcProjectionProjected {
+        projection: VerifiedOidcProjection {
+          principal: PrincipalRef {
+            authority: google_oidc_principal_authority,
+            namespace: google_accounts_principal_namespace,
+            subject: jwt_string_or_uri_wire(value: claims.subject),
+          },
+          standard: classify_personal_identity(value: claims.standard),
+        }
+      }
+    OidcIdTokenRefused { cause } => VerifiedOidcProjectionRefused { cause: cause }
   }
 }

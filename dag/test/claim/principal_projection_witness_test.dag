@@ -1,118 +1,240 @@
 module test.claim.principal_projection_witness_test
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String, Email }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
 import extdeps.auth.jwt {
   NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
 }
-import extdeps.auth.oidc { OidcStandardClaims, OidcIdTokenClaims }
-import extdeps.access.posix_effective_principal {
-  EffectivePosixPrincipalRead,
-  EffectivePosixPrincipalReadOutcome,
-  EffectivePosixPrincipalObserved, EffectivePosixPrincipalObservationRefused,
-  effective_posix_principal_observation, effective_posix_principal_name,
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcIdTokenVerdict,
+  OidcIdTokenSignature, OidcIdTokenSignatureVerified, JsonWebKeyRef,
+  OidcIdTokenVerdictPolicy, verify_oidc_id_token,
 }
-import extdeps.access.posix_effective_principal_read_op {
-  effective_posix_principal_read,
-}
-import gunbc.principal_projection {
-  OidcPrincipal, PosixPrincipal,
-  OidcProjected, PosixProjection,
-  oidc_principal_projection, posix_principal_projection, projected_principal,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { declaration_ref_eq }
 import product.data_category { personal_identity_ref }
 import product.data_class { classified_category }
+import gunbc.principal_projection {
+  HumanPrincipalMint, HumanPrincipalMinted, HumanPrincipalRefused,
+  PrincipalProfileProjection, PrincipalProfileProjected, PrincipalProfileRefused,
+  VerifiedOidcProjectionProjected, VerifiedOidcProjectionRefused,
+  mint_human_principal_from_verdict, project_principal_profile, principal_profile_with_revision,
+  verified_oidc_projection,
+  principal_ref_eq, principal_ref_label,
+  google_oidc_issuer, fabric_workflow_principal, fabric_display_alias,
+}
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn oidc_evidence() -> OidcIdTokenClaims {
+// THE WITNESS for lane A1 (the principal authority). The controls the owner directive names are
+// all here as executed claims: a human principal is minted ONLY from a verified ID-token verdict
+// (the caller-sealed mint — the unadmitted-caller probe below is its RED), the mint reads only
+// sub (same sub + changed email = same principal; same email + different sub != same principal),
+// fabric is the one workflow principal with fabric@gunb.ai as a display alias only, and the
+// profile facts ride a mutable projection whose revision advances without ever re-identifying
+// the principal.
+
+// THE FIXTURES: claims for a verified Google Workspace token, the gunb.ai-shaped policy, and the
+// realization-supplied signature input (supplied values per DESIGN 3 — the verdict fold's own
+// accept/refuse arms are test.claim.google_oidc_verdict_witness's subject).
+fn witness_claims(sub: NonEmptyStr, email: Email, email_verified: Bool) -> OidcIdTokenClaims {
   OidcIdTokenClaims {
-    issuer: JwtUriString { value: "https://issuer.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
-    subject: JwtBareString { value: "external-subject" as NonEmptyStr },
-    audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
+    issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: sub },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
     expires_at: NumericDateWholeSeconds { seconds: 2000 },
     issued_at: NumericDateWholeSeconds { seconds: 1000 },
     auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
-    standard: OidcStandardClaims { email: none, email_verified: none, name: none },
-  }
-}
-
-// The standard claims are retained CLASSIFIED: what this test can see of them outside
-// product.data_class is the category label. Their payload fidelity is established where a payload
-// can legitimately be read -- on a permit -- by test.claim.fabric.data_class_admission_witness
-// the_standard_claims_survive_classification_intact (review 65254).
-test fn oidc_principal_is_exact_issuer_subject_projection_with_the_standard_claims_classified() -> Bool {
-  let claims = oidc_evidence()
-  let projection = oidc_principal_projection(claims: claims)
-  match projected_principal(projection: projection) {
-    PosixPrincipal { principal: _ } => false
-    OidcPrincipal { principal: principal } =>
-      principal.issuer == claims.issuer && principal.subject == claims.subject
-        && match projection {
-          OidcProjected { projection: retained } =>
-            retained.issuer == claims.issuer
-              && retained.subject == claims.subject
-              && declaration_ref_eq(a: classified_category(c: retained.standard), b: personal_identity_ref())
-          PosixProjection { observation: _ } => false
-        }
-  }
-}
-
-test fn posix_principal_is_exact_effective_name_projection_with_evidence_retained() -> Bool {
-  match effective_posix_principal_observation(
-    outcome: EffectivePosixPrincipalReadOutcome {
-      read: EffectivePosixPrincipalRead {}, exit_code: 0, success: true,
-      stdout: "ghrunner\n", stderr: "",
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    standard: OidcStandardClaims {
+      email: Present { value: email },
+      email_verified: Present { value: email_verified },
+      name: Present { value: "A Person" },
+      picture: none,
     },
-  ) {
-    EffectivePosixPrincipalObservationRefused { read: _, reason: _ } => false
-    EffectivePosixPrincipalObserved { observation: observation } => {
-      let projection = posix_principal_projection(observation: observation)
-      match projected_principal(projection: projection) {
-        OidcPrincipal { principal: _ } => false
-        PosixPrincipal { principal: principal } =>
-          principal.effective_name == "ghrunner"
-            && match projection {
-              OidcProjected { projection: _ } => false
-              PosixProjection { observation: retained } =>
-                effective_posix_principal_name(observation: retained) == "ghrunner"
+  }
+}
+
+fn witness_policy() -> OidcIdTokenVerdictPolicy {
+  OidcIdTokenVerdictPolicy {
+    expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+    expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+    expected_nonce: none,
+    observed_at: NumericDateWholeSeconds { seconds: 1500 },
+  }
+}
+
+fn witness_signature() -> OidcIdTokenSignature {
+  OidcIdTokenSignatureVerified {
+    key: JsonWebKeyRef {
+      issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      key_id: "witness-key" as NonEmptyStr,
+    },
+  }
+}
+
+fn witness_verdict(sub: NonEmptyStr, email: Email) -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: witness_claims(sub: sub, email: email, email_verified: true),
+    signature: witness_signature(),
+    policy: witness_policy(),
+  )
+}
+
+// A REFUSED VERDICT PRODUCED BY THE REAL FOLD: the email is unverified, so the verdict refuses
+// at the email_verified arm without any hand-built refusal value.
+fn witness_refused_verdict() -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: witness_claims(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai", email_verified: false),
+    signature: witness_signature(),
+    policy: witness_policy(),
+  )
+}
+
+// THE ADMITTED WRAPPERS. mint_human_principal_from_verdict and project_principal_profile are
+// admit_callers-sealed; these two decls are the roster entries the witness tests call through —
+// the same boundary-admission shape product.data_class uses for its witness fixture builder.
+fn witness_mint_human_principal(verdict: OidcIdTokenVerdict) -> HumanPrincipalMint {
+  mint_human_principal_from_verdict(verdict: verdict)
+}
+
+fn witness_project_principal_profile(verdict: OidcIdTokenVerdict) -> PrincipalProfileProjection {
+  project_principal_profile(verdict: verdict)
+}
+
+// THE POSITIVE CONTROL. A verified Google token mints principal:google-oidc/accounts/<sub>, the
+// ruling's spelling, with the issuer bound to https://accounts.google.com.
+test fn a_verified_google_token_mints_the_sub_principal() -> Bool {
+  match witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")) {
+    HumanPrincipalRefused { cause: _ } => false
+    HumanPrincipalMinted { principal: p } =>
+      principal_ref_label(p: p) == "principal:google-oidc/accounts/sub-123"
+        && (p.authority as String) == "google-oidc"
+        && (p.namespace as String) == "accounts"
+        && (p.subject as String) == "sub-123"
+        && (google_oidc_issuer as String) == "https://accounts.google.com"
+  }
+}
+
+// A REFUSED VERDICT MINTS NO PRINCIPAL: the mint's only other arm carries the refusal cause, so
+// a token that failed any check has no projection route at all.
+test fn a_refused_verdict_mints_no_principal() -> Bool {
+  match witness_mint_human_principal(verdict: witness_refused_verdict()) {
+    HumanPrincipalMinted { principal: _ } => false
+    HumanPrincipalRefused { cause: _ } => true
+  }
+}
+
+// THE EMAIL-CHANGE LAW. Same sub + changed email = same principal: the mint reads only sub.
+test fn same_sub_with_changed_email_is_the_same_principal() -> Bool {
+  let before = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "old@gunb.ai"))
+  let after = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "new@gunb.ai"))
+  match before {
+    HumanPrincipalRefused { cause: _ } => false
+    HumanPrincipalMinted { principal: p1 } =>
+      match after {
+        HumanPrincipalRefused { cause: _ } => false
+        HumanPrincipalMinted { principal: p2 } => principal_ref_eq(a: p1, b: p2)
+      }
+  }
+}
+
+// THE EMAIL-REUSE LAW. Same email + different sub != same principal: nothing in the mint reads
+// email, so two accounts sharing an address (reissued, delegated, recycled) never collapse.
+test fn same_email_with_different_sub_is_not_the_same_principal() -> Bool {
+  let first = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "shared@gunb.ai"))
+  let second = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-456" as NonEmptyStr, email: "shared@gunb.ai"))
+  match first {
+    HumanPrincipalRefused { cause: _ } => false
+    HumanPrincipalMinted { principal: p1 } =>
+      match second {
+        HumanPrincipalRefused { cause: _ } => false
+        HumanPrincipalMinted { principal: p2 } => !principal_ref_eq(a: p1, b: p2)
+      }
+  }
+}
+
+// THE ONE WORKFLOW PRINCIPAL, with the display alias kept as rendering vocabulary only.
+test fn fabric_is_the_one_workflow_principal_with_a_display_alias() -> Bool {
+  principal_ref_label(p: fabric_workflow_principal) == "principal:gunbc/workflows/fabric"
+    && (fabric_workflow_principal.authority as String) == "gunbc"
+    && (fabric_workflow_principal.namespace as String) == "workflows"
+    && (fabric_display_alias as String) == "fabric@gunb.ai"
+}
+
+// THE PROFILE IS A MUTABLE PROJECTION OF THE SAME VERDICT: it carries the email/name facts the
+// mint refuses to read, minted only beside the principal, and the profile revision advances on
+// update without the principal ever moving.
+test fn the_profile_projects_mutable_facts_and_revises_without_reidentifying() -> Bool {
+  let verdict = witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")
+  match witness_mint_human_principal(verdict: verdict) {
+    HumanPrincipalRefused { cause: _ } => false
+    HumanPrincipalMinted { principal: p } =>
+      match witness_project_principal_profile(verdict: verdict) {
+        PrincipalProfileRefused { cause: _ } => false
+        PrincipalProfileProjected { profile: prof } =>
+          prof.profile_revision == 1
+            && principal_ref_eq(a: prof.principal, b: p)
+            && prof.primary_email == Present { value: "person@gunb.ai" }
+            && prof.display_name == Present { value: "A Person" }
+            && prof.hosted_domain == Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } }
+            && {
+              let revised = principal_profile_with_revision(
+                profile: prof,
+                primary_email: Present { value: "renamed@gunb.ai" },
+                email_verified: prof.email_verified,
+                hosted_domain: prof.hosted_domain,
+                display_name: Present { value: "A New Name" },
+                picture: prof.picture,
+              )
+              revised.profile_revision == 2
+                && principal_ref_eq(a: revised.principal, b: p)
+                && revised.primary_email == Present { value: "renamed@gunb.ai" }
+                && revised.display_name == Present { value: "A New Name" }
             }
       }
-    }
   }
 }
 
-test fn posix_principal_observation_refuses_failed_or_empty_reads() -> Bool {
-  let failed = effective_posix_principal_observation(
-    outcome: EffectivePosixPrincipalReadOutcome {
-      read: EffectivePosixPrincipalRead {}, exit_code: 1, success: false,
-      stdout: "root", stderr: "whoami failed",
-    },
-  )
-  let empty = effective_posix_principal_observation(
-    outcome: EffectivePosixPrincipalReadOutcome {
-      read: EffectivePosixPrincipalRead {}, exit_code: 0, success: true,
-      stdout: "\n", stderr: "",
-    },
-  )
-  (match failed {
-    EffectivePosixPrincipalObserved { observation: _ } => false
-    EffectivePosixPrincipalObservationRefused { read: _, reason: reason } => reason == "whoami failed"
-  }) && (match empty {
-    EffectivePosixPrincipalObserved { observation: _ } => false
-    EffectivePosixPrincipalObservationRefused { read: _, reason: reason } =>
-      reason == "successful effective-principal read returned no name"
+// THE CLASSIFIED INGEST now sits behind the same verdict wall: the standard claims enter
+// classified only through verified_oidc_projection, and the minted projection principal is the
+// human principal, never the workflow one.
+test fn the_standard_claims_enter_classified_only_behind_the_verdict() -> Bool {
+  match verified_oidc_projection(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")) {
+    VerifiedOidcProjectionRefused { cause: _ } => false
+    VerifiedOidcProjectionProjected { projection: proj } =>
+      !principal_ref_eq(a: proj.principal, b: fabric_workflow_principal)
+        && declaration_ref_eq(a: classified_category(c: proj.standard), b: personal_identity_ref())
   }
-  )
 }
 
-test fn hermetic_posix_read_cannot_become_principal_evidence() -> Bool {
-  match effective_posix_principal_observation(
-    outcome: effective_posix_principal_read(read: EffectivePosixPrincipalRead {}),
-  ) {
-    EffectivePosixPrincipalObserved { observation: _ } => false
-    EffectivePosixPrincipalObservationRefused { read: _, reason: reason } =>
-      reason == "hermetic effective-principal observation unavailable"
+// ── The caller-seal RED, enrolled ──────────────────────────────────────────────────────────────
+// The probe hands the mint an admissible verdict from a decl the roster does not name; the
+// census must carry a blocking ConstructorCallAdmissionRefused row. This is the executed RED half
+// of the construction wall (DESIGN 4b): the GREEN half is every test above, calling through the
+// admitted wrappers.
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
   }
+}
+
+test fn the_human_principal_mint_refuses_callers_outside_the_roster() -> Bool {
+  blocking_count_for_class(c: census_of(source: probe_source(name: "principal_mint_unadmitted_probe")), wanted: "ConstructorCallAdmissionRefused") >= 1
 }
