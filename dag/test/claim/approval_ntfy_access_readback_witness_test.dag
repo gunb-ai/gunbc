@@ -11,6 +11,7 @@ import gunbc.remote_shell_command { Unknown }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.auth.approval_ntfy_access_readback {
+  FileTime, StatusChangeTime, BirthTime, file_time_predates_start, process_start_instant,
   ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
   ApprovalNtfyAclDeviation, AclAnonymousRoleNotAnonymous, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasAccess,
   AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
@@ -719,7 +720,7 @@ test fn another_executable_refuses() -> Bool {
 
 test fn a_binary_changed_since_start_refuses() -> Bool {
   match gap_of(fx: fx_binary_touched) {
-    Present { value: RuntimeBinaryChangedSinceStart { changed_at: c, started: s } } => c >= s
+    Present { value: RuntimeBinaryChangedSinceStart { changed: c, start: s } } => is_status_change(t: c) && !file_time_predates_start(t: c, start: s)
     _ => false
   }
 }
@@ -760,7 +761,7 @@ test fn an_ntfy_variable_in_the_manager_refuses() -> Bool {
 // ── THE CONFIG AND THE AUTH FILE ───────────────────────────────────────────────────────────
 test fn a_config_written_after_start_refuses() -> Bool {
   match gap_of(fx: fx_config_touched) {
-    Present { value: RuntimeConfigChangedSinceStart { started: t0, config_ctime: m } } => m >= t0
+    Present { value: RuntimeConfigChangedSinceStart { changed: m, start: t0 } } => is_status_change(t: m) && !file_time_predates_start(t: m, start: t0)
     _ => false
   }
 }
@@ -796,7 +797,7 @@ test fn another_auth_file_refuses() -> Bool {
 // REAL: the auth database renamed under the running server and a copy put in its place.
 test fn an_auth_file_replaced_since_start_refuses() -> Bool {
   match gap_of(fx: fx_authfile_replaced) {
-    Present { value: RuntimeAuthFileReplacedSinceStart { born: b, started: s } } => b >= s
+    Present { value: RuntimeAuthFileReplacedSinceStart { born: b, start: s } } => !is_status_change(t: b) && !file_time_predates_start(t: b, start: s)
     _ => false
   }
 }
@@ -1063,4 +1064,24 @@ test fn a_transport_refusal_is_a_typed_not_spawned_outcome_never_an_exit_code() 
       p as String == "sh" && string_contains(s: c as String, pattern: "command_over_transport refused: ")
     ProcessRan { observation: _ } => false
   }
+}
+
+fn is_status_change(t: FileTime) -> Bool {
+  match t.kind {
+    StatusChangeTime => true
+    BirthTime => false
+  }
+}
+
+// THE START IS btime + starttime / CLK_TCK TRUNCATED TO A WHOLE SECOND, and a file time in that same
+// second does NOT predate it (the equal second refuses; neither side carries a finer order). btime
+// 1000, 250 ticks at 100 per second -> started 1002 (2.5 s truncated): 1001 predates it, 1002 and
+// 1003 do not. Comparing against the untruncated 1002.5, or treating the equal second as before,
+// reds this.
+test fn a_file_time_in_the_start_second_does_not_predate_the_start() -> Bool {
+  let start = process_start_instant(boot_time: 1000, start_ticks: 250, ticks_per_second: 100)
+  (start.started as Int) == 1002
+    && file_time_predates_start(t: FileTime { kind: StatusChangeTime, at: 1001 }, start: start)
+    && !file_time_predates_start(t: FileTime { kind: StatusChangeTime, at: 1002 }, start: start)
+    && !file_time_predates_start(t: FileTime { kind: BirthTime, at: 1003 }, start: start)
 }

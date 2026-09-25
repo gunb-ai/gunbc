@@ -1,6 +1,6 @@
 module gunbc.auth.approval_ntfy_access_readback
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.types { NonEmptyStr, String, List, Bool, Int, EpochSecs }
 import std.algebra { trim }
 import std.measure { Second, second }
 import std.resources { Network }
@@ -159,11 +159,11 @@ type ActiveNtfyRuntimeGap
   | RuntimeUnitNotActive { active_state: String, main_pid: String }
   | RuntimeRestartedDuringRead { before: String, after: String }
   | RuntimeCommandLineNotDeclared { observed: List<String> }
-  | RuntimeBinaryChangedSinceStart { changed_at: Int, started: Int }
+  | RuntimeBinaryChangedSinceStart { changed: FileTime, start: ProcessStartInstant }
   | RuntimeVersionNotModeled { observed: String }
   | RuntimeEnvironmentFilesPresent { files: String }
   | RuntimeEnvironmentOverrides { names: List<String> }
-  | RuntimeConfigChangedSinceStart { started: Int, config_ctime: Int }
+  | RuntimeConfigChangedSinceStart { changed: FileTime, start: ProcessStartInstant }
   | RuntimeConfigChangedDuringRead { before: String, after: String }
   | RuntimeAuthFileChangedDuringRead { before: String, after: String }
   | RuntimeConfigNotRegularFile { observed: String }
@@ -175,7 +175,7 @@ type ActiveNtfyRuntimeGap
   | RuntimeConfigListenNotDeclared { observed: String }
   | RuntimeConfigAuthFileNotDeclared { observed: String }
   | RuntimeAuthFileBirthUnknown
-  | RuntimeAuthFileReplacedSinceStart { born: Int, started: Int }
+  | RuntimeAuthFileReplacedSinceStart { born: FileTime, start: ProcessStartInstant }
   | RuntimeListenerNotDeclared { local_address: String }
   | RuntimeNoListener
   | FrontDoorFunnelled { host_ports: List<String> }
@@ -432,14 +432,66 @@ fn first_failed_read(runs: List<ReadRun>) -> ApprovalNtfyAclVerdict? {
   }
 }
 
-fn one_integer(read: NtfyRuntimeRead, text: String) -> Int? {
-  parse_int(s: trim(s: text))
+// THE TIMES THIS READING COMPARES. Every one is a whole Unix-epoch second (std.types EpochSecs), and
+// each carries how it was obtained, so a comparison never meets a bare number of unknown origin.
+//
+// The process start is DERIVED, never read (proc(5)): /proc/stat `btime` is the boot instant in
+// epoch seconds, /proc/<pid>/stat field 22 `starttime` is clock ticks since boot, and
+// sysconf(_SC_CLK_TCK) is ticks per second. started = btime + starttime / CLK_TCK, the division
+// truncating to a whole second. The tick count stays a tick count beside the instant derived from it.
+type ProcessStartInstant {
+  boot_time: EpochSecs
+  start_ticks: Int
+  ticks_per_second: Int
+  started: EpochSecs
 }
 
-// The declared start instant of a process: btime + starttime / CLK_TCK, in whole seconds.
-type RuntimeStart
-  = RuntimeStartKnown { pid: String, start_ticks: Int, started: Int }
-  | RuntimeStartUnknown { verdict: ApprovalNtfyAclVerdict }
+// A file time as stat(1) prints it from statx(2): `%Z` is stx_ctime (status change, which the file's
+// owner cannot set) and `%W` is stx_btime (birth), each truncated to a whole epoch second. stat
+// prints 0 for a birth time the filesystem does not report; that is read as ABSENT, never as 1970.
+type FileTimeKind
+  = StatusChangeTime
+  | BirthTime
+
+type FileTime {
+  kind: FileTimeKind
+  at: EpochSecs
+}
+
+fn epoch_secs_of(n: Int) -> EpochSecs? {
+  if n < 0 { none } else { Present { value: n } }
+}
+
+fn process_start_instant(boot_time: EpochSecs, start_ticks: Int, ticks_per_second: Int) -> ProcessStartInstant {
+  ProcessStartInstant {
+    boot_time: boot_time,
+    start_ticks: start_ticks,
+    ticks_per_second: ticks_per_second,
+    started: (boot_time as Int) + (start_ticks / ticks_per_second),
+  }
+}
+
+// DOES THE FILE TIME PREDATE THE START? Both sides are whole seconds and the start is truncated, so a
+// file time in the same second as the start cannot be ordered before it and does NOT predate it: the
+// equal second refuses. That is the conservative reading of the granularity, not an approximation.
+fn file_time_predates_start(t: FileTime, start: ProcessStartInstant) -> Bool {
+  (t.at as Int) < (start.started as Int)
+}
+
+fn file_time_kind_label(k: FileTimeKind) -> String {
+  match k {
+    StatusChangeTime => "ctime"
+    BirthTime => "birth"
+  }
+}
+
+fn file_time_label(t: FileTime) -> String {
+  file_time_kind_label(k: t.kind) + " " + to_string(t.at as Int)
+}
+
+fn process_start_label(s: ProcessStartInstant) -> String {
+  to_string(s.started as Int) + " (btime " + to_string(s.boot_time as Int) + " + " + to_string(s.start_ticks) + " ticks / " + to_string(s.ticks_per_second) + ")"
+}
 
 fn pid_start_ticks(read: NtfyRuntimeRead, text: String) -> Int? {
   match proc_pid_stat_start_time(content: text) {
@@ -503,7 +555,7 @@ fn approval_ntfy_bracketed(pid: String, r: NtfyRuntimeReads) -> ApprovalNtfyAclV
 fn approval_ntfy_started(t0: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   match proc_stat_boot_time(content: run_stdout(run: r.boot_time)) {
     BootTimeObserved { epoch_seconds: btime } => match clock_ticks_reading(stdout: run_stdout(run: r.clock_ticks)) {
-      ClockTicksObserved { per_second: hz } => approval_ntfy_process(started: (btime as Int) + (t0 / hz), r: r)
+      ClockTicksObserved { per_second: hz } => approval_ntfy_process(start: process_start_instant(boot_time: btime, start_ticks: t0, ticks_per_second: hz), r: r)
       _ => unparseable(read: ReadClockTicks, detail: "CLK_TCK is not a positive integer")
     }
     _ => unparseable(read: ReadBootTime, detail: "no btime line")
@@ -528,17 +580,17 @@ fn cmdline_words(text: String) -> List<String> {
 }
 
 // The process: its argv, its executable, its version.
-fn approval_ntfy_process(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+fn approval_ntfy_process(start: ProcessStartInstant, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   let argv = cmdline_words(text: run_stdout(run: r.command_line))
   let version = trim(s: run_stdout(run: r.version))
   let modeled = ntfy_version_line_prefix + substring(s: ntfy_access_upstream_version, start: 1, end: string_length(s: ntfy_access_upstream_version))
   if !string_lists_equal(a: argv, b: approval_ntfy_declared_cmdline()) { runtime_refused(gap: RuntimeCommandLineNotDeclared { observed: argv }) }
-  else { match one_integer(read: ReadBinaryCtime, text: run_stdout(run: r.binary_ctime)) {
-    Absent => unparseable(read: ReadBinaryCtime, detail: "not an integer")
+  else { match binary_ctime_of(text: run_stdout(run: r.binary_ctime)) {
+    Absent => unparseable(read: ReadBinaryCtime, detail: "not a non-negative integer")
     Present { value: ctime } =>
-      if ctime >= started { runtime_refused(gap: RuntimeBinaryChangedSinceStart { changed_at: ctime, started: started }) }
+      if !file_time_predates_start(t: ctime, start: start) { runtime_refused(gap: RuntimeBinaryChangedSinceStart { changed: ctime, start: start }) }
       else { if version != modeled { runtime_refused(gap: RuntimeVersionNotModeled { observed: version }) }
-      else { approval_ntfy_environment(started: started, r: r) } }
+      else { approval_ntfy_environment(start: start, r: r) } }
   } }
 }
 
@@ -552,7 +604,7 @@ fn ntfy_names(names: List<String>) -> List<String> {
   filter(names, n => starts_with(s: n, prefix: ntfy_environment_prefix))
 }
 
-fn approval_ntfy_environment(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+fn approval_ntfy_environment(start: ProcessStartInstant, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   let unit = run_stdout(run: r.unit_before)
   let files = match unit_property(text: unit, key: "EnvironmentFiles") { Present { value: f } => trim(s: f)  Absent => "" }
   let unit_names = concat(
@@ -569,8 +621,8 @@ fn approval_ntfy_environment(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyA
       Present { value: after } =>
         if !file_identity_same(a: before, b: after) { runtime_refused(gap: RuntimeConfigChangedDuringRead { before: file_identity_label(i: before), after: file_identity_label(i: after) }) }
         else { if before.file_type != stat_regular_file_type { runtime_refused(gap: RuntimeConfigNotRegularFile { observed: before.file_type }) }
-        else { if before.ctime >= started { runtime_refused(gap: RuntimeConfigChangedSinceStart { started: started, config_ctime: before.ctime }) }
-        else { approval_ntfy_config_binding(started: started, r: r) } } }
+        else { if !file_time_predates_start(t: before.ctime, start: start) { runtime_refused(gap: RuntimeConfigChangedSinceStart { changed: before.ctime, start: start }) }
+        else { approval_ntfy_config_binding(start: start, r: r) } } }
     }
   } } }
 }
@@ -580,7 +632,7 @@ fn single_config_value(entries: List<NtfyConfigEntry>, o: NtfyServeOption) -> St
   if count(vs) == 1 { first(vs) } else { none }
 }
 
-fn approval_ntfy_config_binding(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+fn approval_ntfy_config_binding(start: ProcessStartInstant, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   match ntfy_config_read(text: run_stdout(run: r.config)) {
     NtfyConfigUnreadable { line: l, cause: c } => runtime_refused(gap: RuntimeConfigUnreadable { line: l, cause: c })
     NtfyConfigFlat { entries: es } =>
@@ -598,7 +650,7 @@ fn approval_ntfy_config_binding(started: Int, r: NtfyRuntimeReads) -> ApprovalNt
                   Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "listen-http", values: ntfy_config_values(entries: es, o: NtfyListenHttp) })
                   Present { value: listen } =>
                     if listen != approval_ntfy_endpoint() { runtime_refused(gap: RuntimeConfigListenNotDeclared { observed: listen }) }
-                    else { approval_ntfy_auth_file(started: started, r: r) }
+                    else { approval_ntfy_auth_file(start: start, r: r) }
                 }
               } }
           } }
@@ -606,13 +658,32 @@ fn approval_ntfy_config_binding(started: Int, r: NtfyRuntimeReads) -> ApprovalNt
   }
 }
 
-// A path's identity as stat printed it: inode, ctime, birth (0 = the filesystem does not say), and
-// its type ("regular file", "symbolic link", ...).
+// A path's identity as stat printed it: inode, ctime, birth (Absent where stat printed 0 because the
+// filesystem does not say), and its type ("regular file", "symbolic link", ...).
 type FileIdentity {
   inode: String
-  ctime: Int
-  birth: Int
+  ctime: FileTime
+  birth: FileTime?
   file_type: String
+}
+
+fn file_time_of(kind: FileTimeKind, n: Int) -> FileTime? {
+  match epoch_secs_of(n: n) {
+    Absent => none
+    Present { value: at } => Present { value: FileTime { kind: kind, at: at } }
+  }
+}
+
+// The binary's `stat %Z`: one status-change time.
+fn binary_ctime_of(text: String) -> FileTime? {
+  match parse_int(s: trim(s: text)) {
+    Absent => none
+    Present { value: n } => file_time_of(kind: StatusChangeTime, n: n)
+  }
+}
+
+fn birth_time_of(n: Int) -> FileTime? {
+  if n == 0 { none } else { file_time_of(kind: BirthTime, n: n) }
 }
 
 fn file_identity(text: String) -> FileIdentity? {
@@ -626,9 +697,14 @@ fn file_identity(text: String) -> FileIdentity? {
           Absent => none
           Present { value: b } => match parse_int(s: c) {
             Absent => none
-            Present { value: ctime } => match parse_int(s: b) {
+            Present { value: ctime_n } => match parse_int(s: b) {
               Absent => none
-              Present { value: birth } => if parse_int(s: inode) == none { none } else { Present { value: FileIdentity { inode: inode, ctime: ctime, birth: birth, file_type: join(skip(words, n: 3), " ") } } }
+              Present { value: birth_n } => match file_time_of(kind: StatusChangeTime, n: ctime_n) {
+                Absent => none
+                Present { value: ctime } =>
+                  if parse_int(s: inode) == none || birth_n < 0 { none }
+                  else { Present { value: FileIdentity { inode: inode, ctime: ctime, birth: birth_time_of(n: birth_n), file_type: join(skip(words, n: 3), " ") } } }
+              }
             }
           }
         }
@@ -638,14 +714,18 @@ fn file_identity(text: String) -> FileIdentity? {
 }
 
 fn file_identity_same(a: FileIdentity, b: FileIdentity) -> Bool {
-  a.inode == b.inode && a.ctime == b.ctime && a.birth == b.birth && a.file_type == b.file_type
+  a.inode == b.inode && (a.ctime.at as Int) == (b.ctime.at as Int) && birth_label(t: a.birth) == birth_label(t: b.birth) && a.file_type == b.file_type
+}
+
+fn birth_label(t: FileTime?) -> String {
+  match t { Absent => "birth unknown"  Present { value: v } => file_time_label(t: v) }
 }
 
 fn file_identity_label(i: FileIdentity) -> String {
-  "inode " + i.inode + " ctime " + to_string(i.ctime)
+  "inode " + i.inode + " " + file_time_label(t: i.ctime)
 }
 
-fn approval_ntfy_auth_file(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+fn approval_ntfy_auth_file(start: ProcessStartInstant, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   match file_identity(text: run_stdout(run: r.auth_file_identity_before)) {
     Absent => unparseable(read: ReadAuthFileIdentityBefore, detail: "not `inode ctime birth type`")
     Present { value: before } => match file_identity(text: run_stdout(run: r.auth_file_identity_after)) {
@@ -653,9 +733,12 @@ fn approval_ntfy_auth_file(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAcl
       Present { value: after } =>
         if !file_identity_same(a: before, b: after) { runtime_refused(gap: RuntimeAuthFileChangedDuringRead { before: file_identity_label(i: before), after: file_identity_label(i: after) }) }
         else { if before.file_type != stat_regular_file_type { runtime_refused(gap: RuntimeAuthFileNotRegularFile { observed: before.file_type }) }
-        else { if before.birth == 0 { runtime_refused(gap: RuntimeAuthFileBirthUnknown) }
-        else { if before.birth >= started { runtime_refused(gap: RuntimeAuthFileReplacedSinceStart { born: before.birth, started: started }) }
-        else { approval_ntfy_listeners(r: r) } } } }
+        else { match before.birth {
+          Absent => runtime_refused(gap: RuntimeAuthFileBirthUnknown)
+          Present { value: born } =>
+            if !file_time_predates_start(t: born, start: start) { runtime_refused(gap: RuntimeAuthFileReplacedSinceStart { born: born, start: start }) }
+            else { approval_ntfy_listeners(r: r) }
+        } } }
     }
   }
 }
@@ -737,11 +820,11 @@ fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
     RuntimeUnitNotActive { active_state: s, main_pid: p } => "unit " + (approval_ntfy_unit_name as String) + " is '" + s + "' with MainPID '" + p + "', so no systemd-owned server is running"
     RuntimeRestartedDuringRead { before: b, after: a } => "the server changed between the first and last reads (" + b + " -> " + a + ")"
     RuntimeCommandLineNotDeclared { observed: a } => "the server's argv is [" + join(a, " ") + "], not [" + join(approval_ntfy_declared_cmdline(), " ") + "]"
-    RuntimeBinaryChangedSinceStart { changed_at: c, started: s } => "the binary changed at " + to_string(c) + ", not before the server started at " + to_string(s)
+    RuntimeBinaryChangedSinceStart { changed: c, start: s } => "the binary changed at " + file_time_label(t: c) + ", not before the server started at " + process_start_label(s: s)
     RuntimeVersionNotModeled { observed: v } => "the binary reports '" + v + "', not the modeled ntfy " + ntfy_access_upstream_version
     RuntimeEnvironmentFilesPresent { files: f } => "the unit reads EnvironmentFile " + f + ", whose contents this read does not see"
     RuntimeEnvironmentOverrides { names: n } => "the server's launch environment sets " + join(n, ", ") + ", which override its config"
-    RuntimeConfigChangedSinceStart { started: a, config_ctime: m } => "the server config changed at " + to_string(m) + ", not before the server started at " + to_string(a)
+    RuntimeConfigChangedSinceStart { changed: m, start: a } => "the server config changed at " + file_time_label(t: m) + ", not before the server started at " + process_start_label(s: a)
     RuntimeConfigChangedDuringRead { before: b, after: a } => "the server config changed while it was read (" + b + " -> " + a + ")"
     RuntimeConfigNotRegularFile { observed: t } => "the declared config path is a " + t + ", not a regular file, so its identity is not the identity of what is read through it"
     RuntimeAuthFileNotRegularFile { observed: t } => "the declared auth-file path is a " + t + ", not a regular file, so its identity is not the identity of what is listed through it"
@@ -753,7 +836,7 @@ fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
     RuntimeConfigListenNotDeclared { observed: v } => "the server config listens on '" + v + "', not " + approval_ntfy_endpoint()
     RuntimeConfigAuthFileNotDeclared { observed: v } => "the server config names auth-file '" + v + "', not " + (approval_ntfy_auth_file_path as String)
     RuntimeAuthFileBirthUnknown => "the filesystem does not report the auth file's birth time"
-    RuntimeAuthFileReplacedSinceStart { born: b, started: s } => "the auth file was created at " + to_string(b) + ", not before the server started at " + to_string(s)
+    RuntimeAuthFileReplacedSinceStart { born: b, start: s } => "the auth file was created at " + file_time_label(t: b) + ", not before the server started at " + process_start_label(s: s)
     RuntimeListenerNotDeclared { local_address: a } => "the server's principal listens on " + a + ", not only " + approval_ntfy_endpoint()
     RuntimeNoListener => "the server's principal holds no listening socket on " + approval_ntfy_endpoint()
     FrontDoorFunnelled { host_ports: h } => "tailscale Funnel publishes " + join(h, ", ") + " to the public internet"
