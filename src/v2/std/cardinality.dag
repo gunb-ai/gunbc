@@ -121,12 +121,12 @@ fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
   positive_nat_le_witness_well_formed(w: b.le)
 }
 
-type RankingDimension {
+type RankingComponent {
   measured: Symbol
 }
 type TerminationProof {
-  non_increasing: List<RankingDimension>
-  strict: RankingDimension
+  non_increasing: List<RankingComponent>
+  strict: RankingComponent
 }
 
 type LoopBound {
@@ -197,8 +197,8 @@ type Multiplicity
   | RequiresTerminationProof
   | ProvenTermination { proof: TerminationProof }
 
-fn structural_node_size_dimension() -> RankingDimension {
-  RankingDimension { measured: ^cardinality_structural_node_size }
+fn structural_node_size_dimension() -> RankingComponent {
+  RankingComponent { measured: ^cardinality_structural_node_size }
 }
 
 fn structural_node_size_termination_proof() -> TerminationProof {
@@ -302,14 +302,14 @@ fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: Sy
 }
 
 type MeasureDimensionEvidence {
-  dimension: RankingDimension
+  dimension: RankingComponent
   evidence: DescentEvidence
 }
 
 fn measure_dimension_unknown_rows() -> List<MeasureDimensionEvidence> {
   [
     MeasureDimensionEvidence {
-      dimension: RankingDimension { measured: ^cardinality_measure_shape_unknown },
+      dimension: RankingComponent { measured: ^cardinality_measure_shape_unknown },
       evidence: DescentUnknown
     }
   ]
@@ -322,7 +322,7 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> 
         Atom { identity: s } =>
           [
             MeasureDimensionEvidence {
-              dimension: RankingDimension { measured: s },
+              dimension: RankingComponent { measured: s },
               evidence: measure_descent_evidence_for_symbol(registry: registry, s: s)
             }
           ]
@@ -351,11 +351,11 @@ fn dimension_row_is_strict(row: MeasureDimensionEvidence) -> Bool {
   evidence_rank(e: row.evidence) == evidence_rank(e: Strict)
 }
 
-fn ranking_dimension_some(d: RankingDimension) -> Optional<RankingDimension> {
+fn ranking_dimension_some(d: RankingComponent) -> Optional<RankingComponent> {
   Present { value: d }
 }
 
-fn first_strict_dimension(rows: List<MeasureDimensionEvidence>) -> Optional<RankingDimension> {
+fn first_strict_dimension(rows: List<MeasureDimensionEvidence>) -> Optional<RankingComponent> {
   fold(rows, init: Absent, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
@@ -371,10 +371,10 @@ fn first_strict_dimension(rows: List<MeasureDimensionEvidence>) -> Optional<Rank
 
 type LexicographicSplit {
   strict_taken: Bool
-  non_increasing: List<RankingDimension>
+  non_increasing: List<RankingComponent>
 }
 
-fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> List<RankingDimension> {
+fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> List<RankingComponent> {
   let split = fold(rows, init: LexicographicSplit { strict_taken: false, non_increasing: Empty }, f: fn(acc, row) {
     if dimension_row_is_strict(row: row) && !acc.strict_taken {
       LexicographicSplit { strict_taken: true, non_increasing: acc.non_increasing }

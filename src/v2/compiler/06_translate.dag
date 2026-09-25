@@ -71,7 +71,6 @@ import v2.std.diagnostic {
 }
 import v2.std.witness { Holds, Violates }
 import v2.std.node {
-  arrow_type_param_names,
   Arrow,
   Atom,
   Cardinality,
@@ -93,6 +92,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
+import v2.std.type_binder { type_param_names }
 import v2.std.node_query {
   find_arrow_body_child,
   find_named_child,
@@ -1052,7 +1052,7 @@ fn translate_project_transform_in_arrow_scope(
 
 // A GENERIC ARROW IS REFUSED HERE, NOT SERIALIZED WITHOUT ITS TYPE PARAMETERS. The signature
 // scaffold (grammar_relation_row_for_bodied_arrow_serialize) is built from the target's grammar
-// rows and reads nothing off the Arrow's ^arrow_type_params_edge, so serializing a `fn f<T>` would
+// rows and reads nothing off the Arrow's type-parameter edge (v2.std.type_binder), so serializing a `fn f<T>` would
 // emit `fn f(x: T) -> T` -- a target program naming a type its declaration never introduced, the
 // edge dropped with no diagnostic. Until the target grammar carries a type-parameter row this
 // path refuses translate_reason_generic_arrow_not_rendered, located at the Arrow; rendering is
@@ -1070,7 +1070,7 @@ fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetText> {
-  if count(arrow_type_param_names(n: emitted)) > 0 {
+  if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
   } else {
   bind_outcome(
@@ -1922,6 +1922,31 @@ type TypeExprTranslateAcc
   | TypeExprTranslatePositional { items: List<Node> }
   | TypeExprTranslateDone { node: Node }
 
+// A GENERIC TYPE DECLARATION'S MEMBER IS REFUSED HERE for the reason a generic Arrow is refused at
+// target_serialize_bodied_arrow_from_model: its target is the v2.std.type_binder wrapper, and the
+// record form below would render the wrapper's two edges as fields while dropping the parameter list. Until the target
+// grammar carries a type-parameter row translate_type_expression_project refuses
+// translate_reason_generic_type_decl_not_rendered, located at the member.
+fn translate_generic_type_decl_not_rendered_diagnostic(member: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_reason_generic_type_decl_not_rendered,
+    at: node_locus(node: member),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// PRE-ORDER, because the projection below is a catamorphism: it translates the binder Conj as a
+// child before any anchor is finalized, so a check at finalize never runs. The first node in the
+// subtree carrying binders is the refusal's locus.
+fn translate_type_param_carrier_optional(node: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, m) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if count(type_param_names(n: m)) > 0 { optional_present(value: m) } else { Absent }
+    }
+  })
+}
+
 fn translate_algebra_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
@@ -2243,6 +2268,17 @@ fn translate_algebra(
 }
 
 fn translate_type_expression_project(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match translate_type_param_carrier_optional(node: node) {
+    Present { value: member } => outcome_rejected(translate_generic_type_decl_not_rendered_diagnostic(member: member))
+    Absent => translate_type_expression_project_admitted(node: node, target: target, projection: projection)
+  }
+}
+
+fn translate_type_expression_project_admitted(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection

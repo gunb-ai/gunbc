@@ -1,0 +1,69 @@
+module test.claim.spark.v41_row_store_readback_run_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.measure { byte_size }
+import v2.std.optional { Present, Absent }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { od_hex_span_command }
+import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
+import extdeps.vllm.engram_layout { VllmEngramRankRows }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of,
+  V41ReadbackSample, V41SampleMagic, V41SampleStoreRecord, V41SampleSourceWeight, V41SampleSourceScale,
+}
+import gunbc.spark.v41_row_store_encode { V41StoreEncodeArgs }
+import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_directory }
+import gunbc.spark.v41_row_store_readback_run { V41HostRegion, v41_host_region, v41_od_hex }
+
+// ── WHERE EACH SAMPLE IS READ ON THE HOST, AND HOW ITS BYTES ARE READ ─────────────────────────────
+//
+// The run's pure half over SUPPLIED encode-plan rows (the plan itself is witnessed by
+// test.claim.spark.v41_row_store_encode_witness): a store sample is read from that store's out path at the
+// region's offset; a source sample from the plan's shard at its table's published span offset plus the
+// region's offset -- the offsets the encoder itself was given, so a readback and an encode that disagree
+// about where layer 14's table starts cannot both be right.
+
+fn w_spec() -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_of_layers(
+    partition: v41_candidate_partition,
+    layers: [v41_layer_table(layer: 14, weight: "layers.14.engram.embed.weight" as NonEmptyStr, scale: "layers.14.engram.embed.scale" as NonEmptyStr, rows: 10, ranks: [VllmEngramRankRows { rank: 0, start: 0, end: 4 }, VllmEngramRankRows { rank: 1, start: 4, end: 10 }])],
+    geometry: v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 256, scale_width: 8),
+  )
+}
+
+fn w_args(rank: Nat, start: Int, rows: Int) -> V41StoreEncodeArgs {
+  V41StoreEncodeArgs {
+    layer: 14, rank: rank, shard: "model-00048-of-00048.safetensors" as NonEmptyStr,
+    weight_offset: byte_size(count: 672), scale_offset: byte_size(count: 98308271264),
+    start: start, rows: rows, weight_bytes: byte_size(count: 256), scale_bytes: byte_size(count: 8),
+    magic_hex: "454e4752310a", out: join(["/s/layer.14.rank.", to_string(rank), ".engram"], "") as NonEmptyStr,
+    expected_size: byte_size(count: 6 + rows * 264),
+  }
+}
+
+fn w_plan() -> List<V41StoreEncodeArgs> {
+  [w_args(rank: 0, start: 0, rows: 4), w_args(rank: 1, start: 4, rows: 6)]
+}
+
+fn w_at(s: V41ReadbackSample) -> String {
+  match v41_host_region(spec: w_spec(), plan: w_plan(), s: s) {
+    Absent => "absent"
+    Present { value: r } => join([r.path, "@", to_string(r.offset), "+", to_string(r.length)], "")
+  }
+}
+
+test fn each_sample_is_read_where_the_encoder_put_or_took_it() -> Bool {
+  let shard = join([v41_checkpoint_directory as String, "/model-00048-of-00048.safetensors"], "")
+  w_at(s: V41SampleMagic { layer: 14, rank: 1 }) == "/s/layer.14.rank.1.engram@0+6"
+    && w_at(s: V41SampleStoreRecord { layer: 14, rank: 1, local_row: 5 }) == join(["/s/layer.14.rank.1.engram@", to_string(6 + 5 * 264), "+264"], "")
+    && w_at(s: V41SampleSourceWeight { layer: 14, global_row: 4 }) == join([shard, "@", to_string(672 + 4 * 256), "+256"], "")
+    && w_at(s: V41SampleSourceScale { layer: 14, global_row: 4 }) == join([shard, "@", to_string(98308271264 + 4 * 8), "+8"], "")
+    && w_at(s: V41SampleMagic { layer: 1, rank: 0 }) == "absent"
+}
+
+test fn od_reads_one_span_as_hex_and_its_lines_are_joined() -> Bool {
+  argv_words(command: od_hex_span_command(path: "/s/x", offset: 1590, length: 264)) == ["od", "-An", "-v", "-tx1", "-j", "1590", "-N", "264", "--", "/s/x"]
+    && v41_od_hex(stdout: " 45 4e 47\n 52 31 0a\n") == "454e4752310a"
+}
