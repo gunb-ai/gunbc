@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.orchestration { EnvBinding }
-import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_binary_path, env_ignore_environment_flag }
 import gunbc.remote_shell_command {
   RemoteExecCommandInterpretation,
   RemoteExecCommandOutcome,
@@ -71,6 +71,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
   admit_callers: [
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_create_command"),
@@ -174,6 +175,19 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.git", decl_name: "git_diff_binary_head_command"),
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_file_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_as_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mtime_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_ctime_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_birth_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_identity_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_properties_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_environment_command"),
+    decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_clock_ticks_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_of_command"),
+    decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
+    decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
+    decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_uid_command"),
@@ -315,6 +329,13 @@ data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PRO
 // read -- a runner image and a machine reached over ssh. Writing /usr/bin/env for them would trade a
 // vague spelling for a confident false host fact (DESIGN section 5). A caller whose target IS
 // observed wants the absolute row, and that is a different builder when one is needed, not a flag.
+// THE COMMAND UNDER AN EMPTY ENVIRONMENT, by the ABSOLUTE env: its callers run it on a host whose
+// layout this repository declares (the approval host's /usr/bin), and the point of the wrapper is
+// that nothing ambient reaches the command -- so its program is not left to PATH either.
+fn env_cleared_command(command: ArgvCommand) -> ArgvCommand {
+  argv_command(program: env_binary_path, arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
+}
+
 fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
   argv_command(
     program: env_path_resolved_program,
