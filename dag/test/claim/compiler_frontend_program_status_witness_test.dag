@@ -105,6 +105,11 @@ import gunbc.compiler_frontend_program_status {
   BlockStatementReferenceVisibility,
   LoweringOccurrenceProjection,
   ListLiteralElementVisibility,
+  LambdaArgumentValueLowering,
+  CaretSymbolOperandLowering,
+  AsCastOperandLowering,
+  ElseLessIfStatementLowering,
+  WildcardMatchArmResolution,
   PrerequisiteDelivered,
   PrerequisiteOutstanding,
   xl2_prerequisites,
@@ -691,38 +696,45 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
-test fn xl2_prerequisites_partition_into_seven_delivered_and_six_outstanding() -> Bool {
-  count(xl2_prerequisites) == 13
+test fn xl2_prerequisites_partition_into_ten_delivered_and_eight_outstanding() -> Bool {
+  count(xl2_prerequisites) == 18
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
     && xl2_delivered_by(p: ResolveOccurrenceCompleteness, pr: 12116, merge_sha: "d759da1c50")
     && xl2_delivered_by(p: OperatorExpressionLoweredWhole, pr: 12145, merge_sha: "ada85b9452")
     && xl2_delivered_by(p: StrippedTreeRehearsalComposition, pr: 12097, merge_sha: "1d4fa51a3d")
+    && xl2_delivered_by(p: MatchOnCallScrutineeNavigation, pr: 12173, merge_sha: "bc61f22b53")
+    && xl2_delivered_by(p: CompoundCallArgumentValueLowering, pr: 12173, merge_sha: "bc61f22b53")
     && xl2_delivered_by(p: IfArmCallArgumentReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
+    && xl2_delivered_by(p: BlockStatementReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
     && xl2_outstanding_tracked_by(p: OptionalAccessorLocatedRefusal, decl_name: "lowering_accessor_collapses_a_sequence_operand")
-    && xl2_outstanding_tracked_by(p: BlockStatementReferenceVisibility, decl_name: "unbound_statement_prefix_refuses_holds")
     && xl2_outstanding_tracked_by(p: LoweringOccurrenceProjection, decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence")
     && xl2_outstanding_tracked_by(p: ListLiteralElementVisibility, decl_name: "list_literal_elements_dropped_at_v2_body_lowering")
-    && xl2_outstanding_tracked_by(p: MatchOnCallScrutineeNavigation, decl_name: "match_on_a_call_scrutinee_refused_as_arm_navigation")
-    && xl2_outstanding_tracked_by(p: CompoundCallArgumentValueLowering, decl_name: "compound_call_argument_value_refused_as_unread")
-    && count(xl2_prerequisites_outstanding()) == 6
+    && xl2_outstanding_tracked_by(p: LambdaArgumentValueLowering, decl_name: "lambda_has_no_lowered_function_value_form")
+    && xl2_outstanding_tracked_by(p: CaretSymbolOperandLowering, decl_name: "caret_symbol_has_no_lowered_form")
+    && xl2_outstanding_tracked_by(p: AsCastOperandLowering, decl_name: "as_cast_has_no_lowered_form")
+    && xl2_outstanding_tracked_by(p: ElseLessIfStatementLowering, decl_name: "else_less_if_statement_has_no_lowered_form")
+    && xl2_outstanding_tracked_by(p: WildcardMatchArmResolution, decl_name: "a_wildcard_match_arm_resolves_as_an_unbound_name")
+    && count(xl2_prerequisites_outstanding()) == 8
     && all(xl2_prerequisites_outstanding(),
          p => xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
-           || xl2_label_is(p: p, want: BlockStatementReferenceVisibility)
            || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
            || xl2_label_is(p: p, want: ListLiteralElementVisibility)
-           || xl2_label_is(p: p, want: MatchOnCallScrutineeNavigation)
-           || xl2_label_is(p: p, want: CompoundCallArgumentValueLowering))
+           || xl2_label_is(p: p, want: LambdaArgumentValueLowering)
+           || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
+           || xl2_label_is(p: p, want: AsCastOperandLowering)
+           || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
+           || xl2_label_is(p: p, want: WildcardMatchArmResolution))
     && all(xl2_prerequisites,
          p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable with six of thirteen delivered
-// -- and would stay so with thirteen of thirteen, because the producer is its own deliverable.
+// XL-2 stays NotDerivable and the producer literal stays Unavailable with ten of eighteen delivered
+// -- and would stay so with eighteen of eighteen, because the producer is its own deliverable.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 6
+  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 10
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
     && match rehearsal_producer_standing() {
          RehearsalProducerUnavailable { why: _, cause: _ } => true
