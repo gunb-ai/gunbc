@@ -14,7 +14,6 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
@@ -99,28 +98,16 @@ fn reference_closure_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // builds a path as a cons list, so every TAIL of a spine is itself spine-shaped: descending would
 // read `v2.std.node.Node` as `std.node.Node` too and attribute an edge to a module the reference
 // never named.
-//
-// A SPINE IS A DECLARATION REFERENCE ONLY IF THE INDEX DECLARES ITS PATH. The shape reader cannot
-// tell a resolver-minted path from another cons list of atoms: an integer literal lowers to one
-// (`606060` reads as `integer_tag_digit_6.integer_tag_digit_0...`, measured on
-// fixtures/native_cli_door at gunbc#12218). The resolver mints a spine only for a path the symbol
-// index answers, so the index is the discriminator, and a spine it does not declare is not a
-// reference. It is not descended into either: a spine's children are atoms, and reading a tail
-// would attribute an edge to a shorter path the author never wrote.
+
 fn reference_closure_declaring_paths(
   n: Node,
-  index: SymbolIndex,
   acc: FreeMonoid<QualifiedName>
 ) -> FreeMonoid<QualifiedName> {
   match declaration_reference_path_optional(node: n) {
-    Present { value: path } =>
-      match symbol_index_lookup(index: index, qualified_path: path) {
-        Present { value: _ } => list_snoc_item(xs: acc, item: path)
-        Absent => acc
-      }
+    Present { value: path } => list_snoc_item(xs: acc, item: path)
     Absent =>
       fold(n.children, init: acc, f: fn(a, e) {
-        reference_closure_declaring_paths(n: e.target, index: index, acc: a)
+        reference_closure_declaring_paths(n: e.target, acc: a)
       })
   }
 }
@@ -148,11 +135,10 @@ fn reference_closure_absorb_owner(
 
 fn reference_closure_neighbours<P>(
   member: ReferenceClosureMember<P>,
-  roster: FreeMonoid<QualifiedName>,
-  index: SymbolIndex
+  roster: FreeMonoid<QualifiedName>
 ) -> ReferenceClosureNeighbours {
   let referenced = fold_list(
-    xs: reference_closure_declaring_paths(n: member.resolved, index: index, acc: Empty),
+    xs: reference_closure_declaring_paths(n: member.resolved, acc: Empty),
     empty: ReferenceClosureNeighboursRead { modules: Empty },
     cons: fn(acc, path) {
       reference_closure_absorb_owner(acc: acc, roster: roster, target: path, at: member.resolved)
@@ -196,7 +182,6 @@ fn reference_closure_enqueue<P>(
 fn reference_closure_walk<P>(
   state: ReferenceClosureState<P>,
   roster: FreeMonoid<QualifiedName>,
-  index: SymbolIndex,
   resolve_member: fn(QualifiedName) -> Outcome<ReferenceClosureMember<P>>
 ) -> Outcome<FreeMonoid<ReferenceClosureVisit<P>>> {
   match state.queue {
@@ -205,7 +190,7 @@ fn reference_closure_walk<P>(
       bind_outcome(
         o: resolve_member(member_module),
         f: fn(member) {
-          match reference_closure_neighbours(member: member, roster: roster, index: index) {
+          match reference_closure_neighbours(member: member, roster: roster) {
             ReferenceClosureTargetOwnerless { target: _, at: at } =>
               outcome_rejected(d: reference_closure_diagnostic(
                 reason: ^reference_closure_target_ownerless,
@@ -225,7 +210,6 @@ fn reference_closure_walk<P>(
                   modules: modules
                 ),
                 roster: roster,
-                index: index,
                 resolve_member: resolve_member
               )
           }
@@ -238,7 +222,6 @@ fn reference_derived_closure<P>(
   entry: QualifiedName,
   entry_locus: Node,
   roster: FreeMonoid<QualifiedName>,
-  index: SymbolIndex,
   resolve_member: fn(QualifiedName) -> Outcome<ReferenceClosureMember<P>>
 ) -> Outcome<FreeMonoid<ReferenceClosureVisit<P>>> {
   if contains(xs: roster, item: entry, eq: reference_closure_qn_eq) {
@@ -249,7 +232,6 @@ fn reference_derived_closure<P>(
         queue: Cons { head: entry, tail: Empty }
       },
       roster: roster,
-      index: index,
       resolve_member: resolve_member
     )
   } else {

@@ -1478,9 +1478,47 @@ enum CliEmitProbeVerdict {
     DeterminingReasonDiffers { determining: String, locus: String },
     /// Non-zero, but nothing matching the CLI's refusal contract reached stderr.
     RefusalNotRendered,
-    /// A refusal that also wrote to stdout: the CLI writes emitted text there and nothing else, so
-    /// bytes on a refusal mean this is not the termination the probe pins.
+    /// A refusal whose stdout is neither empty nor the door's `ClosureEmission` carrier holding the
+    /// fixture member's arm: bytes the door's contract does not produce.
     StdoutNotEmpty { stdout_bytes: usize },
+}
+
+/// One member's arm in the door's `ClosureEmission` carrier, as `closure_emission_json` renders it:
+/// `{"module": .., "emitted": <text>}` or `{"module": .., "refused": <fatal reason>}`.
+enum CliDoorMemberArm {
+    Emitted(String),
+    Refused(String),
+}
+
+/// Read one member's arm out of the carrier. Every way the bytes fail to be that carrier, or fail to
+/// hold exactly one arm for `module`, is its own located sentence rather than a default.
+fn cli_door_member_arm(stdout: &str, module: &str) -> Result<CliDoorMemberArm, String> {
+    let carrier: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|e| format!("stdout is not the door's ClosureEmission carrier: {e}"))?;
+    let modules = carrier
+        .get("modules")
+        .and_then(|m| m.as_array())
+        .ok_or_else(|| "the carrier has no `modules` array".to_string())?;
+    let arms: Vec<&serde_json::Value> = modules
+        .iter()
+        .filter(|arm| arm.get("module").and_then(|m| m.as_str()) == Some(module))
+        .collect();
+    let [arm] = arms.as_slice() else {
+        return Err(format!(
+            "the carrier holds {} arms for {module}, not exactly one",
+            arms.len()
+        ));
+    };
+    match (
+        arm.get("emitted").and_then(|t| t.as_str()),
+        arm.get("refused").and_then(|r| r.as_str()),
+    ) {
+        (Some(text), None) => Ok(CliDoorMemberArm::Emitted(text.to_string())),
+        (None, Some(reason)) => Ok(CliDoorMemberArm::Refused(reason.to_string())),
+        _ => Err(format!(
+            "the arm for {module} is neither exactly `emitted` nor exactly `refused`"
+        )),
+    }
 }
 
 /// What the CLI's refusal rendering decoded to: the determining reason and where it was located.
@@ -1580,13 +1618,38 @@ fn adjudicate_cli_emit_probe(
         return CliEmitProbeVerdict::TerminatedBySignal;
     };
     if status == 0 {
-        // ALL THREE ARE READ FROM WHAT THE DOOR EMITTED. The name alone admitted a rendering with
-        // the value dropped; the value alone admits it printed anywhere; neither says the text is
-        // a program. The compiler is asked only when the other two hold.
-        let names_declaration = run.stdout.contains(CLI_DOOR_EMITTED_WITNESS);
-        let carries_value = run.stdout.contains(CLI_DOOR_EMITTED_VALUE);
+        // ALL THREE ARE READ FROM WHAT THE DOOR EMITTED FOR THE FIXTURE MODULE. stdout is the door's
+        // `ClosureEmission` carrier (`v2.compiler.self_host.closure_emission`
+        // `closure_emission_json`), so the text judged is the fixture member's emitted arm, never
+        // the carrier around it: a carrier that merely mentions the name is not an emission of it.
+        // The name alone admitted a rendering with the value dropped; the value alone admits it
+        // printed anywhere; neither says the text is a program. The compiler is asked only when the
+        // other two hold.
+        let emitted = match cli_door_member_arm(&run.stdout, CLI_DOOR_ENTRY_MODULE) {
+            Ok(CliDoorMemberArm::Emitted(text)) => text,
+            Ok(CliDoorMemberArm::Refused(reason)) => {
+                return CliEmitProbeVerdict::EmittedWithoutSubstance {
+                    stdout_bytes: run.stdout.len(),
+                    names_declaration: false,
+                    carries_value: false,
+                    rust_verdict: Err(format!(
+                        "the carrier's arm for {CLI_DOOR_ENTRY_MODULE} is refused ({reason}) under exit 0"
+                    )),
+                }
+            }
+            Err(cause) => {
+                return CliEmitProbeVerdict::EmittedWithoutSubstance {
+                    stdout_bytes: run.stdout.len(),
+                    names_declaration: false,
+                    carries_value: false,
+                    rust_verdict: Err(cause),
+                }
+            }
+        };
+        let names_declaration = emitted.contains(CLI_DOOR_EMITTED_WITNESS);
+        let carries_value = emitted.contains(CLI_DOOR_EMITTED_VALUE);
         let rust_verdict = if names_declaration && carries_value {
-            rust_accepts(&run.stdout)
+            rust_accepts(&emitted)
         } else {
             Err("not consulted: the text lacks the declaration's name or value".to_string())
         };
@@ -1609,7 +1672,12 @@ fn adjudicate_cli_emit_probe(
     if status != CLI_DOOR_REFUSAL_EXIT {
         return CliEmitProbeVerdict::UnexpectedExitCode { status };
     }
-    if !run.stdout.is_empty() {
+    // A REFUSAL MAY CARRY THE CARRIER, AND MAY CARRY NOTHING ELSE. A member's refusal fails the
+    // process while every member's arm is still written, so a non-empty stdout on a refusal must be
+    // a readable `ClosureEmission`; any other bytes there are not a termination this door takes.
+    // A closure-level refusal writes nothing. The determining reason is read from stderr either way,
+    // where the door renders the refused member's located chain.
+    if !run.stdout.is_empty() && cli_door_member_arm(&run.stdout, CLI_DOOR_ENTRY_MODULE).is_err() {
         return CliEmitProbeVerdict::StdoutNotEmpty {
             stdout_bytes: run.stdout.len(),
         };
@@ -2474,6 +2542,26 @@ mod cli_emit_probe_tests {
     /// while a CORRECT refusal from the built binary decoded as `DeterminingReasonDiffers` -- the
     /// designed-fixture failure DESIGN section 3 names, where the claim survives the world it was
     /// written against moving.
+    /// The door's stdout for a closure whose one member is the fixture, as
+    /// `closure_emission_json` renders it: the fixture's emitted text inside the carrier.
+    fn carrier(emitted: &str) -> String {
+        serde_json::json!({
+            "entry": CLI_DOOR_ENTRY_MODULE,
+            "members": [CLI_DOOR_ENTRY_MODULE],
+            "modules": [{ "module": CLI_DOOR_ENTRY_MODULE, "emitted": emitted }]
+        })
+        .to_string()
+    }
+
+    fn carrier_refused(reason: &str) -> String {
+        serde_json::json!({
+            "entry": CLI_DOOR_ENTRY_MODULE,
+            "members": [CLI_DOOR_ENTRY_MODULE],
+            "modules": [{ "module": CLI_DOOR_ENTRY_MODULE, "refused": reason }]
+        })
+        .to_string()
+    }
+
     fn located_pinned_refusal() -> String {
         // THE REAL SHAPE, transcribed from the built binary's own stderr: a run of
         // `infer_grounding_not_derived` ADVISORIES and a final
@@ -2524,7 +2612,7 @@ mod cli_emit_probe_tests {
         let emitted = format!(
             "{{ door_probe: {{ {CLI_DOOR_EMITTED_WITNESS}: ( {{  }}) -> (i32) -> i32 }} }}"
         );
-        match adjudicate_with_rust(&run(Some(0), &emitted, "")) {
+        match adjudicate_with_rust(&run(Some(0), &carrier(&emitted), "")) {
             CliEmitProbeVerdict::EmittedWithoutSubstance {
                 names_declaration,
                 carries_value,
@@ -2543,7 +2631,7 @@ mod cli_emit_probe_tests {
     #[test]
     fn name_and_value_in_text_the_compiler_refuses_fails() {
         let emitted = format!("{{ {CLI_DOOR_EMITTED_WITNESS}: {CLI_DOOR_EMITTED_VALUE} }}");
-        match adjudicate(&run(Some(0), &emitted, "")) {
+        match adjudicate(&run(Some(0), &carrier(&emitted), "")) {
             CliEmitProbeVerdict::EmittedWithoutSubstance {
                 names_declaration: true,
                 carries_value: true,
@@ -2572,9 +2660,10 @@ mod cli_emit_probe_tests {
     fn a_rust_emission_carrying_the_value_passes() {
         let emitted =
             format!("fn {CLI_DOOR_EMITTED_WITNESS}() -> i32 {{ {CLI_DOOR_EMITTED_VALUE} }}\n\n");
+        let stdout = carrier(&emitted);
         assert!(matches!(
-            adjudicate_with_rust(&run(Some(0), &emitted, "")),
-            CliEmitProbeVerdict::EmissionHolds { stdout_bytes } if stdout_bytes == emitted.len()
+            adjudicate_with_rust(&run(Some(0), &stdout, "")),
+            CliEmitProbeVerdict::EmissionHolds { stdout_bytes } if stdout_bytes == stdout.len()
         ));
     }
 
@@ -2585,7 +2674,7 @@ mod cli_emit_probe_tests {
         let emitted =
             format!("fn {CLI_DOOR_EMITTED_WITNESS}() -> i32 {{ {CLI_DOOR_EMITTED_VALUE} }}\n\n");
         assert!(matches!(
-            adjudicate(&run(Some(0), &emitted, "")),
+            adjudicate(&run(Some(0), &carrier(&emitted), "")),
             CliEmitProbeVerdict::EmittedWithoutSubstance {
                 rust_verdict: Err(_),
                 ..
@@ -2594,6 +2683,33 @@ mod cli_emit_probe_tests {
     }
 
     /// REFUSED: the grounding limitation the probe pinned before #12197.
+    /// A member refusal writes the carrier AND fails the process; the determining reason is still
+    /// read from the rendered chain on stderr, so the old body refusal is still the regression.
+    #[test]
+    fn a_member_refusal_carrying_the_carrier_is_judged_by_its_rendered_reason() {
+        match adjudicate(&run(
+            Some(1),
+            &carrier_refused(CLI_DOOR_EMIT_BODY_REFUSAL),
+            &located_body_refusal(),
+        )) {
+            CliEmitProbeVerdict::BodyRefusalReturned { .. } => {}
+            other => panic!("expected BodyRefusalReturned, got {other:?}"),
+        }
+    }
+
+    /// REFUSED: exit 0 with the fixture's arm refused is not an emission, whatever else the carrier says.
+    #[test]
+    fn exit_zero_with_the_fixture_arm_refused_fails() {
+        assert!(matches!(
+            adjudicate_with_rust(&run(
+                Some(0),
+                &carrier_refused(CLI_DOOR_EMIT_BODY_REFUSAL),
+                ""
+            )),
+            CliEmitProbeVerdict::EmittedWithoutSubstance { .. }
+        ));
+    }
+
     #[test]
     fn the_old_grounding_refusal_is_a_regression() {
         match adjudicate(&run(Some(1), "", &located_pinned_refusal())) {

@@ -8,9 +8,7 @@ import v2.compiler.name_resolve {
   resolution_context,
   resolve_with_admission_context_policy
 }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
-import v2.std.symbol_index { empty_symbol_index }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_closure { ReferenceClosureMember, reference_closure_modules, reference_derived_closure }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -161,7 +159,6 @@ fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
         entry: qualified_name_from_dotted_string(dotted: entry),
         entry_locus: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rc_entry_locus } }, children: []),
         roster: rc_roster(roots: roots),
-        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: normalized_tree_roots_to_binding_sources(roots: roots)),
         resolve_member: fn(member_module) {
           bind_outcome(
             o: rc_resolved_of(dotted: qualified_name_to_dotted_string(qn: member_module)),
@@ -232,9 +229,10 @@ test fn a_module_reached_only_through_a_member_is_a_member_holds() -> Bool {
 }
 
 // The entry also declares an integer literal. Its lowering is a cons list of digit atoms, the same
-// shape as a declaration-reference spine; the fold reads a spine as a reference only when the index
-// declares its path, so the set-equality row above reds if the literal is misread (as it was on
-// fixtures/native_cli_door, gunbc#12218).
+// shape as a declaration-reference spine. The resolver marks the references it mints
+// (v2.std.qualified_name declaration_reference_path_optional reads the marker, gunbc#12220), so the
+// literal is no reference, and the set-equality row above reds if it is ever misread again (as it
+// was on fixtures/native_cli_door at gunbc#12218).
 
 // THE DISCRIMINATING RED: a fold that answered the roster would pass every row above and fail here.
 test fn a_declared_module_nothing_reaches_is_not_a_member_holds() -> Bool {
