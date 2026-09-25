@@ -2241,20 +2241,29 @@ fn unimported_bare_provider_roster_source_at_base(
         "unimported_bare_provider_roster_at_base",
         &args,
     )?;
-    let v1_interpreter::Value::Record { fields, .. } = &shown else {
+    // UnimportedBareProviderBaseRoster is a closed coproduct, so the reading is its variant: each arm
+    // is matched by name and read from its own declared field, and anything else refuses.
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &shown
+    else {
         return Err(format!(
-            "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
+            "unimported_bare_provider_roster_at_base returned {}, expected an UnimportedBareProviderBaseRoster variant",
             floor_value_shape(Some(&shown))
         ));
     };
-    match (ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
-        (Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
-        (_, Some(v1_interpreter::Value::Str(err))) => Err(format!(
+    match (ctx.resolve(*variant_name).as_str(), ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
+        ("BaseRosterShown", Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
+        ("BaseRosterUnreadable", _, Some(v1_interpreter::Value::Str(err))) => Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
              path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
              so it must exist at the base"
         )),
-        _ => Err("UnimportedBareProviderBaseRoster carries neither `source` nor `stderr`".to_string()),
+        (other, _, _) => Err(format!(
+            "unimported_bare_provider_roster_at_base returned variant {other} without its declared field"
+        )),
     }
 }
 
