@@ -170,3 +170,13 @@ test fn service_resource_and_value_refuse_in_either_order() -> Bool {
   ambiguous_count(import_lines: svc_a_named + resource_named + value_named) == 1
     && ambiguous_count(import_lines: value_named + resource_named + svc_a_named) == 1
 }
+
+// TWO SERVICES AND A VALUE, in both orders: one refusal, whatever order the imports were written in.
+// The census row keys the class and the name; the candidate population it reports -- all three
+// owners, sorted -- is pinned where the decision is a supplied-value function,
+// v1.compiler.infer service_candidates_conflict (cli_run service_candidates_conflict_tests), and
+// this row is its inhabitance on the real compile path.
+test fn two_services_and_a_value_refuse_once_in_either_order() -> Bool {
+  ambiguous_count(import_lines: svc_a_named + svc_b_named + value_named) == 1
+    && ambiguous_count(import_lines: value_named + svc_b_named + svc_a_named) == 1
+}

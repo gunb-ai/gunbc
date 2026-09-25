@@ -9589,9 +9589,7 @@ fn visit_bare_reference_providers(
         // (`explicit_import_member_names`). The import closure already pulls the named
         // module, so there is nothing for the census to add -- and asking it anyway is
         // what would report AMBIGUOUS for a name the author disambiguated by hand.
-        // The same holds for a service head: an explicit import names the one declaration meant,
-        // so the census -- which may hold several declarations of that name -- is not asked.
-        if explicit_imports.contains(&name) {
+        if !service_head && explicit_imports.contains(&name) {
             continue;
         }
         if !service_head && is_substrate_vocabulary(&name) {
@@ -22003,26 +22001,162 @@ pub enum ClosureBareDisposition {
 
 /// THE SERVICES CENSUS HOLDS EVERY DECLARATION OF A NAME (v1.compiler.infer_env
 /// service_census_candidates), so the one module a bare pull resolves to is decided over that
-/// whole set: none, exactly one, or a located refusal naming every candidate. Taking any single
-/// element of a plural set would make the pulled closure depend on census order.
+/// whole set, and never by taking an element of it.
+///
+/// ONLY AN IMPORT-LESS FILE REACHES THIS. Every caller of the bare half is gated by
+/// `source_declares_import_lines`, so a file with any `import` line -- `import m { Name }` or
+/// `import m` -- never asks the census; which declaration its names mean is v1.compiler.infer's
+/// decision over the typed candidate set (service_owner_conflicts_of). For an import-less file no
+/// import states an owner, so the only honest answers are: no owner, exactly one owner pulled, or
+/// a refusal naming every owner.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ServiceOwnerPull {
+    /// No module declares a service of that name.
+    NoServiceOwner,
+    /// Exactly one module declares it.
+    Pull(String),
+}
+
+pub(crate) fn decide_service_owner_pull(
+    owners: &BTreeSet<String>,
+) -> Result<ServiceOwnerPull, Vec<String>> {
+    match owners.len() {
+        0 => Ok(ServiceOwnerPull::NoServiceOwner),
+        1 => Ok(ServiceOwnerPull::Pull(
+            owners.iter().next().cloned().unwrap_or_default(),
+        )),
+        _ => Err(owners.iter().cloned().collect()),
+    }
+}
+
 fn census_single_service_owner(
     census: &Rc<SymbolIndex>,
     name: &str,
     file_rel: &str,
 ) -> Result<Option<String>, String> {
-    let Some(entries) = v1_rt::map_get(&census.services, name.to_string()) else {
-        return Ok(None);
-    };
-    let owners: BTreeSet<String> = entries.iter().map(|e| e.module_path.clone()).collect();
-    match owners.len() {
-        0 => Ok(None),
-        1 => Ok(owners.into_iter().next()),
-        n => Err(format!(
-            "bare_reference_closure: service '{name}' in '{file_rel}' is AMBIGUOUS -- {n} modules \
-             declare a service of that name ({}), and this resolver does not rank candidates. \
-             Name the one you mean with an explicit import.",
-            owners.into_iter().collect::<Vec<_>>().join(", ")
+    let owners: BTreeSet<String> = v1_rt::map_get(&census.services, name.to_string())
+        .map(|entries| entries.iter().map(|e| e.module_path.clone()).collect())
+        .unwrap_or_default();
+    match decide_service_owner_pull(&owners) {
+        Ok(ServiceOwnerPull::Pull(module_path)) => Ok(Some(module_path)),
+        Ok(ServiceOwnerPull::NoServiceOwner) => Ok(None),
+        Err(all) => Err(format!(
+            "bare_reference_closure: service '{name}' in '{file_rel}' is AMBIGUOUS -- {} modules \
+             declare a service of that name ({}), and this import-less file names none of them. \
+             Import the one you mean.",
+            all.len(),
+            all.join(", ")
         )),
+    }
+}
+
+// THE CANDIDATE POPULATION, supplied rather than compiled: v1.compiler.infer
+// service_candidates_conflict is the one place the value-position decision is taken, so the
+// structural claim -- two services and a value report all three owners, sorted, in whatever order
+// they arrive -- is asserted on it directly. Its route through a real compile is
+// test.claim.service_owner_identity_witness two_services_and_a_value_refuse_once_in_either_order.
+#[cfg(test)]
+mod service_candidates_conflict_tests {
+    use crate::v1_compiler_infer::{service_candidates_conflict, ServiceOwnerConflict};
+    use std::rc::Rc;
+
+    fn owners(xs: &[&str]) -> Rc<im::Vector<String>> {
+        Rc::new(xs.iter().map(|x| x.to_string()).collect())
+    }
+
+    fn candidates(c: Option<Rc<ServiceOwnerConflict>>) -> Option<Vec<String>> {
+        c.map(|c| match c.as_ref() {
+            ServiceOwnerConflict::ServiceCandidatesAmbiguous { candidates } => {
+                candidates.iter().cloned().collect()
+            }
+            ServiceOwnerConflict::ServiceNotInScope { .. } => vec!["<not-in-scope>".to_string()],
+        })
+    }
+
+    const N: &str = "OwnerIdentityProbe";
+
+    #[test]
+    fn two_services_and_a_value_list_every_candidate_in_either_order() {
+        let want = Some(vec![
+            "test.fixture.service_owner_identity.service.OwnerIdentityProbe".to_string(),
+            "test.fixture.service_owner_identity.service_b.OwnerIdentityProbe".to_string(),
+            "test.fixture.service_owner_identity.value.OwnerIdentityProbe".to_string(),
+        ]);
+        let a = "test.fixture.service_owner_identity.service";
+        let b = "test.fixture.service_owner_identity.service_b";
+        let v = "test.fixture.service_owner_identity.value";
+        assert_eq!(
+            candidates(service_candidates_conflict(
+                N.to_string(),
+                owners(&[a, b]),
+                owners(&[v])
+            )),
+            want
+        );
+        assert_eq!(
+            candidates(service_candidates_conflict(
+                N.to_string(),
+                owners(&[b, a]),
+                owners(&[v])
+            )),
+            want
+        );
+    }
+
+    #[test]
+    fn one_service_with_no_value_rival_is_no_conflict() {
+        assert_eq!(
+            candidates(service_candidates_conflict(
+                N.to_string(),
+                owners(&["m"]),
+                owners(&[])
+            )),
+            None
+        );
+    }
+}
+
+#[cfg(test)]
+mod service_owner_pull_tests {
+    use super::{decide_service_owner_pull, source_declares_import_lines, ServiceOwnerPull};
+    use std::collections::BTreeSet;
+
+    fn set(xs: &[&str]) -> BTreeSet<String> {
+        xs.iter().map(|x| x.to_string()).collect()
+    }
+
+    const A: &str = "test.fixture.service_owner_identity.service";
+    const B: &str = "test.fixture.service_owner_identity.service_b";
+
+    // The gate that keeps every importing file -- named OR wildcard -- away from this decision.
+    #[test]
+    fn named_and_wildcard_imports_both_close_the_bare_half() {
+        assert!(source_declares_import_lines(
+            "module p\nimport m { OwnerIdentityProbe }\n"
+        ));
+        assert!(source_declares_import_lines("module p\nimport m\n"));
+        assert!(!source_declares_import_lines(
+            "module p\nfn f() -> Int { 1 }\n"
+        ));
+    }
+
+    #[test]
+    fn a_plural_name_refuses_naming_every_owner_in_either_order() {
+        let want = Err(vec![A.to_string(), B.to_string()]);
+        assert_eq!(decide_service_owner_pull(&set(&[A, B])), want);
+        assert_eq!(decide_service_owner_pull(&set(&[B, A])), want);
+    }
+
+    #[test]
+    fn a_single_owner_is_pulled_and_an_unknown_name_is_not() {
+        assert_eq!(
+            decide_service_owner_pull(&set(&[A])),
+            Ok(ServiceOwnerPull::Pull(A.to_string()))
+        );
+        assert_eq!(
+            decide_service_owner_pull(&set(&[])),
+            Ok(ServiceOwnerPull::NoServiceOwner)
+        );
     }
 }
 

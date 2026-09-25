@@ -1003,23 +1003,53 @@ fn service_owner_conflicts_of(services: Map<String, List<ServiceCensusEntry>>, r
     match map_get(services, sname) {
       Absent => acc
       Present { value: entries } =>
-        let in_scope = service_scope_candidates(entries: entries, name: sname, module_name: module_name, resolved_imports: resolved_imports, source_indices: source_indices)
-        let scope_owners = sorted_distinct_names(names: in_scope |> map(e => e.module_path))
-        if (scope_owners |> count) >= 2 {
-          map_insert(acc, sname, ServiceCandidatesAmbiguous { candidates: scope_owners |> map(o => concat(o, ".", sname)) })
-        } else {
-          let all_owners = sorted_distinct_names(names: entries |> map(e => e.module_path))
-          let others = non_service_import_owners(name: sname, service_owners: all_owners, resolved_imports: resolved_imports, parent_index: parent_index, source_indices: source_indices)
-          if (others |> count) == 0 { acc }
-          else if (scope_owners |> count) == 0 {
-            map_insert(acc, sname, ServiceNotInScope { service_owners: all_owners, bound_owners: others })
-          } else {
-            let value_owners = others |> filter(o => module_declares_value_named(parent_index: parent_index, module_path: o, name: sname, source_indices: source_indices))
-            if (value_owners |> count) == 0 { acc } else {
-              map_insert(acc, sname, ServiceCandidatesAmbiguous { candidates: concat(scope_owners, value_owners) |> map(o => concat(o, ".", sname)) })
-            }
-          }
+        let scope_owners = sorted_distinct_names(names: service_scope_candidates(entries: entries, name: sname, module_name: module_name, resolved_imports: resolved_imports, source_indices: source_indices) |> map(e => e.module_path))
+        let all_owners = sorted_distinct_names(names: entries |> map(e => e.module_path))
+        let others = non_service_import_owners(name: sname, service_owners: all_owners, resolved_imports: resolved_imports, parent_index: parent_index, source_indices: source_indices)
+        let value_owners = others |> filter(o => module_declares_value_named(parent_index: parent_index, module_path: o, name: sname, source_indices: source_indices))
+        match service_candidates_conflict(name: sname, service_owners: scope_owners, value_owners: value_owners) {
+          Present { value: conflict } => map_insert(acc, sname, conflict)
+          Absent =>
+            if (scope_owners |> count) == 0 && (others |> count) > 0 {
+              map_insert(acc, sname, ServiceNotInScope { service_owners: all_owners, bound_owners: others })
+            } else { acc }
         }
+    }
+  )
+}
+
+// THE VALUE-POSITION DECISION, over the whole candidate population and nothing else. Its inputs are
+// every in-scope service owner and every imported owner of a function or data value of that name,
+// and its only answers are "no rival" or the full sorted union of both sets -- so two services and
+// a value report all three, in one order, whatever order the imports were written in.
+fn service_candidates_conflict(name: String, service_owners: List<String>, value_owners: List<String>) -> ServiceOwnerConflict? {
+  let services = service_owners |> count
+  if services >= 2 || (services == 1 && (value_owners |> count) >= 1) {
+    Present { value: ServiceCandidatesAmbiguous { candidates: sorted_distinct_names(names: concat(service_owners, value_owners)) |> map(o => concat(o, ".", name)) } }
+  } else { none }
+}
+
+// A CONFLICTED NAME HAS NO REGISTRY ROW AND NO ROOT LOCAL. The conflict is decided before either
+// is written, so no consumer can read a winner by skipping the conflict map: the census fold does
+// not write one, and a module's own declared service of that name is dropped here too.
+fn without_conflicted_names(registry: Map<String, List<OpEntry>>, conflicts: Map<String, ServiceOwnerConflict>) -> Map<String, List<OpEntry>> {
+  fold(sorted_map_keys(registry), init: empty_map(), f: (acc, k) =>
+    if map_has(conflicts, k) { acc } else {
+      match map_get(registry, k) {
+        Present { value: v } => map_insert(acc, k, v)
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn without_conflicted_bindings(bindings: Map<String, TypeBinding>, conflicts: Map<String, ServiceOwnerConflict>) -> Map<String, TypeBinding> {
+  fold(sorted_map_keys(bindings), init: empty_map(), f: (acc, k) =>
+    if map_has(conflicts, k) { acc } else {
+      match map_get(bindings, k) {
+        Present { value: v } => map_insert(acc, k, v)
+        Absent => acc
+      }
     }
   )
 }
@@ -14789,11 +14819,12 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
+  let service_conflicts = service_owner_conflicts_of(services: env.symbol_index.services, resolved_imports: resolved_imports, parent_index: parent_index, module_name: module_name, source_indices: env.source_indices)
   let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
     match map_get(env.symbol_index.services, sname) {
       Present { value: sentries } =>
         let candidates = service_scope_candidates(entries: sentries, name: sname, module_name: module_name, resolved_imports: resolved_imports, source_indices: env.source_indices)
-        if (candidates |> count) != 1 { acc } else {
+        if (candidates |> count) != 1 || map_has(service_conflicts, sname) { acc } else {
         fold(candidates, init: acc, f: (acc, sentry) =>
         let sitem = sentry.item
         let entries = sitem.children |> map(c =>
@@ -14821,8 +14852,8 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
-    svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
+    svc_registry: map_merge(census_scope.svc_registry, without_conflicted_names(registry: local.svc_registry, conflicts: service_conflicts)),
+    svc_locals: map_merge(census_scope.svc_locals, without_conflicted_bindings(bindings: local.svc_locals, conflicts: service_conflicts))
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
@@ -14845,7 +14876,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     resolved_items: local.resolved_items,
     func_env: bind_local_func_conformance(func_env: resolve_result.func_env, env: env, module_name: module_name),
     svc_registry: merged_scope.svc_registry,
-    svc_owner_conflicts: service_owner_conflicts_of(services: env.symbol_index.services, resolved_imports: resolved_imports, parent_index: parent_index, module_name: module_name, source_indices: env.source_indices),
+    svc_owner_conflicts: service_conflicts,
     locals: all_locals,
     variant_locals: env_variant_locals,
     item_registry: local.item_registry,

@@ -1,0 +1,25 @@
+module gunbc.service_owner_pull_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust the plural service census required in the bare-reference
+// closure (gunb-ai/gunbc#12265). PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing): the
+// closure is seed host code that already read `census.services` to decide which module a bare
+// service head pulls; v1.compiler.infer_env now holds every declaration of a service name, so that
+// reader had to decide over a set instead of reading one entry. Taking an element would have
+// reintroduced the order-dependent join the change removes (gunbc.recurring_failure_mode
+// surface_shorthand_preempts_resolved_identity), so the decision is one named, unit-tested function
+// that refuses a plural pull rather than picking a winner.
+data service_owner_pull_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ServiceOwnerPull", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "decide_service_owner_pull", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "census_single_service_owner", field: WholeDeclaration }
+  ],
+  reason: "The bare-reference closure (visit_bare_reference_providers) read the services census as one entry per name; the census now carries every declaration of a name, so its reader decides over the whole set. The closure runs only for import-less files (source_declares_import_lines gates every caller), so no import states an owner there: the reader pulls the one module that declares the name, or refuses naming every owner when several do, instead of taking an element. Files with any import line are decided by v1.compiler.infer service_owner_conflicts_of alone. Pinned by cli_run service_owner_pull_tests.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when the loader's bare-reference pull is decided by a .dag fold over typed import identity -- the same candidate authority v1.compiler.infer uses -- so the closure reads that decision instead of re-deriving which module a service head names from file text.",
+  current_boundary: "Called only from the bare-reference closure's resolve loop; reads the census and the file's import lines, writes nothing, and never substitutes a module for a refused plural pull."
+}

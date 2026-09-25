@@ -1555,120 +1555,156 @@ pub fn service_owner_conflicts_of(
         ) {
             std::option::Option::None => acc.clone(),
             Some(entries) => {
-                let in_scope = service_scope_candidates(
-                    entries.clone(),
-                    sname.clone(),
-                    module_name.clone(),
-                    resolved_imports.clone(),
-                    source_indices.clone(),
-                );
                 let scope_owners = sorted_distinct_names(Rc::new({
                     let mut __result = Vec::new();
-                    for e in in_scope.iter().cloned() {
+                    for e in service_scope_candidates(
+                        entries.clone(),
+                        sname.clone(),
+                        module_name.clone(),
+                        resolved_imports.clone(),
+                        source_indices.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
                         __result.push(e.module_path.clone());
                     }
                     __result
                 }));
-                if ((scope_owners.clone().len() as i64) >= 2) {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        sname.clone(),
-                        Rc::new(ServiceOwnerConflict::ServiceCandidatesAmbiguous {
-                            candidates: Rc::new({
-                                let mut __result = Vec::new();
-                                for o in scope_owners.iter().cloned() {
-                                    __result.push(v1_rt::concat(
-                                        v1_rt::concat(o.clone(), ".".to_string()),
-                                        sname.clone(),
-                                    ));
-                                }
-                                __result
-                            }),
-                        }),
-                    )
-                } else {
-                    {
-                        let all_owners = sorted_distinct_names(Rc::new({
-                            let mut __result = Vec::new();
-                            for e in entries.iter().cloned() {
-                                __result.push(e.module_path.clone());
-                            }
-                            __result
-                        }));
-                        let others = non_service_import_owners(
-                            sname.clone(),
-                            all_owners.clone(),
-                            resolved_imports.clone(),
+                let all_owners = sorted_distinct_names(Rc::new({
+                    let mut __result = Vec::new();
+                    for e in entries.iter().cloned() {
+                        __result.push(e.module_path.clone());
+                    }
+                    __result
+                }));
+                let others = non_service_import_owners(
+                    sname.clone(),
+                    all_owners.clone(),
+                    resolved_imports.clone(),
+                    parent_index.clone(),
+                    source_indices.clone(),
+                );
+                let value_owners = Rc::new({
+                    let mut __result = Vec::new();
+                    for o in others.iter().cloned() {
+                        if module_declares_value_named(
                             parent_index.clone(),
+                            o.clone(),
+                            sname.clone(),
                             source_indices.clone(),
-                        );
-                        if ((others.clone().len() as i64) == 0) {
-                            acc.clone()
+                        ) {
+                            __result.push(o);
+                        }
+                    }
+                    __result
+                });
+                match service_candidates_conflict(
+                    sname.clone(),
+                    scope_owners.clone(),
+                    value_owners.clone(),
+                ) {
+                    Some(conflict) => {
+                        v1_rt::rc_map_insert(acc.clone(), sname.clone(), conflict.clone())
+                    }
+                    std::option::Option::None => {
+                        if (((scope_owners.clone().len() as i64) == 0)
+                            && ((others.clone().len() as i64) > 0))
+                        {
+                            v1_rt::rc_map_insert(
+                                acc.clone(),
+                                sname.clone(),
+                                Rc::new(ServiceOwnerConflict::ServiceNotInScope {
+                                    service_owners: all_owners.clone(),
+                                    bound_owners: others.clone(),
+                                }),
+                            )
                         } else {
-                            if ((scope_owners.clone().len() as i64) == 0) {
-                                v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    sname.clone(),
-                                    Rc::new(ServiceOwnerConflict::ServiceNotInScope {
-                                        service_owners: all_owners.clone(),
-                                        bound_owners: others.clone(),
-                                    }),
-                                )
-                            } else {
-                                {
-                                    let value_owners = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for o in others.iter().cloned() {
-                                            if module_declares_value_named(
-                                                parent_index.clone(),
-                                                o.clone(),
-                                                sname.clone(),
-                                                source_indices.clone(),
-                                            ) {
-                                                __result.push(o);
-                                            }
-                                        }
-                                        __result
-                                    });
-                                    if ((value_owners.clone().len() as i64) == 0) {
-                                        acc.clone()
-                                    } else {
-                                        v1_rt::rc_map_insert(
-                                            acc.clone(),
-                                            sname.clone(),
-                                            Rc::new(
-                                                ServiceOwnerConflict::ServiceCandidatesAmbiguous {
-                                                    candidates: Rc::new({
-                                                        let mut __result = Vec::new();
-                                                        for o in v1_rt::concat(
-                                                            scope_owners.clone(),
-                                                            value_owners.clone(),
-                                                        )
-                                                        .iter()
-                                                        .cloned()
-                                                        {
-                                                            __result.push(v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    o.clone(),
-                                                                    ".".to_string(),
-                                                                ),
-                                                                sname.clone(),
-                                                            ));
-                                                        }
-                                                        __result
-                                                    }),
-                                                },
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
+                            acc.clone()
                         }
                     }
                 }
             }
         },
     )
+}
+
+pub fn service_candidates_conflict(
+    name: String,
+    service_owners: Rc<Vec<String>>,
+    value_owners: Rc<Vec<String>>,
+) -> Option<Rc<ServiceOwnerConflict>> {
+    {
+        let services = (service_owners.clone().len() as i64);
+        if ((services.clone() >= 2)
+            || ((services.clone() == 1) && ((value_owners.clone().len() as i64) >= 1)))
+        {
+            Some(Rc::new(ServiceOwnerConflict::ServiceCandidatesAmbiguous {
+                candidates: Rc::new({
+                    let mut __result = Vec::new();
+                    for o in sorted_distinct_names(v1_rt::concat(
+                        service_owners.clone(),
+                        value_owners.clone(),
+                    ))
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(v1_rt::concat(
+                            v1_rt::concat(o.clone(), ".".to_string()),
+                            name.clone(),
+                        ));
+                    }
+                    __result
+                }),
+            }))
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn without_conflicted_names(
+    registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    conflicts: Rc<HashMap<String, Rc<ServiceOwnerConflict>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>> {
+    Rc::new(v1_rt::sorted_map_keys(&registry))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>, k: String| {
+                if v1_rt::map_has(&conflicts, k.clone()) {
+                    acc.clone()
+                } else {
+                    match v1_rt::map_get(&registry, k.clone()) {
+                        Some(v) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v.clone()),
+                        std::option::Option::None => acc.clone(),
+                    }
+                }
+            },
+        )
+}
+
+pub fn without_conflicted_bindings(
+    bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    conflicts: Rc<HashMap<String, Rc<ServiceOwnerConflict>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::sorted_map_keys(&bindings))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, k: String| {
+                if v1_rt::map_has(&conflicts, k.clone()) {
+                    acc.clone()
+                } else {
+                    match v1_rt::map_get(&bindings, k.clone()) {
+                        Some(v) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v.clone()),
+                        std::option::Option::None => acc.clone(),
+                    }
+                }
+            },
+        )
 }
 
 pub fn module_declares_named(
@@ -26919,13 +26955,20 @@ pub fn build_module_context(
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
+        let service_conflicts = service_owner_conflicts_of(
+            env.symbol_index.clone().services.clone(),
+            resolved_imports.clone(),
+            parent_index.clone(),
+            module_name.clone(),
+            env.source_indices.clone(),
+        );
         let census_scope = Rc::new(v1_rt::map_keys(&env.symbol_index.clone().services.clone())).iter().cloned().fold(Rc::new(InferScopeComponents {
     svc_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
     svc_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
 }), |acc: Rc<InferScopeComponents>, sname: String| match v1_rt::map_get(&env.symbol_index.clone().services.clone(), sname.clone()) {
     Some(sentries) => {
             let candidates = service_scope_candidates(sentries.clone(), sname.clone(), module_name.clone(), resolved_imports.clone(), env.source_indices.clone());
-if ((candidates.clone().len() as i64) != 1) {
+if (((candidates.clone().len() as i64) != 1) || v1_rt::map_has(&service_conflicts, sname.clone())) {
                 acc.clone()
             } else {
                 candidates.iter().cloned().fold(acc.clone(), |acc: Rc<InferScopeComponents>, sentry: Rc<ServiceCensusEntry>| { let acc = v1_rt::take_owned(acc); {
@@ -26951,9 +26994,12 @@ Rc::new(InferScopeComponents {
             env.clone(),
             v1_rt::rc_map_merge(
                 census_scope.svc_registry.clone(),
-                local.svc_registry.clone(),
+                without_conflicted_names(local.svc_registry.clone(), service_conflicts.clone()),
             ),
-            v1_rt::rc_map_merge(census_scope.svc_locals.clone(), local.svc_locals.clone()),
+            v1_rt::rc_map_merge(
+                census_scope.svc_locals.clone(),
+                without_conflicted_bindings(local.svc_locals.clone(), service_conflicts.clone()),
+            ),
         );
         let parent_envs = merge_func_env_views_by_owner(Rc::new({
             let mut __result = Vec::new();
@@ -26997,13 +27043,7 @@ Rc::new(InferScopeComponents {
                 module_name.clone(),
             ),
             svc_registry: merged_scope.svc_registry.clone(),
-            svc_owner_conflicts: service_owner_conflicts_of(
-                env.symbol_index.clone().services.clone(),
-                resolved_imports.clone(),
-                parent_index.clone(),
-                module_name.clone(),
-                env.source_indices.clone(),
-            ),
+            svc_owner_conflicts: service_conflicts.clone(),
             locals: all_locals.clone(),
             variant_locals: env_variant_locals.clone(),
             item_registry: local.item_registry.clone(),
