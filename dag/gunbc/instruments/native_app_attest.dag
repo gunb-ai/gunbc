@@ -12,7 +12,9 @@ import extdeps.apple.app_attest {
   AttestationKeyIdMismatch, AttestationAppIdMismatch, AttestationCounterNonZero, AttestationEnvironmentUnexpected,
   AttestationCredentialIdMismatch, AttestationValidationCategoryAbsent, AttestationUndecodable,
   AttestationVerification, AttestationVerified, AttestationRefused,
-  decode_attestation, attestation_refusal, verify_attestation, chain_link_refusal, base64_of,
+  decode_attestation, attestation_refusal, verify_attestation, chain_link_verifies, base64_of,
+  AttestationValidationCategoryRefused, AttestationBundleVersionAbsent, AttestationBundleVersionUnexpected,
+  AssertionValidationCategoryRefused, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
   AssertionExpectation, AssertionVerification, AssertionAuthentic, AssertionRefused,
   AssertionRefusal, AssertionAppIdMismatch, AssertionValidationCategoryAbsent, AssertionSignatureInvalid,
   assertion_parts, AssertionPartsOk, AssertionPartsRefused, assertion_signature_verifies_for, verify_assertion,
@@ -37,7 +39,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 // AttestationValidationCategoryAbsent (attestation) and AssertionValidationCategoryAbsent
 // (assertion) -- reaching that arm is the evidence every earlier step passed on real bytes. The
 // chain links, which the fold sequences after the structural steps, are therefore run at their
-// own producer (chain_link_refusal) over the same decode. WHAT A WHOLE-FOLD POSITIVE CONTROL NEEDS,
+// own producer (chain_link_verifies) over the same decode. WHAT A WHOLE-FOLD POSITIVE CONTROL NEEDS,
 // named as its trigger: an Apple attestation and assertion carrying both extensions -- a newer
 // published sample, or the first object off the operator's enrolled phone -- pinned as an
 // extdeps.apple row, at which point sample_verdict's expected arm becomes AttestationVerified /
@@ -68,10 +70,22 @@ type AppAttestSample {
   attestation: List<Int>
   assertion: List<Int>
   expectation: AttestationExpectation
-  expected_attestation_verdict: String
-  expected_assertion_verdict: String
+  owed_attestation: OwedAttestationVerdict
+  owed_assertion: OwedAssertionVerdict
   published_assertion_counter: Int
 }
+
+// WHAT A SAMPLE ROW OWES, AS A CLOSED SUM OVER THE FOLD'S OWN RESULT TYPES (review 71337): a row owes
+// either the success arm or one named refusal arm of extdeps.apple.app_attest AttestationRefusal /
+// AssertionRefusal. The owed refusal is carried AS that refusal type and compared by constructor
+// in the matches below -- never as text -- so a reworded detail string cannot move a verdict.
+type OwedAttestationVerdict
+  = OwesAttestationVerified
+  | OwesAttestationRefusedWith { refusal: AttestationRefusal }
+
+type OwedAssertionVerdict
+  = OwesAssertionAuthentic
+  | OwesAssertionRefusedWith { refusal: AssertionRefusal }
 
 fn ios_14_4_sample() -> AppAttestSample {
   AppAttestSample {
@@ -79,8 +93,8 @@ fn ios_14_4_sample() -> AppAttestSample {
     attestation: sample_attestation_octets,
     assertion: sample_assertion_octets,
     expectation: sample_expectation(),
-    expected_attestation_verdict: "category-absent",
-    expected_assertion_verdict: "category-absent",
+    owed_attestation: OwesAttestationRefusedWith { refusal: AttestationValidationCategoryAbsent },
+    owed_assertion: OwesAssertionRefusedWith { refusal: AssertionValidationCategoryAbsent },
     published_assertion_counter: sample_assertion_counter,
   }
 }
@@ -95,10 +109,14 @@ type AppAttestCase {
   observed: String
 }
 
-fn case_of(sample: AppAttestSample, identity: String, observed: String, expected: String) -> AppAttestCase {
-  AppAttestCase { identity: concat(sample.name, concat("_", identity)), held: observed == expected, observed: observed }
+// A CASE IS JUDGED BY A TYPED PREDICATE OVER THE FOLD'S RESULT; `observed` is report text only and
+// never decides `held`.
+fn judged(sample: AppAttestSample, identity: String, held: Bool, observed: String) -> AppAttestCase {
+  AppAttestCase { identity: concat(sample.name, concat("_", identity)), held: held, observed: observed }
 }
 
+// Report text for a refusal, EXHAUSTIVE over the sum (no wildcard: a new refusal arm is a compile
+// refusal here, not an "other").
 fn attestation_refusal_name(c: AttestationRefusal) -> String {
   match c {
     AttestationFormatUnexpected { declared: d } => concat("format:", d)
@@ -106,12 +124,14 @@ fn attestation_refusal_name(c: AttestationRefusal) -> String {
     AttestationNonceMismatch => "nonce"
     AttestationKeyIdMismatch { declared: _ } => "key-id"
     AttestationAppIdMismatch { expected_app_id: _ } => "app-id"
-    AttestationCounterNonZero { counter: _ } => "counter"
+    AttestationCounterNonZero { counter: n } => concat("counter:", to_string(value: n))
     AttestationEnvironmentUnexpected { expected: _ } => "environment"
     AttestationCredentialIdMismatch { declared: _ } => "credential-id"
+    AttestationValidationCategoryRefused { category: n } => concat("category-refused:", to_string(value: n))
     AttestationValidationCategoryAbsent => "category-absent"
+    AttestationBundleVersionAbsent => "bundle-version-absent"
+    AttestationBundleVersionUnexpected { declared: d } => concat("bundle-version:", d)
     AttestationUndecodable { cause: d } => concat("undecodable:", d)
-    _ => "other"
   }
 }
 
@@ -126,6 +146,84 @@ fn refusal_verdict(r: AttestationRefusal?) -> String {
   match r {
     Absent => "none"
     Present { value: c } => attestation_refusal_name(c: c)
+  }
+}
+
+fn attestation_refusal_of(v: AttestationVerification) -> AttestationRefusal? {
+  match v {
+    AttestationVerified { verified: _ } => no_attestation_refusal()
+    AttestationRefused { cause: c } => attestation_refusal_present(c: c)
+  }
+}
+
+fn attestation_refusal_present(c: AttestationRefusal) -> AttestationRefusal? {
+  Present { value: c }
+}
+
+fn no_attestation_refusal() -> AttestationRefusal? {
+  Absent
+}
+
+// SAME CONSTRUCTOR, compared by arm and never by payload text: the owed refusal names which arm of
+// AttestationRefusal the fold must answer. Exhaustive over the owed arm, so a new refusal
+// constructor must be placed here before any row can owe it.
+fn same_attestation_arm(owed: AttestationRefusal, got: AttestationRefusal) -> Bool {
+  match owed {
+    AttestationFormatUnexpected { declared: _ } => match got { AttestationFormatUnexpected { declared: _ } => true  _ => false }
+    AttestationChainUntrusted { detail: _ } => match got { AttestationChainUntrusted { detail: _ } => true  _ => false }
+    AttestationNonceMismatch => match got { AttestationNonceMismatch => true  _ => false }
+    AttestationKeyIdMismatch { declared: _ } => match got { AttestationKeyIdMismatch { declared: _ } => true  _ => false }
+    AttestationAppIdMismatch { expected_app_id: _ } => match got { AttestationAppIdMismatch { expected_app_id: _ } => true  _ => false }
+    AttestationCounterNonZero { counter: _ } => match got { AttestationCounterNonZero { counter: _ } => true  _ => false }
+    AttestationEnvironmentUnexpected { expected: _ } => match got { AttestationEnvironmentUnexpected { expected: _ } => true  _ => false }
+    AttestationCredentialIdMismatch { declared: _ } => match got { AttestationCredentialIdMismatch { declared: _ } => true  _ => false }
+    AttestationValidationCategoryRefused { category: _ } => match got { AttestationValidationCategoryRefused { category: _ } => true  _ => false }
+    AttestationValidationCategoryAbsent => match got { AttestationValidationCategoryAbsent => true  _ => false }
+    AttestationBundleVersionAbsent => match got { AttestationBundleVersionAbsent => true  _ => false }
+    AttestationBundleVersionUnexpected { declared: _ } => match got { AttestationBundleVersionUnexpected { declared: _ } => true  _ => false }
+    AttestationUndecodable { cause: _ } => match got { AttestationUndecodable { cause: _ } => true  _ => false }
+  }
+}
+
+fn refused_with(owed: AttestationRefusal, got: AttestationRefusal?) -> Bool {
+  match got {
+    Absent => false
+    Present { value: g } => same_attestation_arm(owed: owed, got: g)
+  }
+}
+
+fn owed_attestation_holds(owed: OwedAttestationVerdict, v: AttestationVerification) -> Bool {
+  match owed {
+    OwesAttestationVerified => match v { AttestationVerified { verified: _ } => true  AttestationRefused { cause: _ } => false }
+    OwesAttestationRefusedWith { refusal: r } => refused_with(owed: r, got: attestation_refusal_of(v: v))
+  }
+}
+
+fn verifies(v: Bool?) -> Bool {
+  match v {
+    Present { value: b } => b
+    Absent => false
+  }
+}
+
+fn verifies_false(v: Bool?) -> Bool {
+  match v {
+    Present { value: b } => !b
+    Absent => false
+  }
+}
+
+fn chain_untrusted(got: AttestationRefusal?) -> Bool {
+  match got {
+    Absent => false
+    Present { value: r } => match r { AttestationChainUntrusted { detail: _ } => true  _ => false }
+  }
+}
+
+fn counter_refusal_is(n: Int, got: AttestationRefusal?) -> Bool {
+  match got {
+    Absent => false
+    Present { value: r } => match r { AttestationCounterNonZero { counter: c } => c == n  _ => false }
   }
 }
 
@@ -173,16 +271,25 @@ fn with_root(d: AttestationDecoded, root: X509Certificate) -> AttestationDecoded
 
 fn attestation_cases(s: AppAttestSample, d: AttestationDecoded) -> List<AppAttestCase> {
   let e = s.expectation
+  let whole = verify_attestation(object: s.attestation, e: e)
+  let leaf_link = chain_link_verifies(subject: d.leaf, issuer: d.ca)
+  let root_link = chain_link_verifies(subject: d.ca, issuer: d.root)
+  let wrong_root_link = chain_link_verifies(subject: d.ca, issuer: d.ca)
+  let wrong_root_fold = attestation_refusal(d: with_root(d: d, root: d.ca), e: e)
+  let nonce = verify_attestation(object: s.attestation, e: with_client_data(e: e, c: "wurzelpfropg" as NonEmptyStr))
+  let app_id = verify_attestation(object: s.attestation, e: with_app_id(e: e, a: "6MURL8TA57.de.other" as NonEmptyStr))
+  let aaguid = verify_attestation(object: s.attestation, e: in_production(e: e))
+  let counter = attestation_refusal(d: with_counter(d: d, n: 1), e: e)
   [
-    case_of(sample: s, identity: "attestation_verdict_is_the_owed_one", observed: attestation_verdict(v: verify_attestation(object: s.attestation, e: e)), expected: s.expected_attestation_verdict),
-    case_of(sample: s, identity: "attestation_chain_leaf_to_intermediate_verifies_p384", observed: refusal_verdict(r: chain_link_refusal(subject: d.leaf, issuer: d.ca, which: "credential certificate")), expected: "none"),
-    case_of(sample: s, identity: "attestation_chain_intermediate_to_pinned_root_verifies_p384", observed: refusal_verdict(r: chain_link_refusal(subject: d.ca, issuer: d.root, which: "intermediate")), expected: "none"),
-    case_of(sample: s, identity: "attestation_red_wrong_root_signature", observed: refusal_verdict(r: chain_link_refusal(subject: d.ca, issuer: d.ca, which: "intermediate")), expected: "chain:intermediate signature does not verify under its issuer"),
-    case_of(sample: s, identity: "attestation_red_wrong_root_in_the_fold", observed: refusal_verdict(r: attestation_refusal(d: with_root(d: d, root: d.ca), e: e)), expected: "chain:the intermediate's issuer is not the Apple App Attestation Root CA"),
-    case_of(sample: s, identity: "attestation_red_tampered_nonce", observed: attestation_verdict(v: verify_attestation(object: s.attestation, e: with_client_data(e: e, c: "wurzelpfropg" as NonEmptyStr))), expected: "nonce"),
-    case_of(sample: s, identity: "attestation_red_wrong_app_id", observed: attestation_verdict(v: verify_attestation(object: s.attestation, e: with_app_id(e: e, a: "6MURL8TA57.de.other" as NonEmptyStr))), expected: "app-id"),
-    case_of(sample: s, identity: "attestation_red_wrong_aaguid_environment", observed: attestation_verdict(v: verify_attestation(object: s.attestation, e: in_production(e: e))), expected: "environment"),
-    case_of(sample: s, identity: "attestation_red_counter_nonzero", observed: refusal_verdict(r: attestation_refusal(d: with_counter(d: d, n: 1), e: e)), expected: "counter"),
+    judged(sample: s, identity: "attestation_verdict_is_the_owed_one", held: owed_attestation_holds(owed: s.owed_attestation, v: whole), observed: attestation_verdict(v: whole)),
+    judged(sample: s, identity: "attestation_chain_leaf_to_intermediate_verifies_p384", held: verifies(v: leaf_link), observed: bool_verdict(v: leaf_link)),
+    judged(sample: s, identity: "attestation_chain_intermediate_to_pinned_root_verifies_p384", held: verifies(v: root_link), observed: bool_verdict(v: root_link)),
+    judged(sample: s, identity: "attestation_red_wrong_root_signature", held: verifies_false(v: wrong_root_link), observed: bool_verdict(v: wrong_root_link)),
+    judged(sample: s, identity: "attestation_red_wrong_root_in_the_fold", held: chain_untrusted(got: wrong_root_fold), observed: refusal_verdict(r: wrong_root_fold)),
+    judged(sample: s, identity: "attestation_red_tampered_nonce", held: refused_with(owed: AttestationNonceMismatch, got: attestation_refusal_of(v: nonce)), observed: attestation_verdict(v: nonce)),
+    judged(sample: s, identity: "attestation_red_wrong_app_id", held: refused_with(owed: AttestationAppIdMismatch { expected_app_id: "6MURL8TA57.de.other" as NonEmptyStr }, got: attestation_refusal_of(v: app_id)), observed: attestation_verdict(v: app_id)),
+    judged(sample: s, identity: "attestation_red_wrong_aaguid_environment", held: refused_with(owed: AttestationEnvironmentUnexpected { expected: AppAttestProduction }, got: attestation_refusal_of(v: aaguid)), observed: attestation_verdict(v: aaguid)),
+    judged(sample: s, identity: "attestation_red_counter_nonzero", held: counter_refusal_is(n: 1, got: counter), observed: refusal_verdict(r: counter)),
   ]
 }
 
@@ -190,8 +297,11 @@ fn assertion_refusal_name(c: AssertionRefusal) -> String {
   match c {
     AssertionSignatureInvalid => "signature"
     AssertionAppIdMismatch { expected_app_id: _ } => "app-id"
+    AssertionValidationCategoryRefused { category: n } => concat("category-refused:", to_string(value: n))
     AssertionValidationCategoryAbsent => "category-absent"
-    _ => "other"
+    AssertionBundleVersionAbsent => "bundle-version-absent"
+    AssertionBundleVersionUnexpected { declared: d } => concat("bundle-version:", d)
+    AssertionUndecodable { cause: d } => concat("undecodable:", d)
   }
 }
 
@@ -199,6 +309,32 @@ fn assertion_verdict(v: AssertionVerification) -> String {
   match v {
     AssertionAuthentic { authentic: _ } => "authentic"
     AssertionRefused { cause: c } => assertion_refusal_name(c: c)
+  }
+}
+
+fn same_assertion_arm(owed: AssertionRefusal, got: AssertionRefusal) -> Bool {
+  match owed {
+    AssertionSignatureInvalid => match got { AssertionSignatureInvalid => true  _ => false }
+    AssertionAppIdMismatch { expected_app_id: _ } => match got { AssertionAppIdMismatch { expected_app_id: _ } => true  _ => false }
+    AssertionValidationCategoryRefused { category: _ } => match got { AssertionValidationCategoryRefused { category: _ } => true  _ => false }
+    AssertionValidationCategoryAbsent => match got { AssertionValidationCategoryAbsent => true  _ => false }
+    AssertionBundleVersionAbsent => match got { AssertionBundleVersionAbsent => true  _ => false }
+    AssertionBundleVersionUnexpected { declared: _ } => match got { AssertionBundleVersionUnexpected { declared: _ } => true  _ => false }
+    AssertionUndecodable { cause: _ } => match got { AssertionUndecodable { cause: _ } => true  _ => false }
+  }
+}
+
+fn assertion_refused_with(owed: AssertionRefusal, v: AssertionVerification) -> Bool {
+  match v {
+    AssertionAuthentic { authentic: _ } => false
+    AssertionRefused { cause: c } => same_assertion_arm(owed: owed, got: c)
+  }
+}
+
+fn owed_assertion_holds(owed: OwedAssertionVerdict, v: AssertionVerification) -> Bool {
+  match owed {
+    OwesAssertionAuthentic => match v { AssertionAuthentic { authentic: _ } => true  AssertionRefused { cause: _ } => false }
+    OwesAssertionRefusedWith { refusal: r } => assertion_refused_with(owed: r, v: v)
   }
 }
 
@@ -239,29 +375,58 @@ fn assertion_with(e: AssertionExpectation, client_data: NonEmptyStr, app_id: Non
   AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: client_data, app_id: app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }
 }
 
-fn assertion_counter_observed(s: AppAttestSample) -> String {
+fn assertion_counter_of(s: AppAttestSample) -> Int? {
   match assertion_parts(object: s.assertion) {
-    AssertionPartsOk { parts: p } => to_string(value: p.auth.prefix.sign_count)
-    AssertionPartsRefused { cause: c } => concat("refused:", assertion_refusal_name(c: c))
+    AssertionPartsOk { parts: p } => counter_present(n: p.auth.prefix.sign_count)
+    AssertionPartsRefused { cause: _ } => no_counter()
+  }
+}
+
+fn counter_present(n: Int) -> Int? {
+  Present { value: n }
+}
+
+fn no_counter() -> Int? {
+  Absent
+}
+
+fn counter_text(n: Int?) -> String {
+  match n {
+    Present { value: c } => to_string(value: c)
+    Absent => "refused"
+  }
+}
+
+fn counter_is(n: Int?, published: Int) -> Bool {
+  match n {
+    Present { value: c } => c == published
+    Absent => false
   }
 }
 
 fn assertion_cases(s: AppAttestSample, d: AttestationDecoded) -> List<AppAttestCase> {
   match assertion_expectation(s: s, d: d) {
-    Absent => [case_of(sample: s, identity: "assertion_expectation_from_the_attested_leaf", observed: "leaf key not bytes", expected: "present")]
-    Present { value: e } => [
-      case_of(sample: s, identity: "assertion_verdict_is_the_owed_one", observed: assertion_verdict(v: verify_assertion(object: s.assertion, e: e)), expected: s.expected_assertion_verdict),
-      case_of(sample: s, identity: "assertion_signature_verifies_p256_under_the_attested_key", observed: bool_verdict(v: assertion_signature_verifies_for(object: s.assertion, e: e)), expected: "true"),
-      case_of(sample: s, identity: "assertion_red_tampered_nonce", observed: bool_verdict(v: assertion_signature_verifies_for(object: s.assertion, e: assertion_with(e: e, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id))), expected: "false"),
-      case_of(sample: s, identity: "assertion_red_wrong_app_id", observed: assertion_verdict(v: verify_assertion(object: s.assertion, e: assertion_with(e: e, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr))), expected: "app-id"),
-      case_of(sample: s, identity: "assertion_counter_is_carried_out_as_published", observed: assertion_counter_observed(s: s), expected: to_string(value: s.published_assertion_counter)),
-    ]
+    Absent => [judged(sample: s, identity: "assertion_expectation_from_the_attested_leaf", held: false, observed: "leaf key not bytes")]
+    Present { value: e } => {
+      let whole = verify_assertion(object: s.assertion, e: e)
+      let signature = assertion_signature_verifies_for(object: s.assertion, e: e)
+      let nonce = assertion_signature_verifies_for(object: s.assertion, e: assertion_with(e: e, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id))
+      let app_id = verify_assertion(object: s.assertion, e: assertion_with(e: e, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr))
+      let counter = assertion_counter_of(s: s)
+      [
+        judged(sample: s, identity: "assertion_verdict_is_the_owed_one", held: owed_assertion_holds(owed: s.owed_assertion, v: whole), observed: assertion_verdict(v: whole)),
+        judged(sample: s, identity: "assertion_signature_verifies_p256_under_the_attested_key", held: verifies(v: signature), observed: bool_verdict(v: signature)),
+        judged(sample: s, identity: "assertion_red_tampered_nonce", held: verifies_false(v: nonce), observed: bool_verdict(v: nonce)),
+        judged(sample: s, identity: "assertion_red_wrong_app_id", held: assertion_refused_with(owed: AssertionAppIdMismatch { expected_app_id: "6MURL8TA57.de.other" as NonEmptyStr }, v: app_id), observed: assertion_verdict(v: app_id)),
+        judged(sample: s, identity: "assertion_counter_is_carried_out_as_published", held: counter_is(n: counter, published: s.published_assertion_counter), observed: counter_text(n: counter)),
+      ]
+    }
   }
 }
 
 fn sample_cases(s: AppAttestSample) -> List<AppAttestCase> {
   match decode_attestation(object: s.attestation) {
-    AttestationDecodeRefused { cause: c } => [case_of(sample: s, identity: "attestation_decodes", observed: attestation_refusal_name(c: c), expected: "decoded")]
+    AttestationDecodeRefused { cause: c } => [judged(sample: s, identity: "attestation_decodes", held: false, observed: attestation_refusal_name(c: c))]
     AttestationDecodeOk { decoded: d } => concat(attestation_cases(s: s, d: d), assertion_cases(s: s, d: d))
   }
 }
