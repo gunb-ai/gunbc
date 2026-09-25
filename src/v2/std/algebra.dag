@@ -31,15 +31,6 @@ import std.algebra {
   list_snoc_item,
 }
 
-type ApproximateField<T> {
-  add: fn(T, T) -> T
-  zero: T
-  negate: fn(T) -> T
-  mul: fn(T, T) -> T
-  one: T
-  compare: fn(T, T) -> Ordering
-}
-
 type Equivalence<T> {
   eq: fn(T, T) -> Bool
 }

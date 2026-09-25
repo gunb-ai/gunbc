@@ -1,7 +1,7 @@
 module test.claim.repository_convergence_placement_witness_test
 
 import std.types { String, Bool }
-import gunbc.live_deploy.repository_convergence { convergence_fetch_trusted_directory }
+import gunbc.live_deploy.repository_convergence { convergence_fetch_upload_pack }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead,
@@ -412,8 +412,19 @@ test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool
 // ignores GIT_TEST_ASSUME_DIFFERENT_OWNER. Its trigger is the next srv1 dashboard_deploy, whose
 // ConvergenceObjectImportRefused arm reds on this exact cause.
 test fn the_fetch_source_is_trusted_at_its_git_dir_not_its_worktree() -> Bool {
-  convergence_fetch_trusted_directory(remote: fixture_object_source) == "/home/ghrunner/work/gunbc/gunbc/.git"
-    && convergence_fetch_trusted_directory(remote: fixture_object_source) != fixture_object_source
-    && convergence_fetch_trusted_directory(remote: "/srv/another-checkout") == "/srv/another-checkout/.git"
-    && convergence_fetch_trusted_directory(remote: fixture_object_source) != "*"
+  convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c 'safe.directory=/home/ghrunner/work/gunbc/gunbc' upload-pack"
+    && convergence_fetch_upload_pack(remote: "/srv/another-checkout") == "git -c 'safe.directory=/srv/another-checkout/.git' upload-pack"
+    && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c 'safe.directory=*' upload-pack"
+}
+
+// THE SOURCE TRUST IS CARRIED INSIDE --upload-pack (srv1 dashboard_deploy run 36100865330). The
+// oracle is srv1's A/B (extdeps.git git_local_fetch_upload_pack_command): `-c` on the fetch REFUSED,
+// `--upload-pack="git -c safe.directory=<S>/.git upload-pack"` fetched. Expected strings are
+// written out. RED: the bare `git-upload-pack` default (no carriage) and an unquoted splice both
+// differ; a path carrying an apostrophe and a space stays ONE shell word.
+test fn the_fetch_source_trust_rides_inside_upload_pack_quoted() -> Bool {
+  convergence_fetch_upload_pack(remote: fixture_object_source) == "git -c 'safe.directory=/home/ghrunner/work/gunbc/gunbc/.git' upload-pack"
+    && convergence_fetch_upload_pack(remote: fixture_object_source) != "git-upload-pack"
+    && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c safe.directory=/home/ghrunner/work/gunbc/gunbc/.git upload-pack"
+    && convergence_fetch_upload_pack(remote: "/srv/it's here") == "git -c 'safe.directory=/srv/it'\\''s here/.git' upload-pack"
 }

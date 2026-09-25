@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.nat { Nat }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, SingleAuthority, Scaffold }
+import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -57,7 +57,7 @@ type RunnerReplacementCause
   | ReplacementCauseWedgedBroker {}
   | ReplacementCauseOperatorForced { detail: String }
 
-data runner_lifecycle_authority_disposition: Disposition = SingleAuthority
+data runner_lifecycle_authority_disposition: ConstructionMechanism = SingleAuthority
 
 data runner_lifecycle_ctrl_void_note: String = "gunbc citations must not treat ctrl as a live upstream repo (operator ruling 2026-08-06). On hosts ctrl IS still deployed: install-actions-runner.sh lives at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh; ctrl-runner-reclaim.timer is active. gunbc.runner_lifecycle ADD path must READ that installer as ground truth for what creates a runner, then subsume it through HostEffect arms — never invoke ctrl from gunbc run, never fork runner-liveness-reconcile (timer active on srv1 every 2 min; /opt/actions-runner/runner-liveness-reconcile.sh documents the Aug-6 outage — #7940 subsumes it). runner_host_deploy ctrl path literals remain void legacy pointers only."
 

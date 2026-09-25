@@ -23,14 +23,14 @@ type FloatBody
     }
   | NonFinite { tag: FloatSpecial }
 
-type Float32 {
+type Binary32 {
   body: FloatBody
 }
 
-type Float64 {
+type Binary64 {
   body: FloatBody
 }
-type Float = Float64
+type Float = Binary64
 fn sign_rank_lex(s: Bit) -> v2.std.nat.Nat {
   match s {
     true => v2.std.nat.Zero
