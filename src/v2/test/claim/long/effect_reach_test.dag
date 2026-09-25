@@ -212,7 +212,8 @@ test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool {
 }
 
 test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool {
-  !effect_reach_touched_by_paths(
+  derived_host_reading(classification: transport_classification())
+    && !effect_reach_touched_by_paths(
     classification: transport_classification(),
     touched_paths: ["src/v2/std/logic.dag"]
   )

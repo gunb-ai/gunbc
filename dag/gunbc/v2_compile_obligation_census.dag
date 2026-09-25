@@ -454,6 +454,11 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
       function: "gate_green_synthetic_shape_from_catalog_call",
       module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
+    witness_subject(
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      function: "gate_red_machine_shape_record_literal_outside_its_home",
+      module_path: "v2.test.claim.machine_shape_construction_wall"
+    ),
   ],
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,

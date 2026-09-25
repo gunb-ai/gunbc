@@ -249,6 +249,7 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
+    V2NativeFrontier,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -326,6 +327,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-cli"),
             TargetProducer::V2NativeCli,
+        ),
+        (
+            instrument_label("v2-native-frontier"),
+            TargetProducer::V2NativeFrontier,
         ),
         (
             instrument_label("emitted-crate-workspace"),
@@ -738,6 +743,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -1014,6 +1020,51 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 held.door_refusal_reason,
             ),
         },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
+/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
+/// an unknown word is a harness defect, never a pass.
+///
+/// `held` and `advanced` are the observation holding: every planned identity reached a terminal
+/// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
+/// roster, which the nightly turns into a pull request. `lost` and `unminted` are the observation
+/// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
+/// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
+/// clause or the pattern was narrower than the universe, so the subject was not reached.
+fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
+    let pattern = native_route_default_pattern_text();
+    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+        Ok(run) => {
+            let termination = match run.frontier.as_str() {
+                "held" | "advanced" => Termination::ObservationHeld,
+                "lost" | "unminted" => Termination::ObservationDidNotHold,
+                "not-a-measurement" => Termination::SubjectUnreached,
+                other => {
+                    return InvocationOutcome {
+                        termination: Termination::SubjectUnreached,
+                        message: format!(
+                            "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
+                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                        ),
+                    }
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!(
+                    "v2-native-frontier: frontier={} (lane qualification: {}); findings and any proposed \
+                     roster are the [native-frontier] and [native-frontier-roster] lines above",
+                    run.frontier, run.admission_summary
+                ),
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,

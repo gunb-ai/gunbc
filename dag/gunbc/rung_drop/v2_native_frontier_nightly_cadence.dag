@@ -1,0 +1,46 @@
+module gunbc.rung_drop.v2_native_frontier_nightly_cadence
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-23 (operator ruling via neat-boar-16). This is the differently-named drop that
+// gunbc.rung_drop v2_native_route_off_the_merge_path pre-authorises as its third option: "a job
+// that runs on a different cadence with its own row". The job is the nightly `native-frontier`
+// workflow (gunbc.native_frontier_workflow). It runs `//gunbc/instruments:v2-native-frontier`,
+// and gunbc.native_frontier_ratchet judges that run against the committed roster.
+//
+// THE RUNG THE NIGHTLY RESTORES IS RESTORED BY CADENCE, NOT ON THE MERGE PATH, and the row says so
+// rather than claiming the previous rung back (DESIGN section 4b(1)). A regression is caught
+// mechanically, but a day late and without blocking the change that caused it. So the temporary
+// rung stays mitigatable: the frontier cannot silently move backwards, but it can merge backwards.
+//
+// SEQUENCING WITH THE ROW IT REPLACES. That row retires on an OBSERVED nightly run, never on this
+// emission (the gunbc.rung_drop floor_cut_heal precedent: a capability is retired by its
+// execution). Until then both rows stand, and the older one is the accurate description of the
+// loss. The flip is one edit: that row's standing becomes Retired, with the first run's receipt as
+// `trigger_fired`.
+
+data v2_native_frontier_nightly_cadence_population: List<String> = [
+  "gunbc.native_frontier_ratchet native_frontier_verdict over the whole v2.test.* universe, on every merge candidate (it runs nightly on main instead)",
+  "the derived v2.test.* universe executed by the emitted-native compiler, on every merge candidate",
+  "what the route cannot see even when it runs, so a shrinking roster bounds the frontier from below and never measures it exactly: (i) every refusal inside a module whose FILE the front end refused; (ii) sites under a refused binder, which resolve marks ObservationIncomplete and never visits; (iii) call arguments, which do not reach resolve (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering); and, per identity, every refusal after the FIRST terminal one",
+]
+
+data v2_native_frontier_nightly_cadence: RungDrop = RungDrop {
+  identity: "v2_native_frontier_nightly_cadence" as NonEmptyStr,
+
+  subject: "The v2 native frontier (the ratchet over the emitted-native route's refusals) runs nightly, not on the merge path",
+
+  declared: "2026-09-23",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: v2_native_frontier_nightly_cadence_population,
+    restoration_trigger: "A REQUIRED merge_group (or per-pull-request) lane that runs //gunbc/instruments:v2-native-frontier and whose red blocks the landing, admitted by a further operator decision (the job roster is closed to growth). That decision must be made from the wall the nightly measures on the real runner class, not from a cited one, and the lane must supersede an older run of the same subject. The nightly alone does NOT retire this row. Neither does a non-required lane: the merge path is the capability this row lost. The lower-bound population (front-end file refusals, ObservationIncomplete under refused binders, call arguments, per-identity refusals after the first) is NOT restored by that lane either. Each of those retires only when the route observes it, and a row naming one of them must be split out rather than retired with this one",
+  }
+}

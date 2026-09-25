@@ -201,6 +201,22 @@ fn v2_native_cli_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-cli" } }
 }
 
+// THE NATIVE FRONTIER INSTRUMENT: the same adjudicating run as the native route, over the whole
+// v2.test.* universe, answered by gunbc.native_frontier_ratchet instead of by the lane's route
+// qualification. The two are different questions. Qualification asks whether this run was a sound
+// route. The frontier asks whether this run's debt equals the committed roster
+// (gunbc.native_frontier_roster), and it passes only on `held` or `advanced`. It is a separate label
+// because its verdict is a separate fact: a regressed identity turns this red, while qualification
+// counts a classified refusal and stays green.
+//
+// ITS CONSUMER is the nightly `native-frontier` workflow (gunbc.native_frontier_workflow), which runs
+// it on the srv self-hosted class under a memory bound and opens the pull request its proposal
+// describes. Its subject corpus is the self-host instrument's, because the adjudicating binary is
+// that instrument's emitted closure.
+fn v2_native_frontier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }
+}
+
 // THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
 // closure, `v2.workflow.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
 // rows from the derived module DAG, the emission's returned edges and the transitive unit
@@ -398,6 +414,10 @@ fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() } }
 }
 
+fn v2_native_frontier_binding() -> TargetBinding {
+  TargetBinding { target: v2_native_frontier_label() producer: V2NativeFrontierProducer {} }
+}
+
 fn self_host_binding() -> TargetBinding {
   TargetBinding { target: self_host_label() producer: SelfHostProducer {} }
 }
@@ -520,7 +540,7 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(),
@@ -534,7 +554,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
