@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, NodeLocus, None, Rejected, Unavailable }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -360,12 +360,28 @@ fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Boo
   }
 }
 
+// The `_` class also asserts its correction arm: CorrectionNotModeled, because the missing piece is a
+// compiler capability, not an authoring error. A diagnostic answering UserInputBoundary here would
+// tell the author to rename a source v1 accepts.
+fn nfbcp_correction_is_not_modeled(d: Diagnostic) -> Bool {
+  match d.correction {
+    Unavailable { reason: CorrectionNotModeled } => true
+    _ => false
+  }
+}
+
 test fn nfbcp_repeated_anonymous_param_refuses_at_the_second_binding_holds() -> Bool {
-  nfbcp_fn_decl_refuses_with(
-    text: nfbcp_anonymous_repeat_source,
-    reason: ^body_lowering_reason_arrow_domain_anonymous_param_repeated,
-    atom: ^B
-  )
+  match nfbcp_fn_decl_shell(text: nfbcp_anonymous_repeat_source) {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_decl_to_arrow(shell: shell) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          (ne.head.reason == ^body_lowering_reason_arrow_domain_anonymous_param_repeated)
+            && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
+            && nfbcp_correction_is_not_modeled(d: ne.head)
+      }
+  }
 }
 
 test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {

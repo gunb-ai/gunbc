@@ -57,9 +57,11 @@ import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional 
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
   Accepted,
+  CorrectionNotModeled,
   Diagnostic,
   Diagnostics,
   NonEmptyDiagnostics,
+  NoCorrectionReason,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -3118,11 +3120,23 @@ fn body_lower_repeated_param_binding_reason(edge: Edge) -> Symbol {
   }
 }
 
+// THE CORRECTION ARM FOLLOWS THE CLASS. A repeated named binder is an authoring error the author
+// corrects (UserInputBoundary). A repeated `_` is not: v1 admits it, and what is missing is a
+// compiler capability -- a domain carrier for an unnamed slot -- so its correction is
+// CorrectionNotModeled, and renaming the source is not the remedy.
+fn body_lower_repeated_param_binding_correction(edge: Edge) -> NoCorrectionReason {
+  if body_lower_repeated_param_binding_reason(edge: edge) == ^body_lowering_reason_arrow_domain_anonymous_param_repeated {
+    CorrectionNotModeled
+  } else {
+    UserInputBoundary
+  }
+}
+
 fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
   Diagnostic {
     reason: body_lower_repeated_param_binding_reason(edge: edge),
     at: node_locus(node: edge.target),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: Unavailable { reason: body_lower_repeated_param_binding_correction(edge: edge) }
   }
 }
 
