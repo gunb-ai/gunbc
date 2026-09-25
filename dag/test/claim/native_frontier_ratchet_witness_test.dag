@@ -19,7 +19,7 @@ import gunbc.witness_v2_native_route {
   DivergencesPresent, UnattributedExclusionsPresent, EmittedBuildNotClean, PopulationOmissionsPresent
 }
 import gunbc.native_route_progress_guard {
-  NativeProgressObservedReading, NativeProgressDispositionRow, SubjectDeleted,
+  NativeProgressObservedReading, NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed,
   AttainAgreed, AttainDiverged, native_progress_read_observed
 }
 import gunbc.native_frontier_debt {
@@ -47,6 +47,7 @@ import gunbc.native_frontier_ratchet {
 
 data subject_a: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.alpha", declaration: "holds" }
 data subject_b: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.beta", declaration: "holds" }
+data subject_c: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.gamma", declaration: "holds" }
 
 data entry_cause: NativeRouteExclusionCause = NativeEntryResolutionLimit { reason: ^native_test_entry_declaration_not_found }
 data other_cause: NativeRouteExclusionCause = CompilerFrontierAttributed { reason: ^some_other_frontier_cause }
@@ -66,8 +67,8 @@ data mint_receipt: NativeFrontierMintReceipt = NativeFrontierMintReceipt {
   executable_identity: "executable"
 }
 
-fn minted(rows: List<NativeFrontierDebtRow>, dispositions: List<NativeProgressDispositionRow>) -> NativeFrontierRosterStanding {
-  RosterMinted { receipt: mint_receipt, rows: rows, dispositions: dispositions, cause_transitions: [] }
+fn minted(universe: List<NativeRouteTestIdentity>, rows: List<NativeFrontierDebtRow>, dispositions: List<NativeProgressDispositionRow>) -> NativeFrontierRosterStanding {
+  RosterMinted { receipt: mint_receipt, universe: universe, rows: rows, dispositions: dispositions, cause_transitions: [] }
 }
 
 fn refused(identity: NativeRouteTestIdentity, stage: NativeTestStage, cause: NativeRouteExclusionCause) -> NativeProgressObservedReading {
@@ -110,7 +111,7 @@ fn lost_with(v: NativeFrontierVerdict, prefix: String) -> Bool {
 
 test fn equality_holds() -> Bool {
   match judge(
-    standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+    standing: minted(universe: [subject_a, subject_b], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
     readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause), agreed(identity: subject_b)]
   ) {
     FrontierHeld => native_frontier_verdict_word(v: FrontierHeld) == "held"
@@ -125,13 +126,13 @@ test fn equality_holds() -> Bool {
 // nightly opens a pull request for.
 test fn a_cleared_row_advances_and_the_proposal_drops_it() -> Bool {
   match judge(
-    standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+    standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
     readings: [agreed(identity: subject_a)]
   ) {
     FrontierAdvanced { advanced: a, proposal: p } =>
-      length(xs: a) == 1 && is_empty(xs: p)
+      length(xs: a) == 1 && is_empty(xs: p.rows)
         && any(xs: native_frontier_report_lines(v: FrontierAdvanced { advanced: a, proposal: p }), predicate: fn(l) {
-          starts_with(s: l, prefix: "1 roster row(s) cleared or later-staged, NOT YET APPLIED")
+          starts_with(s: l, prefix: "1 roster change(s) the run supports, NOT YET APPLIED")
         })
     FrontierHeld => false
     FrontierLost { findings: _, proposal: _ } => false
@@ -144,10 +145,10 @@ test fn a_cleared_row_advances_and_the_proposal_drops_it() -> Bool {
 // rather than dropping it: the identity still owes debt, just less of it.
 test fn a_later_stage_refusal_advances_and_keeps_the_row() -> Bool {
   match judge(
-    standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+    standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
     readings: [refused(identity: subject_a, stage: NativeTestStageEval, cause: other_cause)]
   ) {
-    FrontierAdvanced { advanced: _, proposal: p } => length(xs: p) == 1
+    FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.rows) == 1
     FrontierHeld => false
     FrontierLost { findings: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -155,17 +156,19 @@ test fn a_later_stage_refusal_advances_and_keeps_the_row() -> Bool {
   }
 }
 
-// A SUBJECT THAT LEFT WITH ITS DISPOSITION IS NOT A LOSS.
-test fn a_deleted_subject_with_its_disposition_holds() -> Bool {
+// A SUBJECT THAT LEFT WITH ITS DISPOSITION IS NOT A LOSS, AND NOT EQUALITY EITHER: the roster still
+// names it, so the run proposes the roster without it.
+test fn a_deleted_subject_with_its_disposition_advances() -> Bool {
   match judge(
     standing: minted(
+      universe: [subject_a, subject_b],
       rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)],
       dispositions: [NativeProgressDispositionRow { identity: subject_a, disposition: SubjectDeleted { authority: "gunbc#0" } }]
     ),
     readings: [agreed(identity: subject_b)]
   ) {
-    FrontierHeld => true
-    FrontierAdvanced { advanced: _, proposal: _ } => false
+    FrontierHeld => false
+    FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.universe) == 1 && is_empty(xs: p.rows)
     FrontierLost { findings: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -178,7 +181,7 @@ test fn a_deleted_subject_with_its_disposition_holds() -> Bool {
 // regressed from a pass or landed refusing.
 test fn w_RED_an_unrostered_refusal_is_new_debt() -> Bool {
   lost_with(
-    v: judge(standing: minted(rows: [], dispositions: []), readings: [refused(identity: subject_b, stage: NativeTestStageEntry, cause: entry_cause)]),
+    v: judge(standing: minted(universe: [], rows: [], dispositions: []), readings: [refused(identity: subject_b, stage: NativeTestStageEntry, cause: entry_cause)]),
     prefix: "NEW DEBT"
   )
 }
@@ -186,7 +189,7 @@ test fn w_RED_an_unrostered_refusal_is_new_debt() -> Bool {
 test fn w_RED_an_unrostered_divergence_is_new_debt() -> Bool {
   lost_with(
     v: judge(
-      standing: minted(rows: [], dispositions: []),
+      standing: minted(universe: [], rows: [], dispositions: []),
       readings: [native_frontier_reading(row: NativeRouteMemberRow { identity: subject_b, verdict: NativeTestReturnedOther }, expected_red: [], route_gap: [])]
     ),
     prefix: "NEW DEBT"
@@ -196,7 +199,7 @@ test fn w_RED_an_unrostered_divergence_is_new_debt() -> Bool {
 test fn w_RED_an_earlier_stage_refusal_regresses() -> Bool {
   lost_with(
     v: judge(
-      standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
+      standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
       readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)]
     ),
     prefix: "REGRESSED"
@@ -207,7 +210,7 @@ test fn w_RED_an_earlier_stage_refusal_regresses() -> Bool {
 test fn w_RED_a_vanished_subject_without_a_disposition_refuses() -> Bool {
   lost_with(
     v: judge(
-      standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+      standing: minted(universe: [subject_a, subject_b], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
       readings: [agreed(identity: subject_b)]
     ),
     prefix: "MISSING WITHOUT A DISPOSITION"
@@ -216,7 +219,7 @@ test fn w_RED_a_vanished_subject_without_a_disposition_refuses() -> Bool {
 
 test fn w_RED_a_cause_change_at_a_fixed_stage_needs_a_transition_row() -> Bool {
   is_lost(v: judge(
-    standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+    standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
     readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: other_cause)]
   ))
 }
@@ -226,7 +229,7 @@ test fn w_RED_a_cause_change_at_a_fixed_stage_needs_a_transition_row() -> Bool {
 test fn w_RED_an_unminted_roster_proposes_and_does_not_pass() -> Bool {
   let v = judge(standing: RosterUnminted, readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause), agreed(identity: subject_b)])
   match v {
-    FrontierUnminted { proposal: p } => length(xs: p) == 1 && native_frontier_verdict_word(v: v) == "unminted"
+    FrontierUnminted { proposal: p } => length(xs: p.rows) == 1 && length(xs: p.universe) == 2 && native_frontier_verdict_word(v: v) == "unminted"
     FrontierHeld => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierLost { findings: _, proposal: _ } => false
@@ -236,7 +239,7 @@ test fn w_RED_an_unminted_roster_proposes_and_does_not_pass() -> Bool {
 
 test fn w_RED_a_narrower_pattern_is_not_a_measurement() -> Bool {
   match native_frontier_verdict_over(
-    standing: minted(rows: [], dispositions: []),
+    standing: minted(universe: [], rows: [], dispositions: []),
     readings: [agreed(identity: subject_a)],
     admission: NativeRouteAdmitted,
     pattern: narrow_pattern()
@@ -251,7 +254,7 @@ test fn w_RED_a_narrower_pattern_is_not_a_measurement() -> Bool {
 
 test fn w_RED_an_integrity_clause_makes_the_run_not_a_measurement() -> Bool {
   match native_frontier_verdict_over(
-    standing: minted(rows: [], dispositions: []),
+    standing: minted(universe: [], rows: [], dispositions: []),
     readings: [agreed(identity: subject_a)],
     admission: NativeRouteRefused { causes: [PopulationOmissionsPresent] },
     pattern: whole_pattern()
@@ -261,6 +264,74 @@ test fn w_RED_an_integrity_clause_makes_the_run_not_a_measurement() -> Bool {
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierLost { findings: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
+  }
+}
+
+// ═══ the persisted universe and renames (review, 2026-09-25) ═══
+
+// THE HOLE THE PERSISTED UNIVERSE CLOSES. The mint saw A agree and B refuse, so only B is a debt row.
+// A is then deleted. The run finds only B, and B matches its row. Before the universe was
+// persisted, that read as equality.
+test fn w_RED_an_agreed_subject_that_vanished_without_a_disposition_refuses() -> Bool {
+  lost_with(
+    v: judge(
+      standing: minted(universe: [subject_a, subject_b], rows: [debt_row(identity: subject_b, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
+      readings: [refused(identity: subject_b, stage: NativeTestStagePrepare, cause: entry_cause)]
+    ),
+    prefix: "MISSING WITHOUT A DISPOSITION"
+  )
+}
+
+test fn w_RED_an_agreed_subject_now_refusing_is_not_silently_new_debt_either() -> Bool {
+  lost_with(
+    v: judge(
+      standing: minted(universe: [subject_a], rows: [], dispositions: []),
+      readings: [refused(identity: subject_a, stage: NativeTestStageEntry, cause: entry_cause)]
+    ),
+    prefix: "ACCEPT-TO-REFUSE"
+  )
+}
+
+// THE RENAME THE GUARD ADMITS IS NOT NEW DEBT. A refused at prepare and was renamed to C. C still
+// refuses at prepare with the same cause, so it holds A's bar. Before the join, C was NEW DEBT.
+test fn a_rename_target_holding_the_bar_is_not_new_debt() -> Bool {
+  match judge(
+    standing: minted(
+      universe: [subject_a],
+      rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)],
+      dispositions: [NativeProgressDispositionRow { identity: subject_a, disposition: SubjectRenamed { to: subject_c, authority: "gunbc#0" } }]
+    ),
+    readings: [refused(identity: subject_c, stage: NativeTestStagePrepare, cause: entry_cause)]
+  ) {
+    FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.rows) == 1 && length(xs: p.universe) == 1
+    FrontierHeld => false
+    FrontierLost { findings: _, proposal: _ } => false
+    FrontierUnminted { proposal: _ } => false
+    FrontierNotAMeasurement { reasons: _ } => false
+  }
+}
+
+// ...AND A RENAME TARGET BELOW THE BAR IS STILL A LOSS: the join admits the rename, not the drop.
+test fn w_RED_a_rename_target_below_the_bar_refuses() -> Bool {
+  is_lost(v: judge(
+    standing: minted(
+      universe: [subject_a],
+      rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)],
+      dispositions: [NativeProgressDispositionRow { identity: subject_a, disposition: SubjectRenamed { to: subject_c, authority: "gunbc#0" } }]
+    ),
+    readings: [refused(identity: subject_c, stage: NativeTestStagePrepare, cause: entry_cause)]
+  ))
+}
+
+// A NEW SUBJECT THAT AGREES IS NOT DEBT, BUT THE ROSTER'S UNIVERSE LACKS IT, so the run is not
+// equality: it advances, and the proposal enrols it.
+test fn a_new_agreeing_subject_enrols_rather_than_holding() -> Bool {
+  match judge(standing: minted(universe: [subject_a], rows: [], dispositions: []), readings: [agreed(identity: subject_a), agreed(identity: subject_b)]) {
+    FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.universe) == 2 && is_empty(xs: p.rows)
+    FrontierHeld => false
+    FrontierLost { findings: _, proposal: _ } => false
+    FrontierUnminted { proposal: _ } => false
+    FrontierNotAMeasurement { reasons: _ } => false
   }
 }
 
@@ -292,7 +363,7 @@ test fn a_proposed_row_spells_its_constructors() -> Bool {
 
 test fn a_lost_run_names_every_finding() -> Bool {
   length(xs: native_frontier_report_lines(v: judge(
-    standing: minted(rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
+    standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
     readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause), refused(identity: subject_b, stage: NativeTestStagePrepare, cause: entry_cause)]
   ))) == 2
 }

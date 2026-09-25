@@ -12,9 +12,11 @@ import gunbc.native_route_progress_guard { NativeProgressDispositionRow, NativeC
 // universe, one row per identity it does not yet agree on, and nothing else.
 //
 // WHAT KIND OF LITERAL THIS IS (DESIGN section 5). A monotone debt contract over a closed,
-// independently discovered subject universe. The universe is not this file: it is the set of
-// identities `gunbc.witness_v2_native_route` `native_route_default_pattern` plans, discovered from
-// the tree's own `v2.test.*` declarations by the emitted binary on every run. Membership is joined
+// independently discovered subject universe. The universe is DISCOVERED, never authored: it is the
+// set of identities `gunbc.witness_v2_native_route` `native_route_default_pattern` plans, derived
+// from the tree's own `v2.test.*` declarations by the emitted binary on every run. The roster
+// persists the universe its minting run discovered, so that each later run's discovered universe
+// is joined to it at identity grain. Membership is joined
 // at identity grain (`NativeRouteTestIdentity`, the same identity type the route, its admission
 // and gunbc#12049's progress guard key on), never by count, and every way a row can leave carries
 // a typed disposition: the run's own observation of the identity at a better attainment (the row
@@ -58,10 +60,18 @@ type NativeFrontierMintReceipt {
   executable_identity: String
 }
 
+// THE MINTED UNIVERSE IS PERSISTED BESIDE THE DEBT, because "absent from `rows`" can only mean
+// "agreed" relative to a universe the roster itself names. Without it, deleting a subject that
+// agreed left no trace. The next run's universe was simply smaller, every debt row still matched,
+// and the removal passed with no disposition (review, 2026-09-25). With it, every identity in the
+// minted universe is a baseline: a debt row where one exists, BaselineAgreed otherwise
+// (gunbc.native_route_progress_guard's own vocabulary; NativeFrontierDebt gains no agreed arm).
+// So a vanished or renamed identity owes a typed disposition whether it agreed or refused.
 type NativeFrontierRosterStanding
   = RosterUnminted
   | RosterMinted {
       receipt: NativeFrontierMintReceipt
+      universe: List<NativeRouteTestIdentity>
       rows: List<NativeFrontierDebtRow>
       dispositions: List<NativeProgressDispositionRow>
       cause_transitions: List<NativeCauseTransitionRow>

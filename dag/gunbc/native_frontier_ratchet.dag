@@ -32,9 +32,10 @@ import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import gunbc.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed, AttainUnreached,
-  NativeBaselineAttainment, BaselineRefused, BaselineDiverged,
+  NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
   NativeProgressBaselineRow, NativeProgressObservedReading, NativeProgressObservedRow,
   NativeProgressFinding, NativeProgressDispositionRow, NativeCauseTransitionRow,
+  NativeProgressDisposition, SubjectDeleted, SubjectLeftTheUniverse, SubjectRenamed,
   ReachExecutableStarted,
   native_progress_read_observed, native_progress_observed_rows, native_progress_reading_findings,
   native_progress_observed_index, native_progress_disposition_index, native_progress_baseline_index,
@@ -260,12 +261,27 @@ fn native_frontier_integrity_refusals(admission: NativeRouteAdmission) -> List<S
 // carries every finding at once. `Unminted` is a complete run with nothing to hold it to, so it
 // only proposes. `NotAMeasurement` is a receipt that failed an integrity clause, or a pattern
 // narrower than the universe: that run cannot speak for the frontier at all.
+// A PROPOSED ROSTER: the universe the run discovered and the debt it observed, both of which the
+// committed roster must equal. Either one alone would reopen the hole the persisted universe
+// closes.
+type NativeFrontierProposal {
+  universe: List<NativeRouteTestIdentity>
+  rows: List<NativeFrontierDebtRow>
+}
+
 type NativeFrontierVerdict
   = FrontierHeld
-  | FrontierAdvanced { advanced: List<NativeRouteTestIdentity>, proposal: List<NativeFrontierDebtRow> }
-  | FrontierLost { findings: List<String>, proposal: List<NativeFrontierDebtRow> }
-  | FrontierUnminted { proposal: List<NativeFrontierDebtRow> }
+  | FrontierAdvanced { advanced: List<String>, proposal: NativeFrontierProposal }
+  | FrontierLost { findings: List<String>, proposal: NativeFrontierProposal }
+  | FrontierUnminted { proposal: NativeFrontierProposal }
   | FrontierNotAMeasurement { reasons: List<String> }
+
+fn native_frontier_proposal_of(observed: List<NativeProgressObservedRow>) -> NativeFrontierProposal {
+  NativeFrontierProposal {
+    universe: list_map(xs: observed, f: fn(o) { o.identity }),
+    rows: native_frontier_observed_debt_rows(observed: observed)
+  }
+}
 
 fn native_frontier_new_debt_text(n: NativeFrontierNewDebt) -> String {
   join([
@@ -284,22 +300,102 @@ fn native_frontier_debt_text(debt: NativeFrontierDebt) -> String {
   }
 }
 
-// THE COMPARISON, OVER A MINTED ROSTER. Findings come from the guard (per rostered row, per
+// THE BASELINE IS THE WHOLE MINTED UNIVERSE (review, 2026-09-25). Every universe identity with no
+// debt row is BaselineAgreed, so the guard's own folds hold it to its bar: vanished without a
+// disposition is `MISSING WITHOUT A DISPOSITION`, and refused now is accept-to-refuse (there are no
+// accept-to-refuse rows, so that is always a finding). An agreed subject can no longer leave
+// silently.
+fn native_frontier_baseline_rows(
+  universe: List<NativeRouteTestIdentity>,
+  rows: List<NativeFrontierDebtRow>
+) -> List<NativeProgressBaselineRow> {
+  let debt_index = native_progress_baseline_index(rows: list_map(xs: rows, f: native_frontier_row_as_baseline))
+  list_append(
+    left: list_map(xs: rows, f: native_frontier_row_as_baseline),
+    right: list_flat_map(xs: universe, f: fn(i) {
+      match map_lookup(m: debt_index, key: native_route_identity_qualified(identity: i)) {
+        Present { value: _ } => []
+        Absent => [NativeProgressBaselineRow { identity: i, attained: BaselineAgreed }]
+      }
+    })
+  )
+}
+
+// THE IDENTITIES A RENAME DISPOSITION POINTS AT. The guard admits a rename whose target attains at
+// least the original's bar, so the target's own debt is the original's debt under a new name, not
+// new debt. Without this join the target was reported as NEW DEBT for exactly the rename the guard
+// had just admitted.
+fn native_frontier_rename_targets(dispositions: List<NativeProgressDispositionRow>) -> List<String> {
+  list_flat_map(xs: dispositions, f: fn(d) {
+    match d.disposition {
+      SubjectRenamed { to: t, authority: _ } => [native_route_identity_qualified(identity: t)]
+      SubjectDeleted { authority: _ } => []
+      SubjectLeftTheUniverse { moved_to_module: _ } => []
+    }
+  })
+}
+
+// WHAT MAKES THE COMMITTED ROSTER STALE WITHOUT ANY LOSS: a debt row the run beat, an identity the
+// run enrolled that the roster's universe lacks, and an identity a disposition removed. Each is a
+// difference between the roster and the run, so the run is not `Held` (equality). Each is an
+// advance, and the proposal is the roster the run supports. The dispositions themselves are not
+// carried into the proposal: once the removed identity is out of the universe, its disposition
+// describes nothing (`DisposedSubjectHasNoBaselineRow`).
+fn native_frontier_stale(
+  rows: List<NativeFrontierDebtRow>,
+  dispositions: List<NativeProgressDispositionRow>,
+  observed_rows: List<NativeProgressObservedRow>,
+  observed: Map<String, NativeRouteAttainment>,
+  baseline_index: Map<String, NativeBaselineAttainment>,
+  rename_targets: List<String>
+) -> List<String> {
+  list_flat_map(
+    xs: [
+      list_map(
+        xs: filter(xs: rows, predicate: fn(r) { native_frontier_row_advanced(row: r, observed: observed) }),
+        f: fn(r) { join(["ADVANCED (roster row over-states the debt) ", native_route_identity_qualified(identity: r.identity)], "") }
+      ),
+      list_flat_map(xs: observed_rows, f: fn(o) {
+        let key = native_route_identity_qualified(identity: o.identity)
+        match map_lookup(m: baseline_index, key: key) {
+          Present { value: _ } => []
+          Absent =>
+            if any(xs: rename_targets, predicate: fn(t) { t == key }) {
+              [join(["RENAMED IN (disposed rename target, admitted by the guard) ", key], "")]
+            } else {
+              match native_frontier_observed_debt(attained: o.attained) {
+                Present { value: _ } => []
+                Absent => [join(["ENROLLED (a new subject that agrees; the roster's universe lacks it) ", key], "")]
+              }
+            }
+        }
+      }),
+      list_map(xs: dispositions, f: fn(d) {
+        join(["REMOVED WITH A DISPOSITION ", native_route_identity_qualified(identity: d.identity)], "")
+      })
+    ],
+    f: fn(ls) { ls }
+  )
+}
+
+// THE COMPARISON, OVER A MINTED ROSTER. Findings come from the guard (per baseline row, per
 // disposition, per cause transition), from the reading step (malformed readings), and from this
-// module (new debt).
+// module (new debt, net of admitted rename targets).
 fn native_frontier_judge_minted(
+  universe: List<NativeRouteTestIdentity>,
   rows: List<NativeFrontierDebtRow>,
   dispositions: List<NativeProgressDispositionRow>,
   cause_transitions: List<NativeCauseTransitionRow>,
   readings: List<NativeProgressObservedReading>
 ) -> NativeFrontierVerdict {
-  let baseline_rows = list_map(xs: rows, f: native_frontier_row_as_baseline)
+  let baseline_rows = native_frontier_baseline_rows(universe: universe, rows: rows)
   let observed_rows = native_progress_observed_rows(readings: readings)
   let observed = native_progress_observed_index(observed: observed_rows)
   let baseline_index = native_progress_baseline_index(rows: baseline_rows)
   let disposition_index = native_progress_disposition_index(dispositions: dispositions)
   let transition_index = native_cause_transition_index(rows: cause_transitions)
   let no_accept_to_refuse = native_accept_to_refuse_index(rows: [])
+  let rename_targets = native_frontier_rename_targets(dispositions: dispositions)
   let guard_findings: List<NativeProgressFinding> = list_flat_map(
     xs: [
       native_progress_reading_findings(readings: readings),
@@ -320,21 +416,27 @@ fn native_frontier_judge_minted(
     f: fn(fs) { fs }
   )
   let observed_debt = native_frontier_observed_debt_rows(observed: observed_rows)
-  let new_debt = native_frontier_new_debt(observed_debt: observed_debt, baseline_index: baseline_index)
+  let new_debt = filter(
+    xs: native_frontier_new_debt(observed_debt: observed_debt, baseline_index: baseline_index),
+    predicate: fn(n) {
+      any(xs: rename_targets, predicate: fn(t) { t == native_route_identity_qualified(identity: n.identity) }) == false
+    }
+  )
   let findings = list_append(
     left: list_map(xs: guard_findings, f: fn(f) { native_progress_finding_text(f: f) }),
     right: list_map(xs: new_debt, f: native_frontier_new_debt_text)
   )
-  let advanced = list_map(
-    xs: filter(xs: rows, predicate: fn(r) { native_frontier_row_advanced(row: r, observed: observed) }),
-    f: fn(r) { r.identity }
+  let stale = native_frontier_stale(
+    rows: rows, dispositions: dispositions, observed_rows: observed_rows, observed: observed,
+    baseline_index: baseline_index, rename_targets: rename_targets
   )
+  let proposal = native_frontier_proposal_of(observed: observed_rows)
   if is_empty(xs: findings) == false {
-    FrontierLost { findings: findings, proposal: observed_debt }
-  } else if is_empty(xs: advanced) {
+    FrontierLost { findings: findings, proposal: proposal }
+  } else if is_empty(xs: stale) {
     FrontierHeld
   } else {
-    FrontierAdvanced { advanced: advanced, proposal: observed_debt }
+    FrontierAdvanced { advanced: stale, proposal: proposal }
   }
 }
 
@@ -375,9 +477,9 @@ fn native_frontier_verdict_over(
   } else {
     match standing {
       RosterUnminted =>
-        FrontierUnminted { proposal: native_frontier_observed_debt_rows(observed: native_progress_observed_rows(readings: readings)) }
-      RosterMinted { receipt: _, rows: rows, dispositions: ds, cause_transitions: ts } =>
-        native_frontier_judge_minted(rows: rows, dispositions: ds, cause_transitions: ts, readings: readings)
+        FrontierUnminted { proposal: native_frontier_proposal_of(observed: native_progress_observed_rows(readings: readings)) }
+      RosterMinted { receipt: _, universe: u, rows: rows, dispositions: ds, cause_transitions: ts } =>
+        native_frontier_judge_minted(universe: u, rows: rows, dispositions: ds, cause_transitions: ts, readings: readings)
     }
   }
 }
@@ -403,13 +505,13 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
       list_append(
         left: [join([
           integer_int_to_decimal_string(value: length(xs: a)),
-          " roster row(s) cleared or later-staged, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
+          " roster change(s) the run supports, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
         ], "")],
-        right: list_map(xs: a, f: fn(i) { join(["ADVANCED (roster row over-states the debt) ", native_route_identity_qualified(identity: i)], "") })
+        right: a
       )
     FrontierLost { findings: fs, proposal: _ } => fs
     FrontierUnminted { proposal: p } =>
-      [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes ", integer_int_to_decimal_string(value: length(xs: p)), " debt row(s) for review"], "")]
+      [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", integer_int_to_decimal_string(value: length(xs: p.universe)), " identities and ", integer_int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
     FrontierNotAMeasurement { reasons: rs } =>
       list_map(xs: rs, f: fn(r) { join(["NOT A MEASUREMENT ", r], "") })
   }
@@ -423,7 +525,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
 // both findings in their own right (`DisposedSubjectHasNoBaselineRow`,
 // `CauseTransitionDispositionContradicted`). The pull request that added them is where they live
 // afterwards.
-fn native_frontier_proposal(v: NativeFrontierVerdict) -> Optional<List<NativeFrontierDebtRow>> {
+fn native_frontier_proposal(v: NativeFrontierVerdict) -> Optional<NativeFrontierProposal> {
   match v {
     FrontierHeld => optional_absent()
     FrontierAdvanced { advanced: _, proposal: p } => optional_present(value: p)
@@ -469,6 +571,10 @@ fn native_frontier_debt_constructor(debt: NativeFrontierDebt) -> String {
   }
 }
 
+fn native_frontier_identity_line(i: NativeRouteTestIdentity) -> String {
+  join(["    NativeRouteTestIdentity { module: \"", i.module, "\", declaration: \"", i.declaration, "\" },"], "")
+}
+
 fn native_frontier_row_line(row: NativeFrontierDebtRow) -> String {
   join([
     "    NativeFrontierDebtRow { identity: NativeRouteTestIdentity { module: \"", row.identity.module,
@@ -480,7 +586,7 @@ fn native_frontier_row_line(row: NativeFrontierDebtRow) -> String {
 // THE WHOLE ROSTER FILE. It carries only imports and the one data row, so the proposal restates no
 // declaration: the vocabulary lives in gunbc.native_frontier_debt, and the header below names only
 // what a minted row spells.
-fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, rows: List<NativeFrontierDebtRow>) -> List<String> {
+fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, proposal: NativeFrontierProposal) -> List<String> {
   list_flat_map(
     xs: [
       [
@@ -507,9 +613,14 @@ fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, rows: List<Native
         join(["    emitted_closure_identity: \"", receipt.emitted_closure_identity, "\","], ""),
         join(["    executable_identity: \"", receipt.executable_identity, "\""], ""),
         "  },",
+        "  universe: ["
+      ],
+      list_map(xs: proposal.universe, f: native_frontier_identity_line),
+      [
+        "  ],",
         "  rows: ["
       ],
-      list_map(xs: rows, f: native_frontier_row_line),
+      list_map(xs: proposal.rows, f: native_frontier_row_line),
       [
         "  ],",
         "  dispositions: [],",
@@ -526,6 +637,6 @@ fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, rows: List<Native
 fn native_frontier_proposal_file_lines(receipt: NativeRouteReceipt, v: NativeFrontierVerdict) -> List<String> {
   match native_frontier_proposal(v: v) {
     Absent => []
-    Present { value: rows } => native_frontier_proposal_lines(receipt: receipt, rows: rows)
+    Present { value: p } => native_frontier_proposal_lines(receipt: receipt, proposal: p)
   }
 }
