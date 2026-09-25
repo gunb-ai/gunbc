@@ -3620,7 +3620,7 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
                 outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
               Absent => body_lower_body_subtree_lower(captured: raw)
             }
-          Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
         }
       }
   }
@@ -4965,6 +4965,32 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
   }
 }
 
+// ONE ARM-BODY READER FOR EVERY ARM POSITION. An arm body is a value, so it is read by
+// body_lower_value_lowered, whose refusal is carried with its own cause and locus; only a body that
+// reader returns Absent for falls to the operand reader. The sequence and spine navigations used to
+// differ here: the spine arms (every arm the sequence capture does not reach) went to the operand
+// reader alone, so a refused value came back Absent and surfaced as match_arm_navigation_refused
+// with the arm as its only locus.
+fn body_lower_match_arm_wired(pat_node: Node, body_capture: Node, arm_capture: Node) -> Outcome<Node> {
+  match body_lower_value_lowered(node: body_capture) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: lowered_opt, diagnostics: d } =>
+      match lowered_opt {
+        Present { value: body } =>
+          outcome_with_diagnostics(
+            value: body_lower_match_arm_wire(pat_node: pat_node, body: body),
+            diagnostics: d
+          )
+        Absent =>
+          match body_lower_match_arm_body_optional(body_capture: body_capture) {
+            Present { value: body } =>
+              outcome_accepted(value: body_lower_match_arm_wire(pat_node: pat_node, body: body))
+            Absent => body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
+          }
+      }
+  }
+}
+
 // THE ARM BODY IS LOWERED BY THE BODY WALKER FIRST. The arm-body reader
 // (body_lower_match_arm_body_optional) is an operand reader: it answers a nested `match` or `if`
 // in arm position with that form's first atom (`dag_token_kw_if`), which is how every arm of
@@ -4982,25 +5008,11 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
         Accepted { value: pat_node, diagnostics: _ } =>
           match body_lower_match_arm_body_capture_optional(stripped: stripped) {
             Present { value: body_capture } =>
-              match body_lower_value_lowered(node: body_capture) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: lowered_opt, diagnostics: d } =>
-                  match lowered_opt {
-                    Present { value: body } =>
-                      outcome_with_diagnostics(
-                        value: body_lower_match_arm_wire(pat_node: pat_node, body: body),
-                        diagnostics: d
-                      )
-                    Absent =>
-                      match body_lower_match_arm_body_optional(body_capture: body_capture) {
-                        Present { value: body } =>
-                          outcome_accepted(
-                            value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
-                          )
-                        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
-                      }
-                  }
-              }
+              body_lower_match_arm_wired(
+                pat_node: pat_node,
+                body_capture: body_capture,
+                arm_capture: stripped
+              )
             Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
           }
       }
@@ -5018,19 +5030,11 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
                           if arrow == ^dag_token_fat_arrow {
                             match body_lower_match_spine_right(spine: right) {
                               Present { value: body_capture } =>
-                                match body_lower_match_arm_body_optional(
-                                  body_capture: body_capture
-                                ) {
-                                  Present { value: body } =>
-                                    outcome_accepted(
-                                      value: body_lower_match_arm_wire(
-                                        pat_node: pat_node,
-                                        body: body
-                                      )
-                                    )
-                                  Absent =>
-                                    body_lower_match_arm_navigation_reject(arm_capture: stripped)
-                                }
+                                body_lower_match_arm_wired(
+                                  pat_node: pat_node,
+                                  body_capture: body_capture,
+                                  arm_capture: stripped
+                                )
                               Absent =>
                                 body_lower_match_arm_navigation_reject(arm_capture: stripped)
                             }
@@ -5045,19 +5049,11 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
                           match node_atom_identity_optional(node: after_pattern.left) {
                             Present { value: arrow } =>
                               if arrow == ^dag_token_fat_arrow {
-                                match body_lower_match_arm_body_optional(
-                                  body_capture: after_pattern.right
-                                ) {
-                                  Present { value: body } =>
-                                    outcome_accepted(
-                                      value: body_lower_match_arm_wire(
-                                        pat_node: pat_node,
-                                        body: body
-                                      )
-                                    )
-                                  Absent =>
-                                    body_lower_match_arm_navigation_reject(arm_capture: stripped)
-                                }
+                                body_lower_match_arm_wired(
+                                  pat_node: pat_node,
+                                  body_capture: after_pattern.right,
+                                  arm_capture: stripped
+                                )
                               } else {
                                 body_lower_match_arm_navigation_reject(arm_capture: stripped)
                               }
@@ -5083,25 +5079,25 @@ fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
     || body_lower_is_pass_through_emitted(emitted: emitted)
 }
 
-fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: Node) -> Outcome<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Present { value: pair } =>
-      body_lower_wire_match_arm_capture(
-        arm_capture: body_lower_postfix_optional_unwrap(node: pair.right)
-      )
-    Absent =>
-      body_lower_wire_match_arm_capture(arm_capture: stripped)
-  }
-}
-
+// AN ARM, OR A COMMA-REPEAT ELEMENT CARRYING ONE, DECIDED BY SHAPE BEFORE ANY ARM IS WIRED. A
+// repeat element is Seq(optional-comma, arm), and its left side is a separator
+// (body_lower_match_arm_repeat_elem_is_separator); an arm's left side is its pattern, which never
+// is. The arm is wired once and its Rejected stands. This reader used to wire the node as an arm
+// first and, on ANY refusal, discard the diagnostics and retry it as a repeat element: an arm that
+// refused for its own located cause (a list literal in its body) was re-read under the wrong shape
+// and surfaced as match_arm_navigation_refused with the arm as its only locus.
 fn body_lower_extract_comma_list_arm_head(node: Node) -> Outcome<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
-  match body_lower_wire_match_arm_capture(arm_capture: stripped) {
-    Rejected { diagnostics: _ } =>
-      body_lower_match_arm_from_comma_repeat_elem(repeat_elem: stripped)
-    Accepted { value: arm, diagnostics: d } =>
-      Accepted { value: arm, diagnostics: d }
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      if body_lower_match_arm_repeat_elem_is_separator(node: pair.left) {
+        body_lower_wire_match_arm_capture(
+          arm_capture: body_lower_postfix_optional_unwrap(node: pair.right)
+        )
+      } else {
+        body_lower_wire_match_arm_capture(arm_capture: stripped)
+      }
+    Absent => body_lower_wire_match_arm_capture(arm_capture: stripped)
   }
 }
 
