@@ -301,7 +301,7 @@ pub fn module_header_gap_subject(
                 let first_member_start = earliest_member_start_after(
                     subjects.clone(),
                     mod_subject.span.clone().end.clone(),
-                    (origin.end.clone() + 1),
+                    v1_rt::int_add(origin.end.clone(), 1),
                 );
                 if ((origin.start.clone() >= mod_subject.span.clone().end.clone())
                     && (origin.end.clone() <= first_member_start.clone()))

@@ -1,0 +1,45 @@
+module gunbc.rung_drop.mtcollins1_standing_ruling_digest_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows }
+
+// DECLARED 4b(3) DROP (gunbc#12101, 2026-09-23). The DECLARATION lives here; the POPULATION's
+// authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows`. It is its own list because growing
+// another drop's list is a new drop: the App Attest interpreted-crypto drop is a separately bounded
+// incident and is not widened by this one, though both price the same interpreter realization of SHA.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIM IS UNTOUCHED. The one identity is planned, executed and
+// measured on every pull request that edits it; a semantic red and a wall-clock crossing still block.
+// Only its eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop` rather than refusing.
+// The budget is not raised.
+//
+// WHY THE OVERRUN IS THE PRIMITIVE'S AND NOT THE CLAIM'S. The claim takes exactly one SHA-256 of the
+// production standing ruling's canonical encoding (1369 characters, 22 blocks) -- no repeated demand, no
+// nested scan -- and the seed interpreter realizes SHA-256 as UInt32 word folds, reifying no machine
+// width. Every other standing-ruling claim supplies its digest (DESIGN section 3); this one is the
+// single inhabitance claim of the real composition standing_ruling_request -> standing_ruling_digest ->
+// sha256_hex, so supplying its digest would remove the last execution of the real path.
+data mtcollins1_standing_ruling_digest_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows; measured by "), m.measured_by))
+
+data mtcollins1_standing_ruling_digest_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "mtcollins1_standing_ruling_digest_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one inhabitance claim of the Mt. Collins standing-ruling digest, which takes one real SHA-256 of the production ruling's encoding: it still executes, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-09-23",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the standing-ruling digest closure executing as natively emitted code rather than as interpreted SHA-256 word folds",
+    },
+    population: mtcollins1_standing_ruling_digest_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY. Native emission supports the standing-ruling digest closure (gunbc.machine_intake_mtcollins1_standing_ruling standing_ruling_request, standing_ruling_digest, and extdeps.crypto.sha2 sha256_hex), AND this exact identity executes standing_ruling_request -> standing_ruling_digest -> sha256_hex over the production ruling on a NAMED native instrument or floor route and measures inside the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives -- or is deliberately moved to that named native row. The App Attest ECDSA native route does NOT restore this drop. Supplying the digest as a fixture, or deleting the identity, satisfies neither.",
+  }
+}

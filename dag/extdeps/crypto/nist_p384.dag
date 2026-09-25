@@ -1,7 +1,6 @@
 module extdeps.crypto.nist_p384
 
 import std.types { Int, List, Bool }
-import std.integer { UInt8 }
 import std.bignat { BigNat, bignat_from_octets }
 import extdeps.crypto.nist_prime_curve { PrimeCurve, prime_curve, curve_on_curve, curve_ecdsa_verify_octets, curve_admit_point_octets, PointAdmitted, PointNotAdmitted }
 import extdeps.external_authority { ExternalAuthority }
@@ -25,11 +24,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Octets rather than a decode, for the reason extdeps.crypto.nist_p256 records: a decode has a
 // failure arm and the curve's defining integers may not have one. Big-endian, 48 octets each, as
 // SEC 1 renders them; p = 2^384 − 2^128 − 2^96 + 2^32 − 1.
-data p384_p_octets: List<UInt8> = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255]
-data p384_n_octets: List<UInt8> = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 199, 99, 77, 129, 244, 55, 45, 223, 88, 26, 13, 178, 72, 176, 167, 122, 236, 236, 25, 106, 204, 197, 41, 115]
-data p384_b_octets: List<UInt8> = [179, 49, 47, 167, 226, 62, 231, 228, 152, 142, 5, 107, 227, 248, 45, 25, 24, 29, 156, 110, 254, 129, 65, 18, 3, 20, 8, 143, 80, 19, 135, 90, 198, 86, 57, 141, 138, 46, 209, 157, 42, 133, 200, 237, 211, 236, 42, 239]
-data p384_gx_octets: List<UInt8> = [170, 135, 202, 34, 190, 139, 5, 55, 142, 177, 199, 30, 243, 32, 173, 116, 110, 29, 59, 98, 139, 167, 155, 152, 89, 247, 65, 224, 130, 84, 42, 56, 85, 2, 242, 93, 191, 85, 41, 108, 58, 84, 94, 56, 114, 118, 10, 183]
-data p384_gy_octets: List<UInt8> = [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 95]
+data p384_p_octets: List<Int> = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255]
+data p384_n_octets: List<Int> = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 199, 99, 77, 129, 244, 55, 45, 223, 88, 26, 13, 178, 72, 176, 167, 122, 236, 236, 25, 106, 204, 197, 41, 115]
+data p384_b_octets: List<Int> = [179, 49, 47, 167, 226, 62, 231, 228, 152, 142, 5, 107, 227, 248, 45, 25, 24, 29, 156, 110, 254, 129, 65, 18, 3, 20, 8, 143, 80, 19, 135, 90, 198, 86, 57, 141, 138, 46, 209, 157, 42, 133, 200, 237, 211, 236, 42, 239]
+data p384_gx_octets: List<Int> = [170, 135, 202, 34, 190, 139, 5, 55, 142, 177, 199, 30, 243, 32, 173, 116, 110, 29, 59, 98, 139, 167, 155, 152, 89, 247, 65, 224, 130, 84, 42, 56, 85, 2, 242, 93, 191, 85, 41, 108, 58, 84, 94, 56, 114, 118, 10, 183]
+data p384_gy_octets: List<Int> = [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 95]
 
 // The base point as BigNat for the witnesses; p, n and b reach the family fold as octets through
 // p384_curve and have no other reader.
@@ -45,7 +44,7 @@ fn p384_on_curve(x: BigNat, y: BigNat) -> Bool {
 
 // A SEC 1 uncompressed point (97 octets) the curve admits: prefix, both coordinates below p, on
 // the curve -- the family fold's one predicate, not a second reading of it.
-fn p384_point_octets_on_curve(point: List<UInt8>) -> Bool {
+fn p384_point_octets_on_curve(point: List<Int>) -> Bool {
   match curve_admit_point_octets(c: p384_curve, point: point) {
     PointAdmitted { x: _, y: _ } => true
     PointNotAdmitted => false
@@ -56,6 +55,6 @@ fn p384_point_octets_on_curve(point: List<UInt8>) -> Bool {
 // key: the 97-octet SEC 1 uncompressed point. signature: the 96-octet r || s. digest: SHA-256 or
 // SHA-384 of the signed bytes (32 or 48 octets; both are at most the coordinate width, so §6.4.2
 // step 3 truncates nothing). Answers as curve_ecdsa_verify_octets does.
-fn p384_ecdsa_verify_octets(key: List<UInt8>, signature: List<UInt8>, digest: List<UInt8>) -> Bool? {
+fn p384_ecdsa_verify_octets(key: List<Int>, signature: List<Int>, digest: List<Int>) -> Bool? {
   curve_ecdsa_verify_octets(c: p384_curve, key: key, signature: signature, digest: digest)
 }

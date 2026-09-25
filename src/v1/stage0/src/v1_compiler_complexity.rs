@@ -715,7 +715,7 @@ pub fn parser_block_state_progress(
                     .clone()
                     .iter()
                     .cloned()
-                    .take(((stmts.clone().len() as i64) - 1) as usize)
+                    .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
                     .collect::<Vec<_>>(),
             );
             let final_env = leading.iter().cloned().fold(
@@ -1895,9 +1895,12 @@ pub fn count_self_calls(
                 .iter()
                 .cloned()
                 .fold(0, |acc: i64, child: Rc<Node>| {
-                    (acc + count_self_calls(child.clone(), func_name.clone(), si.clone()))
+                    v1_rt::int_add(
+                        acc,
+                        count_self_calls(child.clone(), func_name.clone(), si.clone()),
+                    )
                 });
-        (own.clone() + from_children.clone())
+        v1_rt::int_add(own.clone(), from_children.clone())
     })
 }
 
@@ -1932,27 +1935,30 @@ pub fn max_path_self_calls_with_cont(
                         .fold(0, |acc: i64, child: Rc<Node>| {
                             let val = crate::v1_std_core::arg_value(child.clone());
                             match (*val.expr_data.clone()).clone() {
-                                ExprData::ExprLambda => {
-                                    (acc.clone()
-                                        + max_path_self_calls_with_cont(
-                                            crate::v1_std_core::lambda_body(val.clone()),
-                                            func_name.clone(),
-                                            0,
-                                            si.clone(),
-                                        ))
-                                }
-                                _ => {
-                                    (acc.clone()
-                                        + max_path_self_calls_with_cont(
-                                            val.clone(),
-                                            func_name.clone(),
-                                            0,
-                                            si.clone(),
-                                        ))
-                                }
+                                ExprData::ExprLambda => v1_rt::int_add(
+                                    acc.clone(),
+                                    max_path_self_calls_with_cont(
+                                        crate::v1_std_core::lambda_body(val.clone()),
+                                        func_name.clone(),
+                                        0,
+                                        si.clone(),
+                                    ),
+                                ),
+                                _ => v1_rt::int_add(
+                                    acc.clone(),
+                                    max_path_self_calls_with_cont(
+                                        val.clone(),
+                                        func_name.clone(),
+                                        0,
+                                        si.clone(),
+                                    ),
+                                ),
                             }
                         });
-                ((own.clone() + arg_calls.clone()) + continue_calls.clone())
+                v1_rt::int_add(
+                    v1_rt::int_add(own.clone(), arg_calls.clone()),
+                    continue_calls.clone(),
+                )
             }
             ExprData::ExprMatch => {
                 let scrut_calls = max_path_self_calls_with_cont(
@@ -1977,7 +1983,7 @@ pub fn max_path_self_calls_with_cont(
                             acc.clone()
                         }
                     });
-                (scrut_calls.clone() + max_arm.clone())
+                v1_rt::int_add(scrut_calls.clone(), max_arm.clone())
             }
             ExprData::ExprIf => {
                 let cond_calls = max_path_self_calls_with_cont(
@@ -2006,16 +2012,17 @@ pub fn max_path_self_calls_with_cont(
                 } else {
                     else_calls.clone()
                 };
-                (cond_calls.clone() + branch_max.clone())
+                v1_rt::int_add(cond_calls.clone(), branch_max.clone())
             }
-            ExprData::ExprForEach => {
-                (max_path_self_calls_with_cont(
+            ExprData::ExprForEach => v1_rt::int_add(
+                max_path_self_calls_with_cont(
                     crate::v1_std_core::foreach_collection(body.clone()),
                     func_name.clone(),
                     0,
                     si.clone(),
-                ) + continue_calls.clone())
-            }
+                ),
+                continue_calls.clone(),
+            ),
             ExprData::ExprLet => {
                 let val_calls = max_path_self_calls_with_cont(
                     crate::v1_std_core::let_value(body.clone()),
@@ -2032,7 +2039,7 @@ pub fn max_path_self_calls_with_cont(
                     ),
                     std::option::Option::None => continue_calls.clone(),
                 };
-                (val_calls.clone() + body_calls.clone())
+                v1_rt::int_add(val_calls.clone(), body_calls.clone())
             }
             ExprData::ExprBlock => v1_rt::reverse(body.children.clone()).iter().cloned().fold(
                 continue_calls.clone(),
@@ -2056,27 +2063,30 @@ pub fn max_path_self_calls_with_cont(
                     .fold(0, |acc: i64, arg_node: Rc<Node>| {
                         let val = crate::v1_std_core::arg_value(arg_node.clone());
                         match (*val.expr_data.clone()).clone() {
-                            ExprData::ExprLambda => {
-                                (acc.clone()
-                                    + max_path_self_calls_with_cont(
-                                        crate::v1_std_core::lambda_body(val.clone()),
-                                        func_name.clone(),
-                                        0,
-                                        si.clone(),
-                                    ))
-                            }
-                            _ => {
-                                (acc.clone()
-                                    + max_path_self_calls_with_cont(
-                                        val.clone(),
-                                        func_name.clone(),
-                                        0,
-                                        si.clone(),
-                                    ))
-                            }
+                            ExprData::ExprLambda => v1_rt::int_add(
+                                acc.clone(),
+                                max_path_self_calls_with_cont(
+                                    crate::v1_std_core::lambda_body(val.clone()),
+                                    func_name.clone(),
+                                    0,
+                                    si.clone(),
+                                ),
+                            ),
+                            _ => v1_rt::int_add(
+                                acc.clone(),
+                                max_path_self_calls_with_cont(
+                                    val.clone(),
+                                    func_name.clone(),
+                                    0,
+                                    si.clone(),
+                                ),
+                            ),
                         }
                     });
-                ((recv_calls.clone() + arg_calls.clone()) + continue_calls.clone())
+                v1_rt::int_add(
+                    v1_rt::int_add(recv_calls.clone(), arg_calls.clone()),
+                    continue_calls.clone(),
+                )
             }
             ExprData::ExprReturn => max_path_self_calls_with_cont(
                 crate::v1_std_core::return_value(body.clone()),
@@ -2084,22 +2094,24 @@ pub fn max_path_self_calls_with_cont(
                 0,
                 si.clone(),
             ),
-            _ => {
-                (body
-                    .children
+            _ => v1_rt::int_add(
+                body.children
                     .clone()
                     .iter()
                     .cloned()
                     .fold(0, |acc: i64, child: Rc<Node>| {
-                        (acc + max_path_self_calls_with_cont(
-                            child.clone(),
-                            func_name.clone(),
-                            0,
-                            si.clone(),
-                        ))
-                    })
-                    + continue_calls.clone())
-            }
+                        v1_rt::int_add(
+                            acc,
+                            max_path_self_calls_with_cont(
+                                child.clone(),
+                                func_name.clone(),
+                                0,
+                                si.clone(),
+                            ),
+                        )
+                    }),
+                continue_calls.clone(),
+            ),
         }
     })
 }
@@ -2141,9 +2153,12 @@ pub fn count_target_calls(
                 .iter()
                 .cloned()
                 .fold(0, |acc: i64, child: Rc<Node>| {
-                    (acc + count_target_calls(child.clone(), target_set.clone(), si.clone()))
+                    v1_rt::int_add(
+                        acc,
+                        count_target_calls(child.clone(), target_set.clone(), si.clone()),
+                    )
                 });
-        (own.clone() + from_children.clone())
+        v1_rt::int_add(own.clone(), from_children.clone())
     })
 }
 
@@ -2176,14 +2191,20 @@ pub fn max_path_target_calls_with_cont(
                         .iter()
                         .cloned()
                         .fold(0, |acc: i64, child: Rc<Node>| {
-                            (acc + max_path_target_calls_with_cont(
-                                crate::v1_std_core::arg_value(child.clone()),
-                                target_set.clone(),
-                                0,
-                                si.clone(),
-                            ))
+                            v1_rt::int_add(
+                                acc,
+                                max_path_target_calls_with_cont(
+                                    crate::v1_std_core::arg_value(child.clone()),
+                                    target_set.clone(),
+                                    0,
+                                    si.clone(),
+                                ),
+                            )
                         });
-                ((own.clone() + arg_calls.clone()) + continue_calls.clone())
+                v1_rt::int_add(
+                    v1_rt::int_add(own.clone(), arg_calls.clone()),
+                    continue_calls.clone(),
+                )
             }
             ExprData::ExprMatch => {
                 let scrut_calls = max_path_target_calls_with_cont(
@@ -2208,7 +2229,7 @@ pub fn max_path_target_calls_with_cont(
                             acc.clone()
                         }
                     });
-                (scrut_calls.clone() + max_arm.clone())
+                v1_rt::int_add(scrut_calls.clone(), max_arm.clone())
             }
             ExprData::ExprIf => {
                 let cond_calls = max_path_target_calls_with_cont(
@@ -2237,16 +2258,17 @@ pub fn max_path_target_calls_with_cont(
                 } else {
                     else_calls.clone()
                 };
-                (cond_calls.clone() + branch_max.clone())
+                v1_rt::int_add(cond_calls.clone(), branch_max.clone())
             }
-            ExprData::ExprForEach => {
-                (max_path_target_calls_with_cont(
+            ExprData::ExprForEach => v1_rt::int_add(
+                max_path_target_calls_with_cont(
                     crate::v1_std_core::foreach_collection(body.clone()),
                     target_set.clone(),
                     0,
                     si.clone(),
-                ) + continue_calls.clone())
-            }
+                ),
+                continue_calls.clone(),
+            ),
             ExprData::ExprLet => {
                 let val_calls = max_path_target_calls_with_cont(
                     crate::v1_std_core::let_value(body.clone()),
@@ -2263,7 +2285,7 @@ pub fn max_path_target_calls_with_cont(
                     ),
                     std::option::Option::None => continue_calls.clone(),
                 };
-                (val_calls.clone() + body_calls.clone())
+                v1_rt::int_add(val_calls.clone(), body_calls.clone())
             }
             ExprData::ExprBlock => v1_rt::reverse(body.children.clone()).iter().cloned().fold(
                 continue_calls.clone(),
@@ -2292,27 +2314,30 @@ pub fn max_path_target_calls_with_cont(
                     .fold(0, |acc: i64, arg_node: Rc<Node>| {
                         let val = crate::v1_std_core::arg_value(arg_node.clone());
                         match (*val.expr_data.clone()).clone() {
-                            ExprData::ExprLambda => {
-                                (acc.clone()
-                                    + max_path_target_calls_with_cont(
-                                        crate::v1_std_core::lambda_body(val.clone()),
-                                        target_set.clone(),
-                                        0,
-                                        si.clone(),
-                                    ))
-                            }
-                            _ => {
-                                (acc.clone()
-                                    + max_path_target_calls_with_cont(
-                                        val.clone(),
-                                        target_set.clone(),
-                                        0,
-                                        si.clone(),
-                                    ))
-                            }
+                            ExprData::ExprLambda => v1_rt::int_add(
+                                acc.clone(),
+                                max_path_target_calls_with_cont(
+                                    crate::v1_std_core::lambda_body(val.clone()),
+                                    target_set.clone(),
+                                    0,
+                                    si.clone(),
+                                ),
+                            ),
+                            _ => v1_rt::int_add(
+                                acc.clone(),
+                                max_path_target_calls_with_cont(
+                                    val.clone(),
+                                    target_set.clone(),
+                                    0,
+                                    si.clone(),
+                                ),
+                            ),
                         }
                     });
-                ((recv_calls.clone() + arg_calls.clone()) + continue_calls.clone())
+                v1_rt::int_add(
+                    v1_rt::int_add(recv_calls.clone(), arg_calls.clone()),
+                    continue_calls.clone(),
+                )
             }
             ExprData::ExprReturn => max_path_target_calls_with_cont(
                 crate::v1_std_core::return_value(body.clone()),
@@ -2323,12 +2348,15 @@ pub fn max_path_target_calls_with_cont(
             _ => body.children.clone().iter().cloned().fold(
                 continue_calls.clone(),
                 |acc: i64, child: Rc<Node>| {
-                    (acc + max_path_target_calls_with_cont(
-                        child.clone(),
-                        target_set.clone(),
-                        0,
-                        si.clone(),
-                    ))
+                    v1_rt::int_add(
+                        acc,
+                        max_path_target_calls_with_cont(
+                            child.clone(),
+                            target_set.clone(),
+                            0,
+                            si.clone(),
+                        ),
+                    )
                 },
             ),
         }
@@ -8007,13 +8035,13 @@ pub fn cost_expr_degree(e: Rc<CostExpr>) -> Option<i64> {
             left: l, right: r, ..
         } => match cost_expr_degree(l.clone()) {
             Some(ld) => match cost_expr_degree(r.clone()) {
-                Some(rd) => Some((ld.clone() + rd.clone())),
+                Some(rd) => Some(v1_rt::int_add(ld.clone(), rd.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostSum { body: bd, .. } => match cost_expr_degree(bd.clone()) {
-            Some(bdeg) => Some((1 + bdeg.clone())),
+            Some(bdeg) => Some(v1_rt::int_add(1, bdeg.clone())),
             std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostLog { .. } => Some(0),
@@ -8053,7 +8081,7 @@ pub fn eval_size_expr_concrete(s: Rc<SizeExpr>, env: Rc<HashMap<String, i64>>) -
             left: l, right: r, ..
         } => match eval_size_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_size_expr_concrete(r.clone(), env.clone()) {
-                Some(rv) => Some((lv.clone() + rv.clone())),
+                Some(rv) => Some(v1_rt::int_add(lv.clone(), rv.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
@@ -8089,7 +8117,7 @@ pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -
             left: l, right: r, ..
         } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
-                Some(rv) => Some((lv.clone() + rv.clone())),
+                Some(rv) => Some(v1_rt::int_add(lv.clone(), rv.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
@@ -8098,7 +8126,7 @@ pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -
             left: l, right: r, ..
         } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
-                Some(rv) => Some((lv.clone() * rv.clone())),
+                Some(rv) => Some(v1_rt::int_mul(lv.clone(), rv.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
@@ -8118,7 +8146,7 @@ pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -
             ..
         } => match eval_size_expr_concrete(up.clone(), env.clone()) {
             Some(n) => match eval_cost_expr_concrete(bd.clone(), env.clone()) {
-                Some(bv) => Some((n.clone() * bv.clone())),
+                Some(bv) => Some(v1_rt::int_mul(n.clone(), bv.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
@@ -8516,7 +8544,7 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                     CostExpr::CostConst { value: a, .. } => match (*sr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => sl.clone(),
                         CostExpr::CostConst { value: b, .. } => Rc::new(CostExpr::CostConst {
-                            value: (a.clone() + b.clone()),
+                            value: v1_rt::int_add(a.clone(), b.clone()),
                         }),
                         _ => Rc::new(CostExpr::CostAdd {
                             left: sl.clone(),
@@ -9923,14 +9951,10 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
         if (budget.clone() <= 0) {
             0
         } else {
-            texpr
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .fold((budget.clone() - 1), |acc: i64, child: Rc<Node>| {
-                    estimate_expr_size(child.clone(), acc)
-                })
+            texpr.children.clone().iter().cloned().fold(
+                v1_rt::int_sub(budget.clone(), 1),
+                |acc: i64, child: Rc<Node>| estimate_expr_size(child.clone(), acc),
+            )
         }
     })
 }
@@ -10298,14 +10322,17 @@ pub fn max_path_descending(
                         .iter()
                         .cloned()
                         .fold(0, |acc: i64, child: Rc<Node>| {
-                            (acc + max_path_descending(
-                                child.clone(),
-                                fn_name.clone(),
-                                param_index.clone(),
-                                si.clone(),
-                            ))
+                            v1_rt::int_add(
+                                acc,
+                                max_path_descending(
+                                    child.clone(),
+                                    fn_name.clone(),
+                                    param_index.clone(),
+                                    si.clone(),
+                                ),
+                            )
                         });
-                (own.clone() + from_children.clone())
+                v1_rt::int_add(own.clone(), from_children.clone())
             }
             ExprData::ExprIf => {
                 let cond_count = max_path_descending(
@@ -10335,7 +10362,7 @@ pub fn max_path_descending(
                 } else {
                     else_count.clone()
                 };
-                (cond_count.clone() + branch_max.clone())
+                v1_rt::int_add(cond_count.clone(), branch_max.clone())
             }
             ExprData::ExprMatch => {
                 let scrut_count = max_path_descending(
@@ -10358,7 +10385,7 @@ pub fn max_path_descending(
                         acc.clone()
                     }
                 });
-                (scrut_count.clone() + arm_max.clone())
+                v1_rt::int_add(scrut_count.clone(), arm_max.clone())
             }
             _ => body
                 .children
@@ -10366,12 +10393,15 @@ pub fn max_path_descending(
                 .iter()
                 .cloned()
                 .fold(0, |acc: i64, child: Rc<Node>| {
-                    (acc + max_path_descending(
-                        child.clone(),
-                        fn_name.clone(),
-                        param_index.clone(),
-                        si.clone(),
-                    ))
+                    v1_rt::int_add(
+                        acc,
+                        max_path_descending(
+                            child.clone(),
+                            fn_name.clone(),
+                            param_index.clone(),
+                            si.clone(),
+                        ),
+                    )
                 }),
         }
     })
@@ -10616,7 +10646,11 @@ pub fn build_complexity_report(
                             Some(v) => v.clone(),
                             std::option::Option::None => 0,
                         };
-                        v1_rt::rc_map_insert(inner.clone(), callee.clone(), (current.clone() + 1))
+                        v1_rt::rc_map_insert(
+                            inner.clone(),
+                            callee.clone(),
+                            v1_rt::int_add(current.clone(), 1),
+                        )
                     },
                 )
             },
@@ -10702,7 +10736,11 @@ pub fn build_complexity_report(
                                 Some(v) => v.clone(),
                                 std::option::Option::None => 0,
                             };
-                            v1_rt::rc_map_insert(fi.clone(), callee.clone(), (current.clone() - 1))
+                            v1_rt::rc_map_insert(
+                                fi.clone(),
+                                callee.clone(),
+                                v1_rt::int_sub(current.clone(), 1),
+                            )
                         },
                     );
                     let evicted_table = unique_callees.iter().cloned().fold(

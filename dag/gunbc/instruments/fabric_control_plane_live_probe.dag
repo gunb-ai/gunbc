@@ -33,7 +33,7 @@ import std.durable_compare_and_set {
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
   CasUnreadableObservationBoundExceeded,
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.demand { Demand }
@@ -616,6 +616,7 @@ fn fci1_cas_store_failure_wire(cause: CasStoreFailure) -> NonEmptyStr {
   match cause {
     CasSlotObservationRefused { cause: c } => fci1_cas_unreadable_wire(cause: c)
     CasGenerationPublicationRefused { detail: _ } => "cas-publication-refused"
+    CasGenerationSpaceExhausted { head: _ } => "cas-generation-space-exhausted"
   }
 }
 

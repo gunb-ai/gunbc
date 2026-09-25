@@ -1,6 +1,6 @@
 module test.claim.rest_exchange_replay_test
 
-import std.types { Bool, String, List, GET, Int }
+import std.types { Bool, String, List, Int }
 import std.content_hash { Fnv1a64Structural }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
@@ -24,6 +24,7 @@ import v2.std.witness_evaluation {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.workflow_runs { WorkflowRunList, Completed, Success }
 import test.fixture.rest_exchange_replay_probe
+import extdeps.ietf.http_semantics { GET }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

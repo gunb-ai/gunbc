@@ -7,15 +7,27 @@ import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr }
 
-// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Four bounded populations share one
-// membership test (`floor_eval_step_cost_drop_members` / `_holds`): the live-roadmap four
-// (`gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`), the two
-// live-deploy apply-render readers (`gunbc.rung_drop`
-// `live_deploy_apply_render_new_witness_eval_step_cost`), and the one live forecast control
-// (`gunbc.rung_drop` `roadmap_live_forecast_new_witness_eval_step_cost`), and the one page
-// stylesheet inhabitance claim (`gunbc.rung_drop` `roadmap_page_style_new_witness_eval_step_cost`), and the one
-// byte-span program inhabitance claim (`gunbc.rung_drop`
-// `sha256_span_program_serialize_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
+// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Eight independently declared, bounded
+// populations share one membership test (`floor_eval_step_cost_drop_members` / `_holds`), one list
+// per drop, each list's `gunbc.rung_drop` declaration named beside it:
+//   - `floor_eval_step_cost_drop_rows`: the live roadmap projection readers
+//     (`roadmap_live_projection_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_apply_render_rows`: the live-deploy apply-render readers
+//     (`live_deploy_apply_render_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_live_forecast_rows`: the live forecast control
+//     (`roadmap_live_forecast_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_page_style_rows`: the page stylesheet inhabitance claim
+//     (`roadmap_page_style_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_interpreted_crypto_rows`: the App Attest interpreted P-256, P-384
+//     and SHA-384 checks (`app_attest_interpreted_crypto_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_app_attest_verifier_rows`: the App Attest verifier claims
+//     (`app_attest_verifier_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_span_program_rows`: the byte-span program inhabitance claim
+//     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows`: the Mt. Collins
+//     standing-ruling digest inhabitance claim
+//     (`mtcollins1_standing_ruling_digest_new_witness_eval_step_cost`).
+// The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
 // `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
@@ -214,8 +226,18 @@ data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasureme
   },
 ]
 
+// THE MT. COLLINS STANDING-RULING DIGEST, ITS OWN LIST (gunbc#12101; side-chat review 5290215172).
+// One member: the single inhabitance claim that takes one real SHA-256 of the production standing
+// ruling's encoding. Its declaration is gunbc.rung_drop.mtcollins1_standing_ruling_digest_new_witness_eval_step_cost.
+data floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_standing_ruling_witness_test.the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it" as NonEmptyStr,
+    measured_by: "required floor run 35852820957 (gunbc#12101, exact head 1cf802b1801, job 107154400326), artifact required-ci-measurement-receipt: planned_as_changed_witness, verdict pass, wall under the 8 s limit, over the new-witness eval-step budget, admitted at the enrolment margin as declared expensiveness. The standing figure is whatever this identity's row reads in that artifact, never a number copied here. The billed work is one SHA-256 over the production ruling's 22-block canonical encoding on an interpreter that reifies no machine width. Causal context only: run 35844351667 (head 37ea4c8) measured the two predecessor claims that each took one real digest" as NonEmptyStr,
+  }
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows)
+  concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

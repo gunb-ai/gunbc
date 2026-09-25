@@ -37,7 +37,8 @@ import v2.extdeps.languages.bash_build {
 // and nothing dispatched one. This is that job, and it is its OWN workflow file rather than a mode of
 // fleet-converge.yml for a reason GitHub imposes: a runner group is restricted by WORKFLOW FILE, so
 // the group a microVM runner registers into can admit this file and nothing else only if this file
-// contains nothing else (gunbc.runner_jit_mint microvm_jit_runner_group_restriction_frontier).
+// contains nothing else (gunbc.runner_group_restriction_observation observes that restriction, and
+// gunbc.runner_jit_mint plan_jit_mint refuses a mint into any group without it).
 //
 // IT RUNS ONLY WHERE THE ATTEMPT IS. runs-on is the provenance label plus the attempt's own
 // registration name -- exactly the two labels gunbc.runner_jit_mint microvm_attempt_registration_labels
@@ -185,6 +186,7 @@ fn microvm_shakedown_job(script: String) -> Job {
     id: microvm_shakedown_workflow_job_id,
     name: none,
     runner: SelfHosted { labels: microvm_shakedown_runs_on() },
+    environment: none,
     steps: [microvm_shakedown_known_task_step(script: script)],
     needs: [],
     env: none,

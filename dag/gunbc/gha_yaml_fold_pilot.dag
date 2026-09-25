@@ -6,6 +6,7 @@ data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job
   id: "pilot",
   name: Absent,
   runner: SelfHosted { labels: ["self-hosted", "linux"] },
+  environment: Absent,
   steps: [
     RunStep {
       name: Absent,
