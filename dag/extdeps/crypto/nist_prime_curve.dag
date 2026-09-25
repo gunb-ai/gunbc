@@ -1,7 +1,6 @@
 module extdeps.crypto.nist_prime_curve
 
 import std.types { Int, List, Bool }
-import std.integer { UInt8 }
 import std.bignat {
   bignat_below, bignat_nonzero_below,
   BigNat, MontgomeryModulus, bignat_from_octets, bignat_compare, bignat_is_zero, bignat_bits, bignat_zero_limbs, bignat_one,
@@ -48,7 +47,7 @@ fn prime_curve_limb_width(bits: Int) -> Int {
   (bits + 23) / 24
 }
 
-fn prime_curve(p_octets: List<UInt8>, n_octets: List<UInt8>, b_octets: List<UInt8>, gx_octets: List<UInt8>, gy_octets: List<UInt8>, coordinate_octets: Int) -> PrimeCurve {
+fn prime_curve(p_octets: List<Int>, n_octets: List<Int>, b_octets: List<Int>, gx_octets: List<Int>, gy_octets: List<Int>, coordinate_octets: Int) -> PrimeCurve {
   let p = bignat_from_octets(octets: p_octets)
   let n = bignat_from_octets(octets: n_octets)
   let width = prime_curve_limb_width(bits: coordinate_octets * 8)
@@ -194,8 +193,8 @@ fn curve_on_curve(c: PrimeCurve, x: BigNat, y: BigNat) -> Bool {
 
 // Split a list after `n` elements.
 type OctetSplit {
-  front: List<UInt8>
-  back: List<UInt8>
+  front: List<Int>
+  back: List<Int>
 }
 
 // THE POSITION IS CARRIED, NOT RECOUNTED. This fold previously asked count(acc.front) once per
@@ -209,11 +208,11 @@ type OctetSplit {
 // removes work without adding a cache, a key or an invalidation rule.
 type OctetSplitFold {
   index: Int
-  front: List<UInt8>
-  back: List<UInt8>
+  front: List<Int>
+  back: List<Int>
 }
 
-fn octet_split(xs: List<UInt8>, n: Int) -> OctetSplit {
+fn octet_split(xs: List<Int>, n: Int) -> OctetSplit {
   let split = fold(xs, init: OctetSplitFold { index: 0, front: [], back: [] }, f: (acc, x) =>
     if acc.index < n {
       OctetSplitFold { index: acc.index + 1, front: acc.front |> list_push(x), back: acc.back }
@@ -245,7 +244,7 @@ type AdmittedPoint
   = PointAdmitted { x: BigNat, y: BigNat }
   | PointNotAdmitted
 
-fn curve_admit_point_octets(c: PrimeCurve, point: List<UInt8>) -> AdmittedPoint {
+fn curve_admit_point_octets(c: PrimeCurve, point: List<Int>) -> AdmittedPoint {
   let w = c.coordinate_octets
   if count(point) != 1 + 2 * w { PointNotAdmitted } else {
     let prefixed = octet_split(xs: point, n: 1)
@@ -259,7 +258,7 @@ fn curve_admit_point_octets(c: PrimeCurve, point: List<UInt8>) -> AdmittedPoint 
   }
 }
 
-fn curve_ecdsa_verify_octets(c: PrimeCurve, key: List<UInt8>, signature: List<UInt8>, digest: List<UInt8>) -> Bool? {
+fn curve_ecdsa_verify_octets(c: PrimeCurve, key: List<Int>, signature: List<Int>, digest: List<Int>) -> Bool? {
   let w = c.coordinate_octets
   if count(signature) != 2 * w || count(digest) > w { none } else {
     match curve_admit_point_octets(c: c, point: key) {
@@ -277,7 +276,7 @@ fn curve_ecdsa_verify_octets(c: PrimeCurve, key: List<UInt8>, signature: List<UI
 
 // e = the digest as an integer. With the digest no longer than the coordinate, e < 2^(8w) < 2n,
 // so one reduction suffices; likewise the final v = x mod n, because x < p < 2n.
-fn curve_verify_checked(c: PrimeCurve, qx: BigNat, qy: BigNat, r: BigNat, s: BigNat, digest: List<UInt8>) -> Bool {
+fn curve_verify_checked(c: PrimeCurve, qx: BigNat, qy: BigNat, r: BigNat, s: BigNat, digest: List<Int>) -> Bool {
   let e = montgomery_reduce_once(ctx: c.order, a: bignat_from_octets(octets: digest))
   let sm = montgomery_to(ctx: c.order, a: s)
   let w = montgomery_inverse_prime(ctx: c.order, a: sm)
