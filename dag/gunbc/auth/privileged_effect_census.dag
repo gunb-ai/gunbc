@@ -402,7 +402,7 @@ data interim_cloudflare_adapter_unlanded: DivergenceReason = DivergenceReason {
 // the dissolution; a keyed minter on srv1 was the other route and was withdrawn because the
 // credential may not hard-depend on srv1.
 data gcp_iam_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceReason {
-  statement: "the GCP IAM converge federates to iam-converge through a pool pinned to fleet-converge.yml at main, a dispatch on main and the gcp-iam-converge environment, and refuses before impersonating unless a recorded approval matches the re-derived diff; approval-necessity is therefore enforced by reviewed main code, not by the credential layer -- a change merged to main that skipped the gate would federate without a tap" as NonEmptyStr,
+  statement: "the GCP IAM converge federates to iam-converge through a pool pinned to fleet-converge.yml at main, a dispatch on main and the gcp-iam-converge environment, and refuses before impersonating unless a recorded approval matches the re-derived diff; approval-necessity is therefore enforced by reviewed main code, not by the credential layer -- a change merged to main that skipped the gate would federate without a tap. One pool serves both iam-observe (plan, readback) and iam-converge (apply): a second pool pinned to the same claims would add no separation, because under this pattern the credential boundary is the pinned workflow and environment either way" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "a keyless GCP-hosted minter that verifies a device-signed approval against the enrolled key before issuing an iam-converge token, so that no federated workload identity holds a path to iam-converge without the operator's signature" as NonEmptyStr),
 }
 
