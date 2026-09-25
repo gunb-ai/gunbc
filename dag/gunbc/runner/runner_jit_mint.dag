@@ -7,6 +7,10 @@ import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitH
 import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
 }
+import gunbc.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionRefused,
+  RunnerGroupRestrictionRefusal,
+}
 import gunbc.runner.runner_jit_admission {
   attempt_binding_admits_mint_name, JitAdmissionAxisStanding,
 }
@@ -45,7 +49,7 @@ type JitMintPlan
       unsatisfied: List<CredentialCapability>
     }
   | JitMintRefusedAttemptUnbound { cause: String }
-  | JitMintRefusedRunnerGroupUnrestricted { group: Int }
+  | JitMintRefusedRunnerGroupUnrestricted { group: NonEmptyStr, cause: RunnerGroupRestrictionRefusal }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
 // for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
@@ -80,18 +84,16 @@ fn microvm_attempt_registration_labels(attempt: MicroVmAttempt) -> List<String> 
 }
 
 // THE RUNNER GROUP IS A STANDING, NOT A BARE ID, and the mint refuses every standing but one. The
-// shakedown mints into the org's Default group today (gunbc.runner_microvm_shakedown
-// microvm_shakedown_runner_group, id 1), which every workflow may use; if a JIT registration also
-// receives GitHub's OS and architecture defaults, a runner there would match witnesses.yml, heal.yml
-// and a fleet-converge job. So a mint is authorized only into a group OBSERVED restricted to the
-// shakedown workflow file, and until an observer produces that arm every real attempt is refused
-// here -- the block the frontier row below states is this match, not a sentence.
-type MicrovmRunnerGroupStanding
-  = RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId }
-  | RunnerGroupRestrictionUnobserved { group: JitRunnerGroupId }
-
+// org's Default group admits every workflow; if a JIT registration also receives GitHub's OS and
+// architecture defaults, a runner there would match witnesses.yml, heal.yml and a fleet-converge
+// job. So a mint is authorized only into a group OBSERVED restricted to the shakedown workflow
+// file, found by name (gunbc.runner_group_restriction_observation
+// microvm_shakedown_runner_group_name) -- its id reaches the request only from that reading. The standing is gunbc.runner_group_restriction_observation
+// MicrovmRunnerGroupStanding, whose authorizing arm carries a sole_constructor record only that
+// module's observer can write; every other reading is RunnerGroupRestrictionRefused with a named
+// cause, which the refusal below carries to the controller unchanged.
 data microvm_jit_runner_group_restriction_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: plan_jit_mint, which refuses RunnerGroupRestrictionUnobserved (JitMintRefusedRunnerGroupUnrestricted) and is handed that arm by gunbc.runner_microvm_slot_controller mint_attempt_credential today. TRIGGER: an observer of the org's runner groups that constructs RunnerGroupRestrictedToShakedownWorkflow only on reading restricted_to_workflows with selected_workflows naming .github/workflows/microvm-shakedown.yml, and the controller passes its result. SUFFICIENT FOR deleting this row: a JIT registration that received the OS and architecture defaults still cannot take a witnesses.yml, heal.yml or fleet-converge job. Until then every real attempt refuses at the mint." as NonEmptyStr,
+  description: "NAMED CONSUMER: plan_jit_mint, which refuses every RunnerGroupRestrictionRefused (JitMintRefusedRunnerGroupUnrestricted). The controller now passes the sealed observer's result over a live read under its installation token (gunbc.runner_microvm_slot_controller mint_attempt_credential), so the code half of this row's trigger has fired; the remaining half is a fact about the organization, and until it holds every real attempt refuses at the mint with RunnerGroupAbsent. TRIGGER: the organization holds the group microvm_shakedown_runner_group_name restricted to exactly microvm_shakedown_selected_workflow, created by one run of fleet-converge mode microvm_runner_group_ensure (gunbc.runner_group_restriction_ensure_run) under one operator approval, with its readback receipt recorded. SUFFICIENT FOR deleting this row: a JIT registration that received the OS and architecture defaults still cannot take a witnesses.yml, heal.yml or fleet-converge job. Until then every real attempt refuses at the mint." as NonEmptyStr,
 )
 
 fn jit_config_request_for(
@@ -130,12 +132,12 @@ fn plan_jit_mint(
          ) {
         if attempt_binding_admits_mint_name(standing: attempt_binding) {
           match runner_group {
-            RunnerGroupRestrictionUnobserved { group: g } =>
-              JitMintRefusedRunnerGroupUnrestricted { group: g.value }
-            RunnerGroupRestrictedToShakedownWorkflow { group: g } =>
+            RunnerGroupRestrictionRefused { name: n, cause: c } =>
+              JitMintRefusedRunnerGroupUnrestricted { group: n, cause: c }
+            RunnerGroupRestrictedToShakedownWorkflow { restriction: r } =>
               JitMintAuthorized {
                 attempt: attempt,
-                request: jit_config_request_for(attempt: attempt, runner_group_id: g),
+                request: jit_config_request_for(attempt: attempt, runner_group_id: r.group),
               }
           }
         } else {

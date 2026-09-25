@@ -411,6 +411,15 @@ type FilesystemDirectoryListing sole_constructor {
   entries: String
 }
 
+// THE ENTRY NAMES OF AN ADMITTED LISTING, decoded once beside the encoding they come from: `List`
+// joins names with newlines, so this is the split -- blank lines dropped, every other line one
+// name as the host spelled it. A consumer that split `entries` itself would be the second
+// decoder of one wire format (review 69704 of gunbc#12000 found one; extdeps.realization
+// artifact_store_fs carries an older one under filesystem_absence_establishment_adoption_standing).
+fn filesystem_listing_entry_names(listing: FilesystemDirectoryListing) -> List<String> {
+  filter(listing.entries.split(delimiter: "\n"), n => n != "")
+}
+
 type FilesystemEstablishedAbsence sole_constructor {
   directory: FilePath
   name: String
