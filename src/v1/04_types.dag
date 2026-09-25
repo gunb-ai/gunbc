@@ -62,8 +62,14 @@ fn resolved_type(n: Node) -> Node {
   }
 }
 
+// AN ARROW'S inferred IS ITS RETURN TYPE, NOT ITS OWN TYPE: make_callable_type and
+// parse_callable_type_expr store the codomain there, so reading it as "the type this child
+// denotes" answered `Int` for the element of `List<fn() -> Int>` and every binding drawn from that
+// element -- a lambda parameter, a match arm -- lost its callability and its call refused as
+// `function 'r' not found in scope`. An Arrow child denotes itself.
+// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none { resolved_type(n: ch) } else { ch }
+  if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {

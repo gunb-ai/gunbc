@@ -107,7 +107,9 @@ pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
-    if (ch.inferred.clone() != std::option::Option::None) {
+    if ((ch.inferred.clone() != std::option::Option::None)
+        && (ch.connective.clone() != Connective::Arrow))
+    {
         resolved_type(ch.clone())
     } else {
         ch.clone()

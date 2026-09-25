@@ -1,0 +1,50 @@
+module test.claim.infer_callable_type_argument_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+
+// EXECUTING EVIDENCE FOR THE TYPE-ARGUMENT RESIDUE OF gunbc.recurring_failure_mode
+// arity_proxy_for_callability_misroutes_a_found_local.
+//
+// A function type written as a TYPE ARGUMENT -- `List<fn() -> R>` -- lost its arrow when
+// v1.compiler.infer_types child_type_node read the child's `inferred` field as the type it denotes: an
+// Arrow stores its RETURN type there, so the element of `List<fn() -> Int>` became `Int`. Every
+// binding drawn from that element then refused at the call seam as `function 'r' not found in
+// scope` (class InternalError, subject function:r): a fold or map lambda's parameter, a match arm
+// over `first`. It surfaced on extdeps.apple.app_attest first_assertion_refusal, a fold over
+// `List<fn() -> AssertionRefusal?>`. The refusal is raised in inference, which every emission
+// target runs, so it refused under --target dag and --target rust alike.
+//
+// Each cell is a source string compiled by the seed through gunbc.compile_census_probe, so the
+// REDs assert zero blocking rows (a repair that swapped the misdirected refusal for another would
+// still fail), and the control asserts a genuinely unbound callee inside the same lambda still
+// refuses with that callee as the subject -- the repair admits the bound parameter, not any name.
+
+data fold_thunk_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn first_some(rs: List<fn() -> Int?>) -> Int? {\n  fold(rs, init: none, f: (acc, r) => match acc {\n    Present { value: a } => Present { value: a }\n    Absent => r()\n  })\n}\n"
+
+data map_unary_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn apply_all(rs: List<fn(Int) -> Int>) -> List<Int> { rs |> map(r => r(1)) }\n"
+
+data match_arm_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn head_value(rs: List<fn() -> Int>) -> Int {\n  match rs |> first {\n    Present { value: r } => r()\n    Absent => 0\n  }\n}\n"
+
+data unbound_callee_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn apply_all(rs: List<fn() -> Int>) -> List<Int> { rs |> map(r => unbound_callee_zzz()) }\n"
+
+fn resolves_clean(source: String) -> Bool {
+  blocking_subject_count_for(source: source, wanted_class: "InternalError", wanted_subject: "function:r") == 0
+    && total_blocking_count_for(source: source) == 0
+}
+
+test fn fold_lambda_calls_a_nullary_element_parameter() -> Bool {
+  resolves_clean(source: fold_thunk_source)
+}
+
+test fn map_lambda_calls_a_unary_element_parameter() -> Bool {
+  resolves_clean(source: map_unary_source)
+}
+
+test fn match_arm_calls_a_callable_element() -> Bool {
+  resolves_clean(source: match_arm_source)
+}
+
+test fn unbound_callee_in_the_same_lambda_still_refuses() -> Bool {
+  blocking_subject_count_for(source: unbound_callee_source, wanted_class: "InternalError", wanted_subject: "function:unbound_callee_zzz") > 0
+}
