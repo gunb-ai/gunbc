@@ -37,7 +37,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
   dag_surface_kw_then_ident_from_captured,
-  parse_qualified_name_segments_from_capture,
+  parse_qualified_name_segment_atoms_from_capture,
   qualified_name_from_module_node,
 }
 import v2.std.algebra { fold_list, list_append, list_map, list_snoc_item, length, zip_eq }
@@ -77,7 +77,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_spine_node, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -1750,21 +1750,33 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
 }
 
 fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
+  match body_lower_param_binding_atom_optional(node: node) {
+    Present { value: atom } => node_atom_identity_optional(node: atom)
+    Absent => optional_absent()
+  }
+}
+
+// The same read, answered as the atom that carries the name: lowered from the token it was read
+// from (v2.std.node node_lowered_from), so a caller that places the name in the tree keeps its
+// minted occurrence. The name-only reader above is this one's projection, not a second reader.
+fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
   match dag_binding_branded_atom_identity(node: node) {
-    Present { value: binding } => Present { value: binding }
+    Present { value: binding } =>
+      optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: binding } }, children: [], source: node))
     Absent =>
       match node_atom_identity_optional(node: node) {
         Present { value: sym } =>
           if dag_lex_token_symbol(sym: sym) {
             optional_absent()
           } else {
-            optional_present(value: sym)
+            optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
           }
         Absent =>
           match body_lower_operand_ref_optional(node: node) {
             Present { value: ref_node } =>
               match node_atom_identity_optional(node: ref_node) {
-                Present { value: sym } => optional_present(value: sym)
+                Present { value: sym } =>
+                  optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: ref_node))
                 Absent => optional_absent()
               }
             Absent => optional_absent()
@@ -3468,13 +3480,6 @@ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
   )
 }
 
-fn body_lower_method_operator_atom(sym: Symbol) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
-  )
-}
-
 fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
   match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_ref_optional(node: expr)
@@ -4017,7 +4022,7 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<Li
   }
 }
 
-fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
+fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -4028,7 +4033,7 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
             match sugar_sequence_pair_optional(node: pair.right) {
               Absent => Absent
               Present { value: after_dot } =>
-                match body_lower_param_binding_optional(node: after_dot.left) {
+                match body_lower_param_binding_atom_optional(node: after_dot.left) {
                   Present { value: method } => optional_present(value: method)
                   Absent => Absent
                 }
@@ -4086,13 +4091,13 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
 // idiom the existing arms still erase (the receipt is on the class row; see DottedChainTailRead).
 // A brace suffix (`a.b.C { f: v }`) and an `as` suffix answer Absent and the existing arms run
 // unchanged for them.
-fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
+fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
       if dag_lex_token_symbol(sym: sym) {
         optional_absent()
       } else {
-        optional_present(value: sym)
+        optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
       }
     Absent =>
       match parse_production_emitted_identity_optional(node: node) {
@@ -4103,11 +4108,11 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
                 match sugar_sequence_pair_optional(node: captured) {
                   Present { value: pair } =>
                     if is_empty_conj_root(n: body_lower_postfix_optional_unwrap(node: pair.right)) {
-                      body_lower_dotted_head_symbol_optional(node: pair.left)
+                      body_lower_dotted_head_atom_optional(node: pair.left)
                     } else {
                       optional_absent()
                     }
-                  Absent => body_lower_dotted_head_symbol_optional(node: captured)
+                  Absent => body_lower_dotted_head_atom_optional(node: captured)
                 }
               Absent => optional_absent()
             }
@@ -4140,7 +4145,7 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
 // gunbc#11612 refused exactly that fork), so the operand reading, the spine reading and the
 // general fold all consume THIS answer and differ only in what they build from it.
 type PostfixStep {
-  segment: Symbol
+  segment: Node
   call_elem: Optional<Node>
 }
 
@@ -4160,7 +4165,7 @@ type PostfixStep {
 // call. A reader then MATCHES the arm, rather than a Bool predicate over each step's Optional
 // re-deriving afterwards what the read had in hand.
 type PostfixChainRead
-  = PostfixChainBare { segments: List<Symbol> }
+  = PostfixChainBare { segments: List<Node> }
   | PostfixChainFound { steps: List<PostfixStep> }
   | PostfixChainNotThisShape
   | PostfixChainSuffixCarried { at: Node }
@@ -4199,16 +4204,16 @@ fn body_lower_postfix_chain_steps_grow(
 
 // The read's accumulator: every step so far bare (the segments alone), or a call seen (the steps).
 type PostfixChainAcc
-  = PostfixChainAccBare { segments: List<Symbol> }
+  = PostfixChainAccBare { segments: List<Node> }
   | PostfixChainAccCalled { steps: List<PostfixStep> }
 
-fn body_lower_postfix_bare_steps(segments: List<Symbol>) -> List<PostfixStep> {
+fn body_lower_postfix_bare_steps(segments: List<Node>) -> List<PostfixStep> {
   fold(segments, init: Empty, f: fn(acc, segment) {
     list_snoc_item(xs: acc, item: PostfixStep { segment: segment, call_elem: optional_absent() })
   })
 }
 
-fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Symbol) -> PostfixChainAcc {
+fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Node) -> PostfixChainAcc {
   match acc {
     PostfixChainAccBare { segments: segments } =>
       PostfixChainAccBare { segments: list_snoc_item(xs: segments, item: segment) }
@@ -4221,7 +4226,7 @@ fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Symbol)
 
 fn body_lower_postfix_chain_acc_call_step(
   acc: PostfixChainAcc,
-  segment: Symbol,
+  segment: Node,
   call_elem: Node
 ) -> PostfixChainAcc {
   let step = PostfixStep { segment: segment, call_elem: optional_present(value: call_elem) }
@@ -4278,8 +4283,8 @@ fn body_lower_postfix_chain_steps_read(
   }
 }
 
-fn body_lower_qualified_name_spine_node(segments: List<Symbol>, source: Node) -> Node {
-  qualified_name_spine_node(qn: segments, occurrence_id: source.occurrence_id)
+fn body_lower_qualified_name_spine_node(segments: List<Node>, source: Node) -> Node {
+  qualified_name_spine_of_atoms(atoms: segments, occurrence_id: source.occurrence_id)
 }
 
 fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
@@ -4326,7 +4331,7 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
     PostfixChainSuffixCarried { at: _ } => optional_absent()
     PostfixChainFound { steps: _ } => optional_absent()
     PostfixChainBare { segments: segments } =>
-      match body_lower_dotted_head_symbol_optional(
+      match body_lower_dotted_head_atom_optional(
         node: body_lower_postfix_chain_head_or_self(node: node)
       ) {
         Absent => optional_absent()
@@ -4361,11 +4366,12 @@ fn body_lower_postfix_chain_head_or_self(node: Node) -> Node {
 // (v2.std.node_query field_projection_node).
 //
 // WHY A PROJECTION OFF A VALUE CANNOT BE A SPINE CASE, which is the cheaper repair a reader will
-// reach for: v2.std.qualified_name QualifiedName is FreeMonoid<Symbol>. It has no slot for a Node,
-// so a computed root is not representable in it at all. This is a separate construct by the
-// structure of the carrier, not by preference.
+// reach for: a spine is a path of NAME segments (v2.std.qualified_name QualifiedName is
+// FreeMonoid<Symbol>; the spine carries each segment as the atom lowered from its token), and a
+// computed root is not a name at all. This is a separate construct by the structure of the
+// carrier, not by preference.
 type PostfixAccum
-  = PostfixAccumSpine { segments: List<Symbol> }
+  = PostfixAccumSpine { segments: List<Node> }
   | PostfixAccumValue { node: Node }
 
 fn body_lower_postfix_accum_node(acc: PostfixAccum, source: Node) -> Node {
@@ -4424,7 +4430,7 @@ fn body_lower_postfix_chain_fold_step(
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
                       node: body_lower_transform_call(
-                        operator: body_lower_method_operator_atom(sym: step.segment),
+                        operator: step.segment,
                         args: list_append(left: [receiver], right: args)
                       )
                     },
@@ -4482,7 +4488,7 @@ fn body_lower_postfix_chain_lowered_from_steps(
   steps: List<PostfixStep>
 ) -> Outcome<Optional<Node>> {
   let head_node = body_lower_postfix_chain_head_or_self(node: node)
-  match body_lower_dotted_head_symbol_optional(node: head_node) {
+  match body_lower_dotted_head_atom_optional(node: head_node) {
     Present { value: head } =>
       body_lower_postfix_chain_fold_from(
         steps: steps,
@@ -4523,7 +4529,7 @@ fn body_lower_postfix_chain_fold_from(
 // lowers to the same spine. A single segment keeps the atom path above it, which is where the
 // Int / Bool canonical bindings are applied.
 fn body_lower_qualified_name_production_spine_optional(node: Node, captured: Node) -> Optional<Node> {
-  match parse_qualified_name_segments_from_capture(qn_capture: captured, root: node) {
+  match parse_qualified_name_segment_atoms_from_capture(qn_capture: captured, root: node) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: segments, diagnostics: _ } =>
       if length(xs: segments) > 1 {

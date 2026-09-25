@@ -25,7 +25,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
+import v2.std.algebra { length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -365,7 +365,14 @@ test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool {
     PostfixChainNotThisShape => false
     PostfixChainSuffixCarried { at: _ } => false
     PostfixChainFound { steps: _ } => false
-    PostfixChainBare { segments: segments } => segments == [^peer, ^peer_leaf]
+    PostfixChainBare { segments: segments } =>
+      length(xs: segments) == 2
+        && fold(segments, init: Empty, f: fn(acc, n) {
+          match node_atom_identity_optional(node: n) {
+            Present { value: s } => list_snoc_item(xs: acc, item: s)
+            Absent => acc
+          }
+        }) == [^peer, ^peer_leaf]
   }
 }
 
