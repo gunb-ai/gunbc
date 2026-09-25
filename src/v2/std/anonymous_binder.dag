@@ -1,7 +1,8 @@
 module v2.std.anonymous_binder
 
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_reverse }
 import v2.std.collection { List }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }
@@ -39,18 +40,11 @@ fn anonymous_param_label(slot: Int) -> Symbol {
   )
 }
 
-// THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission renders
-// it `_`, the wiring-liveness lens exempts it, reference conservation credits it -- asks this, and
-// never compares a label to the spelling `_`.
+// THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission
+// (v2.std.compilers.target_model bound_spelling_from_map) renders it `_`, and
+// v2.compiler.reference_conservation credits it -- asks this, and never compares a label to `_`.
 fn is_anonymous_param_label(sym: Symbol) -> Bool {
   starts_with(s: symbol_lexeme(sym: sym), prefix: anonymous_param_label_prefix())
-}
-
-fn edge_is_anonymous_param(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => is_anonymous_param_label(sym: sym)
-    Positional => false
-  }
 }
 
 type AnonymousBinderMint {
@@ -60,9 +54,10 @@ type AnonymousBinderMint {
 
 // THE ONE PRODUCER of a domain's anonymous slots: every edge the author spelled `_` is relabelled
 // with its slot's minted binder; every other edge is unchanged. This is the only place the authored
-// spelling `_` is read for a parameter, and it is read once, at the source boundary.
+// spelling `_` is read for a parameter, and it is read once, at the source boundary. The fold
+// conses and reverses once, so the mint is linear in the parameter count.
 fn anonymous_binder_mint_domain(edges: List<Edge>) -> List<Edge> {
-  let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: [] }, f: fn(acc, e) {
+  let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: Empty }, f: fn(acc, e) {
     let slot = acc.slot + 1
     let relabelled = match e.label {
       Named { name: sym } =>
@@ -73,7 +68,7 @@ fn anonymous_binder_mint_domain(edges: List<Edge>) -> List<Edge> {
         }
       Positional => e
     }
-    AnonymousBinderMint { slot: slot, edges: list_snoc_item(xs: acc.edges, item: relabelled) }
+    AnonymousBinderMint { slot: slot, edges: Cons { head: relabelled, tail: acc.edges } }
   })
-  minted.edges
+  list_reverse(xs: minted.edges)
 }

@@ -2,7 +2,6 @@ module test.claim.parse_test_fn_decl_return_clause
 
 import v2.compiler.body_lowering_fold {
   BodyLowered,
-  BodyLowered,
   body_lower_arrow_domain_binding_symbols,
   body_lower_fn_decl_to_arrow,
   body_lower_fn_decl_to_census_arrow,
