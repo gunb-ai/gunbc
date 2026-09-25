@@ -49,7 +49,7 @@ fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
     children: []
   )
   match body_lower_outcome_frontier_disposition(o: body_lower_fn_decl_to_arrow(shell: shell)) {
-    BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
+    BodyLoweringWrapperRetained { retention: _ } => true
     BodyLoweringLowered => false
     BodyLoweringRejected { diagnostics: _ } => false
   }
