@@ -988,6 +988,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-col" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+      decl(prop: TextOverflow, value: "ellipsis"),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
     ] },

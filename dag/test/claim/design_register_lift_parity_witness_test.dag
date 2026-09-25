@@ -375,7 +375,12 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_issue_table_rows_share_the_header_template (7 cells + the title link), the register
 // censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
 // c71edd8bb8d7e8e0); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "c71edd8bb8d7e8e0"
+// Re-pinned 2026-09-25 for the header-overlap fix (owner: ASSIGNEE and STATUS headers overlap):
+// the fixed tracks now derive from the WIDER of header spelling or content upper bound (ASSIGNEE
+// 9ch from its header, D VIEWS 8ch), and the header cells (.issue-col) carry the same containment
+// chain as the data cells (min-width 0, nowrap, ellipsis). Derived by execution
+// (roadmap_css_derived_digest on this tree, 262ca57491c99cde); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "262ca57491c99cde"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

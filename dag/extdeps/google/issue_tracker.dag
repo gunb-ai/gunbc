@@ -854,12 +854,14 @@ type IssueResultsColumnKind
 // max-content tracks re-measuring against each filtered population, display:none rows not
 // contributing, every track re-sizing). THE FIXED WIDTHS' BASIS, stated honestly: the saved
 // capture states no per-column pixel widths (its column picker shows the product's set is
-// user-adjustable), so each fixed width is DERIVED HERE from the upper bound of the content the
-// column can wear, plus a one-gutter margin — P from the priority vocabulary's widest spelling
-// ("P4"), TYPE from the widest type word ("Task"), ASSIGNEE from the avatar chip's declared size
-// (the 24px-token circle plus a gutter, in the sheet's token vocabulary — a grid track accepts the
-// calc), D VIEWS from a three-digit count, LAST MODIFIED from an ISO date. The flexible pair
-// keeps the containment chain (min-width 0, nowrap, ellipsis) as the truncation authority.
+// user-adjustable), so each fixed width is DERIVED HERE from the upper bound of the WIDER of the
+// header's own spelling or the content the column can wear, plus a one-gutter margin — P from the
+// priority vocabulary's widest spelling ("P4"), TYPE from the widest type word ("Task"), ASSIGNEE
+// from its header (8ch; the avatar chip is narrower, and a header that overflows its track paints
+// over the next column — owner complaint 2026-09-25, the ASSIGNEE/STATUS overlap), D VIEWS from
+// its header (wider than the three-digit count), LAST MODIFIED from an ISO date. The flexible pair
+// keeps the containment chain (min-width 0, nowrap, ellipsis) as the truncation authority, and the
+// header cells carry the same chain in the sheet.
 type IssueResultsColumn {
   kind: IssueResultsColumnKind
   header: NonEmptyStr
@@ -870,9 +872,9 @@ data issue_results_columns: List<IssueResultsColumn> = [
   IssueResultsColumn { kind: IssueColumnPriority, header: "P", track: "4ch" },
   IssueResultsColumn { kind: IssueColumnType, header: "TYPE", track: "6ch" },
   IssueResultsColumn { kind: IssueColumnTitle, header: "TITLE", track: "minmax(0, 2fr)" },
-  IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "calc(var(--space-24) + var(--space-6))" },
+  IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "9ch" },
   IssueResultsColumn { kind: IssueColumnStatus, header: "STATUS", track: "minmax(0, 1fr)" },
-  IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "6ch" },
+  IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "8ch" },
   IssueResultsColumn { kind: IssueColumnLastModified, header: "LAST MODIFIED", track: "12ch" },
 ]
 

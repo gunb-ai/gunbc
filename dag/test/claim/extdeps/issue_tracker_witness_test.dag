@@ -736,7 +736,7 @@ test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling()
 // a three-digit count, LAST MODIFIED 12ch from an ISO date, actions 24ch from the count chip's
 // upper bound) — so band filtering changes which rows show and NEVER the grid geometry.
 test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
-  issue_results_row_tracks() == "4ch 6ch minmax(0, 2fr) calc(var(--space-24) + var(--space-6)) minmax(0, 1fr) 6ch 12ch 24ch"
+  issue_results_row_tracks() == "4ch 6ch minmax(0, 2fr) 9ch minmax(0, 1fr) 8ch 12ch 24ch"
     && count(issue_results_columns) == 7
 }
 
