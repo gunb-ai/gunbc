@@ -103,6 +103,7 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
+import v2.std.type_binder { type_decl_wrapper, type_params_edge }
 import v2.std.node_query {
   construct_node,
   construct_tag_optional,
@@ -2027,7 +2028,7 @@ fn body_lower_fn_decl_return_clause_optional(captured: Node) -> Optional<Node> {
 // is grammar_empty_node, which carries no generic_params production. The production is looked
 // for ONLY inside that slot, so a generic list anywhere else in the declaration -- a parameter's
 // type, the body -- can never be read as this fn's binders.
-fn body_lower_fn_decl_generic_params_slot_optional(captured: Node) -> Optional<Node> {
+fn body_lower_decl_generic_params_slot_optional(captured: Node) -> Optional<Node> {
   match body_lower_fn_decl_spine_right(node: captured) {
     Absent => optional_absent()
     Present { value: after_kw_fn } =>
@@ -2106,18 +2107,18 @@ fn body_lower_generic_param_edges(comma_list: Node) -> Optional<List<Edge>> {
 }
 
 // WHAT THE ARROW CARRIES FOR `<T, U>`. NoTypeParams when the slot is elided; TypeParams with the
-// Conj v2.std.node arrow_type_params_target_conforms admits when every name is recovered; and
+// Conj v2.std.node type_binder_conj_conforms admits when every name is recovered; and
 // TypeParamsUnreadable when the slot holds a generic list whose names cannot all be read. The
 // third arm is why this is not an Optional: a list that is present and unreadable must REFUSE
 // the declaration, never lower as if it declared nothing -- that silent drop is the class this
 // carrier exists to close.
-type FnDeclTypeParams
+type DeclTypeParams
   = NoTypeParams
   | TypeParams { conj: Node }
   | TypeParamsUnreadable
 
-fn body_lower_fn_decl_type_params(captured: Node) -> FnDeclTypeParams {
-  match body_lower_fn_decl_generic_params_slot_optional(captured: captured) {
+fn body_lower_decl_type_params(captured: Node) -> DeclTypeParams {
+  match body_lower_decl_generic_params_slot_optional(captured: captured) {
     Absent => TypeParamsUnreadable
     Present { value: slot } =>
       match body_lower_find_captured(root: slot, emitted: ^dag_surface_generic_params) {
@@ -2869,7 +2870,7 @@ type BodyLowerFnSignature {
   domain: Node,
   return_type: Node,
   fn_name: Symbol,
-  type_params: FnDeclTypeParams,
+  type_params: DeclTypeParams,
 }
 
 fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSignature> {
@@ -2890,7 +2891,7 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
                       domain: domain,
                       return_type: return_type,
                       fn_name: fn_name,
-                      type_params: body_lower_fn_decl_type_params(captured: captured)
+                      type_params: body_lower_decl_type_params(captured: captured)
                     }
                   }
               }
@@ -2904,7 +2905,7 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
 // both arms refuse it first (body_lower_fn_signature_type_params_refusal).
 fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge> {
   match sig.type_params {
-    TypeParams { conj: c } => [Edge { label: Named { name: ^arrow_type_params_edge }, target: c }]
+    TypeParams { conj: c } => [type_params_edge(conj: c)]
     NoTypeParams => body_lower_no_type_param_edges()
     TypeParamsUnreadable => body_lower_no_type_param_edges()
   }
@@ -6942,8 +6943,9 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // declared identities (module.R.f in the containment index) instead of a residual shell. The
 // block shell reaches this dispatch preserved by the child fold; after a coproduct's variants
 // have lowered no block shell remains under the unit, so a remaining one is the record spelling.
-// Generic parameters and the type-decl modifiers are not carried by this rehome, as they are
-// not by the where-alias rehome beside it: neither is modeled on this route yet.
+// Generic parameters ARE carried, on the member, by body_lower_type_decl_member below; the
+// type-decl modifiers are not carried by this rehome, as they are not by the where-alias rehome
+// beside it.
 // A RECORD REHOMES TO Conj{ R: payload }, AND THAT SHAPE DOES NOT SAY IT IS A RECORD. The graft
 // flattens this the same way it flattens a where-alias, so downstream of the graft a record
 // declaration and a where-alias are indistinguishable, and the record/where-alias distinction is
@@ -6955,18 +6957,110 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // index on NormalizedTree record_declarations, where the pattern-binder classifier reads it (Pkg16).
 // The record-versus-where-alias control is v2.test.claim.match_arm_binder_frame
 // mab_where_alias_is_not_a_record.
-fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node) -> Outcome<Node> {
+fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_field_decl_block_payload(block_shell: block_shell) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: payload, diagnostics: d } =>
       Accepted {
-        value: node_with_occurrence_id(
-          kind: TypeNode { connective: Conj },
-          children: [Edge { label: Named { name: type_name }, target: payload }],
-          occurrence_id: shell.occurrence_id
-        ),
+        value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: payload, type_params: type_params),
         diagnostics: d
       }
+  }
+}
+
+// A TYPE DECLARATION'S `<T>` RIDES ON THE DECLARATION, BESIDE ITS MEMBER: the graft keeps the Named
+// declaration edge, and for a generic declaration its target is v2.std.type_binder type_decl_wrapper
+// -- Conj { <type-parameters>: binders, <type-body>: member } -- so the member (the record's field
+// Conj, the coproduct's variant Disj) keeps exactly its authored children. v2.compiler.resolve opens
+// the binders' frame over the wrapper, so it covers the member and cannot reach a sibling
+// declaration. Both labels are unauthorable. Without this the `<T>` list was dropped (records) or
+// left in the graft target as parse residue walked as ordinary names (coproducts), and `T` resolved
+// through the module's ordinary name chain (gunbc.recurring_failure_mode
+// generic_type_parameter_resolved_as_an_ordinary_atom_in_v2).
+fn body_lower_type_decl_member_body(body: Node, type_params: DeclTypeParams) -> Node {
+  match type_params {
+    TypeParams { conj: c } => type_decl_wrapper(binders: c, member: body)
+    NoTypeParams => body
+    TypeParamsUnreadable => body
+  }
+}
+
+fn body_lower_type_decl_member(shell: Node, type_name: Symbol, body: Node, type_params: DeclTypeParams) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: type_name },
+        target: body_lower_type_decl_member_body(body: body, type_params: type_params)
+      }
+    ],
+    occurrence_id: shell.occurrence_id
+  )
+}
+
+// THE `=` ARM'S LOWERED RIGHT-HAND SIDE: seq(kw_type, seq(name, seq(opt(generic_params),
+// seq(modifiers, opt(choice(field_decl_block, seq(eq, type_alias_rhs_lead))))))), read positionally
+// the way the `<T>` slot is. Only a GENERIC declaration asks for it.
+fn body_lower_type_decl_eq_rhs_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => optional_absent()
+    Present { value: after_kw } =>
+      match body_lower_fn_decl_spine_right(node: after_kw) {
+        Absent => optional_absent()
+        Present { value: after_name } =>
+          match body_lower_fn_decl_spine_right(node: after_name) {
+            Absent => optional_absent()
+            Present { value: after_params } =>
+              match body_lower_fn_decl_spine_right(node: after_params) {
+                Absent => optional_absent()
+                Present { value: body_choice } =>
+                  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: body_choice)) {
+                    Absent => optional_absent()
+                    Present { value: eq_rhs } => optional_present(value: body_lower_deep_unwrap_optional(node: eq_rhs.right))
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A GENERIC `=` DECLARATION CARRIES ITS BINDERS ON ITS LOWERED RIGHT-HAND SIDE, which must be a
+// Conj or Disj to carry a Named edge. Any other right-hand side -- an alias to an Atom or an
+// Instantiation (`type Id<T> = T`) -- has no member node to carry them, and REFUSES
+// body_lowering_reason_generic_type_decl_member_uncarried rather than lowering as if it declared
+// no parameters: that silent drop is the class this lowering closes.
+fn body_lower_generic_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+  match body_lower_type_decl_eq_rhs_optional(captured: captured) {
+    Present { value: rhs } =>
+      match rhs.kind {
+        TypeNode { connective: Disj } =>
+          outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
+        TypeNode { connective: Conj } =>
+          if body_lower_node_is_production_shell(n: rhs) {
+            body_lower_generic_type_decl_uncarried(shell: shell)
+          } else {
+            outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
+          }
+        _ => body_lower_generic_type_decl_uncarried(shell: shell)
+      }
+    Absent => body_lower_generic_type_decl_uncarried(shell: shell)
+  }
+}
+
+fn body_lower_node_is_production_shell(n: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn body_lower_generic_type_decl_uncarried(shell: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: ^body_lowering_reason_generic_type_decl_member_uncarried,
+      at: node_locus(node: shell),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
   }
 }
 
@@ -7012,23 +7106,34 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => outcome_accepted(value: shell)
         Present { value: type_name } =>
-          match body_lower_type_decl_record_block_optional(captured: captured) {
-            Present { value: block_shell } =>
-              body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell)
-            Absent =>
-              match body_lower_find_where_host_conj(root: captured) {
-                Absent => outcome_accepted(value: shell)
-                Present { value: host } =>
-                  outcome_accepted(
-                    value: node_with_occurrence_id(
-                      kind: TypeNode { connective: Conj },
-                      children: [
-                        Edge { label: Named { name: type_name }, target: host }
-                      ],
-                      occurrence_id: shell.occurrence_id
-                    )
-                  )
-              }
+          body_lower_type_decl_named(shell: shell, captured: captured, type_name: type_name, type_params: body_lower_decl_type_params(captured: captured))
+      }
+  }
+}
+
+fn body_lower_type_decl_named(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+  match type_params {
+    TypeParamsUnreadable =>
+      Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_params_unreadable_diagnostic(shell: shell)) }
+    NoTypeParams => body_lower_type_decl_by_body(shell: shell, captured: captured, type_name: type_name, type_params: type_params)
+    TypeParams { conj: _ } => body_lower_type_decl_by_body(shell: shell, captured: captured, type_name: type_name, type_params: type_params)
+  }
+}
+
+fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+  match body_lower_type_decl_record_block_optional(captured: captured) {
+    Present { value: block_shell } =>
+      body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell, type_params: type_params)
+    Absent =>
+      match body_lower_find_where_host_conj(root: captured) {
+        Present { value: host } =>
+          outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: host, type_params: type_params))
+        Absent =>
+          match type_params {
+            TypeParams { conj: _ } =>
+              body_lower_generic_eq_type_decl(shell: shell, captured: captured, type_name: type_name, type_params: type_params)
+            NoTypeParams => outcome_accepted(value: shell)
+            TypeParamsUnreadable => outcome_accepted(value: shell)
           }
       }
   }
