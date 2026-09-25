@@ -1,6 +1,7 @@
 module gunbc.approve_ios_swift_protocol_vector_tests
 
 import std.types { String, List, Bool }
+import v2.std.algebra { length }
 import v2.std.optional { Present }
 import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector }
 import v2.extdeps.languages.swift.syntax {
@@ -49,7 +50,7 @@ fn at_vin(f: String) -> SwiftExpr { sw_mem(b: sw_path(b: "v", m: "input"), m: f)
 
 fn at_test(doc: List<String>, n: String, th: Bool, b: List<SwiftStmt>) -> SwiftDecl {
   let f = sw_func(m: [], n: n, p: [], th: th, r: none, b: b)
-  if length(doc) == 0 { f } else { sw_doc(c: doc, d: f) }
+  if length(xs: doc) == 0 { f } else { sw_doc(c: doc, d: f) }
 }
 
 fn at_decode(decoder: String, e: SwiftExpr) -> SwiftExpr { sw_try(e: sw_call(f: sw_path(b: "WireDecode", m: decoder), a: [sw_pos(v: e)])) }

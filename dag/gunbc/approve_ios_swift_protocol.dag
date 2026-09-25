@@ -1,6 +1,7 @@
 module gunbc.approve_ios_swift_protocol
 
 import std.types { String, List }
+import v2.std.algebra { list_append }
 import v2.std.optional { Present }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
@@ -208,7 +209,7 @@ data approve_ios_protocol_header: List<String> = [
 ]
 
 fn approve_ios_protocol_swift_file() -> SwiftSourceFile {
-  SwiftSourceFile { declarations: append([sw_cmt(c: approve_ios_protocol_header, d: sw_import(n: "Foundation")), approve_ios_protocol_enum()], items: approve_ios_protocol_carriers()) }
+  SwiftSourceFile { declarations: list_append(left: [sw_cmt(c: approve_ios_protocol_header, d: sw_import(n: "Foundation")), approve_ios_protocol_enum()], right: approve_ios_protocol_carriers()) }
 }
 
 fn expected_approve_ios_protocol_swift() -> String {

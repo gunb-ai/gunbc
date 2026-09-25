@@ -1,6 +1,7 @@
 module gunbc.approve_ios_swift_wire
 
 import std.types { String, List, Bool, Int }
+import v2.std.algebra { list_append }
 import v2.std.optional { Present }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftCondition,
@@ -250,7 +251,7 @@ fn aw_wire_object() -> SwiftDecl {
           ]
         )
       ),
-      aw_static_func(n: "document", p: [sw_p_(n: "data", t: sw_t(n: "Data")), sw_p(n: "allowed", t: sw_tarr(e: aw_s()))], th: true, r: sw_t(n: "WireObject"), b: append(aw_json_read(), items: [
+      aw_static_func(n: "document", p: [sw_p_(n: "data", t: sw_t(n: "Data")), sw_p(n: "allowed", t: sw_tarr(e: aw_s()))], th: true, r: sw_t(n: "WireObject"), b: list_append(left: aw_json_read(), right: [
         sw_ret(e: sw_try(e: sw_calln(f: "WireObject", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_str(s: "$")), sw_arg(l: "allowed", v: sw_id(n: "allowed"))]))),
       ])),
     ])
@@ -425,7 +426,7 @@ fn aw_wire_decode() -> SwiftDecl {
         sw_arg(l: "platform_proof", v: sw_try(e: sw_calln(f: "proof", a: [sw_pos(v: aw_omember(key: "platform_proof")), sw_arg(l: "at", v: sw_str(s: "platform_proof"))]))),
       ])),
     ]),
-    aw_decode_fn(n: "pushUpdate", p: aw_pdata(), r: sw_t(n: "ApnsRegistration"), b: append(aw_json_read(), items: [
+    aw_decode_fn(n: "pushUpdate", p: aw_pdata(), r: sw_t(n: "ApnsRegistration"), b: list_append(left: aw_json_read(), right: [
       sw_ret(e: sw_try(e: sw_calln(f: "push", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_str(s: "$"))]))),
     ])),
     sw_cmt(c: ["Responses."], d: aw_decode_fn(n: "enrolmentGrant", p: aw_pdata(), r: sw_t(n: "EnrolmentGrant"), b: [
@@ -587,7 +588,7 @@ fn aw_records() -> List<SwiftDecl> {
         sw_doc(c: ["Every arm of DeviceRedemptionOutcome, for the identity join with the emitted envelopes."], d: sw_static_let_typed(
           n: "all",
           t: sw_tg(n: "Set", a: [aw_s()]),
-          e: sw_arr(e: append(append(map(aw_outcome_names_before_branched, s => sw_str(s: s)), items: [sw_id(n: "enrollmentUnknown"), sw_id(n: "enrollmentRevoked")]), items: map(aw_outcome_names_after_branched, s => sw_str(s: s))))
+          e: sw_arr(e: list_append(left: list_append(left: map(aw_outcome_names_before_branched, s => sw_str(s: s)), right: [sw_id(n: "enrollmentUnknown"), sw_id(n: "enrollmentRevoked")]), right: map(aw_outcome_names_after_branched, s => sw_str(s: s))))
         )),
       ])
     ),
@@ -772,9 +773,7 @@ data approve_ios_wire_header: List<String> = [
 
 fn approve_ios_wire_swift_file() -> SwiftSourceFile {
   SwiftSourceFile {
-    declarations: append(append(append(append(
-      [sw_cmt(c: approve_ios_wire_header, d: sw_import(n: "Foundation")), aw_wire_json(), aw_wire_error(), aw_wire_object(), aw_wire_encode(), aw_wire_decode()],
-      items: aw_stored_request()), items: aw_records()), items: aw_paths()), items: [aw_server_config(), aw_client()]),
+    declarations: list_append(left: list_append(left: list_append(left: list_append(left: [sw_cmt(c: approve_ios_wire_header, d: sw_import(n: "Foundation")), aw_wire_json(), aw_wire_error(), aw_wire_object(), aw_wire_encode(), aw_wire_decode()], right: aw_stored_request()), right: aw_records()), right: aw_paths()), right: [aw_server_config(), aw_client()]),
   }
 }
 
