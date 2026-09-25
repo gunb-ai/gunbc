@@ -5,7 +5,8 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.coverage { dedupe_snoc }
-import v2.std.algebra { fold_list, length, list_append }
+import v2.std.algebra { fold_list, length }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }

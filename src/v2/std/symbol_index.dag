@@ -1,7 +1,7 @@
 module v2.std.symbol_index
 
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra {
   HeadAbsent,
   HeadFound,
@@ -9,8 +9,7 @@ import v2.std.algebra {
   fold_list,
   is_empty,
   length,
-  list_head,
-  list_snoc_item
+  list_head
 }
 import v2.std.collection {
   Map,
