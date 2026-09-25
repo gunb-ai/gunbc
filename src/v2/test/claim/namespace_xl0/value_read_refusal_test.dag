@@ -1,0 +1,147 @@
+module v2.test.claim.namespace_xl0.value_read_refusal
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY VALUE POSITION REFUSES AT THE VALUE, UNDER THE VALUE'S OWN CAUSE, WHEN IT CANNOT BE LOWERED.
+//
+// The subject is v2.compiler.body_lowering_fold body_lower_value_read, the one reader every value
+// position asks: record-literal field initializer, if condition, if arm, let value, block statement,
+// match-arm body. Before it, an unlowerable value took one of two wrong answers. A field initializer
+// or if condition was CARRIED as its shell under the head-grain advisory
+// body_lowering_reason_value_carried_unlowered and the file Accepted, so the shell reached resolve and
+// refused there at the wrong atom (gunbc.recurring_failure_mode
+// carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom). A match-arm
+// body or if arm fell back to an operand reader whose Absent was reported as the enclosing form's
+// NAVIGATION refusal -- match_arm_navigation_refused, if_navigation_refused -- located at the whole
+// arm, which is how an unlowered fn literal inside an arm body read as a malformed arm.
+//
+// THE UNLOWERABLE VALUE IS A FN LITERAL, because it is the one value shape the value reader has no
+// lowered form for on this base (gunbc#12210 adds one). Each specimen puts exactly one fn literal in
+// exactly one value position, and each claim asserts two things of the refusal: its FATAL cause is
+// body_lowering_reason_value_unlowered, and its locus is the VALUE -- a node whose subtree holds the
+// fn literal and holds none of the enclosing form's own tokens (`match`, `=>`, `if`, `let`). The second
+// half is what rules out the relabel: a navigation refusal is located at the arm or the if, whose
+// subtree carries those tokens. When gunbc#12210 lands and fn literals lower, these specimens stop
+// refusing and every row here reds, naming the specimen to re-point at the next unlowerable shape.
+//
+// WHAT IS NOT CLAIMED HERE, AND WHY. The brief asked for a control that an arm missing `=>` still
+// refuses as match_arm_navigation_refused. That source does not reach lowering: the parser refuses
+// it (parse_grammar_choice_overlap_residue), so no source text can drive the navigation arm from
+// this route, and a control that cannot go red on this route would be a decoration (DESIGN section
+// 4b). The navigation refusal survives only for a parse tree whose arm has no pattern or no `=>`.
+data vrr_header: String = "module mq.vrr\n\nimport v2.std.logic { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
+
+data vrr_arm_body_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  match v {\n    true => fn(y) { y }\n    false => v\n  }\n}\n"
+
+data vrr_if_arm_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  if v { fn(y) { y } } else { v }\n}\n"
+
+data vrr_if_condition_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  if fn(y) { y } { v } else { v }\n}\n"
+
+data vrr_let_value_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  let g = fn(y) { y }\n  v\n}\n"
+
+data vrr_field_initializer_source: String = vrr_header + "fn p(v: Bool) -> VrrRecord {\n  VrrRecord { f: fn(y) { y } }\n}\n"
+
+type VrrVerdict
+  = VrrRefused { fatal: Diagnostic }
+  | VrrNotRefused
+
+fn vrr_normalize(source: String) -> VrrVerdict {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => VrrNotRefused
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: source, file: ^value_read_refusal_file, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => VrrNotRefused
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: _ } => VrrNotRefused
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Accepted { value: _, diagnostics: _ } => VrrNotRefused
+                Rejected { diagnostics: d } => VrrRefused { fatal: diagnostics_fatal(d: d) }
+              }
+          }
+      }
+  }
+}
+
+fn vrr_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: false,
+    cons: fn(acc, n) {
+      acc || (match parse_production_emitted_identity_optional(node: n) {
+        Present { value: e } => e == emitted
+        Absent => false
+      })
+    }
+  )
+}
+
+fn vrr_subtree_has_token(root: Node, token: Symbol) -> Bool {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: false,
+    cons: fn(acc, n) {
+      acc || (match node_atom_identity_optional(node: n) {
+        Present { value: id } => id == token
+        Absent => false
+      })
+    }
+  )
+}
+
+// The refusal is the value's: its fatal cause is value_unlowered, and its locus holds the fn literal
+// and none of the enclosing form's tokens.
+fn vrr_refused_at_the_value(source: String) -> Bool {
+  match vrr_normalize(source: source) {
+    VrrNotRefused => false
+    VrrRefused { fatal: d } =>
+      (d.reason == ^body_lowering_reason_value_unlowered)
+        && match d.at {
+             NodeLocus { anchor: a } =>
+               vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_fn_literal)
+                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_match)
+                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_fat_arrow)
+                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_if)
+                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_let)
+             _ => false
+           }
+  }
+}
+
+// THE RELABEL, ASKED DIRECTLY: an unlowerable arm body is the arm body's refusal, not the arm's.
+test fn an_unlowerable_match_arm_body_refuses_at_the_body_not_as_navigation_holds() -> Bool {
+  vrr_refused_at_the_value(source: vrr_arm_body_source)
+}
+
+test fn an_unlowerable_if_arm_refuses_at_the_arm_value_not_as_navigation_holds() -> Bool {
+  vrr_refused_at_the_value(source: vrr_if_arm_source)
+}
+
+test fn an_unlowerable_if_condition_refuses_at_the_condition_holds() -> Bool {
+  vrr_refused_at_the_value(source: vrr_if_condition_source)
+}
+
+test fn an_unlowerable_let_value_refuses_at_the_value_holds() -> Bool {
+  vrr_refused_at_the_value(source: vrr_let_value_source)
+}
+
+// THE CARRY'S FORMER POSITION: this specimen Accepted under the value_carried_unlowered advisory and
+// refused later, at resolve, at the wrong atom.
+test fn an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_carried_holds() -> Bool {
+  vrr_refused_at_the_value(source: vrr_field_initializer_source)
+}
