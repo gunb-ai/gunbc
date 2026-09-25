@@ -211,28 +211,26 @@ pub fn dag_subtraction_refinement(operand: Rc<DeclarationRef>) -> Rc<Subtraction
             }
             __result
         });
-        if ((hits.clone().len() as i64) == 0) {
-            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
-        } else {
-            if ((hits.clone().len() as i64) == 1) {
-                match hits.clone().first().cloned() {
-                    Some(r) => Rc::new(SubtractionRefinement::SubtractionEscapesTo {
+        match hits.clone().first().cloned() {
+            std::option::Option::None => {
+                Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+            }
+            Some(r) => {
+                if ((hits.clone().len() as i64) == 1) {
+                    Rc::new(SubtractionRefinement::SubtractionEscapesTo {
                         from_type: r.from_type.clone(),
-                    }),
-                    std::option::Option::None => {
-                        Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
-                    }
+                    })
+                } else {
+                    Rc::new(SubtractionRefinement::SubtractionRefinementAmbiguous {
+                        from_types: Rc::new({
+                            let mut __result = Vec::new();
+                            for h in hits.iter().cloned() {
+                                __result.push(h.from_type.clone());
+                            }
+                            __result
+                        }),
+                    })
                 }
-            } else {
-                Rc::new(SubtractionRefinement::SubtractionRefinementAmbiguous {
-                    from_types: Rc::new({
-                        let mut __result = Vec::new();
-                        for r in hits.iter().cloned() {
-                            __result.push(r.from_type.clone());
-                        }
-                        __result
-                    }),
-                })
             }
         }
     }
