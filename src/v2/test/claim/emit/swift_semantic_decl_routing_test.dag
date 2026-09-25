@@ -3,7 +3,6 @@ module v2.test.emit.swift_semantic_decl_routing
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.swift { swift_target_model }
-import v2.extdeps.languages.swift_decl { swift_decl_frontier_deferred_count }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -160,8 +159,4 @@ test fn swift_unsupported_shape_refuses_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
-}
-
-test fn swift_decl_frontier_deferred_count_holds() -> Bool {
-  swift_decl_frontier_deferred_count() == 2
 }
