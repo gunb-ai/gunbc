@@ -88,6 +88,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  EdgeLabel,
   Instantiation,
   Named,
   Node,
@@ -7609,7 +7610,11 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
           outcome_accepted(value: a)
         } else if id == ^dag_surface_operation {
           bind_outcome(o: body_lower_operation(shell: member), f: fn(op) {
-            outcome_accepted(value: BodyLowerServiceAcc { operations: list_snoc_item(xs: a.operations, item: op.edge), set_aside: list_append(left: a.set_aside, right: op.set_aside) })
+            if body_lower_service_declares_operation(operations: a.operations, name: op.edge.label) {
+              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_operation_repeated, n: member))
+            } else {
+              outcome_accepted(value: BodyLowerServiceAcc { operations: list_snoc_item(xs: a.operations, item: op.edge), set_aside: list_append(left: a.set_aside, right: op.set_aside) })
+            }
           })
         } else if id == ^dag_surface_transport {
           outcome_accepted(
@@ -7623,6 +7628,14 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
         }
     }
   })
+}
+
+// AN OPERATION NAME IS DECLARED ONCE PER SERVICE. Two operations sharing a name would lower to two
+// identically labelled edges of one product, which is not a well-formed node and names no single
+// function type; the refusal is located at the second declaration, with its own cause, rather than
+// surfacing later as an unlocated post-normalize well-formedness failure at the module root.
+fn body_lower_service_declares_operation(operations: List<Edge>, name: EdgeLabel) -> Bool {
+  fold(operations, init: false, f: fn(found, e) { found || (e.label == name) })
 }
 
 fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {

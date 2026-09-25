@@ -46,6 +46,11 @@ fn full_of_stream(tokens: TokenStream) -> Outcome<NormalizedTree> {
   bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize(parse_tree: tree) })
 }
 
+// The dag/extdeps/bmc/http.dag shape the first full gen-two census found: one service declaring an
+// operation name twice. It refuses located at the second declaration with its own cause, which is
+// what distinguishes it from the set-aside members that ride beside it and are admitted.
+data repeated_operation_source: String = "module m\nservice S {\n  operation Op {}\n  operation Op {}\n}\n"
+
 fn index_of(t: CensusTree) -> SymbolIndex {
   symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
 }
@@ -217,4 +222,34 @@ fn repeated_input_stream() -> TokenStream {
 
 test fn repeated_input_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: repeated_input_source, file: ^service_lowering_probe, supplied: repeated_input_stream())
+}
+
+test fn a_repeated_operation_name_refuses_located_RED() -> Bool {
+  match census_of_stream(tokens: repeated_operation_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_operation_repeated
+  }
+}
+
+fn repeated_operation_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^service_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^service_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^service_lowering_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^service_lowering_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 41, end: 50 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^service_lowering_probe, start: 51, end: 53 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 55, end: 56 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 57, end: 58 }
+  ])
+}
+
+test fn repeated_operation_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: repeated_operation_source, file: ^service_lowering_probe, supplied: repeated_operation_stream())
 }
