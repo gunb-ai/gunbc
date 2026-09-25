@@ -1,0 +1,75 @@
+module chunk
+
+fn parse_expr_terminal(
+  token_class: Symbol,
+  stamp: TerminalStampMode,
+  tokens: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_token_first(tokens: tokens) {
+    Absent => ParseExprRejected { diagnostics: [], table: table }
+    Present { value: tok } =>
+      match tok.class == token_class {
+        true =>
+          match list_tail(xs: tokens) {
+            TailFound { tail: remaining } =>
+              if token_class == ^dag_token_int_literal {
+                let minted = parse_mint_from_source(
+                  prov: prov,
+                  file: tok.file,
+                  start: tok.start,
+                  end: tok.end
+                )
+                match dag_int_literal_node_from_lexeme(
+                  lexeme: tok.lexeme,
+                  occurrence_id: node_occurrence_identity_minted(id: minted.id)
+                ) {
+                  Accepted { value: captured, diagnostics: _ } =>
+                    ParseExprAccepted {
+                      remaining: remaining,
+                      captured: captured,
+                      diagnostics: std.algebra.Empty,
+                      prov: minted.prov,
+                      table: table
+                    }
+                  Rejected { diagnostics: d } =>
+                    ParseExprRejected {
+                      diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+                      table: table
+                    }
+                }
+              } else if token_class == ^dag_token_float_literal {
+                let minted = parse_mint_from_source(
+                  prov: prov,
+                  file: tok.file,
+                  start: tok.start,
+                  end: tok.end
+                )
+                ParseExprAccepted {
+                  remaining: remaining,
+                  captured: dag_float_literal_node_from_lexeme(
+                    lexeme: tok.lexeme,
+                    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+                  ),
+                  diagnostics: std.algebra.Empty,
+                  prov: minted.prov,
+                  table: table
+                }
+              } else {
+                let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
+                ParseExprAccepted {
+                  remaining: remaining,
+                  captured: stamped.node,
+                  diagnostics: [],
+                  prov: stamped.prov,
+                  table: table
+                }
+              }
+            TailAbsent => ParseExprRejected { diagnostics: [], table: table }
+          }
+        false => ParseExprRejected { diagnostics: [], table: table }
+      }
+  }
+}
+

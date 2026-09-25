@@ -1,0 +1,20 @@
+module chunk
+
+fn deterministic_dag_source_serializer_witness(
+  first: Medium<String>,
+  second: Medium<String>
+) -> Witness<DeterministicDagSourceSerializerLaw> {
+  if medium_section_equal(left: first, right: second) {
+    Holds {
+      value: DeterministicDagSourceSerializerLaw {
+        canonical_section: first.carried,
+        declared_fidelity: first.fidelity
+      }
+    }
+  } else {
+    Violates {
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_serializer_nondeterministic)
+    }
+  }
+}
+

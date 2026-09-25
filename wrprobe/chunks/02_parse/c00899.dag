@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_minted_id_list(nodes: List<Node>) -> List<OccurrenceId> {
+  fold_list(
+    xs: nodes,
+    empty: std.algebra.Empty,
+    cons: fn(acc, n) { parse_minted_id_snoc(acc: acc, n: n) }
+  )
+}
+

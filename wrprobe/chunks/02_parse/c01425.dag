@@ -1,0 +1,21 @@
+module chunk
+
+fn compute_nullable_fixpoint(
+  root: GrammarRoot,
+  ns: List<Symbol>,
+  seen_count: Int,
+  fuel: Int
+) -> List<Symbol> {
+  if fuel == 0 {
+    ns
+  } else {
+    let next = compute_nullable_round(root: root, ns: ns)
+    let next_count = length(xs: next)
+    if next_count == seen_count {
+      next
+    } else {
+      compute_nullable_fixpoint(root: root, ns: next, seen_count: next_count, fuel: fuel - 1)
+    }
+  }
+}
+

@@ -1,0 +1,36 @@
+module chunk
+
+fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBuild {
+  match fold_list(
+    xs: refs,
+    empty: SourceRefListDigestOk {
+      digest: content_hash_atom(value: source_ref_list_digest_seed)
+    },
+    cons: fn(acc, ref) {
+      match acc {
+        SourceRefListDigestNonStructuralRefused { path: _ } => acc
+        SourceRefListDigestOk { digest: prior } =>
+          match source_ref_content_hash_structural(hash: ref.content_hash) {
+            SourceRefContentHashStructuralNonFnv1a64 =>
+              SourceRefListDigestNonStructuralRefused { path: ref.path }
+            SourceRefContentHashStructuralOk { digest: structural } =>
+              SourceRefListDigestOk {
+                digest: content_hash_combine_structural(
+                  left: prior,
+                  right: source_ref_identity_digest_from_structural(
+                    ref: ref,
+                    structural: structural
+                  )
+                )
+              }
+          }
+      }
+    }
+  ) {
+    SourceRefListDigestNonStructuralRefused { path: path } =>
+      SourceRefListDigestNonStructuralRefused { path: path }
+    SourceRefListDigestOk { digest: d } =>
+      SourceRefListDigestOk { digest: d }
+  }
+}
+

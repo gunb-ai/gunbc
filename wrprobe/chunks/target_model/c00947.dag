@@ -1,0 +1,35 @@
+module chunk
+
+fn bound_tokens_source_text(
+  tokens: List<ConcreteSyntaxToken>,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<TargetText> {
+  fold_list(
+    xs: tokens,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, token) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match token {
+            FixedToken { token_class: tc } =>
+              bind_outcome(
+                o: lex_rules_literal_for_class(rules: lex, token_class: tc),
+                f: fn(spelling) {
+                  Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
+                }
+              )
+            BoundToken { token_class: _, binding: b } =>
+              bind_outcome(
+                o: bound_spelling_from_map(binding_spellings: binding_spellings, binding: b),
+                f: fn(spelling) {
+                  Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
+                }
+              )
+          }
+      }
+    }
+  )
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn target_value_expr_arrow_has_loop_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      target_value_expr_loop_gate(node: body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+

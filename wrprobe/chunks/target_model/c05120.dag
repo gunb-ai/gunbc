@@ -1,0 +1,30 @@
+module chunk
+
+fn target_value_expression_binding_refs_intersperse_separator(
+  bindings: List<Symbol>,
+  projection: TargetValueExpressionProjection,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold_list_right(
+    xs: bindings,
+    empty: Empty,
+    snoc: fn(acc, binding) {
+      let token = target_value_expression_binding_ref_token(
+        binding: binding,
+        projection: projection
+      )
+      match acc {
+        Empty => Cons { head: token, tail: Empty }
+        _ =>
+          Cons {
+            head: token,
+            tail: Cons {
+              head: FixedToken { token_class: separator },
+              tail: acc
+            }
+          }
+      }
+    }
+  )
+}
+

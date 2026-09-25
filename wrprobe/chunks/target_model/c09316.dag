@@ -1,0 +1,10 @@
+module chunk
+
+type TargetGenericApply {
+  surface: Symbol
+  open: Symbol
+  separator: Symbol
+  field_label_separator: Optional<Symbol>
+  close: Symbol
+}
+

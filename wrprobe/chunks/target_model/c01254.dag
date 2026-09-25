@@ -1,0 +1,8 @@
+module chunk
+
+type TargetOperatorShape
+  = InfixToken { token: Symbol }
+  | PrefixToken { token: Symbol }
+  | CallIdent { ident: Symbol }
+  | MethodIdent { ident: Symbol }
+

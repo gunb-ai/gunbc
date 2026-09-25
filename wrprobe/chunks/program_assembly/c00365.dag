@@ -1,0 +1,44 @@
+module chunk
+
+fn program_assembly_fold_step(
+  state: ProgramAssemblyLocatedFoldState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> ProgramAssemblyLocatedFoldState {
+  match state {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
+      ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans }
+    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans } =>
+      let result = program_assembly_read_to_normalized_root_seeded(
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue,
+        seed: seed
+      )
+      let carried = span_index_merge(base: spans, incoming: result.spans)
+      match result.produced {
+        Accepted { value: tree, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: tree.root) {
+            Accepted { value: qn, diagnostics: _ } =>
+              ProgramAssemblyLocatedFoldOk {
+                located: list_snoc_item(
+                  xs: acc,
+                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: tree }
+                ),
+                index: source_root_index_insert(index: idx, module: qn, root: read.source_root),
+                alloc: result.alloc,
+                spans: carried
+              }
+            Rejected { diagnostics: d } =>
+              ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
+          }
+        Rejected { diagnostics: d } =>
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
+      }
+  }
+}
+
+

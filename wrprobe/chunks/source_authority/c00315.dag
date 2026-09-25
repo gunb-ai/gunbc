@@ -1,0 +1,9 @@
+module chunk
+
+fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: storage.path as NonEmptyStr),
+    right: source_root_ref_identity_digest(root: storage.source_root)
+  )
+}
+

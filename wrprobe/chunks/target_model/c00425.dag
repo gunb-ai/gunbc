@@ -1,0 +1,22 @@
+module chunk
+
+fn produced_decl_signature_segment_tokens(
+  rows: ProducedDeclRenderRows,
+  subject: ProducedDeclSignatureSubject,
+  segment: ProducedDeclSignatureSegment
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match segment {
+    ProducedSignatureFixed { token_class: tc } =>
+      outcome_accepted(value: [FixedToken { token_class: tc }])
+    ProducedSignatureDeclName { token_class: tc } =>
+      outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
+    ProducedSignatureParams =>
+      produced_decl_params_tokens(rows: rows, params: subject.params)
+    ProducedSignatureReturnType =>
+      produced_decl_type_ref_tokens(
+        token_class: rows.type_ref_token_class,
+        type_node: subject.codomain
+      )
+  }
+}
+

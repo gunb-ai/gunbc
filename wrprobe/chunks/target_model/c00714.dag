@@ -1,0 +1,12 @@
+module chunk
+
+fn phrase_to_fixed_concrete_tokens(p: LexicalPhrase) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: p.spans,
+    empty: Empty,
+    cons: fn(acc, s) {
+      list_snoc_item(xs: acc, item: FixedToken { token_class: s.token_class })
+    }
+  )
+}
+

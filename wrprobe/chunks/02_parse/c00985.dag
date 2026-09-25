@@ -1,0 +1,23 @@
+module chunk
+
+fn parse_stamp_derived_repeat(
+  acc_nodes: List<Node>,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let from = parse_minted_id_list(nodes: acc_nodes)
+  let event = DerivedBy { producer: ^parse_stage_producer, from: from }
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseStampResult {
+    node: parse_repeat_captured_node(
+      acc_nodes: acc_nodes,
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+    ),
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
+  }
+}
+

@@ -1,0 +1,67 @@
+module chunk
+
+fn formal_production_rhs_matches_emitted_conj_step(
+  state: EmittedRhsMatchState,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  symbol: FormalGrammarSymbol
+) -> EmittedRhsMatchState {
+  match state {
+    EmittedRhsMatchFail => state
+    EmittedRhsMatchOk { index: index } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Present { value: binding_symbol } =>
+              match formal_binding_conj_slot_arm(binding: binding_symbol) {
+                FormalBindingConjSlotEmittedAtom =>
+                  match formal_conj_child_atom_at_index(
+                    children: children,
+                    index: index,
+                    emitted: resolution.emitted
+                  ) {
+                    Holds { value: _ } => EmittedRhsMatchOk { index: index + 1 }
+                    Violates { diagnostic: _ } => EmittedRhsMatchFail
+                  }
+                FormalBindingConjSlotExactBinding =>
+                  match formal_conj_child_atom_at_index(
+                    children: children,
+                    index: index,
+                    emitted: resolution.emitted
+                  ) {
+                    Holds { value: slot_child } =>
+                      match node_atom_identity_optional(node: slot_child) {
+                        Present { value: atom_id } =>
+                          if atom_id == binding_symbol {
+                            EmittedRhsMatchOk { index: index + 1 }
+                          } else {
+                            EmittedRhsMatchFail
+                          }
+                        Absent => EmittedRhsMatchFail
+                      }
+                    Violates { diagnostic: _ } => EmittedRhsMatchFail
+                  }
+              }
+            Absent => EmittedRhsMatchOk { index: index }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match list_nth(
+            xs: resolution.slots,
+            wanted: index,
+            absent: Diagnostic {
+              reason: ^grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: resolution.emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: slot } =>
+              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
+                Holds { value: _ } => EmittedRhsMatchOk { index: index + 1 }
+                Violates { diagnostic: _ } => EmittedRhsMatchFail
+              }
+            Violates { diagnostic: _ } => EmittedRhsMatchFail
+          }
+      }
+  }
+}
+

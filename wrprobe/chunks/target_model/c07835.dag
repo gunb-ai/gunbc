@@ -1,0 +1,21 @@
+module chunk
+
+fn target_catalog_contains_node_shape(
+  slot: Node,
+  catalog_targets: List<Node>
+) -> Bool {
+  fold_list(
+    xs: catalog_targets,
+    empty: false,
+    cons: fn(acc, candidate) {
+      if acc {
+        true
+      } else if content_hash(n: slot) == content_hash(n: candidate) {
+        true
+      } else {
+        false
+      }
+    }
+  )
+}
+

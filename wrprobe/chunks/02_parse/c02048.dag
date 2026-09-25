@@ -1,0 +1,37 @@
+module chunk
+
+fn choice_token_prefix_rows_from(
+  alts: List<PreparedExprFold>,
+  need: Int,
+  rows: List<TokenPrefixRow>
+) -> Optional<List<TokenPrefixRow>> {
+  match list_head(xs: alts) {
+    HeadAbsent => optional_present(value: rows)
+    HeadFound { value: alt } =>
+      match prepared_terminal_prefix(expr: prepared_expr_fold_tree(alt: alt), need: need) {
+        Absent => optional_absent()
+        Present { value: prefix } =>
+          if token_prefix_row_conflicts(rows: rows, prefix: prefix) {
+            optional_absent()
+          } else {
+            match list_tail(xs: alts) {
+              TailAbsent =>
+                optional_present(value: list_snoc_item(
+                  xs: rows,
+                  item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) } }
+                ))
+              TailFound { tail: rest } =>
+                choice_token_prefix_rows_from(
+                  alts: rest,
+                  need: need,
+                  rows: list_snoc_item(
+                    xs: rows,
+                    item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) } }
+                  )
+                )
+            }
+          }
+      }
+  }
+}
+

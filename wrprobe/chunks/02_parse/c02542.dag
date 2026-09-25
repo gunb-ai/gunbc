@@ -1,0 +1,7 @@
+module chunk
+
+type ParseDemandFold {
+  demands_nonterminal: Bool
+  discarding_sites: Int
+}
+

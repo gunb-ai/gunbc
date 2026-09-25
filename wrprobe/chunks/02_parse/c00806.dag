@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_prov_initial() -> ParseProvenanceState {
+  parse_prov_seeded(seed: occurrence_id_allocator_initial())
+}
+

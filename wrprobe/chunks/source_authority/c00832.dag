@@ -1,0 +1,6 @@
+module chunk
+
+fn module_storage_binding_module(binding: ModuleStorageBinding) -> QualifiedName {
+  binding.module
+}
+

@@ -1,0 +1,43 @@
+module chunk
+
+fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_reference_layer_tokens_field_rc_head,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.rc_type_head } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+}
+      ),
+      target_model_named_edge(
+        name: ^target_reference_layer_tokens_field_box_head,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.box_type_head } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+}
+      ),
+      target_model_named_edge(
+        name: ^target_reference_layer_tokens_field_rc_new,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.rc_new_ctor } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+}
+      ),
+      target_model_named_edge(
+        name: ^target_reference_layer_tokens_field_box_new,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.box_new_ctor } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+}
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

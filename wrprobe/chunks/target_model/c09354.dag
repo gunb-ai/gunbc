@@ -1,0 +1,12 @@
+module chunk
+
+type TargetTypeExpressionProjection {
+  atom_form: TargetAtomTypeShape
+  conj_form: TargetGenericApply
+  disj_form: TargetSumTypeShape
+  arrow_form: TargetFunctionTypeShape
+  cardinality_form: TargetGenericApply
+  instantiation_form: TargetGenericApply
+  declaration_reference_form: DeclarationReferenceForm
+}
+

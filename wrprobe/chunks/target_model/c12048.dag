@@ -1,0 +1,8 @@
+module chunk
+
+type TargetUseSiteOwnershipCatalogLookup
+  = TargetUseSiteOwnershipCatalogMissing
+  | TargetUseSiteOwnershipCatalogUnique { row: TargetUseSiteOwnershipRealization }
+  | TargetUseSiteOwnershipCatalogAmbiguous
+  | TargetUseSiteOwnershipCatalogInvalid
+

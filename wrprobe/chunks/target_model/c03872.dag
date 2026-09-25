@@ -1,0 +1,6 @@
+module chunk
+
+fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+  source_atom_string_projection_from_node_bounded(source: source, fuel: source_atom_string_projection_node_count(source: source))
+}
+

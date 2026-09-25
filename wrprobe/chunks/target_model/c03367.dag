@@ -1,0 +1,101 @@
+module chunk
+
+fn decode_type_expression_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetTypeExpressionProjection> {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_atom),
+        f: fn(atom_bundle) {
+          bind_outcome(
+            o: decode_atom_type_shape_bundle(bundle: atom_bundle),
+            f: fn(atom_form) {
+              bind_outcome(
+                o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_conj),
+                f: fn(conj_bundle) {
+                  bind_outcome(
+                    o: decode_generic_apply_shape_bundle(bundle: conj_bundle),
+                    f: fn(conj_form) {
+                      bind_outcome(
+                        o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_disj),
+                        f: fn(disj_bundle) {
+                          bind_outcome(
+                            o: decode_sum_type_shape_bundle(bundle: disj_bundle),
+                            f: fn(disj_form) {
+                              bind_outcome(
+                                o: projection_bundle_child(
+                                  bundle: bundle,
+                                  name: ^target_type_expr_field_arrow
+                                ),
+                                f: fn(arrow_bundle) {
+                                  bind_outcome(
+                                    o: decode_function_type_shape_bundle(bundle: arrow_bundle),
+                                    f: fn(arrow_form) {
+                                      bind_outcome(
+                                        o: projection_bundle_child(
+                                          bundle: bundle,
+                                          name: ^target_type_expr_field_cardinality
+                                        ),
+                                        f: fn(card_bundle) {
+                                          bind_outcome(
+                                            o: decode_generic_apply_shape_bundle(bundle: card_bundle),
+                                            f: fn(cardinality_form) {
+                                              bind_outcome(
+                                                o: projection_bundle_child(
+                                                  bundle: bundle,
+                                                  name: ^target_type_expr_field_instantiation
+                                                ),
+                                                f: fn(inst_bundle) {
+                                                  bind_outcome(
+                                                    o: decode_generic_apply_shape_bundle(
+                                                      bundle: inst_bundle
+                                                    ),
+                                                    f: fn(instantiation_form) {
+                                                      bind_outcome(
+                                                        o: decode_declaration_reference_form_bundle(bundle: bundle),
+                                                        f: fn(declaration_reference_form) {
+                                                      outcome_accepted(
+                                                        TargetTypeExpressionProjection {
+                                                          atom_form: atom_form,
+                                                          conj_form: conj_form,
+                                                          disj_form: disj_form,
+                                                          arrow_form: arrow_form,
+                                                          cardinality_form: cardinality_form,
+                                                          instantiation_form: instantiation_form,
+                                                          declaration_reference_form: declaration_reference_form
+                                                        }
+                                                      )
+                                                        }
+                                                      )
+                                                    }
+                                                  )
+                                                }
+                                              )
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_type_expr_projection_bundle_malformed_diagnostic(bundle: bundle)
+      )
+  }
+}
+

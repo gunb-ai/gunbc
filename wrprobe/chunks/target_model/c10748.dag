@@ -1,0 +1,12 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>,
+  representation_parameter: Symbol
+) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  match requirements.lookup(representation_parameter) {
+    Present { value: existing } => existing
+    Absent => target_derive_supplemental_generic_bound_requirement_set_empty()
+  }
+}
+

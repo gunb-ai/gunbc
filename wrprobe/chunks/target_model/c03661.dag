@@ -1,0 +1,16 @@
+module chunk
+
+fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: parent, name: ^concrete_syntax_token_field_binding),
+    f: fn(binding_node) {
+      match binding_node.kind {
+        TypeNode { connective: Atom { identity: binding } } =>
+          outcome_accepted(binding)
+        _ =>
+          outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
+      }
+    }
+  )
+}
+

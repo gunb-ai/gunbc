@@ -1,0 +1,17 @@
+module chunk
+
+fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduction> {
+  match find_named_child(root: row, name: ^grammar_relation_field_production) {
+    Accepted { value: production_node, diagnostics: _ } =>
+      formal_production_from_node(node: production_node)
+    Rejected { diagnostics: nd } =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: row),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+

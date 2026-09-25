@@ -1,0 +1,17 @@
+module chunk
+
+fn target_type_expr_instantiation_emitted(
+  form: TargetGenericApply,
+  head: Node,
+  args: List<Node>
+) -> Node {
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprInstantiation,
+    surface: form.surface,
+    children: list_append(
+      left: Cons { head: head, tail: Empty },
+      right: args
+    )
+  )
+}
+

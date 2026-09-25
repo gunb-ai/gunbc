@@ -1,0 +1,28 @@
+module chunk
+
+test fn the_census_counts_every_disposition() -> Bool {
+  let census = native_route_census(
+    rows: [
+      passed_row(module: "v2.test.a", declaration: "one"),
+      false_row(module: "v2.test.b", declaration: "two"),
+      refused_row(module: "v2.test.c", declaration: "three", stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
+      refused_row(module: "v2.test.d", declaration: "four", stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain),
+      refused_row(module: "v2.test.e", declaration: "five", stage: NativeTestStageEntry, reason: ^native_test_entry_declaration_not_arrow),
+      refused_row(module: "v2.test.f", declaration: "six", stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
+      refused_row(module: "v2.test.g", declaration: "seven", stage: NativeTestStageContext, reason: ^some_unowned_cause),
+      passed_row(module: "v2.test.h", declaration: "eight")
+    ],
+    expected_red: ["v2.test.b.two", "v2.test.h.eight"],
+    route_gap: ["v2.test.c.three"]
+  )
+  census.agreement_pass == 1
+  && census.agreement_expected_red == 1
+  && census.agreement_route_gap == 1
+  && census.excluded_compiler_frontier == 1
+  && census.excluded_entry_limit == 1
+  && census.excluded_eval_boundary == 1
+  && census.excluded_unattributed == 1
+  && census.divergences == 1
+}
+
+

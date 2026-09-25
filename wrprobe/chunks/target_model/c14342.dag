@@ -1,0 +1,41 @@
+module chunk
+
+fn target_project_loop(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_loop_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: literal_node } =>
+        bind_outcome(
+          o: target_value_expr_project_atom_literal(
+          node: literal_node,
+          source_bool_form: source_bool_form
+        ),
+          f: fn(projected_body) {
+            outcome_accepted(
+              target_value_expression_loop(body: projected_body)
+            )
+          }
+        )
+    }
+  }
+}
+

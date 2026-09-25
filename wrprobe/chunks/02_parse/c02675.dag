@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_empty_corner_list() -> List<Symbol> {
+  std.algebra.Empty
+}
+

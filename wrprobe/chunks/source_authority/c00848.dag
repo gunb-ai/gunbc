@@ -1,0 +1,19 @@
+module chunk
+
+fn module_storage_index_contains_module(
+  index: ModuleStorageIndex,
+  module: QualifiedName
+) -> Bool {
+  fold_list(
+    xs: index,
+    empty: false,
+    cons: fn(found, binding) {
+      if found {
+        true
+      } else {
+        module_storage_binding_module(binding: binding) == module
+      }
+    }
+  )
+}
+

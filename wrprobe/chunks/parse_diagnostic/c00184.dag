@@ -1,0 +1,11 @@
+module chunk
+
+fn list_tail_or_empty_parse_stage(
+  tail: FreeMonoid<ParseStageDiagnostic>
+) -> FreeMonoid<ParseStageDiagnostic> {
+  match list_tail(xs: tail) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
+

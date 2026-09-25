@@ -1,0 +1,132 @@
+module chunk
+
+fn parse_choice_plan(
+  plan: PreparedChoicePlan,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match plan {
+    ChoiceReject => ParseExprRejected { diagnostics: [], table: table }
+    ChoiceByWord { on_word: on_word, on_other: on_other } =>
+      match parse_token_first(tokens: tokens) {
+        Absent =>
+          parse_choice_plan(plan: on_other, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+        Present { value: tok } =>
+          match map_lookup(m: on_word, key: tok.lexeme) {
+            Present { value: next } =>
+              parse_choice_plan(plan: next, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+            Absent =>
+              parse_choice_plan(plan: on_other, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+          }
+      }
+    ChoiceParseOne { expr: expr } =>
+      parse_expr_with_first(
+        expr: expr,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    ChoiceOrderedBacktrack { alternatives: alternatives } =>
+      parse_choice_ordered_backtrack(
+        alternatives: alternatives,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    ChoiceSharedPrefix { prefix: prefix, suffix: suffix } =>
+      match parse_expr_with_first(
+        expr: prefix,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
+          ParseExprRejected { diagnostics: diags, table: table1 }
+        ParseExprAccepted { remaining: rest, captured: cap_prefix, diagnostics: diags1, prov: prov1, table: table1 } =>
+          match parse_choice_plan(
+            plan: suffix,
+            tokens: rest,
+            all_tokens: all_tokens,
+            root: root,
+            table: table1,
+            prov: prov1
+          ) {
+            ParseExprRejected { diagnostics: diags2, table: table2 } =>
+              ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2), table: table2 }
+            ParseExprAccepted { remaining: rest2, captured: cap_suffix, diagnostics: diags2, prov: prov2, table: table2 } =>
+              let stamped = parse_stamp_derived_conj(cap1: cap_prefix, cap2: cap_suffix, prov: prov2)
+              ParseExprAccepted {
+                remaining: rest2,
+                captured: stamped.node,
+                diagnostics: list_append(left: diags1, right: diags2),
+                prov: stamped.prov,
+                table: table2
+              }
+          }
+      }
+    ChoiceTokenPrefix { rows: rows } =>
+      match list_head(xs: rows) {
+        HeadAbsent => ParseExprRejected { diagnostics: [], table: table }
+        HeadFound { value: first_row } =>
+          match token_classes_take(tokens: tokens, need: length(xs: token_prefix_row_prefix(row: first_row))) {
+            Absent => ParseExprRejected { diagnostics: [], table: table }
+            Present { value: prefix } =>
+              match choice_token_prefix_select(rows: rows, prefix: prefix) {
+                Absent => ParseExprRejected { diagnostics: [], table: table }
+                Present { value: next_plan } =>
+                  parse_choice_plan(
+                    plan: next_plan,
+                    tokens: tokens,
+                    all_tokens: all_tokens,
+                    root: root,
+                    table: table,
+                    prov: prov
+                  )
+              }
+          }
+      }
+    ChoiceByToken { on_token: on_token, on_other: on_other, on_end: on_end } =>
+      match parse_token_first(tokens: tokens) {
+        Absent =>
+          parse_choice_plan(
+            plan: on_end,
+            tokens: tokens,
+            all_tokens: all_tokens,
+            root: root,
+            table: table,
+            prov: prov
+          )
+        Present { value: tok } =>
+          match map_lookup(m: on_token, key: tok.class) {
+            Present { value: next } =>
+              parse_choice_plan(
+                plan: next,
+                tokens: tokens,
+                all_tokens: all_tokens,
+                root: root,
+                table: table,
+                prov: prov
+              )
+            Absent =>
+              parse_choice_plan(
+                plan: on_other,
+                tokens: tokens,
+                all_tokens: all_tokens,
+                root: root,
+                table: table,
+                prov: prov
+              )
+          }
+      }
+  }
+}
+

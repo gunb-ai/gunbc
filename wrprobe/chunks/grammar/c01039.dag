@@ -1,0 +1,14 @@
+module chunk
+
+fn formal_productions_for_lhs_step(
+  acc: List<FormalProduction>,
+  production: FormalProduction,
+  lhs: Symbol
+) -> List<FormalProduction> {
+  if formal_production_lhs_matches(production: production, lhs: lhs) {
+    list_snoc_item(xs: acc, item: production)
+  } else {
+    acc
+  }
+}
+

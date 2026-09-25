@@ -1,0 +1,19 @@
+module chunk
+
+test fn a_regressed_required_native_pass_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+      universe: [smoke_identity()],
+      module_source_index: [smoke_source_row()],
+      population: [refused_row(
+        module: "v2.test.native_lane_smoke",
+        declaration: "native_route_positive_population_smoke",
+        stage: NativeTestStagePrepare,
+        reason: ^parse_g0_tokens_remain
+      )],
+      file_refusals: []
+    )),
+    cause_name: "required_native_pass_regressed"
+  )
+}
+

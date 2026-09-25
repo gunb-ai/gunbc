@@ -1,0 +1,24 @@
+module chunk
+
+fn parse_scan_fat_arrow_after_lbrace(tokens: List<Token>, depth: Int) -> Bool {
+  if depth <= 0 {
+    match parse_token_first(tokens: tokens) {
+      Absent => false
+      Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
+    }
+  } else {
+    match parse_token_first(tokens: tokens) {
+      Absent => false
+      Present { value: tok } =>
+        match list_tail(xs: tokens) {
+          TailAbsent => false
+          TailFound { tail: rest } =>
+            parse_scan_fat_arrow_after_lbrace(
+              tokens: rest,
+              depth: parse_next_brace_depth(tok: tok, depth: depth)
+            )
+        }
+    }
+  }
+}
+

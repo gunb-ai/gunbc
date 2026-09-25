@@ -1,0 +1,27 @@
+module chunk
+
+fn target_value_expr_effect_apply_callee(
+  effect_kind: Symbol,
+  shape: TargetEffectApplyShape,
+  expr: TargetValueExpression
+) -> Outcome<Symbol> {
+  match map_get(
+    m: fold_list(
+      xs: shape.callees,
+      empty: empty_map(),
+      cons: fn(acc, row) { map_insert(acc, row.effect_kind, row.callee) }
+    ),
+    key: effect_kind
+  ) {
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: callee } => outcome_accepted(callee)
+        Absent =>
+          outcome_rejected(
+            target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+          )
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

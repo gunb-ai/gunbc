@@ -1,0 +1,7 @@
+module chunk
+
+type TargetValueExprFieldInitSlot {
+  label: Symbol
+  value: TargetValueExpression
+}
+

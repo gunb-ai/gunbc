@@ -1,0 +1,15 @@
+module chunk
+
+fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
+  match edge.label {
+    Named { name: n } =>
+
+      match n == ^target_model_edge_atom_realizations
+        || n == ^target_model_edge_signature_realizations {
+        true => acc
+        false => list_snoc_item(xs: acc, item: edge)
+      }
+    Positional => list_snoc_item(xs: acc, item: edge)
+  }
+}
+

@@ -1,0 +1,23 @@
+module chunk
+
+fn target_type_expr_arrow_emitted_named(
+  form: TargetFunctionTypeShape,
+  params: List<TargetTypeExprArrowParamSlot>,
+  output: Node
+) -> Node {
+  target_type_expr_wrapped_emitted_labeled(
+    kind: TargetTypeExprArrow,
+    surface: form.surface,
+    slot_edges: list_append(
+      left: target_type_expr_arrow_param_slot_edges(params: params),
+      right: Cons {
+        head: Edge {
+          label: Named { name: ^target_type_expr_field_codomain },
+          target: output
+        },
+        tail: Empty
+      }
+    )
+  )
+}
+

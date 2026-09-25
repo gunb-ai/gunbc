@@ -1,0 +1,76 @@
+module chunk
+
+fn source_authority_round_trip_with_model(
+  source: Medium<String>,
+  canonical_source_target: TargetModel,
+  lm: LanguageModel
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+  bind_outcome(
+    o: parse_dag_source_ast_with_model(
+      source: source,
+      compilation_unit: ^source_authority_port,
+      lm: lm
+    ),
+    f: fn(original_ast) {
+      bind_outcome(
+        o: semantic_ir_from_ast_with_model(ast: original_ast, lm: lm),
+        f: fn(original_ir) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: canonical_source_target,
+              emitted: original_ir.tree
+            ),
+            f: fn(canonical_source) {
+              bind_outcome(
+                o: target_serialize_source_from_model(
+                  target: canonical_source_target,
+                  emitted: original_ir.tree
+                ),
+                f: fn(canonical_source_again) {
+                  bind_outcome(
+                    o: parse_dag_source_ast_with_model(
+                      source: canonical_source,
+                      compilation_unit: ^source_authority_port,
+                      lm: lm
+                    ),
+                    f: fn(reparsed_ast) {
+                      bind_outcome(
+                        o: semantic_ir_from_ast_with_model(ast: reparsed_ast, lm: lm),
+                        f: fn(reparsed_ir) {
+                          bind_outcome(
+                            o: canonical_dag_source_emission_law_from_parts(
+                              original_ast: original_ast,
+                              canonical_source_first: canonical_source,
+                              canonical_source_second: canonical_source_again,
+                              reparsed_ast: reparsed_ast
+                            ),
+                            f: fn(canonical_source_law_witness) {
+                              match canonical_source_law_witness {
+                                Violates { diagnostic: d } =>
+                                  Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                Holds { value: canonical_source_law } =>
+                                  source_authority_law_from_parts(
+                                    original_ast: original_ast,
+                                    canonical_source: canonical_source,
+                                    reparsed_ast: reparsed_ast,
+                                    original_ir: original_ir,
+                                    reparsed_ir: reparsed_ir,
+                                    canonical_source_law: canonical_source_law
+                                  )
+                              }
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,18 @@
+module chunk
+
+fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> Optional<NonEmptyGrammarChoiceAmbiguityRows> {
+  let rows = grammar_choice_ambiguity_rows_from_non_empty_parse_stage(d: d)
+  match list_head(xs: rows) {
+    HeadFound { value: head } =>
+      optional_present(
+        value: NonEmptyGrammarChoiceAmbiguityRows {
+          head: head,
+          tail: list_tail_or_empty_rows(xs: rows)
+        }
+      )
+    HeadAbsent => optional_absent()
+  }
+}
+

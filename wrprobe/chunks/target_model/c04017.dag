@@ -1,0 +1,9 @@
+module chunk
+
+fn source_atom_value_as_string(value: SourceAtomValue) -> Optional<Node> {
+  match value {
+    SourceAtomString { value: s } => optional_present(s)
+    _ => optional_absent()
+  }
+}
+

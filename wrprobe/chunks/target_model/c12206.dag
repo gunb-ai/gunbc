@@ -1,0 +1,15 @@
+module chunk
+
+fn wrap_decision_from_carrier_ownership(
+  ownership: TargetCarrierOwnership
+) -> WrapDecision {
+  match ownership {
+    CarrierOwnershipByValue => WrapByValue
+    CarrierOwnershipByReference { realization: row } =>
+      match row.reference_layer {
+        ReferenceLayerOwned => WrapByValue
+        layer => WrapByReference { layer: layer }
+      }
+  }
+}
+

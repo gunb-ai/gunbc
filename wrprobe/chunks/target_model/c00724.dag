@@ -1,0 +1,14 @@
+module chunk
+
+fn target_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_lex_rule_literal_not_found,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: token_class } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

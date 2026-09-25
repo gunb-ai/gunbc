@@ -1,0 +1,49 @@
+module chunk
+
+fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: node, name: ^formal_production_lhs_node_projection) {
+        Accepted { value: lhs_node, diagnostics: _ } =>
+          match find_named_child(root: node, name: ^formal_production_rhs_node_projection) {
+            Accepted { value: rhs_node, diagnostics: _ } =>
+              match formal_nonterminal_from_node(node: lhs_node) {
+                Holds { value: lhs } =>
+                  match formal_rhs_from_node(node: rhs_node) {
+                    Holds { value: rhs } =>
+                      Holds {
+                        value: FormalProduction { lhs: lhs, rhs: rhs }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+            Rejected { diagnostics: _ } =>
+              Violates {
+                diagnostic: Diagnostic {
+                  reason: ^grammar_relation_production_not_found,
+                  at: node_locus(node: node),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              }
+          }
+        Rejected { diagnostics: _ } =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_production_not_found,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+

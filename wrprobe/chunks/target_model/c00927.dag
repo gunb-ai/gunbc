@@ -1,0 +1,4 @@
+module chunk
+
+type TargetText { source: String }
+

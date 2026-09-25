@@ -1,0 +1,21 @@
+module chunk
+
+fn formal_production_rhs_singleton_terminal_identity_step(
+  state: RhsSingletonTerminalLookup,
+  symbol: FormalGrammarSymbol
+) -> RhsSingletonTerminalLookup {
+  match state {
+    RhsSingletonTerminalAmbiguous => state
+    RhsSingletonTerminalFound { identity: _ } => RhsSingletonTerminalAmbiguous
+    RhsSingletonTerminalNotSeen =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Absent => RhsSingletonTerminalFound { identity: terminal.identity }
+            Present { value: _ } => RhsSingletonTerminalAmbiguous
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonTerminalAmbiguous
+      }
+  }
+}
+

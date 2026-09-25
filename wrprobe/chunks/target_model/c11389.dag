@@ -1,0 +1,17 @@
+module chunk
+
+fn target_capability_eligibility_admits(
+  eligibility: TargetCapabilityElementEligibility,
+  elem: Node
+) -> Bool {
+  match target_capability_element_kernel_identity(elem: elem) {
+    Present { value: id } =>
+      fold_list(
+        xs: eligibility.kernel_atoms,
+        empty: false,
+        cons: fn(acc, admitted) { acc || admitted == id }
+      )
+    Absent => false
+  }
+}
+

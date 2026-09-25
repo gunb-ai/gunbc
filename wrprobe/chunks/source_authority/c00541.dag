@@ -1,0 +1,6 @@
+module chunk
+
+type ModuleStorageProvenance
+  = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
+  | ProducedByBehavior { producer: Symbol }
+

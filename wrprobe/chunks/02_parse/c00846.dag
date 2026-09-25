@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_prov_enter_frame(prov: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState { alloc: prov.alloc, index: prov.index, frame: Empty }
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn target_value_expr_loop_gate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } =>
+      length(xs: node_positional_child_targets(node: node)) >= 1
+    _ => false
+  }
+}
+

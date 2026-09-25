@@ -1,0 +1,6 @@
+module chunk
+
+type CharResult
+  = CharFound { value: Char }
+  | CharAbsent
+

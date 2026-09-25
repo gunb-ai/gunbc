@@ -1,0 +1,10 @@
+module chunk
+
+test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
+  match native_lane_closure_budget_probe(budget: 2) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.std.logic")
+  }
+}
+

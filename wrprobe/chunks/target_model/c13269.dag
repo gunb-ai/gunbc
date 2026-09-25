@@ -1,0 +1,6 @@
+module chunk
+
+fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {
+  target_model_declared_inhabitants(target: target)
+}
+

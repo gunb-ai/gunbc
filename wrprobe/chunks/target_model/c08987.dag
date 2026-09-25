@@ -1,0 +1,9 @@
+module chunk
+
+type TargetFunctionSignatureRealization {
+  source_carrier: Node
+  target_model: TargetModel
+  boundary_site: FunctionBoundarySite
+  signature_type_form: TargetTypeExpression
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+type TargetModel {
+  bundle: Node
+  lex: LexRules
+  binding_spellings: Map<Symbol, String>
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>
+  authority_source_text: String
+  runtime_row: TargetEmitHostRuntimeRow
+  produced_decl_support: ProducedDeclSupport
+}
+

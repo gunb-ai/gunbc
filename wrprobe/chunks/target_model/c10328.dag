@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTextCarrier {
+  element_carrier: Node
+  emitted_type_node: Node
+}
+

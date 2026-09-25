@@ -1,0 +1,29 @@
+module chunk
+
+fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
+  fold(
+    node_subtree_nodes(root: root),
+    init: empty_map(),
+    f: fn(counts, n) {
+      match n.kind {
+        TypeNode { connective: Disj } =>
+          fold(n.children, init: counts, f: fn(c, e) {
+            match e.label {
+              Named { name: sym } =>
+                map_insert(
+                  m: c,
+                  key: sym,
+                  value: disj_variant_count_of(counts: c, sym: sym) + 1
+                )
+              Positional => c
+            }
+          })
+        _ => counts
+      }
+    }
+  )
+}
+
+
+
+

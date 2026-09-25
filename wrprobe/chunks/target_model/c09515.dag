@@ -1,0 +1,11 @@
+module chunk
+
+fn projection_bundle_has_child(bundle: Node, name: Symbol) -> Bool {
+  fold(bundle.children, init: false, f: fn(acc, e) {
+    acc || (match e.label {
+      Named { name: sym } => sym == name
+      Positional => false
+    })
+  })
+}
+

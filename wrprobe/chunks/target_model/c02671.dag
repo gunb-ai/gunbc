@@ -1,0 +1,17 @@
+module chunk
+
+fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_value_expr_field_effect_kind,
+        target: target_model_type_atom_node(identity: row.effect_kind)
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_effect_callee,
+        target: target_model_type_atom_node(identity: row.callee)
+      )
+    ]
+  )
+}
+

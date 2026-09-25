@@ -1,0 +1,9 @@
+module chunk
+
+fn canonical_operation_op_sub() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_add,
+    inverse_field: ^group_field_inverse
+  }
+}
+

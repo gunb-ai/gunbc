@@ -1,0 +1,15 @@
+module chunk
+
+fn formal_slot_asked_lhs(candidates: List<FormalProduction>, slot: Int) -> List<Symbol> {
+  fold_list(
+    xs: candidates,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      match formal_production_nonterminal_at_slot(production: candidate, slot: slot) {
+        Present { value: nonterminal } => formal_symbol_list_insert(xs: acc, item: nonterminal)
+        Absent => acc
+      }
+    }
+  )
+}
+

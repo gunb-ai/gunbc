@@ -1,0 +1,11 @@
+module chunk
+
+fn target_source_medium(text: String, target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: decode_fidelity_from_target(target: target),
+    f: fn(fidelity) {
+      outcome_accepted(source_medium(text: text, fidelity: fidelity))
+    }
+  )
+}
+

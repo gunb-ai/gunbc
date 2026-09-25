@@ -1,0 +1,80 @@
+module chunk
+
+fn target_value_expression_match_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_match_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_match_scrutinee_from_wire(wire: expr.node),
+        f: fn(scrutinee) {
+          bind_outcome(
+            o: target_value_expr_match_arms_from_wire(wire: expr.node),
+            f: fn(arms) {
+              bind_outcome(
+                o: target_value_expression_to_concrete_tokens(
+                  expr: scrutinee,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(scrutinee_tokens) {
+                  if target_value_expr_match_is_int_bool_octet_channel(
+                    scrutinee: scrutinee,
+                    arms: arms
+                  ) {
+                    bind_outcome(
+                      o: target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
+                        scrutinee_tokens: scrutinee_tokens,
+                        catalog: catalog,
+                        projection: projection
+                      ),
+                      f: fn(carrier_scrutinee_tokens) {
+                        bind_outcome(
+                          o: target_value_expr_match_arm_tokens_int_bool_octet_channel(
+                            arms: arms,
+                            projection: projection,
+                            catalog: catalog
+                          ),
+                          f: fn(arm_tokens) {
+                            outcome_accepted(
+                              target_value_expression_match_concrete_token_shell(
+                                scrutinee_tokens: carrier_scrutinee_tokens,
+                                arm_tokens: arm_tokens,
+                                projection: projection
+                              )
+                            )
+                          }
+                        )
+                      }
+                    )
+                  } else {
+                    bind_outcome(
+                      o: target_value_expr_match_arm_tokens(
+                        arms: arms,
+                        projection: projection,
+                        catalog: catalog
+                      ),
+                      f: fn(arm_tokens) {
+                        outcome_accepted(
+                          target_value_expression_match_concrete_token_shell(
+                            scrutinee_tokens: scrutinee_tokens,
+                            arm_tokens: arm_tokens,
+                            projection: projection
+                          )
+                        )
+                      }
+                    )
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

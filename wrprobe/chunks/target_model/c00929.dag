@@ -1,0 +1,4 @@
+module chunk
+
+data target_text_empty: TargetText = TargetText { source: "" }
+

@@ -1,0 +1,54 @@
+module chunk
+
+fn target_value_expression_callable_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
+    f: fn(callee) {
+      bind_outcome(
+        o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
+        f: fn(args) {
+          bind_outcome(
+            o: target_value_expr_tokenize_intersperse(
+              exprs: args,
+              projection: projection,
+              catalog: catalog,
+              separator: projection.callable_apply_form.separator
+            ),
+            f: fn(arg_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: Cons {
+                      head: BoundToken {
+                        token_class: projection.callable_apply_form.callee_ident_token,
+                        binding: callee
+                      },
+                      tail: Cons {
+                        head: FixedToken {
+                          token_class: projection.callable_apply_form.open
+                        },
+                        tail: Empty
+                      }
+                    },
+                    right: arg_tokens
+                  ),
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.callable_apply_form.close
+                    },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

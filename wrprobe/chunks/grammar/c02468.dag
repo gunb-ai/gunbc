@@ -1,0 +1,23 @@
+module chunk
+
+fn backward_row_select_step(
+  acc: BackwardRowSelection,
+  productions: List<FormalProduction>,
+  emitted: Node,
+  row: Node
+) -> BackwardRowSelection {
+  if grammar_relation_row_emitted_reverse_parse_matches(
+    row: row,
+    productions: productions,
+    emitted: emitted
+  ) {
+    match acc {
+      BackwardRowNone => BackwardRowOne { row: row }
+      BackwardRowOne { row: _ } => BackwardRowMany
+      BackwardRowMany => BackwardRowMany
+    }
+  } else {
+    acc
+  }
+}
+

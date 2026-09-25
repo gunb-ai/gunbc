@@ -1,0 +1,35 @@
+module chunk
+
+fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if name_occurrences(
+        name: ^target_operator_shape_field_token,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+      } else {
+        match fold(
+          wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } => n == ^target_operator_shape_field_token
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+        }
+      }
+    _ =>
+      outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+  }
+}
+

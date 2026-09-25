@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
+  match list_head(xs: tokens) {
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => Absent
+  }
+}
+

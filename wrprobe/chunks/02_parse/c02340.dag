@@ -1,0 +1,43 @@
+module chunk
+
+fn compile_choice_plan(
+  alts: List<PreparedExprFold>,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>,
+  token_dispatch: Bool
+) -> PreparedChoicePlan {
+  if token_dispatch {
+      let universe = choice_alts_terminal_universe(alts: alts)
+      let on_token = fold_list(
+        xs: universe,
+        empty: empty_map(),
+        cons: fn(acc, token_class) {
+          map_insert(
+            m: acc,
+            key: token_class,
+            value: compile_class_bucket(
+              alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+              token_class: token_class,
+              nullable_set: nullable_set,
+              first_rows: first_rows,
+              token_dispatch: token_dispatch
+            )
+          )
+        }
+      )
+      let on_nullable = compile_choice_alts(
+        alts: choice_alts_nullable(alts: alts),
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        token_dispatch: token_dispatch
+      )
+      ChoiceByToken {
+        on_token: on_token,
+        on_other: on_nullable,
+        on_end: on_nullable
+      }
+  } else {
+    ordered_backtrack_emit(alts: alts)
+  }
+}
+

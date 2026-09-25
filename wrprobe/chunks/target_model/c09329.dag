@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTypeExprFieldSlot {
+  label: Symbol
+  type_expr: Node
+}
+

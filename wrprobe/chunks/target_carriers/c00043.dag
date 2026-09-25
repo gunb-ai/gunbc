@@ -1,0 +1,45 @@
+module chunk
+
+fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFidelity> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_fidelity_disposition_kind_modeled {
+        outcome_accepted(Lossless)
+      } else {
+        outcome_rejected(
+          Diagnostic {
+            reason: ^target_carriers_fidelity_disposition_malformed,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+    TypeNode { connective: Conj } =>
+      if fidelity_disposition_node_has_named_kind(
+        root: node,
+        name: ^dag_fidelity_disposition_kind_declared_normalized
+      ) || fidelity_disposition_node_has_named_kind(
+        root: node,
+        name: ^dag_fidelity_disposition_kind_fail_closed
+      ) {
+        outcome_accepted(Lossy)
+      } else {
+        outcome_rejected(
+          Diagnostic {
+            reason: ^target_carriers_fidelity_disposition_malformed,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_disposition_malformed,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+

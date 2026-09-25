@@ -1,0 +1,10 @@
+module chunk
+
+fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^target_collection_set_no_representation,
+    at: invariant_port_locus(port: ^target_collection_set_no_representation_port, invariant: ^target_collection_set_no_representation),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

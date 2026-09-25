@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_grammar_choice_ambiguity_row_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
+  let overlap_count = length(xs: row.overlap_terminals)
+  parse_grammar_choice_ambiguity_diagnostic(
+    at: at,
+    count: if row.both_nullable && overlap_count == 0 { 1 } else { overlap_count }
+  )
+}
+

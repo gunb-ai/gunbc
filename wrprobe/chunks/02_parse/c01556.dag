@@ -1,0 +1,12 @@
+module chunk
+
+type GrammarFirstAnalysis {
+  nullable_set: List<Symbol>
+  first_rows: Map<Symbol, List<FirstKey>>
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  grammar_digest: Hash
+  productions_by_name: Map<Symbol, GrammarProduction>
+  choice_residue: List<GrammarChoiceAmbiguityRow>
+  memo_recurrence: ParseMemoRecurrence
+}
+

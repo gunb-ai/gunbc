@@ -1,0 +1,14 @@
+module chunk
+
+fn target_value_semantics_carriers_from_node(node: Node) -> List<Symbol> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: node.children,
+        empty: Empty,
+        cons: fn(acc, edge) { target_value_semantics_carrier_snoc(acc: acc, edge: edge) }
+      )
+    _ => Empty
+  }
+}
+

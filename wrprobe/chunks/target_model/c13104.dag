@@ -1,0 +1,25 @@
+module chunk
+
+fn type_expr_projection_candidate_for_connective(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<CandidateSet> {
+  bind_outcome(
+    o: type_expr_projection_shape_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(shape) {
+      outcome_accepted(
+        CandidateSet {
+          candidates: [shape],
+          closedness: StructuralPropertyWitness {
+            property: ^target_type_expr_projection_candidate_closedness,
+            evidence: shape
+          }
+        }
+      )
+    }
+  )
+}
+

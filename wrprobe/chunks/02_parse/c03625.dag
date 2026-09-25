@@ -1,0 +1,35 @@
+module chunk
+
+fn parse_production_memo_stats(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol,
+  materialization: Materialization
+) -> ParseMemoStats {
+  let root = validated.root
+  match grammar_lookup_production(root: root, name: production_name) {
+    Violates { diagnostic: _ } =>
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+    Holds { value: production } =>
+      let prov = parse_prov_initial()
+      let table = parse_table_for_production(
+        validated: validated,
+        all_tokens: tokens,
+        materialization: materialization
+      )
+      match parse_expr(
+        expr: production.expression,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: final_table } =>
+          parse_table_memo_stats(table: final_table)
+        ParseExprRejected { diagnostics: _, table: final_table } =>
+          parse_table_memo_stats(table: final_table)
+      }
+  }
+}
+

@@ -1,0 +1,36 @@
+module chunk
+
+fn target_value_expression_match_concrete_token_shell(
+  scrutinee_tokens: List<ConcreteSyntaxToken>,
+  arm_tokens: List<ConcreteSyntaxToken>,
+  projection: TargetValueExpressionProjection
+) -> List<ConcreteSyntaxToken> {
+  let prefix = concrete_syntax_tokens_snoc_fixed(
+    acc: concrete_syntax_tokens_snoc_fixed(
+      acc: Empty,
+      token_class: projection.match_form.match_token
+    ),
+    token_class: projection.match_form.scrutinee_open
+  )
+  let with_scrutinee = concrete_syntax_tokens_extend(
+    acc: prefix,
+    more: scrutinee_tokens
+  )
+  let with_scrutinee_close = concrete_syntax_tokens_snoc_fixed(
+    acc: with_scrutinee,
+    token_class: projection.match_form.scrutinee_close
+  )
+  let with_open = concrete_syntax_tokens_snoc_fixed(
+    acc: with_scrutinee_close,
+    token_class: projection.match_form.open
+  )
+  let with_arms = concrete_syntax_tokens_extend(
+    acc: with_open,
+    more: arm_tokens
+  )
+  concrete_syntax_tokens_snoc_fixed(
+    acc: with_arms,
+    token_class: projection.match_form.close
+  )
+}
+

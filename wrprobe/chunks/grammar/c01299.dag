@@ -1,0 +1,25 @@
+module chunk
+
+fn formal_production_rhs_matches_emitted_conj_conj(
+  production: FormalProduction,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
+) -> Bool {
+  match fold_list(
+    xs: production.rhs,
+    empty: EmittedRhsMatchOk { index: 0 },
+    cons: fn(state, symbol) {
+      formal_production_rhs_matches_emitted_conj_step(
+        state: state,
+        resolution: resolution,
+        children: children,
+        symbol: symbol
+      )
+    }
+  ) {
+    EmittedRhsMatchOk { index: index } => index == child_count
+    EmittedRhsMatchFail => false
+  }
+}
+

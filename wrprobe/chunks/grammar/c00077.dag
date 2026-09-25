@@ -1,0 +1,9 @@
+module chunk
+
+type FormalGrammar {
+  nonterminals: PointwisePower<FormalNonterminal>
+  terminals: PointwisePower<FormalTerminal>
+  productions: List<FormalProduction>
+  start: FormalNonterminal
+}
+

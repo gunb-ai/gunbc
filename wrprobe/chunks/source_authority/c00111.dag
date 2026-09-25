@@ -1,0 +1,8 @@
+module chunk
+
+type SourceRootCoverage
+  = SourceRootCoverageComplete
+  | SourceRootManifestElided { read_count: Int, cap: Int }
+  | SourceRootRowsMissing { read_count: Int, produced_row_count: Int }
+  | SourceRootManifestAbsent
+

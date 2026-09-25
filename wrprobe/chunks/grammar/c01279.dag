@@ -1,0 +1,20 @@
+module chunk
+
+fn formal_production_rhs_matches_emitted_conj(
+  production: FormalProduction,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
+) -> Bool {
+  match resolution.emitted.kind {
+    TypeNode { connective: Conj } =>
+      formal_production_rhs_matches_emitted_conj_conj(
+        production: production,
+        resolution: resolution,
+        children: children,
+        child_count: child_count
+      )
+    _ => false
+  }
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^sugar_reason_malformed,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+

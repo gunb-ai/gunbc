@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target
+  }
+}
+

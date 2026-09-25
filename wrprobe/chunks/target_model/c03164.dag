@@ -1,0 +1,18 @@
+module chunk
+
+fn decode_vep_chain_primitive_apply(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_primitive_apply(bundle: bundle),
+    f: fn(primitive_apply_form) {
+      decode_vep_chain_callable_apply(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form
+      )
+    }
+  )
+}
+

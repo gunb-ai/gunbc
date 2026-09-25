@@ -1,0 +1,7 @@
+module chunk
+
+type BindRound {
+  index: SymbolIndex
+  deferred: FreeMonoid<PendingBinding>
+}
+

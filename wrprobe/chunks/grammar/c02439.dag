@@ -1,0 +1,26 @@
+module chunk
+
+fn grammar_relation_row_emitted_reverse_parse_matches(
+  row: Node,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Bool {
+  if emitted_shape_supported_for_lhs_exact(child: emitted) {
+    match grammar_relation_row_production_from_node(row: row) {
+      Holds { value: production } =>
+        formal_production_matches_lhs_exact_child(
+          productions: productions,
+          lhs: production.lhs.identity,
+          child: emitted,
+          candidate: production
+        )
+      Violates { diagnostic: _ } => false
+    }
+  } else {
+    match grammar_relation_row_emitted_fixture(row: row) {
+      Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+

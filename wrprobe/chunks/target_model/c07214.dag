@@ -1,0 +1,39 @@
+module chunk
+
+fn target_value_expression_bool_literal_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match expr.kind {
+    TargetValueExprBoolLiteral =>
+      match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
+        Present { value: true } =>
+          outcome_accepted(
+            Cons {
+              head: FixedToken {
+                token_class: projection.bool_literal_form.true_token
+              },
+              tail: Empty
+            }
+          )
+        Present { value: false } =>
+          outcome_accepted(
+            Cons {
+              head: FixedToken {
+                token_class: projection.bool_literal_form.false_token
+              },
+              tail: Empty
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+      )
+  }
+}
+

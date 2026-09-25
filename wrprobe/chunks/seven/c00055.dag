@@ -1,0 +1,14 @@
+module chunk
+
+fn g_normalize_has_arrow_body(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } =>
+          g_tree_has_arrow_body(root: normalized.root)
+      }
+  }
+}
+

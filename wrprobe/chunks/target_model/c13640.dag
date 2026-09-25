@@ -1,0 +1,13 @@
+module chunk
+
+fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
+  if magnitude == 1 {
+    optional_present(value: ^dag_binding_pick_lit_one)
+  } else if magnitude == 2 {
+    optional_present(value: ^dag_binding_pick_lit_two)
+  } else {
+    optional_absent()
+  }
+}
+
+

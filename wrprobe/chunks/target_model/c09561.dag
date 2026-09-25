@@ -1,0 +1,13 @@
+module chunk
+
+fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
+  Edge {
+    label: Named { name: ^target_type_expr_field_surface },
+    target: Node {
+      kind: TypeNode { connective: Atom { identity: surface } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

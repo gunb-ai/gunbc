@@ -1,0 +1,13 @@
+module chunk
+
+fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
+  let paths_match = left.path == right.path
+  let roots_match = left.source_root == right.source_root
+  let hashes_match =
+    match compare_content_hash(left: left.content_hash, right: right.content_hash) {
+      ContentHashEqual => true
+      _ => false
+    }
+  paths_match && roots_match && hashes_match
+}
+

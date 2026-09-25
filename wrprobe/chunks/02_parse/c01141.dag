@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_tokens_drop_one(tokens: List<Token>) -> List<Token> {
+  match list_tail(xs: tokens) {
+    TailFound { tail: rest } => rest
+    TailAbsent => []
+  }
+}
+

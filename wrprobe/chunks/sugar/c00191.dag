@@ -1,0 +1,21 @@
+module chunk
+
+fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
+  if is_empty_conj_root(n: spine) {
+    std.algebra.Empty
+  } else {
+    match sugar_sequence_pair_optional(node: spine) {
+      Present { value: pair } =>
+        match sugar_pipe_sequence_variant_optional(node: pair.left) {
+          Present { value: variant } =>
+            list_snoc_item(
+              xs: sugar_collect_pipe_chain_variants(spine: pair.right),
+              item: variant
+            )
+          Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
+        }
+      Absent => std.algebra.Empty
+    }
+  }
+}
+

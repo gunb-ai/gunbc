@@ -1,0 +1,6 @@
+module chunk
+
+type GrammarAlphabetEnumerationEvidence {
+  blocker: Symbol
+}
+

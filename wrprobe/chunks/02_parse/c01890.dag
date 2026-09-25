@@ -1,0 +1,15 @@
+module chunk
+
+fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGrammarExpr> {
+  match expr {
+    PreparedSequence { left: left, right: _ } =>
+      match left {
+        PreparedTerminal { token_class: _, stamp: _ } => optional_present(value: left)
+        PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_present(value: left)
+        PreparedNonterminal { production: _ } => optional_present(value: left)
+        _ => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+

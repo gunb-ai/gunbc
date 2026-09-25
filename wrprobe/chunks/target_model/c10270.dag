@@ -1,0 +1,4 @@
+module chunk
+
+data target_external_authority_field_uri_locator: Symbol = ^target_external_authority_field_uri_locator
+

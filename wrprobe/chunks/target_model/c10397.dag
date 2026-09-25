@@ -1,0 +1,6 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  empty_map()
+}
+

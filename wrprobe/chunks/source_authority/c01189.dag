@@ -1,0 +1,21 @@
+module chunk
+
+fn node_artifact_provenance_fold_step(
+  state: NodeArtifactProvenanceFoldState,
+  read: DagSourceReadWitness
+) -> NodeArtifactProvenanceFoldState {
+  match state {
+    NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
+      NodeArtifactProvenanceFoldFailed { diagnostics: d }
+    NodeArtifactProvenanceFoldOk { provenance: acc } =>
+      match source_ir_node_artifact_provenance(source_read: read) {
+        Accepted { value: row, diagnostics: _ } =>
+          NodeArtifactProvenanceFoldOk {
+            provenance: list_snoc_item(xs: acc, item: row)
+          }
+        Rejected { diagnostics: d } =>
+          NodeArtifactProvenanceFoldFailed { diagnostics: d }
+      }
+  }
+}
+

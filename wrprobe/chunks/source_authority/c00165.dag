@@ -1,0 +1,13 @@
+module chunk
+
+fn frontier_probe_discovered_closure_seal(
+  refs: List<SourceRef>,
+  entry: SourceRef
+) -> FrontierProbeDiscoveredClosure {
+  FrontierProbeDiscoveredClosure {
+    refs: refs,
+    population_digest: discovered_source_refs_digest_for_refs(refs: refs),
+    entry: entry
+  }
+}
+

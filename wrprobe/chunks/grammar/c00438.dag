@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: lhs),
+    rhs: rhs
+  }
+}
+

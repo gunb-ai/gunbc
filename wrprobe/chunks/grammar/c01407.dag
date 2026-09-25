@@ -1,0 +1,16 @@
+module chunk
+
+fn formal_productions_asked(productions: List<FormalProduction>, asked: List<Symbol>) -> List<FormalProduction> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) {
+      if formal_symbol_list_contains(xs: asked, wanted: production.lhs.identity) {
+        list_snoc_item(xs: acc, item: production)
+      } else {
+        acc
+      }
+    }
+  )
+}
+

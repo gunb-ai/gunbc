@@ -1,0 +1,6 @@
+module chunk
+
+fn formal_production_lhs_matches(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+

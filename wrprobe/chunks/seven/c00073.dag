@@ -1,0 +1,4 @@
+module chunk
+
+data empty_eq_fn_source: String = "module probe.empty_eq\n\nfn f(a: Int) -> Int =\n"
+

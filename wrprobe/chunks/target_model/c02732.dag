@@ -1,0 +1,39 @@
+module chunk
+
+fn decode_effect_apply_shape_bundle(bundle: Node) -> Outcome<TargetEffectApplyShape> {
+  bind_outcome(
+    o: decode_effect_apply_callee_rows(bundle: bundle),
+    f: fn(callees) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: ^target_value_expr_field_close
+            ),
+            f: fn(close) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^target_value_expr_field_separator
+                ),
+                f: fn(separator) {
+                  outcome_accepted(
+                    TargetEffectApplyShape {
+                      callees: callees,
+                      open: open,
+                      close: close,
+                      separator: separator
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

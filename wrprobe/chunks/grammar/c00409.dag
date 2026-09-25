@@ -1,0 +1,4 @@
+module chunk
+
+data grammar_lexeme_stamp_slot_binding: Symbol = ^grammar_lexeme_stamp_slot
+

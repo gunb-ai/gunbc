@@ -1,0 +1,6 @@
+module chunk
+
+fn formal_binding_is_lexeme_stamp_slot(binding: Symbol) -> Bool {
+  binding == ^grammar_lexeme_stamp_slot
+}
+

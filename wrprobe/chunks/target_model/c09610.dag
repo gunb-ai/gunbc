@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTypeExprKindEdgeDecode
+  = KindEdgeNotKindField
+  | KindEdgeAuthority { value: TargetTypeExprKind }
+  | KindEdgeAuthorityMalformed
+

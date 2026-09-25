@@ -1,0 +1,12 @@
+module chunk
+
+fn target_value_expression_binding_ref_token(
+  binding: Symbol,
+  projection: TargetValueExpressionProjection
+) -> ConcreteSyntaxToken {
+  BoundToken {
+    token_class: projection.binding_ref_form.ident_token,
+    binding: binding
+  }
+}
+

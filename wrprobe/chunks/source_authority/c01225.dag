@@ -1,0 +1,25 @@
+module chunk
+
+fn source_root_provenance_coverage_receipt(
+  ingest: SourceRootIngest,
+  produced: FreeMonoid<NodeArtifactProvenance>
+) -> SourceRootProvenanceCoverageReceipt {
+  SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: length(xs: ingest),
+    produced_row_count: length(xs: produced),
+    discovered_source_refs_digest: DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList {
+        reason: "ingest-provenance-path-no-ref-list"
+      }
+    },
+    coverage: if length(xs: ingest) == length(xs: produced) {
+      SourceRootCoverageComplete
+    } else {
+      SourceRootRowsMissing {
+        read_count: length(xs: ingest),
+        produced_row_count: length(xs: produced)
+      }
+    }
+  }
+}
+

@@ -1,0 +1,60 @@
+module chunk
+
+fn symbol_index_fill_containment_node(
+  index: SymbolIndex,
+  path: QualifiedName,
+  node: Node
+) -> SymbolIndex {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match namespace_graft_spine_segment_edge_optional(node: node) {
+        Present { value: spine_edge } =>
+          symbol_index_fill_containment_node(
+            index: index,
+            path: path,
+            node: spine_edge.target
+          )
+        Absent =>
+          fold(node.children, init: index, f: fn(acc, edge) {
+            symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+          })
+      }
+    TypeNode { connective: Disj } =>
+      fold(node.children, init: index, f: fn(acc, edge) {
+        match edge.label {
+          Named { name: sym } =>
+            let variant_path = qualified_name_snoc(qn: path, segment: sym)
+            let with_variant = symbol_index_mark_declared_payload(
+              index: symbol_index_insert(
+                index: acc,
+                qualified_path: variant_path,
+                resolved: edge.target
+              ),
+              qualified_path: variant_path,
+              kind: VariantArmPayload
+            )
+            symbol_index_fill_containment_node(
+              index: with_variant,
+              path: variant_path,
+              node: edge.target
+            )
+          Positional => acc
+        }
+      })
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node.children, index: 0) {
+        Present { value: domain_edge } =>
+          symbol_index_fill_containment_node(
+            index: index,
+            path: path,
+            node: domain_edge.target
+          )
+        Absent => index
+      }
+    _ =>
+      fold(node.children, init: index, f: fn(acc, edge) {
+        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+      })
+  }
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn first_key_admits_word(key: FirstKey, token_class: Symbol, word: String) -> Bool {
+  match key {
+    FirstAnyOfClass { token_class: c } => c == token_class
+    FirstExactWord { token_class: c, lexeme: w } => c == token_class && symbol_lexeme(sym: w) == word
+  }
+}
+

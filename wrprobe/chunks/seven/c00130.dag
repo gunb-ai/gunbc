@@ -1,0 +1,6 @@
+module chunk
+
+test fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+  g_normalize_has_arrow_body(parsed: expression_bodied_literal_fn_parsed())
+}
+

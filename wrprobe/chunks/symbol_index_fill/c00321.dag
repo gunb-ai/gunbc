@@ -1,0 +1,13 @@
+module chunk
+
+fn symbol_index_fill_alias_bindings(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node
+) -> SymbolIndex {
+  symbol_index_fill_bindings_to_fixed_point(
+    index: index,
+    pending: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
+  )
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_use_site_ownership_catalog_row_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

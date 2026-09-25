@@ -1,0 +1,36 @@
+module chunk
+
+fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: target_operator_realization_row_wire_schema_valid(row: row),
+    f: fn(_) {
+      bind_outcome(
+        o: find_named_child(root: row, name: ^target_operator_realization_field_operation),
+        f: fn(operation_wire) {
+          bind_outcome(
+            o: canonical_operation_from_wire_node(wire: operation_wire),
+            f: fn(canonical_op) {
+              bind_outcome(
+                o: find_named_child(root: row, name: ^target_operator_realization_field_shape),
+                f: fn(shape_wire) {
+                  bind_outcome(
+                    o: target_operator_shape_from_wire_node(wire: shape_wire),
+                    f: fn(shape) {
+                      outcome_accepted(
+                        TargetOperatorRealization {
+                          operation: canonical_op,
+                          shape: shape
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

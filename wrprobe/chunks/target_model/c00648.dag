@@ -1,0 +1,61 @@
+module chunk
+
+fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
+  match token {
+    FixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: ^concrete_syntax_token_field_kind },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
+              children: [],
+              occurrence_id: OccurrenceSynthetic
+}
+          },
+          Edge {
+            label: Named { name: ^concrete_syntax_token_field_class },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: c } },
+              children: [],
+              occurrence_id: OccurrenceSynthetic
+}
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    BoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: ^concrete_syntax_token_field_kind },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
+              children: [],
+              occurrence_id: OccurrenceSynthetic
+}
+          },
+          Edge {
+            label: Named { name: ^concrete_syntax_token_field_class },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: c } },
+              children: [],
+              occurrence_id: OccurrenceSynthetic
+}
+          },
+          Edge {
+            label: Named { name: ^concrete_syntax_token_field_binding },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: b } },
+              children: [],
+              occurrence_id: OccurrenceSynthetic
+}
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

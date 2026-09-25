@@ -1,0 +1,6 @@
+module chunk
+
+type ParseGrammar
+  = VoidGrammar
+  | ModeledGrammar { root: GrammarRoot }
+

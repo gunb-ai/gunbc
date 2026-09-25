@@ -1,0 +1,22 @@
+module chunk
+
+fn target_value_expression_binding_ref_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_binding_ref_binding_from_wire(wire: expr.node),
+    f: fn(binding) {
+      outcome_accepted(
+        Cons {
+          head: target_value_expression_binding_ref_token(
+            binding: binding,
+            projection: projection
+          ),
+          tail: Empty
+        }
+      )
+    }
+  )
+}
+

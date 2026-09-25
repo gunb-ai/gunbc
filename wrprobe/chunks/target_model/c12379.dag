@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_semantics_carrier_atom_seen(
+  atoms: List<Symbol>,
+  atom: Symbol
+) -> Bool {
+  any(xs: atoms, predicate: fn(id) { id == atom })
+}
+

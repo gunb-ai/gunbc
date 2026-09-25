@@ -1,0 +1,13 @@
+module chunk
+
+fn clean_emitted_build() -> NativeRouteEmittedBuild {
+  NativeRouteEmittedBuild {
+    cargo_argv: ["cargo", "build", "--release", "--manifest-path", "/emitted/Cargo.toml"],
+    rustflags: repo_self_warning_denial_rustflags(),
+    compiler_path: "/toolchain/bin/rustc",
+    rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); host: aarch64-unknown-linux-gnu",
+    exit_status: 0,
+    warning_count: 0
+  }
+}
+

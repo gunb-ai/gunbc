@@ -1,0 +1,10 @@
+module chunk
+
+fn target_capability_eligibility_duplicate_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_capability_eligibility_row_duplicate,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

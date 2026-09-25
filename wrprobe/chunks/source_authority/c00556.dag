@@ -1,0 +1,10 @@
+module chunk
+
+type ModuleStorageFoldState
+  = ModuleStorageFoldOk {
+      bindings: ModuleStorageIndex
+    }
+  | ModuleStorageFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
+

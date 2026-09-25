@@ -1,0 +1,10 @@
+module chunk
+
+fn statement_sequenced_block_construct_unwired_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^statement_sequenced_block_construct_unwired,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

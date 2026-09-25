@@ -1,0 +1,40 @@
+module chunk
+
+fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        node.children,
+        init: Holds { value: Empty },
+        f: fn(acc, edge) {
+          match acc {
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Holds { value: symbols } =>
+              match edge.label {
+                Positional =>
+                  match formal_grammar_symbol_from_node(node: edge.target) {
+                    Holds { value: symbol } =>
+                      Holds {
+                        value: list_snoc_item(xs: symbols, item: symbol)
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Named { name: _ } => acc
+              }
+          }
+        }
+      ) {
+        Holds { value: symbols } => Holds { value: symbols }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+

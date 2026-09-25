@@ -1,0 +1,13 @@
+module chunk
+
+fn resolve_emitted_productions(
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> EmittedProductionResolution {
+  resolve_emitted_productions_asked(
+    productions: productions,
+    asked: formal_productions_all_lhs(productions: productions),
+    emitted: emitted
+  )
+}
+

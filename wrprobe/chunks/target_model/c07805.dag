@@ -1,0 +1,32 @@
+module chunk
+
+fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Conj } =>
+      match fold(
+        wire.children,
+        init: optional_absent(),
+        f: fn(acc, edge) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match edge.label {
+                Named { name: _ } =>
+                  match edge.target.kind {
+                    TypeNode { connective: Atom { identity: id } } =>
+                      optional_present(value: id)
+                    _ => acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Present { value: id } => optional_present(value: id)
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+

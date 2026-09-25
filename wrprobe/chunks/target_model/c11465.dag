@@ -1,0 +1,52 @@
+module chunk
+
+fn target_collection_select_choice(
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
+  primary: TargetRepresentationChoice,
+  alternatives: List<TargetRepresentationChoice>,
+  elem: Node
+) -> Outcome<Optional<TargetRepresentationChoice>> {
+  bind_outcome(
+    o: target_collection_choice_constraints_satisfied(
+      eligibility_table: eligibility_table,
+      choice: primary,
+      elem: elem
+    ),
+    f: fn(primary_satisfied) {
+      if primary_satisfied {
+        outcome_accepted(optional_present(value: primary))
+      } else {
+        fold_list(
+          xs: alternatives,
+          empty: outcome_accepted(optional_absent()),
+          cons: fn(acc, choice) {
+            bind_outcome(
+              o: acc,
+              f: fn(found) {
+                match found {
+                  Present { value: _ } => outcome_accepted(found)
+                  Absent =>
+                    bind_outcome(
+                      o: target_collection_choice_constraints_satisfied(
+                        eligibility_table: eligibility_table,
+                        choice: choice,
+                        elem: elem
+                      ),
+                      f: fn(satisfied) {
+                        if satisfied {
+                          outcome_accepted(optional_present(value: choice))
+                        } else {
+                          outcome_accepted(optional_absent())
+                        }
+                      }
+                    )
+                }
+              }
+            )
+          }
+        )
+      }
+    }
+  )
+}
+

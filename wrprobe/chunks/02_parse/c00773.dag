@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_current_position(tokens: List<Token>) -> Int {
+  match list_head(xs: tokens) {
+    HeadFound { value: t } => t.start + 1
+    HeadAbsent => 0
+  }
+}
+

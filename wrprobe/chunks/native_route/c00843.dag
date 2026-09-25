@@ -1,0 +1,7 @@
+module chunk
+
+test fn the_ratchet_roster_is_the_smoke_member_alone_today() -> Bool {
+  length(xs: native_route_required_pass_identities) == 1
+  && native_route_identity_member(target: smoke_identity(), xs: native_route_required_pass_identities)
+}
+

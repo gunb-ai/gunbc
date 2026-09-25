@@ -1,0 +1,29 @@
+module chunk
+
+fn target_function_signature_realization_to_node(
+  row: TargetFunctionSignatureRealization
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_function_signature_realization_field_source_carrier,
+        target: row.source_carrier
+      ),
+      target_model_named_edge(
+        name: ^target_function_signature_realization_field_target_model_bundle,
+        target: target_model_bundle_core(host: row.target_model)
+      ),
+      target_model_named_edge(
+        name: ^target_function_signature_realization_field_boundary_site,
+        target: target_function_boundary_site_to_node(site: row.boundary_site)
+      ),
+      target_model_named_edge(
+        name: ^target_function_signature_realization_field_signature_type_form,
+        target: row.signature_type_form.node
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

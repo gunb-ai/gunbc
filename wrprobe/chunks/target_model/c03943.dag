@@ -1,0 +1,48 @@
+module chunk
+
+fn source_atom_value_for_value_template(
+  source: Node,
+  template: TargetValueTemplate
+) -> Optional<SourceAtomValue> {
+  match template.kind {
+    ValueSymbolIdentityPassthrough =>
+      source_atom_symbol_projection_from_node(source: source)
+    ValueSymbolToOwnedString =>
+      source_atom_symbol_projection_from_node(source: source)
+    ValueBoolLiteral =>
+      match source.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == ^target_value_expression_bool_true {
+            optional_present(source_atom_bool(value: true))
+          } else if id == ^target_value_expression_bool_false {
+            optional_present(source_atom_bool(value: false))
+          } else {
+            optional_absent()
+          }
+        _ => optional_absent()
+      }
+    ValueCharUnicodeScalar =>
+      source_atom_char_projection_from_node(source: source)
+    ValueStringLiteral =>
+      source_atom_string_projection_from_node(source: source)
+    ValueBindingRef =>
+      optional_absent()
+    ValuePrimitiveApply =>
+      optional_absent()
+    ValueEffectApply =>
+      optional_absent()
+    ValueConditional =>
+      optional_absent()
+    ValueBindLet =>
+      optional_absent()
+    ValueLoop =>
+      optional_absent()
+    ValueRecordConstruct =>
+      optional_absent()
+    ValueFieldAccess =>
+      optional_absent()
+    ValueMatch =>
+      optional_absent()
+  }
+}
+

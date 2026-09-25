@@ -1,0 +1,43 @@
+module chunk
+
+test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation() -> Bool {
+  let enrolled = FloorDiscoveryWalkState {
+    rows: [FloorDiscoveryRow {
+      label: "t",
+      entry: "src/v2/test/headerless_test.dag",
+      function: "t",
+      reads_live_tree: SubstrateInputsOnly
+    }],
+    walk_failures: 0,
+    walk_failure_path: Absent,
+    sidecar_violations: [],
+    disposition_refusal: Absent
+  }
+  let empty = FloorDiscoveryWalkState {
+    rows: [],
+    walk_failures: 0,
+    walk_failure_path: Absent,
+    sidecar_violations: [],
+    disposition_refusal: Absent
+  }
+  match native_lane_unowned_row_path(facts: [
+    NativeLaneSourceFacts {
+      module: Absent,
+      path: ^src_v2_test_quiet_dag,
+      imports: [],
+      discovery: empty,
+      malformed_import: Absent
+    },
+    NativeLaneSourceFacts {
+      module: Absent,
+      path: ^headerless_test_path,
+      imports: [],
+      discovery: enrolled,
+      malformed_import: Absent
+    }
+  ]) {
+    Present { value: unowned } => unowned == ^headerless_test_path
+    Absent => false
+  }
+}
+

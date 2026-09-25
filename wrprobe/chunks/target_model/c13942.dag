@@ -1,0 +1,23 @@
+module chunk
+
+fn target_value_expr_field_access_gate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      if !all_edges_positional(children: node.children)
+        || length(xs: node_positional_child_targets(node: node)) != 3 {
+        false
+      } else {
+        match target_value_expr_positional_child_optional(node: node, index: 0) {
+          Present { value: callee } =>
+            match callee.kind {
+              TypeNode { connective: Atom { identity: id } } =>
+                id == ^dag_token_dot
+              _ => false
+            }
+          Absent => false
+        }
+      }
+    _ => false
+  }
+}
+

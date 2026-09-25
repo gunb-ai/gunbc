@@ -1,0 +1,21 @@
+module chunk
+
+fn formal_production_rhs_singleton_binding_step(
+  state: RhsSingletonBindingLookup,
+  symbol: FormalGrammarSymbol
+) -> RhsSingletonBindingLookup {
+  match state {
+    RhsSingletonBindingAmbiguous => state
+    RhsSingletonBindingFound { binding: _ } => RhsSingletonBindingAmbiguous
+    RhsSingletonBindingNotSeen =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: _, binding: binding } =>
+          match binding {
+            Present { value: b } => RhsSingletonBindingFound { binding: b }
+            Absent => RhsSingletonBindingAmbiguous
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonBindingAmbiguous
+      }
+  }
+}
+

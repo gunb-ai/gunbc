@@ -1,0 +1,16 @@
+module chunk
+
+fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) -> Node {
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprAtom,
+    surface: form.surface,
+    children: [
+      Node {
+        kind: TypeNode { connective: Atom { identity: identity } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+}
+    ]
+  )
+}
+

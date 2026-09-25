@@ -1,0 +1,9 @@
+module chunk
+
+fn sugar_named_child_optional(root: Node, name: Symbol) -> Node? {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+

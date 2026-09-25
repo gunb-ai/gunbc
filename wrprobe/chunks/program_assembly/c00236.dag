@@ -1,0 +1,6 @@
+module chunk
+
+fn program_assembly_allocator_next(alloc: OccurrenceIdAllocator) -> Int {
+  alloc.next_id
+}
+

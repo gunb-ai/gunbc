@@ -1,0 +1,6 @@
+module chunk
+
+type ParseProvFrameItem
+  = FrameMinted { id: OccurrenceId }
+  | FrameNested { frame: List<ParseProvFrameItem> }
+

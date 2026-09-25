@@ -1,0 +1,12 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+  at: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_choice_malformed,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

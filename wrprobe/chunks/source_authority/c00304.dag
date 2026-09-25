@@ -1,0 +1,6 @@
+module chunk
+
+fn source_storage_identity_eq(left: SourceStorageIdentity, right: SourceStorageIdentity) -> Bool {
+  (left.path == right.path) && (left.source_root == right.source_root)
+}
+

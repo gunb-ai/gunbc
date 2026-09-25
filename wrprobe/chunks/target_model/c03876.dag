@@ -1,0 +1,12 @@
+module chunk
+
+fn source_atom_string_projection_node_count(source: Node) -> Int {
+  fold_node(
+    n: source,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _, child_count) { acc + child_count }
+    }
+  )
+}
+

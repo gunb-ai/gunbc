@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_token_second(tokens: List<Token>) -> Optional<Token> {
+  match list_tail(xs: tokens) {
+    TailFound { tail: rest } => parse_token_first(tokens: rest)
+    TailAbsent => Absent
+  }
+}
+

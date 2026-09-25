@@ -1,0 +1,15 @@
+module chunk
+
+fn module_storage_index_insert(
+  index: ModuleStorageIndex,
+  binding: ModuleStorageBinding
+) -> Outcome<ModuleStorageIndex> {
+  if module_storage_index_contains_module(index: index, module: binding.module) {
+    outcome_rejected(
+      d: source_authority_diagnostic(reason: ^source_authority_module_storage_binding_duplicate)
+    )
+  } else {
+    outcome_accepted(value: list_snoc_item(xs: index, item: binding))
+  }
+}
+

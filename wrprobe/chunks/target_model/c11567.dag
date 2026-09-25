@@ -1,0 +1,8 @@
+module chunk
+
+type TargetOwnershipUseSite
+  = OwnershipAtFunctionReturn
+  | OwnershipAtFunctionParameter
+  | OwnershipAtStructField
+  | OwnershipAtBindingProjection
+

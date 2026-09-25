@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_to_node(grammar: ParseGrammar) -> Node {
+  match grammar {
+    VoidGrammar => grammar_empty_node()
+    ModeledGrammar { root: root } => grammar_root_to_node(root: root)
+  }
+}
+

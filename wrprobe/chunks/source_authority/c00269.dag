@@ -1,0 +1,8 @@
+module chunk
+
+data source_ref_authority_note: String = "Stage 0 of docs/plans/ingest-manifest-source-ref-carrier-design.md §6: the typed reference to a STORAGE REALIZATION. Declared here, with the path⇄module binding authority, because both the ingest-manifest rows and the later Phase-3 host-effect boundary must consume ONE spelling — established before it has two consumers rather than reconciled after them (§3).
+
+What it names is deliberately NOT a module. A manifest row is a host-boundary artifact about files the host read, and only host boundaries project paths, so a path-shaped ref is correct exactly there; module identity, where one exists, is the DERIVED fact ModuleStorageBinding already owns and is JOINED to a ref, never fused into it. A ModuleRef | FileRef coproduct was rejected for that reason: it would fuse the two facts this lane exists to keep apart (parent ruling 2026-07-19).
+
+This is a TYPE DECLARATION ONLY. The effect-boundary enforcement that makes bare-string file dependencies unwritable is Phase 3 and does not land here."
+

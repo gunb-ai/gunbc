@@ -1,0 +1,11 @@
+module chunk
+
+fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> List<Edge> {
+  fold(fields, init: Empty, f: fn(acc, field) {
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: field.label }, target: field.type_expr }
+    )
+  })
+}
+

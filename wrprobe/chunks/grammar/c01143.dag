@@ -1,0 +1,9 @@
+module chunk
+
+fn node_atom_identity_optional(node: Node) -> Symbol? {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    _ => Absent
+  }
+}
+

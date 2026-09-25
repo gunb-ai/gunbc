@@ -1,0 +1,11 @@
+module chunk
+
+type DagSourceReadWitness {
+  source: Medium<String>
+  artifact: Artifact
+
+  compilation_unit: Symbol
+
+  source_root: SourceRootRef
+}
+

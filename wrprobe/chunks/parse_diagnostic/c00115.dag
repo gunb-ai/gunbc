@@ -1,0 +1,15 @@
+module chunk
+
+fn non_empty_diagnostics_from_parse_stage(d: NonEmptyParseStageDiagnostics) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: parse_stage_diagnostic_core(d: d.head),
+    tail: fold_list(
+      xs: d.tail,
+      empty: Empty,
+      cons: fn(acc, item) {
+        list_snoc_item(xs: acc, item: parse_stage_diagnostic_core(d: item))
+      }
+    )
+  }
+}
+

@@ -1,0 +1,52 @@
+module chunk
+
+fn target_value_template_from_node(
+  n: Node,
+  source_carrier: Node
+) -> Outcome<TargetValueTemplate> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == discriminant(v: ValueSymbolIdentityPassthrough) {
+        outcome_accepted(
+          TargetValueTemplate {
+            kind: ValueSymbolIdentityPassthrough,
+            node: n
+          }
+        )
+      } else if id == discriminant(v: ValueSymbolToOwnedString) {
+        outcome_accepted(
+          TargetValueTemplate {
+            kind: ValueSymbolToOwnedString,
+            node: n
+          }
+        )
+      } else if id == discriminant(v: ValueBoolLiteral) {
+        outcome_accepted(
+          TargetValueTemplate { kind: ValueBoolLiteral, node: n }
+        )
+      } else if id == discriminant(v: ValueCharUnicodeScalar) {
+        outcome_accepted(
+          TargetValueTemplate {
+            kind: ValueCharUnicodeScalar,
+            node: n
+          }
+        )
+      } else if id == discriminant(v: ValueStringLiteral) {
+        outcome_accepted(
+          TargetValueTemplate {
+            kind: ValueStringLiteral,
+            node: n
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_template_decode_invalid_diagnostic(source_carrier: source_carrier)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_template_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+

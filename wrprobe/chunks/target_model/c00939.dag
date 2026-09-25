@@ -1,0 +1,6 @@
+module chunk
+
+fn render_target_text(t: TargetText) -> String {
+  t.source
+}
+

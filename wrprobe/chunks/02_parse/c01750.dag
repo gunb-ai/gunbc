@@ -1,0 +1,15 @@
+module chunk
+
+fn compute_production_first_rows(
+  root: GrammarRoot,
+  nullable_set: List<Symbol>
+) -> Map<Symbol, List<FirstKey>> {
+  compute_production_first_rows_fixpoint(
+    root: root,
+    nullable_set: nullable_set,
+    rows: empty_map(),
+    seen_total: 0,
+    fuel: length(xs: root.productions)
+  )
+}
+

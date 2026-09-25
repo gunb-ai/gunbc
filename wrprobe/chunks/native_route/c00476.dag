@@ -1,0 +1,17 @@
+module chunk
+
+test fn a_non_boolean_return_is_a_divergence_on_every_reference() -> Bool {
+  match native_route_disposition(verdict: NativeTestReturnedOther, reference: FloorExpectedPass) {
+    NativeDivergence { cause: NativeReturnedOtherVerdict } => true
+    _ => false
+  }
+  && match native_route_disposition(verdict: NativeTestReturnedOther, reference: FloorExpectedRed) {
+    NativeDivergence { cause: NativeReturnedOtherVerdict } => true
+    _ => false
+  }
+  && match native_route_disposition(verdict: NativeTestReturnedOther, reference: FloorRouteGapRefusal) {
+    NativeDivergence { cause: NativeReturnedOtherVerdict } => true
+    _ => false
+  }
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn grammar_relation_token_edge_targets(edges: List<Edge>) -> List<Node> {
+  fold(
+    edges,
+    init: Empty,
+    f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: e.target)
+    }
+  )
+}
+

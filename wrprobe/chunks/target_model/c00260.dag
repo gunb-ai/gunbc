@@ -1,0 +1,10 @@
+module chunk
+
+type ProducedDeclSupport
+  = ProducedDeclUnwired
+  | ProducedDeclWired {
+      render_rows: ProducedDeclRenderRows
+      scaffold_relation_rule_name: Symbol
+      scaffold_base_row: Node
+    }
+

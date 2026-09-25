@@ -1,0 +1,21 @@
+module chunk
+
+fn target_function_signature_realization_catalog_node(
+  rows: List<TargetFunctionSignatureRealization>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        target_function_signature_realization_catalog_snoc_edge(
+          acc: acc,
+          row: row
+        )
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

@@ -1,0 +1,27 @@
+module chunk
+
+fn target_use_site_ownership_lookup_in_catalog(
+  catalog: List<TargetUseSiteOwnershipRealization>,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetUseSiteOwnershipRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetUseSiteOwnershipMissing,
+    cons: fn(acc, row) {
+      target_use_site_ownership_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    }
+  ) {
+    TargetUseSiteOwnershipMissing =>
+      outcome_rejected(target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier))
+    TargetUseSiteOwnershipUnique { row: row } => outcome_accepted(row)
+    TargetUseSiteOwnershipAmbiguous =>
+      outcome_rejected(target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+  }
+}
+

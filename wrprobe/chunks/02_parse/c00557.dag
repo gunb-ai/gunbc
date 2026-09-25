@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_expr_result_table(result: ParseExprResult) -> ParseTable {
+  match result {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table } => table
+    ParseExprRejected { diagnostics: _, table: table } => table
+  }
+}
+

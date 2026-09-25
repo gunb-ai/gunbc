@@ -1,0 +1,9 @@
+module chunk
+
+fn source_atom_value_as_bool(value: SourceAtomValue) -> Optional<Bool> {
+  match value {
+    SourceAtomBool { value: b } => optional_present(b)
+    _ => optional_absent()
+  }
+}
+

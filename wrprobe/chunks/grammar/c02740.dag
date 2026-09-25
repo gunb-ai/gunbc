@@ -1,0 +1,18 @@
+module chunk
+
+fn grammar_relation_row_forward_production_selection_not_found_diagnostic(
+  surface_identity: Symbol
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_row_forward_production_not_found,
+    at: node_locus(
+      node: Node {
+        kind: TypeNode { connective: Atom { identity: surface_identity } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

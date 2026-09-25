@@ -1,0 +1,9 @@
+module chunk
+
+fn derive_grammar_relation_row(production: FormalProduction, emitted: Node) -> GrammarRelationRow {
+  GrammarRelationRow {
+    production: production,
+    emitted: emitted
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+data sugar_rule_operation: SugarRule = SugarRule {
+  key: SurfaceAtomKey { atom: ^dag_c3_surface_sugar_operation },
+  lowering: SugarRewriteConnective { connective: Arrow, edges: PositionalEdges }
+}

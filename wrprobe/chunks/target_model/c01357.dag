@@ -1,0 +1,12 @@
+module chunk
+
+type TargetMatchShape {
+  match_token: Symbol
+  scrutinee_open: Symbol
+  scrutinee_close: Symbol
+  open: Symbol
+  close: Symbol
+  fat_arrow: Symbol
+  arm_separator: Symbol
+}
+

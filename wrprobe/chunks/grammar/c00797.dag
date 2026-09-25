@@ -1,0 +1,18 @@
+module chunk
+
+fn grammar_relation_rules_formal_productions_step(
+  acc: Outcome<List<FormalProduction>>,
+  row: Node
+) -> Outcome<List<FormalProduction>> {
+  bind_outcome(
+    o: acc,
+    f: fn(productions) {
+      match grammar_relation_row_production_from_node(row: row) {
+        Holds { value: production } =>
+          outcome_accepted(value: list_snoc_item(xs: productions, item: production))
+        Violates { diagnostic: _ } => outcome_accepted(value: productions)
+      }
+    }
+  )
+}
+

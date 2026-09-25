@@ -1,0 +1,31 @@
+module chunk
+
+fn target_value_expression_field_access(
+  base: TargetValueExpression,
+  field_name: Symbol
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprFieldAccess,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_field_access_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expr_field_field_access_base,
+          target: base.node
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_field_access_field,
+          target: Node {
+            kind: TypeNode { connective: Atom { identity: field_name } },
+            children: [],
+            occurrence_id: OccurrenceSynthetic
+          }
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+

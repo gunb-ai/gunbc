@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_relation_forward_row_select_skip_catalog_edge(name: Symbol) -> Bool {
+  name == ^grammar_relation_rules_formal_productions
+}
+

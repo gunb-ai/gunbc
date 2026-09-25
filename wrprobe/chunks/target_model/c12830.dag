@@ -1,0 +1,10 @@
+module chunk
+
+fn target_type_expr_symbol_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

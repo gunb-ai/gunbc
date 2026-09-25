@@ -1,0 +1,19 @@
+module chunk
+
+fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: atoms,
+      empty: Empty,
+      cons: fn(acc, id) {
+        list_snoc_item(
+          xs: acc,
+          item: target_model_named_edge(name: id, target: target_value_semantics_carrier_atom_node(id: id))
+        )
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

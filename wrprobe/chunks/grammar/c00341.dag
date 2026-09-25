@@ -1,0 +1,7 @@
+module chunk
+
+type GrammarSchema {
+  lex: LexRules
+  grammar: ParseGrammar
+}
+

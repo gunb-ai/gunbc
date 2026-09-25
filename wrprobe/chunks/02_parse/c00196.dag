@@ -1,0 +1,8 @@
+module chunk
+
+type ParseArtifact {
+  tree: ParseTree
+  span_index: v2.std.provenance.SpanIndex
+  alloc: OccurrenceIdAllocator
+}
+

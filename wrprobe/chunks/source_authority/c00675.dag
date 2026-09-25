@@ -1,0 +1,10 @@
+module chunk
+
+fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
+  semantic_ir_from_source_with_model(
+    source: source,
+    compilation_unit: ^source_authority_port,
+    lm: dag_language_model()
+  )
+}
+

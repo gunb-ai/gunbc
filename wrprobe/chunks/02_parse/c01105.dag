@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_token_lexeme_is(tok: Token, lit: String) -> Bool {
+  tok.lexeme == lit
+}
+

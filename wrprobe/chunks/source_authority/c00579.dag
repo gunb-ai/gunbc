@@ -1,0 +1,7 @@
+module chunk
+
+type DeterministicDagSourceSerializerLaw {
+  canonical_section: String
+  declared_fidelity: DecodeFidelity
+}
+

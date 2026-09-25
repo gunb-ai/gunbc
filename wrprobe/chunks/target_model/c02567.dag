@@ -1,0 +1,42 @@
+module chunk
+
+fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplyShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_ident_token
+    ),
+    f: fn(callee_ident_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: ^target_value_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^target_value_expr_field_close
+                ),
+                f: fn(close) {
+                  outcome_accepted(
+                    TargetCallApplyShape {
+                      callee_ident_token: callee_ident_token,
+                      open: open,
+                      separator: separator,
+                      close: close
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
+  match v2.std.collection.map_get(counts, sym) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: n } => n
+      Absent => 0
+    }
+    Rejected { diagnostics: _ } => 0
+  }
+}
+

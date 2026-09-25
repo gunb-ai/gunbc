@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_stage_diagnostic_from_diagnostic_only(d: Diagnostic) -> ParseStageDiagnostic {
+  ParseStageDiagnostic {
+    diagnostic: d,
+    evidence: NoParseDiagnosticEvidence
+  }
+}
+

@@ -1,0 +1,7 @@
+module chunk
+
+type TargetValueTemplate {
+  kind: TargetValueTemplateKind
+  node: Node
+}
+

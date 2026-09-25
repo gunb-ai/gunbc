@@ -1,0 +1,21 @@
+module chunk
+
+fn target_type_expr_decode_kind_edge(edge: Edge) -> TargetTypeExprKindEdgeDecode {
+  match edge.label {
+    Named { name: n } =>
+      if n == ^target_type_expr_field_kind {
+        match edge.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            match target_type_expr_kind_from_atom(id: id) {
+              Present { value: kind } => KindEdgeAuthority { value: kind }
+              Absent => KindEdgeAuthorityMalformed
+            }
+          _ => KindEdgeAuthorityMalformed
+        }
+      } else {
+        KindEdgeNotKindField
+      }
+    Positional => KindEdgeNotKindField
+  }
+}
+

@@ -1,0 +1,52 @@
+module chunk
+
+fn type_expr_projection_shape_for_connective(
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  match connective {
+    Atom { identity: _ } =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_atom_shape_node(form: projection.atom_form),
+          connective: connective
+        )
+      )
+    Conj =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.conj_form),
+          connective: Conj
+        )
+      )
+    Disj =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_sum_shape_node(form: projection.disj_form),
+          connective: Disj
+        )
+      )
+    Arrow =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_arrow_shape_node(form: projection.arrow_form),
+          connective: Arrow
+        )
+      )
+    Cardinality =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
+          connective: Cardinality
+        )
+      )
+    Instantiation =>
+      outcome_accepted(
+        type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.instantiation_form),
+          connective: Instantiation
+        )
+      )
+  }
+}
+

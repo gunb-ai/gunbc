@@ -1,0 +1,10 @@
+module chunk
+
+fn symbol_kernel_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^symbol_kernel_type_atom } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

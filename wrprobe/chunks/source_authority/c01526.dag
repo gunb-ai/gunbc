@@ -1,0 +1,13 @@
+module chunk
+
+fn source_authority_round_trip(
+  source: Medium<String>,
+  canonical_source_target: TargetModel
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+  source_authority_round_trip_with_model(
+    source: source,
+    canonical_source_target: canonical_source_target,
+    lm: dag_language_model()
+  )
+}
+

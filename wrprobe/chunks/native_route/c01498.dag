@@ -1,0 +1,6 @@
+module chunk
+
+fn native_lane_closure_budget_probe(budget: Int) -> Outcome<List<String>> {
+  native_lane_closure_modules(facts: closure_probe_facts(), universe: closure_probe_universe(), budget: budget)
+}
+

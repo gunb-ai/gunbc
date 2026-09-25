@@ -1,0 +1,67 @@
+module chunk
+
+fn target_value_expr_record_construct_field_tokens(
+  slots: List<TargetValueExprFieldInitSlot>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match fold(
+    slots,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, slot) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: slot.value,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(value_tokens) {
+              let field_chunk = list_append(
+                left: list_append(
+                  left: Cons {
+                    head: target_value_expression_binding_ref_token(
+                      binding: slot.label,
+                      projection: projection
+                    ),
+                    tail: Empty
+                  },
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.record_construct_form.assign
+                    },
+                    tail: Empty
+                  }
+                ),
+                right: value_tokens
+              )
+              if is_empty(xs: prior_tokens) {
+                outcome_accepted(field_chunk)
+              } else {
+                outcome_accepted(
+                  list_append(
+                    left: list_append(
+                      left: prior_tokens,
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.record_construct_form.separator
+                        },
+                        tail: Empty
+                      }
+                    ),
+                    right: field_chunk
+                  )
+                )
+              }
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: tokens, diagnostics: d } => Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

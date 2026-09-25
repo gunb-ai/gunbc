@@ -1,0 +1,18 @@
+module chunk
+
+fn statement_sequenced_block_construct_guard(
+  block_evaluation_mode: BlockEvaluationMode,
+  wire: Node
+) -> Outcome<Bool> {
+  match block_evaluation_mode {
+    ValueProducing => outcome_accepted(true)
+    StatementSequenced {
+      return_token: _,
+      statement_terminator: _
+    } =>
+      outcome_rejected(
+        statement_sequenced_block_construct_unwired_diagnostic(wire: wire)
+      )
+  }
+}
+

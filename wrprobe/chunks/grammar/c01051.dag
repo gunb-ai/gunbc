@@ -1,0 +1,15 @@
+module chunk
+
+fn formal_productions_for_lhs(
+  productions: List<FormalProduction>,
+  lhs: Symbol
+) -> List<FormalProduction> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) {
+      formal_productions_for_lhs_step(acc: acc, production: production, lhs: lhs)
+    }
+  )
+}
+

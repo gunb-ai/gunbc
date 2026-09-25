@@ -1,0 +1,7 @@
+module chunk
+
+fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModel) -> Bool {
+  content_hash(n: row_bundle) == content_hash(n: host.bundle)
+  || content_hash(n: row_bundle) == content_hash(n: target_model_bundle_core(host: host))
+}
+

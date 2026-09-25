@@ -1,0 +1,31 @@
+module chunk
+
+fn prepare_grammar_with_admission(
+  admit: fn(ParseMemoRecurrence) -> Outcome<Materialization>,
+  grammar: ParseGrammar
+) -> Outcome<PreparedGrammar> {
+  let grammar_node = grammar_to_node(grammar: grammar)
+  let at = node_locus(node: grammar_node)
+  if well_formed(n: grammar_node) {
+    match grammar {
+      VoidGrammar =>
+        Accepted { value: PreparedVoidGrammar, diagnostics: None }
+      ModeledGrammar { root: root } =>
+        match grammar_validate_and_analyze(root: root, at: at) {
+          Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+          Accepted { value: modeled, diagnostics: validation_residue } =>
+            match admit(modeled.analysis.memo_recurrence) {
+              Rejected { diagnostics: refusal } => Rejected { diagnostics: refusal }
+              Accepted { value: materialization, diagnostics: _ } =>
+                Accepted {
+                  value: PreparedModeled { modeled: modeled, materialization: materialization },
+                  diagnostics: validation_residue
+                }
+            }
+        }
+    }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
+  }
+}
+

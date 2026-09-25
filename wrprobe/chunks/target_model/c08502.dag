@@ -1,0 +1,23 @@
+module chunk
+
+fn target_value_expression_bool_atom(value: Bool) -> Node {
+  match value {
+    true =>
+      Node {
+        kind: TypeNode {
+          connective: Atom { identity: ^target_value_expression_bool_true }
+        },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+}
+    false =>
+      Node {
+        kind: TypeNode {
+          connective: Atom { identity: ^target_value_expression_bool_false }
+        },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> Bool {
+  fold_list(
+    xs: g.productions,
+    empty: true,
+    cons: fn(acc, production) {
+      acc && g.nonterminals.member(production.lhs)
+    }
+  )
+}
+

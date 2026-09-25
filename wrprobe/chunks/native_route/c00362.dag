@@ -1,0 +1,17 @@
+module chunk
+
+test fn an_entry_stage_refusal_is_a_driver_limit_only_at_a_known_reason() -> Bool {
+  match classify_native_refusal(stage: NativeTestStageEntry, reason: ^native_test_entry_declaration_not_arrow) {
+    NativeEntryResolutionLimit { reason: r } => r == ^native_test_entry_declaration_not_arrow
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStageEntry, reason: ^parse_g0_tokens_remain) {
+    NativeEntryResolutionLimit { reason: _ } => false
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^parse_g0_tokens_remain
+  }
+}
+

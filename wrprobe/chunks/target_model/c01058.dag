@@ -1,0 +1,24 @@
+module chunk
+
+fn bound_token_spelling_from_model(
+  target: TargetModel,
+  token_class: Symbol,
+  binding: Symbol
+) -> Outcome<String> {
+  bind_outcome(
+    o: target_binding_spelling_lookup(target: target, binding: binding),
+    f: fn(spelling) {
+      match map_get(target.token_class_emit_transforms, token_class) {
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
+            diagnostics: d
+          )
+        Accepted { value: Absent, diagnostics: d } =>
+          outcome_with_diagnostics(value: spelling, diagnostics: d)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+

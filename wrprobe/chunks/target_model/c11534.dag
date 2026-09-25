@@ -1,0 +1,6 @@
+module chunk
+
+fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+}
+

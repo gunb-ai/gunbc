@@ -1,0 +1,15 @@
+module chunk
+
+fn target_transform_positional_operand_binding_atom(child: Node) -> Outcome<Symbol> {
+  match child.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: child
+        )
+      )
+  }
+}
+

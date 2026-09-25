@@ -1,0 +1,39 @@
+module chunk
+
+fn target_value_expression_loop_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_loop_child_from_wire(wire: expr.node),
+        f: fn(body) {
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: body,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(body_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: Cons {
+                    head: FixedToken {
+                      token_class: projection.loop_form.loop_token
+                    },
+                    tail: Empty
+                  },
+                  right: body_tokens
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

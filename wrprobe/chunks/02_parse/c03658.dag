@@ -1,0 +1,18 @@
+module chunk
+
+fn parse_production_prepared(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  production_name: Symbol,
+  materialization: Materialization
+) -> Outcome<ParseArtifact> {
+  parse_production_prepared_measured(
+    tokens: tokens,
+    validated: validated,
+    analysis: analysis,
+    production_name: production_name,
+    materialization: materialization
+  ).outcome
+}
+

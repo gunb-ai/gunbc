@@ -1,0 +1,14 @@
+module chunk
+
+fn refused_row(
+  module: String,
+  declaration: String,
+  stage: NativeTestStage,
+  reason: Symbol
+) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: test_identity(module: module, declaration: declaration),
+    verdict: refused_verdict(stage: stage, reason: reason)
+  }
+}
+

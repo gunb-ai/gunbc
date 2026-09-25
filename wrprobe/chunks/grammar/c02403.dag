@@ -1,0 +1,13 @@
+module chunk
+
+fn formal_production_unique_lhs_exact_match(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node
+) -> Witness<FormalProduction> {
+  resolution_production_for_lhs_exact(
+    resolution: resolve_emitted_productions_asked(productions: productions, asked: [lhs], emitted: child),
+    lhs: lhs
+  )
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn string_replace(source: String, needle: FreeSemigroup<Char>, replacement: String) -> String {
+  string_join(fields: string_split(source: source, delimiter: needle), separator: replacement)
+}
+

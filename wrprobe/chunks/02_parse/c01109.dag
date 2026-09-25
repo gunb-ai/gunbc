@@ -1,0 +1,12 @@
+module chunk
+
+fn parse_next_brace_depth(tok: Token, depth: Int) -> Int {
+  if parse_token_lexeme_is(tok: tok, lit: "{") {
+    depth + 1
+  } else if parse_token_lexeme_is(tok: tok, lit: "}") {
+    depth - 1
+  } else {
+    depth
+  }
+}
+

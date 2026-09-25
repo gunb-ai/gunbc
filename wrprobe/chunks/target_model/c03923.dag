@@ -1,0 +1,6 @@
+module chunk
+
+fn source_atom_string(value: Node) -> SourceAtomValue {
+  SourceAtomString { value: value }
+}
+

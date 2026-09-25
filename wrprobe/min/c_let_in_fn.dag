@@ -1,0 +1,6 @@
+module chunk
+
+fn f(x: Int) -> Int {
+  let y = g(v: x)
+  y
+}

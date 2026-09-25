@@ -1,0 +1,26 @@
+module chunk
+
+fn module_storage_bindings_from_ingest_prepared(
+  ingest: SourceRootIngest,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<ModuleStorageIndex> {
+  match fold_list(
+    xs: ingest,
+    empty: ModuleStorageFoldOk { bindings: Empty },
+    cons: fn(state, read) {
+      module_storage_fold_step(
+        state: state,
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      )
+    }
+  ) {
+    ModuleStorageFoldOk { bindings: b } => outcome_accepted(value: b)
+    ModuleStorageFoldFailed { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+

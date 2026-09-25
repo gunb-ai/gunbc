@@ -1,0 +1,6 @@
+module chunk
+
+type ConcreteSyntaxSchema {
+  terminal_coverage: GrammarTerminalLexCoverageObligation
+}
+

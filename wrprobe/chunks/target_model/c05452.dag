@@ -1,0 +1,40 @@
+module chunk
+
+fn target_value_expr_conditional_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_conditional_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_branch_condition,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_branch_then_arm,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_branch_else_arm,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        outcome_accepted(true)
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+

@@ -1,0 +1,14 @@
+module chunk
+
+fn source_ref_identity_digest_from_structural(
+  ref: SourceRef,
+  structural: Fnv1a64Structural
+) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: source_storage_identity_digest(
+      storage: source_storage_identity_from_ref(ref: ref)
+    ),
+    right: structural
+  )
+}
+

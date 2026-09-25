@@ -1,0 +1,25 @@
+module chunk
+
+fn discovered_source_refs_digest_eq(
+  left: DiscoveredSourceRefsDigest,
+  right: DiscoveredSourceRefsDigest
+) -> Bool {
+  match left {
+    DiscoveredSourceRefsDigestFromList { digest: left_digest } =>
+      match right {
+        DiscoveredSourceRefsDigestFromList { digest: right_digest } =>
+          content_hash_eq_structural(left: left_digest, right: right_digest)
+        _ => false
+      }
+    DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList { reason: left_reason }
+    } =>
+      match right {
+        DiscoveredSourceRefsDigestUnavailable {
+          cause: DiscoveredSourceRefsDigestNoRefList { reason: right_reason }
+        } => left_reason == right_reason
+        _ => false
+      }
+  }
+}
+

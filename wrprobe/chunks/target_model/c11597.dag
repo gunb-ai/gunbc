@@ -1,0 +1,7 @@
+module chunk
+
+type TargetReferenceLayerFacts {
+  indirection: TargetIndirection
+  sharing: TargetSharing
+}
+

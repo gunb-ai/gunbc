@@ -1,0 +1,23 @@
+module chunk
+
+fn fixed_token_spelling_from_model(
+  target: TargetModel,
+  token_class: Symbol
+) -> Outcome<String> {
+  bind_outcome(
+    o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+    f: fn(spelling) {
+      match map_get(target.token_class_emit_transforms, token_class) {
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
+            diagnostics: d
+          )
+        Accepted { value: Absent, diagnostics: d } =>
+          outcome_with_diagnostics(value: spelling, diagnostics: d)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+

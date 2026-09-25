@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_semantics_carrier_snoc(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
+  match edge.label {
+    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    _ => acc
+  }
+}
+

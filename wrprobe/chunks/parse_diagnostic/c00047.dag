@@ -1,0 +1,20 @@
+module chunk
+
+fn parse_overlap_residue_stage_diagnostic_at(
+  at: Locus,
+  row: GrammarChoiceAmbiguityRow
+) -> ParseStageDiagnostic {
+  ParseStageDiagnostic {
+    diagnostic: Diagnostic {
+      reason: ^parse_grammar_choice_overlap_residue,
+      at: port_refusal_locus(
+        at: at,
+        port: ^parse_stage_locus_port,
+        invariant: ^parse_grammar_choice_overlap_residue
+      ),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    evidence: GrammarChoiceAmbiguityEvidence { row: row }
+  }
+}
+

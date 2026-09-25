@@ -1,0 +1,6 @@
+module chunk
+
+fn braced_fn_control_parsed() -> Outcome<Node> {
+  g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
+}
+

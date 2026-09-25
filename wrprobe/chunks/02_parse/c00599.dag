@@ -1,0 +1,20 @@
+module chunk
+
+fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
+  ParseTableRealization {
+    artifact_kind: table.artifact_kind,
+    provider_id: table.provider_id,
+    materialization: table.materialization,
+    grammar_digest: table.grammar_digest,
+    token_stream_digest: table.token_stream_digest,
+    entries: entries,
+    memo_hits: hits,
+    memo_misses: misses,
+    memo_lookup_calls: lookups,
+    nullable_set: table.nullable_set,
+    first_rows: table.first_rows,
+    productions_by_name: table.productions_by_name,
+    prepared_exprs: table.prepared_exprs
+  }
+}
+

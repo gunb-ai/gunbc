@@ -1,0 +1,6 @@
+module chunk
+
+fn program_assembly_phase_normalize(parsed: Outcome<ParseArtifact>) -> Outcome<NormalizedTree> {
+  bind_outcome(o: parsed, f: fn(artifact) { normalize(parse_tree: artifact.tree) })
+}
+

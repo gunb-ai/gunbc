@@ -1,0 +1,6 @@
+module chunk
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+

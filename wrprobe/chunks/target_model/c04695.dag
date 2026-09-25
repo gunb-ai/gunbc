@@ -1,0 +1,11 @@
+module chunk
+
+fn target_value_expr_field_init_slot_edges(slots: List<TargetValueExprFieldInitSlot>) -> List<Edge> {
+  fold(slots, init: Empty, f: fn(acc, slot) {
+    list_snoc_item(
+      xs: acc,
+      item: target_model_named_edge(name: slot.label, target: slot.value.node)
+    )
+  })
+}
+

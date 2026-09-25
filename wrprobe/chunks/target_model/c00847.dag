@@ -1,0 +1,10 @@
+module chunk
+
+fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_collection_shape_malformed,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

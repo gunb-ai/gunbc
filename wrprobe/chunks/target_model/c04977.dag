@@ -1,0 +1,32 @@
+module chunk
+
+fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outcome<Bool> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: true,
+        f: fn(acc, e) {
+          if acc {
+            match e.label {
+              Positional => false
+              Named { name: n } => n == ^target_operator_realization_row_edge
+            }
+          } else {
+            false
+          }
+        }
+      ) {
+        true => outcome_accepted(true)
+        false =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+      )
+  }
+}
+

@@ -1,0 +1,4 @@
+module chunk
+
+data target_value_expr_int_literal_predicate_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import.")
+

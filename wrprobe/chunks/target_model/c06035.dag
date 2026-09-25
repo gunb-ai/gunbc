@@ -1,0 +1,65 @@
+module chunk
+
+fn target_value_expression_record_construct_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_record_construct_type_from_wire(wire: expr.node),
+        f: fn(type_name) {
+          bind_outcome(
+            o: target_value_expr_record_construct_field_slots_from_wire(wire: expr.node),
+            f: fn(field_slots) {
+              bind_outcome(
+                o: target_value_expr_record_construct_field_tokens(
+                  slots: field_slots,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(field_tokens) {
+                  let type_name_prefix_tokens = match projection.record_construct_form.record_literal_names_type {
+                    Prepend => Cons {
+                      head: target_value_expression_binding_ref_token(
+                        binding: type_name,
+                        projection: projection
+                      ),
+                      tail: Empty
+                    }
+                    Omit => Empty
+                  }
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: list_append(
+                          left: type_name_prefix_tokens,
+                          right: Cons {
+                            head: FixedToken {
+                              token_class: projection.record_construct_form.open
+                            },
+                            tail: Empty
+                          }
+                        ),
+                        right: field_tokens
+                      ),
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.record_construct_form.close
+                        },
+                        tail: Empty
+                      }
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn target_value_expr_operand_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_expr_operand_wire_malformed,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

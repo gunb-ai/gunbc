@@ -1,0 +1,9 @@
+module chunk
+
+type SourceRootProvenanceCoverageReceipt {
+  ingest_read_count: Int
+  produced_row_count: Int
+  discovered_source_refs_digest: DiscoveredSourceRefsDigest
+  coverage: SourceRootCoverage
+}
+

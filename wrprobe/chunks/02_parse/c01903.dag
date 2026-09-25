@@ -1,0 +1,9 @@
+module chunk
+
+fn choice_alts_union_first(alts: List<PreparedExprFold>) -> GrammarExprFirstFold {
+  choice_alts_union_first_from(
+    alts: alts,
+    acc: GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
+  )
+}
+

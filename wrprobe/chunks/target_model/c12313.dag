@@ -1,0 +1,11 @@
+module chunk
+
+fn target_use_site_ownership_catalog_positional_edge(
+  row: TargetUseSiteOwnershipRealization
+) -> Edge {
+  Edge {
+    label: Positional,
+    target: target_use_site_ownership_realization_to_node(row: row)
+  }
+}
+

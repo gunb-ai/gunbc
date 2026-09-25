@@ -1,0 +1,16 @@
+module chunk
+
+fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnostic> {
+  fold_list(
+    xs: batches,
+    empty: std.algebra.Empty,
+    cons: fn(acc, batch) {
+      fold_list(
+        xs: batch,
+        empty: acc,
+        cons: fn(inner_acc, d) { Cons { head: d, tail: inner_acc } }
+      )
+    }
+  ).reverse()
+}
+

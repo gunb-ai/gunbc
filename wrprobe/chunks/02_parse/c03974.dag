@@ -1,0 +1,11 @@
+module chunk
+
+fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
+  match parse_module(tokens: tokens, grammar: grammar) {
+    Accepted { value: artifact, diagnostics: d } =>
+      Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+

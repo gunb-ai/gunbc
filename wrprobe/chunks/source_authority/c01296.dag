@@ -1,0 +1,15 @@
+module chunk
+
+fn semantic_ir_equal_witness(
+  original: DagSemanticIr,
+  reparsed: DagSemanticIr
+) -> Witness<SemanticIrEqual> {
+  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+    Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
+  } else {
+    Violates {
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_ir_mismatch)
+    }
+  }
+}
+

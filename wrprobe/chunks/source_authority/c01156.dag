@@ -1,0 +1,18 @@
+module chunk
+
+fn source_ir_node_artifact_provenance_from_model(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Outcome<NodeArtifactProvenance> {
+  match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
+    Accepted { value: prov, diagnostics: _ } =>
+      outcome_accepted(
+        value: NodeArtifactProvenance {
+          node: prov.node,
+          artifact: prov.artifact
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

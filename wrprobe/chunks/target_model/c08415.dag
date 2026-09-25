@@ -1,0 +1,18 @@
+module chunk
+
+fn target_atom_realization_lookup_extract_row_step(
+  acc: Optional<TargetAtomRealization>,
+  row: TargetAtomRealization,
+  source_carrier: Node
+) -> Optional<TargetAtomRealization> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+        optional_present(value: row)
+      } else {
+        acc
+      }
+  }
+}
+

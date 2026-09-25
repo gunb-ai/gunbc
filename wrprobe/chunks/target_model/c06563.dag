@@ -1,0 +1,43 @@
+module chunk
+
+fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool> {
+  match arm_wire.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(name: match_arm_pattern, children: arm_wire.children) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+        )
+      } else if name_occurrences(name: match_arm_body, children: arm_wire.children) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+        )
+      } else {
+        match fold(
+          arm_wire.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == match_arm_pattern || n == match_arm_body
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
+      )
+  }
+}
+

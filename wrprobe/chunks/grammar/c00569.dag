@@ -1,0 +1,32 @@
+module chunk
+
+fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: node, name: ^formal_nonterminal_identity_node_projection) {
+        Accepted { value: identity_node, diagnostics: _ } =>
+          match grammar_atom_identity_from_node(node: identity_node) {
+            Holds { value: id } =>
+              Holds { value: FormalNonterminal { identity: id } }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Rejected { diagnostics: nd } =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_production_not_found,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+

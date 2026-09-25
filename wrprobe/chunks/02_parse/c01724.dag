@@ -1,0 +1,28 @@
+module chunk
+
+fn compute_production_first_rows_fixpoint(
+  root: GrammarRoot,
+  nullable_set: List<Symbol>,
+  rows: Map<Symbol, List<FirstKey>>,
+  seen_total: Int,
+  fuel: Int
+) -> Map<Symbol, List<FirstKey>> {
+  if fuel == 0 {
+    rows
+  } else {
+    let next = compute_production_first_rows_round(root: root, nullable_set: nullable_set, rows: rows)
+    let next_total = production_first_rows_total(root: root, rows: next)
+    if next_total == seen_total {
+      next
+    } else {
+      compute_production_first_rows_fixpoint(
+        root: root,
+        nullable_set: nullable_set,
+        rows: next,
+        seen_total: next_total,
+        fuel: fuel - 1
+      )
+    }
+  }
+}
+

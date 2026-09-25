@@ -1,0 +1,20 @@
+module chunk
+
+test fn an_all_refused_population_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "blocked")],
+      module_source_index: [],
+      population: [refused_row(
+        module: "v2.test.alpha",
+        declaration: "blocked",
+        stage: NativeTestStagePrepare,
+        reason: ^parse_g0_tokens_remain
+      )],
+      file_refusals: []
+    )),
+    cause_name: "positive_population_empty"
+  )
+}
+
+

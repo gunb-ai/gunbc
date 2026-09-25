@@ -1,0 +1,4 @@
+module chunk
+
+data braced_fn_control_source: String = "module probe.braced_fn\n\nfn f(a: Int) -> Int {\n  a\n}\n"
+

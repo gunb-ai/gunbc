@@ -1,0 +1,48 @@
+module chunk
+
+fn decode_generic_apply_shape_bundle(bundle: Node) -> Outcome<TargetGenericApply> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: ^target_type_expr_field_separator
+            ),
+            f: fn(separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^target_type_expr_field_close
+                ),
+                f: fn(close) {
+                  bind_outcome(
+                    o: decode_optional_projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_type_expr_field_field_label_separator
+                    ),
+                    f: fn(field_label_separator) {
+                      outcome_accepted(
+                        TargetGenericApply {
+                          surface: surface,
+                          open: open,
+                          separator: separator,
+                          field_label_separator: field_label_separator,
+                          close: close
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

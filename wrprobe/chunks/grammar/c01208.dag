@@ -1,0 +1,8 @@
+module chunk
+
+type EmittedProductionResolution {
+  emitted: Node
+  matched: List<FormalProduction>
+  slots: List<EmittedProductionResolution>
+}
+

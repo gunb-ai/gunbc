@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTypeExprVariantSlot {
+  label: Symbol
+  type_expr: Node
+}
+

@@ -1,0 +1,33 @@
+module chunk
+
+fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorShape> {
+  bind_outcome(
+    o: target_operator_shape_wire_schema_valid(wire: wire),
+    f: fn(_) {
+      match wire.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          bind_outcome(
+            o: target_operator_shape_token_from_wire(wire: wire),
+            f: fn(token) {
+              if id == discriminant(v: InfixToken {}) {
+                outcome_accepted(InfixToken { token: token })
+              } else if id == discriminant(v: PrefixToken {}) {
+                outcome_accepted(PrefixToken { token: token })
+              } else if id == discriminant(v: CallIdent {}) {
+                outcome_accepted(CallIdent { ident: token })
+              } else if id == discriminant(v: MethodIdent {}) {
+                outcome_accepted(MethodIdent { ident: token })
+              } else {
+                outcome_rejected(
+                  target_operator_shape_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            }
+          )
+        _ =>
+          outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+      }
+    }
+  )
+}
+

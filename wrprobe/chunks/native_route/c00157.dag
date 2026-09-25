@@ -1,0 +1,30 @@
+module chunk
+
+fn receipt_over(
+  universe: List<NativeRouteTestIdentity>,
+  module_source_index: List<NativeRouteModuleSource>,
+  population: List<NativeRouteMemberRow>,
+  file_refusals: List<NativeTestFileRefusal>
+) -> NativeRouteReceipt {
+  NativeRouteReceipt {
+    job: required_v2_native_job_name,
+    tested_tree: "tree-sha",
+    preparation_seed_identity: "seed-sha",
+    emitted_closure_identity: "closure-sha",
+    executable_path: "/emitted/compiler",
+    executable_identity: "binary-sha",
+    universe: universe,
+    module_source_index: module_source_index,
+    population: population,
+    file_refusals: file_refusals,
+    false_control: Present { value: NativeTestReturnedFalse },
+    true_control: Present { value: NativeTestPassed },
+    malformed_control: MalformedSpecimenRefused {
+      path: "target/v2-native-lane/malformed-control-root/poison.dag",
+      reason: ^tokenize_lex_e1_unterminated_string
+    },
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" },
+    emitted_build: clean_emitted_build()
+  }
+}
+

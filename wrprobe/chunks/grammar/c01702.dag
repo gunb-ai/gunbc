@@ -1,0 +1,109 @@
+module chunk
+
+fn derive_grammar_relation_token_edges_recursive_step(
+  progress: Witness<DeriveGrammarRelationTokensProgress>,
+  resolution: EmittedProductionResolution,
+  emitted: Node,
+  symbol: FormalGrammarSymbol
+) -> Witness<DeriveGrammarRelationTokensProgress> {
+  match progress {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: edges, conj_index: conj_index, conj_children: conj_children } } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Present { value: binding_symbol } =>
+              match formal_binding_conj_slot_arm(binding: binding_symbol) {
+                FormalBindingConjSlotEmittedAtom =>
+                  match formal_conj_child_atom_at_index(
+                    children: conj_children,
+                    index: conj_index,
+                    emitted: emitted
+                  ) {
+                    Holds { value: slot_child } =>
+                      match node_atom_identity_optional(node: slot_child) {
+                        Present { value: atom_id } =>
+                          Holds {
+                            value: DeriveGrammarRelationTokensProgress {
+                              edges: list_snoc_item(
+                                xs: edges,
+                                item: grammar_terminal_occurrence_to_token_edge(
+                                  terminal: terminal,
+                                  binding: optional_present(value: atom_id)
+                                )
+                              ),
+                              conj_index: conj_index + 1,
+                              conj_children: conj_children
+                            }
+                          }
+                        Absent =>
+                          Violates {
+                            diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(
+                              emitted: emitted
+                            )
+                          }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                FormalBindingConjSlotExactBinding =>
+                  Holds {
+                    value: DeriveGrammarRelationTokensProgress {
+                      edges: list_snoc_item(
+                        xs: edges,
+                        item: grammar_terminal_occurrence_to_token_edge(
+                          terminal: terminal,
+                          binding: binding
+                        )
+                      ),
+                      conj_index: conj_index + 1,
+                      conj_children: conj_children
+                    }
+                  }
+              }
+            Absent =>
+              Holds {
+                value: DeriveGrammarRelationTokensProgress {
+                  edges: list_snoc_item(
+                    xs: edges,
+                    item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+                  ),
+                  conj_index: conj_index,
+                  conj_children: conj_children
+                }
+              }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match list_nth(
+            xs: resolution.slots,
+            wanted: conj_index,
+            absent: Diagnostic {
+              reason: ^grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: slot } =>
+              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
+                Holds { value: nested } =>
+                  match derive_grammar_relation_token_edges_resolved(
+                    production: nested,
+                    resolution: slot
+                  ) {
+                    Holds { value: nested_edges } =>
+                      Holds {
+                        value: DeriveGrammarRelationTokensProgress {
+                          edges: list_append(left: edges, right: nested_edges),
+                          conj_index: conj_index + 1,
+                          conj_children: conj_children
+                        }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+      }
+  }
+}
+

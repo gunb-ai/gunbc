@@ -1,0 +1,6 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_requirements_empty() -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  empty_map()
+}
+

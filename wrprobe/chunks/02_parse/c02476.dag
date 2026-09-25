@@ -1,0 +1,24 @@
+module chunk
+
+fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -> PreparedGrammarExpr {
+  match v2.std.collection.map_get(m: table.prepared_exprs, key: production.name) {
+    Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
+    Accepted { value: Absent, diagnostics: _ } =>
+      prepare_grammar_expr(
+        expr: production.expression,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        production: production.name,
+        token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
+      ).tree
+    Rejected { diagnostics: _ } =>
+      prepare_grammar_expr(
+        expr: production.expression,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        production: production.name,
+        token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
+      ).tree
+  }
+}
+

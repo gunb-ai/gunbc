@@ -1,0 +1,16 @@
+module chunk
+
+fn authored_parse_outcome(
+  semantic: ParseArtifact,
+  attachment: AnnotationAttachmentResult
+) -> AuthoredParseOutcome {
+  match admit_annotations(result: attachment) {
+    AnnotationsAdmitted { graph: graph } =>
+      AuthoredParseAccepted {
+        artifact: AuthoredParseArtifact { semantic: semantic, annotations: graph },
+      }
+    AnnotationsRefused { refusals: refusals } =>
+      AuthoredParseRejected { semantic: semantic, refusals: refusals }
+  }
+}
+

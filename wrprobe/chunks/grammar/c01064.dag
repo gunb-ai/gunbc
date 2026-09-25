@@ -1,0 +1,11 @@
+module chunk
+
+fn formal_production_matches_lhs_and_slot_count(
+  production: FormalProduction,
+  lhs: Symbol,
+  emitted_slot_count: Int
+) -> Bool {
+  formal_production_lhs_matches(production: production, lhs: lhs) &&
+    formal_production_emitted_slot_count(production: production) == emitted_slot_count
+}
+

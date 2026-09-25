@@ -1,0 +1,6 @@
+module chunk
+
+fn source_medium(text: String, fidelity: DecodeFidelity) -> Medium<String> {
+  Medium { carried: text, fidelity: fidelity }
+}
+

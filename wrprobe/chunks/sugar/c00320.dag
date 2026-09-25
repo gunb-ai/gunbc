@@ -1,0 +1,48 @@
+module chunk
+
+fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
+  match rule.lowering {
+    SugarRewriteConnective { connective: connective, edges: discipline } =>
+      if edges_conform(children: folded.children, d: discipline) {
+        Accepted {
+          value: sugar_type_node(connective: connective, children: folded.children, n: n),
+          diagnostics: None
+        }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+    SugarUnwrapPositionalChild {} =>
+      match sugar_positional_unwrap_child(children: folded.children) {
+        Present { value: child } =>
+          Accepted { value: child, diagnostics: None }
+        Absent =>
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+    SugarFoldCoproductPipeChain {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: result, diagnostics: d } =>
+              match result.kind {
+                TypeNode { connective: Disj } =>
+                  Accepted { value: result, diagnostics: d }
+                _ =>
+                  Accepted { value: folded, diagnostics: None }
+              }
+          }
+        Absent =>
+          Accepted { value: folded, diagnostics: None }
+      }
+    SugarDropLeadingSeparator {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_sequence_pair_optional(node: captured) {
+            Present { value: pair } => Accepted { value: pair.right, diagnostics: None }
+            Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+          }
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+  }
+}
+

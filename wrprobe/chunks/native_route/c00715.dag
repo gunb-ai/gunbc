@@ -1,0 +1,15 @@
+module chunk
+
+test fn a_duplicated_universe_is_refused() -> Bool {
+  let member = test_identity(module: "v2.test.alpha", declaration: "passes")
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+      universe: [member, member],
+      module_source_index: [],
+      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
+      file_refusals: []
+    )),
+    cause_name: "universe_duplicates_present"
+  )
+}
+

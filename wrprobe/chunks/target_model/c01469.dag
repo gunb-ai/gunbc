@@ -1,0 +1,34 @@
+module chunk
+
+fn target_model_canonical_operation_atom_field_from_wire(
+  wire: Node,
+  field_name: Symbol
+) -> Optional<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == field_name {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: field } => optional_present(value: field)
+    Absent => optional_absent()
+  }
+}
+

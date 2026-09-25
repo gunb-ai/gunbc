@@ -1,0 +1,13 @@
+module chunk
+
+fn target_atom_value_expression(
+  row: TargetAtomRealization,
+  value: SourceAtomValue
+) -> Outcome<TargetValueExpression> {
+  target_value_template_apply(
+    template: row.value_form,
+    value: value,
+    source_carrier: row.source_carrier
+  )
+}
+

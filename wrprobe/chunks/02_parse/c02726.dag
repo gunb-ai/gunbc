@@ -1,0 +1,17 @@
+module chunk
+
+fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: List<Symbol>) -> GrammarExprCornerFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, _) { expr_corner_fold_terminal(token_class) },
+      literal_terminal: fn(token_class, _) { expr_corner_fold_terminal(token_class) },
+      nonterminal: fn(name) { expr_corner_fold_nonterminal(name: name, nullable_set: nullable_set) },
+      sequence: expr_corner_fold_sequence,
+      choice: expr_corner_fold_choice,
+      optional: expr_corner_fold_optional,
+      repeat: expr_corner_fold_repeat
+    }
+  )
+}
+

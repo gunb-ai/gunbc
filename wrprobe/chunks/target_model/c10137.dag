@@ -1,0 +1,13 @@
+module chunk
+
+fn target_type_expr_record_emitted(
+  form: TargetGenericApply,
+  fields: List<TargetTypeExprFieldSlot>
+) -> Node {
+  target_type_expr_wrapped_emitted_labeled(
+    kind: TargetTypeExprRecord,
+    surface: form.surface,
+    slot_edges: target_type_expr_field_slot_edges(fields: fields)
+  )
+}
+

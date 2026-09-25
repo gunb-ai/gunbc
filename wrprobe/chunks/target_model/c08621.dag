@@ -1,0 +1,39 @@
+module chunk
+
+fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_atom_realization_field_source_carrier,
+        target: row.source_carrier
+      ),
+      target_model_named_edge(
+        name: ^target_atom_realization_field_target_model_bundle,
+        target: host_bundle
+      ),
+      target_model_named_edge(
+        name: ^target_atom_realization_field_type_form,
+        target: row.type_form.node
+      ),
+      target_model_named_edge(
+        name: ^target_atom_realization_field_value_form,
+        target: target_value_template_node(template: row.value_form)
+      ),
+      target_model_named_edge(
+        name: ^target_atom_realization_field_constructor_form,
+        target: target_constructor_template_node(form: row.constructor_form)
+      ),
+      target_model_named_edge(
+        name: ^target_atom_realization_field_display_name,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: row.display_name } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+}
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

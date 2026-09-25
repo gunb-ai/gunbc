@@ -1,0 +1,13 @@
+module chunk
+
+fn pattern_admits(text: String, module_qn: String, declaration: String) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_route_identity_label(module_qn: module_qn, declaration: declaration) {
+        LabelRefused { cause: _ } => false
+        LabelParsed { label: label } => target_pattern_matches(pattern: pattern, target: label)
+      }
+  }
+}
+

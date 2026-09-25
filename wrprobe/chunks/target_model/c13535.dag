@@ -1,0 +1,56 @@
+module chunk
+
+fn target_project_transform_callable_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_transform_surface_op_atom(node: body),
+    f: fn(callee) {
+      match list_tail(xs: node_positional_child_targets(node: body)) {
+        TailAbsent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        TailFound { tail: arg_children } =>
+          bind_outcome(
+            o: fold_list(
+              xs: arg_children,
+              empty: Accepted { value: Empty, diagnostics: None },
+              cons: fn(acc, arg) {
+                match acc {
+                  Rejected { diagnostics: _ } => acc
+                  Accepted { value: args, diagnostics: _ } =>
+                    bind_outcome(
+                      o: target_project_callable_arg_in_arrow_scope(
+                        arrow: arrow,
+                        body: body,
+                        arg: arg,
+                        target: target,
+                        source_bool_form: source_bool_form,
+                        handle_transform: handle_transform
+                      ),
+                      f: fn(a) {
+                        outcome_accepted(list_snoc_item(xs: args, item: a))
+                      }
+                    )
+                }
+              }
+            ),
+            f: fn(args) {
+              outcome_accepted(
+                target_value_expression_callable_apply(callee: callee, args: args)
+              )
+            }
+          )
+      }
+    }
+  )
+}
+

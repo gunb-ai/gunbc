@@ -1,0 +1,6 @@
+module chunk
+
+fn text_atom(lexeme: String) -> TargetText {
+  TargetText { source: lexeme }
+}
+

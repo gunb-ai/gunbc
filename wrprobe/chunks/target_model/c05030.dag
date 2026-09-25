@@ -1,0 +1,50 @@
+module chunk
+
+fn target_operator_realization_catalog_lookup(
+  catalog: Node,
+  canonical_op: CanonicalOperation
+) -> Outcome<TargetOperatorRealization> {
+  bind_outcome(
+    o: target_operator_realization_catalog_wire_schema_valid(catalog: catalog),
+    f: fn(_) {
+      match catalog.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            catalog.children,
+            init: NoPassingCandidate,
+            f: fn(acc, e) {
+              match e.label {
+                Named { name: n } =>
+                  if n == ^target_operator_realization_row_edge {
+                    target_operator_realization_catalog_lookup_step(
+                      acc: acc,
+                      row_node: e.target,
+                      canonical_op: canonical_op
+                    )
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            }
+          ) {
+            NoPassingCandidate =>
+              outcome_rejected(
+                target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+              )
+            OnePassingCandidate { candidate: row_node } =>
+              target_operator_realization_from_wire_row(row: row_node)
+            ManyPassingCandidates =>
+              outcome_rejected(
+                target_operator_realization_catalog_ambiguous_diagnostic(catalog: catalog)
+              )
+          }
+        _ =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    }
+  )
+}
+

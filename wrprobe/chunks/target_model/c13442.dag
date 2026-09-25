@@ -1,0 +1,63 @@
+module chunk
+
+fn target_project_transform_primitive_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  canonical_op: CanonicalOperation,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  if !all_edges_positional(children: body.children)
+    || length(xs: node_positional_child_targets(node: body)) != 3 {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    bind_outcome(
+      o: target_transform_positional_operand_binding(node: body, index: 1),
+      f: fn(left_binding) {
+        bind_outcome(
+          o: target_value_expr_arrow_body_scope_binding(
+            arrow: arrow,
+            body: body,
+            binding: left_binding,
+            target: target
+          ),
+          f: fn(scoped_left_binding) {
+            bind_outcome(
+              o: target_transform_positional_operand_binding(node: body, index: 2),
+              f: fn(right_binding) {
+                bind_outcome(
+                  o: target_value_expr_arrow_body_scope_binding(
+                    arrow: arrow,
+                    body: body,
+                    binding: right_binding,
+                    target: target
+                  ),
+                  f: fn(scoped_right_binding) {
+                    outcome_accepted(
+                      target_value_expression_primitive_apply(
+                        operation: canonical_op,
+                        operands: [
+                          target_value_expression_binding_ref(
+                            binding: scoped_left_binding
+                          ),
+                          target_value_expression_binding_ref(
+                            binding: scoped_right_binding
+                          )
+                        ]
+                      )
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
+}
+

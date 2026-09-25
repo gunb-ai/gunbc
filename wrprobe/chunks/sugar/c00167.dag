@@ -1,0 +1,7 @@
+module chunk
+
+type SugarSequencePair {
+  left: Node
+  right: Node
+}
+

@@ -1,0 +1,16 @@
+module chunk
+
+fn choice_alt_trees(alts: List<PreparedExprFold>) -> List<PreparedGrammarExpr> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      list_append(
+        left: Cons { head: prepared_expr_fold_tree(alt: alt), tail: std.algebra.Empty },
+        right: match list_tail(xs: alts) {
+          TailAbsent => std.algebra.Empty
+          TailFound { tail: rest } => choice_alt_trees(alts: rest)
+        }
+      )
+  }
+}
+

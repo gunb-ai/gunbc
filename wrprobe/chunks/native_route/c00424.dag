@@ -1,0 +1,12 @@
+module chunk
+
+test fn a_pass_agrees_with_the_standing_expectation() -> Bool {
+  match native_route_disposition(verdict: NativeTestPassed, reference: FloorExpectedPass) {
+    NativeAgreementPass => true
+    NativeAgreementExpectedRed => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+    NativeDivergence { cause: _ } => false
+  }
+}
+

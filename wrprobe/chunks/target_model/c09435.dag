@@ -1,0 +1,10 @@
+module chunk
+
+fn target_declaration_reference_form_absent_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_declaration_reference_form_absent,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+

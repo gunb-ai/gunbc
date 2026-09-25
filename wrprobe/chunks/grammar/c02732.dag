@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_relation_row_surface_identity_matches(row: Node, surface_identity: Symbol) -> Bool {
+  match grammar_relation_row_emitted_fixture(row: row) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      grammar_node_carries_surface_identity(node: emitted, surface_identity: surface_identity)
+    Rejected { diagnostics: _ } => false
+  }
+}
+

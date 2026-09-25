@@ -1,0 +1,7 @@
+module chunk
+
+type NonEmptyParseStageDiagnostics {
+  head: ParseStageDiagnostic
+  tail: FreeMonoid<ParseStageDiagnostic>
+}
+

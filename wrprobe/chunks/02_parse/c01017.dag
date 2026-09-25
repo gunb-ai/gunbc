@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_tree_projection_edge(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection)
+    || (name == ^grammar_production_captured_node_projection)
+    || (name == ^grammar_sequence_left_node_projection)
+    || (name == ^grammar_sequence_right_node_projection)
+}
+

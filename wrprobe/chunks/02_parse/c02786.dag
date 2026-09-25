@@ -1,0 +1,10 @@
+module chunk
+
+fn left_corner_row(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
+  match v2.std.collection.map_get(m: rows, key: name) {
+    Accepted { value: Present { value: reached }, diagnostics: _ } => reached
+    Accepted { value: Absent, diagnostics: _ } => std.algebra.Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
+  }
+}
+

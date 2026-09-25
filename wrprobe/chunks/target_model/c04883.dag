@@ -1,0 +1,18 @@
+module chunk
+
+fn target_value_expr_closure_param_edges(params: List<Symbol>) -> List<Edge> {
+  fold_list_right(
+    xs: params,
+    empty: Empty,
+    snoc: fn(acc, param) {
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_value_expr_field_closure_param,
+          target: target_model_type_atom_node(identity: param)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+

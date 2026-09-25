@@ -1,0 +1,25 @@
+module chunk
+
+fn formal_production_nonterminal_at_slot(production: FormalProduction, slot: Int) -> Optional<Symbol> {
+  let scan = fold_list(
+    xs: production.rhs,
+    empty: SlotNonterminalScan { index: 0, found: optional_absent() },
+    cons: fn(acc, symbol) {
+      match symbol {
+        FormalTerminalOccurrence { terminal: _, binding: binding } =>
+          match binding {
+            Present { value: _ } => SlotNonterminalScan { index: acc.index + 1, found: acc.found }
+            Absent => acc
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          if acc.index == slot {
+            SlotNonterminalScan { index: acc.index + 1, found: optional_present(value: nonterminal.identity) }
+          } else {
+            SlotNonterminalScan { index: acc.index + 1, found: acc.found }
+          }
+      }
+    }
+  )
+  scan.found
+}
+

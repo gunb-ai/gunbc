@@ -1,0 +1,25 @@
+module chunk
+
+fn module_storage_binding_from_provenance(
+  prov: SourceIrArtifactProvenance,
+  source_root: SourceRootRef
+) -> Outcome<ModuleStorageBinding> {
+  match qualified_name_from_module_node(root: prov.node) {
+    Accepted { value: qn, diagnostics: _ } =>
+      outcome_accepted(
+        value: ModuleStorageBinding {
+          module: qn,
+          provenance: ParsedFromSource {
+            artifact: prov.artifact,
+            span_index: prov.span_index
+          },
+          source_root: source_root
+        }
+      )
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+
+

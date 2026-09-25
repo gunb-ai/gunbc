@@ -1,0 +1,34 @@
+module chunk
+
+fn target_lex_rule_literal_step(
+  acc: Outcome<String>,
+  rule: LexRule,
+  token_class: Symbol
+) -> Outcome<String> {
+  match acc {
+    Accepted { value: _, diagnostics: _ } => acc
+    Rejected { diagnostics: _ } =>
+      match rule {
+        TokenRule { token_class: c, pattern: pattern } =>
+          if c == token_class {
+            match pattern {
+              LiteralPattern { text: text } =>
+                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
+              KeywordPattern { text: text } =>
+                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
+              _ =>
+                Rejected {
+                  diagnostics: diagnostics_singleton(
+                    d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
+                  )
+                }
+            }
+          } else {
+            acc
+          }
+        TriviaRule { pattern: _ } => acc
+        AnnotationRule { annotation_class: _, pattern: _ } => acc
+      }
+  }
+}
+

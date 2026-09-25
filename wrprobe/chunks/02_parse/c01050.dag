@@ -1,0 +1,30 @@
+module chunk
+
+fn parse_nonterminal_memoized(
+  all_tokens: List<Token>,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prod_name: Symbol,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  if prod_name == ^dag_production_match_arm_stmt_body {
+    parse_match_arm_stmt_body(
+      all_tokens: all_tokens,
+      tokens: tokens,
+      root: root,
+      table: table,
+      prov: prov
+    )
+  } else {
+    parse_nonterminal_memoized_core(
+      all_tokens: all_tokens,
+      tokens: tokens,
+      root: root,
+      table: table,
+      prod_name: prod_name,
+      prov: prov
+    )
+  }
+}
+

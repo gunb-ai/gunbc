@@ -1,0 +1,23 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_wire_requirements_apply(
+  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
+  requirements: List<TargetDeriveSupplementalGenericBoundRequirementWire>,
+  at: Node
+) -> Outcome<Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>> {
+  fold_list(
+    xs: requirements,
+    empty: outcome_accepted(
+      target_derive_supplemental_generic_bound_contract_requirements_empty()
+    ),
+    cons: fn(acc, requirement) {
+      target_derive_supplemental_generic_bound_wire_requirement_apply(
+        acc: acc,
+        representation_parameters: representation_parameters,
+        requirement: requirement,
+        at: at
+      )
+    }
+  )
+}
+

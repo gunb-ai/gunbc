@@ -1,0 +1,42 @@
+module chunk
+
+fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool> {
+  match row.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(
+        name: ^target_operator_realization_field_operation,
+        children: row.children
+      ) != 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: ^target_operator_realization_field_shape,
+        children: row.children
+      ) != 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else {
+        match fold(
+          row.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == ^target_operator_realization_field_operation
+                  || n == ^target_operator_realization_field_shape
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          true => outcome_accepted(true)
+          false =>
+            outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+        }
+      }
+    _ =>
+      outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+  }
+}
+

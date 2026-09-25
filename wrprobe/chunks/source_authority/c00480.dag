@@ -1,0 +1,6 @@
+module chunk
+
+fn source_ref_path(ref: SourceRef) -> String {
+  ref.path
+}
+

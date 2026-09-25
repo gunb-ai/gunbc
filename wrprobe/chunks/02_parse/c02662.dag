@@ -1,0 +1,15 @@
+module chunk
+
+fn grammar_choice_ambiguity_rejection_diagnostics(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> NonEmptyDiagnostics {
+  parse_diags_to_non_empty(
+    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, roster: roster),
+    default: parse_grammar_choice_ambiguity_diagnostic(
+      at: at,
+      count: length(xs: roster)
+    )
+  )
+}
+

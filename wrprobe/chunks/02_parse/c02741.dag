@@ -1,0 +1,6 @@
+module chunk
+
+fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: List<Symbol>) -> List<Symbol> {
+  expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
+}
+

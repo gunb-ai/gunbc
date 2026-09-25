@@ -1,0 +1,54 @@
+module chunk
+
+fn compile_choice_alts(
+  alts: List<PreparedExprFold>,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>,
+  token_dispatch: Bool
+) -> PreparedChoicePlan {
+  match length(xs: alts) {
+    0 => ChoiceReject
+    1 =>
+      match list_head(xs: alts) {
+        HeadFound { value: alt } =>
+          ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) }
+        HeadAbsent => ChoiceReject
+      }
+    _ =>
+      match list_head(xs: alts) {
+        HeadAbsent => ChoiceReject
+        HeadFound { value: first_alt } =>
+          match prepared_sequence_left_atom(expr: prepared_expr_fold_tree(alt: first_alt)) {
+            Present { value: prefix } =>
+              match choice_shared_prefix_suffixes(
+                alts: alts,
+                prefix: prefix,
+                nullable_set: nullable_set,
+                first_rows: first_rows
+              ) {
+                Present { value: suffixes } =>
+                  ChoiceSharedPrefix {
+                    prefix: prefix,
+                    suffix: compile_choice_plan(
+                      alts: suffixes,
+                      nullable_set: nullable_set,
+                      first_rows: first_rows,
+                      token_dispatch: token_dispatch
+                    )
+                  }
+                Absent =>
+                  match choice_token_prefix_rows(alts: alts, need: 2) {
+                    Present { value: rows } => ChoiceTokenPrefix { rows: rows }
+                    Absent => ordered_backtrack_emit(alts: alts)
+                  }
+              }
+            Absent =>
+              match choice_token_prefix_rows(alts: alts, need: 2) {
+                Present { value: rows } => ChoiceTokenPrefix { rows: rows }
+                Absent => ordered_backtrack_emit(alts: alts)
+              }
+          }
+      }
+  }
+}
+

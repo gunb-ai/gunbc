@@ -1,0 +1,7 @@
+module chunk
+
+type EmitSpellingEscape {
+  from: v2.std.text.String
+  to: v2.std.text.String
+}
+

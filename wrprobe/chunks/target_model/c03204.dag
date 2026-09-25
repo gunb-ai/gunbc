@@ -1,0 +1,20 @@
+module chunk
+
+fn decode_optional_projection_bundle_symbol_field(
+  bundle: Node,
+  field: Symbol
+) -> Outcome<Optional<Symbol>> {
+  match find_named_child(root: bundle, name: field) {
+    Accepted { value: child, diagnostics: d } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          Accepted { value: optional_present(value: id), diagnostics: d }
+        _ =>
+          outcome_rejected(
+            target_type_expr_projection_bundle_malformed_diagnostic(bundle: bundle)
+          )
+      }
+    Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+  }
+}
+

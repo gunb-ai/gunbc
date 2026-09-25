@@ -1,0 +1,30 @@
+module chunk
+
+fn target_function_boundary_site_from_node(
+  n: Node,
+  source_carrier: Node
+) -> Outcome<FunctionBoundarySite> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if is_empty(xs: n.children) {
+        if id == discriminant(v: FunctionBoundaryParam) {
+          outcome_accepted(FunctionBoundaryParam)
+        } else if id == discriminant(v: FunctionBoundaryReturn) {
+          outcome_accepted(FunctionBoundaryReturn)
+        } else {
+          outcome_rejected(
+            target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
+          )
+        }
+      } else {
+        outcome_rejected(
+          target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+

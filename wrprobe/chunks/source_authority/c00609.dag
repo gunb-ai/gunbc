@@ -1,0 +1,20 @@
+module chunk
+
+fn parse_dag_source_ast_with_model(
+  source: Medium<String>,
+  compilation_unit: Symbol,
+  lm: LanguageModel
+) -> Outcome<DagSourceAst> {
+  bind_outcome(
+    o: tokenize(text: source.carried, file: compilation_unit, rules: lm.lex),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          outcome_accepted(value: DagSourceAst { tree: parse_tree })
+        }
+      )
+    }
+  )
+}
+

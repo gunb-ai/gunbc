@@ -1,0 +1,21 @@
+module chunk
+
+fn target_model_make_with_emit_transforms(
+  bundle: Node,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>,
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>,
+  authority_source_text: String,
+  runtime_row: TargetEmitHostRuntimeRow
+) -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: bundle,
+    lex: lex,
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: token_class_emit_transforms,
+    authority_source_text: authority_source_text,
+    runtime_row: runtime_row
+  }
+}
+

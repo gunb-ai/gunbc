@@ -1,0 +1,24 @@
+module chunk
+
+type TargetValueExpressionKind
+  = TargetValueExprSymbolIdentity
+  | TargetValueExprSymbolToOwnedString
+  | TargetValueExprBoolLiteral
+  | TargetValueExprCharUnicodeScalar
+  | TargetValueExprStringLiteral
+  | TargetValueExprReferenceRcNew
+  | TargetValueExprReferenceBoxNew
+  | TargetValueExprBindingRef
+  | TargetValueExprPrimitiveApply
+  | TargetValueExprEffectApply
+
+  | TargetValueExprCallableApply
+
+  | TargetValueExprClosure
+  | TargetValueExprConditional
+  | TargetValueExprBindLet
+  | TargetValueExprLoop
+  | TargetValueExprRecordConstruct
+  | TargetValueExprFieldAccess
+  | TargetValueExprMatch
+

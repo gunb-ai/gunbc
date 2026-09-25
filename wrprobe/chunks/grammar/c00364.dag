@@ -1,0 +1,12 @@
+module chunk
+
+fn grammar_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: identity }
+    },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

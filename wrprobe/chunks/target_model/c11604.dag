@@ -1,0 +1,22 @@
+module chunk
+
+fn target_reference_layer_facts(layer: TargetReferenceLayer) -> TargetReferenceLayerFacts {
+  match layer {
+    ReferenceLayerOwned =>
+      TargetReferenceLayerFacts {
+        indirection: IndirectionDirect,
+        sharing: SharingUnique
+      }
+    ReferenceLayerBox =>
+      TargetReferenceLayerFacts {
+        indirection: IndirectionIndirect,
+        sharing: SharingUnique
+      }
+    ReferenceLayerRc =>
+      TargetReferenceLayerFacts {
+        indirection: IndirectionIndirect,
+        sharing: SharingShared
+      }
+  }
+}
+

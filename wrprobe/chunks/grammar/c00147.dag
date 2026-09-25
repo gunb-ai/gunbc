@@ -1,0 +1,17 @@
+module chunk
+
+fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> Bool {
+  fold_list(
+    xs: g.productions,
+    empty: true,
+    cons: fn(acc, production) {
+      acc
+        && formal_production_rhs_in_alphabet(
+          nonterminals: g.nonterminals,
+          terminals: g.terminals,
+          production: production
+        )
+    }
+  )
+}
+

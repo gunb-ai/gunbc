@@ -1,0 +1,11 @@
+module chunk
+
+fn target_layer_transition_is_deliverable(transition: TargetLayerTransition) -> Bool {
+  match transition {
+    LayerTransitionIdentity => true
+    LayerTransitionWrap { into: _ } => true
+    LayerTransitionUnwrap { from: _ } => true
+    LayerTransitionRefused { from: _, to: _, cause: _ } => false
+  }
+}
+

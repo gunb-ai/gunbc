@@ -1,0 +1,7 @@
+module chunk
+
+type LhsExactProductionMatchFold
+  = LhsExactProductionMatchNone
+  | LhsExactProductionMatchOne { production: FormalProduction }
+  | LhsExactProductionMatchMany
+

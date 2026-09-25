@@ -1,0 +1,20 @@
+module chunk
+
+fn choice_alts_union_first_from(
+  alts: List<PreparedExprFold>,
+  acc: GrammarExprFirstFold
+) -> GrammarExprFirstFold {
+  match list_head(xs: alts) {
+    HeadAbsent => acc
+    HeadFound { value: alt } =>
+      match list_tail(xs: alts) {
+        TailAbsent => expr_first_fold_choice(left: acc, right: prepared_expr_fold_first(alt: alt))
+        TailFound { tail: rest } =>
+          choice_alts_union_first_from(
+            alts: rest,
+            acc: expr_first_fold_choice(left: acc, right: prepared_expr_fold_first(alt: alt))
+          )
+      }
+  }
+}
+

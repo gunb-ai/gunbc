@@ -1,0 +1,24 @@
+module chunk
+
+fn import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
+  fold(
+    node_positional_child_targets(node: block),
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, nd) {
+      bind_outcome(
+        o: acc,
+        f: fn(syms) {
+          bind_outcome(
+            o: target_node_atom_identity(node: nd),
+            f: fn(sym) {
+              outcome_accepted(
+                value: list_append(left: syms, right: Cons { head: sym, tail: Empty })
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

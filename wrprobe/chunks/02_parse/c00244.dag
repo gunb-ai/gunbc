@@ -1,0 +1,6 @@
+module chunk
+
+fn authored_parse_semantic(artifact: AuthoredParseArtifact) -> ParseArtifact {
+  artifact.semantic
+}
+

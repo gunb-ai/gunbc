@@ -1,0 +1,38 @@
+module chunk
+
+fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> {
+  match quotient.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        quotient.children,
+        init: Accepted { value: Lossless, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: current_fidelity, diagnostics: ad } =>
+              bind_outcome(
+                o: fidelity_disposition_node_decode_fidelity(node: edge.target),
+                f: fn(next_fidelity) {
+                  Accepted {
+                    value: decode_fidelity_merge(
+                      left: current_fidelity,
+                      right: next_fidelity
+                    ),
+                    diagnostics: ad
+                  }
+                }
+              )
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+

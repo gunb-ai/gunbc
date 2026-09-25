@@ -1,0 +1,58 @@
+module chunk
+
+fn target_project_record_construct(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_record_construct_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    let labeled = node_labeled_child_edges(node: body)
+    match target_value_expr_labeled_edge_head(labeled: labeled) {
+      Present { value: type_edge } =>
+        match type_edge.target.kind {
+          TypeNode { connective: Atom { identity: type_name } } =>
+            bind_outcome(
+              o: target_value_expr_record_construct_field_slots_from_edges(
+                arrow: arrow,
+                edges: target_value_expr_labeled_edges_tail(labeled: labeled),
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(fields) {
+                outcome_accepted(
+                  target_value_expression_record_construct(
+                    type_name: type_name,
+                    fields: fields
+                  )
+                )
+              }
+            )
+          _ =>
+            outcome_rejected(
+              target_value_expr_diagnostic(
+                reason: ^target_value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+        }
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+    }
+  }
+}
+

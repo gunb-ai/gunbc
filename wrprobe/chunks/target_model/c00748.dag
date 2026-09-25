@@ -1,0 +1,10 @@
+module chunk
+
+fn target_concrete_token_kind_invalid_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_concrete_token_kind_invalid,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

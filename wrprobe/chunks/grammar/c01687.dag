@@ -1,0 +1,8 @@
+module chunk
+
+type DeriveGrammarRelationTokensProgress {
+  edges: List<Edge>
+  conj_index: Int
+  conj_children: List<Node>
+}
+

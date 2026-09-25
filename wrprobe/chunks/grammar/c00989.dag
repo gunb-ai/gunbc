@@ -1,0 +1,12 @@
+module chunk
+
+fn conj_positional_child_count(children: List<Node>) -> Int {
+  fold_list(
+    xs: children,
+    empty: 0,
+    cons: fn(count, _) {
+      count + 1
+    }
+  )
+}
+

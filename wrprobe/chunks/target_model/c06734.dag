@@ -1,0 +1,9 @@
+module chunk
+
+fn concrete_syntax_tokens_extend(
+  acc: List<ConcreteSyntaxToken>,
+  more: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(left: acc, right: more)
+}
+

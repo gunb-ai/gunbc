@@ -1,0 +1,31 @@
+module chunk
+
+fn import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
+  bind_outcome(
+    o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
+    f: fn(qn_node) {
+      bind_outcome(
+        o: qualified_name_from_node(root: qn_node),
+        f: fn(qn) {
+          bind_outcome(
+            o: find_named_child(root: carrier, name: ^dag_surface_import_decl_block),
+            f: fn(block) {
+              bind_outcome(
+                o: import_name_symbols_from_block(block: block),
+                f: fn(names) {
+                  outcome_accepted(
+                    value: TargetImport {
+                      path_segments: import_qualified_name_symbols(qn: qn),
+                      names: names
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

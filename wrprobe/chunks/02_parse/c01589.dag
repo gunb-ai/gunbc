@@ -1,0 +1,9 @@
+module chunk
+
+fn first_list_intersect(left: List<FirstKey>, right: List<FirstKey>) -> List<FirstKey> {
+  filter(
+    xs: left,
+    predicate: fn(k) { any(xs: right, predicate: fn(r) { first_key_overlaps(left: k, right: r) }) }
+  )
+}
+

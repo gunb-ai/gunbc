@@ -1,0 +1,20 @@
+module chunk
+
+fn target_type_expression_from_node(
+  n: Node,
+  source_carrier: Node
+) -> Outcome<TargetTypeExpression> {
+  match target_type_expr_emitted_kind(node: n) {
+    TypeExprKindAuthority { value: kind } =>
+      outcome_accepted(TargetTypeExpression { kind: kind, node: n })
+    TypeExprKindNotEmitted =>
+      outcome_rejected(
+        target_type_expression_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+    TypeExprKindAuthorityInvalid =>
+      outcome_rejected(
+        target_type_expression_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+

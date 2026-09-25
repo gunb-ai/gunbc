@@ -1,0 +1,7 @@
+module chunk
+
+type TargetValueExprMatchArmSlot {
+  pattern: TargetValueExpression
+  body: TargetValueExpression
+}
+

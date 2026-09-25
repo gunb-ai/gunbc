@@ -1,0 +1,58 @@
+module chunk
+
+fn target_project_match(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_match_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: scrutinee_node } =>
+        bind_outcome(
+          o: target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: scrutinee_node,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          ),
+          f: fn(projected_scrutinee) {
+            bind_outcome(
+              o: target_value_expr_match_project_arms(
+                arrow: arrow,
+                children: body.children,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(projected_arms) {
+                outcome_accepted(
+                  target_value_expression_match(
+                    scrutinee: projected_scrutinee,
+                    arms: projected_arms
+                  )
+                )
+              }
+            )
+          }
+        )
+    }
+  }
+}
+

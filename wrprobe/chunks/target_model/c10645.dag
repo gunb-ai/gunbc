@@ -1,0 +1,64 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_wire_from_node(
+  node: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundContractWire> {
+  if count(node.children) == 3 {
+    bind_outcome(
+      o: find_named_child(
+        root: node,
+        name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait
+      ),
+      f: fn(derive_trait_node) {
+        bind_outcome(
+          o: target_grounding_derive_trait_from_node(node: derive_trait_node),
+          f: fn(derive_trait) {
+            bind_outcome(
+              o: find_named_child(
+                root: node,
+                name: ^target_derive_supplemental_generic_bound_contract_field_authority
+              ),
+              f: fn(authority_node) {
+                bind_outcome(
+                  o: target_external_authority_from_node(node: authority_node),
+                  f: fn(authority) {
+                    bind_outcome(
+                      o: find_named_child(
+                        root: node,
+                        name: ^target_derive_supplemental_generic_bound_contract_field_requirements
+                      ),
+                      f: fn(requirements_node) {
+                        bind_outcome(
+                          o: node_list_from_node(
+                            node: requirements_node,
+                            decode_item: target_derive_supplemental_generic_bound_requirement_wire_from_node
+                          ),
+                          f: fn(requirements) {
+                            outcome_accepted(
+                              TargetDeriveSupplementalGenericBoundContractWire {
+                                derive_trait: derive_trait,
+                                authority: authority,
+                                requirements: requirements
+                              }
+                            )
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  } else {
+    outcome_rejected(
+      target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+        at: node
+      )
+    )
+  }
+}
+

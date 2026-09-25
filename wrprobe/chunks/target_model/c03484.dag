@@ -1,0 +1,20 @@
+module chunk
+
+fn grammar_relation_row_attach_bodied_scaffold(
+  row: Node,
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  target_model_type_conj_node(
+    children: list_append(
+      left: row.children,
+      right: Cons {
+        head: target_model_named_edge(
+          name: ^grammar_relation_field_bodied_scaffold,
+          target: bodied_arrow_statement_scaffold_bundle_node(scaffold: scaffold)
+        ),
+        tail: Empty
+      }
+    )
+  )
+}
+

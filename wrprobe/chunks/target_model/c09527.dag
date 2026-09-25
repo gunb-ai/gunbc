@@ -1,0 +1,36 @@
+module chunk
+
+fn decode_declaration_reference_form_bundle(bundle: Node) -> Outcome<DeclarationReferenceForm> {
+  if projection_bundle_has_child(bundle: bundle, name: ^target_type_expr_field_declaration_reference) {
+    bind_outcome(
+      o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_declaration_reference),
+      f: fn(row) {
+        bind_outcome(
+          o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_root),
+          f: fn(root) {
+            bind_outcome(
+              o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_scope_separator),
+              f: fn(sep) {
+                bind_outcome(
+                  o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_module_joiner),
+                  f: fn(joiner) {
+                    outcome_accepted(
+                      ModuleScopedPath {
+                        root_text: symbol_lexeme(sym: root),
+                        scope_separator_text: symbol_lexeme(sym: sep),
+                        module_segment_joiner: symbol_lexeme(sym: joiner)
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  } else {
+    outcome_accepted(NoDeclarationReferenceForm)
+  }
+}
+

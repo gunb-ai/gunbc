@@ -1,0 +1,7 @@
+module chunk
+
+type AnalysisPrepAcc {
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  residue: List<GrammarChoiceAmbiguityRow>
+}
+

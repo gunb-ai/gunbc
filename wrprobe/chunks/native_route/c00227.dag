@@ -1,0 +1,11 @@
+module chunk
+
+test fn the_universe_is_the_prefix_and_nothing_else() -> Bool {
+  native_route_universe_member(module_qn: "v2.test.v2_native_route")
+  && native_route_universe_member(module_qn: "v2.test.")
+  && !native_route_universe_member(module_qn: "v2.compiler.compile")
+  && !native_route_universe_member(module_qn: "v2.test")
+  && !native_route_universe_member(module_qn: "dag.test.claim")
+}
+
+

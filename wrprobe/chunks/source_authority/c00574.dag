@@ -1,0 +1,7 @@
+module chunk
+
+type NormalizedSourceAstEqual {
+  original: NormalizedDagSourceAst
+  reparsed: NormalizedDagSourceAst
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn concrete_syntax_tokens_snoc_fixed(
+  acc: List<ConcreteSyntaxToken>,
+  token_class: Symbol
+) -> List<ConcreteSyntaxToken> {
+  list_snoc_item(
+    xs: acc,
+    item: FixedToken { token_class: token_class }
+  )
+}
+

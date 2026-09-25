@@ -1,0 +1,41 @@
+module chunk
+
+fn target_value_expr_project_atom_literal(
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_value_expression_symbol_identity_atom {
+        bind_outcome(
+          o: target_value_expression_symbol_identity_from_wire(wire: node),
+          f: fn(inner_id) {
+            target_value_expr_project_pick_literal_atom(
+              id: inner_id,
+              source_bool_form: source_bool_form
+            )
+          }
+        )
+      } else if target_value_expr_is_int_literal_atom(node: node) {
+        target_value_expr_project_int_literal_atom(node: node)
+      } else {
+        match target_value_expr_bool_literal_value_from_atom(node: node) {
+          Present { value: b } =>
+            outcome_accepted(target_value_expression_bool_literal(value: b))
+          Absent =>
+            target_value_expr_project_pick_literal_atom(
+              id: id,
+              source_bool_form: source_bool_form
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
+}
+

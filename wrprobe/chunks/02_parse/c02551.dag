@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_demand_fold_leaf() -> ParseDemandFold {
+  ParseDemandFold { demands_nonterminal: false, discarding_sites: 0 }
+}
+

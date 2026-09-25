@@ -1,0 +1,20 @@
+module chunk
+
+fn target_model_bundle_core(host: TargetModel) -> Node {
+  match host.bundle.kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: fold_list(
+          xs: host.bundle.children,
+          empty: Empty,
+          cons: fn(acc, edge) {
+            target_model_bundle_core_keep_edge(acc: acc, edge: edge)
+          }
+        ),
+        occurrence_id: OccurrenceSynthetic
+}
+    _ => host.bundle
+  }
+}
+

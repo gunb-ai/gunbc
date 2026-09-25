@@ -1,0 +1,6 @@
+module chunk
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+

@@ -1,0 +1,39 @@
+module chunk
+
+fn target_value_expr_param_binding_for_referent(
+  referent: Symbol,
+  bindings: List<Symbol>,
+  target: TargetModel
+) -> Optional<Symbol> {
+  if target_value_expr_binding_in_declared_param_list(binding: referent, bindings: bindings) {
+    optional_present(value: referent)
+  } else {
+    match target_binding_spelling_lookup(target: target, binding: referent) {
+      Accepted { value: referent_spelling, diagnostics: _ } =>
+        fold_list(
+          xs: bindings,
+          empty: optional_absent(),
+          cons: fn(acc, param_binding) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match target_binding_spelling_lookup(
+                  target: target,
+                  binding: param_binding
+                ) {
+                  Accepted { value: param_spelling, diagnostics: _ } =>
+                    if param_spelling == referent_spelling {
+                      optional_present(value: param_binding)
+                    } else {
+                      acc
+                    }
+                  Rejected { diagnostics: _ } => acc
+                }
+            }
+          }
+        )
+      Rejected { diagnostics: _ } => optional_absent()
+    }
+  }
+}
+

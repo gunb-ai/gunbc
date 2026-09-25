@@ -1,0 +1,15 @@
+module chunk
+
+fn left_corner_expand_row(
+  rows: Map<Symbol, List<Symbol>>,
+  reached: List<Symbol>
+) -> List<Symbol> {
+  fold_list(
+    xs: reached,
+    empty: reached,
+    cons: fn(acc, sym) {
+      left_corner_list_union(left: acc, right: left_corner_row(rows: rows, name: sym))
+    }
+  )
+}
+

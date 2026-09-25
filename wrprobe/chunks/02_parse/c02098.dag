@@ -1,0 +1,46 @@
+module chunk
+
+fn choice_shared_prefix_suffixes_from(
+  alts: List<PreparedExprFold>,
+  prefix: PreparedGrammarExpr,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>,
+  suffixes: List<PreparedExprFold>
+) -> Optional<List<PreparedExprFold>> {
+  match list_head(xs: alts) {
+    HeadAbsent => optional_present(value: suffixes)
+    HeadFound { value: alt } =>
+      match prepared_expr_fold_tree(alt: alt) {
+        PreparedSequence { left: left, right: right } =>
+          if prepared_prefix_atom_eq(left: left, right: prefix) {
+            let next_suffixes = list_snoc_item(
+              xs: suffixes,
+              item: PreparedExprFold {
+                tree: right,
+                first: expr_first_fold_from_prepared(
+                  expr: right,
+                  nullable_set: nullable_set,
+                  first_rows: first_rows
+                ),
+                residue: std.algebra.Empty
+              }
+            )
+            match list_tail(xs: alts) {
+              TailAbsent => optional_present(value: next_suffixes)
+              TailFound { tail: rest } =>
+                choice_shared_prefix_suffixes_from(
+                  alts: rest,
+                  prefix: prefix,
+                  nullable_set: nullable_set,
+                  first_rows: first_rows,
+                  suffixes: next_suffixes
+                )
+            }
+          } else {
+            optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+

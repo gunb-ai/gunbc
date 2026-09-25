@@ -1,0 +1,28 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+  row: TargetCollectionRealization,
+  elem: Node,
+  derive_trait: TargetCapabilityKey
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  bind_outcome(
+    o: target_collection_select_choice(
+      eligibility_table: row.capability_eligibility,
+      primary: row.primary,
+      alternatives: row.alternatives,
+      elem: elem
+    ),
+    f: fn(selected) {
+      match selected {
+        Present { value: choice } =>
+          target_derive_supplemental_generic_bound_contract_lookup_in_choice(
+            choice: choice,
+            source_carrier: row.source_carrier,
+            derive_trait: derive_trait
+          )
+        Absent => outcome_rejected(row.fallback_diagnostic)
+      }
+    }
+  )
+}
+

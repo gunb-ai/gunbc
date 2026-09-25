@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> NonEmptyDiagnostics {
+  match parse_diags_to_diagnostics(diags: diags) {
+    None => NonEmptyDiagnostics { head: default, tail: [] }
+    Some { diagnostics: ned } => ned
+  }
+}
+

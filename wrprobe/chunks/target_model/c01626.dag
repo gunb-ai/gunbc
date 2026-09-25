@@ -1,0 +1,12 @@
+module chunk
+
+fn target_model_canonical_operation_roster_edge(
+  name: Symbol,
+  operation: CanonicalOperation
+) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target_model_canonical_operation_wire_node(operation: operation)
+  }
+}
+

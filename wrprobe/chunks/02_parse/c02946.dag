@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_nullable_ambiguity_rows(roster: List<GrammarChoiceAmbiguityRow>) -> List<GrammarChoiceAmbiguityRow> {
+  filter(xs: roster, predicate: fn(row) { row.both_nullable })
+}
+

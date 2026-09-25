@@ -1,0 +1,61 @@
+module chunk
+
+fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, stamp) {
+        match stamp {
+          StampBinding { binding: b } =>
+            grammar_expr_node(children: [
+              grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+              grammar_named_edge(name: ^grammar_terminal_binding_node_projection, target: grammar_atom(identity: b))
+            ])
+          StampClass =>
+            grammar_expr_node(children: [
+              grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
+            ])
+          StampLexeme =>
+            grammar_expr_node(children: [
+              grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+              grammar_named_edge(name: ^grammar_terminal_stamp_lexeme_node_projection, target: grammar_atom(identity: ^grammar_terminal_stamp_lexeme))
+            ])
+        }
+      },
+      literal_terminal: fn(token_class, lexeme) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+          grammar_named_edge(name: ^grammar_terminal_literal_lexeme_node_projection, target: grammar_atom(identity: lexeme))
+        ])
+      },
+      nonterminal: fn(production) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
+        ])
+      },
+      sequence: fn(left_node, right_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: left_node),
+          grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: right_node)
+        ])
+      },
+      choice: fn(left_node, right_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_choice_left_node_projection, target: left_node),
+          grammar_named_edge(name: ^grammar_choice_right_node_projection, target: right_node)
+        ])
+      },
+      optional: fn(element_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_optional_element_node_projection, target: element_node)
+        ])
+      },
+      repeat: fn(element_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_repeat_element_node_projection, target: element_node)
+        ])
+      }
+    }
+  )
+}
+

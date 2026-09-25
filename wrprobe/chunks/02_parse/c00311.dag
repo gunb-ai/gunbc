@@ -1,0 +1,18 @@
+module chunk
+
+type ParseTableRealization {
+  artifact_kind: std.cache_identity.ArtifactKindId
+  provider_id: std.cache_identity.CacheInterfaceId
+  materialization: Materialization
+  grammar_digest: Hash
+  token_stream_digest: Hash
+  entries: Map<ParsePositionKey, ParseMemoEntry>
+  memo_hits: Int
+  memo_misses: Int
+  memo_lookup_calls: Int
+  nullable_set: List<Symbol>
+  first_rows: Map<Symbol, List<FirstKey>>
+  productions_by_name: Map<Symbol, GrammarProduction>
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+}
+

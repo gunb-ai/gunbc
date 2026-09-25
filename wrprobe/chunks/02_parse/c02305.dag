@@ -1,0 +1,37 @@
+module chunk
+
+fn compile_class_bucket(
+  alts: List<PreparedExprFold>,
+  token_class: Symbol,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>,
+  token_dispatch: Bool
+) -> PreparedChoicePlan {
+  let words = class_bucket_words(alts: alts, token_class: token_class)
+  if is_empty(xs: words) {
+    compile_choice_alts(alts: alts, nullable_set: nullable_set, first_rows: first_rows, token_dispatch: token_dispatch)
+  } else {
+    ChoiceByWord {
+      on_word: fold_list(xs: words, empty: empty_map(), cons: fn(acc, w) {
+        let word = symbol_lexeme(sym: w)
+        map_insert(
+          m: acc,
+          key: word,
+          value: compile_choice_alts(
+            alts: class_bucket_alts_for_word(alts: alts, token_class: token_class, word: word),
+            nullable_set: nullable_set,
+            first_rows: first_rows,
+            token_dispatch: token_dispatch
+          )
+        )
+      }),
+      on_other: compile_choice_alts(
+        alts: class_bucket_alts_for_other(alts: alts, token_class: token_class),
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        token_dispatch: token_dispatch
+      )
+    }
+  }
+}
+

@@ -1,0 +1,11 @@
+module chunk
+
+test fn an_unrecorded_rustc_identity_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+      build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "", exit_status: 0, warning_count: 0)
+    )),
+    cause_name: "emitted_build_rustc_unrecorded"
+  )
+}
+

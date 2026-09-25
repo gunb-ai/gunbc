@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_char_is_arm_pattern_lead(c: Int) -> Bool {
+  (c == 95) || ((c >= 65) && (c <= 90))
+}
+

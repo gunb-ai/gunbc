@@ -1,0 +1,7 @@
+module chunk
+
+type ParsePositionKey {
+  position: Int
+  production: Symbol
+}
+

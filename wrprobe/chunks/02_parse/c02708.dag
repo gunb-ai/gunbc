@@ -1,0 +1,12 @@
+module chunk
+
+fn expr_corner_fold_choice(
+  left_fold: GrammarExprCornerFold,
+  right_fold: GrammarExprCornerFold
+) -> GrammarExprCornerFold {
+  GrammarExprCornerFold {
+    corners: list_append(left: left_fold.corners, right: right_fold.corners),
+    nullable: left_fold.nullable || right_fold.nullable
+  }
+}
+

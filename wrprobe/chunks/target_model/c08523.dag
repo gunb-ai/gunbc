@@ -1,0 +1,6 @@
+module chunk
+
+fn target_value_expression_node(expr: TargetValueExpression) -> Node {
+  expr.node
+}
+

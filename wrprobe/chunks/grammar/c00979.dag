@@ -1,0 +1,12 @@
+module chunk
+
+fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) -> List<Edge> {
+  fold_list(
+    xs: production.rhs,
+    empty: Empty,
+    cons: fn(acc, symbol) {
+      derive_grammar_relation_terminal_token_edges_step(acc: acc, symbol: symbol)
+    }
+  )
+}
+

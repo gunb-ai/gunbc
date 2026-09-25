@@ -1,0 +1,20 @@
+module chunk
+
+fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
+  match sym {
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+      match binding {
+        Present { value: b } =>
+          if formal_binding_is_lexeme_stamp_slot(binding: b) {
+            grammar_expr_terminal_lexeme(token_class: terminal.identity)
+          } else {
+            grammar_expr_terminal_bound(token_class: terminal.identity, binding: b)
+          }
+        Absent =>
+          grammar_expr_terminal(token_class: terminal.identity)
+      }
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      Nonterminal { production: nonterminal.identity }
+  }
+}
+

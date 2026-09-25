@@ -1,0 +1,11 @@
+module chunk
+
+fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
+  match find_named_child(root: rules, name: ^grammar_relation_rules_formal_productions) {
+    Accepted { value: catalog, diagnostics: _ } =>
+      formal_productions_from_catalog_node(node: catalog)
+    Rejected { diagnostics: _ } =>
+      grammar_relation_rules_formal_productions_from_rows(rules: rules)
+  }
+}
+

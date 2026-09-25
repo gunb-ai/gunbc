@@ -1,0 +1,9 @@
+module chunk
+
+test fn an_observed_live_pair_while_enrolled_demands_the_flip() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(receipt: green_receipt(), live_pair: pinned()),
+    cause_name: "live_pair_observed_while_enrolled_red"
+  )
+}
+

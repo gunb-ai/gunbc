@@ -1,0 +1,11 @@
+module chunk
+
+fn emitted_node_slot_count(emitted: Node) -> Int {
+  match emitted.kind {
+    TypeNode { connective: Conj } =>
+      conj_positional_child_count(children: conj_positional_children(parent: emitted))
+    TypeNode { connective: Atom { identity: _ } } => 0
+    _ => 0 - 1
+  }
+}
+

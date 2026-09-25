@@ -1,0 +1,16 @@
+module chunk
+
+fn module_storage_binding_from_parse_artifact(
+  artifact: ParseArtifact,
+  source_read: DagSourceReadWitness
+) -> Outcome<ModuleStorageBinding> {
+  module_storage_binding_from_provenance(
+    prov: SourceIrArtifactProvenance {
+      node: artifact.tree,
+      artifact: source_read.artifact,
+      span_index: artifact.span_index
+    },
+    source_root: source_read.source_root
+  )
+}
+

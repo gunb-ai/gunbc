@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_undefined_nonterminal,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_undefined_nonterminal),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

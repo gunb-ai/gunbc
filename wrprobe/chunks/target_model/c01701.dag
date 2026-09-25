@@ -1,0 +1,41 @@
+module chunk
+
+fn canonical_operation_equal(
+  left: CanonicalOperation,
+  right: CanonicalOperation
+) -> Bool {
+  match left {
+    AlgebraPrimitive { algebra_field: lf } =>
+      match right {
+        AlgebraPrimitive { algebra_field: rf } => lf == rf
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    AlgebraInverseCompose { binary_field: lb, inverse_field: li } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: rb, inverse_field: ri } =>
+          lb == rb && li == ri
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    OrderingComparison { compare_field: lc, predicate: lp } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: rc, predicate: rp } =>
+          lc == rc && ordering_predicate_equal(left: lp, right: rp)
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    EqualityComparison { eq_field: le, predicate: lp } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: re, predicate: rp } =>
+          le == re && equality_predicate_equal(left: lp, right: rp)
+      }
+  }
+}
+

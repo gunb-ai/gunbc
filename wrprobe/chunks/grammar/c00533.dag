@@ -1,0 +1,24 @@
+module chunk
+
+fn formal_production_to_node(production: FormalProduction) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: ^formal_production_lhs_node_projection, target: formal_nonterminal_to_node(nonterminal: production.lhs)),
+      grammar_named_edge(
+        name: ^formal_production_rhs_node_projection,
+        target: Node {
+          kind: TypeNode {
+            connective: Conj
+          },
+          children: formal_rhs_to_edges(symbols: production.rhs),
+          occurrence_id: OccurrenceSynthetic
+}
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

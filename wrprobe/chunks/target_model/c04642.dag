@@ -1,0 +1,32 @@
+module chunk
+
+fn target_value_expression_bind_let(
+  bind_key: TargetValueExpression,
+  bind_value: TargetValueExpression,
+  bind_body: TargetValueExpression
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprBindLet,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_bind_let_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expr_field_bind_key,
+          target: bind_key.node
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_bind_value,
+          target: bind_value.node
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_bind_body,
+          target: bind_body.node
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+

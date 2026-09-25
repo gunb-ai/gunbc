@@ -1,0 +1,9 @@
+module chunk
+
+type FrontierProbeDiscoveredClosure {
+  refs: List<SourceRef>,
+  population_digest: DiscoveredSourceRefsDigest,
+  entry: SourceRef
+}
+
+

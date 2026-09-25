@@ -1,0 +1,10 @@
+module chunk
+
+fn import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
+  match qn {
+    Empty => Empty
+    Cons { head: h, tail: t } =>
+      Cons { head: h, tail: import_qualified_name_symbols(qn: t) }
+  }
+}
+

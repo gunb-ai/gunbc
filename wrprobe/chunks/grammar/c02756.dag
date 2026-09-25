@@ -1,0 +1,31 @@
+module chunk
+
+fn grammar_relation_row_forward_production_selection(
+  rules: Node,
+  surface_identity: Symbol
+) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      grammar_relation_forward_row_selection_outcome_row(
+        rules: rules,
+        selection: grammar_relation_row_forward_select(
+          rules: rules,
+          row_matches: fn(row) {
+            grammar_relation_row_surface_identity_matches(
+              row: row,
+              surface_identity: surface_identity
+            )
+          }
+        ),
+        none_reason: ^grammar_relation_row_forward_production_not_found,
+        many_reason: ^grammar_relation_row_forward_production_ambiguous
+      )
+    _ =>
+      outcome_rejected(
+        grammar_relation_row_forward_production_selection_not_found_diagnostic(
+          surface_identity: surface_identity
+        )
+      )
+  }
+}
+

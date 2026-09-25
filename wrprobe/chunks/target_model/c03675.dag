@@ -1,0 +1,10 @@
+module chunk
+
+fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^concrete_syntax_token_wire_malformed,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

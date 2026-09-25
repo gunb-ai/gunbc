@@ -1,0 +1,6 @@
+module chunk
+
+fn source_atom_char(codepoint: Char) -> SourceAtomValue {
+  SourceAtomChar { codepoint: codepoint }
+}
+

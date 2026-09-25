@@ -1,0 +1,5 @@
+module chunk
+
+type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
+
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn pinned_chain() -> Optional<NativeTestVerdict> {
+  refused_chain(class_reason: ^resolve_ambiguous_on_global_bare, fatal_reason: ^resolve_reason_ambiguous_symbol, at_prepare: true)
+}
+

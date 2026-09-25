@@ -1,0 +1,6 @@
+module chunk
+
+fn target_text_is_empty(t: TargetText) -> Bool {
+  is_empty(xs: chars(s: t.source))
+}
+

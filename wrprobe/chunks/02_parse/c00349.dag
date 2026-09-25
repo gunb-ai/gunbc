@@ -1,0 +1,24 @@
+module chunk
+
+fn parse_g0_tokens_remain_diagnostic(tokens: List<Token>) -> Diagnostic {
+  match list_at_optional(xs: tokens, index: 0) {
+    Present { value: token } => Diagnostic {
+      reason: ^parse_g0_tokens_remain,
+      at: source_port_locus(
+        port: ^parse_stage_locus_port,
+        file: token.file,
+        extent: ByteRange { start: token.start, end: token.end }
+      ),
+      correction: Unavailable { reason: UserInputBoundary }
+    }
+    Absent => Diagnostic {
+      reason: ^parse_g0_tokens_remain,
+      at: invariant_port_locus(
+        port: ^parse_stage_locus_port,
+        invariant: ^parse_tokens_remain_reported_without_a_first_token
+      ),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+

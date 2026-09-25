@@ -1,0 +1,9 @@
+module chunk
+
+fn target_model_selection_priority(target: TargetModel) -> Outcome<Node> {
+  projection_bundle_child(
+    bundle: target.bundle,
+    name: ^target_model_edge_selection_policy
+  )
+}
+

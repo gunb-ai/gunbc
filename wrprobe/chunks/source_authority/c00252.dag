@@ -1,0 +1,13 @@
+module chunk
+
+fn source_root_overflow_never_empty_population_holds(
+  receipt: SourceRootProvenanceCoverageReceipt,
+  refs: List<SourceRef>
+) -> Bool {
+  if receipt.ingest_read_count > 0 {
+    source_root_closure_ref_transport_complete(receipt: receipt, refs: refs)
+  } else {
+    true
+  }
+}
+

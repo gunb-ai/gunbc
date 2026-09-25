@@ -1,0 +1,12 @@
+module chunk
+
+fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProduction) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: grammar_named_edge(
+      name: production.name,
+      target: grammar_production_to_node(production: production)
+    )
+  )
+}
+

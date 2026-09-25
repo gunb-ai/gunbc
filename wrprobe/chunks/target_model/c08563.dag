@@ -1,0 +1,24 @@
+module chunk
+
+fn target_constructor_template_from_node(
+  n: Node,
+  source_carrier: Node
+) -> Outcome<Optional<TargetConstructorTemplate>> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_constructor_template_optional_absent {
+        outcome_accepted(optional_absent())
+      } else if id == ^target_constructor_template_constructor_absent {
+        outcome_accepted(optional_present(CtorTemplateUnit {}))
+      } else {
+        outcome_rejected(
+          target_constructor_template_decode_invalid_diagnostic(source_carrier: source_carrier)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_constructor_template_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+

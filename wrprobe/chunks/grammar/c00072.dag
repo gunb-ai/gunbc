@@ -1,0 +1,7 @@
+module chunk
+
+type FormalProduction {
+  lhs: FormalNonterminal
+  rhs: List<FormalGrammarSymbol>
+}
+

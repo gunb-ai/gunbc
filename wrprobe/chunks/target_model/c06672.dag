@@ -1,0 +1,36 @@
+module chunk
+
+fn target_value_expr_match_arm_slot_from_wire(arm_wire: Node) -> Outcome<TargetValueExprMatchArmSlot> {
+  bind_outcome(
+    o: target_value_expr_match_arm_wire_schema_valid(arm_wire: arm_wire),
+    f: fn(_) {
+      bind_outcome(
+        o: find_named_child(root: arm_wire, name: match_arm_pattern),
+        f: fn(pattern_wire) {
+          bind_outcome(
+            o: find_named_child(root: arm_wire, name: match_arm_body),
+            f: fn(body_wire) {
+              bind_outcome(
+                o: target_value_expression_reify_from_wire(wire: pattern_wire),
+                f: fn(pat_expr) {
+                  bind_outcome(
+                    o: target_value_expression_reify_from_wire(wire: body_wire),
+                    f: fn(body_expr) {
+                      outcome_accepted(
+                        TargetValueExprMatchArmSlot {
+                          pattern: pat_expr,
+                          body: body_expr
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

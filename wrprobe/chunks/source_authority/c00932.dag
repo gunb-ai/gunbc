@@ -1,0 +1,22 @@
+module chunk
+
+fn module_storage_bindings_from_ingest_with_model(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<ModuleStorageIndex> {
+  match ingest {
+    Empty => outcome_accepted(value: Empty)
+    _ =>
+      match prepare_grammar(grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: residue } =>
+          module_storage_bindings_from_ingest_prepared(
+            ingest: ingest,
+            lm: lm,
+            prepared: prepared,
+            residue: residue
+          )
+      }
+  }
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn target_binding_spelling_lookup(
+  target: TargetModel,
+  binding: Symbol
+) -> Outcome<String> {
+  bound_spelling_from_map(binding_spellings: target.binding_spellings, binding: binding)
+}
+

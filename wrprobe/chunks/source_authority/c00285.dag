@@ -1,0 +1,7 @@
+module chunk
+
+type SourceStorageIdentity {
+  path: String
+  source_root: SourceRootRef
+}
+

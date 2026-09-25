@@ -1,0 +1,9 @@
+module chunk
+
+type TargetRepresentationChoice {
+  form: TargetRepresentation
+  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
+  constraints: List<TargetCapabilityRequirement>
+  supplemental_generic_bound_contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+}
+

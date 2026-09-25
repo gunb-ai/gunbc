@@ -1,0 +1,4 @@
+module chunk
+
+data target_value_expr_int_bool_octet_channel_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the modeled octet-to-bool codec authority is inhabited over the \{0,1} domain (NOT general nonzero), at which point this inline `x != 0` scrutinee staging bridge at the match seam grounds on it and deletes")
+

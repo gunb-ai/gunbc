@@ -1,0 +1,26 @@
+module chunk
+
+fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol> {
+  if id == ^dag_pick_lit_one {
+    optional_present(value: ^dag_binding_pick_lit_one)
+  } else if id == ^dag_pick_lit_two {
+    optional_present(value: ^dag_binding_pick_lit_two)
+  } else if id == ^dag_rec_lit_nine {
+    optional_present(value: ^dag_binding_rec_lit_nine)
+  } else if id == ^dag_binding_param_r {
+    optional_present(value: ^dag_binding_param_r)
+  } else if id == ^dag_binding_param_x {
+    optional_present(value: ^dag_binding_param_x)
+  } else if id == ^dag_binding_param_y {
+    optional_present(value: ^dag_binding_param_y)
+  } else if id == ^rust_binding_param_x {
+    optional_present(value: ^rust_binding_param_x)
+  } else if id == ^rust_binding_param_y {
+    optional_present(value: ^rust_binding_param_y)
+  } else if id == ^dag_binding_rec_v {
+    optional_present(value: ^dag_binding_rec_v)
+  } else {
+    optional_absent()
+  }
+}
+

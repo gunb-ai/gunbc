@@ -1,0 +1,6 @@
+module chunk
+
+fn target_carrier_outcome_node() -> Node {
+  target_carrier_type_node(identity: ^target_carrier_outcome)
+}
+

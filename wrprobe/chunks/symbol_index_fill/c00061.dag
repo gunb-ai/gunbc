@@ -1,0 +1,11 @@
+module chunk
+
+data symbol_index_containment_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.symbol_index_fill",
+    decl_name: "symbol_index_fill_containment_node",
+    field: WholeDeclaration
+  }
+}
+

@@ -1,0 +1,13 @@
+module chunk
+
+fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => std.algebra.Empty
+    Present { value: pair } =>
+      list_append(
+        left: Cons { head: pair.left, tail: std.algebra.Empty },
+        right: sugar_collect_pipe_chain_variants(spine: pair.right)
+      )
+  }
+}
+

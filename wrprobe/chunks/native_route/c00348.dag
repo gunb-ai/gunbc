@@ -1,0 +1,15 @@
+module chunk
+
+test fn route_gap_membership_wins_over_expected_red() -> Bool {
+  match native_route_reference_for(
+    qualified: "v2.test.alpha.gapped",
+    expected_red: ["v2.test.alpha.gapped"],
+    route_gap: ["v2.test.alpha.gapped"]
+  ) {
+    FloorRouteGapRefusal => true
+    FloorExpectedPass => false
+    FloorExpectedRed => false
+  }
+}
+
+

@@ -1,0 +1,14 @@
+module chunk
+
+fn compute_production_first_row_terminals(
+  rows: Map<Symbol, List<FirstKey>>,
+  p: GrammarProduction,
+  nullable_set: List<Symbol>
+) -> List<FirstKey> {
+  expr_first_fold(
+    expr: p.expression,
+    nullable_set: nullable_set,
+    first_rows: rows
+  ).terminals
+}
+

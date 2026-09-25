@@ -1,0 +1,7 @@
+module chunk
+
+type TargetCollectionRealizationLookup
+  = TargetCollectionRealizationMissing
+  | TargetCollectionRealizationUnique { row: TargetCollectionRealization }
+  | TargetCollectionRealizationAmbiguous
+

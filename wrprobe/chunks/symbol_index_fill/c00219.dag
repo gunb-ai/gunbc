@@ -1,0 +1,19 @@
+module chunk
+
+fn symbol_index_alias_rows_of(
+  module_qn: QualifiedName,
+  root: Node
+) -> FreeMonoid<PendingBinding> {
+  fold(
+    node_subtree_nodes(root: root),
+    init: Empty,
+    f: fn(acc, n) {
+      match alias_binding_row_from_decl_node(decl: n, module_root: root) {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: row, diagnostics: _ } =>
+          list_snoc_item(xs: acc, item: PendingBinding { module_qn: module_qn, row: row })
+      }
+    }
+  )
+}
+

@@ -1,0 +1,33 @@
+module chunk
+
+fn formal_production_matches_resolution(
+  production: FormalProduction,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
+) -> Bool {
+  match resolution.emitted.kind {
+    TypeNode { connective: Atom { identity: atom_id } } =>
+      match formal_production_rhs_singleton_terminal_identity(production: production) {
+        Present { value: terminal_id } => atom_id == terminal_id
+        Absent =>
+          match formal_production_rhs_singleton_binding(production: production) {
+            Present { value: binding } =>
+              match formal_binding_conj_slot_arm(binding: binding) {
+                FormalBindingConjSlotEmittedAtom => true
+                FormalBindingConjSlotExactBinding => atom_id == binding
+              }
+            Absent => false
+          }
+      }
+    TypeNode { connective: Conj } =>
+      formal_production_rhs_matches_emitted_conj(
+        production: production,
+        resolution: resolution,
+        children: children,
+        child_count: child_count
+      )
+    _ => false
+  }
+}
+

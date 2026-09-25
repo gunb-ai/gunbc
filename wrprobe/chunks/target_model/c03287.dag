@@ -1,0 +1,24 @@
+module chunk
+
+fn decode_sum_type_shape_bundle(bundle: Node) -> Outcome<TargetSumTypeShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: ^target_type_expr_field_variant_separator
+        ),
+        f: fn(variant_separator) {
+          outcome_accepted(
+            TargetSumTypeShape {
+              surface: surface,
+              variant_separator: variant_separator
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

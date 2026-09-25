@@ -1,0 +1,7 @@
+module chunk
+
+type TargetDeriveSupplementalGenericBoundContractAuthority {
+  authority: ExternalAuthority
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
+}
+

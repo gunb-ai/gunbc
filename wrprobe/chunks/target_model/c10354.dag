@@ -1,0 +1,8 @@
+module chunk
+
+type TargetDeriveSupplementalGenericBoundContractWire {
+  derive_trait: TargetCapabilityKey
+  authority: ExternalAuthority
+  requirements: List<TargetDeriveSupplementalGenericBoundRequirementWire>
+}
+

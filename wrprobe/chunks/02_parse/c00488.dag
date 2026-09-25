@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_table_entries_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseMemoEntry> {
+  witness_from_optional(
+    opt: table.entries.lookup(key),
+    absent: parse_table_memo_miss_diagnostic(at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_table_memo_miss))
+  )
+}
+

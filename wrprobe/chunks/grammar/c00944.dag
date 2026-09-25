@@ -1,0 +1,8 @@
+module chunk
+
+fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> Node {
+  concrete_syntax_token_to_node(
+    token: BoundToken { token_class: token_class, binding: binding }
+  )
+}
+

@@ -1,0 +1,7 @@
+module chunk
+
+type TargetCapabilityRequirement {
+  representation_parameter: Symbol
+  capability_key: TargetCapabilityKey
+}
+

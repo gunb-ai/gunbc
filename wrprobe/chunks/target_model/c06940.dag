@@ -1,0 +1,47 @@
+module chunk
+
+fn target_value_expr_bool_literal_octet_body_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match expr.kind {
+    TargetValueExprBoolLiteral =>
+      match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
+        Present { value: false } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(
+                binding: ^dag_binding_octet_zero,
+                projection: projection
+              ),
+              tail: Empty
+            }
+          )
+        Present { value: true } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(
+                binding: ^dag_binding_octet_one,
+                projection: projection
+              ),
+              tail: Empty
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: expr.node
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: expr.node
+        )
+      )
+  }
+}
+

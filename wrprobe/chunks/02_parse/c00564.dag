@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
+  ParseMemoStats {
+    hits: table.memo_hits,
+    misses: table.memo_misses,
+    lookup_calls: table.memo_lookup_calls
+  }
+}
+

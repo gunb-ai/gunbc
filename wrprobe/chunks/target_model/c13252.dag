@@ -1,0 +1,6 @@
+module chunk
+
+fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
+  target_transform_positional_operand_binding(node: node, index: 0)
+}
+

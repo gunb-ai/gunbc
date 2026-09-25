@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_expr_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampBinding { binding: binding } }
+}
+

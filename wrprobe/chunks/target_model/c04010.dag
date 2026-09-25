@@ -1,0 +1,9 @@
+module chunk
+
+fn source_atom_value_as_char(value: SourceAtomValue) -> Optional<Char> {
+  match value {
+    SourceAtomChar { codepoint: c } => optional_present(c)
+    _ => optional_absent()
+  }
+}
+

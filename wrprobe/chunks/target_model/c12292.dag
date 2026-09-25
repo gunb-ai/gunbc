@@ -1,0 +1,9 @@
+module chunk
+
+fn target_use_site_ownership_catalog_snoc_edge(
+  acc: List<Edge>,
+  row: TargetUseSiteOwnershipRealization
+) -> List<Edge> {
+  list_snoc_item(xs: acc, item: target_use_site_ownership_catalog_edge(row: row))
+}
+

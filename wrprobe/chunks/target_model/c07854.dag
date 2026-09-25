@@ -1,0 +1,22 @@
+module chunk
+
+fn target_catalog_atom_identity_matches_inhabitant_wires(
+  slot_atom: Symbol,
+  catalog_targets: List<Node>
+) -> Bool {
+  fold_list(
+    xs: catalog_targets,
+    empty: false,
+    cons: fn(acc, candidate) {
+      if acc {
+        true
+      } else {
+        match target_inhabitant_wire_primary_atom_identity(wire: candidate) {
+          Present { value: inhabitant_atom } => slot_atom == inhabitant_atom
+          Absent => false
+        }
+      }
+    }
+  )
+}
+

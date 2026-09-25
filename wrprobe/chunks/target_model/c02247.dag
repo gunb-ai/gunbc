@@ -1,0 +1,30 @@
+module chunk
+
+fn decode_conditional_delimiting(bundle: Node) -> Outcome<ConditionalDelimiting> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_conditional_delimiting
+    ),
+    f: fn(discriminant) {
+      if discriminant == ^conditional_self_delimiting {
+        outcome_accepted(ConditionalSelfDelimiting)
+      } else if discriminant == ^conditional_closed_by_token {
+        bind_outcome(
+          o: projection_bundle_symbol_field(
+            bundle: bundle,
+            field: ^target_value_expr_field_conditional_close_token
+          ),
+          f: fn(close_token) {
+            outcome_accepted(ConditionalClosedByToken { close_token: close_token })
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+        )
+      }
+    }
+  )
+}
+

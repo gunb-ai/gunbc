@@ -1,0 +1,27 @@
+module chunk
+
+fn token_classes_take(tokens: List<Token>, need: Int) -> Optional<List<Symbol>> {
+  if need == 0 {
+    optional_present(value: std.algebra.Empty)
+  } else {
+    match parse_token_first(tokens: tokens) {
+      Absent => optional_absent()
+      Present { value: tok } =>
+        match list_tail(xs: tokens) {
+          TailAbsent =>
+            if need == 1 {
+              optional_present(value: Cons { head: tok.class, tail: std.algebra.Empty })
+            } else {
+              optional_absent()
+            }
+          TailFound { tail: rest } =>
+            match token_classes_take(tokens: rest, need: need - 1) {
+              Absent => optional_absent()
+              Present { value: more } =>
+                optional_present(value: Cons { head: tok.class, tail: more })
+            }
+        }
+    }
+  }
+}
+

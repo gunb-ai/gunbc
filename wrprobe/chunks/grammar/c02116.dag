@@ -1,0 +1,6 @@
+module chunk
+
+type RebuildRhsWalkState
+  = RebuildRhsWalkOk { children: List<Node>, token_index: Int }
+  | RebuildRhsWalkFail
+

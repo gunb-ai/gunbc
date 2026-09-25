@@ -1,0 +1,20 @@
+module chunk
+
+fn target_type_expr_wrapped_emitted_labeled(
+  kind: TargetTypeExprKind,
+  surface: Symbol,
+  slot_edges: List<Edge>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: list_append(
+        left: slot_edges,
+        right: Cons { head: target_type_expr_surface_edge(surface: surface), tail: Empty }
+      ),
+      right: Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
+    ),
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

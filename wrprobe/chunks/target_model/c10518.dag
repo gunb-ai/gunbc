@@ -1,0 +1,13 @@
+module chunk
+
+fn target_grounding_derive_trait_from_node(
+  node: Node
+) -> Outcome<TargetCapabilityKey> {
+  bind_outcome(
+    o: target_collection_node_atom_identity(node: node),
+    f: fn(derive_trait_id) {
+      outcome_accepted(derive_trait_id)
+    }
+  )
+}
+

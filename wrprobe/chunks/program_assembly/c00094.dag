@@ -1,0 +1,14 @@
+module chunk
+
+type ProgramAssemblyLocatedFoldState
+  = ProgramAssemblyLocatedFoldOk {
+      located: FreeMonoid<LocatedNormalizedTree>,
+      index: SourceRootIndex,
+      alloc: OccurrenceIdAllocator,
+      spans: SpanIndex
+    }
+  | ProgramAssemblyLocatedFoldFailed {
+      diagnostics: NonEmptyDiagnostics,
+      spans: SpanIndex
+    }
+

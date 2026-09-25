@@ -1,0 +1,6 @@
+module chunk
+
+type FirstKey
+  = FirstAnyOfClass { token_class: Symbol }
+  | FirstExactWord { token_class: Symbol, lexeme: Symbol }
+

@@ -1,0 +1,7 @@
+module chunk
+
+type TargetReferenceLayer
+  = ReferenceLayerOwned
+  | ReferenceLayerRc
+  | ReferenceLayerBox
+

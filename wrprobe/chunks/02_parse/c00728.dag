@@ -1,0 +1,15 @@
+module chunk
+
+fn parse_table_for_production(
+  validated: ValidatedGrammarRoot,
+  all_tokens: List<Token>,
+  materialization: Materialization
+) -> ParseTable {
+  parse_table_for_production_analyzed(
+    validated: validated,
+    analysis: compute_grammar_first_analysis(root: validated.root),
+    all_tokens: all_tokens,
+    materialization: materialization
+  )
+}
+

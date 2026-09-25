@@ -1,0 +1,17 @@
+module chunk
+
+fn choice_token_prefix_select(rows: List<TokenPrefixRow>, prefix: List<Symbol>) -> Optional<PreparedChoicePlan> {
+  match list_head(xs: rows) {
+    HeadAbsent => optional_absent()
+    HeadFound { value: row } =>
+      if zip_eq(a: token_prefix_row_prefix(row: row), b: prefix, eq: fn(x, y) { x == y }) {
+        optional_present(value: token_prefix_row_next(row: row))
+      } else {
+        match list_tail(xs: rows) {
+          TailAbsent => optional_absent()
+          TailFound { tail: rest } => choice_token_prefix_select(rows: rest, prefix: prefix)
+        }
+      }
+  }
+}
+

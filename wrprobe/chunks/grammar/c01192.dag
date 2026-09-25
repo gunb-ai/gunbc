@@ -1,0 +1,6 @@
+module chunk
+
+type EmittedRhsMatchState
+  = EmittedRhsMatchOk { index: Int }
+  | EmittedRhsMatchFail
+

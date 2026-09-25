@@ -1,0 +1,12 @@
+module chunk
+
+type TargetClosureShape {
+  fn_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+  body_open: Symbol
+  body_close: Symbol
+  param_ident_token: Symbol
+}
+

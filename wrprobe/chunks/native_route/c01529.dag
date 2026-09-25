@@ -1,0 +1,9 @@
+module chunk
+
+test fn an_exhausted_closure_budget_refuses_the_derivation() -> Bool {
+  match native_lane_closure_budget_probe(budget: 1) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+  }
+}
+

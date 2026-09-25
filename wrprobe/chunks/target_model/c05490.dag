@@ -1,0 +1,34 @@
+module chunk
+
+fn target_value_expr_conditional_child_from_wire(
+  wire: Node,
+  field: Symbol
+) -> Outcome<TargetValueExpression> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == field {
+                optional_present(value: edge.target)
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: child } =>
+      target_value_expression_reify_from_wire(wire: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+

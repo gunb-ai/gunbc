@@ -1,0 +1,13 @@
+module chunk
+
+fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(name: match_arm_pattern, target: arm.pattern.node),
+      target_model_named_edge(name: match_arm_body, target: arm.body.node)
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

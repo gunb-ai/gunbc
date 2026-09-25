@@ -1,0 +1,7 @@
+module chunk
+
+type LocatedIngestRoots {
+  located: FreeMonoid<LocatedNormalizedTree>,
+  spans: SpanIndex
+}
+

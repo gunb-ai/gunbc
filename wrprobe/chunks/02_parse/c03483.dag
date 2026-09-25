@@ -1,0 +1,29 @@
+module chunk
+
+fn parse_expr_repeat(
+  element: PreparedGrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let init = ParseRepeatAcc {
+    remaining: tokens,
+    acc_nodes: std.algebra.Empty,
+    acc_diags: std.algebra.Empty,
+    done: false,
+    prov: prov,
+    table: table
+  }
+  let result = parse_expr_repeat_step(element: element, all_tokens: all_tokens, root: root, acc: init)
+  let stamped = parse_stamp_derived_repeat(acc_nodes: list_reverse(xs: result.acc_nodes), prov: result.prov)
+  ParseExprAccepted {
+    remaining: result.remaining,
+    captured: stamped.node,
+    diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
+    prov: stamped.prov,
+    table: result.table
+  }
+}
+

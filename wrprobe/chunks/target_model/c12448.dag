@@ -1,0 +1,52 @@
+module chunk
+
+fn target_model_augment_use_site_ownership_catalog(
+  target: TargetModel,
+  derived_rows: List<TargetUseSiteOwnershipRealization>
+) -> Outcome<TargetModel> {
+  if is_empty(xs: derived_rows) {
+    outcome_accepted(target)
+  } else {
+    match target.bundle.kind {
+      TypeNode { connective: Conj } =>
+        match fold(
+          target.bundle.children,
+          init: optional_absent(),
+          f: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == ^target_model_edge_use_site_ownership_realizations {
+                  optional_present(value: edge.target)
+                } else {
+                  acc
+                }
+              Positional => acc
+            }
+          }
+        ) {
+          Absent => outcome_accepted(target)
+          Present { value: catalog } =>
+            outcome_accepted(
+              TargetModel {
+                produced_decl_support: target.produced_decl_support,
+                bundle: target_model_bundle_replace_edge_target(
+                  bundle: target.bundle,
+                  edge_name: ^target_model_edge_use_site_ownership_realizations,
+                  new_target: target_use_site_ownership_catalog_append_derived_rows(
+                    catalog: catalog,
+                    derived_rows: derived_rows
+                  )
+                ),
+                lex: target.lex,
+                binding_spellings: target.binding_spellings,
+                token_class_emit_transforms: target.token_class_emit_transforms,
+                authority_source_text: target.authority_source_text,
+                runtime_row: target.runtime_row
+              }
+            )
+        }
+      _ => outcome_accepted(target)
+    }
+  }
+}
+

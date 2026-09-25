@@ -1,0 +1,15 @@
+module chunk
+
+fn native_route_tally_probe() -> List<NativeRouteCauseTally> {
+  native_route_file_refusal_tally(receipt: receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: [
+      file_refusal_row(path: ^tally_a, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_b, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_c, head: ^resolve_reason_unbound_symbol, fatal: ^resolve_reason_unbound_symbol)
+    ]
+  ))
+}
+

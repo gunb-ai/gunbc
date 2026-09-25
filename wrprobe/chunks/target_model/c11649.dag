@@ -1,0 +1,12 @@
+module chunk
+
+type TargetLayerTransition
+  = LayerTransitionIdentity
+  | LayerTransitionWrap { into: TargetReferenceLayer }
+  | LayerTransitionUnwrap { from: TargetReferenceLayer }
+  | LayerTransitionRefused {
+      from: TargetReferenceLayer,
+      to: TargetReferenceLayer,
+      cause: TargetLayerTransitionRefusal
+    }
+

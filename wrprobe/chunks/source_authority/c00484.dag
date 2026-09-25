@@ -1,0 +1,10 @@
+module chunk
+
+fn source_root_for_storage_path(path: String) -> SourceRootRef {
+  if starts_with(s: path, prefix: "src/") {
+    V2Tree
+  } else {
+    DagTree
+  }
+}
+

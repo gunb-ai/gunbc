@@ -1,0 +1,8 @@
+module chunk
+
+type GrammarProduction {
+  name: Symbol
+  expression: GrammarExpr
+  emitted: Node
+}
+

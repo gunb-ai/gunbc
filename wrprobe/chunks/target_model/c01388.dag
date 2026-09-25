@@ -1,0 +1,7 @@
+module chunk
+
+type TargetBodiedArrowStatementScaffold {
+  prefix: List<ConcreteSyntaxToken>
+  suffix: List<ConcreteSyntaxToken>
+}
+

@@ -1,0 +1,18 @@
+module chunk
+
+test fn a_false_against_the_standing_expectation_is_a_divergence() -> Bool {
+  match native_route_disposition(verdict: NativeTestReturnedFalse, reference: FloorExpectedPass) {
+    NativeDivergence { cause: c } =>
+      match c {
+        NativeFalseExpectedPass => true
+        NativePassedExpectedRed => false
+        NativeReturnedOtherVerdict => false
+        NativeReachedRouteGap => false
+      }
+    NativeAgreementPass => false
+    NativeAgreementExpectedRed => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+  }
+}
+

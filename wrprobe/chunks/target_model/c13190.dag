@@ -1,0 +1,30 @@
+module chunk
+
+fn type_expr_projection_row_closedness_from_target(
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective
+) -> Outcome<Node> {
+  bind_outcome(
+    o: find_named_child(
+      root: target.bundle,
+      name: ^target_model_edge_type_expression_projection
+    ),
+    f: fn(bundle) {
+      bind_outcome(
+        o: type_expr_projection_bundle_shape_for_connective(
+          bundle: bundle,
+          connective: connective
+        ),
+        f: fn(bundle_shape) {
+          type_expr_projection_row_shape_witness_gate(
+            source_facts: bundle_shape,
+            projection: projection,
+            connective: connective
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,7 @@
+module chunk
+
+test fn a_green_receipt_is_admitted() -> Bool {
+  native_route_admitted(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: green_receipt()))
+}
+
+

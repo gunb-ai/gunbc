@@ -1,0 +1,70 @@
+module chunk
+
+fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
+  bind_outcome(
+    o: find_named_child(root: token, name: ^concrete_syntax_token_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: target_node_atom_identity(node: kind_node),
+        f: fn(kind) {
+          bind_outcome(
+            o: find_named_child(root: token, name: ^concrete_syntax_token_field_class),
+            f: fn(class_node) {
+              bind_outcome(
+                o: target_node_atom_identity(node: class_node),
+                f: fn(token_class) {
+                  bind_outcome(
+                    o: target_optional_named_child(
+                      root: token,
+                      name: ^concrete_syntax_token_field_binding
+                    ),
+                    f: fn(binding_node) {
+                      if kind == ^concrete_syntax_token_kind_fixed {
+                        match binding_node {
+                          Present { value: _ } =>
+                            outcome_rejected(
+                              target_concrete_token_kind_invalid_diagnostic(token: token)
+                            )
+                          Absent =>
+                            outcome_accepted(
+                              FixedToken { token_class: token_class }
+                            )
+                        }
+                      } else {
+                        if kind == ^concrete_syntax_token_kind_bound {
+                          match binding_node {
+                            Present { value: binding_child } =>
+                              bind_outcome(
+                                o: target_node_atom_identity(node: binding_child),
+                                f: fn(binding) {
+                                  outcome_accepted(
+                                    BoundToken {
+                                      token_class: token_class,
+                                      binding: binding
+                                    }
+                                  )
+                                }
+                              )
+                            Absent =>
+                              outcome_rejected(
+                                target_concrete_token_kind_invalid_diagnostic(token: token)
+                              )
+                          }
+                        } else {
+                          outcome_rejected(
+                            target_concrete_token_kind_invalid_diagnostic(token: token)
+                          )
+                        }
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

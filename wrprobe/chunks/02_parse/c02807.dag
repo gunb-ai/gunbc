@@ -1,0 +1,19 @@
+module chunk
+
+fn left_corner_round(
+  root: GrammarRoot,
+  rows: Map<Symbol, List<Symbol>>
+) -> Map<Symbol, List<Symbol>> {
+  fold_list(
+    xs: root.productions,
+    empty: rows,
+    cons: fn(acc, p) {
+      map_insert(
+        m: acc,
+        key: p.name,
+        value: left_corner_expand_row(rows: acc, reached: left_corner_row(rows: acc, name: p.name))
+      )
+    }
+  )
+}
+

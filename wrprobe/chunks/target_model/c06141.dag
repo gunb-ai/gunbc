@@ -1,0 +1,64 @@
+module chunk
+
+fn target_import_to_concrete_tokens(
+  import_value: TargetImport,
+  projection: TargetModuleProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match projection.import_form {
+    EsModuleImport {
+      import_token: import_token,
+      names_open: names_open,
+      names_separator: names_separator,
+      names_close: names_close,
+      from_token: from_token,
+      path_open: path_open,
+      path_segment_separator: path_segment_separator,
+      path_close: path_close,
+      terminator: terminator,
+      name_ident_token: name_ident_token,
+      path_segment_token: path_segment_token
+    } =>
+      if is_empty(xs: import_value.names) {
+        outcome_rejected(target_import_empty_names_diagnostic())
+      } else if is_empty(xs: import_value.path_segments) {
+        outcome_rejected(target_import_empty_path_diagnostic())
+      } else {
+        outcome_accepted(
+          list_append(
+            left: Cons {
+              head: FixedToken { token_class: import_token },
+              tail: Cons { head: FixedToken { token_class: names_open }, tail: Empty }
+            },
+            right: list_append(
+              left: target_import_bound_tokens_intersperse(
+                bindings: import_value.names,
+                ident_token: name_ident_token,
+                separator: names_separator
+              ),
+              right: list_append(
+                left: Cons {
+                  head: FixedToken { token_class: names_close },
+                  tail: Cons {
+                    head: FixedToken { token_class: from_token },
+                    tail: Cons { head: FixedToken { token_class: path_open }, tail: Empty }
+                  }
+                },
+                right: list_append(
+                  left: target_import_bound_tokens_intersperse(
+                    bindings: import_value.path_segments,
+                    ident_token: path_segment_token,
+                    separator: path_segment_separator
+                  ),
+                  right: Cons {
+                    head: FixedToken { token_class: path_close },
+                    tail: Cons { head: FixedToken { token_class: terminator }, tail: Empty }
+                  }
+                )
+              )
+            )
+          )
+        )
+      }
+  }
+}
+

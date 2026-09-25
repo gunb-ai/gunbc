@@ -1,0 +1,14 @@
+module chunk
+
+test fn the_closure_holds_what_the_universe_needs() -> Bool {
+  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } => {
+      let members = native_lane_module_set(modules: closure)
+      native_lane_module_in_set(set: members, name: "v2.test.subject")
+        && native_lane_module_in_set(set: members, name: "v2.std.logic")
+        && native_lane_module_in_set(set: members, name: native_route_live_control_module)
+    }
+  }
+}
+

@@ -1,0 +1,15 @@
+module chunk
+
+fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  let head_rows = grammar_choice_ambiguity_rows_append_parse_stage(acc: Empty, d: d.head)
+  fold_list(
+    xs: d.tail,
+    empty: head_rows,
+    cons: fn(acc, item) {
+      grammar_choice_ambiguity_rows_append_parse_stage(acc: acc, d: item)
+    }
+  )
+}
+

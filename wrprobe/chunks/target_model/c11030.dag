@@ -1,0 +1,19 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_requirement_authority(
+  contract: TargetDeriveSupplementalGenericBoundContract,
+  representation_parameter: Symbol,
+  required_trait: TargetCapabilityKey
+) -> Optional<ExternalAuthority> {
+  match contract.requirements.lookup(representation_parameter) {
+    Absent => Absent
+    Present { value: requirements } =>
+      match requirements.lookup(
+        required_trait
+      ) {
+        Absent => Absent
+        Present { value: row } => Present { value: row.authority }
+      }
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_formal_nonterminal(identity: Symbol) -> FormalNonterminal {
+  FormalNonterminal { identity: identity }
+}
+

@@ -1,0 +1,8 @@
+module chunk
+
+type TokenClassEmitTransform
+  = EmitSpellingIdentity
+  | EmitSpellingConstant { value: String }
+  | EmitSpellingWrap { prefix: String, suffix: String }
+  | EmitSpellingQuote { prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape> }
+

@@ -1,0 +1,28 @@
+module chunk
+
+fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      let first = prepared_expr_fold_first(alt: alt)
+      let keep =
+        if any(xs: first.terminals, predicate: fn(k) { first_key_class(key: k) == token_class }) {
+          true
+        } else {
+          first.nullable
+        }
+      let more = match list_tail(xs: alts) {
+        TailAbsent => std.algebra.Empty
+        TailFound { tail: rest } => choice_alts_for_present_token(alts: rest, token_class: token_class)
+      }
+      list_append(
+        left: if keep {
+          Cons { head: alt, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        },
+        right: more
+      )
+  }
+}
+

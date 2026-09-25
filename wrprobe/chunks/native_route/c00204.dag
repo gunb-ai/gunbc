@@ -1,0 +1,24 @@
+module chunk
+
+fn green_receipt() -> NativeRouteReceipt {
+  receipt_over(
+    universe: [
+      test_identity(module: "v2.test.alpha", declaration: "passes"),
+      smoke_identity()
+    ],
+    module_source_index: [
+      NativeRouteModuleSource { module: "v2.test.alpha", path: ^alpha_path },
+      smoke_source_row()
+    ],
+    population: [
+      passed_row(module: "v2.test.alpha", declaration: "passes"),
+      passed_row(
+        module: "v2.test.native_lane_smoke",
+        declaration: "native_route_positive_population_smoke"
+      )
+    ],
+    file_refusals: []
+  )
+}
+
+

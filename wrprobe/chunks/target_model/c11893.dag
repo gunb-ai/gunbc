@@ -1,0 +1,20 @@
+module chunk
+
+fn target_use_site_ownership_source_key(
+  source_carrier: Node,
+  projection: TargetUseSiteOwnershipSourceProjection
+) -> Optional<Node> {
+  match projection {
+    UseSiteOwnershipExactCarrier => optional_present(value: source_carrier)
+    UseSiteOwnershipInstantiationHeadCarrier =>
+      match source_carrier.kind {
+        TypeNode { connective: Instantiation } =>
+          match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
+            Present { value: head } => optional_present(value: head)
+            Absent => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+

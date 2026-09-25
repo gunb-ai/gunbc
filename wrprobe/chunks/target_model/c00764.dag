@@ -1,0 +1,9 @@
+module chunk
+
+fn target_node_atom_identity(node: Node) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
+  }
+}
+

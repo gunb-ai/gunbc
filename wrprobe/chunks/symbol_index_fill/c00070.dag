@@ -1,0 +1,44 @@
+module chunk
+
+fn symbol_index_fill_containment_edge(
+  index: SymbolIndex,
+  path: QualifiedName,
+  edge: Edge
+) -> SymbolIndex {
+  match edge.label {
+    Named { name: sym } =>
+      if dag_surface_module_header_metadata_edge(name: sym) {
+        symbol_index_fill_containment_node(
+          index: index,
+          path: path,
+          node: edge.target
+        )
+      } else if parse_tree_projection_edge(name: sym) {
+        symbol_index_fill_containment_node(
+          index: index,
+          path: path,
+          node: edge.target
+        )
+      } else {
+        let child_path = qualified_name_snoc(qn: path, segment: sym)
+        let with_binding = symbol_index_insert(
+          index: index,
+          qualified_path: child_path,
+          resolved: edge.target
+        )
+        symbol_index_fill_containment_node(
+          index: with_binding,
+          path: child_path,
+          node: edge.target
+        )
+      }
+    Positional =>
+      symbol_index_fill_containment_node(
+        index: index,
+        path: path,
+        node: edge.target
+      )
+  }
+}
+
+

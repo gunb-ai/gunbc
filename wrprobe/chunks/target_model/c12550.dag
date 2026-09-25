@@ -1,0 +1,8 @@
+module chunk
+
+fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty,
+ occurrence_id: OccurrenceSynthetic
+}
+}
+

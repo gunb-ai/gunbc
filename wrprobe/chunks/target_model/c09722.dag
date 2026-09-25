@@ -1,0 +1,12 @@
+module chunk
+
+fn target_atom_alias_type_expression(
+  spelling: Symbol,
+  atom_form: TargetAtomTypeShape
+) -> TargetTypeExpression {
+  TargetTypeExpression {
+    kind: TargetTypeExprAtom,
+    node: target_type_expr_atom_emitted(form: atom_form, identity: spelling)
+  }
+}
+

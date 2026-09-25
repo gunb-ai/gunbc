@@ -1,0 +1,13 @@
+module chunk
+
+fn target_value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+

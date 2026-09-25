@@ -1,0 +1,23 @@
+module chunk
+
+fn target_value_expression_reference_box_new(
+  inner: TargetValueExpression,
+  ctor: Symbol
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprReferenceBoxNew,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ctor }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expression_field_inner,
+          target: target_value_expression_node(expr: inner)
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

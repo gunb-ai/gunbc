@@ -1,0 +1,15 @@
+module chunk
+
+fn target_atom_realization_lookup_extract_row(
+  catalog: List<TargetAtomRealization>,
+  source_carrier: Node
+) -> Optional<TargetAtomRealization> {
+  fold(catalog, init: optional_absent(), f: fn(acc, item) {
+    target_atom_realization_lookup_extract_row_step(
+      acc: acc,
+      row: item,
+      source_carrier: source_carrier
+    )
+  })
+}
+

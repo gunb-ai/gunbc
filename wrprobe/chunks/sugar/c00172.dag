@@ -1,0 +1,14 @@
+module chunk
+
+fn sugar_sequence_pair_optional(node: Node) -> SugarSequencePair? {
+  match sugar_named_child_optional(root: node, name: ^grammar_sequence_left_node_projection) {
+    Present { value: left } =>
+      match sugar_named_child_optional(root: node, name: ^grammar_sequence_right_node_projection) {
+        Present { value: right } =>
+          optional_present(value: SugarSequencePair { left: left, right: right })
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+

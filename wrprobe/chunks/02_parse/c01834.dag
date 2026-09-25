@@ -1,0 +1,10 @@
+module chunk
+
+fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
+  match expr {
+    Choice { left: left, right: right } =>
+      list_append(left: flatten_choice_exprs(expr: left), right: flatten_choice_exprs(expr: right))
+    _ => Cons { head: expr, tail: std.algebra.Empty }
+  }
+}
+

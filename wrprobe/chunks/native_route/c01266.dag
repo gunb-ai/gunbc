@@ -1,0 +1,14 @@
+module chunk
+
+test fn a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused() -> Bool {
+  let warned = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 1)
+  ))
+  let failed = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 101, warning_count: 0)
+  ))
+  native_route_admission_refused_with(admission: warned, cause_name: "emitted_build_not_clean")
+  && native_route_admission_refused_with(admission: failed, cause_name: "emitted_build_not_clean")
+}
+
+

@@ -1,0 +1,15 @@
+module chunk
+
+fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
+  match grammar_first_production_named(root: root, name: name) {
+    Present { value: production } => Holds { value: production }
+    Absent =>
+      Violates {
+        diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
+          at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_undefined_nonterminal)
+        )
+      }
+  }
+}
+
+

@@ -1,0 +1,15 @@
+module chunk
+
+fn discovered_source_refs_digest_for_refs(refs: List<SourceRef>) -> DiscoveredSourceRefsDigest {
+  match source_ref_list_digest_build(refs: refs) {
+    SourceRefListDigestOk { digest: d } =>
+      DiscoveredSourceRefsDigestFromList { digest: d }
+    SourceRefListDigestNonStructuralRefused { path: _ } =>
+      DiscoveredSourceRefsDigestUnavailable {
+        cause: DiscoveredSourceRefsDigestNoRefList {
+          reason: "non-fnv1a64-content-hash-in-closure-ref"
+        }
+      }
+  }
+}
+

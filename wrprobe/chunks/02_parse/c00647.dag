@@ -1,0 +1,16 @@
+module chunk
+
+fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
+  match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
+    true =>
+      parse_table_carry_analysis(
+        table: table,
+        entries: map_insert(m: table.entries, key: key, value: value),
+        hits: table.memo_hits,
+        misses: table.memo_misses,
+        lookups: table.memo_lookup_calls
+      )
+    false => table
+  }
+}
+

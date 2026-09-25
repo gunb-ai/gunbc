@@ -1,0 +1,34 @@
+module chunk
+
+fn target_project_callable_arg_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  arg: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match arg.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      bind_outcome(
+        o: target_value_expr_arrow_body_scope_binding(
+          arrow: arrow,
+          body: body,
+          binding: id,
+          target: target
+        ),
+        f: fn(scoped) {
+          outcome_accepted(target_value_expression_binding_ref(binding: scoped))
+        }
+      )
+    _ =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: arg,
+        target: target,
+        source_bool_form: source_bool_form,
+        handle_transform: handle_transform
+      )
+  }
+}
+

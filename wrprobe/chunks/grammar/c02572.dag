@@ -1,0 +1,31 @@
+module chunk
+
+fn grammar_relation_row_forward_select(
+  rules: Node,
+  row_matches: fn(Node) -> Bool
+) -> GrammarRelationForwardRowSelection {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        rules.children,
+        init: GrammarRelationForwardRowNone,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: n } =>
+              if grammar_relation_forward_row_select_skip_catalog_edge(name: n) {
+                acc
+              } else {
+                grammar_relation_forward_row_select_merge(
+                  acc: acc,
+                  row: e.target,
+                  matches: row_matches(e.target)
+                )
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ => GrammarRelationForwardRowNone
+  }
+}
+

@@ -1,0 +1,15 @@
+module chunk
+
+fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
+  fold_list(
+    xs: symbols,
+    empty: Empty,
+    cons: fn(acc, symbol) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge { label: Positional, target: formal_grammar_symbol_to_node(symbol: symbol) }
+      )
+    }
+  )
+}
+

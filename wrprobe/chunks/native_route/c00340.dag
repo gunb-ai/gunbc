@@ -1,0 +1,10 @@
+module chunk
+
+test fn the_reference_defaults_to_the_floors_standing_expectation() -> Bool {
+  match native_route_reference_for(qualified: "v2.test.alpha.green", expected_red: [], route_gap: []) {
+    FloorExpectedPass => true
+    FloorExpectedRed => false
+    FloorRouteGapRefusal => false
+  }
+}
+

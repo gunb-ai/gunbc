@@ -1,0 +1,12 @@
+module chunk
+
+fn grammar_expr_node(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: children,
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

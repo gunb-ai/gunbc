@@ -1,0 +1,7 @@
+module chunk
+
+type TargetOperatorRealization {
+  operation: CanonicalOperation
+  shape: TargetOperatorShape
+}
+

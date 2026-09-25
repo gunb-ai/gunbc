@@ -1,0 +1,31 @@
+module chunk
+
+fn type_expr_projection_row_witness_gate_with_rule(
+  source_facts: Node,
+  projection: TargetTypeExpressionProjection,
+  connective: Connective,
+  preservation_rule: Symbol
+) -> Outcome<Node> {
+  bind_outcome(
+    o: type_expr_projection_candidate_for_connective(
+      projection: projection,
+      connective: connective
+    ),
+    f: fn(candidates) {
+      match find_witness(
+        source_facts: source_facts,
+        candidates: candidates,
+        predicate: PreservationPredicate {
+          algebra: source_facts,
+          preservation_rule: preservation_rule
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: d } =>
+          outcome_accepted(fw.candidate)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn refused_verdict(stage: NativeTestStage, reason: Symbol) -> NativeTestVerdict {
+  native_test_refused_located(
+    stage: stage,
+    reason: reason,
+    at: invariant_port_locus(port: ^v2_native_route_test_supplied_verdict, invariant: reason)
+  )
+}
+

@@ -1,0 +1,7 @@
+module chunk
+
+type ParseStampResult {
+  node: Node
+  prov: ParseProvenanceState
+}
+

@@ -1,0 +1,11 @@
+module chunk
+
+fn target_representation_choice_parameters_bundle_node(
+  choice: TargetRepresentationChoice
+) -> Node {
+  fold_list_node(
+    xs: map_keys(choice.representation_parameters),
+    item_node: target_model_type_atom_node
+  )
+}
+

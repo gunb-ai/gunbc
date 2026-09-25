@@ -1,0 +1,18 @@
+module chunk
+
+type TargetValueTemplateKind
+  = ValueSymbolIdentityPassthrough
+  | ValueSymbolToOwnedString
+  | ValueBoolLiteral
+  | ValueCharUnicodeScalar
+  | ValueStringLiteral
+  | ValueBindingRef
+  | ValuePrimitiveApply
+  | ValueEffectApply
+  | ValueConditional
+  | ValueBindLet
+  | ValueLoop
+  | ValueRecordConstruct
+  | ValueFieldAccess
+  | ValueMatch
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn no_sugar_rule() -> SugarRule? {
+  optional_absent()
+}
+

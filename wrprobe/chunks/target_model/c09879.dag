@@ -1,0 +1,14 @@
+module chunk
+
+fn target_type_expr_emitted_surface_identity(node: Node) -> Outcome<Symbol> {
+  match find_named_child(root: node, name: ^target_type_expr_field_surface) {
+    Accepted { value: child, diagnostics: d } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          Accepted { value: id, diagnostics: d }
+        _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

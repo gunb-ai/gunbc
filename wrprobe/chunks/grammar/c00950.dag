@@ -1,0 +1,17 @@
+module chunk
+
+fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
+  match binding {
+    Present { value: binding } =>
+      Edge {
+        label: Positional,
+        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding)
+      }
+    Absent =>
+      Edge {
+        label: Positional,
+        target: grammar_concrete_fixed_token_node(token_class: terminal.identity)
+      }
+  }
+}
+

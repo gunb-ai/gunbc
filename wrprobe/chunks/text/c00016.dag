@@ -1,0 +1,6 @@
+module chunk
+
+fn host_string_text_value(value: HostStringText) -> String {
+  value.text
+}
+

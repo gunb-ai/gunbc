@@ -1,0 +1,21 @@
+module chunk
+
+fn left_corner_fixpoint(
+  root: GrammarRoot,
+  rows: Map<Symbol, List<Symbol>>,
+  seen_total: Int,
+  fuel: Int
+) -> Map<Symbol, List<Symbol>> {
+  if fuel == 0 {
+    rows
+  } else {
+    let next = left_corner_round(root: root, rows: rows)
+    let next_total = left_corner_total(root: root, rows: next)
+    if next_total == seen_total {
+      next
+    } else {
+      left_corner_fixpoint(root: root, rows: next, seen_total: next_total, fuel: fuel - 1)
+    }
+  }
+}
+

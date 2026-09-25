@@ -1,0 +1,19 @@
+module chunk
+
+fn target_value_expr_is_source_bool_literal_atom(
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape
+) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match target_value_expr_bool_literal_value_from_source_symbol(
+        id: id,
+        source_bool_form: source_bool_form
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    _ => false
+  }
+}
+

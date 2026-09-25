@@ -1,0 +1,34 @@
+module chunk
+
+fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: false,
+    cons: fn(found, ref) {
+      if found {
+        true
+      } else {
+        let storage = source_storage_identity_from_ref(ref: ref)
+        fold_list(
+          xs: refs,
+          empty: false,
+          cons: fn(inner_found, other) {
+            if inner_found {
+              true
+            } else {
+              let other_storage = source_storage_identity_from_ref(ref: other)
+              if source_storage_identity_eq(left: storage, right: other_storage)
+                && !source_ref_eq(left: ref, right: other) {
+                true
+              } else {
+                false
+              }
+            }
+          }
+        )
+      }
+    }
+  )
+}
+
+

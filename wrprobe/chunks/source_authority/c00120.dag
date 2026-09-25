@@ -1,0 +1,9 @@
+module chunk
+
+type DiscoveredSourceRefsDigest
+  = DiscoveredSourceRefsDigestFromList { digest: Fnv1a64Structural }
+  | DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestUnavailableCause
+    }
+
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn empty_symbol_list() -> List<Symbol> {
+  std.algebra.Empty
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+type ParseExprResult
+  = ParseExprAccepted {
+      remaining: List<Token>,
+      captured: Node,
+      diagnostics: List<Diagnostic>,
+      prov: ParseProvenanceState,
+      table: ParseTable
+    }
+  | ParseExprRejected { diagnostics: List<Diagnostic>, table: ParseTable }
+

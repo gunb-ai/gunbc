@@ -1,0 +1,32 @@
+module chunk
+
+fn module_storage_fold_step(
+  state: ModuleStorageFoldState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> ModuleStorageFoldState {
+  match state {
+    ModuleStorageFoldFailed { diagnostics: d } =>
+      ModuleStorageFoldFailed { diagnostics: d }
+    ModuleStorageFoldOk { bindings: acc } =>
+      match module_storage_binding_from_read_prepared(
+        source_read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      ) {
+        Rejected { diagnostics: d } =>
+          ModuleStorageFoldFailed { diagnostics: d }
+        Accepted { value: binding, diagnostics: _ } =>
+          match module_storage_index_insert(index: acc, binding: binding) {
+            Rejected { diagnostics: d } =>
+              ModuleStorageFoldFailed { diagnostics: d }
+            Accepted { value: next, diagnostics: _ } =>
+              ModuleStorageFoldOk { bindings: next }
+          }
+      }
+  }
+}
+

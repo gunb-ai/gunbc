@@ -1,0 +1,6 @@
+module chunk
+
+fn concrete_syntax_token_list_to_node(tokens: List<ConcreteSyntaxToken>) -> Node {
+  fold_list_node(xs: tokens, item_node: concrete_syntax_token_to_node)
+}
+

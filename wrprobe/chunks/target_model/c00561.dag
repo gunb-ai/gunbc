@@ -1,0 +1,20 @@
+module chunk
+
+fn produced_decl_render_from_rows(
+  rows: ProducedDeclRenderRows,
+  decl: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  bind_outcome(
+    o: produced_decl_signature_with_open_from_rows(rows: rows, decl: decl),
+    f: fn(signature_with_open) {
+      outcome_accepted(
+        derive_bodied_arrow_scaffold(
+          signature_with_open: signature_with_open,
+          block_close: rows.block_close,
+          mode: rows.block_evaluation_mode
+        )
+      )
+    }
+  )
+}
+

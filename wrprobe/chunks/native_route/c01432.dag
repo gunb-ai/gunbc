@@ -1,0 +1,9 @@
+module chunk
+
+test fn an_old_route_absent_for_the_window_closes_the_fallback() -> Bool {
+  let receipt = green_receipt_with_old_route_control(
+    control: OldRouteNotPresentAtWindow { expected_executable: "target/release/gunbc" }
+  )
+  native_route_admitted(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt))
+}
+

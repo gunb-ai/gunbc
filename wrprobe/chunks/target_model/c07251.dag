@@ -1,0 +1,32 @@
+module chunk
+
+fn target_value_expression_symbol_identity_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expression_symbol_identity_from_wire(wire: expr.node),
+    f: fn(token_class) {
+      match target_value_expr_binding_ref_for_literal_atom(id: token_class) {
+        Present { value: binding } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(
+                binding: binding,
+                projection: projection
+              ),
+              tail: Empty
+            }
+          )
+        Absent =>
+          outcome_accepted(
+            Cons {
+              head: FixedToken { token_class: token_class },
+              tail: Empty
+            }
+          )
+      }
+    }
+  )
+}
+

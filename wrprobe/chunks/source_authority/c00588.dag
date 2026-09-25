@@ -1,0 +1,8 @@
+module chunk
+
+type CanonicalDagSourceEmissionLaw {
+  canonical_source: Medium<String>
+  serializer_law: DeterministicDagSourceSerializerLaw
+  parse_print_law: NormalizedDagSourceParsePrintLaw
+}
+

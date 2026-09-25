@@ -1,0 +1,52 @@
+module chunk
+
+fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: grammar_relation_rules_formal_productions(rules: rules),
+    f: fn(productions) {
+      match rules.kind {
+        TypeNode { connective: Conj } =>
+          match fold(
+            rules.children,
+            init: BackwardRowNone,
+            f: fn(acc, edge) {
+              match edge.label {
+                Named { name: n } =>
+                  if n == ^grammar_relation_rules_formal_productions {
+                    acc
+                  } else {
+                    backward_row_select_step(
+                      acc: acc,
+                      productions: productions,
+                      emitted: emitted,
+                      row: edge.target
+                    )
+                  }
+                Positional => acc
+              }
+            }
+          ) {
+            BackwardRowOne { row: row } => outcome_accepted(value: row)
+            BackwardRowMany =>
+              outcome_rejected(
+                Diagnostic {
+                  reason: ^grammar_relation_row_backward_selection_ambiguous,
+                  at: node_locus(node: emitted),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            BackwardRowNone =>
+              grammar_relation_row_derived_from_productions(
+                productions: productions,
+                emitted: emitted
+              )
+          }
+        _ =>
+          outcome_rejected(
+            grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
+          )
+      }
+    }
+  )
+}
+

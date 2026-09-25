@@ -1,0 +1,16 @@
+module chunk
+
+fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: LanguageModel) -> Outcome<DagSemanticIr> {
+  bind_outcome(
+    o: normalize(parse_tree: ast.tree),
+    f: fn(normalized) {
+      bind_outcome(
+        o: resolve(tree: normalized, lm: lm),
+        f: fn(resolved) {
+          outcome_accepted(value: DagSemanticIr { tree: resolved })
+        }
+      )
+    }
+  )
+}
+

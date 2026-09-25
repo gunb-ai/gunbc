@@ -1,0 +1,12 @@
+module chunk
+
+fn concrete_syntax_fixed_token_matches_terminal(
+  token: ConcreteSyntaxToken,
+  terminal: Symbol
+) -> Bool {
+  match token {
+    FixedToken { token_class: token_class } => token_class == terminal
+    BoundToken { token_class: _, binding: _ } => false
+  }
+}
+

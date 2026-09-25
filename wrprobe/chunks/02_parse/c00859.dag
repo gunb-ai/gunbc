@@ -1,0 +1,25 @@
+module chunk
+
+fn parse_mint_from_source(
+  prov: ParseProvenanceState,
+  file: Symbol,
+  start: Int,
+  end: Int
+) -> ParseMintSourceResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let locus = Textual {
+    file: file,
+    extent: ByteRange { start: start, end: end }
+  }
+  let event = origin_event_from_source(locus: locus)
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseMintSourceResult {
+    id: minted.id,
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
+  }
+}
+

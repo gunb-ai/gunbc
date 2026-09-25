@@ -1,0 +1,9 @@
+module chunk
+
+fn sugar_unwrap_production_shell(node: Node) -> Node {
+  match sugar_named_child_optional(root: node, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } => sugar_unwrap_production_shell(node: captured)
+    Absent => node
+  }
+}
+

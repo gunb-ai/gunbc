@@ -1,0 +1,14 @@
+module chunk
+
+fn module_storage_produced_binding(
+  module: QualifiedName,
+  producer: Symbol,
+  source_root: SourceRootRef
+) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: module,
+    provenance: ProducedByBehavior { producer: producer },
+    source_root: source_root
+  }
+}
+

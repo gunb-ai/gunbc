@@ -1,0 +1,16 @@
+module chunk
+
+fn grammar_production_to_node(production: GrammarProduction) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: ^grammar_production_name_node_projection, target: grammar_atom(identity: production.name)),
+      grammar_named_edge(name: ^grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
+      grammar_named_edge(name: ^grammar_production_emitted_node_projection, target: production.emitted)
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

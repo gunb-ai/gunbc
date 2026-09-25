@@ -1,0 +1,6 @@
+module chunk
+
+type TargetCapabilityElementEligibility {
+  kernel_atoms: List<Symbol>
+}
+

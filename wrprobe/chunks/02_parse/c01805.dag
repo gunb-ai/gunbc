@@ -1,0 +1,8 @@
+module chunk
+
+type PreparedExprFold {
+  tree: PreparedGrammarExpr
+  first: GrammarExprFirstFold
+  residue: List<GrammarChoiceAmbiguityRow>
+}
+

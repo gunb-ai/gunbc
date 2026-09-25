@@ -1,0 +1,10 @@
+module chunk
+
+test fn an_identity_label_is_its_namespace_as_a_package() -> Bool {
+  match native_route_identity_label(module_qn: "v2.test.parse", declaration: "a_parse_holds") {
+    LabelRefused { cause: _ } => false
+    LabelParsed { label: label } =>
+      render_label(l: label) == "//v2/test/parse:a_parse_holds"
+  }
+}
+

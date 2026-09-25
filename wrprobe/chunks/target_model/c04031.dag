@@ -1,0 +1,12 @@
+module chunk
+
+fn target_value_template_tag_node(kind: TargetValueTemplateKind) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: discriminant(v: kind) }
+    },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

@@ -1,0 +1,28 @@
+module chunk
+
+fn parse_stamp_terminal(
+  tok: Token,
+  stamp: TerminalStampMode,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = parse_mint_from_source(
+    prov: prov,
+    file: tok.file,
+    start: tok.start,
+    end: tok.end
+  )
+  let identity = match stamp {
+    StampClass => tok.class
+    StampBinding { binding: b } => b
+    StampLexeme => symbol_intern_lexeme(lexeme: tok.lexeme)
+  }
+  ParseStampResult {
+    node: node_with_occurrence_id(
+      kind: TypeNode { connective: Atom { identity: identity } },
+      children: [],
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+    ),
+    prov: minted.prov
+  }
+}
+

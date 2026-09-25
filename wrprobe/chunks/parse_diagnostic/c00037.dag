@@ -1,0 +1,7 @@
+module chunk
+
+type ParseStageDiagnostic {
+  diagnostic: Diagnostic
+  evidence: ParseDiagnosticEvidence
+}
+

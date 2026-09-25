@@ -1,0 +1,22 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_requirements_insert(
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>,
+  representation_parameter: Symbol,
+  required_key: TargetCapabilityKey,
+  parameter_requirements: TargetDeriveSupplementalGenericBoundRequirementSet,
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: requirements,
+    key: representation_parameter,
+    value: map_insert(
+      m: parameter_requirements,
+      key: required_key,
+      value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+        authority: authority
+      }
+    )
+  )
+}
+

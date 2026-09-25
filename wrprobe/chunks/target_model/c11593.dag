@@ -1,0 +1,6 @@
+module chunk
+
+type TargetSharing
+  = SharingUnique
+  | SharingShared
+

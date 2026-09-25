@@ -1,0 +1,12 @@
+module chunk
+
+test fn the_route_gap_agrees_only_with_the_hermetic_boundary_refusal() -> Bool {
+  match native_route_disposition(
+    verdict: refused_verdict(stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
+    reference: FloorRouteGapRefusal
+  ) {
+    NativeAgreementRouteGap => true
+    _ => false
+  }
+}
+

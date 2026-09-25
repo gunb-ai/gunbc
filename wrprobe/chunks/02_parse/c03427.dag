@@ -1,0 +1,58 @@
+module chunk
+
+fn parse_expr_repeat_step(
+  element: PreparedGrammarExpr,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  acc: ParseRepeatAcc
+) -> ParseRepeatAcc {
+  if acc.done {
+    acc
+  } else {
+    match parse_expr_with_first(
+      expr: element,
+      tokens: acc.remaining,
+      all_tokens: all_tokens,
+      root: root,
+      table: acc.table,
+      prov: acc.prov
+    ) {
+      ParseExprRejected { diagnostics: _, table: table1 } =>
+        ParseRepeatAcc {
+          remaining: acc.remaining,
+          acc_nodes: acc.acc_nodes,
+          acc_diags: acc.acc_diags,
+          done: true,
+          prov: acc.prov,
+          table: table1
+        }
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+        match length(xs: rest) != length(xs: acc.remaining) {
+          true =>
+            parse_expr_repeat_step(
+              element: element,
+              all_tokens: all_tokens,
+              root: root,
+              acc: ParseRepeatAcc {
+                remaining: rest,
+                acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
+                acc_diags: Cons { head: diags, tail: acc.acc_diags },
+                done: false,
+                prov: prov1,
+                table: table1
+              }
+            )
+          false =>
+            ParseRepeatAcc {
+              remaining: acc.remaining,
+              acc_nodes: acc.acc_nodes,
+              acc_diags: acc.acc_diags,
+              done: true,
+              prov: acc.prov,
+              table: table1
+            }
+        }
+    }
+  }
+}
+

@@ -1,0 +1,45 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
+  acc: Outcome<TargetDeriveSupplementalGenericBoundContractCatalog>,
+  row: TargetDeriveSupplementalGenericBoundContractWire,
+  at: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundContractCatalog> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: catalog, diagnostics: _ } =>
+      let derive_key = row.derive_trait
+      match catalog.contracts.lookup(derive_key) {
+        Present { value: _ } =>
+          outcome_rejected(
+            target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+              at: at
+            )
+          )
+        Absent =>
+          bind_outcome(
+            o: target_derive_supplemental_generic_bound_wire_requirements_apply(
+              representation_parameters: catalog.representation_parameters,
+              requirements: row.requirements,
+              at: at
+            ),
+            f: fn(requirements) {
+              outcome_accepted(
+                TargetDeriveSupplementalGenericBoundContractCatalog {
+                  representation_parameters: catalog.representation_parameters,
+                  contracts: map_insert(
+                    m: catalog.contracts,
+                    key: derive_key,
+                    value: TargetDeriveSupplementalGenericBoundContractAuthority {
+                      authority: row.authority,
+                      requirements: requirements
+                    }
+                  )
+                }
+              )
+            }
+          )
+      }
+  }
+}
+

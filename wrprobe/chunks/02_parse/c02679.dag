@@ -1,0 +1,6 @@
+module chunk
+
+fn expr_corner_fold_terminal(_: Symbol) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: std.algebra.Empty, nullable: false }
+}
+

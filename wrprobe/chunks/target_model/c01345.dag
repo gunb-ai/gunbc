@@ -1,0 +1,10 @@
+module chunk
+
+type TargetRecordConstructShape {
+  open: Symbol
+  close: Symbol
+  separator: Symbol
+  assign: Symbol
+  record_literal_names_type: RecordLiteralTypeNaming
+}
+

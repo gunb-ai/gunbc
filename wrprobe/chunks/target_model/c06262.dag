@@ -1,0 +1,68 @@
+module chunk
+
+fn module_import_projection_bundle_node(projection: TargetModuleProjection) -> Node {
+  match projection.import_form {
+    EsModuleImport {
+      import_token: import_token,
+      names_open: names_open,
+      names_separator: names_separator,
+      names_close: names_close,
+      from_token: from_token,
+      path_open: path_open,
+      path_segment_separator: path_segment_separator,
+      path_close: path_close,
+      terminator: terminator,
+      name_ident_token: name_ident_token,
+      path_segment_token: path_segment_token
+    } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_module_import_field_import_token,
+            target: target_model_type_atom_node(identity: import_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_open,
+            target: target_model_type_atom_node(identity: names_open)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_separator,
+            target: target_model_type_atom_node(identity: names_separator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_close,
+            target: target_model_type_atom_node(identity: names_close)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_from_token,
+            target: target_model_type_atom_node(identity: from_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_open,
+            target: target_model_type_atom_node(identity: path_open)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_segment_separator,
+            target: target_model_type_atom_node(identity: path_segment_separator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_close,
+            target: target_model_type_atom_node(identity: path_close)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_terminator,
+            target: target_model_type_atom_node(identity: terminator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_name_ident_token,
+            target: target_model_type_atom_node(identity: name_ident_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_segment_token,
+            target: target_model_type_atom_node(identity: path_segment_token)
+          )
+        ]
+      )
+  }
+}
+

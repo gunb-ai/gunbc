@@ -1,0 +1,63 @@
+module chunk
+
+fn target_value_expr_match_wire_schema_valid(wire: Node) -> Outcome<Bool> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id != ^target_value_expression_match_atom {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else if name_occurrences(
+        name: ^target_value_expr_field_match_scrutinee,
+        children: wire.children
+      ) != 1 {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+        )
+      } else {
+        match fold(
+          wire.children,
+          init: Accepted { value: true, diagnostics: None },
+          f: fn(acc, edge) {
+            match acc {
+              Rejected { diagnostics: r } => acc
+              Accepted { value: ok, diagnostics: d } =>
+                if !ok {
+                  acc
+                } else {
+                  match edge.label {
+                    Named { name: n } =>
+                      if n == ^target_value_expr_field_match_scrutinee {
+                        acc
+                      } else {
+                        outcome_rejected(
+                          target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                        )
+                      }
+                    Positional =>
+                      bind_outcome(
+                        o: target_value_expr_match_arm_wire_schema_valid(arm_wire: edge.target),
+                        f: fn(_) {
+                          outcome_accepted(true)
+                        }
+                      )
+                  }
+                }
+            }
+          }
+        ) {
+          Accepted { value: true, diagnostics: d } => Accepted { value: true, diagnostics: d }
+          Accepted { value: false, diagnostics: d } =>
+            outcome_rejected(
+              target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+            )
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+

@@ -1,0 +1,7 @@
+module chunk
+
+type TargetAtomTypeShape {
+  surface: Symbol
+  ident_token: Symbol
+}
+

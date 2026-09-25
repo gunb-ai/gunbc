@@ -1,0 +1,4 @@
+module chunk
+
+data manifest_inline_list_max: Int = 64
+

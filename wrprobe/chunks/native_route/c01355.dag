@@ -1,0 +1,9 @@
+module chunk
+
+test fn a_source_with_no_module_header_declares_no_module() -> Bool {
+  match native_lane_declared_module_name(content: "// only prose\ntest fn t() -> Bool { true }\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+

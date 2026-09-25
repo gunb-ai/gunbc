@@ -1,0 +1,23 @@
+module chunk
+
+fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+  match rules {
+    VoidLexRules =>
+      outcome_rejected(
+        target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
+      )
+    ModeledLexRules { root: set } =>
+      fold_list(
+        xs: set.rules,
+        empty: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
+          )
+        },
+        cons: fn(acc, rule) {
+          target_lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
+        }
+      )
+  }
+}
+

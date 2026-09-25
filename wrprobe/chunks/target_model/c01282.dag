@@ -1,0 +1,7 @@
+module chunk
+
+type TargetEffectCalleeRow {
+  effect_kind: Symbol
+  callee: Symbol
+}
+

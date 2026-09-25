@@ -1,0 +1,16 @@
+module chunk
+
+fn grammar_has_left_recursion_given(root: GrammarRoot, nullable_set: List<Symbol>) -> Bool {
+  let rows = left_corner_rows(root: root, nullable_set: nullable_set)
+  any(
+    xs: root.productions,
+    predicate: fn(p) {
+      contains(
+        xs: left_corner_row(rows: rows, name: p.name),
+        item: p.name,
+        eq: fn(a, b) { a == b }
+      )
+    }
+  )
+}
+

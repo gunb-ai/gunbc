@@ -1,0 +1,18 @@
+module chunk
+
+fn sugar_positional_unwrap_child(children: List<Edge>) -> Node? {
+  if count(children) == 1 {
+    match children |> first {
+      Present { value: e0 } =>
+        if is_positional(e: e0) {
+          optional_present(value: e0.target)
+        } else {
+          optional_absent()
+        }
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+

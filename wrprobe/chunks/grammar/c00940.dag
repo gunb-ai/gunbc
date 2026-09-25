@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_concrete_fixed_token_node(token_class: Symbol) -> Node {
+  concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
+}
+

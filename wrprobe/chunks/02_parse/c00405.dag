@@ -1,0 +1,22 @@
+module chunk
+
+fn grammar_first_production_named(
+  root: GrammarRoot,
+  name: Symbol
+) -> Optional<GrammarProduction> {
+  fold_list(
+    xs: root.productions,
+    empty: Absent,
+    cons: fn(acc, p) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match p.name == name {
+            true => Present { value: p }
+            false => Absent
+          }
+      }
+    }
+  )
+}
+

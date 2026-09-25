@@ -1,0 +1,82 @@
+module chunk
+
+fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
+  match token.kind {
+    TypeNode { connective: Conj } =>
+      if name_occurrences(
+        name: ^concrete_syntax_token_field_kind,
+        children: token.children
+      ) != 1 {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+      } else if name_occurrences(
+        name: ^concrete_syntax_token_field_class,
+        children: token.children
+      ) != 1 {
+        outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+      } else {
+        match fold(
+          token.children,
+          init: true,
+          f: fn(acc, edge) {
+            if acc {
+              match edge.label {
+                Named { name: n } =>
+                  n == ^concrete_syntax_token_field_kind
+                  || n == ^concrete_syntax_token_field_class
+                  || n == ^concrete_syntax_token_field_binding
+                Positional => false
+              }
+            } else {
+              false
+            }
+          }
+        ) {
+          false =>
+            outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+          true =>
+            bind_outcome(
+              o: find_named_child(root: token, name: ^concrete_syntax_token_field_kind),
+              f: fn(kind_node) {
+                match kind_node.kind {
+                  TypeNode { connective: Atom { identity: kind } } =>
+                    if kind == ^concrete_syntax_token_kind_fixed {
+                      if name_occurrences(
+                        name: ^concrete_syntax_token_field_binding,
+                        children: token.children
+                      ) == 0 {
+                        outcome_accepted(true)
+                      } else {
+                        outcome_rejected(
+                          concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                        )
+                      }
+                    } else if kind == ^concrete_syntax_token_kind_bound {
+                      if name_occurrences(
+                        name: ^concrete_syntax_token_field_binding,
+                        children: token.children
+                      ) == 1 {
+                        outcome_accepted(true)
+                      } else {
+                        outcome_rejected(
+                          concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                        )
+                      }
+                    } else {
+                      outcome_rejected(
+                        concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                      )
+                    }
+                  _ =>
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                    )
+                }
+              }
+            )
+        }
+      }
+    _ =>
+      outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
+  }
+}
+

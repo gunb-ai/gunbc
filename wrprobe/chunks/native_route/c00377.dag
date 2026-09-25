@@ -1,0 +1,17 @@
+module chunk
+
+test fn an_eval_stage_refusal_is_the_boundary_only_at_a_boundary_reason() -> Bool {
+  match classify_native_refusal(stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound) {
+    NativeEvalBoundary { reason: r } => r == ^eval_rejected_effect_io_unbound
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStageEval, reason: ^eval_some_unowned_reason) {
+    NativeEvalBoundary { reason: _ } => false
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^eval_some_unowned_reason
+  }
+}
+

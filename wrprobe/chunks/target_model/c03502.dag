@@ -1,0 +1,19 @@
+module chunk
+
+fn bodied_arrow_statement_scaffold_bundle_node(
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_bodied_arrow_scaffold_field_prefix,
+        target: concrete_syntax_token_list_to_node(tokens: scaffold.prefix)
+      ),
+      target_model_named_edge(
+        name: ^target_bodied_arrow_scaffold_field_suffix,
+        target: concrete_syntax_token_list_to_node(tokens: scaffold.suffix)
+      )
+    ]
+  )
+}
+

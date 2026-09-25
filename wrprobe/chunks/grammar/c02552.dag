@@ -1,0 +1,18 @@
+module chunk
+
+fn grammar_relation_forward_row_select_merge(
+  acc: GrammarRelationForwardRowSelection,
+  row: Node,
+  matches: Bool
+) -> GrammarRelationForwardRowSelection {
+  if matches {
+    match acc {
+      GrammarRelationForwardRowNone => GrammarRelationForwardRowOne { row: row }
+      GrammarRelationForwardRowOne { row: _ } => GrammarRelationForwardRowMany
+      GrammarRelationForwardRowMany => GrammarRelationForwardRowMany
+    }
+  } else {
+    acc
+  }
+}
+

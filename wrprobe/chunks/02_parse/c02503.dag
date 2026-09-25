@@ -1,0 +1,35 @@
+module chunk
+
+fn compute_grammar_first_analysis_given(
+  root: GrammarRoot,
+  nullable_set: List<Symbol>
+) -> GrammarFirstAnalysis {
+  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  let prep = fold_list(
+    xs: root.productions,
+    empty: AnalysisPrepAcc { prepared_exprs: empty_map(), residue: std.algebra.Empty },
+    cons: fn(acc, p) {
+      let folded = prepare_grammar_expr(
+        expr: p.expression,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        production: p.name,
+        token_dispatch: true
+      )
+      AnalysisPrepAcc {
+        prepared_exprs: map_insert(m: acc.prepared_exprs, key: p.name, value: folded.tree),
+        residue: list_append(left: acc.residue, right: folded.residue)
+      }
+    }
+  )
+  GrammarFirstAnalysis {
+    nullable_set: nullable_set,
+    first_rows: first_rows,
+    prepared_exprs: prep.prepared_exprs,
+    grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
+    productions_by_name: grammar_production_index(productions: root.productions),
+    choice_residue: prep.residue,
+    memo_recurrence: parse_memo_recurrence_census(root: root, nullable_set: nullable_set)
+  }
+}
+

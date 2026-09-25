@@ -1,0 +1,6 @@
+module chunk
+
+fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
+  GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
+}
+

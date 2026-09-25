@@ -1,0 +1,4 @@
+module chunk
+
+fn token_prefix_row_next(row: TokenPrefixRow) -> PreparedChoicePlan { row.next }
+

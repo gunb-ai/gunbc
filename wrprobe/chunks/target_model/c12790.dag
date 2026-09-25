@@ -1,0 +1,7 @@
+module chunk
+
+type TargetReferenceLayerProbe
+  = ReferenceLayerProbe { value: TargetReferenceLayerWrapped }
+  | ReferenceLayerProbeNotWrapped
+  | ReferenceLayerProbeInvalid
+

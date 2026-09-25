@@ -1,0 +1,43 @@
+module chunk
+
+fn resolution_production_for_lhs_exact(
+  resolution: EmittedProductionResolution,
+  lhs: Symbol
+) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: resolution.emitted) {
+    match fold_list(
+      xs: resolution.matched,
+      empty: LhsExactProductionMatchNone,
+      cons: fn(acc, candidate) {
+        lhs_exact_production_match_fold_step(acc: acc, resolution: resolution, lhs: lhs, candidate: candidate)
+      }
+    ) {
+      LhsExactProductionMatchNone =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_production_not_found,
+            at: node_locus(node: resolution.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchMany =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_row_backward_selection_ambiguous,
+            at: node_locus(node: resolution.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchOne { production: production } => Holds { value: production }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_emitted_not_conj,
+        at: node_locus(node: resolution.emitted),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+

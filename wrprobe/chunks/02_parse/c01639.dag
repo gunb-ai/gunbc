@@ -1,0 +1,9 @@
+module chunk
+
+fn expr_first_fold_choice(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: first_list_union(left: left.terminals, right: right.terminals),
+    nullable: left.nullable || right.nullable
+  }
+}
+

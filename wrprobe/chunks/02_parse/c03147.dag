@@ -1,0 +1,45 @@
+module chunk
+
+fn parse_expr_sequence(
+  left: PreparedGrammarExpr,
+  right: PreparedGrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(
+    expr: left,
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
+  ) {
+    ParseExprRejected { diagnostics: diags, table: table1 } =>
+      ParseExprRejected { diagnostics: diags, table: table1 }
+    ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1, table: table1 } =>
+      match parse_expr_with_first(
+        expr: right,
+        tokens: rest1,
+        all_tokens: all_tokens,
+        root: root,
+        table: table1,
+        prov: prov1
+      ) {
+        ParseExprRejected { diagnostics: diags2, table: table2 } =>
+          ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2), table: table2 }
+        ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2, table: table2 } =>
+          let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
+          ParseExprAccepted {
+            remaining: rest2,
+            captured: stamped.node,
+            diagnostics: list_append(left: diags1, right: diags2),
+            prov: stamped.prov,
+            table: table2
+          }
+      }
+  }
+}
+

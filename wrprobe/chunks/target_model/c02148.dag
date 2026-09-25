@@ -1,0 +1,10 @@
+module chunk
+
+fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_projection_field_missing,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

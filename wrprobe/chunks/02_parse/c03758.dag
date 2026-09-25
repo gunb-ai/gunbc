@@ -1,0 +1,21 @@
+module chunk
+
+fn parse_production(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseArtifact> {
+  let analysis = compute_grammar_first_analysis(root: validated.root)
+  match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: materialization, diagnostics: _ } =>
+      parse_production_prepared(
+        tokens: tokens,
+        validated: validated,
+        analysis: analysis,
+        production_name: production_name,
+        materialization: materialization
+      )
+  }
+}
+

@@ -1,0 +1,11 @@
+module chunk
+
+fn source_root_closure_ref_transport_complete(
+  receipt: SourceRootProvenanceCoverageReceipt,
+  refs: List<SourceRef>
+) -> Bool {
+  (receipt.ingest_read_count > 0)
+    && (receipt.produced_row_count == receipt.ingest_read_count)
+    && (length(xs: refs) == receipt.ingest_read_count)
+}
+

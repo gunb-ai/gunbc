@@ -1,0 +1,12 @@
+module chunk
+
+fn module_storage_bindings_from_ingest(
+  ingest: SourceRootIngest
+) -> Outcome<ModuleStorageIndex> {
+  module_storage_bindings_from_ingest_with_model(
+    ingest: ingest,
+    lm: dag_language_model()
+  )
+}
+
+

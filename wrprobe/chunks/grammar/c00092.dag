@@ -1,0 +1,7 @@
+module chunk
+
+type WellFormedFormalGrammar {
+  grammar: FormalGrammar
+  alphabet_enumeration: GrammarAlphabetEnumerationEvidence
+}
+

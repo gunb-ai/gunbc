@@ -1,0 +1,6 @@
+module chunk
+
+type TargetUseSiteOwnershipSourceProjection
+  = UseSiteOwnershipExactCarrier
+  | UseSiteOwnershipInstantiationHeadCarrier
+

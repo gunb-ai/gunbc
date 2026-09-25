@@ -1,0 +1,24 @@
+module chunk
+
+fn target_value_expression_symbol_to_owned_string(identity: Symbol) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprSymbolToOwnedString,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_symbol_to_owned_string_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expression_field_identity,
+          target: Node {
+            kind: TypeNode { connective: Atom { identity: identity } },
+            children: [],
+            occurrence_id: OccurrenceSynthetic
+}
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

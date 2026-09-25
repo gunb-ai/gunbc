@@ -1,0 +1,8 @@
+module chunk
+
+data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, now bound to subjects. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing.
+
+It carries NO refusal field. Refusals do not travel inside this artifact, because a wrapper holding both an annotation graph and a list of things that failed to attach invites a consumer to read the first and never the second.
+
+The intended discipline is that this artifact exists only when nothing refused, and AuthoredParseOutcome below is the only thing in this module that constructs one. That is a CONVENTION, not yet a constraint: this is a plain record, so any module can construct one directly with whatever graph it likes. NEXT-RUNG TRIGGER: restrict construction to this module (sole_constructor or equivalent) with a control proving an outside construction does not compile — at which point this paragraph says `cannot` instead of `does not`."
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: FirstAnyOfClass { token_class: token_class }, tail: std.algebra.Empty },
+    nullable: false
+  }
+}
+

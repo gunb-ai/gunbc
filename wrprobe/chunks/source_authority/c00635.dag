@@ -1,0 +1,11 @@
+module chunk
+
+fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst> {
+  bind_outcome(
+    o: normalize(parse_tree: ast.tree),
+    f: fn(normalized) {
+      outcome_accepted(value: NormalizedDagSourceAst { tree: normalized })
+    }
+  )
+}
+

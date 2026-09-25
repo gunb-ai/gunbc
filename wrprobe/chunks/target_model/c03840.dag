@@ -1,0 +1,10 @@
+module chunk
+
+fn char_kernel_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^char_kernel_type_atom } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

@@ -1,0 +1,5 @@
+module chunk
+
+fn string_is_empty(s: String) -> Bool {
+  is_empty(xs: s)
+}

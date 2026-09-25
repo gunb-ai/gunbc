@@ -1,0 +1,26 @@
+module chunk
+
+fn produced_decl_param_layout_tokens(
+  rows: ProducedDeclRenderRows,
+  edge: Edge,
+  layout: List<ProducedDeclParamSegment>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold_list(
+    xs: layout,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, segment) {
+      bind_outcome(
+        o: acc,
+        f: fn(so_far) {
+          bind_outcome(
+            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment),
+            f: fn(toks) {
+              outcome_accepted(value: list_append(left: so_far, right: toks))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

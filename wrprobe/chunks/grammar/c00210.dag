@@ -1,0 +1,7 @@
+module chunk
+
+type TerminalStampMode
+  = StampClass
+  | StampBinding { binding: Symbol }
+  | StampLexeme
+

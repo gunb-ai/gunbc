@@ -1,0 +1,10 @@
+module chunk
+
+fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^source_authority_port, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

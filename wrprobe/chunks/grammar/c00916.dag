@@ -1,0 +1,19 @@
+module chunk
+
+fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(
+        name: ^grammar_relation_field_production,
+        target: formal_production_to_node(production: row.production)
+      ),
+      grammar_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+      grammar_named_edge(name: ^grammar_relation_field_tokens, target: tokens)
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

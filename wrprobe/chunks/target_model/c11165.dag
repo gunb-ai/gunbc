@@ -1,0 +1,18 @@
+module chunk
+
+fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
+  if id == discriminant(v: TargetCollectionReprBTreeSet) {
+    optional_present(value: TargetCollectionReprBTreeSet)
+  } else {
+    if id == discriminant(v: TargetCollectionReprHashSet) {
+      optional_present(value: TargetCollectionReprHashSet)
+    } else {
+      if id == discriminant(v: TargetCollectionReprVec) {
+        optional_present(value: TargetCollectionReprVec)
+      } else {
+        optional_absent()
+      }
+    }
+  }
+}
+

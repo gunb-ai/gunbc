@@ -1,0 +1,5 @@
+module chunk
+
+type RebuildEmittedResult
+  = RebuildEmittedOk { emitted: Node, token_index: Int }
+

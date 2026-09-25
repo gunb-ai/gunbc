@@ -1,0 +1,16 @@
+module chunk
+
+fn parse_module_prepared_seeded(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> Outcome<ParseArtifact> {
+  parse_module_prepared_measured_seeded(
+    tokens: tokens,
+    prepared: prepared,
+    validation_residue: validation_residue,
+    seed: seed
+  ).outcome
+}
+

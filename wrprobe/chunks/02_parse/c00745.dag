@@ -1,0 +1,20 @@
+module chunk
+
+fn parse_table_empty(materialization: Materialization) -> ParseTable {
+  ParseTableRealization {
+    artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
+    provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
+    materialization: materialization,
+    grammar_digest: content_hash(n: grammar_empty_node()),
+    token_stream_digest: symbol_identity_digest(sym: ^parse_table_empty_token_stream),
+    entries: empty_map(),
+    memo_hits: 0,
+    memo_misses: 0,
+    memo_lookup_calls: 0,
+    nullable_set: std.algebra.Empty,
+    first_rows: empty_map(),
+    productions_by_name: empty_map(),
+    prepared_exprs: empty_map()
+  }
+}
+

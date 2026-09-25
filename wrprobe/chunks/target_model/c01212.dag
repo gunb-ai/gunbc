@@ -1,0 +1,6 @@
+module chunk
+
+fn canonical_operation_op_not() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^boolean_algebra_field_complement }
+}
+

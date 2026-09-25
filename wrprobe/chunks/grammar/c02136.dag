@@ -1,0 +1,19 @@
+module chunk
+
+fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: children,
+      empty: Empty,
+      cons: fn(acc, child) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: child }
+        )
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

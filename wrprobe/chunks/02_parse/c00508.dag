@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_table_memo_store_refused_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_table_memo_store_refused,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_table_memo_store_refused),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

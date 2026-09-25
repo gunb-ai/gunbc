@@ -1,0 +1,11 @@
+module chunk
+
+fn ordering_predicate_accepts(predicate: OrderingPredicate) -> List<Ordering> {
+  match predicate {
+    IsLess => [Less]
+    IsLessOrEqual => [Less, Equal]
+    IsGreater => [Greater]
+    IsGreaterOrEqual => [Equal, Greater]
+  }
+}
+

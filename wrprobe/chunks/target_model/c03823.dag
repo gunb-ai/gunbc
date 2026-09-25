@@ -1,0 +1,11 @@
+module chunk
+
+type TargetAtomRealization {
+  source_carrier: Node
+  target_model: TargetModel
+  type_form: TargetTypeExpression
+  value_form: TargetValueTemplate
+  constructor_form: Optional<TargetConstructorTemplate>
+  display_name: Symbol
+}
+

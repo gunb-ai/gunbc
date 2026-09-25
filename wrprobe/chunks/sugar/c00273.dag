@@ -1,0 +1,15 @@
+module chunk
+
+fn sugar_variants_form_coproduct(variants: FreeMonoid<Node>) -> Bool {
+  if length(xs: variants) >= 2 {
+    true
+  } else {
+    fold_list(xs: variants, empty: false, cons: fn(acc, v) {
+      acc || (match variant_declaration_edge_optional(n: sugar_unwrap_production_shell(node: v)) {
+        Present { value: _ } => true
+        Absent => false
+      })
+    })
+  }
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn validate_grammar_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^validate_grammar_port, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

@@ -1,0 +1,19 @@
+module chunk
+
+fn produced_decl_type_ref_tokens(
+  token_class: Symbol,
+  type_node: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      outcome_accepted(value: [BoundToken { token_class: token_class, binding: id }])
+    _ =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(
+          reason: ^produced_decl_render_type_shape_unsupported,
+          node: type_node
+        )
+      )
+  }
+}
+

@@ -1,0 +1,26 @@
+module chunk
+
+fn string_split(source: String, delimiter: FreeSemigroup<Char>) -> FreeMonoid<String> {
+  let delimiter_text = Cons { head: delimiter.head, tail: delimiter.tail }
+  let final_state = fold_source(
+    src: source,
+    algebra: SourceFold {
+      init: fn(src) {
+        StringSplitState { rest: src, field_reversed: Empty, fields_reversed: Empty }
+      },
+      step: fn(state) {
+        string_split_step(state: state, delimiter: delimiter_text)
+      },
+      is_done: fn(state) {
+        string_is_empty(s: state.rest)
+      }
+    }
+  )
+  list_reverse(
+    xs: Cons {
+      head: list_reverse(xs: final_state.field_reversed),
+      tail: final_state.fields_reversed
+    }
+  )
+}
+

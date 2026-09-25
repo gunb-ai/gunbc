@@ -1,0 +1,28 @@
+module chunk
+
+fn target_use_site_ownership_lookup_step(
+  acc: TargetUseSiteOwnershipLookup,
+  row: TargetUseSiteOwnershipRealization,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipLookup {
+  match target_use_site_ownership_source_key(
+    source_carrier: source_carrier,
+    projection: row.source_projection
+  ) {
+    Absent => acc
+    Present { value: source_key } =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_key)
+        && row.use_site == use_site
+      {
+        match acc {
+          TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipUnique { row: row }
+          TargetUseSiteOwnershipUnique { row: _ } => TargetUseSiteOwnershipAmbiguous
+          TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipAmbiguous
+        }
+      } else {
+        acc
+      }
+  }
+}
+

@@ -1,0 +1,14 @@
+module chunk
+
+fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+  match source.kind {
+    TypeNode { connective: Atom { identity: c } } =>
+      if c == ^char_kernel_type_atom {
+        optional_absent()
+      } else {
+        optional_present(source_atom_char(codepoint: code_point(c: c)))
+      }
+    _ => optional_absent()
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn target_representation_parameter_slot_empty() -> TargetRepresentationParameterSlot {
+  TargetRepresentationParameterSlot {}
+}
+

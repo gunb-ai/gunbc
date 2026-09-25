@@ -1,0 +1,24 @@
+module chunk
+
+fn compute_production_first_rows_round(
+  root: GrammarRoot,
+  nullable_set: List<Symbol>,
+  rows: Map<Symbol, List<FirstKey>>
+) -> Map<Symbol, List<FirstKey>> {
+  fold_list(
+    xs: root.productions,
+    empty: rows,
+    cons: fn(acc, p) {
+      map_insert(
+        m: acc,
+        key: p.name,
+        value: compute_production_first_row_terminals(
+          rows: acc,
+          p: p,
+          nullable_set: nullable_set
+        )
+      )
+    }
+  )
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+type TargetFunctionTypeShape {
+  surface: Symbol
+  open: Symbol
+  close: Symbol
+  arrow: Symbol
+  param_ident_token: Symbol
+  param_type_separator: Symbol
+  param_list_separator: Symbol
+}
+

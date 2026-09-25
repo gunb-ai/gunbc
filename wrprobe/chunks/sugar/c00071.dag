@@ -1,0 +1,7 @@
+module chunk
+
+data sugar_rule_type_alias_rhs: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs },
+  lowering: SugarFoldCoproductPipeChain {}
+}
+

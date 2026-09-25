@@ -1,0 +1,27 @@
+module chunk
+
+fn target_type_expr_emitted_wire_decode(
+  node: Node,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<TargetTypeExpression> {
+  match target_type_expr_emitted_kind(node: node) {
+    TypeExprKindAuthority { value: kind } =>
+      match target_type_expr_emitted_validate_wire_shape(
+        node: node,
+        kind: kind,
+        projection: projection
+      ) {
+        Accepted { value: _, diagnostics: d } =>
+          Accepted {
+            value: TargetTypeExpression { kind: kind, node: node },
+            diagnostics: d
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    TypeExprKindNotEmitted =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    TypeExprKindAuthorityInvalid =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+

@@ -1,0 +1,11 @@
+module chunk
+
+fn closure_probe_facts() -> List<NativeLaneSourceFacts> {
+  [
+    closure_fact(module: "v2.test.subject", path: ^src_v2_test_subject_test_dag, imports: ["v2.std.logic"]),
+    closure_fact(module: "v2.std.logic", path: ^src_v2_std_logic_dag, imports: []),
+    closure_fact(module: "v2.native_lane_fixture.control", path: ^src_v2_native_lane_fixture_control_dag, imports: []),
+    closure_fact(module: "v2.unrelated.outsider", path: ^src_v2_unrelated_outsider_dag, imports: ["v2.std.logic"])
+  ]
+}
+

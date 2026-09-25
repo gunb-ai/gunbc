@@ -1,0 +1,28 @@
+module chunk
+
+test fn an_absent_old_route_control_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: OldRouteControlAbsent,
+    emitted_build: base.emitted_build
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
+    cause_name: "old_route_control_never_installed"
+  )
+}
+
+

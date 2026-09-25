@@ -1,0 +1,26 @@
+module chunk
+
+fn target_atom_realization_catalog_lookup_step(
+  acc: PassingCandidateFold<Node>,
+  row_node: Node,
+  source_carrier: Node,
+  host_target_model: TargetModel
+) -> PassingCandidateFold<Node> {
+  match target_atom_realization_from_row_node(
+    row_node: row_node,
+    host_target_model: host_target_model
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+        match acc {
+          NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+          ManyPassingCandidates => ManyPassingCandidates
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => acc
+  }
+}
+

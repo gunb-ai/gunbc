@@ -1,0 +1,17 @@
+module chunk
+
+test fn duplicate_identities_are_detected_at_identity_grain() -> Bool {
+  let dup = test_identity(module: "v2.test.alpha", declaration: "passes")
+  !native_route_identities_unique(xs: [
+    dup,
+    test_identity(module: "v2.test.beta", declaration: "passes"),
+    dup
+  ])
+  && native_route_identities_unique(xs: [
+    test_identity(module: "v2.test.alpha", declaration: "passes"),
+    test_identity(module: "v2.test.alpha", declaration: "fails"),
+    test_identity(module: "v2.test.beta", declaration: "passes")
+  ])
+}
+
+

@@ -1,0 +1,8 @@
+module chunk
+
+type GrammarRoot {
+  start: Symbol
+  productions: List<GrammarProduction>
+  sync_tokens: List<Symbol>
+}
+

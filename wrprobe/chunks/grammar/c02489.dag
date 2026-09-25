@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_production_not_found,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

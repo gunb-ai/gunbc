@@ -1,0 +1,25 @@
+module chunk
+
+fn target_collection_realization_lookup_in_catalog(
+  catalog: FreeMonoid<TargetCollectionRealization>,
+  source_carrier: Node
+) -> Outcome<TargetCollectionRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetCollectionRealizationMissing,
+    cons: fn(acc, row) {
+      target_collection_realization_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier
+      )
+    }
+  ) {
+    TargetCollectionRealizationMissing =>
+      outcome_rejected(target_collection_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+    TargetCollectionRealizationUnique { row: row } => outcome_accepted(row)
+    TargetCollectionRealizationAmbiguous =>
+      outcome_rejected(target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+  }
+}
+

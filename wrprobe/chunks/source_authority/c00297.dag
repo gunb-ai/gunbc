@@ -1,0 +1,9 @@
+module chunk
+
+fn source_storage_identity_from_ref(ref: SourceRef) -> SourceStorageIdentity {
+  SourceStorageIdentity {
+    path: ref.path,
+    source_root: ref.source_root
+  }
+}
+

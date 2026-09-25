@@ -1,0 +1,6 @@
+module chunk
+
+type FormalGrammarSymbol
+  = FormalTerminalOccurrence { terminal: FormalTerminal, binding: Optional<Symbol> }
+  | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
+

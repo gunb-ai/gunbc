@@ -1,0 +1,15 @@
+module chunk
+
+test fn a_foreign_universe_member_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+      universe: [test_identity(module: "v2.compiler.compile", declaration: "not_a_test")],
+      module_source_index: [],
+      population: [passed_row(module: "v2.compiler.compile", declaration: "not_a_test")],
+      file_refusals: []
+    )),
+    cause_name: "universe_prefix_violations_present"
+  )
+}
+
+

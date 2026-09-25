@@ -1,0 +1,18 @@
+module chunk
+
+fn produced_decl_signature_with_open_from_rows(
+  rows: ProducedDeclRenderRows,
+  decl: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: produced_decl_subject_from_decl(decl: decl),
+    f: fn(subject) {
+      produced_decl_signature_segments_tokens(
+        rows: rows,
+        subject: subject,
+        segments: rows.signature
+      )
+    }
+  )
+}
+

@@ -1,0 +1,38 @@
+module chunk
+
+fn rebuild_emitted_from_production(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  tokens: List<ConcreteSyntaxToken>,
+  token_index: Int
+) -> Witness<RebuildEmittedResult> {
+  match fold_list(
+    xs: production.rhs,
+    empty: RebuildRhsWalkOk { children: Empty, token_index: token_index },
+    cons: fn(state, symbol) {
+      rebuild_emitted_rhs_walk_step(
+        state: state,
+        productions: productions,
+        tokens: tokens,
+        symbol: symbol
+      )
+    }
+  ) {
+    RebuildRhsWalkOk { children: children, token_index: end_index } =>
+      Holds {
+        value: RebuildEmittedOk {
+          emitted: rebuild_emitted_conj_node(children: children),
+          token_index: end_index
+        }
+      }
+    RebuildRhsWalkFail =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+

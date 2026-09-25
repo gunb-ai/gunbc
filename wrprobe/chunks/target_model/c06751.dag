@@ -1,0 +1,60 @@
+module chunk
+
+fn target_value_expr_match_arm_tokens(
+  arms: List<TargetValueExprMatchArmSlot>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match fold(
+    arms,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, arm) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: arm.pattern,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(pattern_tokens) {
+              bind_outcome(
+                o: target_value_expression_to_concrete_tokens(
+                  expr: arm.body,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(body_tokens) {
+                  let arm_chunk = concrete_syntax_tokens_extend(
+                    acc: concrete_syntax_tokens_snoc_fixed(
+                      acc: pattern_tokens,
+                      token_class: projection.match_form.fat_arrow
+                    ),
+                    more: body_tokens
+                  )
+                  if is_empty(xs: prior_tokens) {
+                    outcome_accepted(arm_chunk)
+                  } else {
+                    outcome_accepted(
+                      concrete_syntax_tokens_extend(
+                        acc: concrete_syntax_tokens_snoc_fixed(
+                          acc: prior_tokens,
+                          token_class: projection.match_form.arm_separator
+                        ),
+                        more: arm_chunk
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: tokens, diagnostics: d } => Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

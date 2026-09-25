@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_emitted_conj_slot_missing,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

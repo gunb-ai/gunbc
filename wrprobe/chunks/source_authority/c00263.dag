@@ -1,0 +1,8 @@
+module chunk
+
+type SourceIrArtifactProvenance {
+  node: Node
+  artifact: Artifact
+  span_index: SpanIndex
+}
+

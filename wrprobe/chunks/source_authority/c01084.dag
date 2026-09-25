@@ -1,0 +1,15 @@
+module chunk
+
+fn module_storage_agreement_step(
+  acc: ModuleStorageAgreement,
+  oracle_binding: ModuleStorageBinding,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  match acc {
+    ModuleStorageAgrees =>
+      module_storage_agreement_for_binding(oracle_binding: oracle_binding, host: host)
+    ModuleStorageDivergent { path: p } => ModuleStorageDivergent { path: p }
+    ModuleStorageUncovered { path: p } => ModuleStorageUncovered { path: p }
+  }
+}
+

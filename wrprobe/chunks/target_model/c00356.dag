@@ -1,0 +1,12 @@
+module chunk
+
+fn produced_decl_separator_tokens(separator: List<Symbol>) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: separator,
+    empty: Empty,
+    cons: fn(acc, tc) {
+      list_snoc_item(xs: acc, item: FixedToken { token_class: tc })
+    }
+  )
+}
+

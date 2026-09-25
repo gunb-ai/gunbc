@@ -1,0 +1,28 @@
+module chunk
+
+fn symbol_index_fill_module_roots(
+  index: SymbolIndex,
+  roots: FreeMonoid<ModuleBindingSource>
+) -> SymbolIndex {
+  symbol_index_fill_bindings_to_fixed_point(
+    index: fold_list(
+      xs: roots,
+      empty: index,
+      cons: fn(acc, tree) {
+        symbol_index_fill_module_declarations(
+          index: acc,
+          root: tree.root,
+          record_declarations: tree.record_declarations
+        )
+      }
+    ),
+    pending: fold_list(
+      xs: roots,
+      empty: Empty,
+      cons: fn(acc, tree) {
+        list_append(left: acc, right: symbol_index_pending_of_source(tree: tree))
+      }
+    )
+  )
+}
+

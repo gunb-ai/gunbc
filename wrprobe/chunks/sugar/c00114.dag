@@ -1,0 +1,16 @@
+module chunk
+
+fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
+  fold(sugar_rules(), init: no_sugar_rule(), f: fn(acc, rule) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sugar_key_matches(key: key, rule_key: rule.key) {
+          optional_present(value: rule)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+

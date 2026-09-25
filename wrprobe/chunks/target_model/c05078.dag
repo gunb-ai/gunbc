@@ -1,0 +1,34 @@
+module chunk
+
+fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<CanonicalOperation> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_operation {
+                match canonical_operation_from_wire_node(wire: e.target) {
+                  Accepted { value: canonical_op, diagnostics: _ } =>
+                    optional_present(value: canonical_op)
+                  Rejected { diagnostics: _ } => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: canonical_op } => outcome_accepted(canonical_op)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+

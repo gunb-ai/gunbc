@@ -1,0 +1,14 @@
+module chunk
+
+fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
+  fold_list(
+    xs: src,
+    empty: algebra.init(src),
+    cons: fn(acc, _) {
+      match algebra.is_done(acc) {
+        true => acc
+        false => acc
+      }
+    }
+  )
+}

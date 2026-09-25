@@ -1,0 +1,32 @@
+module chunk
+
+fn grammar_relation_row_forward_token_spine_selection(
+  frontier: List<Symbol>,
+  rules: Node
+) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      grammar_relation_forward_row_selection_outcome_emitted(
+        rules: rules,
+        selection: grammar_relation_row_forward_select(
+          rules: rules,
+          row_matches: fn(row) {
+            match grammar_relation_row_token_spine_classes(row: row) {
+              Rejected { diagnostics: _ } => false
+              Accepted { value: spine, diagnostics: _ } =>
+                zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y })
+            }
+          }
+        )
+      )
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^parse_tree_to_emitted_node_no_matching_row,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+

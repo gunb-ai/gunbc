@@ -1,0 +1,16 @@
+module chunk
+
+fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: n.children,
+    empty: match n.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        grammar_symbol_map_put(m: m, sym: id)
+      _ => m
+    },
+    cons: fn(acc, e) {
+      grammar_node_insert_atom_identities_child(m: acc, e: e)
+    }
+  )
+}
+

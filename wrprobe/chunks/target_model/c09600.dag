@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTypeExprKindProbe
+  = TypeExprKindAuthority { value: TargetTypeExprKind }
+  | TypeExprKindNotEmitted
+  | TypeExprKindAuthorityInvalid
+

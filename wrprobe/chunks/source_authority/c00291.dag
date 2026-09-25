@@ -1,0 +1,8 @@
+module chunk
+
+type SourceRef {
+  path: String
+  source_root: SourceRootRef
+  content_hash: ContentHash
+}
+

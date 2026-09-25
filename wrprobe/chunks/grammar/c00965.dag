@@ -1,0 +1,16 @@
+module chunk
+
+fn derive_grammar_relation_terminal_token_edges_step(
+  acc: List<Edge>,
+  symbol: FormalGrammarSymbol
+) -> List<Edge> {
+  match symbol {
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+      list_snoc_item(
+        xs: acc,
+        item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+      )
+    FormalNonterminalOccurrence { nonterminal: _ } => acc
+  }
+}
+

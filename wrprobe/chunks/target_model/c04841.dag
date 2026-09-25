@@ -1,0 +1,20 @@
+module chunk
+
+fn target_value_expr_callable_arg_edges(
+  args: List<TargetValueExpression>
+) -> List<Edge> {
+  fold_list_right(
+    xs: args,
+    empty: Empty,
+    snoc: fn(acc, arg) {
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_value_expr_field_callable_arg,
+          target: target_value_expression_node(expr: arg)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+

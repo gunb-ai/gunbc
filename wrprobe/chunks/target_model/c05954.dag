@@ -1,0 +1,11 @@
+module chunk
+
+fn target_value_expr_labeled_edge_head(labeled: List<Edge>) -> Optional<Edge> {
+  fold(labeled, init: optional_absent(), f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => optional_present(value: edge)
+    }
+  })
+}
+

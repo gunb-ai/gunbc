@@ -1,0 +1,16 @@
+module chunk
+
+fn decode_binding_ref_shape_bundle(bundle: Node) -> Outcome<TargetBindingRefShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_ident_token
+    ),
+    f: fn(ident_token) {
+      outcome_accepted(
+        TargetBindingRefShape { ident_token: ident_token }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,31 @@
+module chunk
+
+fn target_reference_layer_apply_type_emitted(
+  inner: Node,
+  layer: TargetReferenceLayer,
+  projection: TargetTypeExpressionProjection,
+  tokens: TargetReferenceLayerTokens
+) -> Node {
+  match layer {
+    ReferenceLayerOwned => inner
+    ReferenceLayerRc =>
+      target_type_expr_instantiation_emitted(
+        form: projection.instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: projection.atom_form,
+          identity: tokens.rc_type_head
+        ),
+        args: [inner]
+      )
+    ReferenceLayerBox =>
+      target_type_expr_instantiation_emitted(
+        form: projection.instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: projection.atom_form,
+          identity: tokens.box_type_head
+        ),
+        args: [inner]
+      )
+  }
+}
+

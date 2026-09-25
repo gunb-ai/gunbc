@@ -1,0 +1,7 @@
+module chunk
+
+type SlotResolutionScan {
+  index: Int
+  slots: List<EmittedProductionResolution>
+}
+

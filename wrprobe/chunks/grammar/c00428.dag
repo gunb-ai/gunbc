@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_formal_terminal_lexeme(identity: Symbol) -> FormalGrammarSymbol {
+  grammar_formal_terminal_bound(identity: identity, binding: ^grammar_lexeme_stamp_slot)
+}
+

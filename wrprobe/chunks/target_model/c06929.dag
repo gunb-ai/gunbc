@@ -1,0 +1,13 @@
+module chunk
+
+fn target_value_expr_match_is_int_bool_octet_channel(
+  scrutinee: TargetValueExpression,
+  arms: List<TargetValueExprMatchArmSlot>
+) -> Bool {
+  match scrutinee.kind {
+    TargetValueExprBindingRef =>
+      target_value_expr_match_arms_are_int_bool_octet_channel(arms: arms)
+    _ => false
+  }
+}
+

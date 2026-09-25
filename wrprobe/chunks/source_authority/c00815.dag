@@ -1,0 +1,18 @@
+module chunk
+
+fn module_storage_binding_from_read_with_model(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Outcome<ModuleStorageBinding> {
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      module_storage_binding_from_read_prepared(
+        source_read: source_read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      )
+  }
+}
+

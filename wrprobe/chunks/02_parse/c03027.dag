@@ -1,0 +1,13 @@
+module chunk
+
+fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: List<Symbol>) -> ParseSyncState {
+  match acc.found_sync {
+    true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
+    false =>
+      match contains(xs: sync_tokens, item: tok.class, eq: fn(a, b) { a == b }) {
+        true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: std.algebra.Empty, item: tok) }
+        false => ParseSyncState { found_sync: false, result: std.algebra.Empty }
+      }
+  }
+}
+

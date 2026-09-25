@@ -1,0 +1,10 @@
+module chunk
+
+type NodeArtifactProvenanceFoldState
+  = NodeArtifactProvenanceFoldOk {
+      provenance: FreeMonoid<NodeArtifactProvenance>
+    }
+  | NodeArtifactProvenanceFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
+

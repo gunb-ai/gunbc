@@ -1,0 +1,23 @@
+module chunk
+
+type PreparedChoicePlan
+  = ChoiceByToken {
+      on_token: Map<Symbol, PreparedChoicePlan>
+      on_other: PreparedChoicePlan
+      on_end: PreparedChoicePlan
+    }
+  | ChoiceSharedPrefix {
+      prefix: PreparedGrammarExpr
+      suffix: PreparedChoicePlan
+    }
+  | ChoiceTokenPrefix { rows: List<TokenPrefixRow> }
+  | ChoiceByWord {
+      on_word: Map<String, PreparedChoicePlan>
+      on_other: PreparedChoicePlan
+    }
+  | ChoiceOrderedBacktrack {
+      alternatives: List<PreparedGrammarExpr>
+    }
+  | ChoiceParseOne { expr: PreparedGrammarExpr }
+  | ChoiceReject
+

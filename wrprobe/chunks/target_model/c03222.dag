@@ -1,0 +1,21 @@
+module chunk
+
+fn decode_atom_type_shape_bundle(bundle: Node) -> Outcome<TargetAtomTypeShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: ^target_type_expr_field_ident_token
+        ),
+        f: fn(ident_token) {
+          outcome_accepted(
+            TargetAtomTypeShape { surface: surface, ident_token: ident_token }
+          )
+        }
+      )
+    }
+  )
+}
+

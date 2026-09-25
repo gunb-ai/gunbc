@@ -1,0 +1,19 @@
+module chunk
+
+fn symbol_index_fill_bindings_to_fixed_point(
+  index: SymbolIndex,
+  pending: FreeMonoid<PendingBinding>
+) -> SymbolIndex {
+  let round = symbol_index_bind_pending_round(index: index, pending: pending)
+  if is_empty(xs: round.deferred) {
+    round.index
+  } else if length(xs: round.deferred) == length(xs: pending) {
+    round.index
+  } else {
+    symbol_index_fill_bindings_to_fixed_point(
+      index: round.index,
+      pending: round.deferred
+    )
+  }
+}
+

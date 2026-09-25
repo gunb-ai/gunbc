@@ -1,0 +1,21 @@
+module chunk
+
+fn formal_production_rhs_in_alphabet(
+  nonterminals: PointwisePower<FormalNonterminal>,
+  terminals: PointwisePower<FormalTerminal>,
+  production: FormalProduction
+) -> Bool {
+  fold_list(
+    xs: production.rhs,
+    empty: true,
+    cons: fn(acc, symbol) {
+      acc
+        && formal_grammar_symbol_in_alphabet(
+          nonterminals: nonterminals,
+          terminals: terminals,
+          symbol: symbol
+        )
+    }
+  )
+}
+

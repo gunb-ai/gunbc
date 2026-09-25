@@ -1,0 +1,13 @@
+module chunk
+
+fn expr_first_fold_nonterminal(
+  name: Symbol,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>
+) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: production_first_row_lookup(rows: first_rows, name: name),
+    nullable: symbol_list_contains(xs: nullable_set, item: name)
+  }
+}
+

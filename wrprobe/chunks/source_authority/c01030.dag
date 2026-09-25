@@ -1,0 +1,8 @@
+module chunk
+
+fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
+  outcome_rejected(
+    d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
+  )
+}
+

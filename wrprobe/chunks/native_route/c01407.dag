@@ -1,0 +1,22 @@
+module chunk
+
+fn green_receipt_with_old_route_control(control: NativeRouteOldRouteControl) -> NativeRouteReceipt {
+  NativeRouteReceipt {
+    job: green_receipt().job,
+    tested_tree: green_receipt().tested_tree,
+    preparation_seed_identity: green_receipt().preparation_seed_identity,
+    emitted_closure_identity: green_receipt().emitted_closure_identity,
+    executable_path: green_receipt().executable_path,
+    executable_identity: green_receipt().executable_identity,
+    universe: green_receipt().universe,
+    module_source_index: green_receipt().module_source_index,
+    population: green_receipt().population,
+    file_refusals: green_receipt().file_refusals,
+    false_control: green_receipt().false_control,
+    true_control: green_receipt().true_control,
+    emitted_build: green_receipt().emitted_build,
+    malformed_control: green_receipt().malformed_control,
+    old_route_control: control
+  }
+}
+

@@ -1,0 +1,16 @@
+module chunk
+
+fn record_literal_type_naming_from_symbol(symbol: Symbol) -> Outcome<RecordLiteralTypeNaming> {
+  if symbol == ^record_literal_type_naming_prepend {
+    outcome_accepted(Prepend)
+  } else if symbol == ^record_literal_type_naming_omit {
+    outcome_accepted(Omit)
+  } else {
+    outcome_rejected(
+      target_value_expr_operand_wire_malformed_diagnostic(
+        wire: target_model_type_atom_node(identity: symbol)
+      )
+    )
+  }
+}
+

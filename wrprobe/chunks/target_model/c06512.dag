@@ -1,0 +1,53 @@
+module chunk
+
+fn target_value_expression_field_access_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_field_access_base_from_wire(wire: expr.node),
+        f: fn(base) {
+          bind_outcome(
+            o: target_value_expr_field_access_field_from_wire(wire: expr.node),
+            f: fn(field_name) {
+              bind_outcome(
+                o: target_value_expression_to_concrete_tokens(
+                  expr: base,
+                  projection: projection,
+                  catalog: catalog
+                ),
+                f: fn(base_tokens) {
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: base_tokens,
+                        right: Cons {
+                          head: FixedToken {
+                            token_class: projection.field_access_form.dot
+                          },
+                          tail: Empty
+                        }
+                      ),
+                      right: Cons {
+                        head: target_value_expression_binding_ref_token(
+                          binding: field_name,
+                          projection: projection
+                        ),
+                        tail: Empty
+                      }
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

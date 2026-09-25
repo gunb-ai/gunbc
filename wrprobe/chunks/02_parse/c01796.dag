@@ -1,0 +1,11 @@
+module chunk
+
+type PreparedGrammarExpr
+  = PreparedTerminal { token_class: Symbol, stamp: TerminalStampMode }
+  | PreparedLiteralTerminal { token_class: Symbol, lexeme: Symbol }
+  | PreparedNonterminal { production: Symbol }
+  | PreparedSequence { left: PreparedGrammarExpr, right: PreparedGrammarExpr }
+  | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
+  | PreparedOptional { element: PreparedGrammarExpr }
+  | PreparedRepeat { element: PreparedGrammarExpr }
+

@@ -1,0 +1,27 @@
+module chunk
+
+fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<Bool> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expression_field_value {
+                target_value_expr_bool_literal_value_from_atom(node: edge.target)
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: b } => optional_present(value: b)
+    Absent => optional_absent()
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+

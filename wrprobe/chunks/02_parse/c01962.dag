@@ -1,0 +1,22 @@
+module chunk
+
+fn choice_alts_nullable(alts: List<PreparedExprFold>) -> List<PreparedExprFold> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      let first = prepared_expr_fold_first(alt: alt)
+      let more = match list_tail(xs: alts) {
+        TailAbsent => std.algebra.Empty
+        TailFound { tail: rest } => choice_alts_nullable(alts: rest)
+      }
+      list_append(
+        left: if first.nullable {
+          Cons { head: alt, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        },
+        right: more
+      )
+  }
+}
+

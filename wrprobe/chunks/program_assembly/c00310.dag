@@ -1,0 +1,36 @@
+module chunk
+
+fn program_assembly_read_to_normalized_root_seeded(
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> ProgramAssemblySeededReadResult {
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lm: lm),
+    f: fn(token_stream) {
+      parse_module_prepared_seeded(
+        tokens: token_stream,
+        prepared: prepared,
+        validation_residue: residue,
+        seed: seed
+      )
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      ProgramAssemblySeededReadResult {
+        alloc: seed,
+        spans: span_index_empty(),
+        produced: Rejected { diagnostics: d }
+      }
+    Accepted { value: artifact, diagnostics: od } =>
+      ProgramAssemblySeededReadResult {
+        alloc: artifact.alloc,
+        spans: artifact.span_index,
+        produced: bind_outcome_accepted(od: od, inner: normalize(parse_tree: artifact.tree))
+      }
+  }
+}
+
+

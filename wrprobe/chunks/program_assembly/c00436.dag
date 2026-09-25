@@ -1,0 +1,35 @@
+module chunk
+
+fn program_assembly_fold_ingest_located(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> ProgramAssemblyLocatedFoldState {
+  match ingest {
+    Empty =>
+      ProgramAssemblyLocatedFoldOk {
+        located: program_assembly_empty_located_roots(),
+        index: source_root_index_empty(),
+        alloc: occurrence_id_allocator_initial(),
+        spans: span_index_empty()
+      }
+    _ =>
+      match prepare_grammar(grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
+        Accepted { value: prepared, diagnostics: residue } =>
+          fold_list(
+            xs: ingest,
+            empty: ProgramAssemblyLocatedFoldOk {
+              located: program_assembly_empty_located_roots(),
+              index: source_root_index_empty(),
+              alloc: occurrence_id_allocator_initial(),
+              spans: span_index_empty()
+            },
+            cons: fn(state, read) {
+              program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
+            }
+          )
+      }
+  }
+}
+

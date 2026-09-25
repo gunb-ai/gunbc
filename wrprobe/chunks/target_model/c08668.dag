@@ -1,0 +1,13 @@
+module chunk
+
+fn target_atom_realization_catalog_snoc_edge(
+  acc: List<Edge>,
+  row: TargetAtomRealization,
+  host_bundle: Node
+) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: target_atom_realization_catalog_edge(row: row, host_bundle: host_bundle)
+  )
+}
+

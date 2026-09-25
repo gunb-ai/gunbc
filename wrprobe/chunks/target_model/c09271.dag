@@ -1,0 +1,10 @@
+module chunk
+
+type TargetTypeExprKind
+  = TargetTypeExprAtom
+  | TargetTypeExprInstantiation
+  | TargetTypeExprCardinality
+  | TargetTypeExprRecord
+  | TargetTypeExprSum
+  | TargetTypeExprArrow
+

@@ -1,0 +1,15 @@
+module chunk
+
+fn normalized_source_ast_equal_witness(
+  original: NormalizedDagSourceAst,
+  reparsed: NormalizedDagSourceAst
+) -> Witness<NormalizedSourceAstEqual> {
+  if source_authority_node_equal(left: original.tree.root, right: reparsed.tree.root) {
+    Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
+  } else {
+    Violates {
+      diagnostic: source_authority_diagnostic(reason: ^source_authority_normalized_ast_mismatch)
+    }
+  }
+}
+

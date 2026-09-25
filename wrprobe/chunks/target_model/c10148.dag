@@ -1,0 +1,13 @@
+module chunk
+
+fn target_type_expr_sum_emitted(
+  form: TargetSumTypeShape,
+  variants: List<TargetTypeExprVariantSlot>
+) -> Node {
+  target_type_expr_wrapped_emitted_labeled(
+    kind: TargetTypeExprSum,
+    surface: form.surface,
+    slot_edges: target_type_expr_variant_slot_edges(variants: variants)
+  )
+}
+

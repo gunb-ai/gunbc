@@ -1,0 +1,10 @@
+module chunk
+
+fn default_admits(module_qn: String) -> Bool {
+  match native_route_identity_label(module_qn: module_qn, declaration: "any_declaration") {
+    LabelRefused { cause: _ } => false
+    LabelParsed { label: label } =>
+      target_pattern_matches(pattern: native_route_default_pattern(), target: label)
+  }
+}
+

@@ -1,0 +1,14 @@
+module chunk
+
+fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
+  let rows = type_expr_projection_connective_rows(projection: projection)
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: rows.children,
+      right: target_type_expr_declaration_reference_form_node(form: projection.declaration_reference_form)
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

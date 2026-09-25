@@ -1,0 +1,29 @@
+module chunk
+
+fn assemble_program_from_ingest_located(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  lm: LanguageModel
+) -> IngestAssembly {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
+      IngestAssembly { spans: spans, program: Rejected { diagnostics: d } }
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans } =>
+      IngestAssembly {
+        spans: spans,
+        program: bind_outcome(
+          o: validate_module_roots(roots: list_map(xs: located, f: fn(item) { item.tree })),
+          f: fn(validated_roots) {
+            resolve_with_admission_grounded(
+              lm: lm,
+              roots: validated_roots.roots,
+              admission: admission,
+              index: idx,
+              active_roots: source_root_set_from_ingest(ingest: ingest)
+            )
+          }
+        )
+      }
+  }
+}
+

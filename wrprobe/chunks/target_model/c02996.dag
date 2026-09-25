@@ -1,0 +1,32 @@
+module chunk
+
+fn decode_vep_chain_record_construct(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape,
+  loop_form: TargetLoopShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_record_construct(bundle: bundle),
+    f: fn(record_construct_form) {
+      decode_vep_chain_field_access(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form,
+        loop_form: loop_form,
+        record_construct_form: record_construct_form
+      )
+    }
+  )
+}
+

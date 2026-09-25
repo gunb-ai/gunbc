@@ -1,0 +1,27 @@
+module chunk
+
+fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
+  fold_list(
+    xs: all_tokens,
+    empty: symbol_identity_digest(sym: ^parse_token_stream_digest_nil),
+    cons: fn(acc, tok) {
+      combine_hash(
+        a: acc,
+        b: combine_hash(
+          a: combine_hash(
+            a: symbol_identity_digest(sym: tok.class),
+            b: symbol_identity_digest(sym: tok.file)
+          ),
+          b: combine_hash(
+            a: combine_hash(
+              a: integer_int_content_digest(value: tok.start),
+              b: integer_int_content_digest(value: tok.end)
+            ),
+            b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: tok.lexeme))
+          )
+        )
+      )
+    }
+  )
+}
+

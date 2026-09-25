@@ -1,0 +1,11 @@
+module chunk
+
+fn ordering_predicate_wire_symbol(predicate: OrderingPredicate) -> Symbol {
+  match predicate {
+    IsLess => ^ordering_predicate_is_less
+    IsLessOrEqual => ^ordering_predicate_is_less_or_equal
+    IsGreater => ^ordering_predicate_is_greater
+    IsGreaterOrEqual => ^ordering_predicate_is_greater_or_equal
+  }
+}
+

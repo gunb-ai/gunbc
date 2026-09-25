@@ -1,0 +1,9 @@
+module chunk
+
+fn smoke_identity() -> NativeRouteTestIdentity {
+  test_identity(
+    module: "v2.test.native_lane_smoke",
+    declaration: "native_route_positive_population_smoke"
+  )
+}
+

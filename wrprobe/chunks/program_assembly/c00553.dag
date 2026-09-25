@@ -1,0 +1,7 @@
+module chunk
+
+type IngestAssembly {
+  spans: SpanIndex,
+  program: Outcome<Node>
+}
+

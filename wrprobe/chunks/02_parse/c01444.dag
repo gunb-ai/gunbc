@@ -1,0 +1,11 @@
+module chunk
+
+fn compute_nullable_set(root: GrammarRoot) -> List<Symbol> {
+  compute_nullable_fixpoint(
+    root: root,
+    ns: std.algebra.Empty,
+    seen_count: 0,
+    fuel: length(xs: root.productions)
+  )
+}
+

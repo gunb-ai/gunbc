@@ -1,0 +1,11 @@
+module chunk
+
+fn source_root_ref_transport_coverage_admits(coverage: SourceRootCoverage) -> Bool {
+  match coverage {
+    SourceRootCoverageComplete => true
+    SourceRootManifestElided { read_count: _, cap: _ } => true
+    SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+    SourceRootManifestAbsent => false
+  }
+}
+

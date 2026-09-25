@@ -1,0 +1,3 @@
+module chunk
+
+fn token_prefix_row_prefix(row: TokenPrefixRow) -> List<Symbol> { row.prefix }

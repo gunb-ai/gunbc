@@ -1,0 +1,21 @@
+module chunk
+
+fn target_external_authority_bundle_node(authority: ExternalAuthority) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_external_authority_field_uri_scheme,
+        target: target_model_type_atom_node(
+          identity: target_uri_scheme_discriminant(scheme: authority.uri.scheme)
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_external_authority_field_uri_locator,
+        target: target_model_type_atom_node(
+          identity: symbol_intern_lexeme(lexeme: authority.uri.locator)
+        )
+      )
+    ]
+  )
+}
+

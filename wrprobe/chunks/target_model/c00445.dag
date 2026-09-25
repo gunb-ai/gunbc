@@ -1,0 +1,30 @@
+module chunk
+
+fn produced_decl_signature_segments_tokens(
+  rows: ProducedDeclRenderRows,
+  subject: ProducedDeclSignatureSubject,
+  segments: List<ProducedDeclSignatureSegment>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold_list(
+    xs: segments,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, segment) {
+      bind_outcome(
+        o: acc,
+        f: fn(so_far) {
+          bind_outcome(
+            o: produced_decl_signature_segment_tokens(
+              rows: rows,
+              subject: subject,
+              segment: segment
+            ),
+            f: fn(toks) {
+              outcome_accepted(value: list_append(left: so_far, right: toks))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

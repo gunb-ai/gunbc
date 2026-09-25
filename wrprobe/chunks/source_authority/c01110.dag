@@ -1,0 +1,27 @@
+module chunk
+
+fn module_storage_module_for_path(
+  index: ModuleStorageIndex,
+  file_path: String
+) -> Optional<QualifiedName> {
+  fold_list(
+    xs: index,
+    empty: optional_absent(),
+    cons: fn(found, binding) {
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent =>
+          match module_storage_binding_file_path(binding: binding) {
+            Present { value: p } =>
+              if p == file_path {
+                optional_present(value: module_storage_binding_module(binding: binding))
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
+      }
+    }
+  )
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn serialize_type_expr_arrow_param_spelling(
+  target: TargetModel,
+  label: Symbol
+) -> Outcome<String> {
+  target_binding_spelling_lookup(target: target, binding: label)
+}
+

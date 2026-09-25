@@ -1,0 +1,12 @@
+module chunk
+
+fn production_first_rows_total(root: GrammarRoot, rows: Map<Symbol, List<FirstKey>>) -> Int {
+  fold_list(
+    xs: root.productions,
+    empty: 0,
+    cons: fn(acc, p) {
+      acc + length(xs: production_first_row_lookup(rows: rows, name: p.name))
+    }
+  )
+}
+

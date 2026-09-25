@@ -1,0 +1,5 @@
+module chunk
+
+type DiscoveredSourceRefsDigestUnavailableCause
+  = DiscoveredSourceRefsDigestNoRefList { reason: String }
+

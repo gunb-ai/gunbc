@@ -1,0 +1,28 @@
+module chunk
+
+fn parse_stamp_derived_conj(
+  cap1: Node,
+  cap2: Node,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let from = parse_minted_id_list(nodes: [cap1, cap2])
+  let event = DerivedBy { producer: ^parse_stage_producer, from: from }
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseStampResult {
+    node: node_with_occurrence_id(
+      kind: TypeNode { connective: Conj },
+      children: [
+        grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
+        grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
+      ],
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+    ),
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
+  }
+}
+

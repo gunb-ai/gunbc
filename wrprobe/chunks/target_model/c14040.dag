@@ -1,0 +1,49 @@
+module chunk
+
+fn target_value_expr_match_arm_slot_from_arm_edge(
+  arrow: Node,
+  arm_edge: Edge,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExprMatchArmSlot> {
+  bind_outcome(
+    o: find_named_child(root: arm_edge.target, name: match_arm_pattern),
+    f: fn(pattern_node) {
+      bind_outcome(
+        o: find_named_child(root: arm_edge.target, name: match_arm_body),
+        f: fn(body_node) {
+          bind_outcome(
+            o: target_value_expr_project_body_subexpression(
+              arrow: arrow,
+              node: pattern_node,
+              target: target,
+              source_bool_form: source_bool_form,
+              handle_transform: handle_transform
+            ),
+            f: fn(projected_pattern) {
+              bind_outcome(
+                o: target_value_expr_project_body_subexpression(
+                  arrow: arrow,
+                  node: body_node,
+                  target: target,
+                  source_bool_form: source_bool_form,
+                  handle_transform: handle_transform
+                ),
+                f: fn(projected_body) {
+                  outcome_accepted(
+                    TargetValueExprMatchArmSlot {
+                      pattern: projected_pattern,
+                      body: projected_body
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

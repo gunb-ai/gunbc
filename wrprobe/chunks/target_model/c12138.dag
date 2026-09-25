@@ -1,0 +1,43 @@
+module chunk
+
+fn target_use_site_ownership_reference_catalog_lookup(
+  catalog: Node,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetCarrierOwnership> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: TargetUseSiteOwnershipCatalogMissing,
+        f: fn(acc, e) {
+          target_use_site_ownership_catalog_lookup_step(
+            acc: acc,
+            edge: e,
+            source_carrier: source_carrier,
+            use_site: use_site
+          )
+        }
+      ) {
+        TargetUseSiteOwnershipCatalogMissing =>
+          outcome_rejected(target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier))
+        TargetUseSiteOwnershipCatalogUnique { row: row } =>
+          outcome_accepted(CarrierOwnershipByReference { realization: row })
+        TargetUseSiteOwnershipCatalogAmbiguous =>
+          outcome_rejected(target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+        TargetUseSiteOwnershipCatalogInvalid =>
+          outcome_rejected(
+            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+  }
+}
+

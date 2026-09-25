@@ -1,0 +1,13 @@
+module chunk
+
+fn target_type_expr_emitted_labeled_slot_nodes(node: Node) -> Outcome<List<Node>> {
+  if is_empty(xs: node_positional_child_targets(node: node)) {
+    Accepted {
+      value: target_type_expr_emitted_slot_type_nodes(node: node),
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+

@@ -1,0 +1,48 @@
+module chunk
+
+fn canonical_dag_source_parse_print_law(
+  source: Medium<String>,
+  canonical_source_target: TargetModel
+) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
+  bind_outcome(
+    o: parse_dag_source_ast(source: source),
+    f: fn(original_ast) {
+      bind_outcome(
+        o: semantic_ir_from_ast_with_model(
+          ast: original_ast,
+          lm: dag_language_model()
+        ),
+        f: fn(original_ir) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: canonical_source_target,
+              emitted: original_ir.tree
+            ),
+            f: fn(canonical_source) {
+              bind_outcome(
+                o: target_serialize_source_from_model(
+                  target: canonical_source_target,
+                  emitted: original_ir.tree
+                ),
+                f: fn(canonical_source_again) {
+                  bind_outcome(
+                    o: parse_dag_source_ast(source: canonical_source),
+                    f: fn(reparsed_ast) {
+                      canonical_dag_source_emission_law_from_parts(
+                        original_ast: original_ast,
+                        canonical_source_first: canonical_source,
+                        canonical_source_second: canonical_source_again,
+                        reparsed_ast: reparsed_ast
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

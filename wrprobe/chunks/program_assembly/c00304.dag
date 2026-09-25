@@ -1,0 +1,8 @@
+module chunk
+
+type ProgramAssemblySeededReadResult {
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex,
+  produced: Outcome<NormalizedTree>
+}
+

@@ -1,0 +1,20 @@
+module chunk
+
+fn target_atom_realization_display_name_from_row(
+  row_node: Node,
+  source_carrier: Node
+) -> Outcome<Symbol> {
+  match target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_atom_realization_field_display_name
+  ).kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ =>
+      outcome_rejected(
+        target_atom_realization_display_name_decode_invalid_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+  }
+}
+

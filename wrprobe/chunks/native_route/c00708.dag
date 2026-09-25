@@ -1,0 +1,9 @@
+module chunk
+
+test fn an_empty_universe_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(universe: [], module_source_index: [], population: [], file_refusals: [])),
+    cause_name: "universe_underived"
+  )
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+test fn the_reference_is_the_floor_rosters_joined_at_the_identity() -> Bool {
+  match native_route_reference_for(qualified: "v2.test.alpha.red", expected_red: ["v2.test.alpha.red"], route_gap: []) {
+    FloorExpectedRed => true
+    FloorExpectedPass => false
+    FloorRouteGapRefusal => false
+  }
+}
+

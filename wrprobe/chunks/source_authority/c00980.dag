@@ -1,0 +1,18 @@
+module chunk
+
+fn module_storage_parsed_binding(
+  module: QualifiedName,
+  artifact: Artifact,
+  span_index: SpanIndex,
+  source_root: SourceRootRef
+) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: module,
+    provenance: ParsedFromSource {
+      artifact: artifact,
+      span_index: span_index
+    },
+    source_root: source_root
+  }
+}
+

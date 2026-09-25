@@ -1,0 +1,8 @@
+module chunk
+
+fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
+  FormalNonterminalOccurrence {
+    nonterminal: FormalNonterminal { identity: identity }
+  }
+}
+

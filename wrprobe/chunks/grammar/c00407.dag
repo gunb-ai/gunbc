@@ -1,0 +1,4 @@
+module chunk
+
+data grammar_free_name_slot_binding: Symbol = ^grammar_free_name_slot
+

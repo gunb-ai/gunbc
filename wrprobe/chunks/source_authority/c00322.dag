@@ -1,0 +1,6 @@
+module chunk
+
+type SourceRefContentHashStructural
+  = SourceRefContentHashStructuralOk { digest: Fnv1a64Structural }
+  | SourceRefContentHashStructuralNonFnv1a64
+

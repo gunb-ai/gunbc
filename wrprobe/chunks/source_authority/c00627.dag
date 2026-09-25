@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_dag_source_ast(source: Medium<String>) -> Outcome<DagSourceAst> {
+  parse_dag_source_ast_with_model(
+    source: source,
+    compilation_unit: ^source_authority_port,
+    lm: dag_language_model()
+  )
+}
+

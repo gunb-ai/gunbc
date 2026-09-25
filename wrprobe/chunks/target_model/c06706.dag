@@ -1,0 +1,30 @@
+module chunk
+
+fn target_value_expr_match_arms_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExprMatchArmSlot>> {
+  match fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: arms, diagnostics: d } =>
+          match edge.label {
+            Named { name: _ } => acc
+            Positional =>
+              bind_outcome(
+                o: target_value_expr_match_arm_slot_from_wire(arm_wire: edge.target),
+                f: fn(arm) {
+                  outcome_accepted(list_snoc_item(xs: arms, item: arm))
+                }
+              )
+          }
+      }
+    }
+  ) {
+    Accepted { value: arms, diagnostics: d } => Accepted { value: arms, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

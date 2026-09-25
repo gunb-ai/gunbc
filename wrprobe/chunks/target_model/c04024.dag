@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_template_for_kind(kind: TargetValueTemplateKind) -> TargetValueTemplate {
+  TargetValueTemplate {
+    kind: kind,
+    node: target_value_template_tag_node(kind: kind)
+  }
+}
+

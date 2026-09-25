@@ -1,0 +1,12 @@
+module chunk
+
+fn target_function_signature_realization_catalog_snoc_edge(
+  acc: List<Edge>,
+  row: TargetFunctionSignatureRealization
+) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: target_function_signature_realization_catalog_edge(row: row)
+  )
+}
+

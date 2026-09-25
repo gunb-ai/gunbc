@@ -1,0 +1,11 @@
+module chunk
+
+test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
+  match native_lane_declared_module_name(
+    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
+  ) {
+    Present { value: declared } => declared == "v2.test.subject"
+    Absent => false
+  }
+}
+

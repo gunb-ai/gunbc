@@ -1,0 +1,11 @@
+module chunk
+
+fn refused_chain(class_reason: Symbol, fatal_reason: Symbol, at_prepare: Bool) -> Optional<NativeTestVerdict> {
+  Present {
+    value: NativeTestRefused {
+      stage: if at_prepare { NativeTestStagePrepare } else { NativeTestStageContext },
+      diagnostics: NonEmptyDiagnostics { head: chain_diagnostic(reason: class_reason), tail: [chain_diagnostic(reason: fatal_reason)] }
+    }
+  }
+}
+

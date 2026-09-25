@@ -1,0 +1,12 @@
+module chunk
+
+fn target_value_expr_wire_atom_identity(wire: Node) -> Outcome<Symbol> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ =>
+      outcome_rejected(
+        target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+

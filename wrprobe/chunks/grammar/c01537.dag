@@ -1,0 +1,23 @@
+module chunk
+
+fn lhs_exact_production_match_fold_step(
+  acc: LhsExactProductionMatchFold,
+  resolution: EmittedProductionResolution,
+  lhs: Symbol,
+  candidate: FormalProduction
+) -> LhsExactProductionMatchFold {
+  if formal_production_matches_lhs_and_slot_count(
+    production: candidate,
+    lhs: lhs,
+    emitted_slot_count: emitted_node_slot_count(emitted: resolution.emitted)
+  ) {
+    match acc {
+      LhsExactProductionMatchNone => LhsExactProductionMatchOne { production: candidate }
+      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
+      LhsExactProductionMatchMany => LhsExactProductionMatchMany
+    }
+  } else {
+    acc
+  }
+}
+

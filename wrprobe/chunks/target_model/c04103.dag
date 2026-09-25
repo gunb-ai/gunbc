@@ -1,0 +1,30 @@
+module chunk
+
+fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprCharUnicodeScalar,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_char_unicode_scalar_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expression_field_codepoint,
+          target: Node {
+            kind: TypeNode {
+              connective: Atom {
+                identity: symbol_intern_lexeme(
+                  lexeme: chars_to_string(chars: list_snoc_item(xs: Empty, item: codepoint), start: 0, end: 1)
+                )
+              }
+            },
+            children: [],
+            occurrence_id: OccurrenceSynthetic
+}
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

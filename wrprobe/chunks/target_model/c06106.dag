@@ -1,0 +1,10 @@
+module chunk
+
+fn target_import_empty_path_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^target_import_path_empty,
+    at: invariant_port_locus(port: ^target_import_render_port, invariant: ^target_import_path_empty),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

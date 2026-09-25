@@ -1,0 +1,14 @@
+module chunk
+
+fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: ^formal_terminal_identity_node_projection, target: grammar_atom(identity: terminal.identity))
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

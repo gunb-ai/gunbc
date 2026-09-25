@@ -1,0 +1,13 @@
+module chunk
+
+fn parse_memo_recurrence_census(root: GrammarRoot, nullable_set: List<Symbol>) -> ParseMemoRecurrence {
+  ParseMemoRecurrence {
+    discarding_backtrack_sites: fold_list(
+      xs: root.productions,
+      empty: 0,
+      cons: fn(acc, p) { acc + expr_parse_demand_fold(expr: p.expression).discarding_sites }
+    ),
+    nullable_nonterminals: length(xs: nullable_set)
+  }
+}
+

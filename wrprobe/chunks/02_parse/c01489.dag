@@ -1,0 +1,17 @@
+module chunk
+
+fn first_key_overlaps(left: FirstKey, right: FirstKey) -> Bool {
+  if first_key_class(key: left) == first_key_class(key: right) {
+    match left {
+      FirstAnyOfClass { token_class: _ } => true
+      FirstExactWord { token_class: _, lexeme: lw } =>
+        match right {
+          FirstAnyOfClass { token_class: _ } => true
+          FirstExactWord { token_class: _, lexeme: rw } => lw == rw
+        }
+    }
+  } else {
+    false
+  }
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_expr_match_scrutinee_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(
+    wire: wire,
+    field: ^target_value_expr_field_match_scrutinee
+  )
+}
+

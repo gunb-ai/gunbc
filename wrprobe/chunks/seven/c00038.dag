@@ -1,0 +1,9 @@
+module chunk
+
+fn g_parse_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn production_first_row_lookup(rows: Map<Symbol, List<FirstKey>>, name: Symbol) -> List<FirstKey> {
+  match v2.std.collection.map_get(m: rows, key: name) {
+    Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
+    Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
+    Rejected { diagnostics: _ } => grammar_empty_terminal_list()
+  }
+}
+

@@ -1,0 +1,8 @@
+module chunk
+
+fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
+  content_hash(
+    n: grammar_to_node(grammar: ModeledGrammar { root: validated.root })
+  )
+}
+

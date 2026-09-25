@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_expr_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampLexeme }
+}
+

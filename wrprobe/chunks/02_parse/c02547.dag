@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_demand_fold_site(attempted: ParseDemandFold) -> Int {
+  if attempted.demands_nonterminal { 1 } else { 0 }
+}
+

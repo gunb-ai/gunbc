@@ -1,0 +1,16 @@
+module chunk
+
+fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<Edge>> {
+  fold_list(
+    xs: variants,
+    empty: outcome_accepted(std.algebra.Empty),
+    cons: fn(acc_outcome, variant) {
+      bind_outcome(o: acc_outcome, f: fn(edges) {
+        bind_outcome(o: sugar_variant_to_disj_edge(variant_node: variant), f: fn(edge) {
+          outcome_accepted(list_snoc_item(xs: edges, item: edge))
+        })
+      })
+    }
+  )
+}
+

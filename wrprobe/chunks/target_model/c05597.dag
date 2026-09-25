@@ -1,0 +1,49 @@
+module chunk
+
+fn bind_let_statement_sequenced_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>,
+  return_token: Symbol,
+  statement_terminator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: list_append(
+              left: [
+                FixedToken { token_class: projection.primitive_apply_form.open },
+                FixedToken { token_class: projection.closure_form.fn_token },
+                FixedToken { token_class: projection.closure_form.open },
+                FixedToken { token_class: projection.closure_form.close },
+                FixedToken { token_class: projection.closure_form.body_open },
+                FixedToken { token_class: projection.let_form.let_token }
+              ],
+              right: key_tokens
+            ),
+            right: [
+              FixedToken { token_class: projection.let_form.assign_token }
+            ]
+          ),
+          right: value_tokens
+        ),
+        right: [
+          FixedToken { token_class: statement_terminator },
+          FixedToken { token_class: return_token }
+        ]
+      ),
+      right: body_tokens
+    ),
+    right: [
+      FixedToken { token_class: statement_terminator },
+      FixedToken { token_class: projection.closure_form.body_close },
+      FixedToken { token_class: projection.primitive_apply_form.close },
+      FixedToken { token_class: projection.primitive_apply_form.open },
+      FixedToken { token_class: projection.primitive_apply_form.close }
+    ]
+  )
+}
+

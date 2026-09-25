@@ -1,0 +1,15 @@
+module chunk
+
+fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
+  fold_list(
+    xs: children,
+    empty: Empty,
+    cons: fn(acc, child) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge { label: Positional, target: child }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+type TargetTypeExprNamedMetadataFold
+  = NamedMetadataFoldMalformed
+  | NamedMetadataFoldOk { kind_seen: Bool, surface_seen: Bool, extra_named: Int }
+

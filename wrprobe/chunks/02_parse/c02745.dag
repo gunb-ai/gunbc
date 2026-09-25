@@ -1,0 +1,16 @@
+module chunk
+
+fn left_corner_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, name) {
+      if contains(xs: acc, item: name, eq: fn(a, b) { a == b }) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: name)
+      }
+    }
+  )
+}
+

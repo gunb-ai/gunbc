@@ -1,0 +1,26 @@
+module chunk
+
+test fn an_unattributed_exclusion_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+      universe: [
+        test_identity(module: "v2.test.alpha", declaration: "passes"),
+        test_identity(module: "v2.test.beta", declaration: "blocked")
+      ],
+      module_source_index: [],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        refused_row(
+          module: "v2.test.beta",
+          declaration: "blocked",
+          stage: NativeTestStagePrepare,
+          reason: ^some_unowned_cause
+        )
+      ],
+      file_refusals: []
+    )),
+    cause_name: "unattributed_exclusions_present"
+  )
+}
+
+

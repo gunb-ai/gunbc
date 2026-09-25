@@ -1,0 +1,45 @@
+module chunk
+
+fn decode_block_evaluation_mode(bundle: Node) -> Outcome<BlockEvaluationMode> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_block_eval_kind
+    ),
+    f: fn(kind) {
+      if kind == ^block_evaluation_mode_value_producing {
+        outcome_accepted(ValueProducing)
+      } else if kind == ^block_evaluation_mode_statement_sequenced {
+        bind_outcome(
+          o: projection_bundle_symbol_field(
+            bundle: bundle,
+            field: ^target_value_expr_field_block_eval_return_token
+          ),
+          f: fn(return_token) {
+            bind_outcome(
+              o: projection_bundle_symbol_field(
+                bundle: bundle,
+                field: ^target_value_expr_field_block_eval_terminator
+              ),
+              f: fn(statement_terminator) {
+                outcome_accepted(
+                  StatementSequenced {
+                    return_token: return_token,
+                    statement_terminator: statement_terminator
+                  }
+                )
+              }
+            )
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(
+            wire: bundle
+          )
+        )
+      }
+    }
+  )
+}
+

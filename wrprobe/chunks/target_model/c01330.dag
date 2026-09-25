@@ -1,0 +1,6 @@
+module chunk
+
+type TargetLoopShape {
+  loop_token: Symbol
+}
+

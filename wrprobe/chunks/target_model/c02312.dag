@@ -1,0 +1,30 @@
+module chunk
+
+fn decode_bind_let_shape_bundle(bundle: Node) -> Outcome<TargetBindLetShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_let_token),
+    f: fn(let_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: ^target_value_expr_field_assign_token
+        ),
+        f: fn(assign_token) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_in_token),
+            f: fn(in_token) {
+              outcome_accepted(
+                TargetBindLetShape {
+                  let_token: let_token,
+                  assign_token: assign_token,
+                  in_token: in_token
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

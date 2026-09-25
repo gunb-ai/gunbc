@@ -1,0 +1,16 @@
+module chunk
+
+fn source_ref_count_in_list(refs: List<SourceRef>, target: SourceRef) -> Int {
+  fold_list(
+    xs: refs,
+    empty: 0,
+    cons: fn(count, ref) {
+      if source_ref_eq(left: ref, right: target) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+

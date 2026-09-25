@@ -1,0 +1,86 @@
+module chunk
+
+fn rebuild_emitted_rhs_walk_step(
+  state: RebuildRhsWalkState,
+  productions: List<FormalProduction>,
+  tokens: List<ConcreteSyntaxToken>,
+  symbol: FormalGrammarSymbol
+) -> RebuildRhsWalkState {
+  match state {
+    RebuildRhsWalkFail => state
+    RebuildRhsWalkOk { children: children, token_index: token_index } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Absent =>
+              match list_nth(
+                xs: tokens,
+                wanted: token_index,
+                absent: Diagnostic {
+                  reason: ^grammar_relation_emitted_conj_slot_missing,
+                  at: node_locus(node: rebuild_emitted_conj_node(children: children)),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              ) {
+                Holds { value: token } =>
+                  if concrete_syntax_fixed_token_matches_terminal(
+                    token: token,
+                    terminal: terminal.identity
+                  ) {
+                    RebuildRhsWalkOk { children: children, token_index: token_index + 1 }
+                  } else {
+                    RebuildRhsWalkFail
+                  }
+                Violates { diagnostic: _ } => RebuildRhsWalkFail
+              }
+            Present { value: binding_symbol } =>
+              match list_nth(
+                xs: tokens,
+                wanted: token_index,
+                absent: Diagnostic {
+                  reason: ^grammar_relation_emitted_conj_slot_missing,
+                  at: node_locus(node: rebuild_emitted_conj_node(children: children)),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              ) {
+                Holds { value: token } =>
+                  match token {
+                    BoundToken { token_class: token_class, binding: binding } =>
+                      if token_class == terminal.identity &&
+                        (
+                          formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) ||
+                            binding_symbol == binding
+                        ) {
+                        RebuildRhsWalkOk {
+                          children: list_snoc_item(
+                            xs: children,
+                            item: rebuild_emitted_atom_node(identity: binding)
+                          ),
+                          token_index: token_index + 1
+                        }
+                      } else {
+                        RebuildRhsWalkFail
+                      }
+                    FixedToken { token_class: _ } => RebuildRhsWalkFail
+                  }
+                Violates { diagnostic: _ } => RebuildRhsWalkFail
+              }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match grammar_relation_emitted_rebuild_for_lhs(
+            productions: productions,
+            lhs: nonterminal.identity,
+            tokens: tokens,
+            token_index: token_index
+          ) {
+            Holds { value: RebuildEmittedOk { emitted: child, token_index: next_index } } =>
+              RebuildRhsWalkOk {
+                children: list_snoc_item(xs: children, item: child),
+                token_index: next_index
+              }
+            Violates { diagnostic: _ } => RebuildRhsWalkFail
+          }
+      }
+  }
+}
+

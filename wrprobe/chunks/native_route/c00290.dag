@@ -1,0 +1,6 @@
+module chunk
+
+test fn the_root_subtree_pattern_selects_every_module() -> Bool {
+  pattern_admits(text: "//...", module_qn: "anything.at.all", declaration: "d")
+}
+

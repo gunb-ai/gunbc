@@ -1,0 +1,15 @@
+module chunk
+
+fn formal_grammar_symbol_in_alphabet(
+  nonterminals: PointwisePower<FormalNonterminal>,
+  terminals: PointwisePower<FormalTerminal>,
+  symbol: FormalGrammarSymbol
+) -> Bool {
+  match symbol {
+    FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
+      terminals.member(terminal)
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      nonterminals.member(nonterminal)
+  }
+}
+

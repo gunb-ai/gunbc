@@ -1,0 +1,39 @@
+module chunk
+
+fn module_storage_binding_from_read_prepared(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<ModuleStorageBinding> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source.carried,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module_prepared(
+              tokens: token_stream,
+              prepared: prepared,
+              validation_residue: residue
+            ),
+            f: fn(artifact) {
+              module_storage_binding_from_parse_artifact(
+                artifact: artifact,
+                source_read: source_read
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
+      )
+  }
+}
+

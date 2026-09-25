@@ -1,0 +1,7 @@
+module chunk
+
+type TargetValueExprMatchArmEdgeFold {
+  edges: List<Edge>
+  skipped_scrutinee: Bool
+}
+

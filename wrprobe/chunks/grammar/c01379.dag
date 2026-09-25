@@ -1,0 +1,7 @@
+module chunk
+
+type SlotNonterminalScan {
+  index: Int
+  found: Optional<Symbol>
+}
+

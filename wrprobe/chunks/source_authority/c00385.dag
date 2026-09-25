@@ -1,0 +1,10 @@
+module chunk
+
+fn source_ref_list_digest(refs: List<SourceRef>) -> Fnv1a64Structural {
+  match source_ref_list_digest_build(refs: refs) {
+    SourceRefListDigestOk { digest: d } => d
+    SourceRefListDigestNonStructuralRefused { path: _ } =>
+      content_hash_atom(value: "source-ref-list-digest-non-structural-refused")
+  }
+}
+

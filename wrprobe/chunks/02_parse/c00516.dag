@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_table_memo_store_refused_reason(d: Diagnostic) -> Bool {
+  match d {
+    Diagnostic { reason: r, at: _, correction: _ } =>
+      r == ^parse_table_memo_store_refused
+  }
+}
+

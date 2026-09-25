@@ -1,0 +1,7 @@
+module chunk
+
+type TargetSumTypeShape {
+  surface: Symbol
+  variant_separator: Symbol
+}
+

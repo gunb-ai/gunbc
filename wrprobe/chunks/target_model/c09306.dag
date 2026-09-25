@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTypeExprArrowParamSlot {
+  label: Symbol
+  type_expr: Node
+}
+

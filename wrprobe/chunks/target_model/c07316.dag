@@ -1,0 +1,73 @@
+module chunk
+
+fn target_value_expression_conditional_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_conditional_child_from_wire(
+          wire: expr.node,
+          field: ^target_value_expr_field_branch_condition
+        ),
+        f: fn(condition) {
+          bind_outcome(
+            o: target_value_expr_conditional_child_from_wire(
+              wire: expr.node,
+              field: ^target_value_expr_field_branch_then_arm
+            ),
+            f: fn(then_arm) {
+              bind_outcome(
+                o: target_value_expr_conditional_child_from_wire(
+                  wire: expr.node,
+                  field: ^target_value_expr_field_branch_else_arm
+                ),
+                f: fn(else_arm) {
+                  bind_outcome(
+                    o: target_value_expression_to_concrete_tokens(
+                      expr: condition,
+                      projection: projection,
+                      catalog: catalog
+                    ),
+                    f: fn(cond_tokens) {
+                      bind_outcome(
+                        o: target_value_expression_to_concrete_tokens(
+                          expr: then_arm,
+                          projection: projection,
+                          catalog: catalog
+                        ),
+                        f: fn(then_tokens) {
+                          bind_outcome(
+                            o: target_value_expression_to_concrete_tokens(
+                              expr: else_arm,
+                              projection: projection,
+                              catalog: catalog
+                            ),
+                            f: fn(else_tokens) {
+                              outcome_accepted(
+                                conditional_delimited_tokens(
+                                  conditional_form: projection.conditional_form,
+                                  cond_tokens: cond_tokens,
+                                  then_tokens: then_tokens,
+                                  else_tokens: else_tokens
+                                )
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_table_token_dispatch(table: ParseTable, production: Symbol) -> Bool {
+  match map_lookup(m: table.first_rows, key: production) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+

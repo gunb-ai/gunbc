@@ -1,0 +1,6 @@
+module chunk
+
+type TargetBindingRefShape {
+  ident_token: Symbol
+}
+

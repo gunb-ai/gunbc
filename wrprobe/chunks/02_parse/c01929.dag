@@ -1,0 +1,6 @@
+module chunk
+
+fn choice_alts_terminal_universe(alts: List<PreparedExprFold>) -> List<Symbol> {
+  first_keys_classes(keys: choice_alts_union_first(alts: alts).terminals)
+}
+

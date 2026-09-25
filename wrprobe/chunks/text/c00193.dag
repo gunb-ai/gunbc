@@ -1,0 +1,6 @@
+module chunk
+
+fn string_any_char_in(s: String, alphabet: String) -> Bool {
+  any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+

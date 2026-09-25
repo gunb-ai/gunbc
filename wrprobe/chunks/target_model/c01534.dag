@@ -1,0 +1,9 @@
+module chunk
+
+fn equality_predicate_wire_symbol(predicate: EqualityPredicate) -> Symbol {
+  match predicate {
+    IsEqual => ^equality_predicate_is_equal
+    IsNotEqual => ^equality_predicate_is_not_equal
+  }
+}
+

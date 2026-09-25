@@ -1,0 +1,9 @@
+module chunk
+
+fn source_root_ref_identity_digest(root: SourceRootRef) -> Fnv1a64Structural {
+  match root {
+    V2Tree => content_hash_atom(value: "V2Tree")
+    DagTree => content_hash_atom(value: "DagTree")
+  }
+}
+

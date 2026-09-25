@@ -1,0 +1,17 @@
+module chunk
+
+test fn rustflags_without_the_exact_denial_are_refused() -> Bool {
+  let inherited_none = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: "", rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 0)
+  ))
+  let widened = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: concat(repo_self_warning_denial_rustflags(), " -C opt-level=3"), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 0)
+  ))
+  native_route_admission_refused_with(admission: inherited_none, cause_name: "emitted_build_warnings_not_denied")
+  && native_route_admission_refused_with(admission: widened, cause_name: "emitted_build_warnings_not_denied")
+  && !native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: green_receipt()),
+    cause_name: "emitted_build_warnings_not_denied"
+  )
+}
+

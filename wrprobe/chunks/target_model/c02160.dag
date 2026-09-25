@@ -1,0 +1,17 @@
+module chunk
+
+fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: bundle, name: field),
+    f: fn(child) {
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+        _ =>
+          outcome_rejected(
+            target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+          )
+      }
+    }
+  )
+}
+

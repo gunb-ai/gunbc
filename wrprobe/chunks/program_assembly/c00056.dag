@@ -1,0 +1,11 @@
+module chunk
+
+type ProgramAssemblyFoldState
+  = ProgramAssemblyFoldOk {
+      roots: FreeMonoid<NormalizedTree>,
+      index: SourceRootIndex
+    }
+  | ProgramAssemblyFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
+

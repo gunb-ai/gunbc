@@ -1,0 +1,27 @@
+module chunk
+
+fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> List<Edge> {
+  let folded = fold(
+    children,
+    init: TargetValueExprMatchArmEdgeFold { edges: Empty, skipped_scrutinee: false },
+    f: fn(acc, edge) {
+      match edge.label {
+        Positional =>
+          if !acc.skipped_scrutinee {
+            TargetValueExprMatchArmEdgeFold {
+              edges: acc.edges,
+              skipped_scrutinee: true
+            }
+          } else {
+            TargetValueExprMatchArmEdgeFold {
+              edges: list_snoc_item(xs: acc.edges, item: edge),
+              skipped_scrutinee: true
+            }
+          }
+        Named { name: _ } => acc
+      }
+    }
+  )
+  folded.edges
+}
+

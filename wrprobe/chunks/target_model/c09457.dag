@@ -1,0 +1,29 @@
+module chunk
+
+fn target_type_expr_declaration_reference_emitted(
+  projection: TargetTypeExpressionProjection,
+  path: QualifiedName,
+  reference: Node
+) -> Outcome<Node> {
+  match projection.declaration_reference_form {
+    NoDeclarationReferenceForm =>
+      outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: reference))
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+      match declaration_reference_spelling(
+        root_text: root,
+        scope_separator_text: sep,
+        module_segment_joiner: joiner,
+        path: path
+      ) {
+        Absent => outcome_rejected(target_declaration_reference_module_absent_diagnostic(node: reference))
+        Present { value: spelling } =>
+          outcome_accepted(
+            target_type_expr_atom_emitted(
+              form: projection.atom_form,
+              identity: symbol_intern_lexeme(lexeme: spelling)
+            )
+          )
+      }
+  }
+}
+

@@ -1,0 +1,15 @@
+module chunk
+
+fn decode_fidelity_from_target(target: TargetModel) -> Outcome<DecodeFidelity> {
+  bind_outcome(
+    o: target_fidelity_quotient_optional(target: target),
+    f: fn(opt) {
+      match opt {
+        Absent => outcome_accepted(Lossless)
+        Present { value: quotient } =>
+          fidelity_quotient_decode_fidelity(quotient: quotient)
+      }
+    }
+  )
+}
+

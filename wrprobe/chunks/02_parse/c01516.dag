@@ -1,0 +1,8 @@
+module chunk
+
+fn first_keys_classes(keys: List<FirstKey>) -> List<Symbol> {
+  fold_list(xs: keys, empty: empty_symbol_list(), cons: fn(acc, k) {
+    set_symbol_insert(s: acc, item: first_key_class(key: k))
+  })
+}
+

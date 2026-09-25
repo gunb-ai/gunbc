@@ -1,0 +1,51 @@
+module chunk
+
+fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
+  match shape {
+    InfixToken { token: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: InfixToken {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: t)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    PrefixToken { token: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: PrefixToken {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: t)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    CallIdent { ident: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: CallIdent {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    MethodIdent { ident: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: MethodIdent {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_operator_shape_field_token,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}
+

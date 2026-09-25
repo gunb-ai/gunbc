@@ -1,0 +1,18 @@
+module chunk
+
+fn parse_prov_merge(
+  base: ParseProvenanceState,
+  incoming: ParseProvenanceState
+) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: occurrence_id_allocator_advance_to(
+      alloc: base.alloc,
+      min_next: authored_token_ordinal_space_from_allocator(
+        alloc: incoming.alloc
+      )
+    ),
+    index: parse_prov_replay_frame(base: base.index, incoming: incoming.index, frame: incoming.frame),
+    frame: list_snoc_item(xs: base.frame, item: FrameNested { frame: incoming.frame })
+  }
+}
+

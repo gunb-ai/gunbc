@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence {
+    terminal: FormalTerminal { identity: identity },
+    binding: optional_absent()
+  }
+}
+

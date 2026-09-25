@@ -1,0 +1,31 @@
+module chunk
+
+fn parse_expr_optional(
+  element: PreparedGrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(
+    expr: element,
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+    ParseExprRejected { diagnostics: _, table: table1 } =>
+      ParseExprAccepted {
+        remaining: tokens,
+        captured: grammar_empty_node(),
+        diagnostics: [],
+        prov: prov,
+        table: table1
+      }
+  }
+}
+

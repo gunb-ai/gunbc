@@ -1,0 +1,11 @@
+module chunk
+
+fn grammar_lookup_production_indexed(table: ParseTable, name: Symbol) -> Witness<GrammarProduction> {
+  witness_from_optional(
+    opt: map_lookup(m: table.productions_by_name, key: name),
+    absent: parse_grammar_undefined_nonterminal_diagnostic(
+      at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_undefined_nonterminal)
+    )
+  )
+}
+

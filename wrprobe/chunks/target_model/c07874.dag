@@ -1,0 +1,30 @@
+module chunk
+
+fn target_signature_slot_matches_declared_inhabitants(
+  slot: Node,
+  inhabitants_root: Node
+) -> Bool {
+  let catalog_targets = target_declared_inhabitants_edge_targets(root: inhabitants_root)
+  if target_catalog_contains_node_shape(slot: slot, catalog_targets: catalog_targets) {
+    true
+  } else {
+    match slot.kind {
+      TypeNode { connective: Atom { identity: slot_atom } } =>
+        slot_atom == ^dag_binding_type_int
+        || target_catalog_atom_identity_matches_inhabitant_wires(
+          slot_atom: slot_atom,
+          catalog_targets: catalog_targets
+        )
+      _ =>
+        match target_inhabitant_wire_primary_atom_identity(wire: slot) {
+          Present { value: slot_atom } =>
+            target_catalog_atom_identity_matches_inhabitant_wires(
+              slot_atom: slot_atom,
+              catalog_targets: catalog_targets
+            )
+          Absent => false
+        }
+    }
+  }
+}
+

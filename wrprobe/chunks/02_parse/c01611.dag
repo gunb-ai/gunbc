@@ -1,0 +1,9 @@
+module chunk
+
+fn expr_first_fold_literal(token_class: Symbol, lexeme: Symbol) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: FirstExactWord { token_class: token_class, lexeme: lexeme }, tail: std.algebra.Empty },
+    nullable: false
+  }
+}
+

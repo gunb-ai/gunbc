@@ -1,0 +1,53 @@
+module chunk
+
+fn type_expr_projection_connective_rows(projection: TargetTypeExpressionProjection) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_type_expr_field_atom,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_atom_shape_node(form: projection.atom_form),
+          connective: Atom { identity: ^target_type_expr_field_atom }
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_conj,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.conj_form),
+          connective: Conj
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_disj,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_sum_shape_node(form: projection.disj_form),
+          connective: Disj
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_arrow,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_arrow_shape_node(form: projection.arrow_form),
+          connective: Arrow
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_cardinality,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
+          connective: Cardinality
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_instantiation,
+        target: type_expr_projection_row_shape_envelope(
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.instantiation_form),
+          connective: Instantiation
+        )
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

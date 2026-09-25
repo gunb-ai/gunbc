@@ -1,0 +1,46 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_wire_requirement_apply(
+  acc: Outcome<Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>>,
+  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
+  requirement: TargetDeriveSupplementalGenericBoundRequirementWire,
+  at: Node
+) -> Outcome<Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: requirements, diagnostics: _ } =>
+      match representation_parameters.lookup(requirement.representation_parameter) {
+        Absent =>
+          outcome_rejected(
+            target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+              at: at
+            )
+          )
+        Present { value: _ } =>
+          let required_key = requirement.required_trait
+          let parameter_requirements = target_derive_supplemental_generic_bound_contract_requirements_for_parameter(
+            requirements: requirements,
+            representation_parameter: requirement.representation_parameter
+          )
+          match parameter_requirements.lookup(required_key) {
+            Present { value: _ } =>
+              outcome_rejected(
+                target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+                  at: at
+                )
+              )
+            Absent =>
+              outcome_accepted(
+                target_derive_supplemental_generic_bound_contract_requirements_insert(
+                  requirements: requirements,
+                  representation_parameter: requirement.representation_parameter,
+                  required_key: required_key,
+                  parameter_requirements: parameter_requirements,
+                  authority: requirement.authority
+                )
+              )
+          }
+      }
+  }
+}
+

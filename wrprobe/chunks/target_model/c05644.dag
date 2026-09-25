@@ -1,0 +1,90 @@
+module chunk
+
+fn target_value_expression_bind_let_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_bind_let_wire_schema_valid(wire: expr.node),
+    f: fn(_) {
+      bind_outcome(
+        o: target_value_expr_bind_let_child_from_wire(
+          wire: expr.node,
+          field: ^target_value_expr_field_bind_key
+        ),
+        f: fn(bind_key) {
+          bind_outcome(
+            o: target_value_expr_bind_let_child_from_wire(
+              wire: expr.node,
+              field: ^target_value_expr_field_bind_value
+            ),
+            f: fn(bind_value) {
+              bind_outcome(
+                o: target_value_expr_bind_let_child_from_wire(
+                  wire: expr.node,
+                  field: ^target_value_expr_field_bind_body
+                ),
+                f: fn(bind_body) {
+                  bind_outcome(
+                    o: target_value_expression_to_concrete_tokens(
+                      expr: bind_key,
+                      projection: projection,
+                      catalog: catalog
+                    ),
+                    f: fn(key_tokens) {
+                      bind_outcome(
+                        o: target_value_expression_to_concrete_tokens(
+                          expr: bind_value,
+                          projection: projection,
+                          catalog: catalog
+                        ),
+                        f: fn(value_tokens) {
+                          bind_outcome(
+                            o: target_value_expression_to_concrete_tokens(
+                              expr: bind_body,
+                              projection: projection,
+                              catalog: catalog
+                            ),
+                            f: fn(body_tokens) {
+                              match projection.block_evaluation_mode {
+                                ValueProducing =>
+                                  outcome_accepted(
+                                    bind_let_value_producing_tokens(
+                                      projection: projection,
+                                      key_tokens: key_tokens,
+                                      value_tokens: value_tokens,
+                                      body_tokens: body_tokens
+                                    )
+                                  )
+                                StatementSequenced {
+                                  return_token: return_token,
+                                  statement_terminator: statement_terminator
+                                } =>
+                                  outcome_accepted(
+                                    bind_let_statement_sequenced_tokens(
+                                      projection: projection,
+                                      key_tokens: key_tokens,
+                                      value_tokens: value_tokens,
+                                      body_tokens: body_tokens,
+                                      return_token: return_token,
+                                      statement_terminator: statement_terminator
+                                    )
+                                  )
+                              }
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,26 @@
+module chunk
+
+fn target_use_site_ownership_catalog_append_derived_rows(
+  catalog: Node,
+  derived_rows: List<TargetUseSiteOwnershipRealization>
+) -> Node {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: fold_list(
+          xs: derived_rows,
+          empty: catalog.children,
+          cons: fn(acc, row) {
+            list_snoc_item(
+              xs: acc,
+              item: target_use_site_ownership_catalog_positional_edge(row: row)
+            )
+          }
+        ),
+        occurrence_id: OccurrenceSynthetic
+      }
+    _ => catalog
+  }
+}
+

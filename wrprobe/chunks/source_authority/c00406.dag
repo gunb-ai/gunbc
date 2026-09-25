@@ -1,0 +1,22 @@
+module chunk
+
+fn source_storage_count_in_list(
+  refs: List<SourceRef>,
+  target: SourceStorageIdentity
+) -> Int {
+  fold_list(
+    xs: refs,
+    empty: 0,
+    cons: fn(count, ref) {
+      if source_storage_identity_eq(
+        left: source_storage_identity_from_ref(ref: ref),
+        right: target
+      ) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+

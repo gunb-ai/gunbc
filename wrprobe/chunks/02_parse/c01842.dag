@@ -1,0 +1,25 @@
+module chunk
+
+fn prepared_stamp_eq(left: TerminalStampMode, right: TerminalStampMode) -> Bool {
+  match left {
+    StampClass =>
+      match right {
+        StampClass => true
+        StampLexeme => false
+        StampBinding { binding: _ } => false
+      }
+    StampLexeme =>
+      match right {
+        StampLexeme => true
+        StampClass => false
+        StampBinding { binding: _ } => false
+      }
+    StampBinding { binding: lb } =>
+      match right {
+        StampBinding { binding: rb } => lb == rb
+        StampClass => false
+        StampLexeme => false
+      }
+  }
+}
+

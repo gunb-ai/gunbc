@@ -1,0 +1,27 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_requirement_wire_node(
+  representation_parameter: Symbol,
+  required_trait: TargetCapabilityKey,
+  authority: ExternalAuthority
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
+        target: target_model_type_atom_node(identity: representation_parameter)
+      ),
+      target_model_named_edge(
+        name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
+        target: target_model_type_atom_node(
+          identity: required_trait
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_derive_supplemental_generic_bound_requirement_field_authority,
+        target: target_external_authority_bundle_node(authority: authority)
+      )
+    ]
+  )
+}
+

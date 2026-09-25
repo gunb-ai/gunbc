@@ -1,0 +1,8 @@
+module chunk
+
+type SourceFold<R> {
+  init: fn(String) -> R
+  step: fn(R) -> R
+  is_done: fn(R) -> Bool
+}
+

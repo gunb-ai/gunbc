@@ -1,0 +1,14 @@
+module chunk
+
+fn closure_probe_universe() -> NativeLaneUniverse {
+  NativeLaneUniverse {
+    modules: [NativeLaneUniverseModule {
+      module: "v2.test.subject",
+      path: ^src_v2_test_subject_test_dag,
+      declarations: ["a_claim"]
+    }],
+    identities: [NativeRouteTestIdentity { module: "v2.test.subject", declaration: "a_claim" }],
+    module_sources: [NativeRouteModuleSource { module: "v2.test.subject", path: ^src_v2_test_subject_test_dag }]
+  }
+}
+

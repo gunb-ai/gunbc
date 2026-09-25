@@ -1,0 +1,42 @@
+module chunk
+
+fn derive_grammar_relation_token_edges_resolved(
+  production: FormalProduction,
+  resolution: EmittedProductionResolution
+) -> Witness<List<Edge>> {
+  let emitted = resolution.emitted
+  let conj_children = conj_positional_children(parent: emitted)
+  match fold_list(
+    xs: production.rhs,
+    empty: Holds {
+      value: DeriveGrammarRelationTokensProgress {
+        edges: Empty,
+        conj_index: 0,
+        conj_children: conj_children
+      }
+    },
+    cons: fn(progress, symbol) {
+      derive_grammar_relation_token_edges_recursive_step(
+        progress: progress,
+        resolution: resolution,
+        emitted: emitted,
+        symbol: symbol
+      )
+    }
+  ) {
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: conj_children } } =>
+      if conj_index == conj_positional_child_count(children: conj_children) {
+        Holds { value: result }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_emitted_conj_slot_surplus,
+            at: node_locus(node: emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+

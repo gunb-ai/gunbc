@@ -1,0 +1,11 @@
+module chunk
+
+fn formal_production_unique_emitted_match(
+  productions: List<FormalProduction>,
+  child: Node
+) -> Witness<FormalProduction> {
+  resolution_unique_emitted_match(
+    resolution: resolve_emitted_productions(productions: productions, emitted: child)
+  )
+}
+

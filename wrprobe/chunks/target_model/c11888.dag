@@ -1,0 +1,7 @@
+module chunk
+
+type TargetUseSiteOwnershipLookup
+  = TargetUseSiteOwnershipMissing
+  | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
+  | TargetUseSiteOwnershipAmbiguous
+

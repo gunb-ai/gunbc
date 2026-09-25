@@ -1,0 +1,16 @@
+wrprobe/chunks/parse_diagnostic/c00033.dag
+wrprobe/chunks/parse_diagnostic/c00037.dag
+wrprobe/chunks/parse_diagnostic/c00042.dag
+wrprobe/chunks/parse_diagnostic/c00047.dag
+wrprobe/chunks/parse_diagnostic/c00065.dag
+wrprobe/chunks/parse_diagnostic/c00072.dag
+wrprobe/chunks/parse_diagnostic/c00097.dag
+wrprobe/chunks/parse_diagnostic/c00104.dag
+wrprobe/chunks/parse_diagnostic/c00108.dag
+wrprobe/chunks/parse_diagnostic/c00115.dag
+wrprobe/chunks/parse_diagnostic/c00128.dag
+wrprobe/chunks/parse_diagnostic/c00138.dag
+wrprobe/chunks/parse_diagnostic/c00151.dag
+wrprobe/chunks/parse_diagnostic/c00167.dag
+wrprobe/chunks/parse_diagnostic/c00174.dag
+wrprobe/chunks/parse_diagnostic/c00184.dag

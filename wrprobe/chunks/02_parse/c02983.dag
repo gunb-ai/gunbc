@@ -1,0 +1,38 @@
+module chunk
+
+fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<PreparedModeledGrammar> {
+  if grammar_has_undefined_nonterminals(root: root) {
+    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+  } else {
+    if grammar_has_duplicate_productions(root: root) {
+      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
+    } else {
+      let nullable_set = compute_nullable_set(root: root)
+      if grammar_has_left_recursion_given(root: root, nullable_set: nullable_set) {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+      } else {
+        let analysis = compute_grammar_first_analysis_given(root: root, nullable_set: nullable_set)
+        let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
+        let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
+        if !is_empty(xs: nullable_rows) {
+          Rejected {
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
+          }
+        } else {
+          Accepted {
+            value: PreparedModeledGrammar {
+              validated: ValidatedGrammarRoot { root: root },
+              analysis: analysis,
+              overlap_residue_stage: non_empty_parse_stage_diagnostics_from_overlap_roster(
+                at: at,
+                roster: ambiguity_roster
+              )
+            },
+            diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
+          }
+        }
+      }
+    }
+  }
+}
+

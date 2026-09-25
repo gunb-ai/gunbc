@@ -1,0 +1,91 @@
+module chunk
+
+fn target_value_template_apply(
+  template: TargetValueTemplate,
+  value: SourceAtomValue,
+  source_carrier: Node
+) -> Outcome<TargetValueExpression> {
+  match template.kind {
+    ValueSymbolIdentityPassthrough =>
+      match source_atom_value_as_symbol(value: value) {
+        Absent =>
+          outcome_rejected(
+            target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: id } =>
+          outcome_accepted(target_value_expression_symbol_identity(identity: id))
+      }
+    ValueSymbolToOwnedString =>
+      match source_atom_value_as_symbol(value: value) {
+        Absent =>
+          outcome_rejected(
+            target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: id } =>
+          outcome_accepted(target_value_expression_symbol_to_owned_string(identity: id))
+      }
+    ValueBoolLiteral =>
+      match source_atom_value_as_bool(value: value) {
+        Absent =>
+          outcome_rejected(
+            target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: b } => outcome_accepted(target_value_expression_bool_literal(value: b))
+      }
+    ValueCharUnicodeScalar =>
+      match source_atom_value_as_char(value: value) {
+        Absent =>
+          outcome_rejected(
+            target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: c } =>
+          outcome_accepted(target_value_expression_char_unicode_scalar(codepoint: c))
+      }
+    ValueStringLiteral =>
+      match source_atom_value_as_string(value: value) {
+        Absent =>
+          outcome_rejected(
+            target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: s } =>
+          outcome_accepted(target_value_expression_string_literal(value: s))
+      }
+    ValueBindingRef =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValuePrimitiveApply =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueEffectApply =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueConditional =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueBindLet =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueLoop =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueRecordConstruct =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueFieldAccess =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+    ValueMatch =>
+      outcome_rejected(
+        target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+

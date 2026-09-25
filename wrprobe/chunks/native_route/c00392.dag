@@ -1,0 +1,17 @@
+module chunk
+
+test fn a_context_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it() -> Bool {
+  match classify_native_refusal(stage: NativeTestStageContext, reason: ^parse_g0_tokens_remain) {
+    CompilerFrontierAttributed { reason: r } => r == ^parse_g0_tokens_remain
+    NativeEntryResolutionLimit { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStageContext, reason: ^some_unowned_cause) {
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^some_unowned_cause
+  }
+}
+

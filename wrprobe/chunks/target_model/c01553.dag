@@ -1,0 +1,6 @@
+module chunk
+
+fn equality_predicate_equal(left: EqualityPredicate, right: EqualityPredicate) -> Bool {
+  equality_predicate_wire_symbol(predicate: left) == equality_predicate_wire_symbol(predicate: right)
+}
+

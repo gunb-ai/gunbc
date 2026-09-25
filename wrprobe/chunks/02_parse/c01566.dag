@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_empty_terminal_list() -> List<FirstKey> {
+  std.algebra.Empty
+}
+

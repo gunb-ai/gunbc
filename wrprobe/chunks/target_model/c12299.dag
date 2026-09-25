@@ -1,0 +1,16 @@
+module chunk
+
+fn target_use_site_ownership_catalog_node(
+  rows: List<TargetUseSiteOwnershipRealization>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
+    ),
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

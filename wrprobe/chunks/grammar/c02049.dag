@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_node_insert_atom_identities_child(
+  m: Map<Symbol, Bool>,
+  e: Edge
+) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(m: m, n: e.target)
+}
+

@@ -1,0 +1,32 @@
+module chunk
+
+fn bind_let_value_producing_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: [
+              FixedToken { token_class: projection.let_form.let_token }
+            ],
+            right: key_tokens
+          ),
+          right: [
+            FixedToken { token_class: projection.let_form.assign_token }
+          ]
+        ),
+        right: value_tokens
+      ),
+      right: [
+        FixedToken { token_class: projection.let_form.in_token }
+      ]
+    ),
+    right: body_tokens
+  )
+}
+

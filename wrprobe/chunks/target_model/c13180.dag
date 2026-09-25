@@ -1,0 +1,12 @@
+module chunk
+
+fn type_expr_projection_bundle_shape_for_connective(
+  bundle: Node,
+  connective: Connective
+) -> Outcome<Node> {
+  find_named_child(
+    root: bundle,
+    name: type_expr_projection_row_field_for_connective(connective: connective)
+  )
+}
+

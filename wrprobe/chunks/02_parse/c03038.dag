@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: List<Symbol>) -> ParseSyncState {
+  fold_list(
+    xs: tokens,
+    empty: ParseSyncState { found_sync: false, result: std.algebra.Empty },
+    cons: fn(acc, tok) { parse_sync_step(acc: acc, tok: tok, sync_tokens: sync_tokens) }
+  )
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
+  parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
+}
+

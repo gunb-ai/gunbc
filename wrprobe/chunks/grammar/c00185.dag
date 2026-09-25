@@ -1,0 +1,7 @@
+module chunk
+
+type GrammarTerminalLexCoverageObligation {
+  lex: LexRules
+  grammar: WellFormedFormalGrammar
+}
+

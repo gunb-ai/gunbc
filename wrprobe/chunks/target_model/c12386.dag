@@ -1,0 +1,13 @@
+module chunk
+
+fn target_value_semantics_carriers_snoc_unique(
+  atoms: List<Symbol>,
+  atom: Symbol
+) -> List<Symbol> {
+  if target_value_semantics_carrier_atom_seen(atoms: atoms, atom: atom) {
+    atoms
+  } else {
+    list_snoc_item(xs: atoms, item: atom)
+  }
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn target_capability_element_kernel_identity(elem: Node) -> Optional<Symbol> {
+  match elem.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
+}
+

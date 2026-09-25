@@ -1,0 +1,7 @@
+module chunk
+
+type ProducedDeclParamsFold {
+  any_written: Bool
+  tokens: List<ConcreteSyntaxToken>
+}
+

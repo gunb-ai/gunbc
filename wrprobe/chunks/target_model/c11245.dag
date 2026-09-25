@@ -1,0 +1,31 @@
+module chunk
+
+fn target_capability_requirement_from_node(node: Node) -> Outcome<TargetCapabilityRequirement> {
+  bind_outcome(
+    o: find_named_child(root: node, name: ^target_collection_witness_field_trait_name),
+    f: fn(capability_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: capability_node),
+        f: fn(capability_key) {
+          bind_outcome(
+            o: find_named_child(root: node, name: ^target_collection_witness_field_type_param),
+            f: fn(param_node) {
+              bind_outcome(
+                o: target_collection_node_atom_identity(node: param_node),
+                f: fn(representation_parameter) {
+                  outcome_accepted(
+                    TargetCapabilityRequirement {
+                      representation_parameter: representation_parameter,
+                      capability_key: capability_key
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

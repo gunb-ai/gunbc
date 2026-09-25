@@ -1,0 +1,57 @@
+module chunk
+
+fn target_external_authority_from_node(node: Node) -> Outcome<ExternalAuthority> {
+  if count(node.children) == 2 {
+    bind_outcome(
+      o: find_named_child(
+        root: node,
+        name: ^target_external_authority_field_uri_scheme
+      ),
+      f: fn(scheme_node) {
+        bind_outcome(
+          o: target_collection_node_atom_identity(node: scheme_node),
+          f: fn(scheme_id) {
+            bind_outcome(
+              o: nullary_inhabitant_by_discriminant(
+                inhabitants: uri_scheme_inhabitants(),
+                discriminant_of: target_uri_scheme_discriminant,
+                wanted: scheme_id,
+                at: scheme_node
+              ),
+              f: fn(scheme) {
+                bind_outcome(
+                  o: find_named_child(
+                    root: node,
+                    name: ^target_external_authority_field_uri_locator
+                  ),
+                  f: fn(locator_node) {
+                    bind_outcome(
+                      o: target_collection_node_atom_identity(node: locator_node),
+                      f: fn(locator_id) {
+                        outcome_accepted(
+                          ExternalAuthority {
+                            uri: Uri {
+                              scheme: scheme,
+                              locator: symbol_lexeme(sym: locator_id)
+                            }
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  } else {
+    outcome_rejected(
+      target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+        at: node
+      )
+    )
+  }
+}
+

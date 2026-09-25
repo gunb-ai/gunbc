@@ -1,0 +1,10 @@
+module chunk
+
+fn target_value_expr_bind_let_gate(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Bind } =>
+      length(xs: node_positional_child_targets(node: node)) == 3
+    _ => false
+  }
+}
+

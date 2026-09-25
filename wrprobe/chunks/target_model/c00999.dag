@@ -1,0 +1,16 @@
+module chunk
+
+fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitSpellingEscape>) -> v2.std.text.String {
+  fold_list(
+    xs: escapes,
+    empty: spelling,
+    cons: fn(acc, rule) {
+      match rule.from {
+        Cons { head: h, tail: t } =>
+          string_replace(source: acc, needle: FreeSemigroup { head: h, tail: t }, replacement: rule.to)
+        Empty => acc
+      }
+    }
+  )
+}
+

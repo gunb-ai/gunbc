@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_empty_sync_tokens() -> List<Symbol> {
+  []
+}
+

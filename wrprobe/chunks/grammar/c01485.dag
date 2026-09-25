@@ -1,0 +1,34 @@
+module chunk
+
+fn resolve_emitted_productions_asked(
+  productions: List<FormalProduction>,
+  asked: List<Symbol>,
+  emitted: Node
+) -> EmittedProductionResolution {
+  let candidates = formal_productions_asked(productions: productions, asked: asked)
+  let children = conj_positional_children(parent: emitted)
+  let child_count = conj_positional_child_count(children: children)
+  let unmatched = EmittedProductionResolution {
+    emitted: emitted,
+    matched: Empty,
+    slots: resolve_emitted_productions_slots(productions: productions, candidates: candidates, children: children)
+  }
+  EmittedProductionResolution {
+    emitted: emitted,
+    matched: fold_list(
+      xs: candidates,
+      empty: Empty,
+      cons: fn(acc, production) {
+        resolve_emitted_productions_matched_step(
+          acc: acc,
+          production: production,
+          resolution: unmatched,
+          children: children,
+          child_count: child_count
+        )
+      }
+    ),
+    slots: unmatched.slots
+  }
+}
+

@@ -1,0 +1,13 @@
+module chunk
+
+fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_choice_ambiguity,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_ambiguity),
+    correction: match count > 0 {
+      true => Unavailable { reason: ExternalContractUnknown }
+      false => Unavailable { reason: UserInputBoundary }
+    }
+  }
+}
+

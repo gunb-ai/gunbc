@@ -1,0 +1,13 @@
+module chunk
+
+fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
+  match connective {
+    Atom { identity: _ } => ^target_type_expr_field_atom
+    Conj => ^target_type_expr_field_conj
+    Disj => ^target_type_expr_field_disj
+    Arrow => ^target_type_expr_field_arrow
+    Cardinality => ^target_type_expr_field_cardinality
+    Instantiation => ^target_type_expr_field_instantiation
+  }
+}
+

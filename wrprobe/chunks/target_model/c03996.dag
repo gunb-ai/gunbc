@@ -1,0 +1,9 @@
+module chunk
+
+fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<Symbol> {
+  match value {
+    SourceAtomSymbol { identity: id } => optional_present(id)
+    _ => optional_absent()
+  }
+}
+

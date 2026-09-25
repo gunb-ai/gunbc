@@ -1,0 +1,14 @@
+module chunk
+
+fn decode_value_expression_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetValueExpressionProjection> {
+  match bundle.kind {
+    TypeNode { connective: Conj } => decode_vep_chain_binding_ref(bundle: bundle)
+    _ =>
+      outcome_rejected(
+        target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+      )
+  }
+}
+

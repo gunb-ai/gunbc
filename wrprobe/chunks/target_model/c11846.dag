@@ -1,0 +1,18 @@
+module chunk
+
+fn target_reference_layer_from_atom(id: Symbol) -> Optional<TargetReferenceLayer> {
+  if id == discriminant(v: ReferenceLayerOwned) {
+    optional_present(value: ReferenceLayerOwned)
+  } else {
+    if id == discriminant(v: ReferenceLayerRc) {
+      optional_present(value: ReferenceLayerRc)
+    } else {
+      if id == discriminant(v: ReferenceLayerBox) {
+        optional_present(value: ReferenceLayerBox)
+      } else {
+        optional_absent()
+      }
+    }
+  }
+}
+

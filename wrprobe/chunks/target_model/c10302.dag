@@ -1,0 +1,7 @@
+module chunk
+
+type TargetCapabilityEligibilityRow {
+  capability_key: TargetCapabilityKey
+  eligibility: TargetCapabilityElementEligibility
+}
+

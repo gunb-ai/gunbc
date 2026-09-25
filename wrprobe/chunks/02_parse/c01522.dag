@@ -1,0 +1,6 @@
+module chunk
+
+fn first_keys_contains(xs: List<FirstKey>, item: FirstKey) -> Bool {
+  contains(xs: xs, item: item, eq: fn(a, b) { first_key_eq(left: a, right: b) })
+}
+

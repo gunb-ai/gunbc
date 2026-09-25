@@ -1,0 +1,14 @@
+module chunk
+
+fn located_module_roots_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<FreeMonoid<LocatedNormalizedTree>> {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _ } =>
+      outcome_accepted(value: located)
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
+      Rejected { diagnostics: d }
+  }
+}
+

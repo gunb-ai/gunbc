@@ -1,0 +1,17 @@
+module chunk
+
+fn token_prefix_row_conflicts(rows: List<TokenPrefixRow>, prefix: List<Symbol>) -> Bool {
+  match list_head(xs: rows) {
+    HeadAbsent => false
+    HeadFound { value: row } =>
+      if zip_eq(a: token_prefix_row_prefix(row: row), b: prefix, eq: fn(x, y) { x == y }) {
+        true
+      } else {
+        match list_tail(xs: rows) {
+          TailAbsent => false
+          TailFound { tail: rest } => token_prefix_row_conflicts(rows: rest, prefix: prefix)
+        }
+      }
+  }
+}
+

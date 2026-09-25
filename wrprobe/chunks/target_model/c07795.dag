@@ -1,0 +1,12 @@
+module chunk
+
+fn target_declared_inhabitants_edge_targets(root: Node) -> List<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Empty, f: fn(acc, edge) {
+        list_snoc_item(xs: acc, item: edge.target)
+      })
+    _ => Empty
+  }
+}
+

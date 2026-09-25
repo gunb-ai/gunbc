@@ -1,0 +1,6 @@
+module chunk
+
+fn target_atom_type_spelling(row: TargetAtomRealization) -> Symbol {
+  target_type_expression_spelling(form: row.type_form)
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn false_row(module: String, declaration: String) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: test_identity(module: module, declaration: declaration),
+    verdict: NativeTestReturnedFalse
+  }
+}
+

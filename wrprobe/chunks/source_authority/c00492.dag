@@ -1,0 +1,10 @@
+module chunk
+
+fn source_ref_for_storage_path(path: String) -> SourceRef {
+  SourceRef {
+    path: path,
+    source_root: source_root_for_storage_path(path: path),
+    content_hash: content_hash_of_value(value: "selection-unpinned" as NonEmptyStr)
+  }
+}
+

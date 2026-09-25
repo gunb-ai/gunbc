@@ -1,0 +1,39 @@
+module chunk
+
+fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureSubject> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: decl_edge } =>
+          match decl_edge.label {
+            Named { name: fn_name } =>
+              produced_decl_subject_from_name_and_arrow(
+                fn_name: fn_name,
+                arrow: decl_edge.target
+              )
+            Positional =>
+              outcome_rejected(
+                d: produced_decl_render_diagnostic(
+                  reason: ^produced_decl_render_decl_unnamed,
+                  node: decl
+                )
+              )
+          }
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_decl_empty,
+              node: decl
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(
+          reason: ^produced_decl_render_decl_not_conj,
+          node: decl
+        )
+      )
+  }
+}
+

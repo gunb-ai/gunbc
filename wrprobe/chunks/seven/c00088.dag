@@ -1,0 +1,6 @@
+module chunk
+
+fn expression_bodied_literal_fn_parsed() -> Outcome<Node> {
+  g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+}
+

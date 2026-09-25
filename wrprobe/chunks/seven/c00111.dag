@@ -1,0 +1,6 @@
+module chunk
+
+test fn braced_fn_decl_still_parses_holds() -> Bool {
+  g_parsed_accepted(parsed: braced_fn_control_parsed())
+}
+

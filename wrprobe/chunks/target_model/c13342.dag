@@ -1,0 +1,11 @@
+module chunk
+
+fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
+  target_value_expr_arrow_has_transform_body(arrow: arrow)
+    || target_value_expr_arrow_has_branch_body(arrow: arrow)
+    || target_value_expr_arrow_has_bind_body(arrow: arrow)
+    || target_value_expr_arrow_has_loop_body(arrow: arrow)
+    || target_value_expr_arrow_has_match_body(arrow: arrow)
+    || target_value_expr_arrow_has_record_construct_body(arrow: arrow)
+}
+

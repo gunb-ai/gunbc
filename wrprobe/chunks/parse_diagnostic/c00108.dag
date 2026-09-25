@@ -1,0 +1,9 @@
+module chunk
+
+fn parse_stage_evidence_row_optional(d: ParseStageDiagnostic) -> Optional<GrammarChoiceAmbiguityRow> {
+  match d.evidence {
+    GrammarChoiceAmbiguityEvidence { row: row } => optional_present(value: row)
+    NoParseDiagnosticEvidence => optional_absent()
+  }
+}
+

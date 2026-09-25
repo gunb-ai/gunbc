@@ -1,0 +1,60 @@
+module chunk
+
+fn decode_function_type_shape_bundle(bundle: Node) -> Outcome<TargetFunctionTypeShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_surface),
+    f: fn(surface) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_open),
+        f: fn(open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_close),
+            f: fn(close) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_arrow),
+                f: fn(arrow) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_type_expr_field_param_ident_token
+                    ),
+                    f: fn(param_ident_token) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(
+                          bundle: bundle,
+                          field: ^target_type_expr_field_param_type_separator
+                        ),
+                        f: fn(param_type_separator) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(
+                              bundle: bundle,
+                              field: ^target_type_expr_field_param_list_separator
+                            ),
+                            f: fn(param_list_separator) {
+                              outcome_accepted(
+                                TargetFunctionTypeShape {
+                                  surface: surface,
+                                  open: open,
+                                  close: close,
+                                  arrow: arrow,
+                                  param_ident_token: param_ident_token,
+                                  param_type_separator: param_type_separator,
+                                  param_list_separator: param_list_separator
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

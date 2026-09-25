@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_tokens_drop(tokens: List<Token>, count: Int) -> List<Token> {
+  if count <= 0 {
+    tokens
+  } else {
+    parse_tokens_drop(tokens: parse_tokens_drop_one(tokens: tokens), count: count - 1)
+  }
+}
+

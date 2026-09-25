@@ -1,0 +1,20 @@
+module chunk
+
+test fn a_route_gap_refusal_off_the_boundary_is_an_exclusion() -> Bool {
+  match native_route_disposition(
+    verdict: refused_verdict(stage: NativeTestStageEval, reason: ^some_unowned_cause),
+    reference: FloorRouteGapRefusal
+  ) {
+    NativeExclusion { cause: UnattributedRefusal { reason: r } } => r == ^some_unowned_cause
+    _ => false
+  }
+  && match native_route_disposition(
+    verdict: refused_verdict(stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain),
+    reference: FloorRouteGapRefusal
+  ) {
+    NativeExclusion { cause: CompilerFrontierAttributed { reason: r } } => r == ^parse_g0_tokens_remain
+    _ => false
+  }
+}
+
+

@@ -1,0 +1,33 @@
+module chunk
+
+fn target_function_signature_realization_catalog_lookup_step(
+  acc: TargetFunctionSignatureRealizationCatalogLookup,
+  row_node: Node,
+  source_carrier: Node,
+  boundary_site: FunctionBoundarySite,
+  host_target_model: TargetModel
+) -> TargetFunctionSignatureRealizationCatalogLookup {
+  match target_function_signature_realization_from_row_node(
+    row_node: row_node,
+    host_target_model: host_target_model
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
+        && target_function_boundary_site_eq(a: row.boundary_site, b: boundary_site) {
+        match acc {
+          TargetFunctionSignatureRealizationCatalogMissing =>
+            TargetFunctionSignatureRealizationCatalogUnique { row: row }
+          TargetFunctionSignatureRealizationCatalogUnique { row: _ } =>
+            TargetFunctionSignatureRealizationCatalogAmbiguous
+          TargetFunctionSignatureRealizationCatalogAmbiguous =>
+            TargetFunctionSignatureRealizationCatalogAmbiguous
+          TargetFunctionSignatureRealizationCatalogInvalid =>
+            TargetFunctionSignatureRealizationCatalogInvalid
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => TargetFunctionSignatureRealizationCatalogInvalid
+  }
+}
+

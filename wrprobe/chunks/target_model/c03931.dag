@@ -1,0 +1,14 @@
+module chunk
+
+fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+  match source.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^symbol_kernel_type_atom {
+        optional_absent()
+      } else {
+        optional_present(source_atom_symbol(identity: id))
+      }
+    _ => optional_absent()
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+data source_root_coverage_arms_note: String = "THREE arms, not two, because the two producers fail for different reasons and their remedies differ. SourceRootManifestElided is the HOST emitter's refusal: a declared cap rejected the whole row list, and the fix is a bigger cap or a carrier that does not inline source text. SourceRootRowsMissing is the IN-GRAPH derivation's refusal: produced rows do not match reads with NO cap involved, which means rows were lost somewhere and the fix is finding that bug. Collapsing them would have forced the in-graph derivation to name a cap it does not have — fabricating a number to satisfy a shape (DESIGN section 5). Distinct causes, distinct arms, each carrying only numbers its own producer actually knows.
+
+A fourth arm, SourceRootManifestAbsent, is the COMMITTED STUB's state: no host manifest has been supplied at this source root yet. It is not Complete (that would be a vacuous truth over zero rows, exactly the shape a witness can ride green while proving nothing), it is not RowsMissing (nothing was read, so 0 against 0 is not a shortfall), and it is not Elided (no cap rejected anything). Its remedy is different too: run the emitting gate, or order the overlay root after the stub. The stub previously said coverage_complete: false, which was fail-closed but mute about which of these four it meant."
+

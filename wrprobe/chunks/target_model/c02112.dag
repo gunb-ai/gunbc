@@ -1,0 +1,20 @@
+module chunk
+
+fn target_operator_realization_node(
+  operation: CanonicalOperation,
+  shape: TargetOperatorShape
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: operation)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: shape)
+      )
+    ]
+  )
+}
+

@@ -1,0 +1,19 @@
+module chunk
+
+fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_type_expr_field_surface,
+        target: target_type_expr_symbol_atom(id: form.surface)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_variant_separator,
+        target: target_type_expr_symbol_atom(id: form.variant_separator)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

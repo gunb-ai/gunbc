@@ -1,0 +1,6 @@
+module chunk
+
+fn test_identity(module: String, declaration: String) -> NativeRouteTestIdentity {
+  NativeRouteTestIdentity { module: module, declaration: declaration }
+}
+

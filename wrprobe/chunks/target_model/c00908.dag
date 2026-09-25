@@ -1,0 +1,6 @@
+module chunk
+
+fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
+  lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+}
+

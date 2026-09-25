@@ -1,0 +1,9 @@
+module chunk
+
+fn first_key_class(key: FirstKey) -> Symbol {
+  match key {
+    FirstAnyOfClass { token_class: c } => c
+    FirstExactWord { token_class: c, lexeme: _ } => c
+  }
+}
+

@@ -1,0 +1,64 @@
+module chunk
+
+fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
+  match operation {
+    AlgebraPrimitive { algebra_field: f } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraPrimitive {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_algebra_field,
+            target: target_model_type_atom_node(identity: f)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    AlgebraInverseCompose { binary_field: b, inverse_field: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraInverseCompose {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_binary_field,
+            target: target_model_type_atom_node(identity: b)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_inverse_field,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    OrderingComparison { compare_field: c, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OrderingComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_compare_field,
+            target: target_model_type_atom_node(identity: c)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: ordering_predicate_wire_symbol(predicate: p))
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    EqualityComparison { eq_field: e, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: EqualityComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_eq_field,
+            target: target_model_type_atom_node(identity: e)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: equality_predicate_wire_symbol(predicate: p))
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}
+
+

@@ -1,0 +1,34 @@
+module chunk
+
+fn source_ir_artifact_provenance_from_model(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Outcome<SourceIrArtifactProvenance> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source.carried,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module(tokens: token_stream, grammar: lm.grammar),
+            f: fn(artifact) {
+              outcome_accepted(
+                value: SourceIrArtifactProvenance {
+                  node: artifact.tree,
+                  artifact: source_read.artifact,
+                  span_index: artifact.span_index
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+  }
+}
+

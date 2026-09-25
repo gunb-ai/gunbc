@@ -1,0 +1,6 @@
+module chunk
+
+fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotationGraph {
+  artifact.annotations
+}
+

@@ -1,0 +1,39 @@
+module chunk
+
+fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> Optional<SourceAtomValue> {
+  if fuel <= 0 {
+    optional_absent()
+  } else {
+    match source.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^free_monoid_variant_empty {
+          optional_present(source_atom_string(value: source))
+        } else {
+          optional_absent()
+        }
+      TypeNode { connective: Conj } =>
+        if length(xs: source.children) != 2 {
+          optional_absent()
+        } else {
+          match find_named_child(root: source, name: ^free_monoid_field_head) {
+            Accepted { value: head } =>
+              match find_named_child(root: source, name: ^free_monoid_field_tail) {
+                Accepted { value: tail } =>
+                  match source_atom_char_projection_from_node(source: head) {
+                    Present { value: _ } =>
+                      match source_atom_string_projection_from_node_bounded(source: tail, fuel: fuel - 1) {
+                        Present { value: _ } => optional_present(source_atom_string(value: source))
+                        Absent => optional_absent()
+                      }
+                    Absent => optional_absent()
+                  }
+                Rejected { diagnostics: _ } => optional_absent()
+              }
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        }
+      _ => optional_absent()
+    }
+  }
+}
+

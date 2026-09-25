@@ -1,0 +1,9 @@
+module chunk
+
+fn fidelity_disposition_node_has_named_kind(root: Node, name: Symbol) -> Bool {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+

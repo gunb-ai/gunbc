@@ -1,0 +1,27 @@
+module chunk
+
+fn target_add_signature_matches(
+  arrow: Node,
+  inhabitants_root: Node
+) -> Bool {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      target_add_signature_slot_at(
+        arrow: arrow,
+        index: 0,
+        inhabitants_root: inhabitants_root
+      )
+      && target_add_signature_slot_at(
+        arrow: arrow,
+        index: 1,
+        inhabitants_root: inhabitants_root
+      )
+      && target_add_signature_slot_at(
+        arrow: arrow,
+        index: 2,
+        inhabitants_root: inhabitants_root
+      )
+    _ => false
+  }
+}
+

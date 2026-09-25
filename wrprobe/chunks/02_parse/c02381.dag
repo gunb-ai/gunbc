@@ -1,0 +1,83 @@
+module chunk
+
+fn prepare_grammar_expr(
+  expr: GrammarExpr,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>,
+  production: Symbol,
+  token_dispatch: Bool
+) -> PreparedExprFold {
+  match expr {
+    Terminal { token_class: token_class, stamp: stamp } =>
+      PreparedExprFold {
+        tree: PreparedTerminal { token_class: token_class, stamp: stamp },
+        first: expr_first_fold_terminal(token_class: token_class),
+        residue: std.algebra.Empty
+      }
+    LiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      PreparedExprFold {
+        tree: PreparedLiteralTerminal { token_class: token_class, lexeme: lexeme },
+        first: expr_first_fold_literal(token_class: token_class, lexeme: lexeme),
+        residue: std.algebra.Empty
+      }
+    Nonterminal { production: production_name } =>
+      PreparedExprFold {
+        tree: PreparedNonterminal { production: production_name },
+        first: expr_first_fold_nonterminal(name: production_name, nullable_set: nullable_set, first_rows: first_rows),
+        residue: std.algebra.Empty
+      }
+    Sequence { left: left, right: right } =>
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      PreparedExprFold {
+        tree: PreparedSequence { left: left_prepared.tree, right: right_prepared.tree },
+        first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first),
+        residue: list_append(left: left_prepared.residue, right: right_prepared.residue)
+      }
+    Choice { left: left, right: right } =>
+      let alts = flatten_choice_exprs(expr: Choice { left: left, right: right })
+      let prepared_alts = fold_list(
+        xs: alts,
+        empty: std.algebra.Empty,
+        cons: fn(acc, alt) {
+          list_snoc_item(
+            xs: acc,
+            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+          )
+        }
+      )
+      let compiled = compile_choice_plan(
+        alts: prepared_alts,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        token_dispatch: token_dispatch
+      )
+      let union_first = choice_alts_union_first(alts: prepared_alts)
+      PreparedExprFold {
+        tree: PreparedChoice {
+          plan: compiled,
+          first: union_first
+        },
+        first: union_first,
+        residue: list_append(
+          left: concat_prepared_alt_residue(alts: prepared_alts),
+          right: authored_choice_site_residue(alts: prepared_alts, production: production)
+        )
+      }
+    Optional { element: element } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      PreparedExprFold {
+        tree: PreparedOptional { element: element_prepared.tree },
+        first: expr_first_fold_optional(element: element_prepared.first),
+        residue: element_prepared.residue
+      }
+    Repeat { element: element } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      PreparedExprFold {
+        tree: PreparedRepeat { element: element_prepared.tree },
+        first: expr_first_fold_repeat(element: element_prepared.first),
+        residue: element_prepared.residue
+      }
+  }
+}
+

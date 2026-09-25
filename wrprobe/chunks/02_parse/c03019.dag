@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
+  match grammar_validate_and_analyze(root: root, at: at) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: modeled, diagnostics: residue } =>
+      Accepted { value: modeled.validated, diagnostics: residue }
+  }
+}
+

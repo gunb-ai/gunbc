@@ -1,0 +1,6 @@
+module chunk
+
+fn target_value_template_node(template: TargetValueTemplate) -> Node {
+  template.node
+}
+

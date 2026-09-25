@@ -1,0 +1,6 @@
+module chunk
+
+type FormalTerminal {
+  identity: Symbol
+}
+

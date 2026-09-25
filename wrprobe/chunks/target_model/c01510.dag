@@ -1,0 +1,22 @@
+module chunk
+
+fn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {
+  if id == ^ordering_predicate_is_less {
+    optional_present(value: IsLess)
+  } else {
+    if id == ^ordering_predicate_is_less_or_equal {
+      optional_present(value: IsLessOrEqual)
+    } else {
+      if id == ^ordering_predicate_is_greater {
+        optional_present(value: IsGreater)
+      } else {
+        if id == ^ordering_predicate_is_greater_or_equal {
+          optional_present(value: IsGreaterOrEqual)
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  }
+}
+

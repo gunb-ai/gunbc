@@ -1,0 +1,95 @@
+module chunk
+
+fn target_project_branch_bool_if_else(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: target_value_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      if !target_value_expr_branch_bool_gate(node: body, source_bool_form: source_bool_form) {
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      } else {
+        match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+      Absent =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      Present { value: cond } =>
+        match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+          Absent =>
+            outcome_rejected(
+              target_value_expr_diagnostic(
+                reason: ^target_value_expr_reason_transform_shape_invalid,
+                node: body
+              )
+            )
+          Present { value: then_arm } =>
+            match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+              Absent =>
+                outcome_rejected(
+                  target_value_expr_diagnostic(
+                    reason: ^target_value_expr_reason_transform_shape_invalid,
+                    node: body
+                  )
+                )
+              Present { value: else_arm } =>
+                bind_outcome(
+                  o: target_value_expr_project_body_subexpression(
+                    arrow: arrow,
+                    node: cond,
+                    target: target,
+                    source_bool_form: source_bool_form,
+                    handle_transform: handle_transform
+                  ),
+                  f: fn(projected_cond) {
+                    bind_outcome(
+                      o: target_value_expr_project_body_subexpression(
+                        arrow: arrow,
+                        node: then_arm,
+                        target: target,
+                        source_bool_form: source_bool_form,
+                        handle_transform: handle_transform
+                      ),
+                      f: fn(projected_then) {
+                        bind_outcome(
+                          o: target_value_expr_project_body_subexpression(
+                            arrow: arrow,
+                            node: else_arm,
+                            target: target,
+                            source_bool_form: source_bool_form,
+                            handle_transform: handle_transform
+                          ),
+                          f: fn(projected_else) {
+                            outcome_accepted(
+                              target_value_expression_conditional(
+                                condition: projected_cond,
+                                then_arm: projected_then,
+                                else_arm: projected_else
+                              )
+                            )
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
+            }
+        }
+      }
+      }
+    }
+  )
+}
+

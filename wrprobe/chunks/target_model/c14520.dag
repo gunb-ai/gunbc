@@ -1,0 +1,22 @@
+module chunk
+
+fn target_value_expression_tokens_from_target(
+  expr: TargetValueExpression,
+  target: TargetModel,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: projection_bundle_child(
+      bundle: target.bundle,
+      name: ^target_model_edge_operator_realizations
+    ),
+    f: fn(catalog) {
+      target_value_expression_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+

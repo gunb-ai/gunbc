@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_expr_labeled_edges_tail(labeled: List<Edge>) -> List<Edge> {
+  match list_tail(xs: labeled) {
+    TailFound { tail: rest } => rest
+    TailAbsent => Empty
+  }
+}
+

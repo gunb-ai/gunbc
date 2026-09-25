@@ -1,0 +1,45 @@
+module chunk
+
+fn target_layer_transition(
+  from: TargetReferenceLayer,
+  to: TargetReferenceLayer
+) -> TargetLayerTransition {
+  if from == to {
+    LayerTransitionIdentity
+  } else {
+    let from_facts = target_reference_layer_facts(layer: from)
+    let to_facts = target_reference_layer_facts(layer: to)
+    match from_facts.sharing {
+      SharingShared =>
+        match to_facts.sharing {
+          SharingUnique =>
+            LayerTransitionRefused {
+              from: from,
+              to: to,
+              cause: SharedValueDuplication
+            }
+          SharingShared =>
+            LayerTransitionRefused {
+              from: from,
+              to: to,
+              cause: UniqueIndirectionResharing
+            }
+        }
+      SharingUnique =>
+        match from_facts.indirection {
+          IndirectionDirect => LayerTransitionWrap { into: to }
+          IndirectionIndirect =>
+            match to_facts.indirection {
+              IndirectionDirect => LayerTransitionUnwrap { from: from }
+              IndirectionIndirect =>
+                LayerTransitionRefused {
+                  from: from,
+                  to: to,
+                  cause: UniqueIndirectionResharing
+                }
+            }
+        }
+    }
+  }
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
+  combine_hash(
+    a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
+    b: combine_hash(
+      a: integer_int_content_digest(value: key.position),
+      b: symbol_identity_digest(sym: key.production)
+    )
+  )
+}
+

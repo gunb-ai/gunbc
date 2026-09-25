@@ -1,0 +1,33 @@
+module chunk
+
+fn target_project_closure_in_arrow_scope(
+  closure: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: arrow_domain_named_param_bindings(arrow: closure),
+    f: fn(params) {
+      match find_arrow_body_child(root: closure) {
+        Accepted { value: body, diagnostics: _ } =>
+          bind_outcome(
+            o: target_value_expr_project_body_subexpression(
+              arrow: closure,
+              node: body,
+              target: target,
+              source_bool_form: source_bool_form,
+              handle_transform: handle_transform
+            ),
+            f: fn(body_expr) {
+              outcome_accepted(
+                target_value_expression_closure(params: params, body: body_expr)
+              )
+            }
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+

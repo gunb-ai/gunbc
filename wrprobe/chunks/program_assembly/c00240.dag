@@ -1,0 +1,12 @@
+module chunk
+
+fn program_assembly_measured_alloc(
+  measured: ParseProductionMeasured,
+  seed: OccurrenceIdAllocator
+) -> OccurrenceIdAllocator {
+  match measured.outcome {
+    Rejected { diagnostics: _ } => seed
+    Accepted { value: artifact, diagnostics: _ } => artifact.alloc
+  }
+}
+

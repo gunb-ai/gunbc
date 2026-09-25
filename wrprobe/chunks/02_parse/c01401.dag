@@ -1,0 +1,13 @@
+module chunk
+
+fn compute_nullable_round(root: GrammarRoot, ns: List<Symbol>) -> List<Symbol> {
+  fold_list(
+    xs: root.productions,
+    empty: ns,
+    cons: fn(acc, p) {
+      compute_nullable_step(ns: acc, p: p)
+    }
+  )
+}
+
+

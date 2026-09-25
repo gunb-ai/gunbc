@@ -1,0 +1,7 @@
+module chunk
+
+type LocatedNormalizedTree {
+  path: String,
+  tree: NormalizedTree
+}
+

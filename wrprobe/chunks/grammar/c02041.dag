@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_symbol_list_put(m: Map<Symbol, Bool>, xs: List<Symbol>) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: xs,
+    empty: m,
+    cons: fn(acc, sym) { grammar_symbol_map_put(m: acc, sym: sym) }
+  )
+}
+

@@ -1,0 +1,24 @@
+module chunk
+
+fn target_atom_realization_conj_child(row_node: Node, edge_name: Symbol) -> Node {
+  match row_node.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        row_node.children,
+        init: row_node,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: n } =>
+              if n == edge_name {
+                e.target
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ => row_node
+  }
+}
+

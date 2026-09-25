@@ -1,0 +1,6 @@
+module chunk
+
+type SugarKey
+  = SurfaceAtomKey { atom: Symbol }
+  | ProductionIdentityKey { identity: Symbol }
+

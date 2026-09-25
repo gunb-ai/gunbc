@@ -1,0 +1,12 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

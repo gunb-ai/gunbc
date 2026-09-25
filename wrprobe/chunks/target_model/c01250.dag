@@ -1,0 +1,6 @@
+module chunk
+
+fn canonical_operation_op_ne() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsNotEqual }
+}
+

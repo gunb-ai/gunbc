@@ -1,0 +1,7 @@
+module chunk
+
+type TargetBoolLiteralShape {
+  true_token: Symbol
+  false_token: Symbol
+}
+

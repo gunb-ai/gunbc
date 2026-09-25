@@ -1,0 +1,6 @@
+module chunk
+
+fn projection_bundle_child(bundle: Node, name: Symbol) -> Outcome<Node> {
+  find_named_child(root: bundle, name: name)
+}
+

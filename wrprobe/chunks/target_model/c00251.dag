@@ -1,0 +1,11 @@
+module chunk
+
+type ProducedDeclRenderRows {
+  signature: List<ProducedDeclSignatureSegment>
+  param_layout: List<ProducedDeclParamSegment>
+  param_separator: List<Symbol>
+  type_ref_token_class: Symbol
+  block_close: List<ConcreteSyntaxToken>
+  block_evaluation_mode: BlockEvaluationMode
+}
+

@@ -1,0 +1,34 @@
+module chunk
+
+fn grammar_relation_emitted_rebuild_from_token_spine(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> Witness<Node> {
+  let token_count = fold_list(
+    xs: tokens,
+    empty: 0,
+    cons: fn(acc, _) { acc + 1 }
+  )
+  match grammar_relation_emitted_rebuild_for_lhs(
+    productions: productions,
+    lhs: lhs,
+    tokens: tokens,
+    token_index: 0
+  ) {
+    Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
+      if end_index == token_count {
+        Holds { value: emitted }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_emitted_conj_slot_surplus,
+            at: node_locus(node: emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+

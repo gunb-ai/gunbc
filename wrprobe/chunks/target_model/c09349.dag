@@ -1,0 +1,7 @@
+module chunk
+
+type TargetTypeExpression {
+  kind: TargetTypeExprKind
+  node: Node
+}
+

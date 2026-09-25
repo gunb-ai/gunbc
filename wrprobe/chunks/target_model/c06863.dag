@@ -1,0 +1,22 @@
+module chunk
+
+fn target_value_expr_bool_literal_value_from_expression(
+  expr: TargetValueExpression,
+  source_bool_form: TargetBoolLiteralShape
+) -> Optional<Bool> {
+  match expr.kind {
+    TargetValueExprBoolLiteral =>
+      target_value_expression_bool_literal_value_from_wire(wire: expr.node)
+    TargetValueExprSymbolIdentity =>
+      match target_value_expression_symbol_identity_from_wire(wire: expr.node) {
+        Accepted { value: id, diagnostics: _ } =>
+          target_value_expr_bool_literal_value_from_source_symbol(
+            id: id,
+            source_bool_form: source_bool_form
+          )
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+

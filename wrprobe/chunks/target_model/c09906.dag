@@ -1,0 +1,16 @@
+module chunk
+
+fn target_type_expr_expected_surface_for_kind(
+  kind: TargetTypeExprKind,
+  projection: TargetTypeExpressionProjection
+) -> Symbol {
+  match kind {
+    TargetTypeExprAtom => projection.atom_form.surface
+    TargetTypeExprInstantiation => projection.instantiation_form.surface
+    TargetTypeExprCardinality => projection.cardinality_form.surface
+    TargetTypeExprRecord => projection.conj_form.surface
+    TargetTypeExprSum => projection.disj_form.surface
+    TargetTypeExprArrow => projection.arrow_form.surface
+  }
+}
+

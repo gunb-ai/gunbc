@@ -1,0 +1,3 @@
+module chunk
+
+fn f(r: R) -> Bool { match r.g(y: 1) { true => k(v: 1)  false => k(v: 0) } }

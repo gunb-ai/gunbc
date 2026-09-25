@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
+  length(xs: grammar_choice_ambiguity_roster(root: root))
+}
+

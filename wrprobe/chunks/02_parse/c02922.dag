@@ -1,0 +1,15 @@
+module chunk
+
+fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
+  match acc {
+    None => Some { diagnostics: NonEmptyDiagnostics { head: d, tail: [] } }
+    Some { diagnostics: ned } =>
+      Some {
+        diagnostics: NonEmptyDiagnostics {
+          head: d,
+          tail: list_append(left: [ned.head], right: ned.tail)
+        }
+      }
+  }
+}
+

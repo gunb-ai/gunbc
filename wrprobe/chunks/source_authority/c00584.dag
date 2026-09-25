@@ -1,0 +1,6 @@
+module chunk
+
+type NormalizedDagSourceParsePrintLaw {
+  normalized_source_law: NormalizedSourceAstEqual
+}
+

@@ -1,0 +1,21 @@
+module chunk
+
+fn resolve_emitted_productions_matched_step(
+  acc: List<FormalProduction>,
+  production: FormalProduction,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
+) -> List<FormalProduction> {
+  if formal_production_matches_resolution(
+    production: production,
+    resolution: resolution,
+    children: children,
+    child_count: child_count
+  ) {
+    list_snoc_item(xs: acc, item: production)
+  } else {
+    acc
+  }
+}
+

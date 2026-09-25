@@ -1,0 +1,38 @@
+module chunk
+
+test fn a_context_refusal_backed_by_its_file_refusal_is_not_refused_on_that_clause() -> Bool {
+  let admission = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+    universe: [
+      test_identity(module: "v2.test.alpha", declaration: "passes"),
+      test_identity(module: "v2.test.beta", declaration: "blocked"),
+      smoke_identity()
+    ],
+    module_source_index: [
+      NativeRouteModuleSource { module: "v2.test.alpha", path: ^alpha_path },
+      NativeRouteModuleSource { module: "v2.test.beta", path: ^beta_path },
+      smoke_source_row()
+    ],
+    population: [
+      passed_row(module: "v2.test.alpha", declaration: "passes"),
+      refused_row(
+        module: "v2.test.beta",
+        declaration: "blocked",
+        stage: NativeTestStageContext,
+        reason: ^parse_g0_tokens_remain
+      ),
+      passed_row(
+        module: "v2.test.native_lane_smoke",
+        declaration: "native_route_positive_population_smoke"
+      )
+    ],
+    file_refusals: [file_refusal_row(
+      path: ^beta_path,
+      head: ^parse_grammar_choice_overlap_residue,
+      fatal: ^parse_g0_tokens_remain
+    )]
+  ))
+  !native_route_admission_refused_with(admission: admission, cause_name: "context_refusals_unbacked")
+  && native_route_admitted(admission: admission)
+}
+
+

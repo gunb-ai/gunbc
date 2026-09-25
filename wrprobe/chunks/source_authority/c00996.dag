@@ -1,0 +1,13 @@
+module chunk
+
+fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<String> {
+  match binding.provenance {
+    ParsedFromSource { artifact: a, span_index: _ } =>
+      optional_present(value: a.file_path)
+    ProducedByBehavior { producer: _ } =>
+      optional_absent()
+  }
+}
+
+
+

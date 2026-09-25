@@ -1,0 +1,6 @@
+module chunk
+
+data source_ref_no_fidelity_note: String = "SourceRef carries NO DecodeFidelity field, and that is a modeling decision rather than an omission. Fidelity is a property of a DECODE — how faithfully bytes became a value — and it already has a single authority in Medium<R> { carried, fidelity } (dag/extdeps/communication/medium.dag). A ref decodes nothing; it names a location. A fidelity ON the ref would therefore assert how faithfully something decodes BEFORE any read established it (§5 fabricated plausible output), and would stand a second fidelity authority beside Medium's (§3).
+
+The requirement that a row declare its fidelity is real and is ALREADY SATISFIED: DagSourceReadWitness holds source: Medium<String>, which carries it. The constraint this places on the later carrier migration — the stage-4 read-through must return Medium<String>, never a bare String, or the Lossless boundary silently goes undeclared — is recorded as named constraint C1 in the design note, because that failure produces nothing red at the diff."
+

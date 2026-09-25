@@ -1,0 +1,7 @@
+module chunk
+
+type GrammarExprFirstFold {
+  terminals: List<FirstKey>
+  nullable: Bool
+}
+

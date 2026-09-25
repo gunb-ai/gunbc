@@ -1,0 +1,9 @@
+module chunk
+
+fn target_collection_node_atom_identity(node: Node) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+  }
+}
+

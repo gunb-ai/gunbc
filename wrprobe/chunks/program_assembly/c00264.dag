@@ -1,0 +1,6 @@
+module chunk
+
+fn program_assembly_measured_outcome(measured: ParseProductionMeasured) -> Outcome<ParseArtifact> {
+  measured.outcome
+}
+

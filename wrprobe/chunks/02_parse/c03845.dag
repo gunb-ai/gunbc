@@ -1,0 +1,9 @@
+module chunk
+
+fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
+  match prepared {
+    PreparedVoidGrammar => optional_absent()
+    PreparedModeled { modeled: modeled, materialization: _ } => modeled.overlap_residue_stage
+  }
+}
+

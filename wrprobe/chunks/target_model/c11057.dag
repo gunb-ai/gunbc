@@ -1,0 +1,26 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
+  choice: TargetRepresentationChoice,
+  source_carrier: Node,
+  derive_trait: TargetCapabilityKey
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  let derive_key = derive_trait
+  match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
+    Absent =>
+      outcome_rejected(
+        target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+    Present { value: contract_authority } =>
+      outcome_accepted(
+        TargetDeriveSupplementalGenericBoundContract {
+          derive_trait: derive_trait,
+          authority: contract_authority.authority,
+          requirements: contract_authority.requirements
+        }
+      )
+  }
+}
+

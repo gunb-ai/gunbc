@@ -1,0 +1,25 @@
+module chunk
+
+fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<Symbol>) -> Node {
+  match binding {
+    Present { value: binding } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(
+            name: ^formal_terminal_identity_node_projection,
+            target: grammar_atom(identity: terminal.identity)
+          ),
+          grammar_named_edge(
+            name: ^formal_terminal_occurrence_binding_node_projection,
+            target: grammar_atom(identity: binding)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    Absent => formal_terminal_to_node(terminal: terminal)
+  }
+}
+

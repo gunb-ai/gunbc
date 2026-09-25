@@ -1,0 +1,30 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_wire_node(
+  derive_trait: TargetCapabilityKey,
+  authority: ExternalAuthority,
+  requirement_nodes: List<Node>
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait,
+        target: target_model_type_atom_node(
+          identity: derive_trait
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_derive_supplemental_generic_bound_contract_field_authority,
+        target: target_external_authority_bundle_node(authority: authority)
+      ),
+      target_model_named_edge(
+        name: ^target_derive_supplemental_generic_bound_contract_field_requirements,
+        target: fold_list_node(
+          xs: requirement_nodes,
+          item_node: fn(requirement_node) { requirement_node }
+        )
+      )
+    ]
+  )
+}
+

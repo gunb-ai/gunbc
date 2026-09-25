@@ -1,0 +1,17 @@
+module chunk
+
+fn target_value_expr_binding_in_declared_param_list(
+  binding: Symbol,
+  bindings: List<Symbol>
+) -> Bool {
+  fold_list(xs: bindings, empty: false, cons: fn(acc, sym) {
+    if acc {
+      true
+    } else if sym == binding {
+      true
+    } else {
+      false
+    }
+  })
+}
+

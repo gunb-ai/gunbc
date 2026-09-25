@@ -1,0 +1,10 @@
+module chunk
+
+fn target_function_signature_realization_target_model_bundle_mismatch_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_function_signature_realization_target_model_bundle_mismatch,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

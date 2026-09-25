@@ -1,0 +1,6 @@
+module chunk
+
+fn dag_prepared_grammar() -> Outcome<PreparedGrammar> {
+  prepare_grammar(grammar: dag_grammar())
+}
+

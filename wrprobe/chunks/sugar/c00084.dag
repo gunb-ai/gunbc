@@ -1,0 +1,13 @@
+module chunk
+
+fn sugar_rules() -> List<SugarRule> {
+  [
+    sugar_rule_service,
+    sugar_rule_fn,
+    sugar_rule_type,
+    sugar_rule_operation,
+    sugar_rule_type_alias_rhs,
+    sugar_rule_type_alias_rhs_lead
+  ]
+}
+

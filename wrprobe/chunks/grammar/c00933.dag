@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_relation_tokens_node<T>(
+  tokens: List<T>,
+  token_to_node: fn(T) -> Node
+) -> Node {
+  fold_list_node(xs: tokens, item_node: token_to_node)
+}
+

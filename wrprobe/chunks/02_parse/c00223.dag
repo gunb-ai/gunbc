@@ -1,0 +1,9 @@
+module chunk
+
+type AuthoredParseOutcome
+  = AuthoredParseAccepted { artifact: AuthoredParseArtifact }
+  | AuthoredParseRejected {
+      semantic: ParseArtifact,
+      refusals: FreeSemigroup<AnnotationAttachmentRefusal>
+    }
+

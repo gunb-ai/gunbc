@@ -1,0 +1,17 @@
+module chunk
+
+fn apply_emit_spelling_transform(
+  transform: TokenClassEmitTransform,
+  spelling: String
+) -> String {
+  match transform {
+    EmitSpellingIdentity => spelling
+    EmitSpellingConstant { value: v } => v
+    EmitSpellingWrap { prefix: p, suffix: s } => concat(p, concat(spelling, s))
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } => {
+      let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: es)
+      concat(p, concat(o, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), c)))
+    }
+  }
+}
+

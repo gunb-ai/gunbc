@@ -1,0 +1,36 @@
+module chunk
+
+fn target_value_expr_match_project_arms(
+  arrow: Node,
+  children: List<Edge>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<List<TargetValueExprMatchArmSlot>> {
+  match fold(
+    target_value_expr_match_arm_edges_after_scrutinee(children: children),
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, arm_edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expr_match_arm_slot_from_arm_edge(
+              arrow: arrow,
+              arm_edge: arm_edge,
+              target: target,
+              source_bool_form: source_bool_form,
+              handle_transform: handle_transform
+            ),
+            f: fn(arm) {
+              outcome_accepted(list_snoc_item(xs: slots, item: arm))
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: slots, diagnostics: d } => Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

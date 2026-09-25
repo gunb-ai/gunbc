@@ -1,0 +1,16 @@
+module chunk
+
+fn target_reference_layer_apply_value_expression(
+  inner: TargetValueExpression,
+  layer: TargetReferenceLayer,
+  tokens: TargetReferenceLayerTokens
+) -> TargetValueExpression {
+  match layer {
+    ReferenceLayerOwned => inner
+    ReferenceLayerRc =>
+      target_value_expression_reference_rc_new(inner: inner, ctor: tokens.rc_new_ctor)
+    ReferenceLayerBox =>
+      target_value_expression_reference_box_new(inner: inner, ctor: tokens.box_new_ctor)
+  }
+}
+

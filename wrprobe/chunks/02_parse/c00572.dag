@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_memo_stats_empty() -> ParseMemoStats {
+  ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+}
+

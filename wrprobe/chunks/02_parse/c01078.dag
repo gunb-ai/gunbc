@@ -1,0 +1,11 @@
+module chunk
+
+type ParseMatchArmStmtAcc {
+  remaining: List<Token>
+  acc_nodes: List<Node>
+  acc_diags: List<List<Diagnostic>>
+  done: Bool
+  prov: ParseProvenanceState
+  table: ParseTable
+}
+

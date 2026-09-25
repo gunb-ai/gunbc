@@ -1,0 +1,14 @@
+module chunk
+
+fn concat_prepared_alt_residue(alts: List<PreparedExprFold>) -> List<GrammarChoiceAmbiguityRow> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      match list_tail(xs: alts) {
+        TailAbsent => prepared_expr_fold_residue(alt: alt)
+        TailFound { tail: rest } =>
+          list_append(left: prepared_expr_fold_residue(alt: alt), right: concat_prepared_alt_residue(alts: rest))
+      }
+  }
+}
+

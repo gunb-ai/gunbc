@@ -1,0 +1,6 @@
+module chunk
+
+fn target_text_seq(acc: TargetText, next: TargetText) -> TargetText {
+  TargetText { source: concat(acc.source, next.source) }
+}
+

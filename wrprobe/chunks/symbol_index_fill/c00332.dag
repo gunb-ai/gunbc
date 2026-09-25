@@ -1,0 +1,39 @@
+module chunk
+
+fn symbol_index_fill_unique_variant_aliases(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node
+) -> SymbolIndex {
+  let counts = disj_variant_counts_in_module(root: root)
+  fold(
+    node_subtree_nodes(root: root),
+    init: index,
+    f: fn(acc, n) {
+      match n.kind {
+        TypeNode { connective: Disj } =>
+          fold(n.children, init: acc, f: fn(a2, e) {
+            match e.label {
+              Named { name: sym } =>
+                if disj_variant_count_of(counts: counts, sym: sym) == 1 {
+                  symbol_index_mark_declared_payload(
+                    index: symbol_index_insert(
+                      index: a2,
+                      qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                      resolved: e.target
+                    ),
+                    qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                    kind: VariantArmPayload
+                  )
+                } else {
+                  a2
+                }
+              Positional => a2
+            }
+          })
+        _ => acc
+      }
+    }
+  )
+}
+

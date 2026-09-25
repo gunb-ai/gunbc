@@ -1,0 +1,12 @@
+module chunk
+
+type GrammarExprFold<R> {
+  terminal: fn(Symbol, TerminalStampMode) -> R
+  literal_terminal: fn(Symbol, Symbol) -> R
+  nonterminal: fn(Symbol) -> R
+  sequence: fn(R, R) -> R
+  choice: fn(R, R) -> R
+  optional: fn(R) -> R
+  repeat: fn(R) -> R
+}
+

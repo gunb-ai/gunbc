@@ -1,0 +1,27 @@
+module chunk
+
+fn resolve_emitted_productions_slots(
+  productions: List<FormalProduction>,
+  candidates: List<FormalProduction>,
+  children: List<Node>
+) -> List<EmittedProductionResolution> {
+  let scan = fold_list(
+    xs: children,
+    empty: SlotResolutionScan { index: 0, slots: Empty },
+    cons: fn(acc, child) {
+      SlotResolutionScan {
+        index: acc.index + 1,
+        slots: list_snoc_item(
+          xs: acc.slots,
+          item: resolve_emitted_productions_asked(
+            productions: productions,
+            asked: formal_slot_asked_lhs(candidates: candidates, slot: acc.index),
+            emitted: child
+          )
+        )
+      }
+    }
+  )
+  scan.slots
+}
+

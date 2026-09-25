@@ -1,0 +1,26 @@
+module chunk
+
+fn target_value_expr_project_pick_literal_atom(
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
+  match target_value_expr_bool_literal_value_from_source_symbol(
+    id: id,
+    source_bool_form: source_bool_form
+  ) {
+    Present { value: b } =>
+      outcome_accepted(target_value_expression_bool_literal(value: b))
+    Absent =>
+      match target_value_expr_binding_ref_for_literal_atom(id: id) {
+        Present { value: binding } =>
+          outcome_accepted(
+            target_value_expression_binding_ref(binding: binding)
+          )
+        Absent =>
+          outcome_accepted(
+            target_value_expression_symbol_identity(identity: id)
+          )
+      }
+  }
+}
+

@@ -1,0 +1,30 @@
+module chunk
+
+fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
+  if id == discriminant(v: TargetTypeExprAtom) {
+    optional_present(value: TargetTypeExprAtom)
+  } else {
+    if id == discriminant(v: TargetTypeExprInstantiation) {
+      optional_present(value: TargetTypeExprInstantiation)
+    } else {
+      if id == discriminant(v: TargetTypeExprCardinality) {
+        optional_present(value: TargetTypeExprCardinality)
+      } else {
+        if id == discriminant(v: TargetTypeExprRecord) {
+          optional_present(value: TargetTypeExprRecord)
+        } else {
+          if id == discriminant(v: TargetTypeExprSum) {
+            optional_present(value: TargetTypeExprSum)
+          } else {
+            if id == discriminant(v: TargetTypeExprArrow) {
+              optional_present(value: TargetTypeExprArrow)
+            } else {
+              optional_absent()
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

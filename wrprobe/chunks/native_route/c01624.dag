@@ -1,0 +1,11 @@
+module chunk
+
+fn pinned() -> NativeRouteLivePairStanding {
+  LivePairExpectedRed {
+    stage: NativeTestStagePrepare,
+    fatal_reason: ^resolve_reason_ambiguous_symbol,
+    class_reason: ^resolve_ambiguous_on_global_bare,
+    trigger: "t"
+  }
+}
+

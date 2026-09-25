@@ -1,0 +1,33 @@
+module chunk
+
+fn target_model_with_produced_scaffold(
+  target: TargetModel,
+  rule_name: Symbol,
+  base_row: Node,
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> TargetModel {
+  TargetModel {
+    produced_decl_support: target.produced_decl_support,
+    bundle: target_model_bundle_replace_edge_target(
+      bundle: target.bundle,
+      edge_name: ^target_model_edge_translation_rules,
+      new_target: target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: rule_name,
+            target: grammar_relation_row_attach_bodied_scaffold(
+              row: base_row,
+              scaffold: scaffold
+            )
+          )
+        ]
+      )
+    ),
+    lex: target.lex,
+    binding_spellings: target.binding_spellings,
+    token_class_emit_transforms: target.token_class_emit_transforms,
+    authority_source_text: target.authority_source_text,
+    runtime_row: target.runtime_row
+  }
+}
+

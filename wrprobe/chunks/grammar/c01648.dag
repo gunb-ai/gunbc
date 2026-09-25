@@ -1,0 +1,27 @@
+module chunk
+
+fn formal_production_matches_lhs_exact_child(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node,
+  candidate: FormalProduction
+) -> Bool {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    let resolution = resolve_emitted_productions_asked(productions: productions, asked: [lhs], emitted: child)
+    let children = conj_positional_children(parent: child)
+    formal_production_matches_lhs_and_slot_count(
+      production: candidate,
+      lhs: lhs,
+      emitted_slot_count: emitted_node_slot_count(emitted: child)
+    ) &&
+      formal_production_matches_resolution(
+        production: candidate,
+        resolution: resolution,
+        children: children,
+        child_count: conj_positional_child_count(children: children)
+      )
+  } else {
+    false
+  }
+}
+

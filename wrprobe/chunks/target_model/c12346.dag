@@ -1,0 +1,35 @@
+module chunk
+
+fn target_model_bundle_replace_edge_target(
+  bundle: Node,
+  edge_name: Symbol,
+  new_target: Node
+) -> Node {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: fold(
+          bundle.children,
+          init: Empty,
+          f: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == edge_name {
+                  list_snoc_item(
+                    xs: acc,
+                    item: target_model_named_edge(name: n, target: new_target)
+                  )
+                } else {
+                  list_snoc_item(xs: acc, item: edge)
+                }
+              Positional => list_snoc_item(xs: acc, item: edge)
+            }
+          }
+        ),
+        occurrence_id: OccurrenceSynthetic
+      }
+    _ => bundle
+  }
+}
+

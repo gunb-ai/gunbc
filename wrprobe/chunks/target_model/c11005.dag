@@ -1,0 +1,27 @@
+module chunk
+
+fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node(
+  choice: TargetRepresentationChoice
+) -> Node {
+  fold_list_node(
+    xs: fold_list(
+      xs: map_keys(choice.supplemental_generic_bound_contracts),
+      empty: Empty,
+      cons: fn(acc, derive_key) {
+        match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
+          Absent => acc
+          Present { value: contract_authority } =>
+            list_snoc_item(
+              xs: acc,
+              item: target_derive_supplemental_generic_bound_contract_node_from_key(
+                derive_key: derive_key,
+                contract_authority: contract_authority
+              )
+            )
+        }
+      }
+    ),
+    item_node: fn(contract_node) { contract_node }
+  )
+}
+

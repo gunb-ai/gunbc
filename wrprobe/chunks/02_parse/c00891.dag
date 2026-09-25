@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_minted_id_snoc(acc: List<OccurrenceId>, n: Node) -> List<OccurrenceId> {
+  match n.occurrence_id {
+    OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
+    OccurrenceSynthetic => acc
+    OccurrenceProjected { id: _, caused_by: _ } => acc
+  }
+}
+

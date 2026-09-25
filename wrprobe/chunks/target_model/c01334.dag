@@ -1,0 +1,9 @@
+module chunk
+
+type BlockEvaluationMode
+  = ValueProducing
+  | StatementSequenced {
+      return_token: Symbol
+      statement_terminator: Symbol
+    }
+

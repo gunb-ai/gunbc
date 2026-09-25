@@ -1,0 +1,17 @@
+module chunk
+
+type TargetImportShape
+  = EsModuleImport {
+      import_token: Symbol
+      names_open: Symbol
+      names_separator: Symbol
+      names_close: Symbol
+      from_token: Symbol
+      path_open: Symbol
+      path_segment_separator: Symbol
+      path_close: Symbol
+      terminator: Symbol
+      name_ident_token: Symbol
+      path_segment_token: Symbol
+    }
+

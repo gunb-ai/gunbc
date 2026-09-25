@@ -1,0 +1,29 @@
+module chunk
+
+fn target_use_site_ownership_catalog_lookup_step_for_row(
+  acc: TargetUseSiteOwnershipCatalogLookup,
+  row_node: Node,
+  display_name: Symbol,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipCatalogLookup {
+  match acc {
+    TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+    TargetUseSiteOwnershipCatalogMissing =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipMissing, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+    TargetUseSiteOwnershipCatalogUnique { row: r } =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipUnique { row: r }, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+    TargetUseSiteOwnershipCatalogAmbiguous =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipAmbiguous, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+  }
+}
+

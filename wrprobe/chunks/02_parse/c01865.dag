@@ -1,0 +1,27 @@
+module chunk
+
+fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr) -> Bool {
+  match left {
+    PreparedTerminal { token_class: lc, stamp: ls } =>
+      match right {
+        PreparedTerminal { token_class: rc, stamp: rs } =>
+          (lc == rc) && prepared_stamp_eq(left: ls, right: rs)
+        _ => false
+      }
+    PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
+      match right {
+        PreparedLiteralTerminal { token_class: rc, lexeme: rw } => first_key_eq(
+          left: FirstExactWord { token_class: lc, lexeme: lw },
+          right: FirstExactWord { token_class: rc, lexeme: rw }
+        )
+        _ => false
+      }
+    PreparedNonterminal { production: lp } =>
+      match right {
+        PreparedNonterminal { production: rp } => lp == rp
+        _ => false
+      }
+    _ => false
+  }
+}
+

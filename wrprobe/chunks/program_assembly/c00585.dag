@@ -1,0 +1,14 @@
+module chunk
+
+fn assemble_program_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  lm: LanguageModel
+) -> Outcome<Node> {
+  assemble_program_from_ingest_located(
+    ingest: ingest,
+    admission: admission,
+    lm: lm
+  ).program
+}
+

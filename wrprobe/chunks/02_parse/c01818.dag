@@ -1,0 +1,3 @@
+module chunk
+
+fn prepared_expr_fold_residue(alt: PreparedExprFold) -> List<GrammarChoiceAmbiguityRow> { alt.residue }

@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_relation_row_emitted_fixture(row: Node) -> Outcome<Node> {
+  find_named_child(root: row, name: ^grammar_relation_field_emitted)
+}
+

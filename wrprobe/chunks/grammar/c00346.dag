@@ -1,0 +1,8 @@
+module chunk
+
+type GrammarSchemaProbe {
+  fixture: String
+  production: FormalProduction
+  expected_parse_surface: Node
+}
+

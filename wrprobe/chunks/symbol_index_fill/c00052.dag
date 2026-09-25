@@ -1,0 +1,11 @@
+module chunk
+
+data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_from_node",
+    field: WholeDeclaration
+  }
+}
+

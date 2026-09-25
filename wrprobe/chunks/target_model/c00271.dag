@@ -1,0 +1,8 @@
+module chunk
+
+type ProducedDeclSignatureSubject {
+  fn_name: Symbol
+  params: List<Edge>
+  codomain: Node
+}
+

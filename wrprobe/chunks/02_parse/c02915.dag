@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
+  match unique(xs: root.productions, eq: fn(a, b) { a.name == b.name }) {
+    true => false
+    false => true
+  }
+}
+

@@ -1,0 +1,10 @@
+module chunk
+
+fn set_symbol_insert(s: List<Symbol>, item: Symbol) -> List<Symbol> {
+  if symbol_list_contains(xs: s, item: item) {
+    s
+  } else {
+    list_snoc_item(xs: s, item: item)
+  }
+}
+

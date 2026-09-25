@@ -1,0 +1,36 @@
+module chunk
+
+fn declaration_reference_spelling(
+  root_text: String,
+  scope_separator_text: String,
+  module_segment_joiner: String,
+  path: QualifiedName
+) -> Optional<String> {
+  match qualified_name_last_segment(qn: path) {
+    Absent => optional_absent()
+    Present { value: leaf } =>
+      let module_segments = qualified_name_init(qn: path)
+      if is_empty(xs: module_segments) {
+        optional_absent()
+      } else {
+        let module_ident = fold_list(
+          xs: module_segments,
+          empty: "",
+          cons: fn(acc, seg) {
+            if string_length(s: acc) == 0 {
+              symbol_lexeme(sym: seg)
+            } else {
+              concat(acc, concat(module_segment_joiner, symbol_lexeme(sym: seg)))
+            }
+          }
+        )
+        optional_present(
+          value: concat(
+            root_text,
+            concat(scope_separator_text, concat(module_ident, concat(scope_separator_text, symbol_lexeme(sym: leaf))))
+          )
+        )
+      }
+  }
+}
+

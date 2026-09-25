@@ -1,0 +1,13 @@
+module chunk
+
+fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
+  match grammar_lookup_production(root: root, name: root.start) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } =>
+      any(
+        xs: root.productions,
+        predicate: fn(p) { expr_has_undefined_nonterminal(expr: p.expression, root: root) }
+      )
+  }
+}
+

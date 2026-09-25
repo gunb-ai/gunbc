@@ -1,0 +1,8 @@
+module chunk
+
+type StringSplitState {
+  rest: String
+  field_reversed: String
+  fields_reversed: FreeMonoid<String>
+}
+

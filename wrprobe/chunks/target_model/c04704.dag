@@ -1,0 +1,30 @@
+module chunk
+
+fn target_value_expression_record_construct(
+  type_name: Symbol,
+  fields: List<TargetValueExprFieldInitSlot>
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprRecordConstruct,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_record_construct_atom }
+      },
+      children: list_append(
+        left: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_record_type,
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: type_name } },
+              children: [],
+              occurrence_id: OccurrenceSynthetic
+            }
+          )
+        ],
+        right: target_value_expr_field_init_slot_edges(slots: fields)
+      ),
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+

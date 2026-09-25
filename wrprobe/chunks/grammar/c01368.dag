@@ -1,0 +1,6 @@
+module chunk
+
+fn formal_symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == wanted })
+}
+

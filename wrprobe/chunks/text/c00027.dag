@@ -1,0 +1,8 @@
+module chunk
+
+fn string_head(s: String) -> CharResult {
+  match list_head(xs: s) {
+    HeadFound { value: c } => CharFound { value: c }
+    HeadAbsent => CharAbsent
+  }
+}

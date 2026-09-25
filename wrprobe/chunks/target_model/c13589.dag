@@ -1,0 +1,20 @@
+module chunk
+
+fn target_value_expr_branch_bool_gate(
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape
+) -> Bool {
+  if length(xs: node_positional_child_targets(node: node)) != 3 {
+    false
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      Present { value: cond } =>
+        target_value_expr_is_source_bool_literal_atom(
+          node: cond,
+          source_bool_form: source_bool_form
+        )
+      Absent => false
+    }
+  }
+}
+

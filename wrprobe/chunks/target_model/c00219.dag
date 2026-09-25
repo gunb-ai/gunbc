@@ -1,0 +1,8 @@
+module chunk
+
+type ProducedDeclSignatureSegment
+  = ProducedSignatureFixed { token_class: Symbol }
+  | ProducedSignatureDeclName { token_class: Symbol }
+  | ProducedSignatureParams
+  | ProducedSignatureReturnType
+

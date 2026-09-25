@@ -1,0 +1,11 @@
+module chunk
+
+type ParseMemoEntry
+  = ParseMemoAccepted {
+      remaining: List<Token>,
+      captured: Node,
+      diagnostics: List<Diagnostic>,
+      prov: ParseProvenanceState
+    }
+  | ParseMemoRejected { diagnostics: List<Diagnostic> }
+

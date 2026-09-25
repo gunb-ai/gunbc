@@ -1,0 +1,6 @@
+module chunk
+
+fn string_all_chars_in(s: String, alphabet: String) -> Bool {
+  for_all(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+

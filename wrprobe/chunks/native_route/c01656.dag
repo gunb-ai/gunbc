@@ -1,0 +1,35 @@
+module chunk
+
+test fn a_live_pair_refused_for_another_cause_is_not_the_enrollment() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(
+      receipt: receipt_with_controls(
+        false_control: refused_chain(class_reason: ^resolve_ambiguous_on_lexical_chain, fatal_reason: ^resolve_reason_ambiguous_symbol, at_prepare: true),
+        true_control: pinned_chain()
+      ),
+      live_pair: pinned()
+    ),
+    cause_name: "false_control_not_observed"
+  )
+  && native_route_admission_refused_with(
+    admission: native_route_admission_with(
+      receipt: receipt_with_controls(
+        false_control: pinned_chain(),
+        true_control: refused_chain(class_reason: ^resolve_ambiguous_on_global_bare, fatal_reason: ^resolve_reason_unbound_symbol, at_prepare: true)
+      ),
+      live_pair: pinned()
+    ),
+    cause_name: "true_control_not_observed"
+  )
+  && native_route_admission_refused_with(
+    admission: native_route_admission_with(
+      receipt: receipt_with_controls(
+        false_control: pinned_chain(),
+        true_control: refused_chain(class_reason: ^resolve_ambiguous_on_global_bare, fatal_reason: ^resolve_reason_ambiguous_symbol, at_prepare: false)
+      ),
+      live_pair: pinned()
+    ),
+    cause_name: "true_control_not_observed"
+  )
+}
+

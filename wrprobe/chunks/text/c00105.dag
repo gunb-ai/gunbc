@@ -1,0 +1,24 @@
+module chunk
+
+fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
+  if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
+    StringSplitState {
+      rest: skip(xs: state.rest, n: length(xs: delimiter)),
+      field_reversed: Empty,
+      fields_reversed: Cons {
+        head: list_reverse(xs: state.field_reversed),
+        tail: state.fields_reversed
+      }
+    }
+  } else {
+    match state.rest {
+      Empty => state
+      Cons { head: c, tail: t } => StringSplitState {
+        rest: t,
+        field_reversed: Cons { head: c, tail: state.field_reversed },
+        fields_reversed: state.fields_reversed
+      }
+    }
+  }
+}
+

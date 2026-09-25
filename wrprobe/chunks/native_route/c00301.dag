@@ -1,0 +1,11 @@
+module chunk
+
+test fn a_single_target_pattern_selects_one_declaration() -> Bool {
+  pattern_admits(text: "//v2/test/parse:a_parse_holds", module_qn: "v2.test.parse", declaration: "a_parse_holds")
+  && !pattern_admits(
+    text: "//v2/test/parse:a_parse_holds",
+    module_qn: "v2.test.parse",
+    declaration: "a_different_declaration"
+  )
+}
+

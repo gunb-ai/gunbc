@@ -1,0 +1,17 @@
+module chunk
+
+fn target_add_signature_slot_at(
+  arrow: Node,
+  index: Int,
+  inhabitants_root: Node
+) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
+    Present { value: slot } =>
+      target_signature_slot_matches_declared_inhabitants(
+        slot: slot,
+        inhabitants_root: inhabitants_root
+      )
+    Absent => false
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {
+  binding == ^grammar_free_name_slot
+}
+

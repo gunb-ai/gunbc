@@ -1,0 +1,16 @@
+module chunk
+
+fn left_corner_direct_rows(root: GrammarRoot, nullable_set: List<Symbol>) -> Map<Symbol, List<Symbol>> {
+  fold_list(
+    xs: root.productions,
+    empty: empty_map(),
+    cons: fn(acc, p) {
+      map_insert(
+        m: acc,
+        key: p.name,
+        value: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set)
+      )
+    }
+  )
+}
+

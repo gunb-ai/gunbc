@@ -1,0 +1,23 @@
+module chunk
+
+fn target_atom_realization_catalog_node(
+  rows: List<TargetAtomRealization>,
+  host_bundle: Node
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        target_atom_realization_catalog_snoc_edge(
+          acc: acc,
+          row: row,
+          host_bundle: host_bundle
+        )
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

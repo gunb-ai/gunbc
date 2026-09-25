@@ -1,0 +1,25 @@
+module chunk
+
+fn parse_table_for_production_analyzed(
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  all_tokens: List<Token>,
+  materialization: Materialization
+) -> ParseTable {
+  ParseTableRealization {
+    artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
+    provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
+    materialization: materialization,
+    grammar_digest: analysis.grammar_digest,
+    token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
+    entries: empty_map(),
+    memo_hits: 0,
+    memo_misses: 0,
+    memo_lookup_calls: 0,
+    nullable_set: analysis.nullable_set,
+    first_rows: analysis.first_rows,
+    productions_by_name: analysis.productions_by_name,
+    prepared_exprs: analysis.prepared_exprs
+  }
+}
+

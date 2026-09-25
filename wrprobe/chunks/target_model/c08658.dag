@@ -1,0 +1,12 @@
+module chunk
+
+fn target_atom_realization_catalog_edge(
+  row: TargetAtomRealization,
+  host_bundle: Node
+) -> Edge {
+  target_model_named_edge(
+    name: row.display_name,
+    target: target_atom_realization_to_node(row: row, host_bundle: host_bundle)
+  )
+}
+

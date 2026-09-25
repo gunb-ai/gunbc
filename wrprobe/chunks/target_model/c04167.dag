@@ -1,0 +1,20 @@
+module chunk
+
+fn target_value_expr_primitive_apply_operand_edges(
+  operands: List<TargetValueExpression>
+) -> List<Edge> {
+  fold_list_right(
+    xs: operands,
+    empty: Empty,
+    snoc: fn(acc, operand) {
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_value_expr_field_operand,
+          target: target_value_expression_node(expr: operand)
+        ),
+        tail: acc
+      }
+    }
+  )
+}
+

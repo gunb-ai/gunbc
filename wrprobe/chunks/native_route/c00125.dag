@@ -1,0 +1,6 @@
+module chunk
+
+fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
+  NativeTestFileRefusal { path: path, head_reason: head, fatal_reason: fatal }
+}
+

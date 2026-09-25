@@ -1,0 +1,12 @@
+module chunk
+
+fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> Node {
+  match connective_edge_discipline(c: connective) {
+    NoEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_no_edges)
+    LabeledEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_labeled)
+    PositionalEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    ArrowBodyEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+  }
+}
+

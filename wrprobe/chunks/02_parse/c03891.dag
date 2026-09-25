@@ -1,0 +1,15 @@
+module chunk
+
+fn parse_module_prepared_measured(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics
+) -> ParseProductionMeasured {
+  parse_module_prepared_measured_seeded(
+    tokens: tokens,
+    prepared: prepared,
+    validation_residue: validation_residue,
+    seed: occurrence_id_allocator_initial()
+  )
+}
+

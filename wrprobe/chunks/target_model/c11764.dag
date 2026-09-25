@@ -1,0 +1,6 @@
+module chunk
+
+type WrapDecisionGate
+  = WrapGateInapplicable
+  | WrapGateDecided { decision: WrapDecision }
+

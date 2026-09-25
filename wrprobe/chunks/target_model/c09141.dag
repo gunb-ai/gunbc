@@ -1,0 +1,52 @@
+module chunk
+
+fn target_function_signature_realization_from_row_node(
+  row_node: Node,
+  host_target_model: TargetModel
+) -> Outcome<TargetFunctionSignatureRealization> {
+  let source_carrier = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_function_signature_realization_field_source_carrier
+  )
+  let row_bundle = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_function_signature_realization_field_target_model_bundle
+  )
+  if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
+    match target_function_boundary_site_from_node(
+      n: target_atom_realization_conj_child(
+        row_node: row_node,
+        edge_name: ^target_function_signature_realization_field_boundary_site
+      ),
+      source_carrier: source_carrier
+    ) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: boundary_site, diagnostics: _ } =>
+        match target_type_expression_from_node(
+          n: target_atom_realization_conj_child(
+            row_node: row_node,
+            edge_name: ^target_function_signature_realization_field_signature_type_form
+          ),
+          source_carrier: source_carrier
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: signature_type_form, diagnostics: _ } =>
+            outcome_accepted(
+              TargetFunctionSignatureRealization {
+                source_carrier: source_carrier,
+                target_model: host_target_model,
+                boundary_site: boundary_site,
+                signature_type_form: signature_type_form
+              }
+            )
+        }
+    }
+  } else {
+    outcome_rejected(
+      target_function_signature_realization_target_model_bundle_mismatch_diagnostic(
+        source_carrier: source_carrier
+      )
+    )
+  }
+}
+

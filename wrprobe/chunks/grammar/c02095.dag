@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_production_selection_predicate(direction: GrammarInterpretationDirection) -> Symbol {
+  match direction {
+    GrammarInterpretBackward => ^grammar_selection_predicate_backward_lhs_shape
+    GrammarInterpretForward => ^grammar_selection_predicate_forward_rhs_frontier
+  }
+}
+

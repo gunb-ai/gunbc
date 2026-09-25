@@ -1,0 +1,19 @@
+module chunk
+
+fn assemble_program_from_module_roots(
+  roots: FreeMonoid<NormalizedTree>,
+  admission: Admission,
+  lm: LanguageModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: validate_module_roots(roots: roots),
+    f: fn(validated_roots) {
+      resolve_with_admission(
+        lm: lm,
+        roots: validated_roots.roots,
+        admission: admission
+      )
+    }
+  )
+}
+

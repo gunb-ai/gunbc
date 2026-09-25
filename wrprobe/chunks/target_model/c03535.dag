@@ -1,0 +1,18 @@
+module chunk
+
+fn bodied_arrow_scaffold_from_grammar_relation_row(
+  row: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  match find_named_child(root: row, name: ^grammar_relation_field_bodied_scaffold) {
+    Accepted { value: scaffold_bundle, diagnostics: d } =>
+      bind_outcome(
+        o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
+        f: fn(scaffold) {
+          Accepted { value: scaffold, diagnostics: d }
+        }
+      )
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+

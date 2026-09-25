@@ -1,0 +1,16 @@
+module chunk
+
+fn target_operator_realization_row_matches_canonical_op(
+  row: Node,
+  canonical_op: CanonicalOperation
+) -> Bool {
+  match find_named_child(root: row, name: ^target_operator_realization_field_operation) {
+    Accepted { value: operation_wire, diagnostics: _ } =>
+      canonical_operation_wire_matches_operation(
+        wire: operation_wire,
+        operation: canonical_op
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+

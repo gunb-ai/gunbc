@@ -1,0 +1,23 @@
+module chunk
+
+fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol) -> List<GrammarChoiceAmbiguityRow> {
+  match list_tail(xs: alts) {
+    TailAbsent => std.algebra.Empty
+    TailFound { tail: rest } =>
+      if is_empty(xs: rest) {
+        std.algebra.Empty
+      } else {
+        let row = ordered_backtrack_row(production: production, alts: alts)
+        let here = if !is_empty(xs: row.overlap_terminals) || row.both_nullable {
+          Cons { head: row, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        }
+        list_append(
+          left: here,
+          right: authored_choice_site_residue(alts: rest, production: production)
+        )
+      }
+  }
+}
+

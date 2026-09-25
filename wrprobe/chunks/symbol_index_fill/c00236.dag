@@ -1,0 +1,16 @@
+module chunk
+
+fn symbol_index_pending_of_source(tree: ModuleBindingSource) -> FreeMonoid<PendingBinding> {
+  match qualified_name_from_module_node(root: tree.root) {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: module_qn, diagnostics: _ } =>
+      fold_list(
+        xs: tree.import_bindings,
+        empty: symbol_index_alias_rows_of(module_qn: module_qn, root: tree.root),
+        cons: fn(acc, row) {
+          list_snoc_item(xs: acc, item: PendingBinding { module_qn: module_qn, row: row })
+        }
+      )
+  }
+}
+

@@ -1,0 +1,17 @@
+module chunk
+
+fn sugar_key_matches(key: SugarKey, rule_key: SugarKey) -> Bool {
+  match key {
+    SurfaceAtomKey { atom: a } =>
+      match rule_key {
+        SurfaceAtomKey { atom: b } => a == b
+        ProductionIdentityKey { identity: _ } => false
+      }
+    ProductionIdentityKey { identity: i } =>
+      match rule_key {
+        SurfaceAtomKey { atom: _ } => false
+        ProductionIdentityKey { identity: j } => i == j
+      }
+  }
+}
+

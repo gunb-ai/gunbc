@@ -1,0 +1,15 @@
+module chunk
+
+fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
+  Edge {
+    label: Named { name: ^target_type_expr_field_kind },
+    target: Node {
+      kind: TypeNode {
+        connective: Atom { identity: discriminant(v: kind) }
+      },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

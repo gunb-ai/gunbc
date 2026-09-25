@@ -1,0 +1,7 @@
+module chunk
+
+type TokenPrefixRow {
+  prefix: List<Symbol>
+  next: PreparedChoicePlan
+}
+

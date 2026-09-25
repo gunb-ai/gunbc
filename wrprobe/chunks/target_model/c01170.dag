@@ -1,0 +1,8 @@
+module chunk
+
+type CanonicalOperation
+  = AlgebraPrimitive { algebra_field: Symbol }
+  | AlgebraInverseCompose { binary_field: Symbol, inverse_field: Symbol }
+  | OrderingComparison { compare_field: Symbol, predicate: OrderingPredicate }
+  | EqualityComparison { eq_field: Symbol, predicate: EqualityPredicate }
+

@@ -1,0 +1,30 @@
+module chunk
+
+fn produced_decl_param_segment_tokens(
+  rows: ProducedDeclRenderRows,
+  edge: Edge,
+  segment: ProducedDeclParamSegment
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match segment {
+    ProducedParamFixed { token_class: tc } =>
+      outcome_accepted(value: [FixedToken { token_class: tc }])
+    ProducedParamName { token_class: tc } =>
+      match edge.label {
+        Named { name: pname } =>
+          outcome_accepted(value: [BoundToken { token_class: tc, binding: pname }])
+        Positional =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_param_unnamed,
+              node: edge.target
+            )
+          )
+      }
+    ProducedParamType =>
+      produced_decl_type_ref_tokens(
+        token_class: rows.type_ref_token_class,
+        type_node: edge.target
+      )
+  }
+}
+

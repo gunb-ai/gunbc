@@ -1,0 +1,11 @@
+module chunk
+
+fn program_assembly_fold_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> ProgramAssemblyFoldState {
+  program_assembly_fold_state_from_located(
+    state: program_assembly_fold_ingest_located(ingest: ingest, lm: lm)
+  )
+}
+

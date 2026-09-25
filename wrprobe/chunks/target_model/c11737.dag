@@ -1,0 +1,9 @@
+module chunk
+
+type TargetReferenceLayerTokens {
+  rc_type_head: Symbol
+  box_type_head: Symbol
+  rc_new_ctor: Symbol
+  box_new_ctor: Symbol
+}
+

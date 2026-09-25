@@ -1,0 +1,15 @@
+module chunk
+
+fn target_derive_supplemental_generic_bound_contract_authority_insert(
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  derive_trait: TargetCapabilityKey,
+  authority: ExternalAuthority
+) -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+    contracts: contracts,
+    derive_trait: derive_trait,
+    authority: authority,
+    requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
+  )
+}
+

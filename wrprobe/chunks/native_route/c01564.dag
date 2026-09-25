@@ -1,0 +1,8 @@
+module chunk
+
+fn native_route_tally_count_for(rows: List<NativeRouteCauseTally>, cause: Symbol) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
+    if row.cause == cause { acc + row.file_refusals } else { acc }
+  })
+}
+

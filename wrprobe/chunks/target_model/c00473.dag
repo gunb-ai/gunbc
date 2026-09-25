@@ -1,0 +1,35 @@
+module chunk
+
+fn produced_decl_subject_from_name_and_arrow(
+  fn_name: Symbol,
+  arrow: Node
+) -> Outcome<ProducedDeclSignatureSubject> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+        Present { value: codomain } =>
+          outcome_accepted(
+            value: ProducedDeclSignatureSubject {
+              fn_name: fn_name,
+              params: domain.children,
+              codomain: codomain
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_codomain_missing,
+              node: arrow
+            )
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(
+          reason: ^produced_decl_render_domain_missing,
+          node: arrow
+        )
+      )
+  }
+}
+

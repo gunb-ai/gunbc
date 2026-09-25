@@ -1,0 +1,12 @@
+module chunk
+
+fn left_corner_rows(root: GrammarRoot, nullable_set: List<Symbol>) -> Map<Symbol, List<Symbol>> {
+  let seeded = left_corner_direct_rows(root: root, nullable_set: nullable_set)
+  left_corner_fixpoint(
+    root: root,
+    rows: seeded,
+    seen_total: left_corner_total(root: root, rows: seeded),
+    fuel: length(xs: root.productions)
+  )
+}
+

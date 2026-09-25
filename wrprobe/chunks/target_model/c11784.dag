@@ -1,0 +1,6 @@
+module chunk
+
+fn target_carrier_test_claim_node() -> Node {
+  target_carrier_type_node(identity: ^target_carrier_test_claim)
+}
+

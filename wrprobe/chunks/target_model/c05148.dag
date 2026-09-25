@@ -1,0 +1,104 @@
+module chunk
+
+fn target_operator_shape_emit_primitive_apply_tokens(
+  shape: TargetOperatorShape,
+  projection: TargetValueExpressionProjection,
+  bindings: List<Symbol>,
+  expr: TargetValueExpression
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match shape {
+    InfixToken { token: op_token } =>
+      if length(xs: bindings) != 2 {
+        outcome_rejected(
+          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+        )
+      } else {
+        match list_at_optional(xs: bindings, index: 0) {
+          Absent =>
+            outcome_rejected(
+              target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          Present { value: left_binding } =>
+            match list_at_optional(xs: bindings, index: 1) {
+              Absent =>
+                outcome_rejected(
+                  target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+                )
+              Present { value: right_binding } =>
+                outcome_accepted(
+                  Cons {
+                    head: target_value_expression_binding_ref_token(
+                      binding: left_binding,
+                      projection: projection
+                    ),
+                    tail: Cons {
+                      head: FixedToken { token_class: op_token },
+                      tail: Cons {
+                        head: target_value_expression_binding_ref_token(
+                          binding: right_binding,
+                          projection: projection
+                        ),
+                        tail: Empty
+                      }
+                    }
+                  }
+                )
+            }
+        }
+      }
+    PrefixToken { token: op_token } =>
+      if length(xs: bindings) != 1 {
+        outcome_rejected(
+          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+        )
+      } else {
+        match list_at_optional(xs: bindings, index: 0) {
+          Absent =>
+            outcome_rejected(
+              target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          Present { value: binding } =>
+            outcome_accepted(
+              Cons {
+                head: FixedToken { token_class: op_token },
+                tail: Cons {
+                  head: target_value_expression_binding_ref_token(
+                    binding: binding,
+                    projection: projection
+                  ),
+                  tail: Empty
+                }
+              }
+            )
+        }
+      }
+    CallIdent { ident: callee } =>
+      outcome_accepted(
+        list_append(
+          left: list_append(
+            left: Cons {
+              head: FixedToken { token_class: projection.primitive_apply_form.open },
+              tail: Cons {
+                head: FixedToken { token_class: callee },
+                tail: Empty
+              }
+            },
+            right: target_value_expression_binding_refs_intersperse_separator(
+              bindings: bindings,
+              projection: projection,
+              separator: projection.primitive_apply_form.separator
+            )
+          ),
+          right: Cons {
+            head: FixedToken { token_class: projection.primitive_apply_form.close },
+            tail: Empty
+          }
+        )
+      )
+    MethodIdent { ident: _ } =>
+      outcome_rejected(
+        target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: expr)
+      )
+  }
+}
+

@@ -1,0 +1,31 @@
+module chunk
+
+fn symbol_index_bind_pending_round(
+  index: SymbolIndex,
+  pending: FreeMonoid<PendingBinding>
+) -> BindRound {
+  fold_list(
+    xs: pending,
+    empty: BindRound { index: index, deferred: Empty },
+    cons: fn(acc, p) {
+      match symbol_index_lookup(index: acc.index, qualified_path: p.row.target) {
+        Present { value: resolved } =>
+          BindRound {
+            index: symbol_index_bind_at(
+              index: acc.index,
+              binding_path: qualified_name_snoc(qn: p.module_qn, segment: p.row.binding),
+              declaring_path: symbol_index_declaring_path_of(index: acc.index, target: p.row.target),
+              resolved: resolved
+            ),
+            deferred: acc.deferred
+          }
+        Absent =>
+          BindRound {
+            index: acc.index,
+            deferred: list_snoc_item(xs: acc.deferred, item: p)
+          }
+      }
+    }
+  )
+}
+

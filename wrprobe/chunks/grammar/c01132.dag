@@ -1,0 +1,13 @@
+module chunk
+
+fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symbol? {
+  match fold_list(
+    xs: production.rhs,
+    empty: RhsSingletonBindingNotSeen,
+    cons: formal_production_rhs_singleton_binding_step
+  ) {
+    RhsSingletonBindingFound { binding: b } => Present { value: b }
+    _ => Absent
+  }
+}
+

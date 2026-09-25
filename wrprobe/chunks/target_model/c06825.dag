@@ -1,0 +1,15 @@
+module chunk
+
+fn target_value_expr_bool_literal_value_from_source_symbol(
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape
+) -> Optional<Bool> {
+  if id == ^target_value_expression_bool_true || id == source_bool_form.true_token {
+    optional_present(true)
+  } else if id == ^target_value_expression_bool_false || id == source_bool_form.false_token {
+    optional_present(false)
+  } else {
+    optional_absent()
+  }
+}
+

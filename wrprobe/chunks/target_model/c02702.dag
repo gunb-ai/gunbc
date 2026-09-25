@@ -1,0 +1,32 @@
+module chunk
+
+fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
+  match fold(
+    bundle.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: rows, diagnostics: d } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_effect_callee_row_edge {
+                bind_outcome(
+                  o: target_value_expr_effect_callee_row_from_wire(row: edge.target),
+                  f: fn(row) {
+                    outcome_accepted(list_snoc_item(xs: rows, item: row))
+                  }
+                )
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Accepted { value: rows, diagnostics: d } => Accepted { value: rows, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

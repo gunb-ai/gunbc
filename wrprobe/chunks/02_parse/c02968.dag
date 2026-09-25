@@ -1,0 +1,14 @@
+module chunk
+
+fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbiguityRow>) -> Diagnostics {
+  diagnostics_from_diagnostic_list(
+    items: fold_list(
+      xs: roster,
+      empty: std.algebra.Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at, row: row))
+      }
+    )
+  )
+}
+

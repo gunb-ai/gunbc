@@ -1,0 +1,18 @@
+module chunk
+
+type TargetValueExpressionProjection {
+  binding_ref_form: TargetBindingRefShape
+  primitive_apply_form: TargetPrimitiveApplyShape
+  callable_apply_form: TargetCallApplyShape
+  closure_form: TargetClosureShape
+  effect_apply_form: TargetEffectApplyShape
+  conditional_form: TargetConditionalShape
+  let_form: TargetBindLetShape
+  loop_form: TargetLoopShape
+  record_construct_form: TargetRecordConstructShape
+  field_access_form: TargetFieldAccessShape
+  match_form: TargetMatchShape
+  bool_literal_form: TargetBoolLiteralShape
+  block_evaluation_mode: BlockEvaluationMode
+}
+

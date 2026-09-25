@@ -1,0 +1,12 @@
+module chunk
+
+fn left_corner_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>>) -> Int {
+  fold_list(
+    xs: root.productions,
+    empty: 0,
+    cons: fn(acc, p) {
+      acc + length(xs: left_corner_row(rows: rows, name: p.name))
+    }
+  )
+}
+

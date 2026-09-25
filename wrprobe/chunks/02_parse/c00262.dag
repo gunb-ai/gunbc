@@ -1,0 +1,8 @@
+module chunk
+
+type ParseMemoStats {
+  hits: Int
+  misses: Int
+  lookup_calls: Int
+}
+

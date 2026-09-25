@@ -1,0 +1,9 @@
+module chunk
+
+type TargetCallApplyShape {
+  callee_ident_token: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+}
+

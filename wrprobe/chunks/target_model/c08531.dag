@@ -1,0 +1,26 @@
+module chunk
+
+fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -> Node {
+  match form {
+    Absent =>
+      Node {
+        kind: TypeNode {
+          connective: Atom { identity: ^target_constructor_template_optional_absent }
+        },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+}
+    Present { value: template } =>
+      match template {
+        CtorTemplateUnit {} =>
+          Node {
+            kind: TypeNode {
+              connective: Atom { identity: ^target_constructor_template_constructor_absent }
+            },
+            children: [],
+            occurrence_id: OccurrenceSynthetic
+}
+      }
+  }
+}
+

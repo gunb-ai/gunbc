@@ -1,0 +1,15 @@
+module chunk
+
+fn target_value_expr_is_bool_literal_expression(
+  expr: TargetValueExpression,
+  source_bool_form: TargetBoolLiteralShape
+) -> Bool {
+  match target_value_expr_bool_literal_value_from_expression(
+    expr: expr,
+    source_bool_form: source_bool_form
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+

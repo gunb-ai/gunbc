@@ -1,0 +1,9 @@
+module chunk
+
+fn smoke_source_row() -> NativeRouteModuleSource {
+  NativeRouteModuleSource {
+    module: "v2.test.native_lane_smoke",
+    path: ^src_v2_test_native_lane_smoke_test_dag
+  }
+}
+

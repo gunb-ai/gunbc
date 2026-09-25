@@ -1,0 +1,42 @@
+module chunk
+
+fn target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
+  scrutinee_tokens: List<ConcreteSyntaxToken>,
+  catalog: Node,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_operator_realization_catalog_lookup(
+      catalog: catalog,
+      canonical_op: canonical_operation_op_ne()
+    ),
+    f: fn(ne_realization) {
+      match ne_realization.shape {
+        InfixToken { token: ne_token } =>
+          outcome_accepted(
+            concrete_syntax_tokens_extend(
+              acc: concrete_syntax_tokens_extend(
+                acc: scrutinee_tokens,
+                more: Cons {
+                  head: FixedToken { token_class: ne_token },
+                  tail: Empty
+                }
+              ),
+              more: Cons {
+                head: target_value_expression_binding_ref_token(
+                  binding: ^dag_binding_octet_zero,
+                  projection: projection
+                ),
+                tail: Empty
+              }
+            )
+          )
+        _ =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    }
+  )
+}
+

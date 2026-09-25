@@ -1,0 +1,6 @@
+module chunk
+
+fn compute_grammar_first_analysis(root: GrammarRoot) -> GrammarFirstAnalysis {
+  compute_grammar_first_analysis_given(root: root, nullable_set: compute_nullable_set(root: root))
+}
+

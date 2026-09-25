@@ -1,0 +1,17 @@
+module chunk
+
+fn first_key_eq(left: FirstKey, right: FirstKey) -> Bool {
+  match left {
+    FirstAnyOfClass { token_class: lc } =>
+      match right {
+        FirstAnyOfClass { token_class: rc } => lc == rc
+        FirstExactWord { token_class: _, lexeme: _ } => false
+      }
+    FirstExactWord { token_class: lc, lexeme: lw } =>
+      match right {
+        FirstExactWord { token_class: rc, lexeme: rw } => lc == rc && lw == rw
+        FirstAnyOfClass { token_class: _ } => false
+      }
+  }
+}
+

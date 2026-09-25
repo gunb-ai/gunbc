@@ -1,0 +1,15 @@
+module chunk
+
+fn target_value_semantics_carriers_merge_atoms(
+  base: List<Symbol>,
+  extra: List<Symbol>
+) -> List<Symbol> {
+  fold_list(
+    xs: extra,
+    empty: base,
+    cons: fn(acc, atom) {
+      target_value_semantics_carriers_snoc_unique(atoms: acc, atom: atom)
+    }
+  )
+}
+

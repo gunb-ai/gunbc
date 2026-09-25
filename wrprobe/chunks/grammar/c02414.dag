@@ -1,0 +1,27 @@
+module chunk
+
+fn grammar_relation_row_backward_selection(
+  row: GrammarRelationRow,
+  productions: List<FormalProduction>
+) -> Witness<FormalProduction> {
+  match formal_production_unique_lhs_exact_match(
+    productions: productions,
+    lhs: row.production.lhs.identity,
+    child: row.emitted
+  ) {
+    Holds { value: selected } =>
+      if selected == row.production {
+        Holds { value: selected }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_row_backward_selection_mismatch,
+            at: node_locus(node: row.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+

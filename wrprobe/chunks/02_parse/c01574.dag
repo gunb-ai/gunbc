@@ -1,0 +1,16 @@
+module chunk
+
+fn first_list_union(left: List<FirstKey>, right: List<FirstKey>) -> List<FirstKey> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, sym) {
+      if first_keys_contains(xs: acc, item: sym) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: sym)
+      }
+    }
+  )
+}
+

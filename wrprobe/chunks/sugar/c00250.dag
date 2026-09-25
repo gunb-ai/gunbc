@@ -1,0 +1,22 @@
+module chunk
+
+fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
+  let variant = sugar_unwrap_production_shell(node: variant_node)
+  match variant_declaration_edge_optional(n: variant) {
+    Present { value: declared } => Accepted { value: declared, diagnostics: None }
+    Absent =>
+      match sugar_first_atom_identity_optional(node: variant) {
+        Present { value: name } =>
+          Accepted {
+            value: Edge {
+              label: Named { name: name },
+              target: sugar_type_node(connective: Conj, children: [], n: variant)
+            },
+            diagnostics: None
+          }
+        Absent =>
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
+      }
+  }
+}
+

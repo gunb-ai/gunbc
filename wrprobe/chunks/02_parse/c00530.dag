@@ -1,0 +1,15 @@
+module chunk
+
+fn parse_table_memo_insert_refused(
+  table: ParseTable,
+  key: ParsePositionKey,
+  value: ParseMemoEntry
+) -> Bool {
+  let after = parse_table_insert(table: table, key: key, value: value)
+  match v2.std.collection.map_get(m: after.entries, key: key) {
+    Accepted { value: Absent } => true
+    Accepted { value: Present { value: _ } } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+

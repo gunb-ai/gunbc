@@ -1,0 +1,54 @@
+module chunk
+
+fn target_model_augment_value_semantics_carriers(
+  target: TargetModel,
+  extra_atoms: List<Symbol>
+) -> Outcome<TargetModel> {
+  if is_empty(xs: extra_atoms) {
+    outcome_accepted(target)
+  } else {
+    match target.bundle.kind {
+      TypeNode { connective: Conj } =>
+        match fold(
+          target.bundle.children,
+          init: optional_absent(),
+          f: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == ^target_model_edge_value_semantics_carriers {
+                  optional_present(value: edge.target)
+                } else {
+                  acc
+                }
+              Positional => acc
+            }
+          }
+        ) {
+          Absent => outcome_accepted(target)
+          Present { value: carriers_node } =>
+            outcome_accepted(
+              TargetModel {
+                produced_decl_support: target.produced_decl_support,
+                bundle: target_model_bundle_replace_edge_target(
+                  bundle: target.bundle,
+                  edge_name: ^target_model_edge_value_semantics_carriers,
+                  new_target: target_value_semantics_carriers_node(
+                    atoms: target_value_semantics_carriers_merge_atoms(
+                      base: target_value_semantics_carriers_from_node(node: carriers_node),
+                      extra: extra_atoms
+                    )
+                  )
+                ),
+                lex: target.lex,
+                binding_spellings: target.binding_spellings,
+                token_class_emit_transforms: target.token_class_emit_transforms,
+                authority_source_text: target.authority_source_text,
+                runtime_row: target.runtime_row
+              }
+            )
+        }
+      _ => outcome_accepted(target)
+    }
+  }
+}
+

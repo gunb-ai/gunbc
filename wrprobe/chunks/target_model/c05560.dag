@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_expr_bind_let_child_from_wire(
+  wire: Node,
+  field: Symbol
+) -> Outcome<TargetValueExpression> {
+  target_value_expr_conditional_child_from_wire(wire: wire, field: field)
+}
+

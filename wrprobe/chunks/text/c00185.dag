@@ -1,0 +1,6 @@
+module chunk
+
+fn string_contains_char(s: String, c: Char) -> Bool {
+  contains(xs: s, item: c, eq: char_eq)
+}
+

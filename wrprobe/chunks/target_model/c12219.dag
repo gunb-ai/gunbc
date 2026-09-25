@@ -1,0 +1,23 @@
+module chunk
+
+fn wrap_decision_lookup_in_catalog_node(
+  catalog: Node,
+  value_semantics_carriers: List<Symbol>,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<WrapDecision> {
+  bind_outcome(
+    o: target_use_site_ownership_lookup_in_catalog_node(
+      catalog: catalog,
+      value_semantics_carriers: value_semantics_carriers,
+      source_carrier: source_carrier,
+      use_site: use_site
+    ),
+    f: fn(ownership) {
+      outcome_accepted(
+        wrap_decision_from_carrier_ownership(ownership: ownership)
+      )
+    }
+  )
+}
+

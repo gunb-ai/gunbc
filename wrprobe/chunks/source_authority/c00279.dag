@@ -1,0 +1,8 @@
+module chunk
+
+data source_ref_seed_homonym_note: String = "NAME COLLISION, deliberate and marked. src/v1/01_tokenize.dag:53 declares a DIFFERENT type also called SourceRef — a tokenizer input handle { file, text, source_chars } that CARRIES the source bytes. The two are inverted on the exact axis this type turns on: that one contains the source, this one exists precisely so rows do not.
+
+The seed's use is itself the nickname violation (a ref that carries everything references nothing), so the correct name goes to the correct use rather than the correct use being renamed around a misnomer — renaming here would invert which use is authoritative and fork this spelling from the design docs' at the moment of declaration (§3; parent ruling 2026-07-19). No hard collision exists: the two resolve by subtree, and the fork-prevention wall keys on identical variant payloads, which two differently-shaped records do not trigger.
+
+dissolve-on: the v1 tokenizer being next touched or deleted, at which point the seed's type is renamed to SourceBuffer — the honest name for a thing holding bytes. The v1_delete milestone discharges this naturally. The note is homed HERE rather than in src/v1/01_tokenize.dag so that an inert marker costs zero touches on a load-bearing v1 pipeline stage, and anyone about to collide with the name finds it by grepping the name itself."
+

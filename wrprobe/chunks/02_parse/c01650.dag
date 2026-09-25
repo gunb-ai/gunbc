@@ -1,0 +1,6 @@
+module chunk
+
+fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: element.terminals, nullable: true }
+}
+

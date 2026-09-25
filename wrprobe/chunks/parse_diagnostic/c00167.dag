@@ -1,0 +1,9 @@
+module chunk
+
+fn list_tail_or_empty_rows(xs: FreeMonoid<GrammarChoiceAmbiguityRow>) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  match list_tail(xs: xs) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
+

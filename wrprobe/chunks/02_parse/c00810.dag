@@ -1,0 +1,19 @@
+module chunk
+
+fn parse_prov_replay_frame(
+  base: v2.std.provenance.SpanIndex,
+  incoming: v2.std.provenance.SpanIndex,
+  frame: List<ParseProvFrameItem>
+) -> v2.std.provenance.SpanIndex {
+  fold_list(
+    xs: frame,
+    empty: base,
+    cons: fn(acc, item) {
+      match item {
+        FrameMinted { id: id } => span_index_adopt(base: acc, incoming: incoming, id: id)
+        FrameNested { frame: inner } => parse_prov_replay_frame(base: acc, incoming: incoming, frame: inner)
+      }
+    }
+  )
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+test fn an_enrolled_live_pair_holds_only_at_its_pinned_refusal() -> Bool {
+  let r = receipt_with_controls(false_control: pinned_chain(), true_control: pinned_chain())
+  native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: pinned()))
+  && native_route_admitted(admission: native_route_admission(receipt: r))
+  && !native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: LivePairRequired))
+}
+

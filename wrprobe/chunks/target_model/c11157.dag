@@ -1,0 +1,10 @@
+module chunk
+
+fn target_collection_set_carrier_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^target_collection_set_carrier } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

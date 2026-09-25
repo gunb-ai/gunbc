@@ -1,0 +1,10 @@
+module chunk
+
+type DeclarationReferenceForm
+  = ModuleScopedPath {
+      root_text: String
+      scope_separator_text: String
+      module_segment_joiner: String
+    }
+  | NoDeclarationReferenceForm
+

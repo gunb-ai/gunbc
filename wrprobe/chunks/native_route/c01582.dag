@@ -1,0 +1,10 @@
+module chunk
+
+fn chain_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^v2_native_route_test_supplied_verdict, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

@@ -1,0 +1,16 @@
+module chunk
+
+fn parse_stamp_match_arm_stmt_nodes(
+  acc_nodes: List<Node>,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  if length(xs: acc_nodes) == 1 {
+    match list_at_optional(xs: acc_nodes, index: 0) {
+      Present { value: only } => ParseStampResult { node: only, prov: prov }
+      Absent => ParseStampResult { node: grammar_empty_node(), prov: prov }
+    }
+  } else {
+    parse_stamp_derived_repeat(acc_nodes: acc_nodes, prov: prov)
+  }
+}
+

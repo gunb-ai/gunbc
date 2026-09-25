@@ -1,0 +1,11 @@
+module chunk
+
+type TargetCollectionRealization {
+  source_carrier: Node
+  primary: TargetRepresentationChoice
+  alternatives: List<TargetRepresentationChoice>
+  fallback_diagnostic: Diagnostic
+  text_carrier: Optional<TargetTextCarrier>
+  capability_eligibility: List<TargetCapabilityEligibilityRow>
+}
+

@@ -1,0 +1,40 @@
+module chunk
+
+fn parse_choice_ordered_backtrack(
+  alternatives: List<PreparedGrammarExpr>,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match list_head(xs: alternatives) {
+    HeadAbsent => ParseExprRejected { diagnostics: [], table: table }
+    HeadFound { value: alt } =>
+      match parse_expr_with_first(
+        expr: alt,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
+          match list_tail(xs: alternatives) {
+            TailAbsent => ParseExprRejected { diagnostics: diags, table: table1 }
+            TailFound { tail: rest_alts } =>
+              parse_choice_ordered_backtrack(
+                alternatives: rest_alts,
+                tokens: tokens,
+                all_tokens: all_tokens,
+                root: root,
+                table: table1,
+                prov: prov
+              )
+          }
+      }
+  }
+}
+

@@ -1,0 +1,19 @@
+module chunk
+
+fn semantic_ir_from_source_with_model(
+  source: Medium<String>,
+  compilation_unit: Symbol,
+  lm: LanguageModel
+) -> Outcome<DagSemanticIr> {
+  bind_outcome(
+    o: parse_dag_source_ast_with_model(
+      source: source,
+      compilation_unit: compilation_unit,
+      lm: lm
+    ),
+    f: fn(ast) {
+      semantic_ir_from_ast_with_model(ast: ast, lm: lm)
+    }
+  )
+}
+

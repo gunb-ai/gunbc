@@ -1,0 +1,71 @@
+module chunk
+
+fn target_atom_realization_from_row_node(
+  row_node: Node,
+  host_target_model: TargetModel
+) -> Outcome<TargetAtomRealization> {
+  let source_carrier = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_atom_realization_field_source_carrier
+  )
+  let row_bundle = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_atom_realization_field_target_model_bundle
+  )
+  if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
+    match target_type_expression_from_node(
+      n: target_atom_realization_conj_child(
+        row_node: row_node,
+        edge_name: ^target_atom_realization_field_type_form
+      ),
+      source_carrier: source_carrier
+    ) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: type_form, diagnostics: _ } =>
+        match target_value_template_from_node(
+          n: target_atom_realization_conj_child(
+            row_node: row_node,
+            edge_name: ^target_atom_realization_field_value_form
+          ),
+          source_carrier: source_carrier
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: value_form, diagnostics: _ } =>
+            match target_constructor_template_from_node(
+              n: target_atom_realization_conj_child(
+                row_node: row_node,
+                edge_name: ^target_atom_realization_field_constructor_form
+              ),
+              source_carrier: source_carrier
+            ) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: constructor_form, diagnostics: _ } =>
+                match target_atom_realization_display_name_from_row(
+                  row_node: row_node,
+                  source_carrier: source_carrier
+                ) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: display_name, diagnostics: _ } =>
+                    outcome_accepted(
+                      TargetAtomRealization {
+                        source_carrier: source_carrier,
+                        target_model: host_target_model,
+                        type_form: type_form,
+                        value_form: value_form,
+                        constructor_form: constructor_form,
+                        display_name: display_name
+                      }
+                    )
+                }
+            }
+        }
+    }
+  } else {
+    outcome_rejected(
+      target_atom_realization_target_model_bundle_mismatch_diagnostic(
+        source_carrier: source_carrier
+      )
+    )
+  }
+}
+

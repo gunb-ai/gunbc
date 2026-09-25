@@ -1,0 +1,10 @@
+module chunk
+
+fn program_assembly_phase_token_count(tokens: Outcome<TokenStream>) -> Int {
+  match tokens {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: stream, diagnostics: _ } => token_stream_remaining_count(stream: stream)
+  }
+}
+
+

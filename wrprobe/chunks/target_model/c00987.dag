@@ -1,0 +1,6 @@
+module chunk
+
+fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
+  outcome_accepted(value: binding)
+}
+

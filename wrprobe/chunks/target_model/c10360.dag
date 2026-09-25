@@ -1,0 +1,8 @@
+module chunk
+
+type TargetDeriveSupplementalGenericBoundContractCatalog {
+  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
+  contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+}
+
+

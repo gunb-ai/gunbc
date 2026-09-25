@@ -1,0 +1,8 @@
+module chunk
+
+type SugarLowering
+  = SugarRewriteConnective { connective: Connective, edges: EdgeDiscipline }
+  | SugarUnwrapPositionalChild {}
+  | SugarFoldCoproductPipeChain {}
+  | SugarDropLeadingSeparator {}
+

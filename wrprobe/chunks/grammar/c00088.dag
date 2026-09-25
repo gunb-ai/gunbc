@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_alphabet_enumeration_deferred_4766() -> GrammarAlphabetEnumerationEvidence {
+  GrammarAlphabetEnumerationEvidence { blocker: ^grammar_enumeration_deferred_4766 }
+}
+

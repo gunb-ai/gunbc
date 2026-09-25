@@ -1,0 +1,13 @@
+module chunk
+
+test fn an_absent_old_route_naming_nothing_is_refused() -> Bool {
+  let receipt = green_receipt_with_old_route_control(
+    control: OldRouteNotPresentAtWindow { expected_executable: "" }
+  )
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
+    cause_name: "old_route_control_never_installed"
+  )
+}
+
+

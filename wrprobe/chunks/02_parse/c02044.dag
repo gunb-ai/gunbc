@@ -1,0 +1,6 @@
+module chunk
+
+fn choice_token_prefix_rows(alts: List<PreparedExprFold>, need: Int) -> Optional<List<TokenPrefixRow>> {
+  choice_token_prefix_rows_from(alts: alts, need: need, rows: std.algebra.Empty)
+}
+

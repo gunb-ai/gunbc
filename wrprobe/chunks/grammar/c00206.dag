@@ -1,0 +1,6 @@
+module chunk
+
+fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFormalGrammar {
+  schema.terminal_coverage.grammar
+}
+

@@ -1,0 +1,111 @@
+module chunk
+
+fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExpression> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: atom_id } } =>
+      if atom_id == ^target_value_expression_binding_ref_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprBindingRef,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_symbol_identity_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_bool_literal_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprBoolLiteral,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_conditional_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprConditional,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_bind_let_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprBindLet,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_loop_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprLoop,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_primitive_apply_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprPrimitiveApply,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_record_construct_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprRecordConstruct,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_field_access_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprFieldAccess,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_match_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprMatch,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_callable_apply_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprCallableApply,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_closure_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprClosure,
+            node: wire
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_expression_emit_unsupported_kind_diagnostic(
+            expr: TargetValueExpression {
+              kind: TargetValueExprSymbolIdentity,
+              node: wire
+            }
+          )
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(
+          expr: TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      )
+  }
+}
+

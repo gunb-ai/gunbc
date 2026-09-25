@@ -1,0 +1,7 @@
+module chunk
+
+type RhsSingletonBindingLookup
+  = RhsSingletonBindingNotSeen
+  | RhsSingletonBindingFound { binding: Symbol }
+  | RhsSingletonBindingAmbiguous
+

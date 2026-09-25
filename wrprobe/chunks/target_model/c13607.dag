@@ -1,0 +1,4 @@
+module chunk
+
+data target_value_expr_int_literal_predicate_dissolution_note: String = "See target_value_expr_int_literal_predicate_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
+

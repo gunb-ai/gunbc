@@ -1,0 +1,14 @@
+module chunk
+
+fn target_fidelity_quotient_optional(target: TargetModel) -> Outcome<Optional<Node>> {
+  match find_named_child(
+    root: target.bundle,
+    name: ^target_model_edge_fidelity_quotient
+  ) {
+    Accepted { value: child, diagnostics: _ } =>
+      outcome_accepted(Present { value: child })
+    Rejected { diagnostics: _ } =>
+      outcome_accepted(Absent)
+  }
+}
+

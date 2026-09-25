@@ -1,0 +1,11 @@
+module chunk
+
+fn source_ir_node_artifact_provenance(
+  source_read: DagSourceReadWitness
+) -> Outcome<NodeArtifactProvenance> {
+  source_ir_node_artifact_provenance_from_model(
+    source_read: source_read,
+    lm: dag_language_model()
+  )
+}
+

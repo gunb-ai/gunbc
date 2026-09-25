@@ -1,0 +1,6 @@
+module chunk
+
+fn parse_stage_diagnostic_core(d: ParseStageDiagnostic) -> Diagnostic {
+  d.diagnostic
+}
+

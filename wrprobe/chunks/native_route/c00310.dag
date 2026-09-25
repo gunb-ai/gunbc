@@ -1,0 +1,8 @@
+module chunk
+
+test fn identity_qualification_derives_the_dotted_spelling() -> Bool {
+  native_route_identity_qualified(
+    identity: test_identity(module: "v2.test.alpha", declaration: "passes")
+  ) == "v2.test.alpha.passes"
+}
+

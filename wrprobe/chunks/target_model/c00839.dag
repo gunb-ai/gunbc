@@ -1,0 +1,10 @@
+module chunk
+
+fn target_type_expr_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_type_expr_projection_bundle_malformed,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

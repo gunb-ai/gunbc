@@ -1,0 +1,20 @@
+module chunk
+
+fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprBoolLiteral,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_bool_literal_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expression_field_value,
+          target: target_value_expression_bool_atom(value: value)
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

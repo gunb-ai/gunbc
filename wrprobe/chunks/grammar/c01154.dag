@@ -1,0 +1,10 @@
+module chunk
+
+fn formal_binding_conj_slot_arm(binding: Symbol) -> FormalBindingConjSlotArm {
+  if formal_binding_is_emitted_atom_from_slot(binding: binding) {
+    FormalBindingConjSlotEmittedAtom
+  } else {
+    FormalBindingConjSlotExactBinding
+  }
+}
+

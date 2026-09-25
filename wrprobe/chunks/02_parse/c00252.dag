@@ -1,0 +1,7 @@
+module chunk
+
+type ParseMintSourceResult {
+  id: OccurrenceId
+  prov: ParseProvenanceState
+}
+

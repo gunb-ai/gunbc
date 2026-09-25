@@ -1,0 +1,7 @@
+module chunk
+
+type ParseSyncState {
+  found_sync: Bool
+  result: List<Token>
+}
+

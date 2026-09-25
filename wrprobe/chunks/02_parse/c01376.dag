@@ -1,0 +1,17 @@
+module chunk
+
+fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: List<Symbol>) -> Bool {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { false },
+      literal_terminal: fn(_, _) { false },
+      nonterminal: fn(name) { symbol_list_contains(xs: nullable_set, item: name) },
+      sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
+      choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
+      optional: fn(_) { true },
+      repeat: fn(_) { true }
+    }
+  )
+}
+

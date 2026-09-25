@@ -1,0 +1,24 @@
+module chunk
+
+fn decode_vep_chain_effect_apply(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_effect_apply(bundle: bundle),
+    f: fn(effect_apply_form) {
+      decode_vep_chain_conditional(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form
+      )
+    }
+  )
+}
+

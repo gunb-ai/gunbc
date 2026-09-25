@@ -1,0 +1,9 @@
+module chunk
+
+fn grammar_choice_ambiguity_roster_from_analysis(
+  root: GrammarRoot,
+  analysis: GrammarFirstAnalysis
+) -> List<GrammarChoiceAmbiguityRow> {
+  analysis.choice_residue
+}
+

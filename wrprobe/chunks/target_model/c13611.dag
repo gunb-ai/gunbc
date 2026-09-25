@@ -1,0 +1,9 @@
+module chunk
+
+fn target_value_expr_is_int_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
+    _ => false
+  }
+}
+

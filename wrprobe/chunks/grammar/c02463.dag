@@ -1,0 +1,7 @@
+module chunk
+
+type BackwardRowSelection
+  = BackwardRowNone
+  | BackwardRowOne { row: Node }
+  | BackwardRowMany
+

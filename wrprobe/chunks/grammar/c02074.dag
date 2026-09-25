@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
+}
+

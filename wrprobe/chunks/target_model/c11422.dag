@@ -1,0 +1,17 @@
+module chunk
+
+fn target_capability_requirement_satisfied(
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
+  requirement: TargetCapabilityRequirement,
+  elem: Node
+) -> Outcome<Bool> {
+  match target_capability_eligibility_lookup(rows: eligibility_table, key: requirement.capability_key) {
+    Present { value: eligibility } =>
+      outcome_accepted(
+        target_capability_eligibility_admits(eligibility: eligibility, elem: elem)
+      )
+    Absent =>
+      outcome_rejected(target_capability_unknown_diagnostic(elem: elem))
+  }
+}
+

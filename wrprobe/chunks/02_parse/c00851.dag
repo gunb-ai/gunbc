@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_prov_leave_frame(outer: ParseProvenanceState, inner: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: inner.alloc,
+    index: inner.index,
+    frame: list_snoc_item(xs: outer.frame, item: FrameNested { frame: inner.frame })
+  }
+}
+

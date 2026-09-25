@@ -1,0 +1,14 @@
+module chunk
+
+fn class_bucket_words(alts: List<PreparedExprFold>, token_class: Symbol) -> List<Symbol> {
+  fold_list(xs: alts, empty: empty_symbol_list(), cons: fn(acc, alt) {
+    fold_list(xs: prepared_expr_fold_first(alt: alt).terminals, empty: acc, cons: fn(acc2, k) {
+      match k {
+        FirstExactWord { token_class: c, lexeme: w } =>
+          if c == token_class { set_symbol_insert(s: acc2, item: w) } else { acc2 }
+        FirstAnyOfClass { token_class: _ } => acc2
+      }
+    })
+  })
+}
+

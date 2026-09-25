@@ -1,0 +1,10 @@
+module chunk
+
+fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
+  match child.kind {
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+

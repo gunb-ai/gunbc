@@ -1,0 +1,9 @@
+module chunk
+
+test fn empty_eq_fn_decl_refuses_holds() -> Bool {
+  match g_parse_accepted(text: empty_eq_fn_source, file: ^probe_empty_eq) {
+    true => false
+    false => true
+  }
+}
+

@@ -1,0 +1,9 @@
+module chunk
+
+fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
+  match sugar_sequence_pair_optional(node: node) {
+    Present { value: pair } => optional_present(value: pair.right)
+    Absent => optional_present(value: node)
+  }
+}
+

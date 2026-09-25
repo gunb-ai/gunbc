@@ -1,0 +1,4 @@
+module chunk
+
+data source_ref_list_digest_seed: String = "source-ref-closure-list"
+

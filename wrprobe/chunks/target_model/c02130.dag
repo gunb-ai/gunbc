@@ -1,0 +1,20 @@
+module chunk
+
+fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
+  target_model_type_conj_node(
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        Cons {
+          head: target_model_named_edge(
+            name: ^target_operator_realization_row_edge,
+            target: row
+          ),
+          tail: acc
+        }
+      }
+    )
+  )
+}
+

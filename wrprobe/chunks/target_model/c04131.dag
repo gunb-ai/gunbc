@@ -1,0 +1,20 @@
+module chunk
+
+fn target_value_expression_string_literal(value: Node) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprStringLiteral,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_string_literal_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expression_field_value,
+          target: value
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+

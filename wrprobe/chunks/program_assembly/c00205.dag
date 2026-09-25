@@ -1,0 +1,28 @@
+module chunk
+
+fn program_assembly_phase_parse_measured_seeded(
+  tokens: Outcome<TokenStream>,
+  prepared: PreparedGrammar,
+  residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> ParseProductionMeasured {
+  match tokens {
+    Rejected { diagnostics: d } =>
+      ParseProductionMeasured {
+        outcome: Rejected { diagnostics: d },
+        memo: parse_memo_stats_empty()
+      }
+    Accepted { value: token_stream, diagnostics: od } =>
+      let measured = parse_module_prepared_measured_seeded(
+        tokens: token_stream,
+        prepared: prepared,
+        validation_residue: residue,
+        seed: seed
+      )
+      ParseProductionMeasured {
+        outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
+        memo: measured.memo
+      }
+  }
+}
+

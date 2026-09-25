@@ -1,0 +1,18 @@
+module chunk
+
+fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: fold_list(
+      xs: productions,
+      empty: Empty,
+      cons: fn(acc, production) {
+        grammar_production_to_list_step(acc: acc, production: production)
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

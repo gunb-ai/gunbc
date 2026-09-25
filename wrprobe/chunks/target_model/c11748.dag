@@ -1,0 +1,10 @@
+module chunk
+
+type TargetUseSiteOwnershipRealization {
+  source_carrier: Node
+  source_projection: TargetUseSiteOwnershipSourceProjection
+  use_site: TargetOwnershipUseSite
+  reference_layer: TargetReferenceLayer
+  display_name: Symbol
+}
+

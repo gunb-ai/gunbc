@@ -1,0 +1,13 @@
+module chunk
+
+fn formal_production_emitted_slot_count_step(count: Int, symbol: FormalGrammarSymbol) -> Int {
+  match symbol {
+    FormalTerminalOccurrence { terminal: _, binding: binding } =>
+      match binding {
+        Present { value: _ } => count + 1
+        Absent => count
+      }
+    FormalNonterminalOccurrence { nonterminal: _ } => count + 1
+  }
+}
+

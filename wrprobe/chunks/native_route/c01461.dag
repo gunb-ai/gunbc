@@ -1,0 +1,18 @@
+module chunk
+
+fn closure_fact(module: String, path: Symbol, imports: List<String>) -> NativeLaneSourceFacts {
+  NativeLaneSourceFacts {
+    module: optional_present(value: module),
+    path: path,
+    imports: imports,
+    discovery: FloorDiscoveryWalkState {
+      rows: [],
+      walk_failures: 0,
+      walk_failure_path: Absent,
+      sidecar_violations: [],
+      disposition_refusal: Absent
+    },
+    malformed_import: Absent
+  }
+}
+

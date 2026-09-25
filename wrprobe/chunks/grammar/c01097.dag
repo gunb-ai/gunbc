@@ -1,0 +1,13 @@
+module chunk
+
+fn formal_production_rhs_singleton_terminal_identity(production: FormalProduction) -> Symbol? {
+  match fold_list(
+    xs: production.rhs,
+    empty: RhsSingletonTerminalNotSeen,
+    cons: formal_production_rhs_singleton_terminal_identity_step
+  ) {
+    RhsSingletonTerminalFound { identity: id } => Present { value: id }
+    _ => Absent
+  }
+}
+

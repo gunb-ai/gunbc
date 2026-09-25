@@ -1,0 +1,16 @@
+module chunk
+
+fn grammar_atom_identity_from_node(node: Node) -> Witness<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => Holds { value: id }
+  _ =>
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_production_not_found,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+

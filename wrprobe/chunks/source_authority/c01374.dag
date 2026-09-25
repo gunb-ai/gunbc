@@ -1,0 +1,34 @@
+module chunk
+
+fn source_authority_law_from_parts(
+  original_ast: DagSourceAst,
+  canonical_source: Medium<String>,
+  reparsed_ast: DagSourceAst,
+  original_ir: DagSemanticIr,
+  reparsed_ir: DagSemanticIr,
+  canonical_source_law: CanonicalDagSourceEmissionLaw
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+  let source_law = source_ast_equal_witness(original: original_ast, reparsed: reparsed_ast)
+  let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
+  match source_law {
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: source_law_value } =>
+      match semantic_law {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: semantic_law_value } =>
+          outcome_accepted(
+            value: Holds {
+              value: SourceAuthorityRoundTripLaw {
+                canonical_source: canonical_source,
+                source_law: source_law_value,
+                semantic_law: semantic_law_value,
+                canonical_source_law: canonical_source_law
+              }
+            }
+          )
+      }
+  }
+}
+

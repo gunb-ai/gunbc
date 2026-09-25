@@ -1,0 +1,6 @@
+module chunk
+
+data authored_parse_outcome_note: String = "Refusal BLOCKS continuation; it does not ride along inside a successful-looking artifact. An earlier shape carried the refusals as a field on the wrapper, which left every consumer free to read `annotations` and never look at `refusals` — prose dropped, compilation proceeding, exactly the outcome admitting `//` and discarding the capture would have produced.
+
+Only the accepted arm holds an AuthoredParseArtifact, so along this function's path `has annotations` and `nothing was refused` are the same fact rather than two fields a caller must remember to check together. That equivalence holds for artifacts this function produces; it is not enforced against a caller that constructs the record itself (see the carrier note above). The rejected arm still carries the semantic ParseArtifact, because the parse itself succeeded and the diagnostic must be reported against real located structure."
+

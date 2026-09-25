@@ -1,0 +1,20 @@
+module chunk
+
+fn program_assembly_phase_tokenize(
+  read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Outcome<TokenStream> {
+  match read.artifact.kind {
+    SourceFile =>
+      tokenize(
+        text: read.source.carried,
+        file: read.compilation_unit,
+        rules: lm.lex
+      )
+    _ =>
+      outcome_rejected(
+        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
+      )
+  }
+}
+

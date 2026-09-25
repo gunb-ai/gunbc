@@ -1,0 +1,6 @@
+module chunk
+
+type TargetModuleProjection {
+  import_form: TargetImportShape
+}
+

@@ -1,0 +1,38 @@
+module chunk
+
+fn target_atom_realization_lookup_in_catalog_node(
+  catalog: Node,
+  source_carrier: Node,
+  host_target_model: TargetModel
+) -> Outcome<TargetAtomRealization> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: NoPassingCandidate,
+        f: fn(acc, e) {
+          target_atom_realization_catalog_lookup_step(
+            acc: acc,
+            row_node: e.target,
+            source_carrier: source_carrier,
+            host_target_model: host_target_model
+          )
+        }
+      ) {
+        NoPassingCandidate =>
+          outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+        OnePassingCandidate { candidate: row_node } =>
+          target_atom_realization_from_row_node(
+            row_node: row_node,
+            host_target_model: host_target_model
+          )
+        ManyPassingCandidates =>
+          outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+      }
+    _ =>
+      outcome_rejected(
+        target_atom_realization_catalog_row_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+

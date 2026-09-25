@@ -1,0 +1,10 @@
+module chunk
+
+fn target_operator_realization_catalog_ambiguous_diagnostic(catalog: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_operator_realization_catalog_ambiguous,
+    at: node_locus(node: catalog),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

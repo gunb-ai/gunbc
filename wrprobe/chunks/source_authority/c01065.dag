@@ -1,0 +1,21 @@
+module chunk
+
+fn module_storage_agreement_for_binding(
+  oracle_binding: ModuleStorageBinding,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  match module_storage_binding_file_path(binding: oracle_binding) {
+    Absent => ModuleStorageAgrees
+    Present { value: p } =>
+      match module_storage_module_for_path(index: host, file_path: p) {
+        Absent => ModuleStorageUncovered { path: p }
+        Present { value: host_module } =>
+          if host_module == module_storage_binding_module(binding: oracle_binding) {
+            ModuleStorageAgrees
+          } else {
+            ModuleStorageDivergent { path: p }
+          }
+      }
+  }
+}
+

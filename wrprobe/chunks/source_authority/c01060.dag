@@ -1,0 +1,7 @@
+module chunk
+
+type ModuleStorageAgreement
+  = ModuleStorageAgrees
+  | ModuleStorageDivergent { path: String }
+  | ModuleStorageUncovered { path: String }
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn canonical_operation_op_lt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLess }
+}
+

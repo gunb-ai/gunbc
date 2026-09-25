@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
+  match prepare_grammar(grammar: grammar) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: prepared, diagnostics: validation_residue } =>
+      parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
+  }
+}
+

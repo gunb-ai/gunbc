@@ -1,0 +1,20 @@
+module chunk
+
+fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
+  bind_outcome(
+    o: concrete_syntax_token_from_node(token: token),
+    f: fn(decoded) {
+      match decoded {
+        FixedToken { token_class: token_class } =>
+          fixed_token_spelling_from_model(target: target, token_class: token_class)
+        BoundToken { token_class: token_class, binding: binding } =>
+          bound_token_spelling_from_model(
+            target: target,
+            token_class: token_class,
+            binding: binding
+          )
+      }
+    }
+  )
+}
+

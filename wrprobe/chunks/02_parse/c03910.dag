@@ -1,0 +1,58 @@
+module chunk
+
+fn parse_module_prepared_measured_seeded(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> ParseProductionMeasured {
+  let ntok = token_stream_remaining_count(stream: tokens)
+  match prepared {
+    PreparedVoidGrammar =>
+      if ntok == 0 {
+        ParseProductionMeasured {
+          outcome: Accepted {
+            value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
+            diagnostics: validation_residue
+          },
+          memo: parse_memo_stats_empty()
+        }
+      } else {
+        ParseProductionMeasured {
+          outcome: Rejected {
+            diagnostics: diagnostics_singleton(
+              d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
+            )
+          },
+          memo: parse_memo_stats_empty()
+        }
+      }
+    PreparedModeled { modeled: modeled, materialization: materialization } =>
+      let measured = parse_production_prepared_measured_seeded(
+        tokens: token_stream_remaining(stream: tokens),
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: modeled.validated.root.start,
+        seed: seed,
+        materialization: materialization
+      )
+      match measured.outcome {
+        Accepted { value: artifact, diagnostics: parse_diags } =>
+          ParseProductionMeasured {
+            outcome: Accepted {
+              value: artifact,
+              diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+            },
+            memo: measured.memo
+          }
+        Rejected { diagnostics: parse_rejected } =>
+          ParseProductionMeasured {
+            outcome: Rejected {
+              diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+            },
+            memo: measured.memo
+          }
+      }
+  }
+}
+

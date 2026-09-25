@@ -1,0 +1,29 @@
+module chunk
+
+fn grammar_relation_forward_row_selection_outcome_row(
+  rules: Node,
+  selection: GrammarRelationForwardRowSelection,
+  none_reason: Symbol,
+  many_reason: Symbol
+) -> Outcome<Node> {
+  match selection {
+    GrammarRelationForwardRowOne { row: row } => outcome_accepted(value: row)
+    GrammarRelationForwardRowMany =>
+      outcome_rejected(
+        Diagnostic {
+          reason: many_reason,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    GrammarRelationForwardRowNone =>
+      outcome_rejected(
+        Diagnostic {
+          reason: none_reason,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+

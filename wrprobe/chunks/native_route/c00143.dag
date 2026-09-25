@@ -1,0 +1,13 @@
+module chunk
+
+fn emitted_build_with(rustflags: String, rustc_identity: String, exit_status: Int, warning_count: Int) -> NativeRouteEmittedBuild {
+  NativeRouteEmittedBuild {
+    cargo_argv: clean_emitted_build().cargo_argv,
+    rustflags: rustflags,
+    compiler_path: clean_emitted_build().compiler_path,
+    rustc_identity: rustc_identity,
+    exit_status: exit_status,
+    warning_count: warning_count
+  }
+}
+

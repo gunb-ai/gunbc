@@ -1,0 +1,28 @@
+module chunk
+
+fn grammar_relation_forward_row_selection_outcome_emitted(
+  rules: Node,
+  selection: GrammarRelationForwardRowSelection
+) -> Outcome<Node> {
+  match selection {
+    GrammarRelationForwardRowOne { row: row } =>
+      find_named_child(root: row, name: ^grammar_relation_field_emitted)
+    GrammarRelationForwardRowMany =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^parse_tree_to_emitted_node_ambiguous_row,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    GrammarRelationForwardRowNone =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^parse_tree_to_emitted_node_no_matching_row,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+

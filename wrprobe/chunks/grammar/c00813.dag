@@ -1,0 +1,31 @@
+module chunk
+
+fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<List<FormalProduction>> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        rules.children,
+        init: outcome_accepted(value: Empty),
+        f: fn(acc, edge) {
+          match edge.label {
+            Named { name: n } =>
+              if n == ^grammar_relation_rules_formal_productions {
+                acc
+              } else {
+                grammar_relation_rules_formal_productions_step(acc: acc, row: edge.target)
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+

@@ -1,0 +1,28 @@
+module chunk
+
+fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
+    f: fn(token_nodes) {
+      fold_list(
+        xs: token_nodes,
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, token_node) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              bind_outcome(
+                o: concrete_syntax_token_from_wire_node(token: token_node),
+                f: fn(tok) {
+                  outcome_accepted(
+                    list_snoc_item(xs: partial, item: tok)
+                  )
+                }
+              )
+          }
+        }
+      )
+    }
+  )
+}
+

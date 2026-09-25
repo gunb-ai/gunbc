@@ -1,0 +1,10 @@
+module chunk
+
+test fn the_refusal_tally_counts_each_refusal_once_at_fatal_grain() -> Bool {
+  let rows = native_route_tally_probe()
+  (native_route_tally_count_for(rows: rows, cause: ^parse_g0_tokens_remain) == 2)
+  && (native_route_tally_count_for(rows: rows, cause: ^resolve_reason_unbound_symbol) == 1)
+  && (fold_list(xs: rows, empty: 0, cons: fn(acc, row) { acc + row.file_refusals }) == 3)
+}
+
+

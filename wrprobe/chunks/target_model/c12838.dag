@@ -1,0 +1,19 @@
+module chunk
+
+fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_type_expr_field_surface,
+        target: target_type_expr_symbol_atom(id: form.surface)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_ident_token,
+        target: target_type_expr_symbol_atom(id: form.ident_token)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

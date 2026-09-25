@@ -1,0 +1,12 @@
+module chunk
+
+fn target_bodied_arrow_compose_statement_tokens(
+  scaffold: TargetBodiedArrowStatementScaffold,
+  body: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(left: scaffold.prefix, right: body),
+    right: scaffold.suffix
+  )
+}
+

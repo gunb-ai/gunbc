@@ -1,0 +1,13 @@
+module chunk
+
+test fn a_reached_verdict_on_a_route_gap_identity_is_a_divergence() -> Bool {
+  match native_route_disposition(verdict: NativeTestPassed, reference: FloorRouteGapRefusal) {
+    NativeDivergence { cause: NativeReachedRouteGap } => true
+    _ => false
+  }
+  && match native_route_disposition(verdict: NativeTestReturnedFalse, reference: FloorRouteGapRefusal) {
+    NativeDivergence { cause: NativeReachedRouteGap } => true
+    _ => false
+  }
+}
+

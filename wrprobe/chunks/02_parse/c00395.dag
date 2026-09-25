@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_e1_syntax_error,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_e1_syntax_error),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+

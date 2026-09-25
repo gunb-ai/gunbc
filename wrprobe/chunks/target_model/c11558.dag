@@ -1,0 +1,11 @@
+module chunk
+
+fn target_collection_free_monoid_element_type_node(free_monoid_node: Node) -> Optional<Node> {
+  let positional = node_positional_child_targets(node: free_monoid_node)
+  if length(xs: positional) == 2 {
+    list_at_optional(xs: positional, index: 1)
+  } else {
+    optional_absent()
+  }
+}
+

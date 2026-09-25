@@ -1,0 +1,14 @@
+module chunk
+
+fn diagnostics_from_diagnostic_list(items: List<Diagnostic>) -> Diagnostics {
+  match list_at_optional(xs: items, index: 0) {
+    Absent => None
+    Present { value: first } =>
+      match list_tail(xs: items) {
+        TailAbsent => Some { diagnostics: NonEmptyDiagnostics { head: first, tail: std.algebra.Empty } }
+        TailFound { tail: rest } =>
+          Some { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
+      }
+  }
+}
+

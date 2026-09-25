@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: seed,
+    index: span_index_empty(),
+    frame: Empty
+  }
+}
+

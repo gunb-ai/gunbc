@@ -1,0 +1,22 @@
+module chunk
+
+fn symbol_index_fill_module_root(
+  index: SymbolIndex,
+  root: Node,
+  record_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      symbol_index_fill_alias_bindings(
+        index: symbol_index_fill_module_declarations(
+          index: index,
+          root: root,
+          record_declarations: record_declarations
+        ),
+        module_qn: module_qn,
+        root: root
+      )
+    Rejected { diagnostics: _ } => index
+  }
+}
+

@@ -1,0 +1,8 @@
+module chunk
+
+fn parse_grammar_choice_overlap_residue_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
+  parse_stage_diagnostic_core(
+    d: parse_overlap_residue_stage_diagnostic_at(at: at, row: row)
+  )
+}
+

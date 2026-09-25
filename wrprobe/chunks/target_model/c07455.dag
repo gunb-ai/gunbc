@@ -1,0 +1,45 @@
+module chunk
+
+fn target_value_expr_tokenize_intersperse(
+  exprs: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node,
+  separator: Symbol
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold(
+    exprs,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, e) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: toks, diagnostics: _ } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: e,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(et) {
+              match toks {
+                Empty => outcome_accepted(et)
+                _ =>
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: toks,
+                        right: Cons {
+                          head: FixedToken { token_class: separator },
+                          tail: Empty
+                        }
+                      ),
+                      right: et
+                    )
+                  )
+              }
+            }
+          )
+      }
+    }
+  )
+}
+

@@ -1,0 +1,22 @@
+module chunk
+
+fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { false },
+      literal_terminal: fn(_, _) { false },
+      nonterminal: fn(p) {
+        match grammar_lookup_production(root: root, name: p) {
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
+        }
+      },
+      sequence: fn(left_undef, right_undef) { left_undef || right_undef },
+      choice: fn(left_undef, right_undef) { left_undef || right_undef },
+      optional: fn(element_undef) { element_undef },
+      repeat: fn(element_undef) { element_undef }
+    }
+  )
+}
+

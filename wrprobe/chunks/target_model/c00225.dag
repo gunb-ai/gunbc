@@ -1,0 +1,7 @@
+module chunk
+
+type ProducedDeclParamSegment
+  = ProducedParamFixed { token_class: Symbol }
+  | ProducedParamName { token_class: Symbol }
+  | ProducedParamType
+

@@ -1,0 +1,33 @@
+module chunk
+
+fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceForm) -> List<Edge> {
+  match form {
+    NoDeclarationReferenceForm => Empty
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_type_expr_field_declaration_reference,
+          target: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_root,
+                target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: root))
+              ),
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_scope_separator,
+                target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: sep))
+              ),
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_module_joiner,
+                target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: joiner))
+              )
+            ],
+            occurrence_id: OccurrenceSynthetic
+          }
+        ),
+        tail: Empty
+      }
+  }
+}
+

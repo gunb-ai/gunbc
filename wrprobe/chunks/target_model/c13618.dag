@@ -1,0 +1,24 @@
+module chunk
+
+fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+  if target_value_expr_is_int_literal_atom(node: node) {
+    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge {
+            Edge { label: Named { name: field }, target: magnitude } =>
+              if field == ^integer_literal_magnitude_field {
+                optional_present(value: magnitude)
+              } else {
+                optional_absent()
+              }
+            Edge { label: Positional, target: _ } => optional_absent()
+          }
+      }
+    })
+  } else {
+    optional_absent()
+  }
+}
+

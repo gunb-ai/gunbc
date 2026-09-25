@@ -1,0 +1,20 @@
+module chunk
+
+fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
+  let stripped = sugar_unwrap_production_shell(node: node)
+  match node_atom_identity_optional(node: stripped) {
+    Present { value: sym } => optional_present(value: sym)
+    Absent =>
+      fold(
+        stripped.children,
+        init: optional_absent(),
+        f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => sugar_first_atom_identity_optional(node: e.target)
+          }
+        }
+      )
+  }
+}
+

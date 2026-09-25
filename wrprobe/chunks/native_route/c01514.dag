@@ -1,0 +1,10 @@
+module chunk
+
+test fn a_module_no_universe_member_imports_is_outside_the_closure() -> Bool {
+  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      !native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.unrelated.outsider")
+  }
+}
+

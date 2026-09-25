@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_bodied_scaffold_missing,
+    at: node_locus(node: row),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

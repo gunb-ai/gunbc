@@ -1,0 +1,38 @@
+module chunk
+
+fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol>> {
+  fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: ps, diagnostics: _ } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_closure_param {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    outcome_accepted(list_snoc_item(xs: ps, item: id))
+                  _ =>
+                    outcome_rejected(
+                      target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              } else if n == ^target_value_expr_field_closure_body {
+                acc
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  )
+}
+

@@ -1,0 +1,16 @@
+module chunk
+
+fn program_assembly_fold_state_from_located(
+  state: ProgramAssemblyLocatedFoldState
+) -> ProgramAssemblyFoldState {
+  match state {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
+      ProgramAssemblyFoldFailed { diagnostics: d }
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _ } =>
+      ProgramAssemblyFoldOk {
+        roots: list_map(xs: located, f: fn(item) { item.tree }),
+        index: idx
+      }
+  }
+}
+

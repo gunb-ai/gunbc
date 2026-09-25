@@ -1,0 +1,79 @@
+module chunk
+
+fn decode_module_import_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetModuleProjection> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_import_token),
+    f: fn(import_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_open),
+        f: fn(names_open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_separator),
+            f: fn(names_separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_close),
+                f: fn(names_close) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_from_token),
+                    f: fn(from_token) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_open),
+                        f: fn(path_open) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_segment_separator),
+                            f: fn(path_segment_separator) {
+                              bind_outcome(
+                                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_close),
+                                f: fn(path_close) {
+                                  bind_outcome(
+                                    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_terminator),
+                                    f: fn(terminator) {
+                                      bind_outcome(
+                                        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_name_ident_token),
+                                        f: fn(name_ident_token) {
+                                          bind_outcome(
+                                            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_segment_token),
+                                            f: fn(path_segment_token) {
+                                              outcome_accepted(
+                                                value: TargetModuleProjection {
+                                                  import_form: EsModuleImport {
+                                                    import_token: import_token,
+                                                    names_open: names_open,
+                                                    names_separator: names_separator,
+                                                    names_close: names_close,
+                                                    from_token: from_token,
+                                                    path_open: path_open,
+                                                    path_segment_separator: path_segment_separator,
+                                                    path_close: path_close,
+                                                    terminator: terminator,
+                                                    name_ident_token: name_ident_token,
+                                                    path_segment_token: path_segment_token
+                                                  }
+                                                }
+                                              )
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

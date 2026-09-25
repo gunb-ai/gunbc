@@ -1,0 +1,26 @@
+module chunk
+
+fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
+  match expr {
+    Terminal { token_class: token_class, stamp: stamp } =>
+      algebra.terminal(token_class, stamp)
+    LiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      algebra.literal_terminal(token_class, lexeme)
+    Nonterminal { production: production } => algebra.nonterminal(production)
+    Sequence { left: left, right: right } =>
+      algebra.sequence(
+        fold_grammar_expr(expr: left, algebra: algebra),
+        fold_grammar_expr(expr: right, algebra: algebra)
+      )
+    Choice { left: left, right: right } =>
+      algebra.choice(
+        fold_grammar_expr(expr: left, algebra: algebra),
+        fold_grammar_expr(expr: right, algebra: algebra)
+      )
+    Optional { element: element } =>
+      algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
+    Repeat { element: element } =>
+      algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
+  }
+}
+

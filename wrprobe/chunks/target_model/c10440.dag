@@ -1,0 +1,6 @@
+module chunk
+
+fn target_uri_scheme_discriminant(scheme: UriScheme) -> Symbol {
+  discriminant(v: scheme)
+}
+

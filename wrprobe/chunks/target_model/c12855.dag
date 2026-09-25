@@ -1,0 +1,55 @@
+module chunk
+
+fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: match form.field_label_separator {
+      Present { value: s } =>
+        list_snoc_item(
+          xs: [
+            target_model_named_edge(
+              name: ^target_type_expr_field_surface,
+              target: target_type_expr_symbol_atom(id: form.surface)
+            ),
+            target_model_named_edge(
+              name: ^target_type_expr_field_open,
+              target: target_type_expr_symbol_atom(id: form.open)
+            ),
+            target_model_named_edge(
+              name: ^target_type_expr_field_separator,
+              target: target_type_expr_symbol_atom(id: form.separator)
+            ),
+            target_model_named_edge(
+              name: ^target_type_expr_field_close,
+              target: target_type_expr_symbol_atom(id: form.close)
+            )
+          ],
+          item: target_model_named_edge(
+            name: ^target_type_expr_field_field_label_separator,
+            target: target_type_expr_symbol_atom(id: s)
+          )
+        )
+      Absent =>
+        [
+          target_model_named_edge(
+            name: ^target_type_expr_field_surface,
+            target: target_type_expr_symbol_atom(id: form.surface)
+          ),
+          target_model_named_edge(
+            name: ^target_type_expr_field_open,
+            target: target_type_expr_symbol_atom(id: form.open)
+          ),
+          target_model_named_edge(
+            name: ^target_type_expr_field_separator,
+            target: target_type_expr_symbol_atom(id: form.separator)
+          ),
+          target_model_named_edge(
+            name: ^target_type_expr_field_close,
+            target: target_type_expr_symbol_atom(id: form.close)
+          )
+        ]
+    },
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

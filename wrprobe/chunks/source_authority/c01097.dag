@@ -1,0 +1,15 @@
+module chunk
+
+fn module_storage_host_agrees_with_oracle(
+  oracle: ModuleStorageIndex,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  fold_list(
+    xs: oracle,
+    empty: ModuleStorageAgrees,
+    cons: fn(acc, oracle_binding) {
+      module_storage_agreement_step(acc: acc, oracle_binding: oracle_binding, host: host)
+    }
+  )
+}
+

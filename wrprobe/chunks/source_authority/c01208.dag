@@ -1,0 +1,19 @@
+module chunk
+
+fn node_artifact_provenance_from_source_root(
+  ingest: SourceRootIngest
+) -> Outcome<FreeMonoid<NodeArtifactProvenance>> {
+  match fold_list(
+    xs: ingest,
+    empty: NodeArtifactProvenanceFoldOk { provenance: Empty },
+    cons: fn(state, read) {
+      node_artifact_provenance_fold_step(state: state, read: read)
+    }
+  ) {
+    NodeArtifactProvenanceFoldOk { provenance: p } =>
+      outcome_accepted(value: p)
+    NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+

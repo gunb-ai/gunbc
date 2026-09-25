@@ -1,0 +1,10 @@
+module chunk
+
+fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
+  match prepare_grammar(grammar: grammar) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
+      overlap_residue_stage_from_prepared(prepared: prepared)
+  }
+}
+

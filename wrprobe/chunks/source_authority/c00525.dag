@@ -1,0 +1,16 @@
+module chunk
+
+fn source_ref_list_has_duplicate(refs: List<SourceRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: false,
+    cons: fn(found, ref) {
+      if found {
+        true
+      } else {
+        source_ref_count_in_list(refs: refs, target: ref) > 1
+      }
+    }
+  )
+}
+

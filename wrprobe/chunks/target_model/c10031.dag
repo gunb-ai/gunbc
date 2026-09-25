@@ -1,0 +1,51 @@
+module chunk
+
+fn target_type_expr_emitted_validate_wire_shape(
+  node: Node,
+  kind: TargetTypeExprKind,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Bool> {
+  match kind {
+    TargetTypeExprRecord =>
+      target_type_expr_emitted_validate_labeled_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprSum =>
+      target_type_expr_emitted_validate_labeled_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprArrow =>
+      match target_type_expr_arrow_wire_shape(node: node) {
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+          match target_type_expr_emitted_validate_labeled_wire(
+            node: node,
+            kind: kind,
+            projection: projection
+          ) {
+            Accepted { value: v, diagnostics: d2 } => Accepted { value: v, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+          match target_type_expr_emitted_validate_positional_wire(
+            node: node,
+            kind: kind,
+            projection: projection
+          ) {
+            Accepted { value: v, diagnostics: d2 } => Accepted { value: v, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      target_type_expr_emitted_validate_positional_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+  }
+}
+

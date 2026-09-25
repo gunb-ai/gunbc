@@ -1,0 +1,27 @@
+module chunk
+
+fn decode_bool_literal_shape_bundle(bundle: Node) -> Outcome<TargetBoolLiteralShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_bool_true_token
+    ),
+    f: fn(true_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: ^target_value_expr_field_bool_false_token
+        ),
+        f: fn(false_token) {
+          outcome_accepted(
+            TargetBoolLiteralShape {
+              true_token: true_token,
+              false_token: false_token
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

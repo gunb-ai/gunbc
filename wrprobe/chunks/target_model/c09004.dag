@@ -1,0 +1,6 @@
+module chunk
+
+fn target_function_boundary_site_eq(a: FunctionBoundarySite, b: FunctionBoundarySite) -> Bool {
+  discriminant(v: a) == discriminant(v: b)
+}
+

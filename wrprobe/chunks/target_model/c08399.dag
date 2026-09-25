@@ -1,0 +1,18 @@
+module chunk
+
+fn target_atom_realization_lookup_step(
+  acc: PassingCandidateFold<Node>,
+  row: TargetAtomRealization,
+  source_carrier: Node
+) -> PassingCandidateFold<Node> {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    match acc {
+      NoPassingCandidate => OnePassingCandidate { candidate: row.source_carrier }
+      OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+      ManyPassingCandidates => ManyPassingCandidates
+    }
+  } else {
+    acc
+  }
+}
+

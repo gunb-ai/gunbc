@@ -1,0 +1,38 @@
+module chunk
+
+fn target_value_expr_callable_apply_args_from_wire(
+  wire: Node
+) -> Outcome<List<TargetValueExpression>> {
+  fold(
+    wire.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, edge) {
+      match acc {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: args, diagnostics: _ } =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expr_field_callable_arg {
+                bind_outcome(
+                  o: target_value_expression_reify_from_wire(wire: edge.target),
+                  f: fn(arg) {
+                    outcome_accepted(list_snoc_item(xs: args, item: arg))
+                  }
+                )
+              } else if n == ^target_value_expr_field_callee {
+                acc
+              } else {
+                outcome_rejected(
+                  target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                )
+              }
+            Positional =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+      }
+    }
+  )
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn target_atom_realization_display_name_decode_invalid_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_atom_realization_display_name_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

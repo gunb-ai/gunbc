@@ -1,0 +1,43 @@
+module chunk
+
+fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<TargetTypeExprArrowParamSlot>> {
+  match target_type_expr_arrow_wire_shape(node: node) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+      bind_outcome(
+        o: target_type_expr_arrow_labeled_codomain(node: node),
+        f: fn(_codomain) {
+          if is_empty(xs: node_positional_child_targets(node: node)) {
+            Accepted {
+              value: fold(
+                xs: node_labeled_child_edges(node: node),
+                init: Empty,
+                f: fn(acc, e) {
+                  match e.label {
+                    Named { name: label } =>
+                      if label == ^target_type_expr_field_surface ||
+                        label == ^target_type_expr_field_kind ||
+                        label == ^target_type_expr_field_codomain {
+                        acc
+                      } else {
+                        list_snoc_item(
+                          xs: acc,
+                          item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
+                        )
+                      }
+                    Positional => acc
+                  }
+                }
+              ),
+              diagnostics: d
+            }
+          } else {
+            outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+          }
+        }
+      )
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+

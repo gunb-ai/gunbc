@@ -1,0 +1,6 @@
+module chunk
+
+fn target_representation_parameter_slots_empty() -> Map<Symbol, TargetRepresentationParameterSlot> {
+  empty_map()
+}
+

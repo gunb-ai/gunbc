@@ -1,0 +1,16 @@
+module chunk
+
+fn target_use_site_ownership_source_projection_from_atom(
+  id: Symbol
+) -> Optional<TargetUseSiteOwnershipSourceProjection> {
+  if id == discriminant(v: UseSiteOwnershipExactCarrier) {
+    optional_present(value: UseSiteOwnershipExactCarrier)
+  } else {
+    if id == discriminant(v: UseSiteOwnershipInstantiationHeadCarrier) {
+      optional_present(value: UseSiteOwnershipInstantiationHeadCarrier)
+    } else {
+      optional_absent()
+    }
+  }
+}
+

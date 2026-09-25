@@ -1,0 +1,9 @@
+module chunk
+
+fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
+  prepare_grammar_with_admission(
+    admit: fn(r) { parse_table_memo_materialization_for(r: r) },
+    grammar: grammar
+  )
+}
+

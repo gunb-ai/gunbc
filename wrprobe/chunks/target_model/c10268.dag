@@ -1,0 +1,3 @@
+module chunk
+
+data target_derive_supplemental_generic_bound_requirement_field_authority: Symbol = ^target_derive_supplemental_generic_bound_requirement_field_authority

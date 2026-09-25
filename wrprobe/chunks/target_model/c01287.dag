@@ -1,0 +1,9 @@
+module chunk
+
+type TargetEffectApplyShape {
+  callees: List<TargetEffectCalleeRow>
+  open: Symbol
+  close: Symbol
+  separator: Symbol
+}
+

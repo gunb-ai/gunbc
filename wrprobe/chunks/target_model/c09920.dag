@@ -1,0 +1,41 @@
+module chunk
+
+fn target_type_expr_emitted_validate_positional_arity(
+  node: Node,
+  kind: TargetTypeExprKind
+) -> Outcome<Bool> {
+  let positional = node_positional_child_targets(node: node)
+  match kind {
+    TargetTypeExprAtom =>
+      if length(xs: positional) == 1 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprInstantiation =>
+      if length(xs: positional) >= 1 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprCardinality =>
+      if length(xs: positional) >= 1 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprArrow =>
+      match target_type_expr_arrow_wire_shape(node: node) {
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+          Accepted { value: true, diagnostics: d }
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } =>
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    TargetTypeExprRecord =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    TargetTypeExprSum =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+

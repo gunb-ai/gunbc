@@ -1,0 +1,20 @@
+module chunk
+
+fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprLoop,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_loop_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: ^target_value_expr_field_loop_body,
+          target: body.node
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+

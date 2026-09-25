@@ -1,0 +1,33 @@
+module chunk
+
+fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation> {
+  bind_outcome(
+    o: find_named_child(root: node, name: ^target_collection_repr_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: kind_node),
+        f: fn(kind_sym) {
+          match target_collection_repr_kind_from_atom(id: kind_sym) {
+            Present { value: kind } =>
+              bind_outcome(
+                o: find_named_child(root: node, name: ^target_collection_repr_field_apply),
+                f: fn(apply_node) {
+                  bind_outcome(
+                    o: decode_generic_apply_shape_bundle(bundle: apply_node),
+                    f: fn(apply) {
+                      outcome_accepted(
+                        TargetRepresentation { kind: kind, apply: apply }
+                      )
+                    }
+                  )
+                }
+              )
+            Absent =>
+              outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
+          }
+        }
+      )
+    }
+  )
+}
+

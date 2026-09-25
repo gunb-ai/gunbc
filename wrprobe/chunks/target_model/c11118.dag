@@ -1,0 +1,18 @@
+module chunk
+
+fn target_collection_realization_lookup_step(
+  acc: TargetCollectionRealizationLookup,
+  row: TargetCollectionRealization,
+  source_carrier: Node
+) -> TargetCollectionRealizationLookup {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    match acc {
+      TargetCollectionRealizationMissing => TargetCollectionRealizationUnique { row: row }
+      TargetCollectionRealizationUnique { row: _ } => TargetCollectionRealizationAmbiguous
+      TargetCollectionRealizationAmbiguous => TargetCollectionRealizationAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+

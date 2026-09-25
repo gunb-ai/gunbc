@@ -1,0 +1,11 @@
+module chunk
+
+fn target_type_expr_arrow_param_slot_edges(params: List<TargetTypeExprArrowParamSlot>) -> List<Edge> {
+  fold(params, init: Empty, f: fn(acc, param) {
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: param.label }, target: param.type_expr }
+    )
+  })
+}
+

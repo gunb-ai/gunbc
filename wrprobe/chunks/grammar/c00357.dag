@@ -1,0 +1,7 @@
+module chunk
+
+type GrammarRelationRow {
+  production: FormalProduction
+  emitted: Node
+}
+

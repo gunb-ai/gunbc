@@ -1,0 +1,9 @@
+module chunk
+
+fn g_parsed_accepted(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+

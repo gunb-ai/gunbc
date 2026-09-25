@@ -1,0 +1,9 @@
+module chunk
+
+fn record_literal_type_naming_to_symbol(naming: RecordLiteralTypeNaming) -> Symbol {
+  match naming {
+    Prepend => ^record_literal_type_naming_prepend
+    Omit => ^record_literal_type_naming_omit
+  }
+}
+

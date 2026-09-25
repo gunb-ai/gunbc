@@ -1,0 +1,9 @@
+module chunk
+
+fn decode_vep_parent_conditional(bundle: Node) -> Outcome<TargetConditionalShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_conditional),
+    f: decode_conditional_shape_bundle
+  )
+}
+

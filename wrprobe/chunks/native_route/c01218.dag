@@ -1,0 +1,23 @@
+module chunk
+
+test fn an_unbound_compiler_is_refused() -> Bool {
+  let base = clean_emitted_build()
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+      build: NativeRouteEmittedBuild {
+        cargo_argv: base.cargo_argv,
+        rustflags: base.rustflags,
+        compiler_path: "",
+        rustc_identity: base.rustc_identity,
+        exit_status: base.exit_status,
+        warning_count: base.warning_count
+      }
+    )),
+    cause_name: "emitted_build_compiler_unbound"
+  )
+  && !native_route_admission_refused_with(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: green_receipt()),
+    cause_name: "emitted_build_compiler_unbound"
+  )
+}
+

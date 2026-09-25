@@ -1,0 +1,32 @@
+module chunk
+
+fn target_use_site_ownership_catalog_lookup_step(
+  acc: TargetUseSiteOwnershipCatalogLookup,
+  edge: Edge,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipCatalogLookup {
+  match acc {
+    TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+    _ =>
+      match edge.label {
+    Named { name: display_name } =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: display_name,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    Positional =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: ^target_use_site_ownership_derived_row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+      }
+  }
+}
+

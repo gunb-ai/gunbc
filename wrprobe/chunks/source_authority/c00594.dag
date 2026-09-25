@@ -1,0 +1,9 @@
+module chunk
+
+type SourceAuthorityRoundTripLaw {
+  canonical_source: Medium<String>
+  source_law: SourceAstEqual
+  semantic_law: SemanticIrEqual
+  canonical_source_law: CanonicalDagSourceEmissionLaw
+}
+

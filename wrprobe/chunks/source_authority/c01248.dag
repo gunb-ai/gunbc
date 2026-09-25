@@ -1,0 +1,12 @@
+module chunk
+
+fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      source_root_set_insert(roots: acc, r: read.source_root)
+    }
+  )
+}
+

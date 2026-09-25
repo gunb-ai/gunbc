@@ -1,0 +1,20 @@
+module chunk
+
+fn target_capability_eligibility_lookup(
+  rows: List<TargetCapabilityEligibilityRow>,
+  key: TargetCapabilityKey
+) -> Optional<TargetCapabilityElementEligibility> {
+  fold_list(
+    xs: rows,
+    empty: optional_absent(),
+    cons: fn(found, row) {
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent =>
+          if row.capability_key == key { optional_present(value: row.eligibility) }
+          else { optional_absent() }
+      }
+    }
+  )
+}
+

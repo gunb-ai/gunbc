@@ -1,0 +1,12 @@
+module chunk
+
+fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
+  parse_table_carry_analysis(
+    table: table,
+    entries: table.entries,
+    hits: table.memo_hits,
+    misses: table.memo_misses,
+    lookups: table.memo_lookup_calls + 1
+  )
+}
+

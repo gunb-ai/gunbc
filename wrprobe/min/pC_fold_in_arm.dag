@@ -1,0 +1,8 @@
+module chunk
+
+fn f(fields: FreeMonoid<String>) -> String {
+  match fields {
+    Empty => Empty
+    Cons { head: first, tail: rest } => fold_list(xs: rest, empty: first, cons: fn(acc, x) { acc })
+  }
+}

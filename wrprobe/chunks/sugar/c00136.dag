@@ -1,0 +1,10 @@
+module chunk
+
+fn sugar_type_node(connective: Connective, children: List<Edge>, n: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: children,
+    occurrence_id: n.occurrence_id
+  }
+}
+

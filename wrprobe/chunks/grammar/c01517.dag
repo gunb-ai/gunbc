@@ -1,0 +1,10 @@
+module chunk
+
+fn formal_productions_all_lhs(productions: List<FormalProduction>) -> List<Symbol> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) { formal_symbol_list_insert(xs: acc, item: production.lhs.identity) }
+  )
+}
+

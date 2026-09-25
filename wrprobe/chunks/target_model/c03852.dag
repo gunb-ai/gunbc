@@ -1,0 +1,6 @@
+module chunk
+
+fn source_atom_bool(value: Bool) -> SourceAtomValue {
+  SourceAtomBool { value: value }
+}
+

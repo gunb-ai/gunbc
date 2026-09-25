@@ -1,0 +1,8 @@
+module chunk
+
+type OrderingPredicate
+  = IsLess
+  | IsLessOrEqual
+  | IsGreater
+  | IsGreaterOrEqual
+

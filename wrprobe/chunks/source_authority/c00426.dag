@@ -1,0 +1,19 @@
+module chunk
+
+fn source_storage_list_has_duplicate_storage(refs: List<SourceRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: false,
+    cons: fn(found, ref) {
+      if found {
+        true
+      } else {
+        source_storage_count_in_list(
+          refs: refs,
+          target: source_storage_identity_from_ref(ref: ref)
+        ) > 1
+      }
+    }
+  )
+}
+

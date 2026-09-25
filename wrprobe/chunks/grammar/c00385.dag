@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_empty_node() -> Node {
+  stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
+}
+

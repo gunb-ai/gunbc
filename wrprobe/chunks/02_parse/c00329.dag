@@ -1,0 +1,8 @@
+module chunk
+
+type PreparedModeledGrammar {
+  validated: ValidatedGrammarRoot
+  analysis: GrammarFirstAnalysis
+  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
+}
+

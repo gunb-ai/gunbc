@@ -1,0 +1,14 @@
+module chunk
+
+fn located_roots_and_spans_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<LocatedIngestRoots> {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans } =>
+      outcome_accepted(value: LocatedIngestRoots { located: located, spans: spans })
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
+      Rejected { diagnostics: d }
+  }
+}
+

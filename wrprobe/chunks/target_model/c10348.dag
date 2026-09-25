@@ -1,0 +1,8 @@
+module chunk
+
+type TargetDeriveSupplementalGenericBoundRequirementWire {
+  representation_parameter: Symbol
+  required_trait: TargetCapabilityKey
+  authority: ExternalAuthority
+}
+

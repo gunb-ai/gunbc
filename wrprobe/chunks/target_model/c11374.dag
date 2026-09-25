@@ -1,0 +1,10 @@
+module chunk
+
+fn target_capability_unknown_diagnostic(elem: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_capability_eligibility_row_absent,
+    at: node_locus(node: elem),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

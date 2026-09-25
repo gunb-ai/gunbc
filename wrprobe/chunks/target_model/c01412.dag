@@ -1,0 +1,7 @@
+module chunk
+
+type TargetImport {
+  path_segments: List<Symbol>
+  names: List<Symbol>
+}
+

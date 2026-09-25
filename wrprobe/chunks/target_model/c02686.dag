@@ -1,0 +1,18 @@
+module chunk
+
+fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEffectCalleeRow> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: row, field: ^target_value_expr_field_effect_kind),
+    f: fn(effect_kind) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: row, field: ^target_value_expr_field_effect_callee),
+        f: fn(callee) {
+          outcome_accepted(
+            TargetEffectCalleeRow { effect_kind: effect_kind, callee: callee }
+          )
+        }
+      )
+    }
+  )
+}
+

@@ -1,0 +1,51 @@
+module chunk
+
+fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
+  bind_outcome(
+    o: concrete_syntax_token_wire_schema_valid(token: token),
+    f: fn(_) {
+      bind_outcome(
+        o: projection_bundle_child(bundle: token, name: ^concrete_syntax_token_field_kind),
+        f: fn(kind_node) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: token,
+              field: ^concrete_syntax_token_field_class
+            ),
+            f: fn(token_class) {
+              match kind_node.kind {
+                TypeNode { connective: Atom { identity: kind } } =>
+                  if kind == ^concrete_syntax_token_kind_fixed {
+                    outcome_accepted(
+                      FixedToken { token_class: token_class }
+                    )
+                  } else if kind == ^concrete_syntax_token_kind_bound {
+                    bind_outcome(
+                      o: wire_conj_named_binding_atom(parent: token),
+                      f: fn(binding) {
+                        outcome_accepted(
+                          BoundToken {
+                            token_class: token_class,
+                            binding: binding
+                          }
+                        )
+                      }
+                    )
+                  } else {
+                    outcome_rejected(
+                      concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                    )
+                  }
+                _ =>
+                  outcome_rejected(
+                    concrete_syntax_token_wire_malformed_diagnostic(token: token)
+                  )
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

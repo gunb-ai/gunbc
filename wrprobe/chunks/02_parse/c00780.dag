@@ -1,0 +1,16 @@
+module chunk
+
+fn token_position_indices(tokens: List<Token>) -> List<Int> {
+  match is_empty(xs: tokens) {
+    true => Cons { head: 0, tail: std.algebra.Empty }
+    false =>
+      fold_list(
+        xs: tokens,
+        empty: Cons { head: 0, tail: std.algebra.Empty },
+        cons: fn(acc, _) {
+          list_snoc_item(xs: acc, item: length(xs: acc))
+        }
+      )
+  }
+}
+

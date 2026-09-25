@@ -1,0 +1,130 @@
+module chunk
+
+fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == discriminant(v: AlgebraPrimitive {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_algebra_field
+        ) {
+          Present { value: algebra_field } =>
+            outcome_accepted(AlgebraPrimitive { algebra_field: algebra_field })
+          Absent =>
+            outcome_rejected(
+              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      } else {
+        if id == discriminant(v: AlgebraInverseCompose {}) {
+          match target_model_canonical_operation_atom_field_from_wire(
+            wire: wire,
+            field_name: ^target_canonical_operation_field_binary_field
+          ) {
+            Present { value: binary_field } =>
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_inverse_field
+              ) {
+                Present { value: inverse_field } =>
+                  outcome_accepted(
+                    AlgebraInverseCompose {
+                      binary_field: binary_field,
+                      inverse_field: inverse_field
+                    }
+                  )
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            Absent =>
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+        } else {
+          if id == discriminant(v: OrderingComparison {}) {
+            match target_model_canonical_operation_atom_field_from_wire(
+              wire: wire,
+              field_name: ^target_canonical_operation_field_compare_field
+            ) {
+              Present { value: compare_field } =>
+                match target_model_canonical_operation_atom_field_from_wire(
+                  wire: wire,
+                  field_name: ^target_canonical_operation_field_predicate
+                ) {
+                  Present { value: predicate_id } =>
+                    match ordering_predicate_from_wire_symbol(id: predicate_id) {
+                      Present { value: predicate } =>
+                        outcome_accepted(
+                          OrderingComparison {
+                            compare_field: compare_field,
+                            predicate: predicate
+                          }
+                        )
+                      Absent =>
+                        outcome_rejected(
+                          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                        )
+                    }
+                  Absent =>
+                    outcome_rejected(
+                      target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              Absent =>
+                outcome_rejected(
+                  target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                )
+            }
+          } else {
+            if id == discriminant(v: EqualityComparison {}) {
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_eq_field
+              ) {
+                Present { value: eq_field } =>
+                  match target_model_canonical_operation_atom_field_from_wire(
+                    wire: wire,
+                    field_name: ^target_canonical_operation_field_predicate
+                  ) {
+                    Present { value: predicate_id } =>
+                      match equality_predicate_from_wire_symbol(id: predicate_id) {
+                        Present { value: predicate } =>
+                          outcome_accepted(
+                            EqualityComparison {
+                              eq_field: eq_field,
+                              predicate: predicate
+                            }
+                          )
+                        Absent =>
+                          outcome_rejected(
+                            target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                          )
+                      }
+                    Absent =>
+                      outcome_rejected(
+                        target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                      )
+                  }
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            } else {
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+            }
+          }
+        }
+      }
+    _ =>
+      outcome_rejected(
+        target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+      )
+  }
+}
+

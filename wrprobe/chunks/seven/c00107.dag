@@ -1,0 +1,6 @@
+module chunk
+
+test fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {
+  g_parsed_accepted(parsed: expression_bodied_literal_fn_parsed())
+}
+

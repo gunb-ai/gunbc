@@ -1,0 +1,12 @@
+module chunk
+
+test fn a_false_against_an_expected_red_identity_is_the_expected_red_observed() -> Bool {
+  match native_route_disposition(verdict: NativeTestReturnedFalse, reference: FloorExpectedRed) {
+    NativeAgreementExpectedRed => true
+    NativeAgreementPass => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+    NativeDivergence { cause: _ } => false
+  }
+}
+

@@ -1,0 +1,30 @@
+module chunk
+
+fn derive_bodied_arrow_scaffold(
+  signature_with_open: List<ConcreteSyntaxToken>,
+  block_close: List<ConcreteSyntaxToken>,
+  mode: BlockEvaluationMode
+) -> TargetBodiedArrowStatementScaffold {
+  match mode {
+    ValueProducing =>
+      TargetBodiedArrowStatementScaffold {
+        prefix: signature_with_open,
+        suffix: block_close
+      }
+    StatementSequenced {
+      return_token: return_token,
+      statement_terminator: statement_terminator
+    } =>
+      TargetBodiedArrowStatementScaffold {
+        prefix: list_snoc_item(
+          xs: signature_with_open,
+          item: FixedToken { token_class: return_token }
+        ),
+        suffix: list_append(
+          left: [FixedToken { token_class: statement_terminator }],
+          right: block_close
+        )
+      }
+  }
+}
+

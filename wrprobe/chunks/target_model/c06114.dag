@@ -1,0 +1,29 @@
+module chunk
+
+fn target_import_bound_tokens_intersperse(
+  bindings: List<Symbol>,
+  ident_token: Symbol,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold(
+    bindings,
+    init: Empty,
+    f: fn(acc, binding) {
+      if is_empty(xs: acc) {
+        Cons { head: BoundToken { token_class: ident_token, binding: binding }, tail: Empty }
+      } else {
+        list_append(
+          left: acc,
+          right: Cons {
+            head: FixedToken { token_class: separator },
+            tail: Cons {
+              head: BoundToken { token_class: ident_token, binding: binding },
+              tail: Empty
+            }
+          }
+        )
+      }
+    }
+  )
+}
+

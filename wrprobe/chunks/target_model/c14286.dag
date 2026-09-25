@@ -1,0 +1,58 @@
+module chunk
+
+fn target_project_bind_let(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  if !target_value_expr_bind_let_gate(node: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
+    )
+  } else {
+    bind_outcome(
+      o: target_transform_positional_operand_binding(node: body, index: 0),
+      f: fn(key_binding) {
+        bind_outcome(
+          o: target_transform_positional_operand_binding(node: body, index: 2),
+          f: fn(body_binding) {
+            match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+              Absent =>
+                outcome_rejected(
+                  target_value_expr_diagnostic(
+                    reason: ^target_value_expr_reason_transform_shape_invalid,
+                    node: body
+                  )
+                )
+              Present { value: value_node } =>
+                bind_outcome(
+                  o: target_value_expr_project_body_subexpression(
+                    arrow: arrow,
+                    node: value_node,
+                    target: target,
+                    source_bool_form: source_bool_form,
+                    handle_transform: handle_transform
+                  ),
+                  f: fn(projected_value) {
+                    outcome_accepted(
+                      target_value_expression_bind_let(
+                        bind_key: target_value_expression_binding_ref(binding: key_binding),
+                        bind_value: projected_value,
+                        bind_body: target_value_expression_binding_ref(binding: body_binding)
+                      )
+                    )
+                  }
+                )
+            }
+          }
+        )
+      }
+    )
+  }
+}
+

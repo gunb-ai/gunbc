@@ -1,0 +1,10 @@
+module chunk
+
+fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_duplicate_production,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_duplicate_production),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

@@ -1,0 +1,12 @@
+module chunk
+
+fn grammar_choice_ambiguity_rows_append_parse_stage(
+  acc: FreeMonoid<GrammarChoiceAmbiguityRow>,
+  d: ParseStageDiagnostic
+) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  match parse_stage_evidence_row_optional(d: d) {
+    Present { value: row } => list_snoc_item(xs: acc, item: row)
+    Absent => acc
+  }
+}
+

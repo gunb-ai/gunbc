@@ -1,0 +1,6 @@
+module chunk
+
+fn program_assembly_memo_misses(measured: ParseProductionMeasured) -> Int {
+  measured.memo.misses
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
+  map_insert(m: m, key: sym, value: true)
+}
+

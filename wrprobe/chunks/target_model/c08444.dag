@@ -1,0 +1,33 @@
+module chunk
+
+fn target_atom_realization_lookup_in_catalog(
+  catalog: List<TargetAtomRealization>,
+  source_carrier: Node
+) -> Outcome<TargetAtomRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: NoPassingCandidate,
+    cons: fn(acc, row) {
+      target_atom_realization_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier
+      )
+    }
+  ) {
+    NoPassingCandidate =>
+      outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+    OnePassingCandidate { candidate: _ } =>
+      match target_atom_realization_lookup_extract_row(
+        catalog: catalog,
+        source_carrier: source_carrier
+      ) {
+        Present { value: row } => Accepted { value: row, diagnostics: None }
+        Absent =>
+          outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+      }
+    ManyPassingCandidates =>
+      outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+  }
+}
+

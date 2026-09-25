@@ -1,0 +1,16 @@
+wrprobe/chunks/symbol_index_fill/c00052.dag
+wrprobe/chunks/symbol_index_fill/c00061.dag
+wrprobe/chunks/symbol_index_fill/c00070.dag
+wrprobe/chunks/symbol_index_fill/c00120.dag
+wrprobe/chunks/symbol_index_fill/c00178.dag
+wrprobe/chunks/symbol_index_fill/c00188.dag
+wrprobe/chunks/symbol_index_fill/c00219.dag
+wrprobe/chunks/symbol_index_fill/c00236.dag
+wrprobe/chunks/symbol_index_fill/c00253.dag
+wrprobe/chunks/symbol_index_fill/c00258.dag
+wrprobe/chunks/symbol_index_fill/c00304.dag
+wrprobe/chunks/symbol_index_fill/c00321.dag
+wrprobe/chunks/symbol_index_fill/c00332.dag
+wrprobe/chunks/symbol_index_fill/c00384.dag
+wrprobe/chunks/symbol_index_fill/c00426.dag
+wrprobe/chunks/symbol_index_fill/c00461.dag

@@ -1,0 +1,6 @@
+module chunk
+
+fn grammar_formal_terminal_free(identity: Symbol) -> FormalGrammarSymbol {
+  grammar_formal_terminal_bound(identity: identity, binding: ^grammar_free_name_slot)
+}
+

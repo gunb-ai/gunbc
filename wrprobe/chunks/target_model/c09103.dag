@@ -1,0 +1,11 @@
+module chunk
+
+fn target_function_signature_realization_catalog_edge(
+  row: TargetFunctionSignatureRealization
+) -> Edge {
+  Edge {
+    label: Positional,
+    target: target_function_signature_realization_to_node(row: row)
+  }
+}
+

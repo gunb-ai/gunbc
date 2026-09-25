@@ -1,0 +1,39 @@
+module chunk
+
+fn target_value_expression_symbol_identity_from_wire(wire: Node) -> Outcome<Symbol> {
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expression_field_identity {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: id } } =>
+                    optional_present(value: id)
+                  _ => acc
+                }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: id } => outcome_accepted(id)
+    Absent =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(
+          expr: TargetValueExpression {
+            kind: TargetValueExprSymbolIdentity,
+            node: wire
+          }
+        )
+      )
+  }
+}
+

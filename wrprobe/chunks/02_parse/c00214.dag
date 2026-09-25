@@ -1,0 +1,7 @@
+module chunk
+
+type AuthoredParseArtifact {
+  semantic: ParseArtifact
+  annotations: SourceAnnotationGraph
+}
+

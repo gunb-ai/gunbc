@@ -1,0 +1,72 @@
+module chunk
+
+fn target_value_expression_closure_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_closure_params_from_wire(wire: expr.node),
+    f: fn(params) {
+      bind_outcome(
+        o: target_value_expr_closure_body_from_wire(wire: expr.node),
+        f: fn(body) {
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: body,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(body_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: list_append(
+                      left: Cons {
+                        head: FixedToken {
+                          token_class: projection.closure_form.fn_token
+                        },
+                        tail: Cons {
+                          head: FixedToken {
+                            token_class: projection.closure_form.open
+                          },
+                          tail: Empty
+                        }
+                      },
+                      right: list_append(
+                        left: target_value_expr_closure_param_tokens(
+                          params: params,
+                          ident_token: projection.closure_form.param_ident_token,
+                          separator: projection.closure_form.separator
+                        ),
+                        right: Cons {
+                          head: FixedToken {
+                            token_class: projection.closure_form.close
+                          },
+                          tail: Cons {
+                            head: FixedToken {
+                              token_class: projection.closure_form.body_open
+                            },
+                            tail: Empty
+                          }
+                        }
+                      )
+                    ),
+                    right: body_tokens
+                  ),
+                  right: Cons {
+                    head: FixedToken {
+                      token_class: projection.closure_form.body_close
+                    },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

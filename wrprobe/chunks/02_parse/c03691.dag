@@ -1,0 +1,69 @@
+module chunk
+
+fn parse_production_prepared_measured_seeded(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  production_name: Symbol,
+  seed: OccurrenceIdAllocator,
+  materialization: Materialization
+) -> ParseProductionMeasured {
+  let root = validated.root
+  match grammar_lookup_production(root: root, name: production_name) {
+    Holds { value: production } =>
+      let prov = parse_prov_seeded(seed: seed)
+      let table = parse_table_for_production_analyzed(
+        validated: validated,
+        analysis: analysis,
+        all_tokens: tokens,
+        materialization: materialization
+      )
+      match parse_expr(
+        expr: production.expression,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
+          if is_empty(xs: remaining) {
+            let stamped = parse_wrap_production_captured(
+              production: production,
+              captured: captured,
+              prov: inner_prov
+            )
+            ParseProductionMeasured {
+              outcome: Accepted {
+                value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
+                diagnostics: parse_diags_to_diagnostics(diags: diags)
+              },
+              memo: parse_table_memo_stats(table: final_table)
+            }
+          } else {
+            ParseProductionMeasured {
+              outcome: Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) },
+              memo: parse_table_memo_stats(table: final_table)
+            }
+          }
+        ParseExprRejected { diagnostics: diags, table: final_table } =>
+          ParseProductionMeasured {
+            outcome: Rejected {
+              diagnostics: parse_diags_to_non_empty(
+                diags: diags,
+                default: parse_e1_syntax_error_diagnostic(
+                  at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+                )
+              )
+            },
+            memo: parse_table_memo_stats(table: final_table)
+          }
+      }
+    Violates { diagnostic: d } =>
+      ParseProductionMeasured {
+        outcome: Rejected { diagnostics: diagnostics_singleton(d: d) },
+        memo: parse_memo_stats_empty()
+      }
+  }
+}
+

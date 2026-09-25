@@ -1,0 +1,32 @@
+module chunk
+
+fn target_type_expr_emitted_kind(node: Node) -> TargetTypeExprKindProbe {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match fold(node.children, init: KindAuthorityFoldNone, f: fn(acc, e) {
+        match acc {
+          KindAuthorityFoldConflict => acc
+          KindAuthorityFoldNone =>
+            match target_type_expr_decode_kind_edge(edge: e) {
+              KindEdgeNotKindField => acc
+              KindEdgeAuthorityMalformed => KindAuthorityFoldConflict
+              KindEdgeAuthority { value: kind } =>
+                KindAuthorityFoldUnique { value: kind }
+            }
+          KindAuthorityFoldUnique { value: _ } =>
+            match target_type_expr_decode_kind_edge(edge: e) {
+              KindEdgeNotKindField => acc
+              KindEdgeAuthorityMalformed => KindAuthorityFoldConflict
+              KindEdgeAuthority { value: _ } => KindAuthorityFoldConflict
+            }
+        }
+      }) {
+        KindAuthorityFoldNone => TypeExprKindNotEmitted
+        KindAuthorityFoldUnique { value: kind } =>
+          TypeExprKindAuthority { value: kind }
+        KindAuthorityFoldConflict => TypeExprKindAuthorityInvalid
+      }
+    _ => TypeExprKindNotEmitted
+  }
+}
+

@@ -1,0 +1,6 @@
+module chunk
+
+fn target_value_expr_positional_child_optional(node: Node, index: Int) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: node), index: index)
+}
+

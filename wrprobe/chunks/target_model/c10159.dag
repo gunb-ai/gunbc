@@ -1,0 +1,14 @@
+module chunk
+
+fn target_type_expr_arrow_emitted(
+  form: TargetFunctionTypeShape,
+  inputs: List<Node>,
+  output: Node
+) -> Node {
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprArrow,
+    surface: form.surface,
+    children: list_append(left: inputs, right: Cons { head: output, tail: Empty })
+  )
+}
+

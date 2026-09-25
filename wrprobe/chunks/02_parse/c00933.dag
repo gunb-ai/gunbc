@@ -1,0 +1,28 @@
+module chunk
+
+fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  let spine = fold_list_right(
+    xs: acc_nodes,
+    empty: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    snoc: fn(tail_node, item) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: item),
+          grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: tail_node)
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  )
+  node_with_occurrence_id(
+    kind: spine.kind,
+    children: spine.children,
+    occurrence_id: occurrence_id
+  )
+}
+

@@ -1,0 +1,30 @@
+module chunk
+
+fn target_collection_choice_constraints_satisfied(
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
+  choice: TargetRepresentationChoice,
+  elem: Node
+) -> Outcome<Bool> {
+  fold_list(
+    xs: choice.constraints,
+    empty: outcome_accepted(true),
+    cons: fn(acc, requirement) {
+      bind_outcome(
+        o: acc,
+        f: fn(satisfied_so_far) {
+          bind_outcome(
+            o: target_capability_requirement_satisfied(
+              eligibility_table: eligibility_table,
+              requirement: requirement,
+              elem: elem
+            ),
+            f: fn(satisfied) {
+              outcome_accepted(satisfied_so_far && satisfied)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

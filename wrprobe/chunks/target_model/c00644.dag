@@ -1,0 +1,6 @@
+module chunk
+
+type ConcreteSyntaxToken
+  = FixedToken { token_class: Symbol }
+  | BoundToken { token_class: Symbol, binding: Symbol }
+

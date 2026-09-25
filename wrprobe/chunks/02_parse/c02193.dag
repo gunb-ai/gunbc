@@ -1,0 +1,6 @@
+module chunk
+
+fn ordered_backtrack_emit(alts: List<PreparedExprFold>) -> PreparedChoicePlan {
+  ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) }
+}
+

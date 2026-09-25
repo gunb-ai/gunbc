@@ -1,0 +1,11 @@
+module chunk
+
+fn decode_field_access_shape_bundle(bundle: Node) -> Outcome<TargetFieldAccessShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_field_access_dot),
+    f: fn(dot) {
+      outcome_accepted(TargetFieldAccessShape { dot: dot })
+    }
+  )
+}
+

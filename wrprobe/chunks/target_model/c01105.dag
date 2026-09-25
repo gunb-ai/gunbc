@@ -1,0 +1,9 @@
+module chunk
+
+type SourceAtomValue
+  = SourceAtomSymbol { identity: Symbol }
+  | SourceAtomBool { value: Bool }
+  | SourceAtomChar { codepoint: Char }
+
+  | SourceAtomString { value: Node }
+

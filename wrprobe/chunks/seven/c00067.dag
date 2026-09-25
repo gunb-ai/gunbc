@@ -1,0 +1,4 @@
+module chunk
+
+data expression_bodied_fn_source: String = "module probe.expr_fn\n\nfn f(a: Int) -> Int = a\n"
+

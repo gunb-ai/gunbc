@@ -1,0 +1,12 @@
+module chunk
+
+fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: discriminant(v: site) }
+    },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

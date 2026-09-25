@@ -1,0 +1,24 @@
+module chunk
+
+fn ordered_backtrack_row(
+  production: Symbol,
+  alts: List<PreparedExprFold>
+) -> GrammarChoiceAmbiguityRow {
+  let empty_first = GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
+  let left = match list_head(xs: alts) {
+    HeadFound { value: alt } => prepared_expr_fold_first(alt: alt)
+    HeadAbsent => empty_first
+  }
+  let right = match list_tail(xs: alts) {
+    TailFound { tail: rest } => choice_alts_union_first_from(alts: rest, acc: empty_first)
+    TailAbsent => empty_first
+  }
+  GrammarChoiceAmbiguityRow {
+    production: production,
+    left_first_terminals: first_keys_classes(keys: left.terminals),
+    right_first_terminals: first_keys_classes(keys: right.terminals),
+    overlap_terminals: first_keys_classes(keys: first_list_intersect(left: left.terminals, right: right.terminals)),
+    both_nullable: left.nullable && right.nullable
+  }
+}
+

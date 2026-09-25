@@ -1,0 +1,20 @@
+module chunk
+
+fn grammar_relation_row_derived_from_productions(
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Outcome<Node> {
+  let resolution = resolve_emitted_productions(productions: productions, emitted: emitted)
+  match resolution_unique_emitted_match(resolution: resolution) {
+    Holds { value: production } =>
+      match derive_grammar_relation_row_node_resolved(
+        production: production,
+        resolution: resolution
+      ) {
+        Holds { value: row } => outcome_accepted(value: row)
+        Violates { diagnostic: d } => outcome_rejected(d)
+      }
+    Violates { diagnostic: d } => outcome_rejected(d)
+  }
+}
+

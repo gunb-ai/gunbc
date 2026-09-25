@@ -1,0 +1,17 @@
+module chunk
+
+fn derive_grammar_relation_row_node(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Witness<Node> {
+  derive_grammar_relation_row_node_resolved(
+    production: production,
+    resolution: resolve_emitted_productions_asked(
+      productions: productions,
+      asked: [production.lhs.identity],
+      emitted: emitted
+    )
+  )
+}
+

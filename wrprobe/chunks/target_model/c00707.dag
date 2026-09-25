@@ -1,0 +1,9 @@
+module chunk
+
+fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
+  match token {
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
+  }
+}
+

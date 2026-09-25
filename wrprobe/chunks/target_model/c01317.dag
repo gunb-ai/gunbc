@@ -1,0 +1,9 @@
+module chunk
+
+type TargetConditionalShape {
+  if_token: Symbol
+  then_token: Symbol
+  else_token: Symbol
+  delimiting: ConditionalDelimiting
+}
+

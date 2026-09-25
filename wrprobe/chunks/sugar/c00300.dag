@@ -1,0 +1,22 @@
+module chunk
+
+fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
+  let variants = sugar_all_coproduct_variants(captured: captured)
+  if !sugar_variants_form_coproduct(variants: variants) {
+    Accepted { value: captured, diagnostics: None }
+  } else {
+    match sugar_variants_to_disj_edges(variants: variants) {
+      Accepted { value: edges, diagnostics: d } =>
+        if edges_conform(children: edges, d: LabeledEdges) {
+          Accepted {
+            value: sugar_type_node(connective: Disj, children: edges, n: shell),
+            diagnostics: d
+          }
+        } else {
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+        }
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  }
+}
+

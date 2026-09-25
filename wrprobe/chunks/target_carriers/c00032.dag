@@ -1,0 +1,6 @@
+module chunk
+
+fn lossless_source(text: String) -> Medium<String> {
+  source_medium(text: text, fidelity: Lossless)
+}
+

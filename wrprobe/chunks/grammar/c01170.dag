@@ -1,0 +1,24 @@
+module chunk
+
+fn formal_conj_child_atom_at_index(
+  children: List<Node>,
+  index: Int,
+  emitted: Node
+) -> Witness<Node> {
+  match list_nth(
+    xs: children,
+    wanted: index,
+    absent: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
+  ) {
+    Holds { value: slot_child } =>
+      match node_atom_identity_optional(node: slot_child) {
+        Present { value: _ } => Holds { value: slot_child }
+        Absent =>
+          Violates {
+            diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
+          }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+

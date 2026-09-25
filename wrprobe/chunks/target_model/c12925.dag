@@ -1,0 +1,39 @@
+module chunk
+
+fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^target_type_expr_field_surface,
+        target: target_type_expr_symbol_atom(id: form.surface)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_open,
+        target: target_type_expr_symbol_atom(id: form.open)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_close,
+        target: target_type_expr_symbol_atom(id: form.close)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_arrow,
+        target: target_type_expr_symbol_atom(id: form.arrow)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_param_ident_token,
+        target: target_type_expr_symbol_atom(id: form.param_ident_token)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_param_type_separator,
+        target: target_type_expr_symbol_atom(id: form.param_type_separator)
+      ),
+      target_model_named_edge(
+        name: ^target_type_expr_field_param_list_separator,
+        target: target_type_expr_symbol_atom(id: form.param_list_separator)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

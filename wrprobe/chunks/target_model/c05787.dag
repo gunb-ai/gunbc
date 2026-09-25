@@ -1,0 +1,22 @@
+module chunk
+
+fn target_value_expression_loop_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_loop_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+

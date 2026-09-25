@@ -1,0 +1,7 @@
+module chunk
+
+type RebuildProductionMatchFold
+  = RebuildProductionMatchNone
+  | RebuildProductionMatchOne { emitted: Node, token_index: Int }
+  | RebuildProductionMatchMany
+

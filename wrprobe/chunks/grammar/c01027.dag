@@ -1,0 +1,10 @@
+module chunk
+
+fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
+  fold_list(
+    xs: production.rhs,
+    empty: 0,
+    cons: formal_production_emitted_slot_count_step
+  )
+}
+

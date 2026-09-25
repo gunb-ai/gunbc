@@ -1,0 +1,6 @@
+module chunk
+
+type PreparedGrammar
+  = PreparedVoidGrammar
+  | PreparedModeled { modeled: PreparedModeledGrammar, materialization: Materialization }
+

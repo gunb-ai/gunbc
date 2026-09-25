@@ -1,0 +1,9 @@
+module chunk
+
+fn source_atom_value_for_realization_row(
+  source: Node,
+  row: TargetAtomRealization
+) -> Optional<SourceAtomValue> {
+  source_atom_value_for_value_template(source: source, template: row.value_form)
+}
+

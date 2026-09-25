@@ -1,0 +1,50 @@
+module chunk
+
+fn target_value_expression_effect_apply_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_effect_apply_kind_from_wire(wire: expr.node),
+    f: fn(effect_kind) {
+      bind_outcome(
+        o: target_value_expr_effect_apply_callee(
+          effect_kind: effect_kind,
+          shape: projection.effect_apply_form,
+          expr: expr
+        ),
+        f: fn(callee) {
+          bind_outcome(
+            o: target_value_expr_effect_apply_operand_bindings(wire: expr.node),
+            f: fn(bindings) {
+
+              outcome_accepted(
+                list_append(
+                  left: list_append(
+                    left: Cons {
+                      head: FixedToken { token_class: callee },
+                      tail: Cons {
+                        head: FixedToken { token_class: projection.effect_apply_form.open },
+                        tail: Empty
+                      }
+                    },
+                    right: target_value_expression_binding_refs_intersperse_separator(
+                      bindings: bindings,
+                      projection: projection,
+                      separator: projection.effect_apply_form.separator
+                    )
+                  ),
+                  right: Cons {
+                    head: FixedToken { token_class: projection.effect_apply_form.close },
+                    tail: Empty
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+

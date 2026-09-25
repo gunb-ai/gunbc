@@ -1,0 +1,10 @@
+module chunk
+
+fn target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_expression_emit_operator_shape_unsupported,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+

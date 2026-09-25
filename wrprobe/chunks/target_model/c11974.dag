@@ -1,0 +1,76 @@
+module chunk
+
+fn target_use_site_ownership_row_from_node(
+  row_node: Node,
+  display_name: Symbol,
+  source_carrier: Node
+) -> Outcome<TargetUseSiteOwnershipRealization> {
+  let carrier_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_use_site_ownership_field_source_carrier
+  )
+  let source_projection_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_use_site_ownership_field_source_projection
+  )
+  let use_site_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_use_site_ownership_field_use_site
+  )
+  let layer_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: ^target_use_site_ownership_field_reference_layer
+  )
+  bind_outcome(
+    o: target_model_node_atom_identity(node: source_projection_node, source_carrier: source_carrier),
+    f: fn(source_projection_id) {
+      match target_use_site_ownership_source_projection_from_atom(id: source_projection_id) {
+        Absent =>
+          outcome_rejected(
+            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+        Present { value: source_projection } =>
+          bind_outcome(
+            o: target_model_node_atom_identity(node: use_site_node, source_carrier: source_carrier),
+            f: fn(use_site_id) {
+              match target_ownership_use_site_from_atom(id: use_site_id) {
+                Absent =>
+                  outcome_rejected(
+                    target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+                      source_carrier: source_carrier
+                    )
+                  )
+                Present { value: use_site } =>
+                  bind_outcome(
+                    o: target_model_node_atom_identity(node: layer_node, source_carrier: source_carrier),
+                    f: fn(layer_id) {
+                      match target_reference_layer_from_atom(id: layer_id) {
+                        Absent =>
+                          outcome_rejected(
+                            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+                              source_carrier: source_carrier
+                            )
+                          )
+                        Present { value: reference_layer } =>
+                          outcome_accepted(
+                            TargetUseSiteOwnershipRealization {
+                              source_carrier: carrier_node,
+                              source_projection: source_projection,
+                              use_site: use_site,
+                              reference_layer: reference_layer,
+                              display_name: display_name
+                            }
+                          )
+                      }
+                    }
+                  )
+              }
+            }
+          )
+      }
+    }
+  )
+}
+

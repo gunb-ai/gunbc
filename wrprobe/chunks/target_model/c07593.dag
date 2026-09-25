@@ -1,0 +1,27 @@
+module chunk
+
+fn target_value_expr_closure_param_tokens(
+  params: List<Symbol>,
+  ident_token: Symbol,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold_list_right(
+    xs: params,
+    empty: Empty,
+    snoc: fn(acc, p) {
+      let token = BoundToken { token_class: ident_token, binding: p }
+      match acc {
+        Empty => Cons { head: token, tail: Empty }
+        _ =>
+          Cons {
+            head: token,
+            tail: Cons {
+              head: FixedToken { token_class: separator },
+              tail: acc
+            }
+          }
+      }
+    }
+  )
+}
+

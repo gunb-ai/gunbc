@@ -1,0 +1,34 @@
+module chunk
+
+fn conditional_delimited_tokens(
+  conditional_form: TargetConditionalShape,
+  cond_tokens: List<ConcreteSyntaxToken>,
+  then_tokens: List<ConcreteSyntaxToken>,
+  else_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  let opened = list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: [FixedToken { token_class: conditional_form.if_token }],
+            right: cond_tokens
+          ),
+          right: [FixedToken { token_class: conditional_form.then_token }]
+        ),
+        right: then_tokens
+      ),
+      right: [FixedToken { token_class: conditional_form.else_token }]
+    ),
+    right: else_tokens
+  )
+  match conditional_form.delimiting {
+    ConditionalSelfDelimiting => opened
+    ConditionalClosedByToken { close_token: close_token } =>
+      list_append(
+        left: opened,
+        right: [FixedToken { token_class: close_token }]
+      )
+  }
+}
+

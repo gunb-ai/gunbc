@@ -1,0 +1,27 @@
+module chunk
+
+fn non_empty_parse_stage_diagnostics_from_overlap_roster(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> Optional<NonEmptyParseStageDiagnostics> {
+  match roster {
+    Empty => optional_absent()
+    Cons { head: first, tail: rest } =>
+      optional_present(
+        value: NonEmptyParseStageDiagnostics {
+          head: parse_overlap_residue_stage_diagnostic_at(at: at, row: first),
+          tail: fold_list(
+            xs: rest,
+            empty: Empty,
+            cons: fn(acc, row) {
+              list_snoc_item(
+                xs: acc,
+                item: parse_overlap_residue_stage_diagnostic_at(at: at, row: row)
+              )
+            }
+          )
+        }
+      )
+  }
+}
+

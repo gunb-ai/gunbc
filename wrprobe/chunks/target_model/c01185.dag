@@ -1,0 +1,9 @@
+module chunk
+
+fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
+  match predicate {
+    IsEqual => true
+    IsNotEqual => false
+  }
+}
+

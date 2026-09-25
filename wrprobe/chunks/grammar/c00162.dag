@@ -1,0 +1,25 @@
+module chunk
+
+fn validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> {
+  if !g.nonterminals.member(g.start) {
+    Violates {
+      diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_start_not_in_nonterminals)
+    }
+  } else if !validate_grammar_all_lhs_in_nonterminals(g: g) {
+    Violates {
+      diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_lhs_not_in_nonterminals)
+    }
+  } else if !validate_grammar_all_rhs_in_alphabet(g: g) {
+    Violates {
+      diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_rhs_symbol_not_in_alphabet)
+    }
+  } else {
+    Holds {
+      value: WellFormedFormalGrammar {
+        grammar: g,
+        alphabet_enumeration: grammar_alphabet_enumeration_deferred_4766()
+      }
+    }
+  }
+}
+

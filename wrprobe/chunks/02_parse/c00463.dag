@@ -1,0 +1,10 @@
+module chunk
+
+fn grammar_production_index(productions: List<GrammarProduction>) -> Map<Symbol, GrammarProduction> {
+  fold_list(
+    xs: productions,
+    empty: empty_map(),
+    cons: fn(acc, p) { map_insert(m: acc, key: p.name, value: p) }
+  )
+}
+

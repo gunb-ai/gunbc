@@ -1,0 +1,10 @@
+module chunk
+
+fn compute_nullable_step(ns: List<Symbol>, p: GrammarProduction) -> List<Symbol> {
+  if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
+    set_symbol_insert(s: ns, item: p.name)
+  } else {
+    ns
+  }
+}
+

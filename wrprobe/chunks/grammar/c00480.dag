@@ -1,0 +1,14 @@
+module chunk
+
+fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: ^formal_nonterminal_identity_node_projection, target: grammar_atom(identity: nonterminal.identity))
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+

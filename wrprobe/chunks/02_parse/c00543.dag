@@ -1,0 +1,16 @@
+module chunk
+
+fn parse_memo_entry_from_expr(result: ParseExprResult) -> ParseMemoEntry {
+  match result {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: prov, table: _ } =>
+      ParseMemoAccepted {
+        remaining: remaining,
+        captured: captured,
+        diagnostics: diagnostics,
+        prov: prov
+      }
+    ParseExprRejected { diagnostics: diagnostics, table: _ } =>
+      ParseMemoRejected { diagnostics: diagnostics }
+  }
+}
+

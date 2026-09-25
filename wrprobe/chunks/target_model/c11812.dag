@@ -1,0 +1,22 @@
+module chunk
+
+fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUseSite> {
+  if id == discriminant(v: OwnershipAtFunctionReturn) {
+    optional_present(value: OwnershipAtFunctionReturn)
+  } else {
+    if id == discriminant(v: OwnershipAtFunctionParameter) {
+      optional_present(value: OwnershipAtFunctionParameter)
+    } else {
+      if id == discriminant(v: OwnershipAtStructField) {
+        optional_present(value: OwnershipAtStructField)
+      } else {
+        if id == discriminant(v: OwnershipAtBindingProjection) {
+          optional_present(value: OwnershipAtBindingProjection)
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  }
+}
+

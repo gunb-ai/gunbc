@@ -1,0 +1,11 @@
+module chunk
+
+fn class_bucket_alts_for_word(alts: List<PreparedExprFold>, token_class: Symbol, word: String) -> List<PreparedExprFold> {
+  filter(xs: alts, predicate: fn(alt) {
+    let first = prepared_expr_fold_first(alt: alt)
+    first.nullable || any(xs: first.terminals, predicate: fn(k) {
+      first_key_admits_word(key: k, token_class: token_class, word: word)
+    })
+  })
+}
+

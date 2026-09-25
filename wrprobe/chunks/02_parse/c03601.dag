@@ -1,0 +1,26 @@
+module chunk
+
+fn parse_expr(
+  expr: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  parse_expr_with_first(
+    expr: prepare_grammar_expr(
+      expr: expr,
+      nullable_set: table.nullable_set,
+      first_rows: table.first_rows,
+      production: root.start,
+      token_dispatch: parse_table_token_dispatch(table: table, production: root.start)
+    ).tree,
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
+  )
+}
+

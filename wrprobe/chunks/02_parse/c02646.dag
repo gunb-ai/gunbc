@@ -1,0 +1,18 @@
+module chunk
+
+fn grammar_choice_ambiguity_row_diagnostic_list(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> List<Diagnostic> {
+  fold_list(
+    xs: roster,
+    empty: std.algebra.Empty,
+    cons: fn(acc, row) {
+      list_snoc_item(
+        xs: acc,
+        item: parse_grammar_choice_ambiguity_row_diagnostic(at: at, row: row)
+      )
+    }
+  )
+}
+

@@ -1,0 +1,24 @@
+module chunk
+
+fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: fold_list(
+      xs: productions,
+      empty: Empty,
+      cons: fn(acc, production) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge {
+            label: Positional,
+            target: formal_production_to_node(production: production)
+          }
+        )
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

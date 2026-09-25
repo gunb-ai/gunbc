@@ -1,0 +1,13 @@
+module chunk
+
+fn canonical_operation_wire_matches_operation(
+  wire: Node,
+  operation: CanonicalOperation
+) -> Bool {
+  match canonical_operation_from_wire_node(wire: wire) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      canonical_operation_equal(left: decoded, right: operation)
+    Rejected { diagnostics: _ } => false
+  }
+}
+

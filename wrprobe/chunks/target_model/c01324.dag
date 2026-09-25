@@ -1,0 +1,8 @@
+module chunk
+
+type TargetBindLetShape {
+  let_token: Symbol
+  assign_token: Symbol
+  in_token: Symbol
+}
+

@@ -1,0 +1,11 @@
+module chunk
+
+type GrammarExpr
+  = Terminal { token_class: Symbol, stamp: TerminalStampMode }
+  | LiteralTerminal { token_class: Symbol, lexeme: Symbol }
+  | Nonterminal { production: Symbol }
+  | Sequence { left: GrammarExpr, right: GrammarExpr }
+  | Choice { left: GrammarExpr, right: GrammarExpr }
+  | Optional { element: GrammarExpr }
+  | Repeat { element: GrammarExpr }
+

@@ -1,0 +1,11 @@
+module chunk
+
+fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>) -> List<Edge> {
+  fold(variants, init: Empty, f: fn(acc, variant) {
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: variant.label }, target: variant.type_expr }
+    )
+  })
+}
+

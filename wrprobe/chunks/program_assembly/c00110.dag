@@ -1,0 +1,6 @@
+module chunk
+
+fn program_assembly_empty_located_roots() -> FreeMonoid<LocatedNormalizedTree> {
+  Empty
+}
+

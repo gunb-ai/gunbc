@@ -1,0 +1,67 @@
+module chunk
+
+fn target_model_canonical_operations_roster_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_add,
+        operation: canonical_operation_op_add()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_mul,
+        operation: canonical_operation_op_mul()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_negate,
+        operation: canonical_operation_op_negate()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_and,
+        operation: canonical_operation_op_and()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_or,
+        operation: canonical_operation_op_or()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_not,
+        operation: canonical_operation_op_not()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_sub,
+        operation: canonical_operation_op_sub()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_div,
+        operation: canonical_operation_op_div()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_lt,
+        operation: canonical_operation_op_lt()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_le,
+        operation: canonical_operation_op_le()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_gt,
+        operation: canonical_operation_op_gt()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_ge,
+        operation: canonical_operation_op_ge()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_eq,
+        operation: canonical_operation_op_eq()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_ne,
+        operation: canonical_operation_op_ne()
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+

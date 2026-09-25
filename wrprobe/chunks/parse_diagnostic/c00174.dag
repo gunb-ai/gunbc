@@ -1,0 +1,12 @@
+module chunk
+
+fn list_head_value_or_self_parse_stage(
+  head: ParseStageDiagnostic,
+  tail: FreeMonoid<ParseStageDiagnostic>
+) -> ParseStageDiagnostic {
+  match list_head(xs: tail) {
+    HeadFound { value: item } => item
+    HeadAbsent => head
+  }
+}
+

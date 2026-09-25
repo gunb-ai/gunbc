@@ -1,0 +1,88 @@
+module chunk
+
+fn parse_expr_with_first(
+  expr: PreparedGrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match expr {
+    PreparedTerminal { token_class: token_class, stamp: stamp } =>
+      parse_expr_terminal(
+        token_class: token_class,
+        stamp: stamp,
+        tokens: tokens,
+        table: table,
+        prov: prov
+      )
+    PreparedLiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      match parse_token_first(tokens: tokens) {
+        Absent => ParseExprRejected { diagnostics: [], table: table }
+        Present { value: tok } =>
+          if first_key_admits_word(
+            key: FirstExactWord { token_class: token_class, lexeme: lexeme },
+            token_class: tok.class,
+            word: tok.lexeme
+          ) {
+            parse_expr_terminal(
+              token_class: token_class,
+              stamp: StampClass,
+              tokens: tokens,
+              table: table,
+              prov: prov
+            )
+          } else {
+            ParseExprRejected { diagnostics: [], table: table }
+          }
+      }
+    PreparedNonterminal { production: prod_name } =>
+      parse_nonterminal_memoized(
+        all_tokens: all_tokens,
+        tokens: tokens,
+        root: root,
+        table: table,
+        prod_name: prod_name,
+        prov: prov
+      )
+    PreparedSequence { left: left, right: right } =>
+      parse_expr_sequence(
+        left: left,
+        right: right,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    PreparedChoice { plan: plan, first: _ } =>
+      parse_choice_plan(
+        plan: plan,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    PreparedOptional { element: element } =>
+      parse_expr_optional(
+        element: element,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    PreparedRepeat { element: element } =>
+      parse_expr_repeat(
+        element: element,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+  }
+}
+
