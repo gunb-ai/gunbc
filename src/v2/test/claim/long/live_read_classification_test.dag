@@ -21,6 +21,7 @@ import v2.lens.live_read_classification {
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.live_read {
+  LiveReadUnestablished,
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
   LiveReadSelectionRefused,
