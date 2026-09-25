@@ -1,0 +1,167 @@
+module v2.test.emit.swift_semantic_decl_routing
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.extdeps.languages.swift_decl { swift_decl_frontier_deferred_count }
+import std.algebra { Empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS emit_semantic_type_decl OVER THE SWIFT TARGET MODEL, with the type nodes SUPPLIED
+// at that boundary (DESIGN section 3, a witness discriminates at one interface). Each golden is the
+// exact text; each wrong golden differs in one fact the rows decide (member order, punctuation), so
+// a row that emitted plausible-but-wrong Swift reds here rather than passing a substring check.
+
+data swift_point_golden: String = "struct Point: Equatable, Sendable { let x: Int; let y: Int }"
+
+data swift_point_wrong_golden: String = "struct Point: Equatable, Sendable { let y: Int; let x: Int }"
+
+data swift_bool_golden: String = "enum Bool: Equatable, Sendable { case True, False }"
+
+data swift_bool_wrong_golden: String = "enum Bool: Equatable, Sendable { case False, True }"
+
+data swift_answer_golden: String = "enum Answer: Equatable, Sendable { case Yes(n: Int), No(code: Int) }"
+
+data swift_answer_rust_shaped_golden: String = "enum Answer: Equatable, Sendable { case Yes { n: Int }, No { code: Int } }"
+
+data swift_pair_golden: String = "struct Pair<K: Equatable & Sendable, V: Equatable & Sendable>: Equatable, Sendable { let key: K; let value: V }"
+
+data swift_wire_decode_golden: String = "enum WireDecode<T: Equatable & Sendable>: Equatable, Sendable { case WireDecoded(value: T), WireRefused(at: NonEmptyStr, cause: NonEmptyStr) }"
+
+fn sdr_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn sdr_atom_type(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: sdr_atom_type(name: type_name) }
+}
+
+fn sdr_variant_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+}
+
+fn sdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
+  }
+}
+
+fn sdr_emit_text(name: Symbol, params: List<Symbol>, node: Node) -> Outcome<String> {
+  match emit_semantic_type_decl(name: name, params: params, node: node, target: swift_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn sdr_emits(name: Symbol, params: List<Symbol>, node: Node, golden: String) -> Bool {
+  match sdr_emit_text(name: name, params: params, node: node) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sdr_point_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ sdr_field_edge(name: ^x, type_name: ^Int), sdr_field_edge(name: ^y, type_name: ^Int) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdr_bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ sdr_variant_edge(name: ^True), sdr_variant_edge(name: ^False) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdr_answer_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      sdr_variant_edge_payload(name: ^Yes, fields: [ sdr_field_edge(name: ^n, type_name: ^Int) ]),
+      sdr_variant_edge_payload(name: ^No, fields: [ sdr_field_edge(name: ^code, type_name: ^Int) ])
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdr_pair_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ sdr_field_edge(name: ^key, type_name: ^K), sdr_field_edge(name: ^value, type_name: ^V) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The shape of gunbc.auth.approval_device_wire WireDecode<T>: the first consumer's generic
+// coproduct, one payload arm over the parameter and one over two branded strings.
+fn sdr_wire_decode_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      sdr_variant_edge_payload(name: ^WireDecoded, fields: [ sdr_field_edge(name: ^value, type_name: ^T) ]),
+      sdr_variant_edge_payload(
+        name: ^WireRefused,
+        fields: [ sdr_field_edge(name: ^at, type_name: ^NonEmptyStr), sdr_field_edge(name: ^cause, type_name: ^NonEmptyStr) ]
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdr_arrow_type() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [ Edge { label: Positional, target: sdr_atom_type(name: ^Int) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn swift_record_emits_a_struct_with_let_members_holds() -> Bool {
+  sdr_emits(name: ^Point, params: Empty, node: sdr_point_record(), golden: swift_point_golden)
+    && !sdr_emits(name: ^Point, params: Empty, node: sdr_point_record(), golden: swift_point_wrong_golden)
+}
+
+test fn swift_nullary_coproduct_emits_one_case_list_holds() -> Bool {
+  sdr_emits(name: ^Bool, params: Empty, node: sdr_bool_coproduct(), golden: swift_bool_golden)
+    && !sdr_emits(name: ^Bool, params: Empty, node: sdr_bool_coproduct(), golden: swift_bool_wrong_golden)
+}
+
+// THE PAYLOAD IS A LABELED TUPLE, NOT RUST'S STRUCT-LIKE VARIANT. Swift has no `Case { field }` form,
+// so the Rust-shaped rendering is the discriminating wrong answer for this row.
+test fn swift_payload_coproduct_emits_associated_values_holds() -> Bool {
+  sdr_emits(name: ^Answer, params: Empty, node: sdr_answer_coproduct(), golden: swift_answer_golden)
+    && !sdr_emits(name: ^Answer, params: Empty, node: sdr_answer_coproduct(), golden: swift_answer_rust_shaped_golden)
+}
+
+test fn swift_generic_record_bounds_each_parameter_holds() -> Bool {
+  sdr_emits(name: ^Pair, params: [^K, ^V], node: sdr_pair_record(), golden: swift_pair_golden)
+}
+
+test fn swift_generic_coproduct_of_the_wire_decode_shape_emits_holds() -> Bool {
+  sdr_emits(name: ^WireDecode, params: [^T], node: sdr_wire_decode_coproduct(), golden: swift_wire_decode_golden)
+}
+
+test fn swift_unsupported_shape_refuses_holds() -> Bool {
+  match sdr_emit_text(name: ^Bogus, params: Empty, node: sdr_arrow_type()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn swift_decl_frontier_deferred_count_holds() -> Bool {
+  swift_decl_frontier_deferred_count() == 2
+}
