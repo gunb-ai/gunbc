@@ -73,14 +73,16 @@ data glm_native_rank_unit_name: NonEmptyStr = "gunbc-glm-native-rank.service" as
 // each is carried by its own authority.
 data glm_native_engine_binary: NonEmptyStr = "/usr/local/bin/vllm" as NonEmptyStr
 
-// THE IMAGE THE ARM RUNS, declared FROM THE RUNNING FLEET (operator ruling 2026-09-19): the derived
-// GB10 image built on the group B head 2026-09-17 -- the pinned vllm-openai base plus the three
-// flashinfer 0.7.0.dev20260910 wheels force-reinstalled over it (provenance recorded in
-// gunbc.spark.serving_arm, image Id sha256:c7d63d15..., tag suffix c99be081f219d123). The previously
-// declared upstream digest vllm/vllm-openai@sha256:819ec9c0... was the socket-era render and no
-// longer describes any running rank; the tag reference (not a registry digest) is what the hosts
-// actually resolve, and the tag's content is pinned by the provenance row.
-data glm_native_image_reference: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr
+// THE IMAGE THE ARM RUNS, declared FROM THE RUNNING FLEET (operator ruling 2026-09-19; advanced
+// 2026-09-25 for the KV allocation-plan emission): the derived GB10 image built on the group B
+// head 2026-09-17 -- the pinned vllm-openai base plus the three flashinfer 0.7.0.dev20260910
+// wheels (provenance recorded in gunbc.spark.serving_arm, base image Id sha256:c7d63d15...) --
+// now layered with the KV allocation-plan emission patch
+// (dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch, sha256 5b75b784...; the
+// two patched files verified in-image at pins 8a29760b.../239d5093... and the marker probed
+// "patch probe OK" on srv9, docs/runbooks/glm-kv-allocation-plan-image-rebuild.md). The build is
+// a pure file-copy layer over the recorded base content id, built per host from the same patch.
+data glm_native_image_reference: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-kvplan-20260925" as NonEmptyStr
 
 // THE RENDEZVOUS PORT, authored rather than inherited: the image would pick 29501 itself (its own
 // ParallelConfig default, read 2026-09-10), and authoring it converts a value the image would have
