@@ -52,6 +52,7 @@ pub enum HostRealizationReason {
     GenericTypeParameter,
     HostContainer,
     UnnamedSynthesizedType,
+    HostTextCarrier,
 }
 
 pub fn provenance_label(p: Rc<TypeDeclarationProvenance>) -> String {
@@ -519,3 +520,5 @@ pub struct GenericTypeParameter;
 pub struct HostContainer;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnnamedSynthesizedType;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostTextCarrier;

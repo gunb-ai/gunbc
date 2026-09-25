@@ -1,0 +1,375 @@
+module v2.extdeps.languages.swift_decl
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_terminal_free,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  formal_productions_catalog_to_node,
+  FormalProduction
+}
+import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclCoproductEnumSurface,
+  TargetSemanticDeclSurfaceProjection,
+  semantic_decl_emission_bundle,
+  semantic_decl_lex_ident_row,
+  semantic_decl_lex_literal_row,
+  semantic_decl_lex_whitespace_trivia_row,
+  semantic_decl_serialize_profile_bundle
+}
+import v2.std.collection { List }
+import v2.std.algebra { list_append }
+import v2.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+}
+
+// SWIFT TYPE DECLARATIONS AS ROWS, READ BY THE SHARED SEMANTIC-DECL FOLD (std.compilers.semantic_decl_emission).
+// No fold edit: a record projects to a structure declaration and a coproduct to a union-style
+// enumeration whose payload variants carry labeled associated values. Grammar cited to The Swift
+// Programming Language, Swift 6.2 (github.com/swiftlang/swift-book, tag swift-6.2-RELEASE),
+// Language Reference > Declarations: `struct-declaration`, `union-style-enum` /
+// `union-style-enum-case-list` (one `case` introducing a comma-separated list whose members may
+// carry a `tuple-type`), and `generic-parameter-clause` with a protocol-composition requirement.
+//
+// THE CONFORMANCE CLAUSE IS `Equatable, Sendable`, BOTH SWIFT STANDARD LIBRARY PROTOCOLS, AND
+// NOTHING MORE. Every emitted member is a `let` and every payload an associated value, so the
+// declarations are values: Equatable and Sendable are synthesized by the compiler from the members,
+// and the Swift compiler refuses the synthesis if a member does not conform -- the claim is checked
+// by swiftc, not asserted here. Codable is deliberately NOT declared: its synthesized JSON shape
+// would be a second wire encoding beside gunbc.auth.approval_device_wire's, which owns the bytes.
+//
+// CONSUMER (DESIGN section 3c): a declared frontier. The named consumer is the approve-ios
+// protocol-slice emission of gunbc.auth.approval_device_wire's records and coproducts, gated on the
+// v2 closure-emit route rendering a module's members (gunbc#12239); until then the executing
+// consumer is v2.test.emit.swift_semantic_decl_routing at the emit_semantic_type_decl boundary.
+
+// THE TWO KNOWN GAPS, AS DISSOLUTION CONDITIONS ON THE SHARED CARRIER (std.dissolution), read by
+// gunbc.dissolution_census like every other such row rather than by a target-local type.
+data swift_decl_reserved_word_escape_frontier: DissolutionCondition = unbound_dissolution(
+  description: "A declaration, field or variant spelled like a Swift keyword (TSPL Lexical Structure > Keywords and Punctuation) is emitted bare by v2.extdeps.languages.swift_decl, and swiftc refuses the text rather than this emitter. DISSOLVES WHEN the Swift ident lex row carries Swift's backtick escape for the reserved-word roster, SUFFICIENT FOR any .dag identifier to emit as a Swift identifier naming the same member."
+)
+
+data swift_decl_primitive_spelling_frontier: DissolutionCondition = unbound_dissolution(
+  description: "v2.extdeps.languages.swift_decl spells field type atoms by their .dag symbol (Int, String, Bool coincide with Swift standard library names); width-qualified and branded types (UInt8, NonEmptyStr, Timestamp) reach a Swift type only if one of that name exists. DISSOLVES WHEN field atoms resolve through v2.extdeps.languages.swift's primitive facts, SUFFICIENT FOR every field type in gunbc.auth.approval_device_wire to emit as a declared Swift type."
+)
+
+fn swift_decl_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn swift_decl_type_expr_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_qualified_name,
+      rhs: [ grammar_formal_terminal_free(identity: ^swift_token_ident) ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_type_expr,
+      rhs: [ grammar_formal_nonterminal_occurrence(identity: ^swift_decl_qualified_name) ]
+    )
+  ]
+}
+
+// `generic-parameter-clause`: each parameter carries the same requirement the declaration's own
+// conformance clause needs, so the synthesized Equatable/Sendable conformance holds for every
+// instantiation rather than only for some.
+fn swift_decl_generic_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_type_param_list,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_terminal(identity: ^swift_token_param_requirement),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_type_param_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_type_param_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_comma),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_terminal(identity: ^swift_token_param_requirement),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_type_param_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_type_param_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^swift_decl_generic_params,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_generic_lt),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_type_param_list),
+        grammar_formal_terminal(identity: ^swift_token_generic_gt)
+      ]
+    )
+  ]
+}
+
+// A STRUCTURE'S STORED PROPERTIES: `let name: Type`, separated by `; ` so one declaration is one line.
+fn swift_decl_struct_field_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_field,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_kw_let),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_terminal(identity: ^swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_field_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_field_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_statement_separator),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_field_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^swift_decl_field_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list),
+        grammar_formal_terminal(identity: ^swift_token_rbrace)
+      ]
+    )
+  ]
+}
+
+fn swift_decl_struct_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_struct,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_kw_struct),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_struct,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_kw_struct),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_generic_params),
+        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_block)
+      ]
+    )
+  ]
+}
+
+// AN ENUMERATION CASE'S ASSOCIATED VALUES: a labeled `tuple-type`, `(name: Type, ...)`. The
+// payload is the same record surface a structure's body is, spelled with Swift's tuple punctuation.
+fn swift_decl_variant_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_field,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_terminal(identity: ^swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_field_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_field_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_field_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^swift_decl_field_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list),
+        grammar_formal_terminal(identity: ^swift_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_variant,
+      rhs: [ grammar_formal_terminal_free(identity: ^swift_token_ident) ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_variant,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_variant_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_variant_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_variant_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^swift_decl_variant_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_lbrace_case),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_list),
+        grammar_formal_terminal(identity: ^swift_token_rbrace)
+      ]
+    )
+  ]
+}
+
+fn swift_decl_enum_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_enum,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_kw_enum),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_enum,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_kw_enum),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_generic_params),
+        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_block)
+      ]
+    )
+  ]
+}
+
+fn swift_decl_struct_formal_productions() -> List<FormalProduction> {
+  list_append(
+    left: swift_decl_type_expr_productions(),
+    right: list_append(
+      left: swift_decl_generic_productions(),
+      right: list_append(
+        left: swift_decl_struct_field_productions(),
+        right: swift_decl_struct_top_productions()
+      )
+    )
+  )
+}
+
+fn swift_decl_enum_formal_productions() -> List<FormalProduction> {
+  list_append(
+    left: swift_decl_type_expr_productions(),
+    right: list_append(
+      left: swift_decl_generic_productions(),
+      right: list_append(
+        left: swift_decl_variant_productions(),
+        right: swift_decl_enum_top_productions()
+      )
+    )
+  )
+}
+
+fn swift_decl_productions_only_translation_rules(productions: List<FormalProduction>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_decl_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: formal_productions_catalog_to_node(productions: productions)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn swift_struct_general_decl_productions_only_translation_rules() -> Node {
+  swift_decl_productions_only_translation_rules(productions: swift_decl_struct_formal_productions())
+}
+
+fn swift_enum_general_decl_productions_only_translation_rules() -> Node {
+  swift_decl_productions_only_translation_rules(productions: swift_decl_enum_formal_productions())
+}
+
+fn swift_semantic_decl_lex_rows() -> List<Node> {
+  [
+    semantic_decl_lex_whitespace_trivia_row(),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_kw_struct, text: "struct "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_kw_enum, text: "enum "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_kw_let, text: "let "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_conformance, text: ": Equatable, Sendable"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_param_requirement, text: ": Equatable & Sendable"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_generic_lt, text: "<"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_generic_gt, text: ">"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_lbrace_case, text: " { case "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_lbrace, text: " { "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_rbrace, text: " }"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_lparen, text: "("),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_rparen, text: ")"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_colon, text: ": "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_comma, text: ", "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_statement_separator, text: "; "),
+    semantic_decl_lex_ident_row(token_class: ^swift_token_ident)
+  ]
+}
+
+fn swift_semantic_decl_serialize_profile_bundle_node() -> Node {
+  semantic_decl_serialize_profile_bundle(
+    lex_rows: swift_semantic_decl_lex_rows(),
+    spelling_rows: []
+  )
+}
+
+fn swift_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
+  TargetSemanticDeclSurfaceProjection {
+    record_decoration_lines: [],
+    field_type_before_name: false,
+    type_expr_field_scope: false,
+    struct_typedef_name_after_fields: false,
+    enum_name_after_variants: false,
+    field_type_permit_only_int: false,
+    coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
+    coproduct_decoration_rules: []
+  }
+}
+
+// One profile serves both declaration kinds, carried once (the rust_semantic_decl_emission_bundle_node shape).
+fn swift_semantic_decl_emission_bundle_node() -> Node {
+  let serialize_profile = swift_semantic_decl_serialize_profile_bundle_node()
+  semantic_decl_emission_bundle(
+    identity: ^swift_semantic_decl_emission_identity,
+    enum_translation_rules: swift_enum_general_decl_productions_only_translation_rules(),
+    struct_translation_rules: swift_struct_general_decl_productions_only_translation_rules(),
+    enum_serialize_profile: serialize_profile,
+    struct_serialize_profile: serialize_profile,
+    surface: swift_semantic_decl_surface_projection()
+  )
+}

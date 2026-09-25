@@ -113,6 +113,7 @@ import gunbc.ci_spec {
   gunbc_ci_r2_bucket_admin_mint_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
+  gunbc_ci_approval_device_enrolment_code_issue_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_microvm_runner_group_ensure_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
@@ -263,6 +264,7 @@ type FleetConvergeWorkflowMode
   | R2BucketAdminMint
   | R2ObjectWriteMint
   | ApprovalKeyringConverge
+  | ApprovalDeviceEnrolmentCodeIssue
   | MtCollins1Boot
   | PairServingD0
   | MtCollins1FanObserve
@@ -313,6 +315,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2BucketAdminMint => "r2_bucket_admin_mint"
     R2ObjectWriteMint => "r2_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
+    ApprovalDeviceEnrolmentCodeIssue => "approval_device_enrolment_code_issue"
     MtCollins1Boot => "mtcollins1_boot"
     GcpIamConverge => "gcp_iam_converge"
     PairServingD0 => "pair_serving_d0"
@@ -345,7 +348,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -407,6 +410,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2BucketAdminMint => none
     R2ObjectWriteMint => none
     ApprovalKeyringConverge => none
+    ApprovalDeviceEnrolmentCodeIssue => none
     MtCollins1Boot => none
     GcpIamConverge => none
     PairServingD0 => none
@@ -529,6 +533,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
+    ApprovalDeviceEnrolmentCodeIssue => FleetSshKeyConsumed
     MtCollins1Boot => FleetSshKeyConsumed
     PairServingD0 => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
@@ -1083,6 +1088,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2BucketAdminMint => ExecutorDomain
     R2ObjectWriteMint => ExecutorDomain
     ApprovalKeyringConverge => ExecutorDomain
+    ApprovalDeviceEnrolmentCodeIssue => ExecutorDomain
     MtCollins1Boot => ExecutorDomain
     PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     MtCollins1FanObserve => ExecutorDomain
@@ -2147,6 +2153,7 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
 }
 
 data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_mode_step_if(mode: ApprovalKeyringConverge)
+data fleet_converge_approval_device_enrolment_code_issue_step_if: String = fleet_converge_mode_step_if(mode: ApprovalDeviceEnrolmentCodeIssue)
 data fleet_converge_mtcollins1_boot_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1Boot)
 
 data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge_mode_step_if(mode: MicrovmRunnerGroupEnsure)
@@ -2201,6 +2208,29 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_approval_keyring_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_routes
+// issue_device_enrolment_code on srv1 as the operator's user, from the release the dispatch names;
+// the step prints the delivery receipt and NEVER the code (decision msg_a1d8d1b9 -- the code goes
+// over the operator's ntfy topic, whose deny-by-default policy is DECLARED and not yet read back:
+// gunbc.auth.approval_ntfy_deployment's access rows are NoDischargeSiteModeled). No WIF token: the verb needs no secret the host does not
+// already hold.
+fn fleet_converge_approval_device_enrolment_code_issue_step() -> Step {
+  RunStep {
+    name: Present { value: "Issue a device enrolment code on srv1 and deliver it to the operator channel (receipt only in this log)" },
+    id: Present { value: "approval_device_enrolment_code_issue" },
+    run: gunbc_ci_approval_device_enrolment_code_issue_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_approval_device_enrolment_code_issue_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -3126,6 +3156,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_object_write_mint_step(),
         fleet_converge_r2_object_write_mint_receipt_upload_step(),
         fleet_converge_approval_keyring_converge_step(),
+        fleet_converge_approval_device_enrolment_code_issue_step(),
         fleet_converge_microvm_runner_group_ensure_step(),
         fleet_converge_microvm_runner_group_ensure_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),

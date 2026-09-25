@@ -1,0 +1,85 @@
+module test.claim.emitter_string_order_present_binding_witness_test
+
+// Enrolled controls for the Rust emitter repairs of gunbc#12261 (native App Attest, gunbc#12251).
+// Each compiles a synthetic source through the Rust emitter and asserts the emitted shape. They
+// are the EMISSION half of the evidence; the EXECUTION half -- the emitted crate built and run to
+// the interpreter's own line -- is test.fixture.emitted_interpreted_parity
+// string_order_octets_present_binding, whose run is receipted on the PR and on
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target.
+//
+// String ordering: an ordering over two String-typed operands (here through an alias, as Timestamp
+// is) realizes as the host string's ordering and never as the operator-realization refusal the
+// corpus String used to reach. An ordering over an OPTIONAL String refuses at emission with the
+// named compile_error!: the interpreter has no Null-vs-Str ordering, and Option's None-first order
+// would be a fabricated answer. Inference admits that source today, which is what makes the
+// emitter's refusal arm reachable and this control necessary.
+//
+// Present binding: a bare binding arm after an unguarded absent arm binds the PRESENT value
+// (v1.compiler.infer match_unguarded_absent_arm_index), in each of the three match renderings --
+// ordinary, the tail-call lowering's, and the String-literal re-emission, where a literal arm over
+// an optional scrutinee matches only a present value too.
+
+fn w_string_ordering_realizes_on_the_host_string() -> Bool {
+  compile_dag_rust_emit_check(
+    "module sord\n\ntype Stamp = String\n\nfn before(a: Stamp, b: Stamp) -> Bool {\n  a < b\n}\n",
+    "src/sord.rs",
+    ["(a.clone() < b.clone())"],
+    ["compile_error!"]
+  )
+}
+
+fn w_optional_string_ordering_refuses_at_emission() -> Bool {
+  compile_dag_rust_emit_check(
+    "module soptord\n\nfn maybe(s: String) -> String? {\n  if s == \"\" { none } else { Present { value: s } }\n}\n\nfn opt_before(a: String, b: String) -> Bool {\n  maybe(s: a) < b\n}\n",
+    "src/soptord.rs",
+    ["compile_error!(\"operator realization: `<` over an optional String has no interpreter ordering"],
+    ["maybe(a.clone()) <"]
+  )
+}
+
+fn w_present_binding_in_an_ordinary_match() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pbord\n\nfn first_or_zero(xs: List<Int>) -> Int {\n  match xs |> first {\n    null => 0\n    o => o\n  }\n}\n",
+    "src/pbord.rs",
+    ["Some(o) =>"],
+    ["    o =>"]
+  )
+}
+
+fn w_present_binding_in_a_tail_call_match() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pbtco\n\nfn total_from(xs: List<Int>, i: Int, acc: Int) -> Int {\n  match xs |> get(i) {\n    null => acc\n    x => total_from(xs: xs, i: i + 1, acc: acc + x)\n  }\n}\n",
+    "src/pbtco.rs",
+    ["Some(x) =>"],
+    ["    x =>"]
+  )
+}
+
+fn w_present_binding_in_the_string_literal_reemission() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pbstr\n\nfn maybe(s: String) -> String? {\n  if s == \"\" { none } else { Present { value: s } }\n}\n\nfn label(s: String) -> String {\n  match maybe(s: s) {\n    null => \"none\"\n    \"x\" => \"ex\"\n    v => v\n  }\n}\n",
+    "src/pbstr.rs",
+    ["Some(ref __s) if __s == \"x\"", "Some(v) =>"],
+    ["    ref __s if", "    v =>"]
+  )
+}
+
+test fn string_ordering_realizes_on_the_host_string() -> Bool {
+  w_string_ordering_realizes_on_the_host_string()
+}
+
+test fn optional_string_ordering_refuses_at_emission() -> Bool {
+  w_optional_string_ordering_refuses_at_emission()
+}
+
+test fn present_binding_in_an_ordinary_match() -> Bool {
+  w_present_binding_in_an_ordinary_match()
+}
+
+test fn present_binding_in_a_tail_call_match() -> Bool {
+  w_present_binding_in_a_tail_call_match()
+}
+
+test fn present_binding_in_the_string_literal_reemission() -> Bool {
+  w_present_binding_in_the_string_literal_reemission()
+}

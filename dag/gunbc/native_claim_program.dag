@@ -1,0 +1,161 @@
+module gunbc.native_claim_program
+
+import std.types { Int, List, String, Bool }
+import v2.std.algebra { filter }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// HOW A NativeClaimDriver PROGRAM'S RUN IS READ, decided here rather than in the host that spawned
+// it. std.compiler_entry NativeClaimDriver fixes the program's side of the contract: its rendered
+// main writes the report and maps the closed NativeClaimTerminal to exactly 0 (held), 1 (not held)
+// or 2 (no observation). This fold is the reader's side, and it answers in gunbc test's own
+// termination vocabulary (DESIGN "Building & checks"): ExitSuccess is held; ExitFailure code 1 is an
+// observation that did not hold; ExitFailure code 2 is NO OBSERVATION.
+//
+// THE WHOLE REPORT IS PARSED, NOT FILTERED (review 5311497200 of gunbc#12250). Every non-empty line
+// must be accounted for: exactly one roster line, first; then only rows of the exact grammar
+// `case <id> held|not_held observed=<text>`. A line that fits neither -- noise, a second roster, a
+// row with an unknown verdict or no observed= field -- refuses the whole report with no
+// observation, naming the line. An earlier revision flat-mapped unparseable lines to nothing and so
+// accepted exactly the malformed reports this reader exists to refuse.
+//
+// COMPLETENESS IS AN IDENTITY JOIN (DESIGN section 5). Every roster identity must appear in exactly
+// one row and every row must name a roster identity. A status the rows do not support -- 0 beside a
+// not_held row, 1 with every row held, a signal (the host passes a negative status), or any code
+// outside {0, 1, 2} -- is also no observation: the program and its own rows disagree, and neither may
+// be believed over the other. Status 2 is the program's own no-observation terminal and stays one.
+
+data native_claim_no_observation_code: Int = 2
+data native_claim_not_held_code: Int = 1
+
+type NativeClaimRow {
+  identity: String
+  held: Bool
+}
+
+type NativeClaimRowParse
+  = NativeClaimRowParsed { row: NativeClaimRow }
+  | NativeClaimRowMalformed { line: String }
+
+type NativeClaimRowsParse
+  = NativeClaimRowsParsed { rows: List<NativeClaimRow> }
+  | NativeClaimRowsMalformed { line: String }
+
+type NativeClaimReportParse
+  = NativeClaimReportParsed { roster: List<String>, rows: List<NativeClaimRow> }
+  | NativeClaimReportMalformed { reason: String }
+
+fn native_claim_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n") |> filter(l => l != "")
+}
+
+fn row_parsed(identity: String, held: Bool) -> NativeClaimRowParse {
+  NativeClaimRowParsed { row: NativeClaimRow { identity: identity, held: held } }
+}
+
+// `case <id> <verdict> observed=<text>`: at least four space-separated tokens, the first exactly
+// `case`, a non-empty identity, a verdict of exactly held or not_held, and the fourth token starting
+// observed=. The observed text may itself contain spaces; only its prefix is grammar.
+fn native_claim_row_of(line: String, identity: String, verdict: String, observed: String) -> NativeClaimRowParse {
+  if identity == "" || !starts_with(s: observed, prefix: "observed=") {
+    NativeClaimRowMalformed { line: line }
+  } else if verdict == "held" {
+    row_parsed(identity: identity, held: true)
+  } else if verdict == "not_held" {
+    row_parsed(identity: identity, held: false)
+  } else {
+    NativeClaimRowMalformed { line: line }
+  }
+}
+
+fn native_claim_row(line: String) -> NativeClaimRowParse {
+  match split(s: line, delimiter: " ") {
+    Cons { head: tag, tail: r1 } =>
+      if tag != "case" { NativeClaimRowMalformed { line: line } } else {
+        match r1 {
+          Cons { head: identity, tail: r2 } =>
+            match r2 {
+              Cons { head: verdict, tail: r3 } =>
+                match r3 {
+                  Cons { head: observed, tail: _ } => native_claim_row_of(line: line, identity: identity, verdict: verdict, observed: observed)
+                  Empty => NativeClaimRowMalformed { line: line }
+                }
+              Empty => NativeClaimRowMalformed { line: line }
+            }
+          Empty => NativeClaimRowMalformed { line: line }
+        }
+      }
+    Empty => NativeClaimRowMalformed { line: line }
+  }
+}
+
+// Every line after the roster must be a row; the first that is not refuses the report.
+fn native_claim_rows(lines: List<String>, acc: List<NativeClaimRow>) -> NativeClaimRowsParse {
+  match lines {
+    Empty => NativeClaimRowsParsed { rows: acc }
+    Cons { head: line, tail: rest } =>
+      match native_claim_row(line: line) {
+        NativeClaimRowParsed { row: r } => native_claim_rows(lines: rest, acc: acc |> list_push(r))
+        NativeClaimRowMalformed { line: bad } => NativeClaimRowsMalformed { line: bad }
+      }
+  }
+}
+
+fn occurrences(xs: List<String>, x: String) -> Int {
+  xs |> filter(y => y == x) |> count
+}
+
+fn native_claim_report_parse(stdout: String) -> NativeClaimReportParse {
+  match native_claim_lines(stdout: stdout) {
+    Empty => NativeClaimReportMalformed { reason: "the report is empty" }
+    Cons { head: first, tail: rest } =>
+      if !starts_with(s: first, prefix: "roster ") {
+        NativeClaimReportMalformed { reason: concat("the first line is not a roster: ", first) }
+      } else {
+        let roster = split(s: substring(s: first, start: 7, end: string_length(s: first)), delimiter: ",")
+        if (roster |> count) == 0 || (roster |> filter(i => i == "") |> count) > 0 {
+          NativeClaimReportMalformed { reason: "the roster names an empty identity" }
+        } else if (roster |> filter(i => occurrences(xs: roster, x: i) != 1) |> count) > 0 {
+          NativeClaimReportMalformed { reason: "the roster names an identity twice" }
+        } else {
+          match native_claim_rows(lines: rest, acc: []) {
+            NativeClaimRowsParsed { rows: rows } => NativeClaimReportParsed { roster: roster, rows: rows }
+            NativeClaimRowsMalformed { line: bad } => NativeClaimReportMalformed { reason: concat("a line is neither the roster nor a row: ", bad) }
+          }
+        }
+      }
+  }
+}
+
+// The join, as the identities that break it: a roster identity reported zero or several times, and
+// a row naming an identity the roster does not.
+fn native_claim_join_breaks(roster: List<String>, rows: List<NativeClaimRow>) -> List<String> {
+  let row_ids = rows |> map(r => r.identity)
+  concat(
+    roster |> filter(id => occurrences(xs: row_ids, x: id) != 1),
+    row_ids |> filter(id => occurrences(xs: roster, x: id) == 0)
+  )
+}
+
+fn no_observation(reason: String) -> ProcessExit {
+  ExitFailure { code: native_claim_no_observation_code, reason: concat("no observation: ", reason) }
+}
+
+fn native_claim_program_standing(stdout: String, status: Int) -> ProcessExit {
+  match native_claim_report_parse(stdout: stdout) {
+    NativeClaimReportMalformed { reason: r } => no_observation(reason: r)
+    NativeClaimReportParsed { roster: roster, rows: rows } =>
+      let breaks = native_claim_join_breaks(roster: roster, rows: rows)
+      let failed = rows |> filter(r => !r.held) |> map(r => r.identity)
+      if (breaks |> count) > 0 {
+        no_observation(reason: concat("rows do not join the roster one-for-one at: ", breaks |> join(separator: ",")))
+      } else if status == 0 && (failed |> count) == 0 {
+        ExitSuccess
+      } else if status == 1 && (failed |> count) > 0 {
+        ExitFailure { code: native_claim_not_held_code, reason: concat("not held: ", failed |> join(separator: ",")) }
+      } else if status == native_claim_no_observation_code {
+        no_observation(reason: "the program reported no observation")
+      } else {
+        no_observation(reason: concat("exit status ", concat(to_string(value: status), concat(" disagrees with the rows (", concat(to_string(value: failed |> count), " not held)")))))
+      }
+  }
+}

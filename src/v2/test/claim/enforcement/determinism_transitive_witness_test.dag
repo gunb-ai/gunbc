@@ -9,7 +9,7 @@ import v2.lens.module_graph { module_declaration_facts_live }
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_node, decl_belongs_to_module, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_decl, decl_belongs_to_module, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -159,7 +159,7 @@ test fn the_live_subject_is_not_empty() -> Bool {
 // below construct their nodes by hand and a hand-built node can attest a lens, never a marshal.
 //
 // WHAT IS NOW TRUE. A call in a fn-arrow body skeleton is a call as this lens recognises one, and
-// `v2.std.fn_index.callees_from_node` reads that call channel across the whole output subtree. The
+// `v2.std.fn_index.callees_from_decl` reads that call channel across the whole output subtree. The
 // live judgment's green is therefore a statement about the closure rather than about either a
 // representation gap or a depth-one horizon. The nested-body pair below remains the regression
 // control for that subtree read.
@@ -242,7 +242,7 @@ fn call_node(callee: String) -> Node {
 // `call_reachable_decls` read callees from `decl.output` at DEPTH ONE, so a reachable callee had
 // to be an atom child of the body root.
 //
-// THAT PREMISE IS DEAD AND THE READER IS WHAT CHANGED, not the fixture. `callees_from_node` now
+// THAT PREMISE IS DEAD AND THE READER IS WHAT CHANGED, not the fixture. `callees_from_decl` now
 // reads call carriers across the whole `decl.output` subtree, decided by execution over the live
 // corpus rather than by this paragraph: the population that hid below the root is counted by
 // v2.lens.fn_index_depth_agreement. So the accommodation is retired, and the
@@ -297,19 +297,26 @@ data leaking_callee: String = "map_keys"
 data deterministic_callee: String = "sorted_map_keys"
 data no_terminal_callees: List<String> = []
 
+// The call walk reads a skeleton through the declaration it belongs to, so a supplied skeleton is
+// wrapped in one; the name and parameters play no part in these two claims.
+fn output_only_decl(output: Node) -> FnArrowDecl {
+  FnArrowDecl { qualified_name: "fix.shape_gap.decl", name: "decl", output: output, params: [] }
+}
+
 test fn bare_atom_is_not_a_call_edge() -> Bool {
-  length(xs: callees_from_node(
-    node: shape_gap_conj_shaped_call(),
+  let scan = callees_from_decl(
+    decl: output_only_decl(output: shape_gap_conj_shaped_call()),
     terminal_callee_symbols: no_terminal_callees
-  )) == 0
+  )
+  length(xs: scan.texts) == 0 && length(xs: scan.refusals) == 0
 }
 
 test fn callee_text_is_not_filtered_by_path_spelling() -> Bool {
   contains(
-    xs: callees_from_node(
-      node: call_node(callee: "src/fixture.dag"),
+    xs: callees_from_decl(
+      decl: output_only_decl(output: call_node(callee: "src/fixture.dag")),
       terminal_callee_symbols: no_terminal_callees
-    ),
+    ).texts,
     item: "src/fixture.dag",
     eq: fn(a, b) { a == b }
   )
@@ -433,7 +440,7 @@ test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool {
 // THE LOWER-RUNG PARAMETER EXCLUSION IS GONE, AND ITS EVIDENCE STAYS. The first declaration
 // carries a parameter reference whose lexeme collides with a leaking declaration name. The second
 // changes that occurrence into the producer's actual Transform call carrier. The pair differs in
-// structural role, which is the fact callees_from_node now reads; parameter names and lexeme shape
+// structural role, which is the fact callees_from_decl now reads; parameter names and lexeme shape
 // no longer participate in deciding whether an edge exists.
 fn decl_with_param_reference(qualified_name: String, name: String, param: String) -> FnArrowDecl {
   FnArrowDecl {
