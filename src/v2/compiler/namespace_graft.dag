@@ -27,11 +27,10 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  all_names_distinct,
-  repeated_name_edges,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.compiler.parse { parse_tree_projection_edge }
+import v2.std.node_query { repeated_name_edges }
 import v2.std.grammar {
   GrammarExpr,
   GrammarExprFold,
@@ -719,17 +718,11 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // built the Conj anyway and normalize's recursive well_formed gate refused the whole module at its
 // root with no locus (gen-two census: two `data fixture_v3_tick_wire` in
 // test.claim.roadmap.roadmap_launch_deployment_observe_witness). A repeated name is also a §3 fork --
-// the seed answers it last-write-wins, so the first declaration was dead. The predicate is
-// v2.std.node all_names_distinct, the node authority's own rule, not a second copy of it; the locus
-// is the member node of the first name seen a second time (v2.std.node repeated_name_edges), which
-// carries its declaration's occurrence.
-fn namespace_graft_first_repeated_member(edges: List<Edge>, fallback: Node) -> Node {
-  match first(repeated_name_edges(children: edges)) {
-    Present { value: e } => e.target
-    Absent => fallback
-  }
-}
-
+// the seed answers it last-write-wins, so the first declaration was dead. The offending edge comes
+// from v2.std.node_query repeated_name_edges, which is empty exactly when v2.std.node
+// all_names_distinct holds; the locus is the member node of the first name seen a second time,
+// which carries its declaration's occurrence. The refusal is a match on that edge, so it has no
+// locus fallback to reach.
 fn module_header_containment_graft(root: Node) -> Outcome<Node> {
   if namespace_graft_already_grafted(root: root) {
     outcome_accepted(value: root)
@@ -760,16 +753,20 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
                 at: node_locus(node: root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
-            } else if !all_names_distinct(children: graft_body.edges) {
-              outcome_rejected(Diagnostic {
-                reason: ^namespace_graft_declaration_name_repeated,
-                at: node_locus(node: namespace_graft_first_repeated_member(edges: graft_body.edges, fallback: root)),
-                correction: Unavailable { reason: UserInputBoundary }
-              })
             } else {
-              let body = namespace_graft_build_body_conj(edges: graft_body.edges, source: root)
-              let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
-              outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
+              match first(repeated_name_edges(children: graft_body.edges)) {
+                Present { value: repeated } =>
+                  outcome_rejected(Diagnostic {
+                    reason: ^namespace_graft_declaration_name_repeated,
+                    at: node_locus(node: repeated.target),
+                    correction: Unavailable { reason: UserInputBoundary }
+                  })
+                Absent => {
+                  let body = namespace_graft_build_body_conj(edges: graft_body.edges, source: root)
+                  let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
+                  outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
+                }
+              }
             }
           }
         }

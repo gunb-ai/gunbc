@@ -95,7 +95,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  repeated_name_edges,
   is_empty_conj_root,
   match_arm_body,
   match_arm_pattern,
@@ -111,6 +110,7 @@ import v2.std.node_query {
   field_projection_node,
   find_named_child,
   positional_payload_field_name,
+  repeated_name_edges,
   variant_declaration_node
 }
 
@@ -3072,7 +3072,8 @@ fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge>
 
 // A SIGNATURE THIS LOWERING READ BUT CANNOT BUILD refuses here, at the signature, before either arm
 // builds the Arrow. Two facts qualify: unreadable type parameters (above), and a parameter binding
-// the domain cannot key. The domain is a Conj keyed by binding name (v2.std.node all_names_distinct),
+// the domain cannot key. The domain is a Conj keyed by binding name (v2.std.node all_names_distinct;
+// the offending edge is read from v2.std.node_query repeated_name_edges),
 // so a repeated binding has no well-formed domain. Before this arm the lowering built that Conj
 // anyway and normalize's recursive well_formed gate refused the module AT ITS ROOT with no locus
 // (gen-two census: std.key_relation global_key_scope_eq, gunbc.provider_readiness_claim_evidence
