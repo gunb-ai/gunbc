@@ -771,11 +771,11 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
   )
 }
 
-// A BIND OR TRANSFORM CARRIES ITS POSITIONAL CHILDREN IN ORDER AND AT MOST ONE NAMED EDGE BESIDE
-// THEM. The named edge is a v2.std.type_binder marker (a Bind's let annotation, a Transform's cast
-// target); this module states the SHAPE only, because it cannot intern the marker lexemes
-// (v2.std.compilers.lexing imports it), and type_binder_labels_conform states which label a
-// behavior admits -- the split arrow_signature_edges_conform already makes. Positional order is
+// A TRANSFORM OR BIND CARRIES ITS POSITIONAL CHILDREN IN ORDER AND AT MOST ONE NAMED EDGE BESIDE
+// THEM. The named edge is a v2.std.type_binder marker (a cast's target, a let's annotation). This module states
+// the SHAPE only, because it cannot intern the marker lexemes (v2.std.compilers.lexing imports it),
+// and type_binder_labels_conform states which label a behavior admits -- the split
+// arrow_signature_edges_conform already makes. Positional order is
 // identity-bearing, so it is kept; the named edge sorts after it, so where a producer placed it
 // cannot move the content hash.
 fn canonicalize_positional_then_named<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
