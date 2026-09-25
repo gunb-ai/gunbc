@@ -53,6 +53,8 @@ data vrr_if_condition_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  
 
 data vrr_let_value_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  let g = fn(y) { y }\n  v\n}\n"
 
+data vrr_swallowed_fold_refusal_source: String = vrr_header + "fn leaf(v: Bool) -> Bool = v\n\nfn p(s: List<Bool>) -> Bool {\n  let folded = fold(map(s, l => leaf(l)), init: true, f: fn(acc, e) {\n    let y = leaf(e)\n    y\n  })\n  folded\n}\n"
+
 data vrr_field_initializer_source: String = vrr_header + "fn p(v: Bool) -> VrrRecord {\n  VrrRecord { f: fn(y) { y } }\n}\n"
 
 type VrrVerdict
@@ -144,4 +146,24 @@ test fn an_unlowerable_let_value_refuses_at_the_value_holds() -> Bool {
 // refused later, at resolve, at the wrong atom.
 test fn an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_carried_holds() -> Bool {
   vrr_refused_at_the_value(source: vrr_field_initializer_source)
+}
+
+// A FOLD REFUSAL INSIDE A VALUE IS THE VALUE'S REFUSAL, NOT A CUE TO GO LOOKING FOR A SMALLER VALUE.
+// body_lower_value_lowered used to hand a value whose bottom-up fold refused to the top-down walker,
+// and the walker answered with the first lowerable SUBTREE -- here the `let y = leaf(e); y` body of
+// the `f:` literal -- so `folded` was bound to that body, the fold call and its lambda argument were
+// gone, and the module Accepted. The full-corpus census on the PR that deleted the value carry found
+// nine files Accepted this way (dag/extdeps/linux/proc_mountinfo.dag among them). The refusal is the
+// lambda argument's own, call_argument_unread, located at the lambda; the specimen's `f:` body carries
+// a `let` because a body the walker can lower is what the swallow latched onto.
+test fn a_fold_refusal_inside_a_let_value_propagates_instead_of_binding_an_inner_subtree_holds() -> Bool {
+  match vrr_normalize(source: vrr_swallowed_fold_refusal_source) {
+    VrrNotRefused => false
+    VrrRefused { fatal: d } =>
+      (d.reason == ^body_lowering_reason_call_argument_unread)
+        && match d.at {
+             NodeLocus { anchor: a } => vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda)
+             _ => false
+           }
+  }
 }

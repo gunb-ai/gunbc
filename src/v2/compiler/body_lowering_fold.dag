@@ -3598,9 +3598,18 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // times. The instrument that re-derives this is the native lane's per-file phase clock: the
 // emitted driver's `adjudicate` (std.compiler_entry SourceRootEvalDriver, absorbed by
 // v2.compiler.compile native_test_context_absorb) prints one row per ingested file carrying
-// `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate. A fold
-// that refuses hands the value to the walker rather than propagating: these positions were read
-// by the walker before, and its verdict on them is the one this change does not alter.
+// `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate.
+//
+// A FOLD THAT REFUSES IS THE VALUE'S REFUSAL, AND IT PROPAGATES. It used to hand the value to the
+// walker instead, and the walker answers with the first lowerable SUBTREE it finds -- which is not
+// the value. Measured on dag/extdeps/linux/proc_mountinfo.dag mountinfo_mount_points: the fold
+// refused `let folded = fold(filter(map(split(..), l => trim(l)), ..), init: .., f: fn(acc, line) {..})`
+// at the lambda (call_argument_unread), the walker answered with the BODY of the `f:` literal, and the
+// Bind carried that body as `folded`'s value -- the fold call, the filter/map/split chain, `init` and
+// the literal's binders all gone, and the module Accepted. That is a wrong answer where a located
+// refusal was owed (DESIGN section 5), found by the full-corpus census on the PR that removed the
+// value carry: nine files refusing call_argument_unread at base were Accepted this way. The walker is
+// still the reader for a value the fold ACCEPTS but leaves unpeelable.
 fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_lowered_behind_shells_optional(node: node) {
     Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
@@ -3616,7 +3625,7 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
                 outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
               Absent => body_lower_body_subtree_lower(captured: raw)
             }
-          Rejected { diagnostics: _ } => body_lower_body_subtree_lower(captured: raw)
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
         }
       }
   }
