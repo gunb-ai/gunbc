@@ -17,8 +17,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `service`, then a dotted name, then a brace body of operations (and optional
 // transport/config). The marker words are literal terminals over ident, not keyword classes. The first native fatal was leftover token `service` at
 // dag/extdeps/access/posix_effective_principal_read_op.dag. The family is the
-// nest below; service-level `config` and the v2-inline operation form remain
-// v1-admitted remainder. Parsing is not lowering: the route rows below pin that a parsed
+// nest below; service-level `config` is admitted over v1's closed field set, and the v2-inline
+// operation form remains v1-admitted remainder. Parsing is not lowering: the route rows below pin that a parsed
 // service is refused at the normalized-tree door.
 
 data probe_cached_lm: LanguageModel = dag_language_model()
@@ -80,6 +80,21 @@ data field_default_without_expr_red_source: String = "module m\nservice S {\n  o
 data posix_effective_principal_service_source: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n}\n"
 
 data remaining_arms_service_source: String = "module m\nservice S {\n  transport rest { base: \"u\" }\n  operation Op {\n    input { x: Int }\n    idempotent\n    hermetic\n    response {\n      200 => Int\n      404 => String \"missing\"\n    }\n  }\n}\n"
+
+// The config block of dag/extdeps/github/workflow_runs.dag service github.WorkflowRuns:
+// newline-separated fields, one of them a struct literal.
+data service_config_source: String = "module m\nservice S {\n  config {\n    endpoint: default_api_base\n    auth: Bearer\n    auth_source: EnvVar { name: \"GITHUB_TOKEN\" }\n  }\n  operation Op { input { x: Int } }\n}\n"
+
+// v1 parse_config_fields refuses a field outside endpoint/auth/auth_input/auth_source/rate_limit
+// by name; the grammar's closed choice must refuse it too.
+data service_config_unknown_field_red_source: String = "module m\nservice S {\n  config {\n    endpoint: e\n    region: r\n  }\n}\n"
+
+data service_config_without_colon_red_source: String = "module m\nservice S {\n  config {\n    endpoint e\n  }\n}\n"
+
+// Parsing is not lowering: a service whose only entry is config still lands wrapper-retained and
+// is refused at the normalized-tree door, so the config entry is carried to a typed refusal, never
+// dropped on the way to resolve.
+data config_only_service_source: String = "module m\nservice S {\n  config { endpoint: e }\n}\n"
 
 data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  operation Op {\n    exit {\n      0 Unit\n    }\n  }\n}\n"
 
@@ -175,6 +190,18 @@ test fn remaining_service_arms_parse_holds() -> Bool {
   parses(src: remaining_arms_service_source)
 }
 
+test fn service_config_parses_holds() -> Bool {
+  parses(src: service_config_source)
+}
+
+test fn service_config_unknown_field_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: service_config_unknown_field_red_source)
+}
+
+test fn service_config_without_colon_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: service_config_without_colon_red_source)
+}
+
 test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
   refuses_at_parse(src: exit_entry_without_arrow_red_source)
 }
@@ -243,4 +270,8 @@ test fn parsed_service_is_refused_at_the_normalized_tree_door_holds() -> Bool {
 
 test fn fn_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
   normalize_admits(src: fn_control_source)
+}
+
+test fn config_only_service_is_refused_at_the_normalized_tree_door_holds() -> Bool {
+  normalize_refuses_for_retention(src: config_only_service_source)
 }
