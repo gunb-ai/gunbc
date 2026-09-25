@@ -4,7 +4,7 @@ import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact,
-  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
+  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, NativeFrontierWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
@@ -12,7 +12,7 @@ import gunbc.generated_artifact {
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
-  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact,
+  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
@@ -119,6 +119,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     MicrovmShakedownYamlArtifact => []
     HealWorkflowYamlArtifact => []
     HealPublisherWorkflowYamlArtifact => []
+    NativeFrontierWorkflowYamlArtifact => []
     GitignoreArtifact => []
     GitattributesArtifact => []
     CargoConfigArtifact => []
@@ -142,6 +143,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     CouponCadQueryProgramArtifact => []
     WholeCorpusCompileMeasuredRootDemandsArtifact => []
     ApprovalDeviceVectorsArtifact => []
+    ApproveIosProjectYmlArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
     PlanArtifact { plan: _ } => []

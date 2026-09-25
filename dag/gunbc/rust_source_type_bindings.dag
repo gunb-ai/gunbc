@@ -109,7 +109,7 @@ fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {
     CheckpointRowMigration {
       dag_name: "Float" as NonEmptyStr,
       disposition: StillBareNameDebt {
-        reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Float64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row." as NonEmptyStr,
+        reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Binary64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row." as NonEmptyStr,
         restoration_trigger: "The same ruling as Int, for v2.std.float Float; then ProvenUniqueKernelBinding on the f64 primitive token." as NonEmptyStr
       }
     },

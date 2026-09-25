@@ -22,7 +22,7 @@ fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
   Holds {
     value: v2.std.cardinality.TerminationProof {
       non_increasing: [],
-      strict: v2.std.cardinality.RankingDimension { measured: ^rung34_inferred_descent_symbol }
+      strict: v2.std.cardinality.RankingComponent { measured: ^rung34_inferred_descent_symbol }
     }
   }
 }

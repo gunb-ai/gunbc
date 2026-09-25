@@ -35,7 +35,7 @@ import v2.std.optional {
   optional_absent
 }
 import v2.std.cardinality {
-  RankingDimension,
+  RankingComponent,
   TerminationProof,
   structural_node_size_termination_proof
 }
@@ -304,7 +304,7 @@ fn loop_node_is_loop(node: Node) -> Bool {
 fn loop_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^dag_loop_measure_sym }
+    strict: v2.std.cardinality.RankingComponent { measured: ^dag_loop_measure_sym }
   }
 }
 

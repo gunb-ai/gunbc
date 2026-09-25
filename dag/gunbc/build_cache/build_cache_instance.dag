@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.measure { ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size }
 import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
 import gunbc.fleet_intent_network {
@@ -16,7 +16,7 @@ import gunbc.host_layout {
   gunbc_compile_pool_placement,
 }
 
-data build_cache_instance_scope_disposition: Disposition = SingleAuthority
+data build_cache_instance_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // CATALOG IDENTITY IS NOT DEPLOYED-INSTANCE IDENTITY, and conflating them is why a host carrying
 // two differently-configured uses of one implementation could not be described.

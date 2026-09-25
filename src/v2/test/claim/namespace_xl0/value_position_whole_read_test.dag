@@ -22,7 +22,12 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
-import v2.std.node_query { call_argument_targets, call_callee_target }
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  NotApplication,
+  application_read
+}
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -253,22 +258,28 @@ fn vpw_roots() -> FreeMonoid<Node> {
   }
 }
 
-// The call shape is read through v2.std.node_query's call readers -- node_is_call, call_callee_target,
-// call_argument_targets -- the authority for "what a lowered call is", not a reader of this claim's own.
+// The call shape is read through v2.std.compilers.body_lowering application_read -- the authority
+// for "what a lowered call is", not a reader of this claim's own. A refused application is not a
+// call of the looked-for shape, so it answers false here and the claim reds, which is the point.
 fn vpw_is_call_to(n: Node, callee: Symbol) -> Bool {
-  match call_callee_target(node: n) {
-    Accepted { value: c, diagnostics: _ } => vpw_is_atom(n: c, id: callee)
-    Rejected { diagnostics: _ } => false
+  match application_read(site: n) {
+    Application { view: v } => vpw_is_atom(n: v.head, id: callee)
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
   }
 }
 
 // The single argument of a one-argument call.
 fn vpw_sole_argument(n: Node) -> Optional<Node> {
-  let args = call_argument_targets(node: n)
-  if length(xs: args) == 1 {
-    list_at_optional(xs: args, index: 0)
-  } else {
-    optional_absent()
+  match application_read(site: n) {
+    Application { view: v } =>
+      if length(xs: v.operands) == 1 {
+        list_at_optional(xs: v.operands, index: 0)
+      } else {
+        optional_absent()
+      }
+    NotApplication => optional_absent()
+    ApplicationRefused { diagnostics: _ } => optional_absent()
   }
 }
 
