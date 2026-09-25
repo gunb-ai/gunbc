@@ -1377,25 +1377,27 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 // come from resolve_pattern_binders over the pattern's SYNTAX and the symbol index, before the
 // fold runs, so a refused pattern does not leave the body under an invented scope and no site is
 // marked unobservable (P4's one exception, a Bind's binder, has no counterpart here).
-fn resolve_pattern_field_target_walk(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
-  match target.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == pattern_wildcard_name() {
-        ResolveWalkAccepted { value: target, diagnostics: None }
-      } else {
-        resolve_node_walk(ctx: ctx, n: target)
-      }
-    _ => resolve_pattern_node_walk(ctx: ctx, pat: target)
+fn resolve_pattern_is_wildcard(pat: Node) -> Bool {
+  match pat.kind {
+    TypeNode { connective: Atom { identity: id } } => id == pattern_wildcard_name()
+    _ => false
   }
 }
 
+// A pattern is the arm's whole `pat` or a constructor field's target, and `_` is the same pattern
+// form in both: it binds nothing and names nothing, so it is kept as it is at every depth rather
+// than looked up as a reference to a symbol spelled `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
-  match construct_tag_optional(n: pat) {
-    Absent => resolve_node_walk(ctx: ctx, n: pat)
-    Present { value: _ } =>
-      child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
-        child_walk_step(w: acc, e: e, r: resolve_pattern_field_target_walk(ctx: ctx, target: e.target))
-      }))
+  if resolve_pattern_is_wildcard(pat: pat) {
+    ResolveWalkAccepted { value: pat, diagnostics: None }
+  } else {
+    match construct_tag_optional(n: pat) {
+      Absent => resolve_node_walk(ctx: ctx, n: pat)
+      Present { value: _ } =>
+        child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
+          child_walk_step(w: acc, e: e, r: resolve_pattern_node_walk(ctx: ctx, pat: e.target))
+        }))
+    }
   }
 }
 

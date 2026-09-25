@@ -49,7 +49,22 @@ data approval_ntfy_config_dir: NonEmptyStr = "/etc/gunbc-ntfy"
 data approval_ntfy_dir_mode: DeclaredDirectoryMode = DirectoryOwnerAllGroupTraverse
 data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
 data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
+// The server's auth database, under its state root. Declared so the config's auth-file is checked
+// against it and so the one elevated stat of it is an exact sudoers argv rather than a pattern.
+data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/user.db"], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
+
+// THE TWO ntfy USERS THE ACCESS LIST MAY NAME, declared so the ACL readback
+// (gunbc.auth.approval_ntfy_access_readback) can compare against them and so the mint and grant
+// interventions below say which names to create. The publisher is the broker's credential and may
+// only WRITE the topic; the operator is the phone's sign-in and may only READ it. A server whose
+// users carry other names reads back as a deviation and enrolment-code issuance refuses -- loudly,
+// never by guessing which user is which.
+data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-approval-publisher"
+data approval_ntfy_operator_user: NonEmptyStr = "gunbc-approval-operator"
+// The packaged server's CLI (the upstream .deb installs /usr/bin/ntfy). Absolute because it runs
+// under sudo as the server's principal; an absent binary is a failed readback, which refuses.
+data approval_ntfy_binary_path: NonEmptyStr = "/usr/bin/ntfy"
 
 // LOOPBACK, AND THAT IS THE SECURITY BOUNDARY RATHER THAN A DEFAULT. The server binds 127.0.0.1
 // and reaches the tailnet only through tailscale serve, which is what makes the tailnet identity
@@ -227,7 +242,9 @@ fn approval_ntfy_publisher_token_mint_intervention() -> HumanIntervention {
     frequency: FleetOnce,
     subject: "gunbc-ntfy publisher credential, minted into Secret Manager",
     instruction: join([
-      "On srv1, create the ntfy user the broker publishes as and issue its access token; add the",
+      "On srv1, create the ntfy user '",
+      approval_ntfy_publisher_user as String,
+      "' the broker publishes as and issue its access token; add the",
       " token as a new version of ",
       secret_ref_version_resource(ref: approval_ntfy_publisher_token_secret_ref),
       " and nowhere else -- not committed, not in the unit's Environment=, not on any argv",
@@ -246,9 +263,34 @@ fn approval_ntfy_subscriber_grant_intervention() -> HumanIntervention {
     frequency: FleetOnce,
     subject: "gunbc-ntfy topic access policy",
     instruction: join([
-      "Set the server's default access to deny and grant read on topic '",
+      "Set the server's default access to deny, grant write-only on topic '",
       approval_ntfy_topic as String,
-      "' ONLY to the operator's own ntfy user. ntfy's documented default is read-write, so a topic",
+      "' to '",
+      approval_ntfy_publisher_user as String,
+      "' and read-only ONLY to the operator's ntfy user '",
+      approval_ntfy_operator_user as String,
+      "', and create no other users. Enrolment-code issuance reads this list back with `ntfy access`",
+      " and refuses on any other shape (gunbc.auth.approval_ntfy_access_readback), so this step is",
+      " checked rather than trusted. Six of its reads (four distinct argv) run as '",
+      approval_ntfy_principal_name as String,
+      "' and one as root, each via `sudo -n` at an exact argv (gunbc.auth.approval_ntfy_access_readback",
+      " approval_ntfy_read_command: stat identity and cat of the config, stat identity of the auth file,",
+      " ntfy access under /usr/bin/env -i; and tailscale serve status --json), so the broker's POSIX",
+      " user needs one sudoers line for each of those five argv and nothing else; without them every",
+      " issuance refuses. EVEN WITH ALL OF THIS IN PLACE ISSUANCE STILL REFUSES today: the listing is",
+      " not yet bound to the running process itself (gunbc.auth.approval_ntfy_access_readback",
+      " ActiveProcessJoinsUnbound), and enrolment codes cannot be issued until the per-release",
+      " runtime-observation helper named there lands. The server must run as",
+      " the unit's main process: `",
+      approval_ntfy_binary_path as String,
+      " serve --config ",
+      approval_ntfy_config_path as String,
+      "` with auth-file ",
+      approval_ntfy_auth_file_path as String,
+      ", no NTFY_* variable and no EnvironmentFile in its unit or the manager's environment, no",
+      " auth-access-cache, the config and the auth file each a REGULAR file at its declared path (not a",
+      " symlink), its config written and its auth file created before it starts (restart it",
+      " once after first creating the auth file), and no tailscale Funnel on the node. ntfy's documented default is read-write, so a topic",
       " left at the default is publishable and readable by anyone who learns its name -- and the",
       " approval URL is a credential, so a readable topic is a spendable approval. Publisher",
       " authentication alone does not close this: it protects who may SEND, and the leak is on the",
