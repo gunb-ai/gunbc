@@ -575,7 +575,7 @@ fn infer_node_declared_in_language_inhabitants_bool(n: Node) -> Bool {
 // construction). When ANY child is still on the frontier or absent from the entries, the node
 // stays on the frontier with its typed diagnostic — the derivation discharges only when the whole
 // child spine is evidenced, so a partially-derived product can never masquerade as grounded
-// (DESIGN section 5). Roster members keep their roster evidence (the authority's declaration
+// (DESIGN section 5). Roster members keep their declared kind (the authority's declaration
 // outranks composition for what the language itself declares), and a childless Conj or Arrow has
 // no evidence to compose and stays frontier. This discharges the frontier for these
 // two kinds: the kind-level rule the specimen-scope roster lookups stood in for.
