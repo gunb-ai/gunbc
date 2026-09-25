@@ -6,9 +6,9 @@ import std.content_hash {
   content_hash_combine_preimage,
   content_hash_combine_structural
 }
-import v2.std.algebra { any }
+import v2.std.algebra { any, length }
 import v2.std.collection { List }
-import v2.std.fn_index { FnArrowDecl, callee_texts_in_subtree, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, callee_texts_in_decl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -72,12 +72,19 @@ data chcp_no_roots: List<String> = []
 data chcp_combine_decl: String = "std.content_hash.content_hash_combine_structural"
 
 fn chcp_calls(decl: FnArrowDecl, callee: String) -> Bool {
-  any(xs: callee_texts_in_subtree(node: decl.output), predicate: fn(text) { text == callee })
+  any(xs: callee_texts_in_decl(decl: decl).texts, predicate: fn(text) { text == callee })
+}
+
+// Every call in every declaration was read. A call the walk refused is carried as a refusal, not a
+// callee, so "no declaration calls X" is only established when no declaration has one.
+fn chcp_all_calls_read(decls: List<FnArrowDecl>) -> Bool {
+  !any(xs: decls, predicate: fn(d) { length(xs: callee_texts_in_decl(decl: d).refusals) > 0 })
 }
 
 test fn chcp_no_content_hash_declaration_calls_the_ambient_combine() -> Bool {
   let decls = fn_arrow_decl_facts_live(pool_roots: chcp_no_roots, pool_files: chcp_module_file)
   any(xs: decls, predicate: fn(d) { d.qualified_name == chcp_combine_decl })
+    && chcp_all_calls_read(decls: decls)
     && !any(xs: decls, predicate: fn(d) { chcp_calls(decl: d, callee: "hash_combine") })
 }
 
