@@ -1,0 +1,39 @@
+module v2.test.claim.body_lowering.function_value_body
+
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FUNCTION VALUE AS AN ARROW'S WHOLE BODY REFUSES, LOCATED AT THE INNER FUNCTION VALUE. v2.std.node
+// classify_arrow_body_form admits no Arrow as a body, so v2.compiler.body_lowering_fold
+// body_lower_reify_arrow_body refuses body_lowering_reason_arrow_body_is_function_value_unmodeled at
+// the inner Arrow (it carries the inner function value's occurrence) -- never the causeless
+// post_normalize_not_well_formed the Arrow once reached. Each claim asserts the reason AND that the
+// locus is an Arrow node, so a refusal moved to the outer declaration or to the well-formedness gate
+// fails it. These flip when the substrate's function-valued body arm lands (zesty-stag-363); they
+// then become positive controls.
+fn fvb_refuses_at_an_inner_arrow(src: String) -> Bool {
+  match conserved_normalize_of_text(path: "fvb_probe_file", text: src, explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (d.head.reason == ^body_lowering_reason_arrow_body_is_function_value_unmodeled)
+        && (match d.head.at {
+          NodeLocus { anchor: a } =>
+            match a.at.kind {
+              TypeNode { connective: Arrow } => true
+              _ => false
+            }
+          _ => false
+        })
+  }
+}
+
+// A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
+test fn a_fn_whose_body_is_a_fn_literal_refuses_at_the_inner_function_value() -> Bool {
+  fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n")
+}
+
+// A curried lambda: the outer lambda's body is itself a lambda.
+test fn a_curried_lambda_argument_refuses_at_the_inner_lambda() -> Bool {
+  fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n")
+}
