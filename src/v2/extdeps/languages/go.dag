@@ -399,7 +399,7 @@ data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
   go_facts_string,
 ]
 
-data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data go_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn go_inhabitant_atom(id: Symbol) -> Node {
   Node {

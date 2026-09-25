@@ -6,7 +6,7 @@ import std.measure {
   Mebibyte, mebibyte_to_byte_size,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import gunbc.floor_demand {
   FloorJobWallReceipt, gunbc_floor_job_wall_receipt_2026_09_19,
@@ -16,7 +16,7 @@ import gunbc.witness_floor_workflow { witness_floor_lane_timeout }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.runner_microvm { runner_microvm_workspace_grant }
 
-data floor_cold_build_receipt_disposition: Disposition = SingleAuthority
+data floor_cold_build_receipt_disposition: ConstructionMechanism = SingleAuthority
 
 // THE COLD-BUILD RECEIPT: PLANNED HERE, TAKEN BY THE FIRST FLOOR ATTEMPT INSIDE A GUEST.
 //

@@ -1,8 +1,10 @@
 module v2.test.claim.machine_shape_construction_wall
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text, conserved_normalize, no_explained_drops }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.lens.machine_shape { machine_shape_compile_gate }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -86,4 +88,49 @@ test fn gate_red_synthetic_machine_shape_call() -> Bool {
 
 test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
   gate_accepts(o: machine_shape_compile_gate(node: shape_from_catalog_call_fixture()))
+}
+
+// ---- PRODUCTION-FED: the record-literal spelling, parsed and normalized from real source. ----
+// Until MQ-2 (gunbc#12202) the gate read only the call spelling, so this literal passed unseen:
+// `MachineShape { .. }` lowers to a construct, not an application.
+
+data machine_shape_record_literal_source: String = "module wall.forge\n\nfn forged() -> MachineShape = MachineShape { cores: 1 }\n"
+
+data machine_shape_record_literal_home_source: String = "module std.machine_shape\n\nfn made() -> MachineShape = MachineShape { cores: 1 }\n"
+
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
+// of each fixture source are paid once, and each claim is charged only the admitted conservation
+// route and the gate walk it names (the route v2.test.claim.body_lowering_block_body_call uses).
+fn machine_shape_record_literal_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "machine_shape_wall_record_literal", text: machine_shape_record_literal_source)
+}
+
+fn machine_shape_record_literal_home_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "machine_shape_wall_record_literal_home", text: machine_shape_record_literal_home_source)
+}
+
+
+fn gate_over_subject(subject: ReferenceConservationSubject) -> Outcome<Witness<Node>> {
+  match conserved_normalize(subject: subject, explained: no_explained_drops()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => machine_shape_compile_gate(node: tree.root)
+  }
+}
+
+// NO DESTRUCTURING CONTROL, deliberately. A match-arm pattern `MachineShape { .. } =>` lowers with
+// references the admitted conservation route reports dropped (conservation_reason_dropped_reference,
+// probed on srv1 for gunbc#12202), so no pattern reaches this gate on the admitted route today, and
+// the gate carries no pattern exemption it could not exercise. If patterns come to lower whole as
+// constructs, the gate refuses them loudly, and that is the trigger to model the exemption.
+test fn gate_red_machine_shape_record_literal_outside_its_home() -> Bool {
+  match gate_over_subject(subject: machine_shape_record_literal_subject()) {
+    Rejected { diagnostics: d } =>
+      non_empty_contains_reason(d: d, reason: ^machine_shape_unsanctioned_construction)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn gate_green_machine_shape_record_literal_in_its_home() -> Bool {
+  gate_accepts(o: gate_over_subject(subject: machine_shape_record_literal_home_subject()))
 }

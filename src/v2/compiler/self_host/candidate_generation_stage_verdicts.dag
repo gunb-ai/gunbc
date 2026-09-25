@@ -27,8 +27,8 @@ import v2.std.node { Node, Symbol }
 // THE VERDICT VOCABULARY IS THE RECEIPT'S. `infer_verdict` is `infer_accepted` or
 // `infer_rejected`. `composition_verdict` is `candidate_accepted` when the infer-then-translate
 // composition accepts, and otherwise the rejection's head reason -- for the add slice that was
-// `infer_grounding_not_derived`, the typed frontier `v2.compiler.infer`
-// `node_grounding_frontier_note` declares, until the declared-inhabitant membership derivation
+// `infer_grounding_not_derived`, the typed frontier
+// `v2.compiler.inferred_tree` `NodeGrounding` declares, until the declared-inhabitant membership derivation
 // (`infer_node_declared_in_dag_inhabitants`) landed: the slice's ten type-spine nodes are all
 // declared in the dag language authority's declared-inhabitants roster, so they derive by lookup
 // and the composition accepts clean.

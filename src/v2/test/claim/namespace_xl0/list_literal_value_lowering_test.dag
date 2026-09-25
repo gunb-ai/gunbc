@@ -21,9 +21,9 @@ import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
+import v2.std.node { ComputationNode, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -32,6 +32,8 @@ import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import std.process { ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.std.compilers.body_lowering { Application, ApplicationRefused, NotApplication, application_read }
+import std.occurrence_identity { OccurrenceSynthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -414,4 +416,55 @@ fn llv_self_verdict_text(v: LlvSelfVerdict) -> String {
 
 fn llv_self_report() -> ProcessExit {
   exit_failure(reason: "whole: " + llv_self_verdict_text(v: llv_self_outcome()) + " | missing: " + llv_self_verdict_text(v: llv_self_missing_outcome()))
+}
+
+// ---- a list introduction is NOT an application ---------------------------------------------------
+
+// v2.std.compilers.body_lowering application_read is the one call reader (gunbc#12202). A list
+// introduction is a Transform whose head is the FreeMonoid declaration reference -- neither an atom
+// nor an Arrow -- so read as an application it would REFUSE as a malformed one. The reader answers
+// NotApplication for it instead, on both forms the head takes: the qualified-name spine body
+// lowering writes (the production-fed argument list below) and the marked declaration reference
+// resolve mints (supplied). The enclosing call must still read as an Application: the arm may not
+// swallow real calls. Deleting the arm refuses the list and reds the first two claims.
+fn llv_application_class(n: Node) -> Symbol {
+  match application_read(site: n) {
+    NotApplication => ^llv_not_application
+    Application { view: _ } => ^llv_application
+    ApplicationRefused { diagnostics: _ } => ^llv_application_refused
+  }
+}
+
+fn llv_arg_list_class_is(n: Node, class: Symbol) -> Bool {
+  llv_call_with_list_matches(n: n, callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }])
+    && (match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+      Present { value: list } => llv_application_class(n: list) == class
+      Absent => false
+    })
+}
+
+test fn a_lowered_list_argument_reads_as_not_an_application() -> Bool {
+  fold_list(xs: llv_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || llv_arg_list_class_is(n: n, class: ^llv_not_application) })
+  })
+}
+
+test fn a_resolved_list_introduction_reads_as_not_an_application() -> Bool {
+  llv_application_class(n: Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: declaration_reference_node(qn: [^llv_elem], occurrence_id: OccurrenceSynthetic) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }) == ^llv_not_application
+}
+
+test fn the_call_enclosing_a_list_still_reads_as_an_application() -> Bool {
+  fold_list(xs: llv_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || (llv_call_with_list_matches(n: n, callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }])
+        && llv_application_class(n: n) == ^llv_application)
+    })
+  })
 }

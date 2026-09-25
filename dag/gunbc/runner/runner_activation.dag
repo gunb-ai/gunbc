@@ -1,7 +1,7 @@
 module gunbc.runner_activation
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.runner_host_deploy {
@@ -19,7 +19,7 @@ import gunbc.build_cache_instance {
   ProcessIdentity, BuildCacheEndpointObservation, placement_of_endpoint_observation,
 }
 
-data runner_activation_scope_disposition: Disposition = SingleAuthority
+data runner_activation_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // RunnerDeploySlot CONFLATED TWO LIFECYCLE MOMENTS, and the conflation is why the fleet-wide birth
 // defect was constructible. Materializing a slot — writing its files, service template, credentials

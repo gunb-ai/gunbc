@@ -1,0 +1,121 @@
+module v2.test.claim.body_type_annotation_refusal
+
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
+import v2.std.diagnostic { Accepted, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.body_lowering_fold refuses a statement `let` type annotation it cannot carry
+// rather than dropping it before v2.compiler.resolve (gunbc.recurring_failure_mode
+// body_type_annotation_dropped_before_resolve_in_v2). BOUNDARY: source text in, assembled program
+// out through v2.test.claim.type_param_binder_frame tpb_assemble -- the production route.
+//
+// RED BEFORE THIS CHANGE, MEASURED (748535dabe1, locally built gunbc): (1) was ACCEPTED with `Q`
+// declared nowhere. (2) is the unannotated control, green before and after, so the refusal is the
+// annotation's and not the let's.
+
+fn btar_let_annotated() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Q = x\n  y\n}\n")
+}
+
+fn btar_let_plain() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y\n}\n")
+}
+
+// THE LOCUS IS THE AUTHORED TYPE EXPRESSION, not the construct around it: the anchored subtree
+// spells `Q` and contains neither the `let` keyword nor the `=` nor the `fn` keyword. A refusal
+// anchored at the surrounding let or literal carries those tokens and fails this.
+fn btar_atom_in(n: Node, id: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, m) {
+    acc || match m.kind {
+      TypeNode { connective: Atom { identity: a } } => a == id
+      _ => false
+    }
+  })
+}
+
+// The refusal's reason and locus, over its diagnostics alone, so a claim over any stage's outcome
+// (v2.test.claim.body_lowering.statement_let_bind) reads the same check.
+fn btar_refusal_at_authored(d: NonEmptyDiagnostics, id: Symbol) -> Bool {
+  (diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_annotation_not_carried)
+    && match diagnostics_fatal(d: d).at {
+      NodeLocus { anchor: a } =>
+        btar_atom_in(n: a.at, id: id)
+          && !btar_atom_in(n: a.at, id: ^dag_token_kw_let)
+          && !btar_atom_in(n: a.at, id: ^dag_token_eq)
+          && !btar_atom_in(n: a.at, id: ^dag_token_kw_fn)
+      _ => false
+    }
+}
+
+fn btar_refused_at_authored_q(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => btar_refusal_at_authored(d: d, id: ^Q)
+  }
+}
+
+// (1) A let annotation refuses with the exact reason, located at the authored `Q`.
+test fn btar_let_annotation_refuses() -> Bool {
+  btar_refused_at_authored_q(o: btar_let_annotated())
+}
+
+fn btar_fn_literal_annotated() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) -> Q { y }\n  x\n}\n")
+}
+
+fn btar_fn_literal_plain() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) { y }\n  x\n}\n")
+}
+
+fn btar_if_arm_fn_literal() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Bool) -> Int { if x { fn(y) { zz } } else { 1 } }\n")
+}
+
+// (3) A fn literal's return annotation REACHES RESOLVE at the authored `Q`. gunbc#12210 lowers the
+// literal to an Arrow whose codomain is its written return type, so `Q` is no longer dropped nor
+// refused as uncarried: resolve refuses it unbound, located at the authored `Q`. RED BEFORE
+// gunbc#12248: Accepted (the literal lowered to the `fn` token). Between #12248 and #12210 it refused
+// body_lowering_reason_type_annotation_not_carried at `Q`; that interim refusal is retired.
+fn btar_resolve_refused_at_authored_q(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol)
+        && match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } => btar_atom_in(n: a.at, id: ^Q)
+          _ => false
+        }
+  }
+}
+
+test fn btar_fn_literal_return_annotation_reaches_resolve() -> Bool {
+  btar_resolve_refused_at_authored_q(o: btar_fn_literal_annotated())
+}
+
+// (4) The unannotated let-bound literal is not erased: it lowers whole (gunbc#12210), its parameter
+// bound for its body, so the program is Accepted AND no `fn` keyword atom -- the eraser's answer --
+// survives in it. RED BEFORE gunbc#12248: Accepted with the literal lowered to its `fn` token.
+test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
+  match btar_fn_literal_plain() {
+    Accepted { value: tree, diagnostics: _ } => !btar_atom_in(n: tree, id: ^dag_token_kw_fn)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (5) A fn literal in an if arm is not erased either: the first-atom operand fallback no longer
+// answers with a keyword token. RED BEFORE: Accepted with `zz` declared nowhere.
+test fn btar_if_arm_fn_literal_is_not_erased() -> Bool {
+  match btar_if_arm_fn_literal() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// (2) An unannotated let still lowers.
+test fn btar_unannotated_let_accepts() -> Bool {
+  tpb_accepts(o: btar_let_plain())
+}

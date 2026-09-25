@@ -35,13 +35,14 @@ import v2.std.node {
   named_edge_target_lookup,
   node_subtree_nodes
 }
-import v2.std.type_binder { type_param_names }
-import v2.std.node_query {
-  call_argument_targets,
-  call_callee_target,
-  field_projection_optional,
-  node_positional_child_targets
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  NotApplication,
+  application_read
 }
+import v2.std.node_query { field_projection_optional, node_positional_child_targets }
+import v2.std.type_binder { type_param_names }
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -322,22 +323,38 @@ fn vpw_roots() -> FreeMonoid<Node> {
   }
 }
 
-// The call shape is read through v2.std.node_query's call readers -- node_is_call, call_callee_target,
-// call_argument_targets -- the authority for "what a lowered call is", not a reader of this claim's own.
+// The call shape is read through v2.std.compilers.body_lowering application_read -- the authority
+// for "what a lowered call is", not a reader of this claim's own. A refused application is not a
+// call of the looked-for shape, so it answers false here and the claim reds, which is the point.
 fn vpw_is_call_to(n: Node, callee: Symbol) -> Bool {
-  match call_callee_target(node: n) {
-    Accepted { value: c, diagnostics: _ } => vpw_is_atom(n: c, id: callee)
-    Rejected { diagnostics: _ } => false
+  match application_read(site: n) {
+    Application { view: v } => vpw_is_atom(n: v.head, id: callee)
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
+  }
+}
+
+// A lowered call's operands, read through application_read like every other call reader here; a
+// node that is not an application has none.
+fn vpw_operands(n: Node) -> List<Node> {
+  match application_read(site: n) {
+    Application { view: v } => v.operands
+    NotApplication => Empty
+    ApplicationRefused { diagnostics: _ } => Empty
   }
 }
 
 // The single argument of a one-argument call.
 fn vpw_sole_argument(n: Node) -> Optional<Node> {
-  let args = call_argument_targets(node: n)
-  if length(xs: args) == 1 {
-    list_at_optional(xs: args, index: 0)
-  } else {
-    optional_absent()
+  match application_read(site: n) {
+    Application { view: v } =>
+      if length(xs: v.operands) == 1 {
+        list_at_optional(xs: v.operands, index: 0)
+      } else {
+        optional_absent()
+      }
+    NotApplication => optional_absent()
+    ApplicationRefused { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -450,7 +467,7 @@ fn vpw_is_lambda_using_its_binder(n: Node, binder: Symbol) -> Bool {
 
 fn vpw_lambda_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
   vpw_is_call_to(n: n, callee: callee)
-    && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
+    && fold_list(xs: vpw_operands(n: n), empty: false, cons: fn(acc, a) {
       acc || vpw_is_lambda_using_its_binder(n: a, binder: binder)
     })
 }
@@ -486,7 +503,7 @@ fn vpw_is_arrow_binding_with_bind_body(a: Node, binder: Symbol) -> Bool {
 
 fn vpw_fn_literal_block_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
   vpw_is_call_to(n: n, callee: callee)
-    && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
+    && fold_list(xs: vpw_operands(n: n), empty: false, cons: fn(acc, a) {
       acc || vpw_is_arrow_binding_with_bind_body(a: a, binder: binder)
     })
 }
@@ -562,8 +579,8 @@ fn vpw_binds_x_in_own_frame(a: Node) -> Bool {
 
 fn vpw_two_distinct_type_binders(n: Node, callee: Symbol) -> Bool {
   vpw_is_call_to(n: n, callee: callee)
-    && (length(xs: call_argument_targets(node: n)) == 2)
-    && fold_list(xs: call_argument_targets(node: n), empty: true, cons: fn(acc, a) { acc && vpw_binds_x_in_own_frame(a: a) })
+    && (length(xs: vpw_operands(n: n)) == 2)
+    && fold_list(xs: vpw_operands(n: n), empty: true, cons: fn(acc, a) { acc && vpw_binds_x_in_own_frame(a: a) })
 }
 
 test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_parameter() -> Bool {

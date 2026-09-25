@@ -1426,6 +1426,16 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope)
 }
 
+// A FOREIGN VARIANT WHERE A DECLARED COPRODUCT IS REQUIRED. `data v: B = X` with `X` an arm of
+// `type A = X | Y` produces `A` (variant_reference_inferred_node keeps the owner the binder chose
+// when the expected coproduct does not own the arm), and this seam judged coproduct pairs by
+// nothing, so the value was accepted and evaluated as an `A`. The relation is the one the
+// record-literal field seam already owns (coproduct_payload_where_parent_required): it excludes
+// optionality, the Optional carrier, generic and kernel coproducts, transparent aliases, a
+// produced type that is a variant or payload of the declared one, and two spellings of one arm
+// set -- so this is consumption of the existing authority at a second declared-type position,
+// not a new relation (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel,
+// specimen four).
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -1441,6 +1451,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
   }
   else if nominal_product_inhabitance_refusal(
       declared: declared, produced: produced, scope: scope) != none {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if coproduct_payload_where_parent_required(
+      formal: declared, actual: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),

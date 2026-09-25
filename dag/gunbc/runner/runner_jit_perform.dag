@@ -1,7 +1,7 @@
 module gunbc.runner.runner_jit_perform
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps { DeclaredGitHubApp }
@@ -24,7 +24,7 @@ import gunbc.runner_jit_mint {
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, plan_jit_mint,
 }
 
-data runner_jit_perform_disposition: Disposition = SingleAuthority
+data runner_jit_perform_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE IS THE NAMED CONSUMER OF gunbc.runner_jit_mint.plan_jit_mint, and landing it is what
 // deleted that module's consumer frontier. It performs no I/O and claims none: the two folds below

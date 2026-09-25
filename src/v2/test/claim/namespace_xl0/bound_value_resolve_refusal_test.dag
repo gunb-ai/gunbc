@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE SUBJECT IS THE LET-VALUE ROUTE OF v2.compiler.body_lowering_fold, observed where it matters:
 // native_test_context_from_ingest tokenizes, parses, normalizes and indexes the supplied sources,
-// and native_census_module_resolution resolves one module against it. body_lower_bound_value read a
+// and native_census_module_resolution resolves one module against it. body_lower_expression_whole (then body_lower_bound_value) read a
 // bound value through the operand reader first, whose first-match readers answer a proper part for
 // the whole: `let x = b && (u)` bound `b` (the operator reader refused the group, the refusal read as
 // Absent, and the first-atom search behind it answered `b`), and `let x = g(p: u)` bound the callee

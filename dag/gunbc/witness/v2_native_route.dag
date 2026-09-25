@@ -1,6 +1,6 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length }
+import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_find_first }
 import std.algebra { list_append, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
@@ -17,7 +17,8 @@ import v2.compiler.native_test_vocabulary {
 }
 import v2.std.diagnostic { Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.workflow.compile_door_cause_ownership {
-  CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
+  CauseLane, DiagnosticGrain, FatalGrain, FrontierRetirement, HeadGrain, cause_ownership_lookup,
+  known_frontier_causes, known_frontier_retirements
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
@@ -649,6 +650,7 @@ type NativeRouteAdmissionRefusalCause
   | UnattributedFileRefusalsPresent
   | UnattributedHeadAdvisoriesPresent
   | ContextRefusalsUnbacked
+  | FrontierRetirementCausesUnowned
   | FalseControlNotObserved
   | TrueControlNotObserved
   | LivePairObservedWhileEnrolledRed
@@ -845,6 +847,62 @@ fn native_route_file_refusal_tally(receipt: NativeRouteReceipt) -> List<NativeRo
       }
     }
   )
+}
+
+// A FRONTIER RETIREMENT, JOINED TO WHAT THE ROUTE OBSERVED. The frontier's population on one run
+// is every file refusal and every refused member whose fatal reason is one of the retirement's
+// causes. A cause with no fatal-grain ownership row makes the standing Unowned rather than
+// Retired, because an uncounted cause always reads zero.
+type FrontierRetirementStanding
+  = FrontierOpen { remaining: Int }
+  | FrontierRetired
+  | FrontierRetirementCauseUnowned { cause: Symbol }
+
+fn native_route_frontier_cause_member(retirement: FrontierRetirement, reason: Symbol) -> Bool {
+  any(xs: retirement.causes, predicate: fn(c) { c == reason })
+}
+
+fn native_route_frontier_population(retirement: FrontierRetirement, receipt: NativeRouteReceipt) -> Int {
+  count_where(xs: receipt.file_refusals, predicate: fn(fr) {
+    native_route_frontier_cause_member(retirement: retirement, reason: fr.fatal_reason)
+  })
+    + count_where(xs: receipt.population, predicate: fn(row) {
+      match row.verdict {
+        NativeTestRefused { stage: _, diagnostics: d } =>
+          native_route_frontier_cause_member(retirement: retirement, reason: diagnostics_fatal_reason(d: d))
+        NativeTestPassed => false
+        NativeTestReturnedFalse => false
+        NativeTestReturnedOther => false
+      }
+    })
+}
+
+fn native_route_frontier_retirement_standing(
+  retirement: FrontierRetirement,
+  receipt: NativeRouteReceipt
+) -> FrontierRetirementStanding {
+  let unowned: Optional<Symbol> = list_find_first(xs: retirement.causes, predicate: fn(c) {
+    match cause_ownership_lookup(cause: c, grain: FatalGrain) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  })
+  let remaining = native_route_frontier_population(retirement: retirement, receipt: receipt)
+  match unowned {
+    Present { value: c } => FrontierRetirementCauseUnowned { cause: c }
+    Absent =>
+      if remaining == 0 { FrontierRetired } else { FrontierOpen { remaining: remaining } }
+  }
+}
+
+fn native_route_frontier_retirements_owned(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: known_frontier_retirements, predicate: fn(r) {
+    match native_route_frontier_retirement_standing(retirement: r, receipt: receipt) {
+      FrontierRetirementCauseUnowned { cause: _ } => true
+      FrontierOpen { remaining: _ } => false
+      FrontierRetired => false
+    }
+  })
 }
 
 // THE HEAD REASON IS NOT DEAD RECEIPT DATA. rejected_with_pending prepends the non-fatal
@@ -1092,7 +1150,8 @@ fn native_route_admission_with(receipt: NativeRouteReceipt, live_pair: NativeRou
     NativeRouteClauseCheck { holds: native_route_exclusions_all_classified(census: census), cause: UnattributedExclusionsPresent },
     NativeRouteClauseCheck { holds: native_route_file_refusals_attributed(receipt: receipt), cause: UnattributedFileRefusalsPresent },
     NativeRouteClauseCheck { holds: native_route_head_advisories_attributed(receipt: receipt), cause: UnattributedHeadAdvisoriesPresent },
-    NativeRouteClauseCheck { holds: native_route_context_refusals_backed(receipt: receipt), cause: ContextRefusalsUnbacked }
+    NativeRouteClauseCheck { holds: native_route_context_refusals_backed(receipt: receipt), cause: ContextRefusalsUnbacked },
+    NativeRouteClauseCheck { holds: native_route_frontier_retirements_owned(receipt: receipt), cause: FrontierRetirementCausesUnowned }
   ]
   let after_live_pair: List<NativeRouteClauseCheck> = [
     NativeRouteClauseCheck { holds: native_route_malformed_control_holds(receipt: receipt), cause: MalformedControlAcceptedByRoute },
@@ -1139,6 +1198,7 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     UnattributedFileRefusalsPresent => "unattributed_file_refusals_present"
     UnattributedHeadAdvisoriesPresent => "unattributed_head_advisories_present"
     ContextRefusalsUnbacked => "context_refusals_unbacked"
+    FrontierRetirementCausesUnowned => "frontier_retirement_causes_unowned"
     FalseControlNotObserved => "false_control_not_observed"
     TrueControlNotObserved => "true_control_not_observed"
     LivePairObservedWhileEnrolledRed => "live_pair_observed_while_enrolled_red"

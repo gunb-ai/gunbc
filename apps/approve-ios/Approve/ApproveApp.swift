@@ -65,14 +65,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        await state?.refresh()
+    // The UN* arguments are not Sendable and are not read: these callbacks are nonisolated so they
+    // never cross the main actor, and hop with no payload to refreshFromPush.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        await refreshFromPush()
         return [.banner, .sound]
     }
 
     /// The operator tapped the alert: re-list, then the inbox shows what is pending.
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        await state?.refresh()
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        await refreshFromPush()
+    }
+
+    @MainActor private func refreshFromPush() async {
+        _ = await state?.refresh()
     }
 }
