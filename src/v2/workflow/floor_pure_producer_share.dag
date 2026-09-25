@@ -842,6 +842,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.where_refinement_predicate_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.match_later_arm_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.statement_let_binder_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.anonymous_slots_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",

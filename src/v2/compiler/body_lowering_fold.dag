@@ -59,11 +59,9 @@ import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional 
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
   Accepted,
-  CorrectionNotModeled,
   Diagnostic,
   Diagnostics,
   NonEmptyDiagnostics,
-  NoCorrectionReason,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -3091,12 +3089,9 @@ fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge>
 // (gen-two census: std.key_relation global_key_scope_eq, gunbc.provider_readiness_claim_evidence
 // provider_readiness_independence_claim). The refusal now lands at the second binding's type node.
 //
-// TWO CLASSES, NOT ONE. A repeated `_` is a V2-BEHIND-V1 FRONTIER, not an authoring error: v1 admits
-// two anonymous parameters as two distinct unreadable slots (v1.compiler.infer
-// direct_call_shape_wall_note), and v2 has no carrier for an anonymous slot yet. It refuses under its
-// own cause so the population stays countable and ranks for modeling; the sources are deliberately
-// left as written (parent ruling, gentle-koi-724, 2026-09-25). Any other repeated name is two
-// parameters claiming one binding, which no realization admits.
+// A repeated `_` never reaches this arm: every anonymous slot carries its own minted binder
+// (v2.std.anonymous_binder, via body_lower_param_edges), so two `_` parameters are two distinct
+// keys. What remains is two parameters claiming one authored name, which no realization admits.
 fn body_lower_fn_signature_refusal(shell: Node, sig: BodyLowerFnSignature) -> Optional<Outcome<Node>> {
   match sig.type_params {
     TypeParamsUnreadable =>
@@ -3118,35 +3113,11 @@ fn body_lower_fn_signature_bindings_refusal(shell: Node, sig: BodyLowerFnSignatu
   }
 }
 
-fn body_lower_repeated_param_binding_reason(edge: Edge) -> Symbol {
-  match edge.label {
-    Named { name: n } =>
-      if symbol_lexeme(sym: n) == "_" {
-        ^body_lowering_reason_arrow_domain_anonymous_param_repeated
-      } else {
-        ^body_lowering_reason_arrow_domain_param_binding_repeated
-      }
-    Positional => ^body_lowering_reason_arrow_domain_param_binding_repeated
-  }
-}
-
-// THE CORRECTION ARM FOLLOWS THE CLASS. A repeated named binder is an authoring error the author
-// corrects (UserInputBoundary). A repeated `_` is not: v1 admits it, and what is missing is a
-// compiler capability -- a domain carrier for an unnamed slot -- so its correction is
-// CorrectionNotModeled, and renaming the source is not the remedy.
-fn body_lower_repeated_param_binding_correction(edge: Edge) -> NoCorrectionReason {
-  if body_lower_repeated_param_binding_reason(edge: edge) == ^body_lowering_reason_arrow_domain_anonymous_param_repeated {
-    CorrectionNotModeled
-  } else {
-    UserInputBoundary
-  }
-}
-
 fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
   Diagnostic {
-    reason: body_lower_repeated_param_binding_reason(edge: edge),
+    reason: ^body_lowering_reason_arrow_domain_param_binding_repeated,
     at: node_locus(node: edge.target),
-    correction: Unavailable { reason: body_lower_repeated_param_binding_correction(edge: edge) }
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 

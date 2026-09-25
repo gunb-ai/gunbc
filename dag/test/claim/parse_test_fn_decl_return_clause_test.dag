@@ -2,6 +2,8 @@ module test.claim.parse_test_fn_decl_return_clause
 
 import v2.compiler.body_lowering_fold {
   BodyLowered,
+  BodyLowered,
+  body_lower_arrow_domain_binding_symbols,
   body_lower_fn_decl_to_arrow,
   body_lower_fn_decl_to_census_arrow,
   body_lower_outcome_is_wrapper_retained,
@@ -17,8 +19,9 @@ import v2.extdeps.languages.dag {
   dag_lex,
   parse_production_emitted_identity_optional
 }
+import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, NodeLocus, None, Rejected, Unavailable }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unavailable }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -331,7 +334,9 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
 // Each asserts the cause and that the locus is the SECOND binding's type (B; the first is A).
 // Answering optional_absent from the bindings arm restores the ill-formed domain and reds both.
 // Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
-// A repeated `_` is its own cause: a v2-behind-v1 frontier (v1 admits it), not an authoring error.
+// Two `_` parameters are NOT a repeat: each anonymous slot lowers to its own minted binder
+// (v2.std.anonymous_binder), so this producer builds the Arrow. This row replaced the interim
+// refusal gunbc#12287 enrolled for that shape.
 data nfbcp_anonymous_repeat_source: String = "module m\nfn g(_: A, _: B) -> A { a }\n"
 data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A { a }\n"
 
@@ -360,26 +365,23 @@ fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Boo
   }
 }
 
-// The `_` class also asserts its correction arm: CorrectionNotModeled, because the missing piece is a
-// compiler capability, not an authoring error. A diagnostic answering UserInputBoundary here would
-// tell the author to rename a source v1 accepts.
-fn nfbcp_correction_is_not_modeled(d: Diagnostic) -> Bool {
-  match d.correction {
-    Unavailable { reason: CorrectionNotModeled } => true
-    _ => false
-  }
-}
-
-test fn nfbcp_repeated_anonymous_param_refuses_at_the_second_binding_holds() -> Bool {
+test fn nfbcp_two_anonymous_params_lower_to_distinct_minted_binders_holds() -> Bool {
   match nfbcp_fn_decl_shell(text: nfbcp_anonymous_repeat_source) {
     Absent => false
     Present { value: shell } =>
       match body_lower_fn_decl_to_arrow(shell: shell) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: ne } =>
-          (ne.head.reason == ^body_lowering_reason_arrow_domain_anonymous_param_repeated)
-            && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
-            && nfbcp_correction_is_not_modeled(d: ne.head)
+        Rejected { diagnostics: _ } => false
+        Accepted { value: lowering, diagnostics: _ } =>
+          match lowering {
+            // The producer answers Conj { g: Arrow }; the reader conses, so it answers the domain's
+            // labels in reverse slot order.
+            BodyLowered { node: member } =>
+              fold(member.children, init: false, f: fn(found, e) {
+                found || (body_lower_arrow_domain_binding_symbols(arrow: e.target)
+                  == [anonymous_param_label(slot: 2), anonymous_param_label(slot: 1)])
+              })
+            _ => false
+          }
       }
   }
 }
