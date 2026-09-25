@@ -28,6 +28,7 @@ import v2.extdeps.languages.dag {
   dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
+  dag_lex_keyword_symbol,
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
@@ -3324,11 +3325,36 @@ fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
           match body_lower_literal_int_atom_optional(node: captured) {
             Present { value: lit } => OperandRefLowered { lowered: lit }
             Absent =>
-              body_lower_operand_ref_read_of(found: body_lower_pattern_first_atom_optional(node: captured))
+              match body_lower_pattern_first_atom_optional(node: captured) {
+                Present { value: first } =>
+                  if body_lower_atom_is_keyword_token(node: first) { OperandRefAbsent } else { OperandRefLowered { lowered: first } }
+                Absent => OperandRefAbsent
+              }
           }
       }
     OperandRefLowered { lowered: lowered } => OperandRefLowered { lowered: lowered }
     OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
+  }
+}
+
+// A LEXER KEYWORD TOKEN IS NEVER AN OPERAND. The first-atom fallback in
+// body_lower_operand_or_atom_read (above) answered a shell with its
+// first atom whatever it was, so a function literal `fn(y) { zz }` in an if arm lowered to the atom
+// dag_token_kw_fn and the literal was erased (gunbc.recurring_failure_mode
+// body_type_annotation_dropped_before_resolve_in_v2). `true` / `false` are keyword tokens that ARE
+// literal operands, and they need no exception here: body_lower_literal_bool_atom_optional reads them
+// in body_lower_operand_or_atom_read BEFORE this fallback, so a boolean the fallback would meet is the
+// first atom of something larger, and standing it in for the whole is the part-for-whole erasure this
+// guard exists to refuse. The keyword/operand distinction is the lex rules' alone.
+// KEYWORD, not token: an int literal reaches this fallback as an atom whose identity is the token CLASS
+// dag_token_int_literal (`let x = 1 in x` binds exactly that), so asking whether the atom is any lexer
+// token refused every such literal (v2.test.claim.body_lowering.statement_let_bind
+// let_in_form_unchanged_holds). The keyword classes are the rules lexed by a KeywordPattern
+// (v2.extdeps.languages.dag dag_lex_keyword_symbol).
+fn body_lower_atom_is_keyword_token(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => dag_lex_keyword_symbol(sym: id)
+    Absent => false
   }
 }
 
@@ -5866,6 +5892,48 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
 // only the diagnostic does. A coproduct whose sole consumer immediately
 // collapses it would be a second representation of a fact the reason symbol
 // already carries.
+// A LET ANNOTATION BODY LOWERING CANNOT CARRY REFUSES; IT IS NEVER DROPPED. `let y: T = e` lowers
+// to Bind[binder, value, body], which has no position for `T`, so dropping the annotation made it
+// invisible to v2.compiler.resolve and `let y: Q = x` was Accepted with `Q` declared nowhere
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). It refuses
+// body_lowering_reason_type_annotation_not_carried, located at the annotation, until a Bind
+// annotation carrier exists. A fn literal's return annotation is that row's other route; it refuses
+// the same way in body_lower_bound_value until gunbc#12210 lowers function values to Arrows.
+fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: at)
+  )
+}
+
+// `let NAME : type_expr = value` -- the colon is the first element after NAME, read positionally the
+// way the `<T>` slot is; the unannotated arm has `=` there.
+fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: body_lower_unwrap_surface_shell(node: captured)) {
+    Absent => optional_absent()
+    Present { value: after_let } =>
+      match body_lower_fn_decl_spine_right(node: after_let) {
+        Absent => optional_absent()
+        Present { value: after_name } =>
+          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_name)) {
+            Absent => optional_absent()
+            Present { value: pair } =>
+              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+                Present { value: id } =>
+                  if id == ^dag_token_colon {
+                    match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+                      Present { value: type_rest } => optional_present(value: type_rest.left)
+                      Absent => optional_present(value: pair.right)
+                    }
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -5986,17 +6054,76 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-// A bound value is an ordinary expression, so it lowers as one. The operand
-// path is tried first because a literal or a plain reference has a settled
-// operand form; anything else is a real expression and goes through the same
-// fold every other expression does.
 // A BOUND VALUE IS AN EXPRESSION, SO IT LOWERS WHOLE THROUGH THE FOLD -- the same authority the
 // statement spine uses for its last statement. It was read by the operand reader first, whose
 // first-match readers stand a part in for the whole: `let x = g(p: u)` bound the callee `g`, and
 // `let x = b && (u)` bound `b`, so `u` reached no reference site and the module resolved. The fold's
 // refusal is the statement's refusal.
+//
+// A FN LITERAL'S RETURN ANNOTATION IS REFUSED BEFORE THE LITERAL IS LOWERED. The operand reader
+// used to answer a fn-literal shell with its first token (body_lower_atom_is_keyword_token now
+// declines that), erasing the literal -- so `let g = fn(y) -> Q { y }` was Accepted with `Q`
+// declared nowhere. Nothing on this route carries a literal's written return type, so the annotation
+// refuses body_lowering_reason_type_annotation_not_carried at the authored type expression first. The
+// literal's parameters are bare identifiers in the grammar (dag_grammar_untyped_params_helper) and
+// an arrow lambda's likewise, so the return annotation is the only annotation a function literal
+// can carry. The unannotated literal keeps its existing disposition.
 fn body_lower_bound_value(node: Node) -> Outcome<Node> {
-  body_lower_fold(node: node)
+  match body_lower_fn_literal_value_return_annotation_optional(node: node) {
+    Present { value: annotation } => body_lower_type_annotation_not_carried(at: annotation)
+    Absent => body_lower_fold(node: node)
+  }
+}
+
+// fn_literal = seq(kw_fn, seq(lparen, seq(opt(params), seq(rparen, seq(opt(seq(arrow, type_expr)),
+// fn_body))))): the return clause is the LEFT of the fifth right-projection; an elided clause
+// carries no arrow. Answers the authored type expression.
+fn body_lower_fn_literal_return_annotation_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => optional_absent()
+    Present { value: a1 } =>
+      match body_lower_fn_decl_spine_right(node: a1) {
+        Absent => optional_absent()
+        Present { value: a2 } =>
+          match body_lower_fn_decl_spine_right(node: a2) {
+            Absent => optional_absent()
+            Present { value: a3 } =>
+              match body_lower_fn_decl_spine_right(node: a3) {
+                Absent => optional_absent()
+                Present { value: a4 } =>
+                  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: a4)) {
+                    Absent => optional_absent()
+                    Present { value: clause_body } =>
+                      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: clause_body.left)) {
+                        Absent => optional_absent()
+                        Present { value: arrow_type } =>
+                          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: arrow_type.left)) {
+                            Present { value: id } =>
+                              if id == ^dag_token_arrow { optional_present(value: arrow_type.right) } else { optional_absent() }
+                            Absent => optional_absent()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_fn_literal_value_return_annotation_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: id } =>
+      if id == ^dag_surface_fn_literal {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } => body_lower_fn_literal_return_annotation_optional(captured: captured)
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
 }
 
 fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
@@ -6033,6 +6160,9 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                         )
                       )
                     Present { value: key } =>
+                      match body_lower_let_annotation_optional(captured: let_captured) {
+                      Present { value: annotation } => body_lower_type_annotation_not_carried(at: annotation)
+                      Absent =>
                       match body_lower_let_statement_value_optional(captured: let_captured) {
                         Absent =>
                           outcome_rejected(
@@ -6059,6 +6189,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                               )
                             }
                           )
+                      }
                       }
                   }
               }

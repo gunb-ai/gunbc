@@ -265,6 +265,45 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
   )
 }
 
+// A token class the rule set lexes by a KEYWORD pattern -- `fn`, `in`, `let` -- as distinct from the
+// classes it lexes by character classes or literals (an identifier, an int literal), which are also
+// token classes (lex_rule_set_token_class_member) and name operands. Whether a pattern IS a keyword
+// is asked through the pattern's one fold, fold_lex_pattern, not a second matcher over LexPattern.
+fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
+  fold_lex_pattern(
+    pattern: pattern,
+    algebra: LexPatternFold {
+      empty: false,
+      literal: fn(text) { false },
+      keyword: fn(text) { true },
+      char: fn(c) { false },
+      char_class: fn(k) { false },
+      sequence: fn(left, right) { false },
+      choice: fn(left, right) { false },
+      optional: fn(element) { false },
+      repeat: fn(element) { false },
+      one_or_more: fn(element) { false },
+      delimited: fn(open, body, close) { false }
+    }
+  )
+}
+
+fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
+  match rule {
+    TokenRule { token_class: c, pattern: p } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
+    TriviaRule { pattern: _ } => false
+    AnnotationRule { annotation_class: _, pattern: _ } => false
+  }
+}
+
+fn lex_rule_set_keyword_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  fold_list(
+    xs: rules.rules,
+    empty: false,
+    cons: fn(acc, rule) { acc || lex_rule_keyword_class_member(rule: rule, token_class: token_class) }
+  )
+}
+
 type LexPatternFold<R> {
   empty:       R
   literal:     fn(v2.std.text.String) -> R
