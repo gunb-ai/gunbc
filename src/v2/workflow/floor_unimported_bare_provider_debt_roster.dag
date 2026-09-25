@@ -224,7 +224,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/ingest.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/types.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/types.dag", name: "get", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/linux/cgroup_v2_memory.dag", name: "filter", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/linux/cgroup_v2_memory.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_meminfo.dag", name: "ends_with", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_meminfo.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_meminfo.dag", name: "length", standing: ActiveDebt },
