@@ -1,13 +1,15 @@
 module gunbc.spark.arm_memory_fit
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
 import v2.std.optional { Present, Absent }
 import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, measure_le,
   Gibibyte, gibibyte, gibibyte_count, gibibyte_to_byte_size,
   BasisPoint, basis_point_count,
-  TokenCount, token_count_value,
+  TokenCount, token_count, token_count_value,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  AttentionLayerCount, attention_layer_count, attention_layer_count_value,
 }
 import std.interval {
   OrderedClosedInterval, interval_low, interval_high,
@@ -15,7 +17,17 @@ import std.interval {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_vllm_engine_ready_timeout_seconds }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.kv_layout {
+  ResolvedKvLayout, KvGroupLayout, cold_admission_blocks, cold_admission_bytes,
+  AdmissionCostBlocks, AdmissionCostUnestablished,
+  AdmissionByteCostBytes, AdmissionByteCostUnestablished,
+  KvGroupKind, FullAttention, SlidingWindowAttention, MambaState, KPoolIndex,
+}
+import extdeps.zhipu.glm_5_3_flash {
+  Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_hybrid_shape_consistent,
+  glm_5_3_flash_vllm_engine_ready_timeout_seconds,
+}
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
   serving_checkpoint_row, serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
@@ -1618,4 +1630,761 @@ fn arm_memory_fit_subject_with_receipts(
   }
 }
 
-data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "DISCHARGED 2026-09-24: the typed receipt join (ArmComponentReceipt, arm_memory_fit_subject_with_receipts) replaced the wire-containment provenance check with a construction-level join -- receipts name their term by (rank, component) and the measurement contract governs discharge. WHAT REMAINS: the receipt TEXT still carries the identity wires for provenance; the typed identity ride-along (a receipt record carrying checkpoint/runtime/topology as fields, compared by equality) is the remaining rung, landed when the bounded-experiment observer's capture leg mints receipts from live captures instead of witness fixtures. SUFFICIENT FOR: provenance becomes equality rather than containment, and the observer-side capture (memory-profile line, kv layout metadata) produces receipt values without hand-typed wires." as NonEmptyStr)
+// ── THE UNIFIED PROOF SUBJECT (THE MoA DOCTRINE'S SEVEN AXES) ────────────────────────────────────
+//
+// EVERY TERM BINDS TO ONE EXACT SUBJECT, and the subject is the seven axes the owner directive
+// names (docs/plans/moa-memory-modeling.md): model, runtime, topology, parallelism, allocator,
+// workload, generation. The axes are not a string this module invents per call -- they are FIELDS,
+// and the wire projection below is the single spelling of what each axis is derived from:
+//
+//   model       the checkpoint axis (which bytes, which loader).
+//   runtime     the serving runtime axis (which engine build).
+//   topology    the fleet topology axis (which rank population).
+//   parallelism derived from the topology degree; pp/ep/dcp are NOT modeled on this arm and the
+//               wire says so rather than inventing values for them.
+//   allocator   the launch decision axis that sizes the carve: decided utilization basis points
+//               and the KV cache dtype wire, both fields of the executable profile.
+//   workload    the capacity intent the launch prices (seats x per-seat length, batch ceiling).
+//   generation  the launch generation the receipt binds to, carried as a wire from the observing
+//               layer (a generation is a cohort identity, gunbc.spark.execution_cell, not a fact
+//               this module authors).
+//
+// THE RECEIPT-SUBJECT COMPATIBILITY LAW is the doctrine's admission rule: a receipt discharges a
+// term only on subjects the term's scaling law is invariant across. A 64Kx1 receipt discharges
+// only terms invariant to the move to 262Kx6; the workload-sensitive terms (per-token growth,
+// phase transients) refuse across that move, and the workload-invariant ones (static residency,
+// at equal seat count the per-sequence-fixed ones) may discharge. THE LAW IS A PROPERTY OF THE
+// SCALING LAW, not of the receipt's prose: it is computed from the term's law below, and a receipt
+// text claiming invariance it cannot show has no spelling here.
+type MemoryProofSubject {
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  profile: ServingLaunchProfile
+  intent: ServingCapacityIntent
+  launch_generation: NonEmptyStr
+}
+
+type MemoryProofSubjectMint
+  = MemoryProofSubjectReady { subject: MemoryProofSubject }
+  | MemoryProofSubjectRefused { cause: NonEmptyStr }
+
+// THE MINT. The workload axis must be the profile's own maximum admitted behavior (the same
+// intent_for_launch_profile derivation the fit subject mint uses): a subject whose workload axis
+// is a workload the executable cannot be asked for is a subject about another arm.
+fn memory_proof_subject_for_launch(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  profile: ServingLaunchProfile,
+  launch_generation: NonEmptyStr,
+) -> MemoryProofSubjectMint {
+  match intent_for_launch_profile(p: profile) {
+    ServingCapacityIntentRefused { cause: c } =>
+      MemoryProofSubjectRefused { cause: join(["the proof subject's workload axis does not derive from the executable profile: ", c as String], "") as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: intent } =>
+      MemoryProofSubjectReady { subject: MemoryProofSubject {
+        checkpoint: checkpoint,
+        runtime: runtime,
+        topology: topology,
+        profile: profile,
+        intent: intent,
+        launch_generation: launch_generation,
+      } }
+  }
+}
+
+fn memory_proof_subject_workload_wire(s: MemoryProofSubject) -> String {
+  join([
+    to_string(intent_max_active_sequences(i: s.intent)), "x",
+    to_string(token_count_value(t: intent_max_single_sequence_tokens(i: s.intent))),
+    "-batch", to_string(token_count_value(t: s.intent.max_batched_tokens)),
+  ], "")
+}
+
+// THE SEVEN-AXIS WIRE. One spelling, naming what is modeled and what is not; a consumer comparing
+// two subjects compares the record, and the wire exists for receipts and obligations that must
+// NAME their subject.
+fn memory_proof_subject_wire(s: MemoryProofSubject) -> String {
+  join([
+    "model:", serving_checkpoint_wire(c: s.checkpoint) as String,
+    " runtime:", serving_runtime_wire(r: s.runtime) as String,
+    " topology:", serving_topology_wire(t: s.topology) as String,
+    " parallelism:tp", to_string(serving_topology_rank_count(t: s.topology)), "/pp-unmodeled/ep-unmodeled/dcp-unmodeled",
+    " allocator:hybrid-kv@", to_string(basis_point_count(bp: s.profile.decided_gpu_memory_basis_points)), "bp-", s.profile.kv_cache_dtype_wire as String,
+    " workload:", memory_proof_subject_workload_wire(s: s),
+    " generation:", s.launch_generation as String,
+  ], "")
+}
+
+// CONFIG EQUALITY is the model/runtime/topology/allocator half of the subject: the axes a term's
+// placement law is sensitive to. THE PARALLELISM AXIS IS TOPOLOGY-DERIVED, so a TP4 receipt on a
+// TP2 subject fails here for every scaling law -- placement across a different degree is a
+// different shape, which the measured 77.0-81.6 GiB per-rank spread already evidences. THE
+// GENERATION AXIS IS DELIBERATELY NOT PART OF CONFIG: the 262Kx6 launch is a FUTURE GENERATION of
+// this arm's configuration, and a discharge law that required generation equality would refuse
+// every receipt in exactly the direction the doctrine permits -- a 64Kx1 receipt discharges the
+// terms invariant to the move to 262Kx6, and invariance is a property of the configuration, not
+// of which launch produced the reading. The generation wire names provenance; it does not gate
+// discharge.
+fn memory_proof_subject_config_equal(a: MemoryProofSubject, b: MemoryProofSubject) -> Bool {
+  (serving_checkpoint_wire(c: a.checkpoint) as String) == (serving_checkpoint_wire(c: b.checkpoint) as String)
+    && (serving_runtime_wire(r: a.runtime) as String) == (serving_runtime_wire(r: b.runtime) as String)
+    && (serving_topology_wire(t: a.topology) as String) == (serving_topology_wire(t: b.topology) as String)
+    && basis_point_count(bp: a.profile.decided_gpu_memory_basis_points) == basis_point_count(bp: b.profile.decided_gpu_memory_basis_points)
+    && (a.profile.kv_cache_dtype_wire as String) == (b.profile.kv_cache_dtype_wire as String)
+}
+
+// WORKLOAD EQUALITY is seats, per-seat length and batch ceiling together: a larger seat population
+// or a longer window is a different workload for every growth-sensitive term, and a different
+// batch ceiling is a different activation peak.
+fn memory_proof_subject_workload_equal(a: MemoryProofSubject, b: MemoryProofSubject) -> Bool {
+  intent_max_active_sequences(i: a.intent) == intent_max_active_sequences(i: b.intent)
+    && token_count_value(t: intent_max_single_sequence_tokens(i: a.intent)) == token_count_value(t: intent_max_single_sequence_tokens(i: b.intent))
+    && token_count_value(t: a.intent.max_batched_tokens) == token_count_value(t: b.intent.max_batched_tokens)
+}
+
+fn memory_proof_subject_equal(a: MemoryProofSubject, b: MemoryProofSubject) -> Bool {
+  memory_proof_subject_config_equal(a: a, b: b) && memory_proof_subject_workload_equal(a: a, b: b)
+}
+
+// ── THE MECHANISM-NAMED TERMS: WHAT ALLOCATES EACH BYTE, HOW IT SCALES ───────────────────────────
+//
+// THE MoA DECOMPOSITION IS THE AUTHORITY (docs/plans/moa-memory-modeling.md): every memory term
+// names its mechanism -- which feature allocates the bytes (placement_law), how the quantity
+// scales (scaling_law), which phase it exists in (phase), how long it lives (lifetime), what bound
+// is admitted (bound), and the derivation or receipt that vouches for the bound. MEASUREMENTS
+// SERVE ONLY THREE PURPOSES against these terms: validate a derived bound, fill a narrowly named
+// underivable term, or falsify the model. A point sample never becomes a bound by being the
+// largest seen once.
+type MemoryScalingLaw
+  = MemoryScalingStaticResidency
+  | MemoryScalingPerSequenceFixed
+  | MemoryScalingPerToken
+  | MemoryScalingPerPooledToken { index_kpool: Nat }
+  | MemoryScalingPhaseTransient
+  | MemoryScalingChurnAllowance
+
+fn memory_scaling_law_wire(l: MemoryScalingLaw) -> String {
+  match l {
+    MemoryScalingStaticResidency => "static-residency"
+    MemoryScalingPerSequenceFixed => "per-sequence-fixed"
+    MemoryScalingPerToken => "per-token"
+    MemoryScalingPerPooledToken { index_kpool: k } => join(["per-pooled-token/", to_string(k)], "")
+    MemoryScalingPhaseTransient => "phase-transient"
+    MemoryScalingChurnAllowance => "churn-allowance"
+  }
+}
+
+type MemoryPlacementLaw
+  = MemoryPlacementCheckpointPlacement
+  | MemoryPlacementRankResident
+  | MemoryPlacementAllocatorCarve
+  | MemoryPlacementPhaseWorkspace
+
+fn memory_placement_law_wire(l: MemoryPlacementLaw) -> String {
+  match l {
+    MemoryPlacementCheckpointPlacement => "checkpoint-placement"
+    MemoryPlacementRankResident => "rank-resident"
+    MemoryPlacementAllocatorCarve => "allocator-carve"
+    MemoryPlacementPhaseWorkspace => "phase-workspace"
+  }
+}
+
+type MemoryLifetime
+  = MemoryLifetimeProcess
+  | MemoryLifetimeLaunch
+  | MemoryLifetimeRequest
+  | MemoryLifetimePhase
+
+fn memory_lifetime_wire(l: MemoryLifetime) -> String {
+  match l {
+    MemoryLifetimeProcess => "process"
+    MemoryLifetimeLaunch => "launch"
+    MemoryLifetimeRequest => "request"
+    MemoryLifetimePhase => "phase"
+  }
+}
+
+// ONE MECHANISM-NAMED TERM. `bound` is the admitted bound for the quantity the term names (for a
+// growth term, the per-unit cost the derivation names; for a static term, the whole quantity);
+// `derivation` names the mechanism and the authority, and is where a measured bound's receipt or
+// a derived bound's construction is spelled.
+type MemoryTerm {
+  component: ArmMemoryComponent
+  placement_law: MemoryPlacementLaw
+  scaling_law: MemoryScalingLaw
+  phase: ArmMemoryFitPhase
+  lifetime: MemoryLifetime
+  bound: ArmComponentBound
+  derivation: NonEmptyStr
+}
+
+// THE CENSUS AS MECHANISM-NAMED TERMS, one per component. THIS PROJECTION IS THE SINGLE AUTHORITY
+// FOR WHICH SCALING LAW EACH COMPONENT CARRIES: the wet-receipt admission below binds receipts to
+// terms, and a receipt claiming a law the census does not carry for that component is refused at
+// the binding. The KV-cache term names the demand-side growth law; the carved-pool SUPPLY
+// observation binds its own term (allocator-carve, static at a fixed allocator decision) beside
+// it, and the two never share a spelling.
+fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
+  [
+    MemoryTerm {
+      component: ArmCheckpointResidency,
+      placement_law: MemoryPlacementCheckpointPlacement,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseModelLoad,
+      lifetime: MemoryLifetimeProcess,
+      bound: rd.checkpoint_residency,
+      derivation: "checkpoint manifest bytes placed by the loader's TP placement and transformation rules; the term is static across workload and its per-rank placement is NOT an even split unless a placement measurement says so" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmLoaderTransform,
+      placement_law: MemoryPlacementPhaseWorkspace,
+      scaling_law: MemoryScalingPhaseTransient,
+      phase: ArmPhaseLoaderTransform,
+      lifetime: MemoryLifetimePhase,
+      bound: rd.loader_transform,
+      derivation: "the loader's padding, repacking and temporary copies on top of the resident checkpoint; exists only inside its phase" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmRuntimeFixed,
+      placement_law: MemoryPlacementRankResident,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseModelLoad,
+      lifetime: MemoryLifetimeProcess,
+      bound: rd.runtime_fixed,
+      derivation: "runtime-fixed rank residency: allocator metadata, communication context and engine structures that exist from launch for the process life" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmCollectiveWorkspace,
+      placement_law: MemoryPlacementRankResident,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseProfiling,
+      lifetime: MemoryLifetimeLaunch,
+      bound: rd.collective_workspace,
+      derivation: "collective communication workspace: sized by the parallelism degree and dtype configuration, not by the request workload" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmActivationWorkspace,
+      placement_law: MemoryPlacementPhaseWorkspace,
+      scaling_law: MemoryScalingPhaseTransient,
+      phase: ArmPhaseProfiling,
+      lifetime: MemoryLifetimePhase,
+      bound: rd.activation_workspace,
+      derivation: "activation and per-batch workspaces at the profiled batch shape; a phase transient whose peak the engine profiles against the batch ceiling it will actually run" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmGraphCapture,
+      placement_law: MemoryPlacementRankResident,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseGraphCapture,
+      lifetime: MemoryLifetimeLaunch,
+      bound: rd.graph_capture,
+      derivation: "CUDA graph capture workspace and what persists after it; static across workload once captured" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmKvCache,
+      placement_law: MemoryPlacementAllocatorCarve,
+      scaling_law: MemoryScalingPerToken,
+      phase: ArmPhaseIdleServing,
+      lifetime: MemoryLifetimeLaunch,
+      bound: rd.kv_cache,
+      derivation: "the admitted-sequences demand over the resolved cache roster: fixed-per-sequence state, per-token sparse cache, per-pooled-token index, per-sequence tail, plus grouping and padding; the generic term names the per-token growth law and the exact roster fold below is the only admitted cost" as NonEmptyStr,
+    },
+    MemoryTerm {
+      component: ArmFragmentationAllowance,
+      placement_law: MemoryPlacementAllocatorCarve,
+      scaling_law: MemoryScalingChurnAllowance,
+      phase: ArmPhasePeakServing,
+      lifetime: MemoryLifetimeLaunch,
+      bound: rd.fragmentation_allowance,
+      derivation: "allocator fragmentation under churn: an allowance term, bounded only by a conservative construction or a churn-protocol measurement" as NonEmptyStr,
+    },
+  ]
+}
+
+// THE RECEIPT-SUBJECT COMPATIBILITY LAW, computed from the scaling law. Static residency survives
+// a workload move (weights do not grow with the window); per-sequence-fixed survives only at equal
+// seat count (KDA state doubles when the seat population doubles); every workload-sensitive law
+// requires the full workload. ALL LAWS require config equality: a receipt carried across a
+// checkpoint, runtime, topology, allocator decision or generation is evidence about a subject that
+// is not this one.
+fn memory_scaling_law_discharges_on(law: MemoryScalingLaw, measured_on: MemoryProofSubject, target: MemoryProofSubject) -> Bool {
+  match law {
+    MemoryScalingStaticResidency =>
+      memory_proof_subject_config_equal(a: measured_on, b: target)
+    MemoryScalingPerSequenceFixed =>
+      memory_proof_subject_config_equal(a: measured_on, b: target)
+        && intent_max_active_sequences(i: measured_on.intent) == intent_max_active_sequences(i: target.intent)
+    MemoryScalingPerToken => memory_proof_subject_equal(a: measured_on, b: target)
+    MemoryScalingPerPooledToken { index_kpool: _ } => memory_proof_subject_equal(a: measured_on, b: target)
+    MemoryScalingPhaseTransient => memory_proof_subject_equal(a: measured_on, b: target)
+    MemoryScalingChurnAllowance => memory_proof_subject_equal(a: measured_on, b: target)
+  }
+}
+
+// ── THE MEASUREMENT-STANDING VOCABULARY ──────────────────────────────────────────────────────────
+//
+// THE STANDINGS NAME WHAT AN OBSERVATION ESTABLISHES, and nothing more. DerivedExact is a genuine
+// derivation; DerivedConservativeInterval is a derived pair whose lower is the conservative
+// contribution; MeasuredUpperBound is a bound from a bounding protocol (peak-over-runs or the
+// engine's own reported maximum); ObservedInterval and ObservationOnly preserve readings without
+// bounding them -- a reading at a stated reporter precision is an interval, a point sample is a
+// point, and neither discharges an open term by itself; CompositeObservation is a profile term
+// that does not separate its mechanisms (weights+nontorch is the instance); GraphAttribution
+// Unestablished is a NEGATIVE resident-demand reading whose interval the profiler cannot attribute
+// -- it is preserved raw and admitted as lower bound 0, upper open, NEVER a credit; ModelFalsified
+// is an observation outside its predicted interval, which breaks the bound rather than tightening
+// it. THE CREDIT LAW BELOW IS THE WHOLE POINT: weaker evidence cannot improve admission, so only
+// the three bounding standings contribute anything to supply or headroom.
+type ArmWetStanding
+  = ArmWetDerivedExact { bytes: ByteSize, derivation: NonEmptyStr }
+  | ArmWetDerivedConservativeInterval { lower: ByteSize, upper: ByteSize, derivation: NonEmptyStr }
+  | ArmWetMeasuredUpperBound { bytes: ByteSize, receipt: NonEmptyStr }
+  | ArmWetObservedInterval { lower: ByteSize, upper: ByteSize, receipt: NonEmptyStr }
+  | ArmWetObservationOnly { bytes: ByteSize, receipt: NonEmptyStr, why: NonEmptyStr }
+  | ArmWetCompositeObservation { bytes: ByteSize, receipt: NonEmptyStr, why: NonEmptyStr }
+  | ArmWetGraphAttributionUnestablished { raw_hundredths_gib: Int, receipt: NonEmptyStr }
+  | ArmWetModelFalsified { component: ArmMemoryComponent, predicted: ArmComponentBound, observed_bytes: ByteSize, receipt: NonEmptyStr }
+
+fn arm_wet_standing_wire(s: ArmWetStanding) -> String {
+  match s {
+    ArmWetDerivedExact { bytes: _, derivation: _ } => "DerivedExact"
+    ArmWetDerivedConservativeInterval { lower: _, upper: _, derivation: _ } => "DerivedConservativeInterval"
+    ArmWetMeasuredUpperBound { bytes: _, receipt: _ } => "MeasuredUpperBound"
+    ArmWetObservedInterval { lower: _, upper: _, receipt: _ } => "ObservedInterval"
+    ArmWetObservationOnly { bytes: _, receipt: _, why: _ } => "ObservationOnly"
+    ArmWetCompositeObservation { bytes: _, receipt: _, why: _ } => "CompositeObservation"
+    ArmWetGraphAttributionUnestablished { raw_hundredths_gib: _, receipt: _ } => "GraphAttributionUnestablished"
+    ArmWetModelFalsified { component: _, predicted: _, observed_bytes: _, receipt: _ } => "ModelFalsified"
+  }
+}
+
+// THE CREDIT A STANDING CONTRIBUTES TO SUPPLY OR HEADROOM. Bounding standings contribute their
+// conservative content; every observation-class standing contributes ZERO -- preserving a reading
+// is not bounding with it. The negative graph figure's raw value rides in its standing for the
+// record, and its credit is exactly zero: a component observation that cannot be attributed can
+// never improve headroom, which is the doctrine's weaker-evidence-cannot-improve-admission rule as
+// one function.
+fn arm_wet_standing_credit_bytes(s: ArmWetStanding) -> ByteSize {
+  match s {
+    ArmWetDerivedExact { bytes: b, derivation: _ } => b
+    ArmWetDerivedConservativeInterval { lower: l, upper: _, derivation: _ } => l
+    ArmWetMeasuredUpperBound { bytes: b, receipt: _ } => b
+    ArmWetObservedInterval { lower: _, upper: _, receipt: _ } => byte_size(count: 0)
+    ArmWetObservationOnly { bytes: _, receipt: _, why: _ } => byte_size(count: 0)
+    ArmWetCompositeObservation { bytes: _, receipt: _, why: _ } => byte_size(count: 0)
+    ArmWetGraphAttributionUnestablished { raw_hundredths_gib: _, receipt: _ } => byte_size(count: 0)
+    ArmWetModelFalsified { component: _, predicted: _, observed_bytes: _, receipt: _ } => byte_size(count: 0)
+  }
+}
+
+// A RECEIPT BINDING: one observed standing claimed against ONE mechanism-named term of one rank,
+// with the subject it was measured on carried beside it. ONE BINDING ONE TERM: combining several
+// readings of one term is the peak-over-runs protocol's job at capture time, not a fold here.
+type ArmWetReceiptBinding {
+  term: MemoryTerm
+  rank: Nat
+  standing: ArmWetStanding
+  measured_on: MemoryProofSubject
+  provenance: NonEmptyStr
+}
+
+type ArmWetBindingAdmission
+  = ArmWetBindingAdmitted { binding: ArmWetReceiptBinding }
+  | ArmWetBindingRefused { binding: ArmWetReceiptBinding, cause: NonEmptyStr }
+
+// THE BINDING ADMISSION, two walls:
+//   1. AN ATTRIBUTION REFUSAL TRAVELS ONLY WITH ITS MECHANISM. The negative graph figure binds to
+//      graph-capture and nothing else.
+//   2. THE RECEIPT-SUBJECT COMPATIBILITY LAW. The term's scaling law must be invariant across the
+//      move from the receipt's subject to the target; a TP4 receipt applied to TP2, or a 64Kx1
+//      activation reading applied to a 262Kx6 subject, refuses naming the axis.
+// WHAT ADMISSION DOES NOT SETTLE: an admitted binding is evidence bound to the right subject and
+// mechanism, not yet a bound. A composite observation is ADMITTED like any other reading (it
+// transfers to any subject at an equal configuration -- weights do not move with the workload);
+// what it can never do is DISCHARGE an open obligation, and that is the discharge wall below, a
+// separate question answered by the standing's class, not by where the reading was taken.
+fn arm_admit_wet_binding(binding: ArmWetReceiptBinding, target: MemoryProofSubject) -> ArmWetBindingAdmission {
+  match binding.standing {
+    ArmWetGraphAttributionUnestablished { raw_hundredths_gib: _, receipt: _ } =>
+      if (binding.term.component == ArmGraphCapture) {
+        arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+      } else {
+        ArmWetBindingRefused {
+          binding: binding,
+          cause: "a negative component observation is an attribution refusal and travels only with its own mechanism: it binds to graph-capture and refuses every other term, because an unattributable interval cannot be placed on a mechanism it was not read from" as NonEmptyStr,
+        }
+      }
+    _ => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+  }
+}
+
+// THE DISCHARGE WALL: may this standing replace an open obligation of the term it binds to? ONLY
+// THE BOUNDING STANDINGS DISCHARGE. weights+nontorch is the standing this wall exists for: a
+// COMPOSITE observation of rank residency does not separate checkpoint tensors from runtime-fixed,
+// allocator, communication or other non-Torch allocations, so it is admitted as evidence but can
+// never discharge the checkpoint-placement obligation -- no matter how large, how precise, or how
+// faithfully transferred from another generation of the same configuration. The doctrine's rule is
+// weaker-evidence-cannot-improve-admission, and the negative graph figure's zero credit above is
+// the same rule at the headroom side: an observation that cannot attribute its own interval can
+// neither bound a term nor improve a verdict.
+fn arm_wet_standing_discharges_open(standing: ArmWetStanding, open: ArmComponentBound) -> Bool {
+  match open {
+    ComponentBoundOpen { obligation: _ } =>
+      match standing {
+        ArmWetDerivedExact { bytes: _, derivation: _ } => true
+        ArmWetDerivedConservativeInterval { lower: _, upper: _, derivation: _ } => true
+        ArmWetMeasuredUpperBound { bytes: _, receipt: _ } => true
+        ArmWetObservedInterval { lower: _, upper: _, receipt: _ } => false
+        ArmWetObservationOnly { bytes: _, receipt: _, why: _ } => false
+        ArmWetCompositeObservation { bytes: _, receipt: _, why: _ } => false
+        ArmWetGraphAttributionUnestablished { raw_hundredths_gib: _, receipt: _ } => false
+        ArmWetModelFalsified { component: _, predicted: _, observed_bytes: _, receipt: _ } => false
+      }
+    ComponentBoundExact { bytes: _, how: _ } => false
+    ComponentBoundInterval { lower: _, upper: _, how: _ } => false
+    ComponentBoundCeiling { bytes: _, receipt: _ } => false
+  }
+}
+
+fn arm_admit_wet_binding_subject_wall(binding: ArmWetReceiptBinding, target: MemoryProofSubject) -> ArmWetBindingAdmission {
+  match memory_scaling_law_discharges_on(law: binding.term.scaling_law, measured_on: binding.measured_on, target: target) {
+    false =>
+      ArmWetBindingRefused {
+        binding: binding,
+        cause: join([
+          "the receipt was measured on ", memory_proof_subject_wire(s: binding.measured_on),
+          " and the term carries the scaling law ", memory_scaling_law_wire(l: binding.term.scaling_law),
+          ", which is not invariant to the move to the target subject ", memory_proof_subject_wire(s: target),
+          ": a receipt discharges only terms invariant across that move (the MoA compatibility law), and this term is workload- or placement-sensitive across it",
+        ], "") as NonEmptyStr,
+      }
+    true => ArmWetBindingAdmitted { binding: binding }
+  }
+}
+
+// ── THE CACHE SUBPROOF ───────────────────────────────────────────────────────────────────────────
+//
+// THE RESULT VOCABULARY SPLITS (docs/plans/moa-memory-modeling.md): the cache subclaim decides
+// separately from the whole arm, because the cache is the one component whose six-seat cost at
+// 262144 was on its way to FitProved by dividing the printed token figure. THAT MOVE IS WITHDRAWN
+// and this subproof replaces it: six seats at 262144 is a CacheCapacityCandidate until the exact
+// group roster folds directly against every rank's allocator evidence. THE PROOF IS THE DIRECT
+// FOLD and nothing else:
+//
+//     seats x cold_admission_blocks(roster, 262144) <= allocator_blocks on EVERY rank
+//     seats x cold_admission_bytes (roster, 262144) <= admitted_kv_arena_bytes on EVERY rank
+//
+// cold_admission_blocks/bytes (extdeps.vllm.kv_layout) charge each group its own growth law --
+// KDA state fixed per sequence, sparse MLA per token, KPool per pooled token, the sparse-indexer
+// tail per sequence, and the grouping/padding is the per-group ceil-to-block times page bytes, so
+// it is inside the fold rather than beside it. THE ROSTER BINDS THE EXACT MODEL: a roster with a
+// different KDA count, a different pool interval, or a missing tail group is a different capacity,
+// and a proof at one roster says nothing at another. THE TOKEN DIVISION IS NOT A PROOF: the
+// printed "GPU KV cache size: N tokens" is a full-context-equivalent projection, and the floor of
+// it divided by the context is carried as a candidate sizing hint with no path into any verdict.
+type CacheFitVerdict
+  = CacheFitProved { rank: Nat, seats: Nat, length: TokenCount, demand_bytes: ByteSize, headroom_bytes: ByteSize }
+  | CacheFitRefused {
+      rank: Nat
+      seats: Nat
+      length: TokenCount
+      demand_bytes: ByteSize
+      demand_blocks: AllocatorBlockCount
+      supply_arena_bytes: ByteSize
+      supply_allocator_blocks: AllocatorBlockCount
+      cause: NonEmptyStr
+    }
+  | CacheFitUnestablished { obligations: List<NonEmptyStr> }
+
+// THE PER-RANK SUPPLY THE FOLD DECIDES AGAINST: the observed allocator inventory and the observed
+// admitted-KV-arena carve, both observations of the SAME launch the demand names (the wet-admission
+// layer below is where that binding is enforced; a bare fold trusts its caller, and the only
+// callers are that layer and claims supplying the binding themselves).
+type ArmRankCacheSupply {
+  rank: Nat
+  allocator_blocks: AllocatorBlockCount
+  admitted_kv_arena_bytes: ByteSize
+}
+
+// THE ROSTER'S REQUIRED SHAPES FOR THIS MODEL, one obligation per missing member. The roster must
+// carry: the KDA state group for exactly the model's recurrent layer count; the sparse-MLA group
+// for exactly the sparse layer count; the KPool group at exactly the model's index_kpool; and the
+// sparse-indexer tail as a per-sequence state distinct from the KDA group. A roster missing any of
+// them prices a different cache than the engine allocates, and the fold says which rather than
+// charging the omission as zero.
+fn cache_roster_obligations(layout: ResolvedKvLayout, shape: Glm53FlashHybridShape) -> List<NonEmptyStr> {
+  if !glm_5_3_flash_hybrid_shape_consistent(shape) {
+    ["the model's hybrid shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it" as NonEmptyStr]
+  } else if (layout.established_at_revision.repository as String) != (vllm_source_revision_read.repository as String)
+    || (layout.established_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+    [join([
+      "the roster was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
+      " but the capacity arithmetic is modelled against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+      ": a roster from another revision is a different engine's shape and this proof binds the exact roster",
+    ], "") as NonEmptyStr]
+  } else {
+    let kda_ok = any(layout.groups, g => match g.kind {
+      MambaState => attention_layer_count_value(c: g.layer_count) == shape.kda_linear_attention_layers
+      _ => false
+    })
+    let sparse_ok = any(layout.groups, g => match g.kind {
+      FullAttention => attention_layer_count_value(c: g.layer_count) == shape.sparse_attention_layers
+      _ => false
+    })
+    let kpool_ok = any(layout.groups, g => match g.kind {
+      KPoolIndex { pool_every: p } => token_count_value(t: p) == shape.index_kpool
+      _ => false
+    })
+    let kpool_other = first(filter(layout.groups, g => match g.kind {
+      KPoolIndex { pool_every: p } => token_count_value(t: p) != shape.index_kpool
+      _ => false
+    }))
+    let mamba_count = count(filter(layout.groups, g => match g.kind { MambaState => true  _ => false }))
+    concat(
+      match kda_ok {
+        true => [] as List<NonEmptyStr>
+        false => [join(["missing KDA state group: the model's ", to_string(shape.kda_linear_attention_layers), " recurrent layers require a mamba-shaped group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr]
+      },
+      concat(
+        match sparse_ok {
+          true => [] as List<NonEmptyStr>
+          false => [join(["missing sparse-MLA group: the model's ", to_string(shape.sparse_attention_layers), " sparse-attention layers require a full-growth group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr]
+        },
+        concat(
+          match kpool_ok {
+            true => [] as List<NonEmptyStr>
+            false =>
+              match kpool_other {
+                Present { value: _ } => [join(["the roster's KPool group is priced at a pool interval other than the model's index_kpool ", to_string(shape.index_kpool), ": a different pool interval is a different capacity, and this proof binds the exact roster"], "") as NonEmptyStr]
+                Absent => [join(["missing KPool index group: the sparse layers keep a compressed index growing once per index_kpool ", to_string(shape.index_kpool), " tokens, and the roster carries no KPool group at that interval"], "") as NonEmptyStr]
+              }
+          },
+          match mamba_count >= 2 {
+            true => [] as List<NonEmptyStr>
+            false => ["missing sparse-indexer tail group: the sparse-attention layers carry a small per-request tail state, fixed per sequence, distinct from the KDA recurrent state -- a roster with only the KDA state group prices a different cache than the engine allocates" as NonEmptyStr]
+          })))
+  }
+}
+
+// THE SUPPLY-SIDE OBLIGATIONS: exactly one supply row per topology rank, and no zero readings (a
+// zero observation bounds nothing; it is an obligation, not a free supply).
+fn cache_supply_obligations(supplies: List<ArmRankCacheSupply>, rank_count: Nat) -> List<NonEmptyStr> {
+  concat(
+    match count(supplies) == rank_count {
+      true => [] as List<NonEmptyStr>
+      false => [join(["per-rank allocator inventory and KV-arena observations exist for ", to_string(count(supplies)), " of ", to_string(rank_count), " ranks: the byte wall decides on EVERY rank, and a missing rank is an unnamed obligation, never a generous reading"], "") as NonEmptyStr]
+    },
+    map(filter(supplies, s => allocator_block_count_value(c: s.allocator_blocks) == 0 || byte_size_count(b: s.admitted_kv_arena_bytes) == 0), s =>
+      join(["rank ", to_string(s.rank), " carries a zero allocator inventory or KV-arena observation: a zero reading bounds nothing and the supply side stays open on that rank"], "") as NonEmptyStr))
+}
+
+// THE DIRECT FOLD. Order: roster obligations, then supply obligations, then the per-rank decision
+// (byte wall first, block wall second, ranks in roster order, first refusal carries). PROVED names
+// the worst rank and its headroom; a refusal that fires only because the roster padded a missing
+// group as zero is impossible by construction, because the obligations above already refused.
+fn cache_fit_verdict(
+  layout: ResolvedKvLayout,
+  shape: Glm53FlashHybridShape,
+  seats: Nat,
+  at: TokenCount,
+  supplies: List<ArmRankCacheSupply>,
+  rank_count: Nat,
+) -> CacheFitVerdict {
+  let roster_obligations = cache_roster_obligations(layout: layout, shape: shape)
+  let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
+  let obligations = concat(roster_obligations, supply_obligations)
+  match length(obligations) > 0 {
+    true => CacheFitUnestablished { obligations: obligations }
+    false =>
+      match cold_admission_bytes(layout: layout, sequence_budget: at) {
+        AdmissionByteCostUnestablished { cause: c } => CacheFitUnestablished { obligations: [c] }
+        AdmissionByteCostBytes { bytes: per_seat_bytes } =>
+          match cold_admission_blocks(layout: layout, sequence_budget: at) {
+            AdmissionCostUnestablished { cause: c } => CacheFitUnestablished { obligations: [c] }
+            AdmissionCostBlocks { blocks: per_seat_blocks } =>
+              let demand_bytes = byte_size(count: byte_size_count(b: per_seat_bytes) * seats)
+              let demand_blocks = allocator_block_count(count: allocator_block_count_value(c: per_seat_blocks) * seats)
+              match cache_fit_rank_scan(
+                supplies: supplies,
+                demand_bytes: demand_bytes,
+                demand_blocks: demand_blocks,
+                seats: seats,
+                length: at,
+              ) {
+                Present { value: refused } => refused
+                Absent => cache_fit_proved_corner(supplies: supplies, demand_bytes: demand_bytes, seats: seats, length: at)
+              }
+          }
+      }
+  }
+}
+
+// ONE REFUSAL OR NONE: the first rank whose arena cannot hold the byte demand, or whose inventory
+// cannot hold the block demand. BOTH walls are checked on every rank: the byte wall on every rank
+// is the doctrine's independent second clause, and uniform per-seat demand makes the per-rank
+// block scan decide the limiting rank by construction.
+fn cache_fit_rank_scan(
+  supplies: List<ArmRankCacheSupply>,
+  demand_bytes: ByteSize,
+  demand_blocks: AllocatorBlockCount,
+  seats: Nat,
+  length: TokenCount,
+) -> CacheFitVerdict? {
+  first(map(filter(supplies, s =>
+      byte_size_count(b: demand_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes)
+        || allocator_block_count_value(c: demand_blocks) > allocator_block_count_value(c: s.allocator_blocks)), s =>
+    match byte_size_count(b: demand_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes) {
+      true => CacheFitRefused {
+        rank: s.rank,
+        seats: seats,
+        length: length,
+        demand_bytes: demand_bytes,
+        demand_blocks: demand_blocks,
+        supply_arena_bytes: s.admitted_kv_arena_bytes,
+        supply_allocator_blocks: s.allocator_blocks,
+        cause: join([
+          "cache capacity REFUSED at rank ", to_string(s.rank), ": ", to_string(seats), " seats at ",
+          to_string(token_count_value(t: length)), " tokens hold ", to_string(byte_size_count(b: demand_bytes)),
+          " bytes by the exact roster fold, which exceeds the rank's admitted KV arena of ",
+          to_string(byte_size_count(b: s.admitted_kv_arena_bytes)), " bytes",
+        ], "") as NonEmptyStr,
+      }
+      false => CacheFitRefused {
+        rank: s.rank,
+        seats: seats,
+        length: length,
+        demand_bytes: demand_bytes,
+        demand_blocks: demand_blocks,
+        supply_arena_bytes: s.admitted_kv_arena_bytes,
+        supply_allocator_blocks: s.allocator_blocks,
+        cause: join([
+          "cache capacity REFUSED at rank ", to_string(s.rank), ": ", to_string(seats), " seats at ",
+          to_string(token_count_value(t: length)), " tokens require ", to_string(allocator_block_count_value(c: demand_blocks)),
+          " allocator blocks by the exact roster fold, which exceeds the rank's inventory of ",
+          to_string(allocator_block_count_value(c: s.allocator_blocks)), " blocks",
+        ], "") as NonEmptyStr,
+      }
+    }))
+}
+
+// THE PROVED CORNER, reached only when no rank refused: the worst (least) arena headroom across
+// the ranks, named with its rank.
+fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, demand_bytes: ByteSize, seats: Nat, length: TokenCount) -> CacheFitVerdict {
+  let headrooms = map(supplies, s => ArmRankCacheSupply {
+    rank: s.rank,
+    allocator_blocks: s.allocator_blocks,
+    admitted_kv_arena_bytes: byte_size(count: byte_size_count(b: s.admitted_kv_arena_bytes) - byte_size_count(b: demand_bytes)),
+  })
+  let worst = fold(headrooms, init: first(headrooms), f: (acc, s) => match acc {
+    Absent => Present { value: s }
+    Present { value: a } =>
+      match byte_size_count(b: s.admitted_kv_arena_bytes) < byte_size_count(b: a.admitted_kv_arena_bytes) {
+        true => Present { value: s }
+        false => acc
+      }
+  })
+  match worst {
+    Absent => CacheFitUnestablished { obligations: ["unreachable: a supply roster that passed the count wall has a first rank" as NonEmptyStr] }
+    Present { value: w } => CacheFitProved {
+      rank: w.rank,
+      seats: seats,
+      length: length,
+      demand_bytes: demand_bytes,
+      headroom_bytes: w.admitted_kv_arena_bytes,
+    }
+  }
+}
+
+// THE WITHDRAWN MOVE, CARRIED AS A NAMED CANDIDATE. floor(printed_pool_tokens / context) is how the
+// six-seat figure arrived; it is a full-context-equivalent projection divided by a context, not a
+// fold over the roster, and NO function consumes this candidate into any verdict -- the only way
+// to hold it is as what it is. The standing string says so wherever the candidate travels.
+type CacheCapacityCandidate {
+  printed_pool_tokens: TokenCount
+  division_length: TokenCount
+  seats_by_division: Nat
+  standing: NonEmptyStr
+}
+
+fn cache_capacity_candidate(printed_pool_tokens: TokenCount, division_length: TokenCount) -> CacheCapacityCandidate? {
+  match token_count_value(t: division_length) == 0 {
+    true => none
+    false =>
+      Present { value: CacheCapacityCandidate {
+        printed_pool_tokens: printed_pool_tokens,
+        division_length: division_length,
+        seats_by_division: token_count_value(t: printed_pool_tokens) / token_count_value(t: division_length),
+        standing: "CacheCapacityCandidate: floor of the printed full-context-equivalent token figure divided by a context length -- a sizing hint, never a proof; the cache subproof decides only by the direct roster fold" as NonEmptyStr,
+      } }
+  }
+}
+
+// ── THE WHOLE-ARM STANDING ───────────────────────────────────────────────────────────────────────
+//
+// THE WHOLE VERDICT IS THE CONJUNCTION OF SUBPROOFS (docs/plans/moa-memory-modeling.md):
+// StaticResidencyFit, CacheCapacityFit, PrefillTransientFit, DecodeTransientFit, LoadTransientFit,
+// SupplyReserveFit. FitProved only when every applicable rank x phase proves. The standing below
+// carries the arm verdict and the cache subproof verdict side by side and names every open
+// obligation with its subproof, which is the honest current state: a proved cache with an open
+// prefill transient is CacheFitProved beside ArmMemoryFitUnestablished, never a whole-arm fit.
+fn cache_verdict_obligations(v: CacheFitVerdict) -> List<NonEmptyStr> {
+  match v {
+    CacheFitProved { rank: _, seats: _, length: _, demand_bytes: _, headroom_bytes: _ } => [] as List<NonEmptyStr>
+    CacheFitRefused { rank: _, seats: _, length: _, demand_bytes: _, demand_blocks: _, supply_arena_bytes: _, supply_allocator_blocks: _, cause: c } => [c]
+    CacheFitUnestablished { obligations: os } => os
+  }
+}
+
+fn arm_verdict_obligations(v: ArmMemoryFitVerdict) -> List<NonEmptyStr> {
+  match v {
+    ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => [] as List<NonEmptyStr>
+    ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } => [c]
+    ArmMemoryFitUnestablished { obligations: os } => os
+  }
+}
+
+// THE SPARSE-INDEXER PREFILL BUFFER, as a CANDIDATE: the owner directive cites the upstream formula
+// (40 index entries per model token, 132 bytes per entry -- the 128-dim FP8 vector plus its scale,
+// ~1.29 GiB per applicable rank at 262144 tokens). THE CITATION IS NOT YET THE PINNED SOURCE: the
+// formula awaits being read in the deployed engine revision (vllm@8d09804c8) before it discharges
+// anything, and until then the prefill transient term is open with this candidate carried beside
+// the obligation. WHICH RANKS the buffer lands on (the sparse layers' TP shard) is part of what
+// the pinned-source read owes.
+fn sparse_indexer_prefill_buffer_candidate(length: TokenCount) -> ByteSize {
+  byte_size(count: 40 * 132 * token_count_value(t: length))
+}
+
+fn arm_prefill_transient_obligation(length: TokenCount) -> NonEmptyStr {
+  join([
+    "prefill-transient-fit is unestablished at ", to_string(token_count_value(t: length)),
+    " tokens: the sparse-indexer prefill buffer (owner-directive formula 40 entries per model token x 132 bytes = ",
+    to_string(byte_size_count(b: sparse_indexer_prefill_buffer_candidate(length: length))),
+    " bytes per applicable rank) is cited from docs/plans/moa-memory-modeling.md and awaits citation against the pinned runtime source (vllm@8d09804c8) before it bounds anything; the applicable-rank population is open with it",
+  ], "") as NonEmptyStr
+}
+
+type ArmMemoryWholeStanding {
+  cache_verdict: CacheFitVerdict
+  arm_verdict: ArmMemoryFitVerdict
+  open_obligations: List<NonEmptyStr>
+}
+
+// THE STANDING ASSEMBLY: both verdicts, and the open obligations named with their subproof --
+// cache obligations as they stand, arm obligations as they stand, and the prefill transient
+// obligation the arm verdict does not yet price (it names the subproof the directive adds to the
+// conjunction).
+fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, arm: ArmMemoryFitVerdict, subject_length: TokenCount) -> ArmMemoryWholeStanding {
+  ArmMemoryWholeStanding {
+    cache_verdict: cache,
+    arm_verdict: arm,
+    open_obligations: concat(
+      map(cache_verdict_obligations(v: cache), o => join(["cache-capacity-fit: ", o as String], "") as NonEmptyStr),
+      concat(
+        map(arm_verdict_obligations(v: arm), o => join(["arm-memory-fit: ", o as String], "") as NonEmptyStr),
+        [arm_prefill_transient_obligation(length: subject_length)])),
+  }
+}
+
+data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "DISCHARGED 2026-09-24: the typed receipt join (ArmComponentReceipt, arm_memory_fit_subject_with_receipts) replaced the wire-containment provenance check with a construction-level join -- receipts name their term by (rank, component) and the measurement contract governs discharge. WHAT REMAINS: the receipt TEXT still carries the identity wires for provenance; the typed identity ride-along (a receipt record carrying checkpoint/runtime/topology as fields, compared by equality) is the remaining rung, landed when the bounded-experiment observer's capture leg mints receipts from live captures instead of witness fixtures. THE MoA RUNG (owner directive 2026-09-25): MemoryProofSubject and the MemoryTerm census bind every term to the seven-axis subject, and the wet-receipt admission (arm_admit_wet_binding) enforces the receipt-subject compatibility law -- the typed identity ride-along lands with the same observer work, at which point the measured_on wires become subject equality rather than containment." as NonEmptyStr)

@@ -1,0 +1,416 @@
+module gunbc.spark.arm_memory_experiment_observed
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.checked_arithmetic { nat_magnitude }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  TokenCount, token_count, token_count_value,
+  gibibyte_scale_factor_bytes, concurrent_request_hundredths, basis_point,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.runtime_defaults { Vllm8d09804, defaults_source_revision }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency,
+}
+import extdeps.vllm.engine_args { PrefixCachingExplicit }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout {
+  VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
+}
+import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4 }
+import gunbc.spark.serving_capacity_intent {
+  uniform_cold_seats, profile_for_intent,
+  ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+import gunbc.spark.arm_memory_fit {
+  MemoryProofSubject, MemoryProofSubjectMint, MemoryProofSubjectReady, MemoryProofSubjectRefused,
+  memory_proof_subject_for_launch,
+  MemoryTerm, MemoryScalingLaw, MemoryScalingStaticResidency, MemoryScalingPhaseTransient,
+  MemoryPlacementLaw, MemoryPlacementCheckpointPlacement, MemoryPlacementPhaseWorkspace,
+  MemoryPlacementRankResident, MemoryPlacementAllocatorCarve,
+  MemoryLifetime, MemoryLifetimeProcess, MemoryLifetimeLaunch, MemoryLifetimePhase,
+  ArmMemoryComponent, ArmCheckpointResidency, ArmActivationWorkspace, ArmGraphCapture, ArmKvCache,
+  ArmComponentBound, ComponentBoundOpen,
+  ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseGraphCapture, ArmPhaseIdleServing,
+  ArmWetStanding, ArmWetObservedInterval, ArmWetObservationOnly, ArmWetCompositeObservation,
+  ArmWetGraphAttributionUnestablished, ArmWetBindingAdmission,
+  ArmWetReceiptBinding, arm_admit_wet_binding,
+  CacheCapacityCandidate, cache_capacity_candidate,
+}
+
+// ── THE WET RECEIPT BUNDLE OF 2026-09-25 ─────────────────────────────────────────────────────────
+//
+// ONE BOUNDED EXPERIMENT'S MEMORY READINGS, bound per the MoA doctrine (docs/plans/
+// moa-memory-modeling.md, owner directive 2026-09-25). The experiment: the group B bounded run --
+// one 65536-token seat, 2048 batched tokens, fp8 KV, decided utilization 8567 basis points -- on
+// the NoPE-derived GB10 runtime (engine self-report v0.1.dev1+g8d09804c8) across four Sparks,
+// TP0 srv9, TP1 srv10, TP2 srv12, TP3 srv11. THE HEAD printed "GPU KV cache size: 1,805,689
+// tokens" and "Maximum concurrency for 65,536 tokens per request: 27.55x"; the ranks carried the
+// memory breakdown below, read at two decimal places of GiB. TP3 (srv11) is the limiting rank of
+// that launch: the smallest pool, the smallest envelope, the smallest KV arena.
+//
+// THIS MODULE OWNS THE OBSERVATION, not the law. Every figure below is raw, dated, host-keyed
+// evidence; the standings each figure is admitted to, the subject they bind to, and the walls they
+// hit are gunbc.spark.arm_memory_fit's vocabulary, imported here and applied in
+// arm_experiment_2026_09_25_bindings and arm_experiment_2026_09_25_admit below. The binding
+// decisions the doctrine prescribes are written where the figures live so a figure and its
+// standing cannot drift apart: pools and KV arenas are OBSERVED INTERVALS at the reporter's
+// rounding unit (a reading at two decimal places is an interval, and it bounds nothing until a
+// bounding protocol promotes it); weights+nontorch is a COMPOSITE observation -- rank-specific
+// model/runtime residency at the experiment phase, NOT a checkpoint-placement receipt; the
+// activation figures are observations valid ONLY at the 64Kx1 / 2048-batched subject; TP1's
+// -2.54 GiB graph figure is preserved raw and admitted as GraphAttributionUnestablished -- lower
+// bound 0, upper open, never a credit -- and the positive graph figures are plain observations.
+//
+// THE SUBJECT THE BUNDLE WAS MEASURED ON is the launch's own, and it is bound to the workload the
+// experiment RAN -- one 65536-token seat at a 2048 batch ceiling, as the head's own printed line
+// records -- minted below from the experiment's own workload and the launch generation wire, NOT
+// from whatever the declared restoration intent currently says: a receipt about a 64Kx1 run is
+// evidence about a 64Kx1 subject, and the declared intent moving (the owner's call) does not
+// retroactively move this experiment. A consumer on another subject admits the bindings through
+// arm_memory_fit's compatibility law, which is where a 64Kx1 receipt meets the move to 262Kx6 --
+// not here.
+data arm_experiment_2026_09_25_engine_self_report: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+data arm_experiment_2026_09_25_kv_pool_tokens: Nat = 1805689
+
+data arm_experiment_2026_09_25_max_concurrency_hundredths: Nat = 2755
+
+// THE READINGS, one record per rank, hundredths of GiB exactly as reported (the graph figure
+// carries its sign; TP1's is the negative one). The host names are part of the observation: a
+// rank reading is meaningless without the unit it was read from, and TP3's identity as srv11 is
+// what makes the limiting rank locatable.
+type ArmExperimentRankFigures {
+  rank: Nat
+  host: NonEmptyStr
+  pool_hundredths_gib: Nat
+  envelope_hundredths_gib: Nat
+  weights_nontorch_hundredths_gib: Nat
+  activation_hundredths_gib: Nat
+  graph_hundredths_gib: Int
+  kv_arena_hundredths_gib: Nat
+}
+
+data arm_experiment_2026_09_25_rank_figures: List<ArmExperimentRankFigures> = [
+  ArmExperimentRankFigures {
+    rank: 0, host: "srv9" as NonEmptyStr,
+    pool_hundredths_gib: 12169, envelope_hundredths_gib: 10425,
+    weights_nontorch_hundredths_gib: 7701, activation_hundredths_gib: 316,
+    graph_hundredths_gib: 2, kv_arena_hundredths_gib: 2408,
+  },
+  ArmExperimentRankFigures {
+    rank: 1, host: "srv10" as NonEmptyStr,
+    pool_hundredths_gib: 12169, envelope_hundredths_gib: 10425,
+    weights_nontorch_hundredths_gib: 8106, activation_hundredths_gib: 426,
+    graph_hundredths_gib: -254, kv_arena_hundredths_gib: 1893,
+  },
+  ArmExperimentRankFigures {
+    rank: 2, host: "srv12" as NonEmptyStr,
+    pool_hundredths_gib: 12169, envelope_hundredths_gib: 10425,
+    weights_nontorch_hundredths_gib: 8066, activation_hundredths_gib: 376,
+    graph_hundredths_gib: 7, kv_arena_hundredths_gib: 1984,
+  },
+  ArmExperimentRankFigures {
+    rank: 3, host: "srv11" as NonEmptyStr,
+    pool_hundredths_gib: 11969, envelope_hundredths_gib: 10254,
+    weights_nontorch_hundredths_gib: 8159, activation_hundredths_gib: 392,
+    graph_hundredths_gib: 9, kv_arena_hundredths_gib: 1703,
+  },
+]
+
+data arm_experiment_2026_09_25_limiting_rank: Nat = 3
+
+data arm_experiment_2026_09_25_generation: NonEmptyStr = "group-b/bounded-experiment-2026-09-25" as NonEmptyStr
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE EXPERIMENT'S OWN SUBJECT, minted from the workload the experiment RAN, not from whatever
+// the declared restoration intent currently says: the receipt records one 65,536-token seat at a
+// 2048 batch ceiling (the head printed "Maximum concurrency for 65,536 tokens per request"), the
+// allocator axis is the decision it ran at (8567 basis points, fp8 KV wire), and a receipt about
+// a 64Kx1 run is evidence about a 64Kx1 subject. THE DECLARED INTENT MOVING IS THE OWNER'S CALL
+// and does not retroactively move this experiment: the day the declared configuration changes,
+// this subject stays bound to the run that produced these readings, and the compatibility law in
+// gunbc.spark.arm_memory_fit is where the two subjects meet. Absent means the experiment's own
+// workload refuses to derive -- a state the bindings below cannot be claimed in.
+fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
+  match uniform_cold_seats(each: token_count(count: 65536), seats: 1, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } =>
+      MemoryProofSubjectRefused { cause: "the experiment's own workload (one 65536-token seat at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: experiment_intent } =>
+      memory_proof_subject_for_launch(
+        checkpoint: Glm53NativeFp8,
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_intent(
+          intent: experiment_intent,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true }),
+        launch_generation: arm_experiment_2026_09_25_generation,
+      )
+  }
+}
+
+fn arm_experiment_2026_09_25_subject() -> MemoryProofSubject? {
+  match arm_experiment_2026_09_25_subject_mint() {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// ── FIGURE TO BYTES: THE REPORTER'S ROUNDING UNIT IS THE INTERVAL WIDTH ──────────────────────────
+//
+// A reading at two decimal places of GiB is a rounding observation: the true value lies within
+// half a reporting unit of the printed figure, so a reading of h hundredths is an interval
+// [(2h-1)/200, (2h+1)/200) GiB -- width exactly the reporter's rounding unit, 0.01 GiB. The floor
+// form prices a point; the interval form preserves what the reading actually establishes. The
+// scale factor is std.measure's own (gibibyte_scale_factor_bytes = 2^30), not a local literal.
+fn arm_experiment_gib_hundredths_floor(hundredths: Nat) -> ByteSize {
+  byte_size(count: hundredths * gibibyte_scale_factor_bytes() / 100)
+}
+
+fn arm_experiment_gib_hundredths_lower(hundredths: Nat) -> ByteSize {
+  byte_size(count: (2 * hundredths - 1) * gibibyte_scale_factor_bytes() / 200)
+}
+
+fn arm_experiment_gib_hundredths_upper(hundredths: Nat) -> ByteSize {
+  byte_size(count: ((2 * hundredths + 1) * gibibyte_scale_factor_bytes() + 199) / 200)
+}
+
+// ── THE HEAD'S PRINTED CAPACITY, AS OBSERVED ─────────────────────────────────────────────────────
+//
+// The two startup lines exactly as the head EngineCore printed them, bound to the deployed
+// engine's self-reported revision (vllm@8d09804c8) -- NOT the capacity-arithmetic revision
+// kv_layout models (1967a5627): this is a reading of what THAT engine printed, and nothing here
+// upgrades it to evidence about another revision. The pool figure is a full-context-equivalent
+// projection; dividing it by a context length yields only the candidate below.
+fn arm_experiment_2026_09_25_pool_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: GpuKvCacheSize,
+    captured_text: "GPU KV cache size: 1,805,689 tokens" as NonEmptyStr,
+    observed_at_revision: defaults_source_revision(r: Vllm8d09804),
+  )
+}
+
+fn arm_experiment_2026_09_25_concurrency_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: MaximumConcurrency,
+    captured_text: "Maximum concurrency for 65,536 tokens per request: 27.55x" as NonEmptyStr,
+    observed_at_revision: defaults_source_revision(r: Vllm8d09804),
+  )
+}
+
+fn arm_experiment_2026_09_25_reported_capacity() -> VllmReportedCapacity? {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: arm_experiment_2026_09_25_kv_pool_tokens),
+    reading: arm_experiment_2026_09_25_pool_reading(),
+  ) {
+    KvPoolRefused { cause: _ } => none
+    KvPoolAdmitted { pool: pool } =>
+      match vllm_reported_capacity(
+        pool: pool,
+        max_concurrency: concurrent_request_hundredths(count: arm_experiment_2026_09_25_max_concurrency_hundredths),
+        reading: arm_experiment_2026_09_25_concurrency_reading(),
+      ) {
+        ReportedCapacityRefused { cause: _ } => none
+        ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+      }
+  }
+}
+
+// THE CANDIDATE THE WITHDRAWN MOVE ARRIVED AT: floor(1,805,689 / 262,144) = 6 seats. Carried as
+// exactly what it is -- a sizing hint from dividing a full-context-equivalent projection, with no
+// path into any verdict -- and the standing string it travels with says so.
+fn arm_experiment_2026_09_25_six_seat_candidate() -> CacheCapacityCandidate? {
+  cache_capacity_candidate(
+    printed_pool_tokens: token_count(count: arm_experiment_2026_09_25_kv_pool_tokens),
+    division_length: token_count(count: 262144),
+  )
+}
+
+// ── THE RANK BINDINGS: EVERY FIGURE BESIDE ITS DOCTRINE-STANDING ─────────────────────────────────
+//
+// SIXTEEN BINDINGS, four per rank: weights+nontorch, activation, graph, KV arena. The term each
+// figure binds to names the mechanism the figure was read from (the census authority for scaling
+// laws lives in gunbc.spark.arm_memory_fit; the derivations below are this observation's own
+// prose); the standing is the doctrine's assignment; the measured_on subject is the experiment's.
+// The term BOUND stays open in every binding -- a wet observation is not a bound, and the
+// standing carries what the reading establishes until a bounding protocol or a derivation
+// discharges the obligation.
+fn arm_experiment_2026_09_25_provenance(host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "2026-09-25 bounded experiment (1x65536, 2048 batched, fp8 KV, 8567 basis points, engine ",
+    arm_experiment_2026_09_25_engine_self_report as String, ") on ", host as String,
+    ", memory-profile breakdown at the experiment phase",
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_2026_09_25_open_bound(obligation: NonEmptyStr) -> ArmComponentBound {
+  ComponentBoundOpen { obligation: obligation }
+}
+
+fn arm_experiment_2026_09_25_rank_bindings(figures: ArmExperimentRankFigures, measured_on: MemoryProofSubject) -> List<ArmWetReceiptBinding> {
+  let provenance = arm_experiment_2026_09_25_provenance(host: figures.host)
+  [
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmCheckpointResidency,
+        placement_law: MemoryPlacementCheckpointPlacement,
+        scaling_law: MemoryScalingStaticResidency,
+        phase: ArmPhaseModelLoad,
+        lifetime: MemoryLifetimeProcess,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "the composite reading bounds no placement term; per-rank checkpoint placement stays open until a CheckpointRankResidencyBound measurement mints it" as NonEmptyStr),
+        derivation: "weights+nontorch composite profile reading: checkpoint-resident bytes plus runtime-fixed, allocator, communication and other non-Torch allocations, read as one figure at the experiment phase" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: ArmWetCompositeObservation {
+        bytes: arm_experiment_gib_hundredths_floor(hundredths: figures.weights_nontorch_hundredths_gib),
+        receipt: provenance,
+        why: "composite: does not separate checkpoint tensors from runtime-fixed, allocator, communication or other non-Torch allocations, so it is admitted as evidence but can never discharge the checkpoint-placement obligation" as NonEmptyStr,
+      },
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmActivationWorkspace,
+        placement_law: MemoryPlacementPhaseWorkspace,
+        scaling_law: MemoryScalingPhaseTransient,
+        phase: ArmPhaseProfiling,
+        lifetime: MemoryLifetimePhase,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "one experiment's activation reading bounds nothing above; an ActivationWorkspaceBound measurement with a bounding protocol discharges it, and only at the subject it was read from" as NonEmptyStr),
+        derivation: "activation and per-batch workspaces at the profiled shape the experiment ran: one 65536-token seat, 2048 batched tokens" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: ArmWetObservationOnly {
+        bytes: arm_experiment_gib_hundredths_floor(hundredths: figures.activation_hundredths_gib),
+        receipt: provenance,
+        why: "single sample at the 64Kx1 / 2048-batched subject: valid only there, refused by the compatibility law on any other workload" as NonEmptyStr,
+      },
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmGraphCapture,
+        placement_law: MemoryPlacementRankResident,
+        scaling_law: MemoryScalingStaticResidency,
+        phase: ArmPhaseGraphCapture,
+        lifetime: MemoryLifetimeLaunch,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "the graph figure bounds no term: a positive single sample is an observation, and the negative one is an attribution refusal; a GraphCaptureBound measurement discharges the term" as NonEmptyStr),
+        derivation: "CUDA graph capture workspace reading at the experiment phase" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: arm_experiment_2026_09_25_graph_standing(figures: figures, provenance: provenance),
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmKvCache,
+        placement_law: MemoryPlacementAllocatorCarve,
+        scaling_law: MemoryScalingStaticResidency,
+        phase: ArmPhaseIdleServing,
+        lifetime: MemoryLifetimeLaunch,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "the observed carve bounds no demand term; the arena is supply evidence for the cache fold once a roster exists, and the cache subproof decides by the direct fold alone" as NonEmptyStr),
+        derivation: "admitted KV arena carve at the experiment's allocator decision (8567 basis points on the rank's pool): what the engine's profiling left for the cache, observed on this rank" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: ArmWetObservedInterval {
+        lower: arm_experiment_gib_hundredths_lower(hundredths: figures.kv_arena_hundredths_gib),
+        upper: arm_experiment_gib_hundredths_upper(hundredths: figures.kv_arena_hundredths_gib),
+        receipt: provenance,
+      },
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+  ]
+}
+
+// THE GRAPH STANDING, signed per rank: the negative reading is preserved raw and admitted as the
+// attribution refusal (lower bound 0, upper open, never a credit); the positive readings are
+// plain observations. THE RAW VALUE IS NOT DISCARDED ANYWHERE: TP1's -254 rides in the standing
+// for the record; what it cannot do is improve a verdict.
+fn arm_experiment_2026_09_25_graph_standing(figures: ArmExperimentRankFigures, provenance: NonEmptyStr) -> ArmWetStanding {
+  match figures.graph_hundredths_gib < 0 {
+    true => ArmWetGraphAttributionUnestablished {
+      raw_hundredths_gib: figures.graph_hundredths_gib,
+      receipt: join([provenance as String, " -- graph figure negative: the profiler interval includes a release, so the interval cannot be attributed to the capture mechanism; preserved raw, admitted as lower bound 0, upper open"], "") as NonEmptyStr,
+    }
+    false => ArmWetObservationOnly {
+      bytes: arm_experiment_gib_hundredths_floor(hundredths: nat_magnitude(a: figures.graph_hundredths_gib)),
+      receipt: provenance,
+      why: "positive single sample at the experiment phase: an observation, not a bound" as NonEmptyStr,
+    }
+  }
+}
+
+// ALL SIXTEEN BINDINGS, or none while the subject refuses.
+fn arm_experiment_2026_09_25_bindings() -> List<ArmWetReceiptBinding> {
+  match arm_experiment_2026_09_25_subject() {
+    Absent => [] as List<ArmWetReceiptBinding>
+    Present { value: measured_on } =>
+      flat_map(arm_experiment_2026_09_25_rank_figures, f => arm_experiment_2026_09_25_rank_bindings(figures: f, measured_on: measured_on))
+  }
+}
+
+// ── THE SUPPLY READINGS: POOL AND ENVELOPE PER RANK ──────────────────────────────────────────────
+//
+// The device pool and the decided envelope as observations of the same launch. The envelope is
+// DERIVED here from the observed pool interval at the experiment's utilization decision -- the
+// engine prints its own envelope, and the bundle records that print beside the derivation so the
+// two are comparable: the printed figure lands inside the derived interval, which is the check
+// that the print and the pool describe one launch.
+type ArmExperimentPoolReading {
+  rank: Nat
+  host: NonEmptyStr
+  lower: ByteSize
+  upper: ByteSize
+  how: NonEmptyStr
+}
+
+type ArmExperimentEnvelopeReading {
+  rank: Nat
+  host: NonEmptyStr
+  printed_hundredths_gib: Nat
+  derived_lower: ByteSize
+  derived_upper: ByteSize
+  derivation: NonEmptyStr
+}
+
+fn arm_experiment_2026_09_25_pool_readings() -> List<ArmExperimentPoolReading> {
+  map(arm_experiment_2026_09_25_rank_figures, f => ArmExperimentPoolReading {
+    rank: f.rank,
+    host: f.host,
+    lower: arm_experiment_gib_hundredths_lower(hundredths: f.pool_hundredths_gib),
+    upper: arm_experiment_gib_hundredths_upper(hundredths: f.pool_hundredths_gib),
+    how: join([
+      "device pool read at the experiment phase on ", f.host as String,
+      " at two decimal places of GiB; the interval's width is the reporter's rounding unit, and the reading bounds nothing until a bounding protocol promotes it",
+    ], "") as NonEmptyStr,
+  })
+}
+
+fn arm_experiment_2026_09_25_envelope_readings() -> List<ArmExperimentEnvelopeReading> {
+  map(arm_experiment_2026_09_25_rank_figures, f => ArmExperimentEnvelopeReading {
+    rank: f.rank,
+    host: f.host,
+    printed_hundredths_gib: f.envelope_hundredths_gib,
+    derived_lower: byte_size(count: byte_size_count(b: arm_experiment_gib_hundredths_lower(hundredths: f.pool_hundredths_gib)) * 8567 / 10000),
+    derived_upper: byte_size(count: (byte_size_count(b: arm_experiment_gib_hundredths_upper(hundredths: f.pool_hundredths_gib)) * 8567 + 9999) / 10000),
+    derivation: "decided envelope derived from the observed pool interval at the experiment's 8567 basis-point utilization decision: pool lower x utilization floor for the lower endpoint, pool upper x utilization ceiling for the upper" as NonEmptyStr,
+  })
+}
+
+// THE ADMISSION OF THE WHOLE BUNDLE AGAINST A TARGET SUBJECT: every binding through the
+// compatibility law. On the experiment's own subject all sixteen admit (the composite readings as
+// evidence, the negative graph figure preserved raw with zero credit, the activation readings
+// scoped to the only workload they describe); on a 262Kx6 target the workload-sensitive bindings
+// refuse by name, the static ones transfer, and the composite ones still discharge nothing.
+fn arm_experiment_2026_09_25_admit(target: MemoryProofSubject) -> List<ArmWetBindingAdmission> {
+  map(arm_experiment_2026_09_25_bindings(), b => arm_admit_wet_binding(binding: b, target: target))
+}
