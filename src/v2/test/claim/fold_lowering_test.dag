@@ -359,7 +359,7 @@ test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE SPLIT ITSELF. A well-formed fold still lowers,
 // so none of the above is green merely because the authority stopped lowering.
-test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+fn well_formed_fold_lowers_through_the_split() -> Bool {
   match lowering_of(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: l } =>
@@ -370,6 +370,10 @@ test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
         FoldCallNotAFold { diagnostic: _ } => false
       }
   }
+}
+
+test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+  flp_outcomes().well_formed_still_lowers
 }
 
 // A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm. Read off flp_outcomes below.
@@ -434,12 +438,13 @@ fn non_fold_call_selects_not_a_fold() -> Bool {
 // ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Each claim below
 // inspects one verdict of a front end over a supplied snippet, and the front end alone is more than
 // one claim's new-witness budget -- the ingest is the expense, not the assertion (DESIGN section 3,
-// a witness discriminates at one interface). The stored value is three Bools: no Node, no context,
+// a witness discriminates at one interface). The stored value is four Bools: no Node, no context,
 // no closure, so it is portable.
 type FlpOutcomes {
   positional_matches_named: Bool
   positional_named_step_unresolved: Bool
   non_fold_is_not_a_fold: Bool
+  well_formed_still_lowers: Bool
 }
 
 fn flp_outcomes() -> FlpOutcomes {
@@ -449,7 +454,8 @@ fn flp_outcomes() -> FlpOutcomes {
       source_text: positional_named_step_fold_snippet,
       file: ^positional_named_step_probe_file
     ),
-    non_fold_is_not_a_fold: non_fold_call_selects_not_a_fold()
+    non_fold_is_not_a_fold: non_fold_call_selects_not_a_fold(),
+    well_formed_still_lowers: well_formed_fold_lowers_through_the_split()
   }
 }
 

@@ -605,9 +605,9 @@ import v2.std.collection { List }
 // THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
 // over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
-// THE FOLD-LOWERING DISPOSITION ROW IS THE SAME GROUND AT THREE SPECIMENS:
-// v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step and
-// non-fold snippets once and stores three Bool verdicts; MQ-1's first floor run refused each claim
+// THE FOLD-LOWERING DISPOSITION ROW IS THE SAME GROUND AT FOUR SPECIMENS:
+// v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
+// non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
