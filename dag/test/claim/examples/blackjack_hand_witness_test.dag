@@ -1,0 +1,93 @@
+module test.claim.examples.blackjack_hand_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import examples.blackjack.cards { Card, Ace, Five, Nine, Ten, King, Queen, Clubs, Diamonds, Hearts, Spades }
+import examples.blackjack.hand { Hand, hand_value, is_bust, is_blackjack }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ace_nine() -> Hand {
+  Hand {
+    cards: [
+      Card { rank: Ace, suit: Clubs },
+      Card { rank: Nine, suit: Spades }
+    ]
+  }
+}
+
+fn ace_ace_nine() -> Hand {
+  Hand {
+    cards: [
+      Card { rank: Ace, suit: Clubs },
+      Card { rank: Ace, suit: Diamonds },
+      Card { rank: Nine, suit: Hearts }
+    ]
+  }
+}
+
+fn ace_king() -> Hand {
+  Hand {
+    cards: [
+      Card { rank: Ace, suit: Clubs },
+      Card { rank: King, suit: Spades }
+    ]
+  }
+}
+
+fn king_queen() -> Hand {
+  Hand {
+    cards: [
+      Card { rank: King, suit: Clubs },
+      Card { rank: Queen, suit: Spades }
+    ]
+  }
+}
+
+fn king_nine_five() -> Hand {
+  Hand {
+    cards: [
+      Card { rank: King, suit: Clubs },
+      Card { rank: Nine, suit: Diamonds },
+      Card { rank: Five, suit: Hearts }
+    ]
+  }
+}
+
+fn ace_ace_ten() -> Hand {
+  Hand {
+    cards: [
+      Card { rank: Ace, suit: Clubs },
+      Card { rank: Ace, suit: Diamonds },
+      Card { rank: Ten, suit: Hearts }
+    ]
+  }
+}
+
+test fn ace_nine_is_soft_twenty() -> Bool {
+  let v = hand_value(hand: ace_nine())
+  v.total == 20 && v.soft
+}
+
+test fn ace_ace_nine_is_soft_twenty_one() -> Bool {
+  let v = hand_value(hand: ace_ace_nine())
+  v.total == 21 && v.soft
+}
+
+test fn ace_king_is_blackjack() -> Bool {
+  let v = hand_value(hand: ace_king())
+  v.total == 21 && is_blackjack(hand: ace_king())
+}
+
+test fn king_queen_is_hard_twenty() -> Bool {
+  let v = hand_value(hand: king_queen())
+  v.total == 20 && v.soft == false
+}
+
+test fn king_nine_five_is_bust() -> Bool {
+  is_bust(v: hand_value(hand: king_nine_five()))
+}
+
+test fn ace_ace_ten_is_hard_twelve() -> Bool {
+  let v = hand_value(hand: ace_ace_ten())
+  v.total == 12 && v.soft == false
+}
