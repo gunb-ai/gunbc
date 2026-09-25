@@ -1330,8 +1330,8 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
 }
 
 // THIS MODE READS; IT INSTALLS NOTHING. The microVM network mutations are not granted to the job
-// user and must not be -- that pair would be root (gunbc.runner_microvm_network_converge
-// microvm_network_host_mutation_principal_frontier) -- so this mode reads the slot taps, their
+// user and must not be -- that pair would be root (review 69104; the
+// mutations run under gunbc.runner_microvm_network_apply) -- so this mode reads the slot taps, their
 // addresses, routes and v6 standing, the host's forwarding, ruleset digest and helper standing, and
 // records them as a ConvergedSlotNetwork receipt. It is its own dispatch rather than a step of the
 // host converge because the two fail for different reasons and an operator routinely wants one

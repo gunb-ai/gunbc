@@ -1,5 +1,6 @@
 module test.claim.random_bytes_csprng_witness
 import extdeps.entropy { Urandom }
+import std.encoding { base64_decode, base64_encode, base64_octets }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

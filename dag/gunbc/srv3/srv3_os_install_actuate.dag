@@ -1,5 +1,13 @@
 module gunbc.srv3_os_install_actuate
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.access_token_source { access_token_upsert_required_reason }
+import gunbc.nbd_proxy_virtual_media_install { srv3_os_install_actuator_plan_standing }
+import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_body_path }
+import gunbc.srv3_bmc_credential_resolve { bmcweb_login_body_content, materialize_bmc_login_password, observe_and_resolve_srv3_bmc_credential, srv3_os_install_actuate_credential_intent }
+import gunbc.srv3_host_effect_apply { srv3_apply_to_process_exit, srv3_bmcweb_session_login_apply, srv3_bmcweb_token_extract_apply, srv3_nbd_proxy_serve_apply }
+import std.process { exit_failure }
+import gunbc.host_effect_realize { host_effect_apply, host_effect_apply_gated }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_resolve }
 
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {

@@ -2096,7 +2096,7 @@ pub fn authored_name_at(
                     v1_rt::substring(
                         &span.file.clone(),
                         8,
-                        (v1_rt::string_length(&span.file.clone()) - 1),
+                        v1_rt::int_sub(v1_rt::string_length(&span.file.clone()), 1),
                     )
                 } else {
                     node.name.clone()
@@ -2327,7 +2327,7 @@ pub struct ChildRole {
 pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
-            serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
+            serde_json::from_str("{\"ExprFieldAccess\": [{\"name\": \"base\", \"accessor\": \"field_access_base\", \"position\": 0, \"required\": true}], \"ExprBinOp\": [{\"name\": \"left\", \"accessor\": \"binop_left\", \"position\": 0, \"required\": true}, {\"name\": \"right\", \"accessor\": \"binop_right\", \"position\": 1, \"required\": true}], \"ExprUnaryOp\": [{\"name\": \"operand\", \"accessor\": \"unaryop_operand\", \"position\": 0, \"required\": true}], \"ExprIf\": [{\"name\": \"condition\", \"accessor\": \"if_condition\", \"position\": 0, \"required\": true}, {\"name\": \"then\", \"accessor\": \"if_then_branch\", \"position\": 1, \"required\": true}, {\"name\": \"else\", \"accessor\": \"if_else_branch\", \"position\": 2, \"required\": false}], \"ExprMatch\": [{\"name\": \"scrutinee\", \"accessor\": \"match_scrutinee\", \"position\": 0, \"required\": true}], \"ExprLet\": [{\"name\": \"value\", \"accessor\": \"let_value\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"let_body\", \"position\": 1, \"required\": false}], \"ExprLambda\": [{\"name\": \"body\", \"accessor\": \"lambda_body\", \"position\": 0, \"required\": true}], \"ExprMethodCall\": [{\"name\": \"receiver\", \"accessor\": \"method_receiver\", \"position\": 0, \"required\": true}], \"ExprCast\": [{\"name\": \"expr\", \"accessor\": \"cast_expr\", \"position\": 0, \"required\": true}, {\"name\": \"target\", \"accessor\": \"cast_target\", \"position\": 1, \"required\": true}], \"ExprForEach\": [{\"name\": \"collection\", \"accessor\": \"foreach_collection\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"foreach_body\", \"position\": 1, \"required\": true}], \"ExprIndex\": [{\"name\": \"base\", \"accessor\": \"index_base\", \"position\": 0, \"required\": true}, {\"name\": \"index\", \"accessor\": \"index_expr\", \"position\": 1, \"required\": true}], \"ExprSlice\": [{\"name\": \"base\", \"accessor\": \"slice_base\", \"position\": 0, \"required\": true}, {\"name\": \"start\", \"accessor\": \"slice_start\", \"position\": 1, \"required\": true}, {\"name\": \"end\", \"accessor\": \"slice_end\", \"position\": 2, \"required\": true}], \"ExprReturn\": [{\"name\": \"value\", \"accessor\": \"return_value\", \"position\": 0, \"required\": true}]}")
                 .expect("valid data definition")
         };
     }
@@ -2337,7 +2337,7 @@ pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
 pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
-            serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
+            serde_json::from_str("{\"Arg\": [{\"name\": \"value\", \"accessor\": \"arg_value\", \"position\": 0, \"required\": true}], \"Arm\": [{\"name\": \"guard\", \"accessor\": \"arm_guard\", \"position\": 0, \"required\": false}, {\"name\": \"body\", \"accessor\": \"arm_body\", \"position\": -1, \"required\": true}], \"FieldInit\": [{\"name\": \"value\", \"accessor\": \"field_init_node_value\", \"position\": 0, \"required\": true}]}")
                 .expect("valid data definition")
         };
     }
@@ -3473,7 +3473,7 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
                 op: UnaryOpKind::Neg,
                 ..
             } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
-                Some(v) => Some((0 - v.clone())),
+                Some(v) => Some(v1_rt::int_sub(0, v.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             _ => std::option::Option::None,
@@ -4108,7 +4108,7 @@ pub fn expr_has_non_tail_self_call(
                                 .iter()
                                 .cloned()
                                 {
-                                    if (p.0.clone() < (ss_count.clone() - 1)) {
+                                    if (p.0.clone() < v1_rt::int_sub(ss_count.clone(), 1)) {
                                         __result.push(p);
                                     }
                                 }
@@ -5009,17 +5009,19 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
         } else {
             offset.clone()
         };
-        let line = ((Rc::new({
-            let mut __result = Vec::new();
-            for o in index.offsets.clone().iter().cloned() {
-                if (o.clone() < clamped.clone()) {
-                    __result.push(o);
+        let line = v1_rt::int_add(
+            (Rc::new({
+                let mut __result = Vec::new();
+                for o in index.offsets.clone().iter().cloned() {
+                    if (o.clone() < clamped.clone()) {
+                        __result.push(o);
+                    }
                 }
-            }
-            __result
-        })
-        .len() as i64)
-            + 1);
+                __result
+            })
+            .len() as i64),
+            1,
+        );
         let line_start = if (line.clone() <= 1) {
             0
         } else {
@@ -5028,14 +5030,14 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
                 .clone()
                 .iter()
                 .cloned()
-                .skip((line.clone() - 2) as usize)
+                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
                 .next()
             {
-                Some(o) => (o.clone() + 1),
+                Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => 0,
             }
         };
-        let col = ((clamped.clone() - line_start.clone()) + 1);
+        let col = v1_rt::int_add(v1_rt::int_sub(clamped.clone(), line_start.clone()), 1);
         LineCol {
             line: line.clone(),
             col: col.clone(),
@@ -5054,10 +5056,10 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
                 .clone()
                 .iter()
                 .cloned()
-                .skip((line.clone() - 2) as usize)
+                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
                 .next()
             {
-                Some(o) => (o.clone() + 1),
+                Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => src_len.clone(),
             }
         };
@@ -5066,7 +5068,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             .clone()
             .iter()
             .cloned()
-            .skip((line.clone() - 1) as usize)
+            .skip(v1_rt::int_sub(line.clone(), 1) as usize)
             .next()
         {
             Some(o) => o.clone(),
@@ -5136,7 +5138,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
                 table: Rc::new(InternTable {
                     strings: v1_rt::rc_list_push(table.strings.clone(), s.clone()),
                     index: v1_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
-                    next_id: (id.clone() + 1),
+                    next_id: v1_rt::int_add(id.clone(), 1),
                     authored_token_ordinals: table.authored_token_ordinals.clone(),
                 }),
                 id: id.clone(),

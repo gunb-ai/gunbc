@@ -9,6 +9,8 @@ import extdeps.access.posix_effective_principal {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.fleet_workflow_steps { gunbc_ci_live_deploy_step_timeout_minutes }
+import std.measure { second_count }
 import gunbc.live_deploy.repository_convergence_placement {
   ConvergencePlacementOperands,
   ConvergencePrincipalAdmission,
@@ -28,6 +30,7 @@ import gunbc.live_deploy.repository_convergence_placement {
   ConvergenceReadbackDecoded,
   ConvergenceReadbackRefused,
   convergence_base_ref,
+  convergence_unit_start_timeout,
   convergence_exec_start,
   convergence_operands_for,
   convergence_principal_admission,
@@ -225,6 +228,18 @@ test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool {
 // parameter because only the deploying shell knows it.
 test fn the_unit_runs_inside_the_runner_checkout_it_reads() -> Bool {
   string_contains(s: srv1_unit_text(), pattern: concat("WorkingDirectory=", fixture_object_source))
+}
+
+// THE ONESHOT IS BOUNDED, AND STRICTLY INSIDE THE STEP THAT WAITS ON IT. A Type=oneshot unit with
+// no TimeoutStartSec= never times out, and the deploy's `systemctl restart` of it blocks until it
+// finishes, so fleet-converge run 36032847731 sat silent until the workflow step's ceiling killed
+// it with no receipt. The discriminating half is the relation: a bound at or above the step
+// ceiling renders a TimeoutStartSec= line and still loses the diagnosis to the step kill.
+test fn the_unit_start_is_bounded_inside_the_deploy_step() -> Bool {
+  let bound = second_count(s: convergence_unit_start_timeout)
+  string_contains(s: srv1_unit_text(), pattern: concat("TimeoutStartSec=", to_string(value: bound)))
+    && bound > 0
+    && bound < gunbc_ci_live_deploy_step_timeout_minutes * 60
 }
 
 // THE ONESHOT JOINS THE DEPLOYMENT'S SLICE. The admitted binary refuses to plan without a cgroup

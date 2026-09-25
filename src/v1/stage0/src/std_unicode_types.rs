@@ -99,7 +99,7 @@ pub fn char_in_class(c: i64, class: CharClass) -> bool {
 }
 
 pub fn unicode_char_code_point(c: i64) -> i64 {
-    (c.clone() + 0)
+    v1_rt::int_add(c.clone(), 0)
 }
 
 pub fn in_block(cp: i64, block: Rc<UnicodeBlock>) -> bool {

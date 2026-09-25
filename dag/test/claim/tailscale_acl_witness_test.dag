@@ -1,5 +1,22 @@
 module test.claim.tailscale_acl_witness
+import std.types { String, Bool }
+import std.disposition { Disposition, Scaffold, Terminal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tailscale.acl {
+  operator_tailscale_acl_policy,
+  tag_ci_quarantine_holds,
+  tag_dashboard_admin_plane_holds,
+  dashboard_cutover_ip_is_transient_in_tag_ci_grant,
+  dashboard_cutover_mac_dissolution_trigger,
+  ssh_members_reach_ci_nonroot_only,
+  ssh_dashboard_reaches_ci_root_and_nonroot,
+  operator_acl_security_spine_holds,
+  tag_dashboard,
+  tag_ci,
+  tailscale_grants_external_authority_holds
+}
+import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
