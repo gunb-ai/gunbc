@@ -565,6 +565,29 @@ fn all_names_distinct(children: List<Edge>) -> Bool {
     }
   })
 }
+// THE EDGES all_names_distinct REFUSES, IN ORDER: each Named edge whose name an earlier edge already
+// carries. Empty exactly when all_names_distinct holds. A producer that must refuse a repeated name
+// at its own locus reads the offending edge here rather than restating the rule.
+type RepeatedNameScan {
+  seen: List<Symbol>
+  repeated: List<Edge>
+}
+
+fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
+  let scanned = fold(children, init: RepeatedNameScan { seen: [], repeated: [] }, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: n } =>
+        if fold(acc.seen, init: false, f: fn(found, s) { found || (s == n) }) {
+          RepeatedNameScan { seen: acc.seen, repeated: concat(acc.repeated, [e]) }
+        } else {
+          RepeatedNameScan { seen: concat(acc.seen, [n]), repeated: acc.repeated }
+        }
+    }
+  })
+  scanned.repeated
+}
+
 fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
   match d {
     NoEdges => count(children) == 0

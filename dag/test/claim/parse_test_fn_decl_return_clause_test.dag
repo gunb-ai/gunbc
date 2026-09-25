@@ -17,7 +17,7 @@ import v2.extdeps.languages.dag {
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +309,128 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
           fold(ne.tail, init: nfbcp_is_door_retention(d: ne.head) && nfbcp_retention_anchored_at_fn_decl(d: ne.head), f: fn(found, d) {
             found || (nfbcp_is_door_retention(d: d) && nfbcp_retention_anchored_at_fn_decl(d: d))
           })
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A REPEATED PARAMETER BINDING REFUSES AT THE SECOND BINDING, NOT AT THE MODULE ROOT.
+//
+// The Arrow domain is a Conj keyed by binding name, so a repeated binding has no well-formed domain.
+// Before v2.compiler.body_lowering_fold body_lower_fn_signature_bindings_refusal the lowering built
+// that Conj and normalize's recursive well_formed gate refused the module with
+// normalize_reason_post_normalize_not_well_formed at the module root (gen-two census:
+// std.key_relation global_key_scope_eq, provider_readiness_independence_claim). These rows run the
+// real parse and normalize route and assert the cause and that the locus is the SECOND binding's
+// type (B; the first is A). Answering optional_absent from the bindings arm restores the
+// ill-formed domain and reds both refusal rows; the distinct-name spelling is the positive control.
+// A repeated `_` is its own cause: a v2-behind-v1 frontier (v1 admits it), not an authoring error.
+data nfbcp_anonymous_repeat_source: String = "module m\nfn g(_: A, _: B) -> Bool { true }\n"
+data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> Bool { true }\n"
+data nfbcp_distinct_binding_source: String = "module m\nfn g(a: A, b: B) -> Bool { true }\n"
+
+fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => id == atom
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn nfbcp_normalize_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Bool {
+  match nfbcp_parsed(text: text) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: (ne.head.reason == reason) && nfbcp_locus_is_atom(d: ne.head, atom: atom), f: fn(found, d) {
+            found || ((d.reason == reason) && nfbcp_locus_is_atom(d: d, atom: atom))
+          })
+      }
+  }
+}
+
+test fn nfbcp_repeated_anonymous_param_refuses_at_the_second_binding_holds() -> Bool {
+  nfbcp_normalize_refuses_with(
+    text: nfbcp_anonymous_repeat_source,
+    reason: ^body_lowering_reason_arrow_domain_anonymous_param_repeated,
+    atom: ^B
+  )
+}
+
+test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {
+  nfbcp_normalize_refuses_with(
+    text: nfbcp_named_repeat_source,
+    reason: ^body_lowering_reason_arrow_domain_param_binding_repeated,
+    atom: ^B
+  )
+}
+
+test fn nfbcp_distinct_param_bindings_normalize_positive_control_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_distinct_binding_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// A REPEATED DECLARATION NAME REFUSES AT THE GRAFT, AT THE SECOND DECLARATION. The module body is a
+// Conj keyed by declaration name; v2.compiler.namespace_graft module_header_containment_graft now
+// refuses a repeated name (gen-two census: two `data fixture_v3_tick_wire` in the roadmap launch
+// witness) instead of building a body the well_formed gate refuses at the root. The locus is the
+// second declaration's member Arrow, whose return type is the discriminator (B; the first is A).
+data nfbcp_repeated_decl_source: String = "module m\ndata x: A = 1\ndata x: B = 2\n"
+
+fn nfbcp_locus_is_arrow_returning(d: Diagnostic, atom: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      fold(a.at.children, init: false, f: fn(found, e) {
+        found || (match node_atom_identity_optional(node: e.target) {
+          Present { value: id } => id == atom
+          Absent => false
+        })
+      })
+    _ => false
+  }
+}
+
+test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_repeated_decl_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: (ne.head.reason == ^namespace_graft_declaration_name_repeated) && nfbcp_locus_is_arrow_returning(d: ne.head, atom: ^B), f: fn(found, d) {
+            found || ((d.reason == ^namespace_graft_declaration_name_repeated) && nfbcp_locus_is_arrow_returning(d: d, atom: ^B))
+          })
+      }
+  }
+}
+
+// AN ANONYMOUS RECORD RETURN TYPE LOWERS; IT IS NOT RETAINED. `-> { success: B }` is a type expression
+// whose captured is a field_decl_block. v2.compiler.body_lowering_fold
+// body_lower_anonymous_record_type_optional reads it through the record declaration's own field-block
+// reader, so the signature is readable and the fn lowers to an Arrow. Before that arm the reader
+// answered Absent and the whole fn_decl was retained, refused by the normalized-tree door (gen-two
+// census: gunbc.tools.cron_tag upsert_tagged_cron_tab). Deleting the arm restores the retention and
+// normalize refuses, which reds this row.
+data nfbcp_anonymous_record_return_source: String = "module m\nfn g() -> { success: B } { h() }\n"
+
+test fn nfbcp_anonymous_record_return_type_lowers_through_normalize_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_anonymous_record_return_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
   }
 }

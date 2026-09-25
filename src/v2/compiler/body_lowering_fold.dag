@@ -95,6 +95,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  repeated_name_edges,
   is_empty_conj_root,
   match_arm_body,
   match_arm_pattern,
@@ -1967,6 +1968,21 @@ fn body_lower_fn_type_lowered_optional(fn_type_shell: Node) -> Optional<Node> {
   }
 }
 
+// AN ANONYMOUS RECORD TYPE IS THE SAME CONJ A RECORD DECLARATION'S BODY IS. `-> { success: Bool }`
+// is a type expression whose captured is a field_decl_block, and a field block already has one
+// reader: body_lower_field_decl_block_payload, which `type R { ... }` and a variant's record payload
+// lower through, giving Conj { success: Bool }. Before this arm the reader had no case for the block,
+// answered Absent, and every fn whose signature carried one was retained whole at the fn_decl shell
+// (gen-two census: gunbc.tools.cron_tag upsert_tagged_cron_tab). A block whose fields cannot be read
+// still answers Absent here and so still retains -- this reader is Optional by contract, and the
+// retention is the counted frontier, not a silent accept.
+fn body_lower_anonymous_record_type_optional(block_shell: Node) -> Optional<Node> {
+  match body_lower_field_decl_block_payload(block_shell: block_shell) {
+    Accepted { value: payload, diagnostics: _ } => optional_present(value: payload)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
 fn body_lower_type_expr_lowered_optional(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -1977,6 +1993,8 @@ fn body_lower_type_expr_lowered_optional(node: Node) -> Optional<Node> {
         }
       } else if id == ^dag_surface_fn_type {
         body_lower_fn_type_lowered_optional(fn_type_shell: node)
+      } else if id == ^dag_surface_field_decl_block {
+        body_lower_anonymous_record_type_optional(block_shell: node)
       } else {
         body_lower_type_atom_from_expr(node: node)
       }
@@ -3043,7 +3061,7 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
 
 // The type-parameter edge is part of the SIGNATURE, so the census grade carries it exactly as the
 // full grade does. A sig whose type parameters are TypeParamsUnreadable never reaches this builder:
-// both arms refuse it first (body_lower_fn_signature_type_params_refusal).
+// both arms refuse it first (body_lower_fn_signature_refusal).
 fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge> {
   match sig.type_params {
     TypeParams { conj: c } => [type_params_edge(conj: c)]
@@ -3052,14 +3070,58 @@ fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge>
   }
 }
 
-fn body_lower_fn_signature_type_params_refusal(shell: Node, sig: BodyLowerFnSignature) -> Optional<Outcome<Node>> {
+// A SIGNATURE THIS LOWERING READ BUT CANNOT BUILD refuses here, at the signature, before either arm
+// builds the Arrow. Two facts qualify: unreadable type parameters (above), and a parameter binding
+// the domain cannot key. The domain is a Conj keyed by binding name (v2.std.node all_names_distinct),
+// so a repeated binding has no well-formed domain. Before this arm the lowering built that Conj
+// anyway and normalize's recursive well_formed gate refused the module AT ITS ROOT with no locus
+// (gen-two census: std.key_relation global_key_scope_eq, gunbc.provider_readiness_claim_evidence
+// provider_readiness_independence_claim). The refusal now lands at the second binding's type node.
+//
+// TWO CLASSES, NOT ONE. A repeated `_` is a V2-BEHIND-V1 FRONTIER, not an authoring error: v1 admits
+// two anonymous parameters as two distinct unreadable slots (v1.compiler.infer
+// direct_call_shape_wall_note), and v2 has no carrier for an anonymous slot yet. It refuses under its
+// own cause so the population stays countable and ranks for modeling; the sources are deliberately
+// left as written (parent ruling, gentle-koi-724, 2026-09-25). Any other repeated name is two
+// parameters claiming one binding, which no realization admits.
+fn body_lower_fn_signature_refusal(shell: Node, sig: BodyLowerFnSignature) -> Optional<Outcome<Node>> {
   match sig.type_params {
     TypeParamsUnreadable =>
       optional_present(value: Rejected {
         diagnostics: diagnostics_singleton(d: body_lower_type_params_unreadable_diagnostic(shell: shell))
       })
-    NoTypeParams => optional_absent()
-    TypeParams { conj: _ } => optional_absent()
+    NoTypeParams => body_lower_fn_signature_bindings_refusal(shell: shell, sig: sig)
+    TypeParams { conj: _ } => body_lower_fn_signature_bindings_refusal(shell: shell, sig: sig)
+  }
+}
+
+fn body_lower_fn_signature_bindings_refusal(shell: Node, sig: BodyLowerFnSignature) -> Optional<Outcome<Node>> {
+  match first(repeated_name_edges(children: sig.domain.children)) {
+    Absent => optional_absent()
+    Present { value: second } =>
+      optional_present(value: Rejected {
+        diagnostics: diagnostics_singleton(d: body_lower_repeated_param_binding_diagnostic(edge: second))
+      })
+  }
+}
+
+fn body_lower_repeated_param_binding_reason(edge: Edge) -> Symbol {
+  match edge.label {
+    Named { name: n } =>
+      if symbol_lexeme(sym: n) == "_" {
+        ^body_lowering_reason_arrow_domain_anonymous_param_repeated
+      } else {
+        ^body_lowering_reason_arrow_domain_param_binding_repeated
+      }
+    Positional => ^body_lowering_reason_arrow_domain_param_binding_repeated
+  }
+}
+
+fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
+  Diagnostic {
+    reason: body_lower_repeated_param_binding_reason(edge: edge),
+    at: node_locus(node: edge.target),
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -3200,7 +3262,7 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
       match body_lower_fn_signature_optional(captured: captured) {
         Absent => body_lower_wrapper_retained_shell(shell: shell)
         Present { value: sig } =>
-          match body_lower_fn_signature_type_params_refusal(shell: shell, sig: sig) {
+          match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
             Present { value: refused } => body_lowering_lowered(o: refused)
             Absent =>
               body_lowering_lowered(
@@ -3218,7 +3280,7 @@ fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<
   match body_lower_fn_signature_optional(captured: captured) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: sig } =>
-      match body_lower_fn_signature_type_params_refusal(shell: shell, sig: sig) {
+      match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_body_from_fn_captured(captured: captured) {
