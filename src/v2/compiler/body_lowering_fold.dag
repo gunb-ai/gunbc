@@ -3435,18 +3435,6 @@ fn body_lower_atom_is_keyword_token(node: Node) -> Bool {
   }
 }
 
-// A LEXER KEYWORD TOKEN IS NEVER AN OPERAND. The first-atom fallback below answered a shell with its
-// first atom whatever it was, so a function literal `fn(y) { zz }` in an if arm lowered to the atom
-// dag_token_kw_fn and the literal was erased (gunbc.recurring_failure_mode
-// body_type_annotation_dropped_before_resolve_in_v2). `true` / `false` are keyword tokens that ARE
-// literal operands and are read above by body_lower_literal_bool_atom_optional before this fallback.
-fn body_lower_atom_is_keyword_token(node: Node) -> Bool {
-  match node_atom_identity_optional(node: node) {
-    Present { value: id } => dag_lex_token_symbol(sym: id) && !(id == ^dag_token_kw_true) && !(id == ^dag_token_kw_false)
-    Absent => false
-  }
-}
-
 fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
   match body_lower_operand_or_atom_read(captured: captured) {
     OperandRefLowered { lowered: operand } => outcome_accepted(value: operand)
