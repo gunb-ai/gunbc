@@ -9,10 +9,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.collection { List }
+import v2.std.collection { List, list_at_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
@@ -77,29 +77,38 @@ data ilt_nested_mixed: Node = ilt_list(elements: [ilt_nested_mixed_inner, ilt_ne
 fn ilt_freemonoid_argument(t: Node) -> Optional<Node> {
   match t.kind {
     TypeNode { connective: Instantiation } =>
-      match node_positional_child_targets(node: t) {
-        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
-          match declaration_reference_path_optional(node: head) {
-            Present { value: qn } => if qn == [^std, ^algebra, ^FreeMonoid] { Present { value: arg } } else { Absent }
-            Absent => Absent
-          }
-        _ => Absent
+      if count(node_positional_child_targets(node: t)) == 2 {
+        match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
+          Present { value: head } =>
+            match declaration_reference_path_optional(node: head) {
+              Present { value: qn } =>
+                if qn == [^std, ^algebra, ^FreeMonoid] {
+                  list_at_optional(xs: node_positional_child_targets(node: t), index: 1)
+                } else {
+                  optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
       }
-    _ => Absent
+    _ => optional_absent()
   }
 }
 
 // The literal's derived type, when infer accepts it with one.
 fn ilt_derived_type(tree: Node) -> Optional<Node> {
   match infer(tree: tree) {
-    Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: t, diagnostics: _ } =>
       match t.facts.lookup(tree) {
-        Absent => Absent
+        Absent => optional_absent()
         Present { value: facts } =>
           match inferred_facts_resolved_type(facts: facts) {
-            Holds { value: ty } => Present { value: ty }
-            Violates { diagnostic: _ } => Absent
+            Holds { value: ty } => optional_present(value: ty)
+            Violates { diagnostic: _ } => optional_absent()
           }
       }
   }
