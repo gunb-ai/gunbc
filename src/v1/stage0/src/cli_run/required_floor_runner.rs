@@ -2241,20 +2241,47 @@ fn unimported_bare_provider_roster_source_at_base(
         "unimported_bare_provider_roster_at_base",
         &args,
     )?;
-    let v1_interpreter::Value::Record { fields, .. } = &shown else {
+    decode_unimported_bare_provider_base_roster(&ctx, &shown, base)
+}
+
+/// UnimportedBareProviderBaseRoster is a two-arm COPRODUCT (`BaseRosterShown { source }` |
+/// `BaseRosterUnreadable { stderr }`), so the interpreter hands back a `Value::Variant` and the arm
+/// is read by NAME, as this runner decodes every other coproduct (OpaqueHostCallSurface). The first
+/// version destructured a `Value::Record`, which no arm of the declaration can produce, so every
+/// change that edited the debt roster refused the floor with ChangedWitnessObservationFailed
+/// ("returned Variant(Symbol(\"BaseRosterShown\")), expected UnimportedBareProviderBaseRoster"); it
+/// was latent because the path runs only for a roster-EDITING diff. An unreadable base is a located
+/// refusal naming the base, the path and git's stderr -- never an empty roster, never a pass.
+fn decode_unimported_bare_provider_base_roster(
+    ctx: &v1_interpreter::InterpContext,
+    shown: &v1_interpreter::Value,
+    base: &str,
+) -> Result<String, String> {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = shown
+    else {
         return Err(format!(
-            "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
-            floor_value_shape(Some(&shown))
+            "unimported_bare_provider_roster_at_base returned {}, expected an UnimportedBareProviderBaseRoster variant",
+            floor_value_shape(Some(shown))
         ));
     };
-    match (ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
-        (Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
-        (_, Some(v1_interpreter::Value::Str(err))) => Err(format!(
+    match (
+        ctx.resolve(*variant_name).as_str(),
+        ctx.field(fields, "source"),
+        ctx.field(fields, "stderr"),
+    ) {
+        ("BaseRosterShown", Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
+        ("BaseRosterUnreadable", _, Some(v1_interpreter::Value::Str(err))) => Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
              path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
              so it must exist at the base"
         )),
-        _ => Err("UnimportedBareProviderBaseRoster carries neither `source` nor `stderr`".to_string()),
+        (arm, _, _) => Err(format!(
+            "UnimportedBareProviderBaseRoster arm {arm} does not carry the field its declaration names"
+        )),
     }
 }
 
@@ -11231,6 +11258,56 @@ mod pure_producer_share_tests {
     /// verdict frame as values, and the `.dag` edit judgment decides. An unchanged roster admits;
     /// a gained row refuses by name; a rewritten retirement cause refuses. Two reads at distinct
     /// scratch paths also pin the memoization defect this path once had.
+    /// THE BASE-ROSTER READER, BOTH ARMS, THROUGH THE REAL `.dag` CALL AND THE REAL `git show`.
+    /// `BaseRosterShown`: the roster at HEAD is read and its source returned. `BaseRosterUnreadable`:
+    /// a base that does not exist refuses LOCATED (cause, base, path) instead of reading as an empty
+    /// roster. A Record -- the shape the first version of this reader demanded, which no arm of the
+    /// declaration produces -- refuses rather than being decoded. Before the fix the Shown arm was the
+    /// one that refused ("returned Variant(...), expected UnimportedBareProviderBaseRoster").
+    #[test]
+    fn unimported_bare_provider_base_roster_reads_both_arms_of_the_coproduct() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let shown = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
+            .expect("the roster exists at HEAD, so the BaseRosterShown arm is read");
+        assert!(
+            shown.contains("module v2.workflow.floor_unimported_bare_provider_debt_roster"),
+            "the Shown arm returns the roster's own source"
+        );
+        let bogus = "refs/heads/unimported-bare-provider-base-that-does-not-exist";
+        let refused = unimported_bare_provider_roster_source_at_base(&roots, bogus)
+            .expect_err("an unreadable base must refuse, never read as an empty roster");
+        assert!(
+            refused.contains("cause=UnimportedBareProviderBaseRosterUnreadable"),
+            "{refused}"
+        );
+        assert!(refused.contains(&format!("base={bogus}")), "{refused}");
+        assert!(
+            refused.contains(&format!("path={UNIMPORTED_BARE_PROVIDER_ROSTER}")),
+            "{refused}"
+        );
+
+        let (graph, indices) = resolve_entry_graph_shared(
+            &roots,
+            &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
+        )
+        .expect("verdict authority resolves");
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+        let record = v1_interpreter::Value::Record {
+            type_name: ctx.sym("UnimportedBareProviderBaseRoster"),
+            fields: Rc::new(vec![(ctx.sym("source"), str_value("module x"))]),
+        };
+        let wrong_shape = decode_unimported_bare_provider_base_roster(&ctx, &record, "HEAD")
+            .expect_err("a Record is not an arm of the coproduct");
+        assert!(
+            wrong_shape.contains("expected an UnimportedBareProviderBaseRoster variant"),
+            "{wrong_shape}"
+        );
+    }
+
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
         let root = process_workspace_root();
