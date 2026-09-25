@@ -44,7 +44,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //     declared Symbol type -- each member's OWN declared type, never the roster root.
 //   - grammar productions: the bridge projects a production's parse into (identity atom,
 //     captured content); the identity atom (dag_surface_module) is the production's declared
-//     emitted atom, and derives with the grammar authority's surface-production type.
+//     emitted atom, and derives with the grammar authority's surface-production type; the
+//     namespace graft's module-body marker occupies the same identity slot and shares it (two).
 //   - binding references: an operand atom (x, y) derives with the type its enclosing arrow's
 //     domain declares for its binding -- the declaration-site annotation, itself derived.
 // The specimen is the direct-rust-door fixture's ingest. Each control pins BOTH the derivation
@@ -139,7 +140,7 @@ test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
         xs: node_subtree_nodes(root: inferred.root),
         empty: 0,
         cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: production_type, acc: acc, n: n) }
-      ) == 1
+      ) == 2
   }
 }
 

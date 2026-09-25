@@ -2823,11 +2823,15 @@ fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool 
   production.emitted == n
 }
 
+// The namespace graft's module-body marker is a surface identity atom of the same kind: it
+// occupies the grammar_production_identity_node_projection slot a production's emitted atom
+// occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
-  if any(
-    xs: dag_grammar_root().productions,
-    predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
-  ) {
+  if (n == namespace_graft_module_body_marker_node())
+    || any(
+      xs: dag_grammar_root().productions,
+      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
+    ) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {
     optional_absent()
@@ -3187,11 +3191,7 @@ fn dag_declared_inhabitants_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node()),
-      dag_named_edge(
-        name: ^dag_inhabitant_field_module_body,
-        target: namespace_graft_module_body_marker_node()
-      )
+      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -6003,10 +6003,10 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
-// The one constructor of the marker node: emitted by namespace_graft_build_body_conj
-// and declared in dag_declared_inhabitants_core, so infer grounds it as a node the
-// dag language authority declares (infer_node_declared_in_language_inhabitants) and
-// a marked body stays a fully evidenced product.
+// The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
+// It is a surface identity atom, not a type denotation, so infer grounds it with the
+// grammar authority's surface-production type (dag_grammar_production_member_declared_type)
+// and a marked body stays a fully evidenced product.
 fn namespace_graft_module_body_marker_node() -> Node {
   dag_inhabitant_atom(id: namespace_graft_module_body_identity)
 }
