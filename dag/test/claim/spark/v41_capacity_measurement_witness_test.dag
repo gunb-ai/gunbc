@@ -36,7 +36,7 @@ import gunbc.spark.v41_capacity_measurement {
   v41_kv_admission_capacity, v41_engram_resident_capacity, v41_sla_capacity, v41_capacity_report,
   V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
   MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
-  v41_capacity_measurement_plan_text,
+  v41_capacity_measurement_plan_text, v41_measurement_ranks,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -109,14 +109,14 @@ fn w_rank_broken(rank: Nat) -> V41RankStartupReading {
   }
 }
 
-// x6 fits (1,572,864) and x8 does not (2,097,152), on the MIN rank.
+// On the MIN rank (1,500,000) x4 fits and x6 (1,572,864) does not; the other ranks alone would admit x6.
 fn w_four_ranks() -> List<V41RankStartupReading> {
-  [w_rank(rank: 0, tokens: 2000000, rev: w_rev()), w_rank(rank: 1, tokens: 1800000, rev: w_rev()),
+  [w_rank(rank: 0, tokens: 2000000, rev: w_rev()), w_rank(rank: 1, tokens: 1500000, rev: w_rev()),
    w_rank(rank: 2, tokens: 2000000, rev: w_rev()), w_rank(rank: 3, tokens: 2000000, rev: w_rev())]
 }
 
 test fn the_startup_receipt_is_judged_by_the_min_rank() -> Bool {
-  v41_capacity_wire(c: v41_kv_admission_capacity(s: v41_admit_startup(readings: w_four_ranks()))) == "x6"
+  v41_capacity_wire(c: v41_kv_admission_capacity(s: v41_admit_startup(readings: w_four_ranks()))) == "x4"
 }
 
 test fn effective_bytes_per_token_confirms_the_bet_in_range() -> Bool {
@@ -133,7 +133,7 @@ test fn a_reading_outside_the_bet_falsifies_it_and_a_missing_one_is_unreadable()
     BetConfirmed { key: _, observed: _ } => false
     BetUnreadable { key: _, cause: _ } => false
   }
-  let unreadable = match v41_judge_byte_range_bet(bet: v41_kv_bytes_per_token_bet, observed: none) {
+  let unreadable = match v41_judge_byte_range_bet(bet: v41_kv_bytes_per_token_bet, observed: Absent) {
     BetUnreadable { key: _, cause: _ } => true
     BetConfirmed { key: _, observed: _ } => false
     BetFalsified { key: _, observed: _ } => false
@@ -255,7 +255,7 @@ fn w_cell(phase: V41ResidencyPhase, rank: Nat) -> V41ResidencyCell {
 }
 
 fn w_all_cells() -> List<V41ResidencyCell> {
-  flat_map([BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests], p => map(range(0, 4), k => w_cell(phase: p, rank: k)))
+  flat_map([BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests], p => map(v41_measurement_ranks, k => w_cell(phase: p, rank: k)))
 }
 
 test fn a_complete_residency_timeline_is_admitted_and_a_missing_cell_is_named() -> Bool {
@@ -305,7 +305,7 @@ fn w_probe(context: Nat, concurrency: Nat, observed: Bool, majfault_after: Nat) 
     prompts_disjoint: true,
     prefix_caching_defeated: true,
     latency: w_latency(ttft: 1000),
-    ranks: map(range(0, 4), k => w_probe_rank(rank: k, observed: observed, majfault_after: majfault_after)),
+    ranks: map(v41_measurement_ranks, k => w_probe_rank(rank: k, observed: observed, majfault_after: majfault_after)),
   }
 }
 

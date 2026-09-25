@@ -1,7 +1,7 @@
 module gunbc.spark.v41_capacity_measurement
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_min }
 import std.measure {
   ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value,
   Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count,
@@ -40,7 +40,10 @@ import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyUn
 
 // ── THE PLAN ────────────────────────────────────────────────────────────────────────────────────
 
-data v41_measurement_rank_count: Nat = 4
+// The TP4 ranks, by their rank index.
+data v41_measurement_ranks: List<Nat> = [0, 1, 2, 3]
+
+data v41_measurement_rank_count: Nat = length(v41_measurement_ranks)
 
 data v41_measurement_max_model_len: TokenCount = token_count(count: 262144)
 
@@ -261,7 +264,7 @@ type V41StartupAdmission
   | StartupRefused { causes: List<String> }
 
 fn v41_image_wire(i: V41OciImageDigest) -> String {
-  join([render_oci_content_digest_wire(digest: i.manifest) as String, "/", render_oci_content_digest_wire(digest: i.config) as String], "")
+  join([render_oci_content_digest_wire(d: i.manifest) as String, "/", render_oci_content_digest_wire(d: i.config) as String], "")
 }
 
 // The min rank is the one with the fewest GPU KV cache tokens: that pool bounds the replica.
@@ -280,9 +283,9 @@ fn v41_admit_startup(readings: List<V41RankStartupReading>) -> V41StartupAdmissi
     RankStartupAdmitted { receipt: x } => [x]
     RankStartupRefused { rank: _, missing: _ } => [] as List<V41RankStartupReceipt>
   })
-  let absent_ranks = flat_map(range(0, v41_measurement_rank_count), k =>
+  let absent_ranks = flat_map(v41_measurement_ranks, k =>
     if length(filter(readings, r => r.rank == k)) == 0 { [join(["rank ", to_string(k), " has no reading"], "")] } else { [] as List<String> })
-  let duplicate_ranks = flat_map(range(0, v41_measurement_rank_count), k =>
+  let duplicate_ranks = flat_map(v41_measurement_ranks, k =>
     if length(filter(readings, r => r.rank == k)) > 1 { [join(["rank ", to_string(k), " has more than one reading"], "")] } else { [] as List<String> })
   let foreign_ranks = flat_map(readings, r =>
     if r.rank >= v41_measurement_rank_count { [join(["rank ", to_string(r.rank), " is outside TP4"], "")] } else { [] as List<String> })
@@ -374,7 +377,7 @@ fn v41_cell_owes_torch(p: V41ResidencyPhase) -> Bool {
 // THE TIMELINE IS AN IDENTITY JOIN over (phase x rank). A missing cell is named, a duplicate is
 // named, and a count that happens to match is not accepted in place of the join.
 fn v41_admit_residency_timeline(run_id: NonEmptyStr, arm: V41EngramStartupArm, cells: List<V41ResidencyCell>) -> V41ResidencyTimeline {
-  let owed = flat_map(v41_residency_phases, p => map(range(0, v41_measurement_rank_count), k => V41ResidencyKey { phase: p, rank: k }))
+  let owed = flat_map(v41_residency_phases, p => map(v41_measurement_ranks, k => V41ResidencyKey { phase: p, rank: k }))
   let join_causes = flat_map(owed, key => {
     let matching = filter(cells, c => v41_phase_wire(p: c.phase) == v41_phase_wire(p: key.phase) && c.rank == key.rank)
     if length(matching) == 0 {
@@ -458,7 +461,7 @@ fn v41_judge_probe(p: V41ProbeReading) -> V41ProbeVerdict {
     if !p.prompts_disjoint { ["prompts were not disjoint"] } else { [] as List<String> },
     if !p.prefix_caching_defeated { ["prefix caching was not defeated"] } else { [] as List<String> }),
     match p.temperature { ProbeWarm => [] as List<String>  ProbeCold => ["a cold pass is the contrast; the verdict is read on the warm pass"] }),
-    flat_map(range(0, v41_measurement_rank_count), k => if length(filter(p.ranks, r => r.rank == k)) == 1 { [] as List<String> } else { [join(["rank ", to_string(k), " has no single probe reading"], "")] })),
+    flat_map(v41_measurement_ranks, k => if length(filter(p.ranks, r => r.rank == k)) == 1 { [] as List<String> } else { [join(["rank ", to_string(k), " has no single probe reading"], "")] })),
     flat_map(p.ranks, r => match r.lookup {
       TouchCounterUnavailable { frontier: _ } => [join(["rank ", to_string(r.rank), ": the distinct-touch counter is unavailable"], "")]
       EngramLookupObserved { distinct_pages_touched: _, fetch_rows_calls: _, fetch_rows_time: _ } => [] as List<String>
@@ -777,7 +780,7 @@ fn v41_serving_admission(realization: V41ServingRealization, report: V41Capacity
           Absent => ProductionRefused { cause: join(["Engram resident: ", v41_capacity_wire(c: rep.engram_resident)], "") as NonEmptyStr }
           Present { value: en } => match v41_capacity_at(c: rep.sla_sustainable) {
             Absent => ProductionRefused { cause: join(["SLA sustainable: ", v41_capacity_wire(c: rep.sla_sustainable)], "") as NonEmptyStr }
-            Present { value: sla } => ProductionAdmitted { run_id: rep.run_id, concurrency: min(min(kv, en), sla) }
+            Present { value: sla } => ProductionAdmitted { run_id: rep.run_id, concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla) }
           }
         }
       }
