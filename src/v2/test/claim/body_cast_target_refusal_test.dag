@@ -1,0 +1,55 @@
+module v2.test.claim.body_cast_target_refusal
+
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.test.claim.body_type_annotation_refusal { btar_refused_at_authored_q }
+import v2.std.diagnostic { Outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.body_lowering_fold refuses an `as` cast whose target type it cannot carry
+// rather than dropping it before v2.compiler.resolve (gunbc.recurring_failure_mode
+// as_cast_has_no_lowered_form). BOUNDARY: source text in, assembled program out through
+// v2.test.claim.type_param_binder_frame tpb_assemble -- the production route. Each refusal is
+// asserted by its exact reason, body_lowering_reason_type_annotation_not_carried, and located at
+// the authored `Q` (v2.test.claim.body_type_annotation_refusal btar_refused_at_authored_q: the
+// anchor spells `Q` and carries no `let`, `=` or `fn` token).
+
+fn bctr_tail_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
+}
+
+fn bctr_let_value_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Q\n  y\n}\n")
+}
+
+fn bctr_call_argument_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Q)\n}\n")
+}
+
+fn bctr_uncast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x\n}\n")
+}
+
+// (1) A cast in tail position refuses at the authored `Q`. RED BEFORE: Accepted with `Q` declared
+// nowhere, the cast answered with its operand.
+test fn bctr_tail_cast_refuses_at_q() -> Bool {
+  btar_refused_at_authored_q(o: bctr_tail_cast())
+}
+
+// (2) A cast as a let's value refuses at the authored `Q`.
+test fn bctr_let_value_cast_refuses_at_q() -> Bool {
+  btar_refused_at_authored_q(o: bctr_let_value_cast())
+}
+
+// (3) A cast as a named call argument refuses at the authored `Q`.
+test fn bctr_call_argument_cast_refuses_at_q() -> Bool {
+  btar_refused_at_authored_q(o: bctr_call_argument_cast())
+}
+
+// (4) The same body without the cast still lowers, so the refusal is the cast's.
+test fn bctr_uncast_accepts() -> Bool {
+  tpb_accepts(o: bctr_uncast())
+}
