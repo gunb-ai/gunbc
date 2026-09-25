@@ -5529,8 +5529,9 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
 }
 
 // A BODY THAT IS ITSELF A FUNCTION VALUE (`fn f() -> fn(A) -> B { fn(a) { .. } }`, `x => y => ..`)
-// passes through as its lowered Arrow: v2.std.node classify_arrow_body_form admits it as
-// FunctionValueBody, and the inner Arrow is well-formed by its own Arrow arm.
+// passes through as its lowered Arrow: v2.std.node classify_arrow_body_form admits it as the
+// v2.std.node ArrowBodyForm arm (not the grammar-level body sum of v2.compiler.fold_lowering), and
+// the inner Arrow is well-formed by its own Arrow arm.
 fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
