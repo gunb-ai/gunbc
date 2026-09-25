@@ -10431,6 +10431,20 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
     Ok(str_value(result))
 }
 
+/// The wire key a record field is encoded under: its declared `from` key when the record's type
+/// declares one for that field, else the authored name. The encode-side twin of the lookup
+/// `decode_json_by_declared_type` performs, so one declaration governs both directions.
+pub(crate) fn record_field_wire_key(ctx: &InterpContext, type_name: &str, field: &str) -> String {
+    lookup_type_item_across_modules(ctx, type_name)
+        .and_then(|ty| {
+            ty.children
+                .iter()
+                .find(|f| authored_name_at(ctx.si(), (*f).clone()) == field)
+                .and_then(|f| extract_from_key(f, ctx))
+        })
+        .unwrap_or_else(|| field.to_string())
+}
+
 fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
     if eval_profile_enabled() {
         TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
