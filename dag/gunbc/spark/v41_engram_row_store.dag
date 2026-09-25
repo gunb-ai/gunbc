@@ -2,7 +2,8 @@ module gunbc.spark.v41_engram_row_store
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Map }
 import std.nat { Nat }
-import std.integer { UInt8 }
+import std.integer { UInt8, qualified_octet_members }
+import extdeps.numeric.base16 { base16_decode_lower }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, serialize_content_hash }
@@ -1007,4 +1008,197 @@ data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStore
     V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 2, digest: Sha256Digest { hex: "20da211045f113916088fede485cd1fa4058a9efe6fc21b9ba58bbb99a5dde91" as Sha256DigestHex }), size: byte_size(count: 25345200678) },
     V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 3, digest: Sha256Digest { hex: "02450652d87576ab116348f1b3182540dc43d0eb1c1134d7d629eb287e378fb9" as Sha256DigestHex }), size: byte_size(count: 25345351158) },
   ],
+}
+
+// ── THE BOUNDARY-STRATIFIED READBACK: THE REAL STORES' BYTES AT EVERY SEAM, AGAINST v41_place_row ──
+//
+// The digests above say WHICH bytes the eight stores hold; they do not say those bytes are the model's.
+// The differential that admitted the host program (#12122) ran over two adjacent layer-1 rows, which
+// cannot see a wiring error: a wrong first or last row for one rank, an off-by-one rank boundary, layer
+// 14 handed layer 1's offsets, one rank's plan handed to another, a wrong termination
+// (proud-deer-538, 2026-09-24). So the produced stores are read back at exactly the rows where those
+// errors live -- each store's magic, its first and its last record -- and the published source rows at
+// the same global rows (which, rank by rank, are row 0, the last row, and both sides of every rank
+// boundary), and each store record must equal what v41_place_row makes of its source row, at the rank
+// and local row the spec assigns. Termination is the size check the key already makes (v41_store_size).
+// The sample is DERIVED from the admitted spec, never authored: a spec whose ranges move moves it.
+//
+// A SHIFT THAT CANNOT BE SEEN MUST REFUSE, NOT PASS: where the source rows on both sides of a boundary are
+// byte-identical, a store shifted by one row there would read back equal, so the readback refuses as
+// undiscriminating rather than calling it verified.
+
+type V41ReadbackSample
+  = V41SampleMagic { layer: Nat, rank: Nat }
+  | V41SampleStoreRecord { layer: Nat, rank: Nat, local_row: Nat }
+  | V41SampleSourceWeight { layer: Nat, global_row: Nat }
+  | V41SampleSourceScale { layer: Nat, global_row: Nat }
+
+fn v41_readback_sample_key(s: V41ReadbackSample) -> String {
+  match s {
+    V41SampleMagic { layer: l, rank: r } => join(["magic ", v41_store_key(layer: l, rank: r)], "")
+    V41SampleStoreRecord { layer: l, rank: r, local_row: k } => join(["record ", v41_store_key(layer: l, rank: r), " row ", to_string(k)], "")
+    V41SampleSourceWeight { layer: l, global_row: g } => join(["weight layer.", to_string(l), " row ", to_string(g)], "")
+    V41SampleSourceScale { layer: l, global_row: g } => join(["scale layer.", to_string(l), " row ", to_string(g)], "")
+  }
+}
+
+// WHERE A SAMPLE LIVES: a byte region of one store, or of one layer's weight or scale table (the offset is
+// from the table's start; the host run adds the published span's file offset).
+type V41ReadbackRegion
+  = V41RegionInStore { layer: Nat, rank: Nat, offset: ByteSize, length: ByteSize }
+  | V41RegionInWeight { layer: Nat, offset: ByteSize, length: ByteSize }
+  | V41RegionInScale { layer: Nat, offset: ByteSize, length: ByteSize }
+
+fn v41_readback_region(spec: V41RowStoreEncodingSpec, s: V41ReadbackSample) -> V41ReadbackRegion {
+  let record = v41_row_bytes(g: spec.geometry)
+  match s {
+    V41SampleMagic { layer: l, rank: r } => V41RegionInStore { layer: l, rank: r, offset: byte_size(count: 0), length: v41_row_store_magic_size() }
+    V41SampleStoreRecord { layer: l, rank: r, local_row: k } => V41RegionInStore { layer: l, rank: r, offset: byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + k * byte_size_count(b: record)), length: record }
+    V41SampleSourceWeight { layer: l, global_row: g } => V41RegionInWeight { layer: l, offset: byte_size(count: g * byte_size_count(b: weight_bytes(g: spec.geometry))), length: weight_bytes(g: spec.geometry) }
+    V41SampleSourceScale { layer: l, global_row: g } => V41RegionInScale { layer: l, offset: byte_size(count: g * byte_size_count(b: scale_bytes(g: spec.geometry))), length: scale_bytes(g: spec.geometry) }
+  }
+}
+
+fn v41_region_length(r: V41ReadbackRegion) -> ByteSize {
+  match r {
+    V41RegionInStore { layer: _, rank: _, offset: _, length: n } => n
+    V41RegionInWeight { layer: _, offset: _, length: n } => n
+    V41RegionInScale { layer: _, offset: _, length: n } => n
+  }
+}
+
+// THE GLOBAL ROWS A RANK'S STORE IS SAMPLED AT: its first and its last (one, when the range is one row).
+fn v41_rank_edge_rows(r: VllmEngramRankRows) -> List<Int> {
+  if r.end - r.start == 1 { [r.start] } else { [r.start, r.end - 1] }
+}
+
+fn v41_rank_samples(layer: Nat, r: VllmEngramRankRows) -> List<V41ReadbackSample> {
+  concat([V41SampleMagic { layer: layer, rank: r.rank } as V41ReadbackSample],
+    flat_map(v41_rank_edge_rows(r: r), g => [
+      V41SampleStoreRecord { layer: layer, rank: r.rank, local_row: g - r.start } as V41ReadbackSample,
+      V41SampleSourceWeight { layer: layer, global_row: g } as V41ReadbackSample,
+      V41SampleSourceScale { layer: layer, global_row: g } as V41ReadbackSample,
+    ]))
+}
+
+// EVERY SAMPLE THE SPEC OWES, in spec order. A rank with no rows owes none (its store is magic only, and
+// the spec admits no such rank: vllm_engram_every_rank_has_heads).
+fn v41_readback_samples(spec: V41RowStoreEncodingSpec) -> List<V41ReadbackSample> {
+  flat_map(spec.layers, t => flat_map(filter(t.ranks, r => r.end > r.start), r => v41_rank_samples(layer: t.layer, r: r)))
+}
+
+type V41ReadbackReading {
+  sample: V41ReadbackSample
+  hex: String
+}
+
+type V41StoreReadbackReadings
+  = V41StoreReadbackRead { host: NonEmptyStr, observed_at: NonEmptyStr, readings: List<V41ReadbackReading> }
+  | V41StoreReadbackReadingsUnread { obligation: NonEmptyStr }
+
+type V41StoreReadback
+  = V41StoreReadbackVerified { host: NonEmptyStr, observed_at: NonEmptyStr, samples: Nat }
+  | V41StoreReadbackUnread { obligation: NonEmptyStr }
+  | V41StoreReadbackRefused { defects: List<NonEmptyStr> }
+
+fn v41_readback_octets(hex: String) -> List<UInt8>? {
+  match base16_decode_lower(hex: hex) {
+    Absent => none
+    Present { value: q } => Present { value: qualified_octet_members(q: q) }
+  }
+}
+
+// THE READINGS, JOINED TO THE SAMPLE BY IDENTITY: every owed sample exactly once, nothing foreign, every
+// reading exactly its region's length. A reading that is not lowercase hex decodes to no bytes, which
+// v41_place_row and the magic check then refuse: each reading is decoded once, where it is compared.
+fn v41_readback_join_defects(spec: V41RowStoreEncodingSpec, owed: List<V41ReadbackSample>, readings: List<V41ReadbackReading>) -> List<NonEmptyStr> {
+  let owed_index = v41_key_counts(keys: map(owed, s => v41_readback_sample_key(s: s)))
+  let read_index = v41_key_counts(keys: map(readings, r => v41_readback_sample_key(s: r.sample)))
+  let missing = map(filter(owed, s => v41_key_count(index: read_index, key: v41_readback_sample_key(s: s)) == 0), s => join(["the readback owes ", v41_readback_sample_key(s: s), " and it was not read"], "") as NonEmptyStr)
+  let twice = map(filter(owed, s => v41_key_count(index: read_index, key: v41_readback_sample_key(s: s)) > 1), s => join(["", v41_readback_sample_key(s: s), " was read more than once"], "") as NonEmptyStr)
+  let foreign = map(filter(readings, r => v41_key_count(index: owed_index, key: v41_readback_sample_key(s: r.sample)) == 0), r => join(["a reading of ", v41_readback_sample_key(s: r.sample), " is not a sample the spec owes"], "") as NonEmptyStr)
+  let malformed = map(filter(readings, r => string_length(r.hex) != 2 * byte_size_count(b: v41_region_length(r: v41_readback_region(spec: spec, s: r.sample)))),
+    r => join(["the reading of ", v41_readback_sample_key(s: r.sample), " is not ", to_string(2 * byte_size_count(b: v41_region_length(r: v41_readback_region(spec: spec, s: r.sample)))), " hex digits (", to_string(byte_size_count(b: v41_region_length(r: v41_readback_region(spec: spec, s: r.sample)))), " bytes)"], "") as NonEmptyStr)
+  concat(concat(concat(missing, twice), foreign), malformed)
+}
+
+fn v41_reading_hex(index: Map<String, String>, s: V41ReadbackSample) -> String {
+  match map_get(index, v41_readback_sample_key(s: s)) {
+    Present { value: h } => h
+    Absent => ""
+  }
+}
+
+fn v41_reading_octets(index: Map<String, String>, s: V41ReadbackSample) -> List<UInt8> {
+  match v41_readback_octets(hex: v41_reading_hex(index: index, s: s)) {
+    Present { value: o } => o
+    Absent => [] as List<UInt8>
+  }
+}
+
+// ONE STORE RECORD AGAINST v41_place_row OF ITS SOURCE ROW: the placement must land at this rank and
+// local row, and its record must be the store's bytes there.
+fn v41_record_defects(spec: V41RowStoreEncodingSpec, index: Map<String, String>, layer: Nat, r: VllmEngramRankRows, g: Int) -> List<NonEmptyStr> {
+  let at = join([v41_store_key(layer: layer, rank: r.rank), " row ", to_string(g - r.start), " (global row ", to_string(g), ")"], "")
+  let row = v41_source_row(layer: layer, global_row: g,
+    weight: v41_reading_octets(index: index, s: V41SampleSourceWeight { layer: layer, global_row: g }),
+    scale: v41_reading_octets(index: index, s: V41SampleSourceScale { layer: layer, global_row: g }))
+  match v41_place_row(row: row, spec: spec) {
+    V41PlacementRefused { defect: d } => [join(["store ", at, ": v41_place_row refused its source row: ", d as String], "") as NonEmptyStr]
+    V41Placed { row: p } =>
+      if p.rank != r.rank || p.local_row != g - r.start {
+        [join(["store ", at, ": v41_place_row places this row at ", v41_store_key(layer: layer, rank: p.rank), " row ", to_string(p.local_row)], "") as NonEmptyStr]
+      } else if p.record != v41_reading_octets(index: index, s: V41SampleStoreRecord { layer: layer, rank: r.rank, local_row: g - r.start }) {
+        [join(["store ", at, ": the stored record is not v41_place_row of the published source row"], "") as NonEmptyStr]
+      } else { [] as List<NonEmptyStr> }
+  }
+}
+
+fn v41_magic_defects(index: Map<String, String>, layer: Nat, r: VllmEngramRankRows) -> List<NonEmptyStr> {
+  if v41_reading_octets(index: index, s: V41SampleMagic { layer: layer, rank: r.rank }) == v41_magic_octets() { [] as List<NonEmptyStr> } else {
+    [join(["store ", v41_store_key(layer: layer, rank: r.rank), ": the header is not the row-store magic"], "") as NonEmptyStr]
+  }
+}
+
+// A BOUNDARY WHOSE TWO SOURCE ROWS ARE BYTE-IDENTICAL CANNOT SEE A SHIFT ACROSS IT.
+fn v41_undiscriminated_boundaries(index: Map<String, String>, t: V41LayerTable) -> List<NonEmptyStr> {
+  map(filter(filter(t.ranks, r => r.start > 0 && r.end > r.start), r =>
+      v41_reading_hex(index: index, s: V41SampleSourceWeight { layer: t.layer, global_row: r.start - 1 }) == v41_reading_hex(index: index, s: V41SampleSourceWeight { layer: t.layer, global_row: r.start })
+        && v41_reading_hex(index: index, s: V41SampleSourceScale { layer: t.layer, global_row: r.start - 1 }) == v41_reading_hex(index: index, s: V41SampleSourceScale { layer: t.layer, global_row: r.start })),
+    r => join(["layer ", to_string(t.layer), " rows ", to_string(r.start - 1), " and ", to_string(r.start), " (the rank ", to_string(r.rank), " boundary) are byte-identical, so a shift across it cannot be seen; the readback is undiscriminating there"], "") as NonEmptyStr)
+}
+
+fn v41_readback_content_defects(spec: V41RowStoreEncodingSpec, index: Map<String, String>) -> List<NonEmptyStr> {
+  flat_map(spec.layers, t => concat(
+    v41_undiscriminated_boundaries(index: index, t: t),
+    flat_map(filter(t.ranks, r => r.end > r.start), r => concat(
+      v41_magic_defects(index: index, layer: t.layer, r: r),
+      flat_map(v41_rank_edge_rows(r: r), g => v41_record_defects(spec: spec, index: index, layer: t.layer, r: r, g: g))))))
+}
+
+// THE VERDICT: Unread until a readback run's receipt is transcribed; any join or content defect refuses.
+fn v41_store_readback(spec: V41RowStoreEncodingSpec, readings: V41StoreReadbackReadings) -> V41StoreReadback {
+  match readings {
+    V41StoreReadbackReadingsUnread { obligation: o } => V41StoreReadbackUnread { obligation: o }
+    V41StoreReadbackRead { host: h, observed_at: at, readings: rs } => {
+      let owed = v41_readback_samples(spec: spec)
+      let join_defects = v41_readback_join_defects(spec: spec, owed: owed, readings: rs)
+      if length(join_defects) != 0 { V41StoreReadbackRefused { defects: join_defects } } else {
+        let index = fold(rs, init: empty_map(), f: (acc, r) => map_insert(acc, v41_readback_sample_key(s: r.sample), r.hex))
+        let content = v41_readback_content_defects(spec: spec, index: index)
+        if length(content) != 0 { V41StoreReadbackRefused { defects: content } } else {
+          V41StoreReadbackVerified { host: h, observed_at: at, samples: length(owed) }
+        }
+      }
+    }
+  }
+}
+
+// THE LIVE READBACK. Its instrument is the spark_v41_row_store_readback fleet-converge mode
+// (gunbc.spark.v41_row_store_readback_run v41_row_store_readback_ci_wet), which reads every owed sample on
+// the host holding the stores and prints one `sample <key> hex=<bytes>` line each; a Read row is
+// transcribed from one run's log, naming that run and host. Until then the candidate carries this
+// obligation in its derivation evidence, and no deployment authorization can be minted over it.
+data v41_published_store_readback_readings: V41StoreReadbackReadings = V41StoreReadbackReadingsUnread {
+  obligation: "the eight produced Engram row stores have not been read back at their boundaries: no spark_v41_row_store_readback receipt is transcribed into gunbc.spark.v41_engram_row_store v41_published_store_readback_readings, so no store is known to hold v41_place_row of its published rows at its first row, its last row and every rank seam" as NonEmptyStr,
 }

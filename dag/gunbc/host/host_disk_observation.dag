@@ -2,7 +2,7 @@ module gunbc.host_disk_observation
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import v2.std.optional { Present, Absent }
@@ -16,7 +16,7 @@ import gunbc.fleet_shell_transport_observation {
   ShellTransportUnobserved,
 }
 
-data host_disk_observation_authority_disposition: Disposition = SingleAuthority
+data host_disk_observation_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // DISK FREE SPACE IS AN OBSERVATION AXIS, not a hand-authored width cap.
 // gunbc.runner_slot_allocation.host_disk_admitted_width admits width only for srv4 from a deploy row;
