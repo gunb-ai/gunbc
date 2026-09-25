@@ -2,12 +2,12 @@ module test.claim.vllm_kv_layout_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.measure {
   TokenCount, token_count, token_count_value,
   ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
-  AttentionLayerCount, attention_layer_count,
+  AttentionLayerCount, attention_layer_count, attention_layer_count_value,
   ByteSize, byte_size,
 }
 import extdeps.vllm.server { vllm_source_revision, vllm_source_revision_read }
@@ -19,7 +19,7 @@ import extdeps.vllm.kv_cache {
   vllm_pool_reconstruction_is_authoritative,
 }
 import extdeps.vllm.kv_layout {
-  KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
+  KvGroupKind, FullAttention, SlidingWindowAttention, MambaState, KPoolIndex,
   KvGroupLayout, ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, VllmReportedCapacityAdmission, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
   BlocksPerRequest, BlocksPerRequestRecovered, BlocksPerRequestUnrecoverable,
@@ -29,6 +29,14 @@ import extdeps.vllm.kv_layout {
   AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage,
   group_blocks_for,
   AdmissionByteCost, AdmissionByteCostBytes, AdmissionByteCostUnestablished, cold_admission_bytes,
+  KvAllocationPlanCapture, KvAllocationPlanCaptureGroup,
+  KvAllocationPlanAdmission, KvAllocationPlanAdmitted, KvAllocationPlanRefused,
+  resolved_kv_allocation_plan_from_capture,
+  ResolvedKvAllocationPlan, KvAllocationPlanGroup,
+  AllocationPlanReproduction, AllocationPlanReproducesPrinted, AllocationPlanContradictsPrinted, AllocationPlanControlUnavailable,
+  allocation_plan_reproduces_reported_capacity,
+  plan_admission_blocks_at_length,
+  resolved_kv_layout_from_plan,
 }
 
 // The group A head's own two startup lines, 2026-09-05T20:43:56Z. A refused admission is a red
@@ -398,4 +406,282 @@ test fn the_byte_fold_refuses_where_the_block_fold_refuses() -> Bool {
       AdmissionByteCostBytes { bytes: _ } => false
       AdmissionByteCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "empty sequence budget")
     })
+}
+
+// ── THE RESOLVED ALLOCATION PLAN: THE EMISSION THAT CLOSES THE GROUP-METADATA GAP ────────────────
+//
+// THE PLAN'S CONTRACT, witnessed end to end on designed captures: a complete capture mints, and
+// the plan reproduces the engine's printed capacity as an independent control -- the sum of the
+// per-group blocks the EMISSION vouched for at its requested length, against the printed
+// concurrency line, neither side knowing the other. THE DISCRIMINATING ARMS: an incomplete
+// capture refuses naming the unvouched fields; a foreign revision refuses; a wrong printed line
+// contradicts with the predicted figure carried; a revision split between plan and printed lines
+// refuses as one-engine evidence; the consumer fold re-derives blocks at ANOTHER length from the
+// growth parameters; and the layout projection feeds the arm-side folds without a second
+// taxonomy. THE EMISSION ITSELF IS A FOLLOW-UP: no claim here asserts a live engine emitted one.
+
+fn wp_group(identity: NonEmptyStr, kind: KvGroupKind, layers: Nat, block: Nat, page: Nat, tokens_per_state: Nat, max_use: Nat, blocks_at: Nat) -> KvAllocationPlanCaptureGroup {
+  KvAllocationPlanCaptureGroup {
+    identity: Present { value: identity },
+    kind: Present { value: kind },
+    layer_identities: Present { value: map(wp_layer_names(layers), n => n) },
+    block_size: Present { value: token_count(count: block) },
+    page_size_bytes: Present { value: byte_size(count: page) },
+    tokens_per_state: Present { value: token_count(count: tokens_per_state) },
+    max_memory_usage_bytes: Present { value: byte_size(count: max_use) },
+    blocks_at_requested_length: Present { value: allocator_block_count(count: blocks_at) },
+  }
+}
+
+fn wp_layer_names(layers: Nat) -> List<NonEmptyStr> {
+  map(nat_range_inclusive(lo: 1, hi: layers), i => join(["layer-", to_string(i - 1)], "") as NonEmptyStr)
+}
+
+fn wp_capture(groups: List<KvAllocationPlanCaptureGroup>) -> KvAllocationPlanCapture {
+  KvAllocationPlanCapture {
+    observed_at_revision: vllm_source_revision_read,
+    image_digest: Present { value: "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333" as NonEmptyStr },
+    cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
+    allocator_blocks: Present { value: allocator_block_count(count: 65536) },
+    requested_length: Present { value: token_count(count: 1048576) },
+    scheduler_block_size: Present { value: token_count(count: 16) },
+    groups: Present { value: groups },
+    grouping_padding: Present { value: "hybrid allocator: groups share one pool at the scheduler granularity; each group's admission is rounded to its own block multiple and the padding is charged inside the group's blocks" as NonEmptyStr },
+  }
+}
+
+fn wp_plan(capture: KvAllocationPlanCapture) -> ResolvedKvAllocationPlan? {
+  match resolved_kv_allocation_plan_from_capture(capture: capture) {
+    KvAllocationPlanAdmitted { plan: p } => Present { value: p }
+    KvAllocationPlanRefused { cause: _ } => none
+  }
+}
+
+// A REPORTED CAPACITY AT A GIVEN HUNDREDTHS FIGURE, bound to its MaximumConcurrency line.
+fn wp_reported(tokens: Nat, hundredths: Nat) -> VllmReportedCapacity? {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: tokens),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "GPU KV cache size: n tokens" as NonEmptyStr,
+      observed_at_revision: vllm_source_revision_read,
+    ),
+  ) {
+    KvPoolAdmitted { pool: p } =>
+      match vllm_reported_capacity(
+        pool: p,
+        max_concurrency: concurrent_request_hundredths(count: hundredths),
+        reading: vllm_startup_reading(
+          line: MaximumConcurrency,
+          captured_text: "Maximum concurrency for 1,048,576 tokens per request: Nx" as NonEmptyStr,
+          observed_at_revision: vllm_source_revision_read,
+        ),
+      ) {
+        ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+        ReportedCapacityRefused { cause: _ } => none
+      }
+    KvPoolRefused { cause: _ } => none
+  }
+}
+
+// THE CLEAN CONTROL: one full-attention group admitting 65,536 blocks for the full-context
+// request, an inventory of 65,536 blocks, and a printed 1.00x -- the plan reproduces the printed
+// capacity from the emission's own figures, and the grouping/padding decision travels with the
+// plan as a vouched field, not an inference.
+test fn a_complete_plan_reproduces_the_printed_capacity_as_the_independent_control() -> Bool {
+  let capture = wp_capture(groups: [
+    wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536),
+  ])
+  (match resolved_kv_allocation_plan_from_capture(capture: capture) {
+    KvAllocationPlanRefused { cause: _ } => false
+    KvAllocationPlanAdmitted { plan: p } =>
+      p.image_digest == "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333" as NonEmptyStr
+        && (p.cache_format as String) == "fp8_ds_mla"
+        && string_contains(s: p.grouping_padding as String, pattern: "padding")
+        && length(p.groups) == 1
+  })
+    && (match wp_plan(capture: capture) {
+      Absent => false
+      Present { value: p } =>
+        match wp_reported(tokens: 1048576, hundredths: 100) {
+          Absent => false
+          Present { value: reported } =>
+            match allocation_plan_reproduces_reported_capacity(plan: p, reported: reported) {
+              AllocationPlanReproducesPrinted { blocks_per_max_request: b, predicted_concurrency_hundredths: c } =>
+                allocator_block_count_value(c: b) == 65536 && c == 100
+              _ => false
+            }
+        }
+    })
+}
+
+// THE MISSING-FIELD WALLS: a group row missing its page bytes refuses naming page_size_bytes; a
+// capture missing the grouping/padding decision refuses naming it; the refusal is the mint's, not
+// a downstream parse.
+test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
+  let no_page = wp_capture(groups: [
+    KvAllocationPlanCaptureGroup {
+      identity: Present { value: "sparse-mla" as NonEmptyStr },
+      kind: Present { value: FullAttention },
+      layer_identities: Present { value: wp_layer_names(layers: 1) },
+      block_size: Present { value: token_count(count: 16) },
+      page_size_bytes: Absent,
+      tokens_per_state: Present { value: token_count(count: 16) },
+      max_memory_usage_bytes: Present { value: byte_size(count: 4294967296) },
+      blocks_at_requested_length: Present { value: allocator_block_count(count: 65536) },
+    },
+  ])
+  let no_padding = KvAllocationPlanCapture {
+    observed_at_revision: vllm_source_revision_read,
+    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
+    cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
+    allocator_blocks: Present { value: allocator_block_count(count: 65536) },
+    requested_length: Present { value: token_count(count: 1048576) },
+    scheduler_block_size: Present { value: token_count(count: 16) },
+    groups: Present { value: [wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536)] },
+    grouping_padding: Absent,
+  }
+  (match resolved_kv_allocation_plan_from_capture(capture: no_page) {
+    KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "page_size_bytes")
+    KvAllocationPlanAdmitted { plan: _ } => false
+  })
+    && (match resolved_kv_allocation_plan_from_capture(capture: no_padding) {
+      KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "grouping_padding")
+      KvAllocationPlanAdmitted { plan: _ } => false
+    })
+}
+
+// THE REVISION WALL: the capture's field set is a property of the upstream revision that emitted
+// it; an unread revision is not trusted.
+test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> Bool {
+  let foreign = vllm_source_revision(
+    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+    full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  )
+  match resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture {
+    observed_at_revision: foreign,
+    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
+    cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
+    allocator_blocks: Present { value: allocator_block_count(count: 65536) },
+    requested_length: Present { value: token_count(count: 1048576) },
+    scheduler_block_size: Present { value: token_count(count: 16) },
+    groups: Present { value: [wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536)] },
+    grouping_padding: Present { value: "fx" as NonEmptyStr },
+  }) {
+    KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "unread revision")
+    KvAllocationPlanAdmitted { plan: _ } => false
+  }
+}
+
+// THE CONTROL'S DISCRIMINATING ARMS: a printed line that does not match the plan's own figures
+// contradicts with the PREDICTED figure carried (the plan says 1.00x; a garbled 11.22x print
+// contradicts, predicted 100 hundredths against reported 1122); and a plan from another revision
+// cannot control this revision's printed lines -- the control refuses at the revision wall, and
+// the mint refuses such a capture even earlier, so a revision split has no green path.
+// THE REVISION-SPLIT PLAN IS CONSTRUCTED DIRECTLY because the mint refuses foreign revisions by
+// design: the only way to hold such a plan is to build it, which is the supplied value this claim
+// discriminates against.
+test fn the_control_contradicts_a_wrong_printed_line_and_refuses_a_revision_split() -> Bool {
+  let capture = wp_capture(groups: [
+    wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536),
+  ])
+  (match wp_plan(capture: capture) {
+    Absent => false
+    Present { value: p } =>
+      match wp_reported(tokens: 1048576, hundredths: 1122) {
+        Absent => false
+        Present { value: garbled } =>
+          match allocation_plan_reproduces_reported_capacity(plan: p, reported: garbled) {
+            AllocationPlanContradictsPrinted { predicted_concurrency_hundredths: predicted, reported_concurrency_hundredths: reported } =>
+              predicted == 100 && reported == 1122
+            _ => false
+          }
+      }
+  })
+    && (match wp_reported(tokens: 1048576, hundredths: 100) {
+      Absent => false
+      Present { value: reported } =>
+        match allocation_plan_reproduces_reported_capacity(plan: wp_deployed_revision_plan(), reported: reported) {
+          AllocationPlanControlUnavailable { cause: c } => string_contains(s: c as String, pattern: "not valid across revisions")
+          _ => false
+        }
+    })
+}
+
+fn wp_deployed_revision_plan() -> ResolvedKvAllocationPlan {
+  let deployed = vllm_source_revision(
+    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+    full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
+  )
+  ResolvedKvAllocationPlan {
+    runtime: deployed,
+    image_digest: "sha256:1111" as NonEmptyStr,
+    cache_format: "fp8_ds_mla" as NonEmptyStr,
+    allocator_blocks: allocator_block_count(count: 65536),
+    requested_length: token_count(count: 1048576),
+    scheduler_block_size: token_count(count: 16),
+    groups: [KvAllocationPlanGroup {
+      identity: "sparse-mla" as NonEmptyStr,
+      kind: FullAttention,
+      layer_identities: wp_layer_names(layers: 1),
+      block_size: token_count(count: 16),
+      page_size_bytes: byte_size(count: 65536),
+      tokens_per_state: token_count(count: 16),
+      max_memory_usage_bytes: byte_size(count: 4294967296),
+      blocks_at_requested_length: allocator_block_count(count: 65536),
+    }],
+    grouping_padding: "fx: designed plan row for the revision-split claim" as NonEmptyStr,
+  }
+}
+
+// THE CONSUMER FOLD AT ANOTHER LENGTH: the plan's growth parameters re-derive the admission cost
+// at 500,000 tokens -- the full group at 16-token blocks, the mamba states at their tokens-per-
+// state width regardless of length, and the KPool group at one entry per four tokens with blocks
+// counted in entries.
+test fn the_consumer_fold_rederives_blocks_at_another_length_from_the_growth_parameters() -> Bool {
+  let capture = wp_capture(groups: [
+    wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 11, block: 16, page: 8192, tokens_per_state: 16, max_use: 5905580032, blocks_at: 720896),
+    wp_group(identity: "kda-state" as NonEmptyStr, kind: MambaState, layers: 3, block: 16, page: 1048576, tokens_per_state: 1, max_use: 3145728, blocks_at: 3),
+    wp_group(identity: "kpool" as NonEmptyStr, kind: KPoolIndex { pool_every: token_count(count: 4) }, layers: 1, block: 16, page: 65536, tokens_per_state: 4, max_use: 1073741824, blocks_at: 16384),
+  ])
+  match wp_plan(capture: capture) {
+    Absent => false
+    Present { value: p } =>
+      match plan_admission_blocks_at_length(plan: p, at: token_count(count: 500000)) {
+        AdmissionCostBlocks { blocks: b } => allocator_block_count_value(c: b) == 351566
+        AdmissionCostUnestablished { cause: _ } => false
+      }
+  }
+}
+
+// THE LAYOUT PROJECTION: the arm-side folds consume ResolvedKvLayout, and the plan projects onto
+// it by construction -- the groups carry the same growth taxonomy, the layer counts come from the
+// emission's own layer identities, and the layout's revision is the plan's runtime.
+test fn the_layout_projection_feeds_the_arm_side_folds_without_a_second_taxonomy() -> Bool {
+  let capture = wp_capture(groups: [
+    wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 11, block: 16, page: 8192, tokens_per_state: 16, max_use: 5905580032, blocks_at: 720896),
+    wp_group(identity: "kda-state" as NonEmptyStr, kind: MambaState, layers: 3, block: 16, page: 1048576, tokens_per_state: 1, max_use: 3145728, blocks_at: 3),
+  ])
+  match wp_plan(capture: capture) {
+    Absent => false
+    Present { value: p } =>
+      let layout = resolved_kv_layout_from_plan(plan: p)
+      length(layout.groups) == 2
+        && (match first(layout.groups) {
+          Present { value: g } => attention_layer_count_value(c: g.layer_count) == 11
+          Absent => false
+        })
+        && (layout.established_at_revision.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+  }
+}
+
+// THE ZERO WALLS TRAVEL WITH THE PLAN: a complete capture of a group with a zero-byte page is a
+// complete capture of a broken engine, and the mint refuses rather than pricing it.
+test fn a_zero_wall_in_a_group_refuses_the_plan() -> Bool {
+  match resolved_kv_allocation_plan_from_capture(capture: wp_capture(groups: [
+    wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 0, tokens_per_state: 16, max_use: 0, blocks_at: 65536),
+  ])) {
+    KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "is not a group")
+    KvAllocationPlanAdmitted { plan: _ } => false
+  }
 }

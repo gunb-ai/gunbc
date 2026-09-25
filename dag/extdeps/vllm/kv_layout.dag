@@ -87,16 +87,29 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // instead of a refusal, and that number would then have been reproduced against the printed lines
 // and possibly agreed. Moving the window into the arm deletes both states rather than checking for
 // them (DESIGN section 4b: construction over validation).
+//
+// KPoolIndex IS THE FOURTH GROWTH SHAPE, and it exists because GLM-5.3-Flash's sparse-attention
+// layers keep a compressed index that grows once per pool_every TOKENS, not once per token
+// (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_hybrid_shape carries index_kpool = 4). It is a
+// different growth LAW from FullAttention: halving the sequence does not halve its entries in
+// general, and charging it as per-token cost overstates what a request holds, which is the same
+// understatement/overstatement asymmetry the windowed arm exists to refuse. Upstream's
+// KVCacheSpecKind list (extdeps.vllm.kv_group_metadata) has no value mapping onto it -- the kpool
+// rides inside the sparse layer's allocation rather than a spec kind of its own -- so the
+// emission-side kind fold stays partial by construction; this arm is priced by the allocation plan
+// and the arm-side roster fold (gunbc.spark.arm_memory_fit), never invented from an upstream kind.
 type KvGroupKind
   = FullAttention
   | SlidingWindowAttention { window: TokenCount }
   | MambaState
+  | KPoolIndex { pool_every: TokenCount }
 
 fn kv_group_kind_wire(k: KvGroupKind) -> String {
   match k {
     FullAttention => "full-attention"
     SlidingWindowAttention { window: _ } => "sliding-window"
     MambaState => "mamba-state"
+    KPoolIndex { pool_every: _ } => "kpool-index"
   }
 }
 
@@ -414,8 +427,12 @@ fn group_bytes_for(group: KvGroupLayout, sequence: TokenCount) -> ByteSize? {
 
 // PER-GROUP COST. The windowed kind is capped at its window, which is the whole reason a hybrid
 // layout admits more than the full-attention arithmetic predicts; a mamba group is one state per
-// sequence regardless of length. Zero block size and zero layer count refuse rather than dividing
-// or reporting a free request; the seed does not make those states unwritable.
+// sequence regardless of length; a kpool group admits one index entry per pool_every tokens and its
+// blocks are counted in ENTRIES (its block_size is entries per block, not tokens per block) -- the
+// two ceil steps are written separately because collapsing them into one division would be the
+// token-per-block ratio error this module's header warns about, in miniature. Zero block size, zero
+// layer count and zero pool interval refuse rather than dividing or reporting a free request; the
+// seed does not make those states unwritable.
 fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat? {
   let layers = attention_layer_count_value(c: group.layer_count)
   if token_count_value(t: group.block_size) == 0 || layers == 0 {
@@ -432,6 +449,15 @@ fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat? {
         match ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) {
           Absent => none
           Present { value: q } => Present { value: q * layers }
+        }
+      KPoolIndex { pool_every: p } =>
+        match ceil_div(numerator: token_count_value(t: sequence), denominator: p) {
+          Absent => none
+          Present { value: entries } =>
+            match ceil_div(numerator: entries, denominator: group.block_size) {
+              Absent => none
+              Present { value: blocks } => Present { value: blocks * layers }
+            }
         }
     }
   }
@@ -557,4 +583,479 @@ fn allocator_usage(layout: ResolvedKvLayout, free_blocks: AllocatorBlockCount) -
 // A constant predicate claiming "this is not occupancy" would be a decoration whose RED is
 // unauthorable; the absence of the conversion is the wall.
 
-data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch." as NonEmptyStr)
+// ── THE RESOLVED ALLOCATION PLAN: THE EMISSION THAT CLOSES THE GROUP-METADATA GAP ────────────────
+//
+// THE ALLOCATION PLAN IS THE DURABLE INSTRUMENT the owner directive names: a patched or wrapped
+// engine emits its own allocation plan -- introspection, not tuning -- and the plan reproduces the
+// engine's printed capacity as an independent control. extdeps.vllm.kv_group_metadata documents the
+// gap this closes: today's get_kv_cache_group_metadata emission carries kind, block size and window
+// per group, and NOT the layer identities, page bytes, tokens per state, per-group memory usage or
+// the blocks the engine calculated at the requested length. THE PLAN IS THAT RICHER EMISSION,
+// modeled here BEFORE any patch exists, so the contract the patch must satisfy is written down
+// while the arm's folds still refuse for want of it -- and so the capture leg knows exactly what a
+// real capture must carry. THE EMISSION ITSELF IS A FOLLOW-UP: this module owns the shape, the
+// mint's walls, and the reproduction control law; nothing here claims a live engine emitted one.
+//
+// THE PLAN IS NOT A LAYOUT WITH EXTRA FIELDS, for the reason ResolvedKvLayout is not a receipt: the
+// layout is the upstream SHAPE, and binding a shape to the launch that exhibited it is an act of
+// observation, which lives in the gunbc layer. The plan record below is likewise the emission's
+// shape; a captured plan bound to a launch is a receipt the observing layer mints, exactly parallel
+// to gunbc.spark.vllm_kv_layout_observe's receipt over ResolvedKvLayout.
+//
+// GROUPING/PADDING IS A FIRST-CLASS FIELD, not an inference: the hybrid allocator's decision how
+// groups share blocks (and what each group's ceil-to-block padding costs) is part of the plan the
+// engine must vouch for. A consumer that re-derived padding from its own arithmetic would be
+// pricing a different allocator than the one that ran.
+type KvAllocationPlanGroup {
+  identity: NonEmptyStr
+  kind: KvGroupKind
+  layer_identities: List<NonEmptyStr>
+  block_size: TokenCount
+  page_size_bytes: ByteSize
+  tokens_per_state: TokenCount
+  max_memory_usage_bytes: ByteSize
+  blocks_at_requested_length: AllocatorBlockCount
+}
+
+// ONE RESOLVED PLAN. `runtime` is the vLLM source revision the emission self-reports (the upstream
+// SHAPE is revision-bound exactly as kv_group_metadata's is); `image_digest` is the deployment
+// image's digest riding the same self-report, for the deployment axis the source revision cannot
+// name; `cache_format` is the engine's resolved cache format (the ResolvedKvCacheFormat startup
+// line is where a capture reads it, e.g. fp8_ds_mla for this checkpoint);
+// `requested_length` is the sequence length the engine's blocks_at_requested_length figures were
+// computed at (its own max_model_len at capture); `grouping_padding` is the allocator's own
+// statement of the grouping and padding decision, quoted, not paraphrased.
+type ResolvedKvAllocationPlan {
+  runtime: VllmSourceRevision
+  image_digest: NonEmptyStr
+  cache_format: NonEmptyStr
+  allocator_blocks: AllocatorBlockCount
+  requested_length: TokenCount
+  scheduler_block_size: TokenCount
+  groups: List<KvAllocationPlanGroup>
+  grouping_padding: NonEmptyStr
+}
+
+// THE LAYOUT PROJECTION, the bridge the arm-side folds actually consume: drop the plan-only
+// fields and the row reads as the ResolvedKvLayout the cost folds price. The projection carries
+// no incarnation for the same reason the layout type does not; and it lets a landed plan feed
+// cold_admission_blocks/bytes without a second growth taxonomy -- the plan's kinds ARE
+// KvGroupKind's arms by construction.
+// THE PLAN DOES NOT CARRY THE SCHEDULER BATCH CEILING -- it is a cache allocation plan. The only
+// consumers of this projection are the cache folds, which price sequence length and never the
+// batch shape, so the projection carries the requested length in the batch field as the neutral
+// spelling of "the plan vouches for nothing about it"; a consumer that needs the batch ceiling
+// takes it from the launch profile, not from this projection.
+fn resolved_kv_layout_from_plan(plan: ResolvedKvAllocationPlan) -> ResolvedKvLayout {
+  ResolvedKvLayout {
+    allocator_blocks: plan.allocator_blocks,
+    scheduler_block_size: plan.scheduler_block_size,
+    hash_block_size: plan.scheduler_block_size,
+    max_model_len: plan.requested_length,
+    max_num_batched_tokens: plan.requested_length,
+    groups: map(plan.groups, g => KvGroupLayout {
+      kind: g.kind,
+      layer_count: attention_layer_count(count: length(g.layer_identities)),
+      block_size: g.block_size,
+      page_size_bytes: g.page_size_bytes,
+    }),
+    established_at_revision: plan.runtime,
+  }
+}
+
+// ── THE CAPTURE AND ITS MINT ─────────────────────────────────────────────────────────────────────
+//
+// THE CAPTURE IS THE RAW EMISSION RECORD, with every field the patched engine owes carried as an
+// optional, so the mint below can refuse WHILE NAMING what a given capture still lacks instead of
+// guessing defaults for it. An absent field is the typed spelling of "this emission does not
+// vouch for this", exactly the wall kv_group_metadata's layout mint erects for layer_count and
+// page_size_bytes today; the plan mint is that wall generalized to the whole contract.
+type KvAllocationPlanCapture {
+  observed_at_revision: VllmSourceRevision
+  image_digest: NonEmptyStr?
+  cache_format: NonEmptyStr?
+  allocator_blocks: AllocatorBlockCount?
+  requested_length: TokenCount?
+  scheduler_block_size: TokenCount?
+  groups: List<KvAllocationPlanCaptureGroup>?
+  grouping_padding: NonEmptyStr?
+}
+
+// ONE CAPTURED GROUP ROW, same optionality discipline as the top-level capture: the emission
+// either vouches for a field or the mint names its absence.
+type KvAllocationPlanCaptureGroup {
+  identity: NonEmptyStr?
+  kind: KvGroupKind?
+  layer_identities: List<NonEmptyStr>?
+  block_size: TokenCount?
+  page_size_bytes: ByteSize?
+  tokens_per_state: TokenCount?
+  max_memory_usage_bytes: ByteSize?
+  blocks_at_requested_length: AllocatorBlockCount?
+}
+
+type KvAllocationPlanAdmission
+  = KvAllocationPlanAdmitted { plan: ResolvedKvAllocationPlan }
+  | KvAllocationPlanRefused { cause: NonEmptyStr }
+
+fn kv_allocation_plan_capture_group_missing(g: KvAllocationPlanCaptureGroup) -> List<NonEmptyStr> {
+  concat(
+    match g.identity {
+      Absent => ["identity" as NonEmptyStr]
+      Present { value: _ } => [] as List<NonEmptyStr>
+    },
+    concat(
+      match g.kind {
+        Absent => ["kind" as NonEmptyStr]
+        Present { value: _ } => [] as List<NonEmptyStr>
+      },
+      concat(
+        match g.layer_identities {
+          Absent => ["layer_identities" as NonEmptyStr]
+          Present { value: _ } => [] as List<NonEmptyStr>
+        },
+        concat(
+          match g.block_size {
+            Absent => ["block_size" as NonEmptyStr]
+            Present { value: _ } => [] as List<NonEmptyStr>
+          },
+          concat(
+            match g.page_size_bytes {
+              Absent => ["page_size_bytes" as NonEmptyStr]
+              Present { value: _ } => [] as List<NonEmptyStr>
+            },
+            concat(
+              match g.tokens_per_state {
+                Absent => ["tokens_per_state" as NonEmptyStr]
+                Present { value: _ } => [] as List<NonEmptyStr>
+              },
+              concat(
+                match g.max_memory_usage_bytes {
+                  Absent => ["max_memory_usage_bytes" as NonEmptyStr]
+                  Present { value: _ } => [] as List<NonEmptyStr>
+                },
+                match g.blocks_at_requested_length {
+                  Absent => ["blocks_at_requested_length" as NonEmptyStr]
+                  Present { value: _ } => [] as List<NonEmptyStr>
+                })))))))
+}
+
+// THE PLAN MINT. Three walls, in order: the capture's revision must be the modeled one (the field
+// set an emission carries is a property of the upstream revision, unread revisions are not
+// trusted); every top-level field and every group row must be vouched for (no invented layer
+// identities, page bytes or block figures beside a real capture); and the zero walls -- a zero
+// inventory, a zero requested length, a group with zero layers, zero block size, zero-byte page or
+// zero tokens per state is not a group, exactly as the layout fold refuses. THE MINT DOES NOT
+// CHECK THE PLAN AGAINST ANY PRINTED CAPACITY: that is the control below, kept separate so a plan
+// can be observed (minted) before it is controlled, and a control failure reads as located
+// evidence about one of the two, not as a parse error.
+fn resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture) -> KvAllocationPlanAdmission {
+  if !revision_is_modelled(r: capture.observed_at_revision) {
+    KvAllocationPlanRefused {
+      cause: join([
+        "the allocation plan was captured at ", capture.observed_at_revision.repository as String, "@", capture.observed_at_revision.full_revision as String,
+        " but the plan shape modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+        "; the field set an emission carries is a property of that revision, and an unread revision is not trusted",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    let top_missing = kv_allocation_plan_capture_top_missing(capture: capture)
+    match length(top_missing) > 0 {
+      true =>
+        KvAllocationPlanRefused {
+          cause: join([
+            "the allocation-plan capture does not vouch for every field the plan prices: missing ",
+            join(map(top_missing, f => f as String), ", "),
+            ". The emission owes every field or the plan refuses rather than padding the gap with invented values",
+          ], "") as NonEmptyStr,
+        }
+      false =>
+        match capture.groups {
+          Absent =>
+            KvAllocationPlanRefused { cause: "unreachable: the top-level missing-field refusal above already named the absent groups" as NonEmptyStr }
+          Present { value: groups } =>
+            let group_missing = flat_map(groups, g =>
+              map(kv_allocation_plan_capture_group_missing(g: g), f =>
+                join(["group: ", (match g.identity { Present { value: i } => i as String  Absent => "<unidentified>" }), " is missing ", f as String], "") as NonEmptyStr))
+            match length(group_missing) > 0 {
+              true =>
+                KvAllocationPlanRefused {
+                  cause: join([
+                    "the allocation-plan capture leaves group rows unvouched: ",
+                    join(map(group_missing, f => f as String), "; "),
+                    ". A roster with invented identities, page bytes or block figures is a fixture wearing a receipt's name",
+                  ], "") as NonEmptyStr,
+                }
+              false => kv_allocation_plan_zero_walls(capture: capture, groups: groups)
+            }
+        }
+    }
+  }
+}
+
+fn kv_allocation_plan_capture_top_missing(capture: KvAllocationPlanCapture) -> List<NonEmptyStr> {
+  concat(
+    match capture.image_digest {
+      Absent => ["image_digest" as NonEmptyStr]
+      Present { value: _ } => [] as List<NonEmptyStr>
+    },
+    concat(
+      match capture.cache_format {
+        Absent => ["cache_format" as NonEmptyStr]
+        Present { value: _ } => [] as List<NonEmptyStr>
+      },
+      concat(
+        match capture.allocator_blocks {
+          Absent => ["allocator_blocks" as NonEmptyStr]
+          Present { value: _ } => [] as List<NonEmptyStr>
+        },
+        concat(
+          match capture.requested_length {
+            Absent => ["requested_length" as NonEmptyStr]
+            Present { value: _ } => [] as List<NonEmptyStr>
+          },
+          concat(
+            match capture.scheduler_block_size {
+              Absent => ["scheduler_block_size" as NonEmptyStr]
+              Present { value: _ } => [] as List<NonEmptyStr>
+            },
+            concat(
+              match capture.groups {
+                Absent => ["groups" as NonEmptyStr]
+                Present { value: _ } => [] as List<NonEmptyStr>
+              },
+              match capture.grouping_padding {
+                Absent => ["grouping_padding" as NonEmptyStr]
+                Present { value: _ } => [] as List<NonEmptyStr>
+              }))))))
+}
+
+// THE ZERO WALLS RUN AFTER COMPLETENESS: a complete capture of a broken engine is still broken.
+fn kv_allocation_plan_zero_walls(capture: KvAllocationPlanCapture, groups: List<KvAllocationPlanCaptureGroup>) -> KvAllocationPlanAdmission {
+  let zero_group = first(filter(groups, g =>
+    (match g.layer_identities { Present { value: ls } => length(ls) == 0  Absent => false })
+      || (match g.block_size { Present { value: b } => token_count_value(t: b) == 0  Absent => false })
+      || (match g.page_size_bytes { Present { value: p } => byte_size_count(b: p) == 0  Absent => false })
+      || (match g.tokens_per_state { Present { value: t } => token_count_value(t: t) == 0  Absent => false })))
+  match zero_group {
+    Present { value: _ } =>
+      KvAllocationPlanRefused {
+        cause: "an allocation-plan group with zero layer identities, zero block size, zero-byte page or zero tokens per state is not a group, so the plan refuses rather than pricing a free or broken one" as NonEmptyStr,
+      }
+    Absent =>
+      match capture.allocator_blocks {
+        Present { value: blocks } =>
+          match allocator_block_count_value(c: blocks) == 0 {
+            true => KvAllocationPlanRefused { cause: "the capture carries a zero allocator inventory, so there is no pool to divide" as NonEmptyStr }
+            false =>
+              match capture.requested_length {
+                Present { value: requested } =>
+                  match token_count_value(t: requested) == 0 {
+                    true => KvAllocationPlanRefused { cause: "the capture carries a zero requested length, so the blocks-per-request figures it vouches for describe no admission" as NonEmptyStr }
+                    false => kv_allocation_plan_assemble(capture: capture, groups: groups)
+                  }
+                Absent => KvAllocationPlanRefused { cause: "unreachable: the top-level missing-field refusal above already named the absent requested length" as NonEmptyStr }
+              }
+          }
+        Absent => KvAllocationPlanRefused { cause: "unreachable: the top-level missing-field refusal above already named the absent allocator inventory" as NonEmptyStr }
+      }
+  }
+}
+
+// THE ASSEMBLY, reached only past every wall: unwrap the optionals (each absence is unreachable
+// from here, and says so rather than defaulting), keep the emission's own figures, and carry the
+// capture's revision as the plan's runtime.
+fn kv_allocation_plan_assemble(capture: KvAllocationPlanCapture, groups: List<KvAllocationPlanCaptureGroup>) -> KvAllocationPlanAdmission {
+  KvAllocationPlanAdmitted {
+    plan: ResolvedKvAllocationPlan {
+      runtime: capture.observed_at_revision,
+      image_digest: match capture.image_digest {
+        Present { value: d } => d
+        Absent => "unreachable: the missing-field refusal named the absent image digest" as NonEmptyStr
+      },
+      cache_format: match capture.cache_format {
+        Present { value: f } => f
+        Absent => "unreachable: the missing-field refusal named the absent cache format" as NonEmptyStr
+      },
+      allocator_blocks: match capture.allocator_blocks {
+        Present { value: b } => b
+        Absent => allocator_block_count(count: 0)
+      },
+      requested_length: match capture.requested_length {
+        Present { value: l } => l
+        Absent => token_count(count: 0)
+      },
+      scheduler_block_size: match capture.scheduler_block_size {
+        Present { value: b } => b
+        Absent => token_count(count: 0)
+      },
+      groups: map(groups, g => KvAllocationPlanGroup {
+        identity: match g.identity {
+          Present { value: i } => i
+          Absent => "unreachable: the missing-field refusal named the absent identity" as NonEmptyStr
+        },
+        kind: match g.kind {
+          Present { value: k } => k
+          Absent => FullAttention
+        },
+        layer_identities: match g.layer_identities {
+          Present { value: ls } => ls
+          Absent => [] as List<NonEmptyStr>
+        },
+        block_size: match g.block_size {
+          Present { value: b } => b
+          Absent => token_count(count: 0)
+        },
+        page_size_bytes: match g.page_size_bytes {
+          Present { value: p } => p
+          Absent => byte_size(count: 0)
+        },
+        tokens_per_state: match g.tokens_per_state {
+          Present { value: t } => t
+          Absent => token_count(count: 0)
+        },
+        max_memory_usage_bytes: match g.max_memory_usage_bytes {
+          Present { value: m } => m
+          Absent => byte_size(count: 0)
+        },
+        blocks_at_requested_length: match g.blocks_at_requested_length {
+          Present { value: b } => b
+          Absent => allocator_block_count(count: 0)
+        },
+      }),
+      grouping_padding: match capture.grouping_padding {
+        Present { value: d } => d
+        Absent => "unreachable: the missing-field refusal named the absent grouping/padding decision" as NonEmptyStr
+      },
+    }
+  }
+}
+
+// ── THE CONTROL LAW: THE PLAN MUST REPRODUCE THE ENGINE'S PRINTED CAPACITY ───────────────────────
+//
+// THE CONTROL RUNS FORWARD FROM THE EMISSION'S OWN FIGURES, exactly as layout_reproduces_reported
+// does for the layout: sum the per-group blocks_at_requested_length the engine vouched for at its
+// requested length, divide the allocator inventory by that sum, and compare the predicted
+// concurrency (in hundredths) against the printed MaximumConcurrency line within the printed
+// precision. THE TWO SIDES KNOW NOTHING ABOUT EACH OTHER -- the plan comes from the patched
+// emission, the printed line from the engine's startup stdout -- so agreement is evidence and
+// disagreement is located: either the patch read a different engine than the line describes, or
+// the grouped figures do not sum to what the engine divided by, or the engine's arithmetic is not
+// what this module models. A plan whose capture is still unvouched never reaches the control: the
+// mint refuses first, and an absent second opinion is not agreement.
+//
+// THIS IS THE ONLY CHECK THE DOCTRINE ASKS OF THE PLAN. It is deliberately not a re-derivation
+// from group rules: the plan's claim is that IT carries the engine's own arithmetic, and a control
+// that silently recomputed the arithmetic from kind and block size would be comparing the model
+// with itself -- permanently green, establishing nothing (DESIGN section 4b: ask whether the RED
+// is authorable before writing the check).
+type AllocationPlanReproduction
+  = AllocationPlanReproducesPrinted { blocks_per_max_request: AllocatorBlockCount, predicted_concurrency_hundredths: Nat }
+  | AllocationPlanContradictsPrinted { predicted_concurrency_hundredths: Nat, reported_concurrency_hundredths: Nat }
+  | AllocationPlanControlUnavailable { cause: NonEmptyStr }
+
+fn allocation_plan_reproduces_reported_capacity(plan: ResolvedKvAllocationPlan, reported: VllmReportedCapacity) -> AllocationPlanReproduction {
+  if !revision_is_modelled(r: plan.runtime) {
+    AllocationPlanControlUnavailable {
+      cause: join([
+        "the plan was captured at ", plan.runtime.repository as String, "@", plan.runtime.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+        "; the reproduction is not valid across revisions",
+      ], "") as NonEmptyStr,
+    }
+  } else if !observed_revisions_agree(a: plan.runtime, b: reported.observed_at_revision) {
+    AllocationPlanControlUnavailable {
+      cause: join([
+        "the plan was captured at ", plan.runtime.repository as String, "@", plan.runtime.full_revision as String,
+        " but the printed capacity lines were read at ", reported.observed_at_revision.repository as String, "@", reported.observed_at_revision.full_revision as String,
+        "; a plan and a printed figure from different revisions do not describe one engine",
+      ], "") as NonEmptyStr,
+    }
+  } else if token_count_value(t: plan.requested_length) == 0 {
+    AllocationPlanControlUnavailable { cause: "the plan's requested length is zero, so the blocks-per-request figures it carries describe no admission" as NonEmptyStr }
+  } else {
+    let per_request = fold(plan.groups, init: Present { value: 0 }, f: (acc, g) =>
+      match acc {
+        Absent => none
+        Present { value: n } => Present { value: n + allocator_block_count_value(c: g.blocks_at_requested_length) }
+      })
+    match per_request {
+      Absent => AllocationPlanControlUnavailable { cause: "unreachable: the fold over present groups cannot go absent" as NonEmptyStr }
+      Present { value: cost } =>
+        match cost == 0 {
+          true => AllocationPlanControlUnavailable { cause: "the plan's groups sum to no blocks for a full-context request, so no concurrency can be predicted from them" as NonEmptyStr }
+          false => {
+            let predicted = (allocator_block_count_value(c: plan.allocator_blocks) * 100) / cost
+            let reported_hundredths = concurrent_request_hundredths_count(c: reported.max_concurrency)
+            let delta = if predicted > reported_hundredths { predicted - reported_hundredths } else { reported_hundredths - predicted }
+            match delta <= 1 {
+              true => AllocationPlanReproducesPrinted { blocks_per_max_request: allocator_block_count(count: cost), predicted_concurrency_hundredths: predicted }
+              false => AllocationPlanContradictsPrinted { predicted_concurrency_hundredths: predicted, reported_concurrency_hundredths: reported_hundredths }
+            }
+          }
+        }
+    }
+  }
+}
+
+// A CONSUMER-SIDE RE-DERIVATION AT ANOTHER LENGTH, for folds that must price an admission shorter
+// than the engine's requested length: the growth parameters are the plan group's own, so the
+// evaluation is the same fold the layout prices, with tokens_per_state giving the per-sequence
+// group's admission width (one recurrent state unit per sequence for the models this arm serves,
+// so a state spans ceil(tokens_per_state / block_size) blocks regardless of sequence length).
+// THIS IS NOT THE CONTROL: the control above reads the emission's own figures, this re-derives
+// from rules, and the two agreeing is a claim about the plan, not a replacement for the printed
+// line.
+fn plan_group_blocks_at_length(group: KvAllocationPlanGroup, at: TokenCount) -> Nat? {
+  if token_count_value(t: group.block_size) == 0 || length(group.layer_identities) == 0 {
+    none
+  } else {
+    match group.kind {
+      MambaState =>
+        match ceil_div(numerator: token_count_value(t: group.tokens_per_state), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * length(group.layer_identities) }
+        }
+      FullAttention =>
+        match ceil_div(numerator: token_count_value(t: at), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * length(group.layer_identities) }
+        }
+      SlidingWindowAttention { window: w } =>
+        match ceil_div(numerator: nat_min(a: token_count_value(t: at), b: token_count_value(t: w)), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * length(group.layer_identities) }
+        }
+      KPoolIndex { pool_every: p } =>
+        match ceil_div(numerator: token_count_value(t: at), denominator: p) {
+          Absent => none
+          Present { value: entries } =>
+            match ceil_div(numerator: entries, denominator: group.block_size) {
+              Absent => none
+              Present { value: blocks } => Present { value: blocks * length(group.layer_identities) }
+            }
+        }
+    }
+  }
+}
+
+fn plan_admission_blocks_at_length(plan: ResolvedKvAllocationPlan, at: TokenCount) -> AdmissionCost {
+  if length(plan.groups) == 0 {
+    AdmissionCostUnestablished { cause: "the allocation plan carries no groups, so no admission cost can be computed from it" as NonEmptyStr }
+  } else {
+    match fold(plan.groups, init: Present { value: 0 }, f: (acc, g) =>
+      match acc {
+        Absent => none
+        Present { value: n } =>
+          match plan_group_blocks_at_length(group: g, at: at) {
+            Absent => none
+            Present { value: c } => Present { value: n + c }
+          }
+      }) {
+      Absent => AdmissionCostUnestablished { cause: "a plan group with a zero block size or zero layer identities is not a group, so the admission cost refuses" as NonEmptyStr }
+      Present { value: n } => AdmissionCostBlocks { blocks: allocator_block_count(count: n) }
+    }
+  }
+}
+
+data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch. THE ALLOCATION-PLAN RUNG: ResolvedKvAllocationPlan and its capture mint close the emission gap extdeps.vllm.kv_group_metadata documents -- the patched engine's emission that vouches for layer identities, page bytes, tokens per state, per-group usage and blocks at the requested length, with allocation_plan_reproduces_reported_capacity as the independent control. THE EMISSION PATCH IS A FOLLOW-UP: until a capture of the patched engine exists, every capture through the mint lands on the missing-field or revision wall, and the arm's cache fold keeps refusing for want of the roster." as NonEmptyStr)

@@ -162,3 +162,66 @@ data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
 // decision to apply it is a deployment's own.
 data glm_5_3_flash_gb10_sparse_indexer_max_logits_mb: Nat = 64
 data glm_5_3_flash_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
+
+// ── THE HYBRID ATTENTION SHAPE, AS config.json STATES IT ─────────────────────────────────────
+//
+// THESE ARE THE FACTS A CACHE-ROSTER DERIVATION NEEDS, and they are the model's, not a
+// checkpoint's, a runtime's, or a scenario's: how many layers allocate recurrent state, how many
+// allocate per-token cache, at what pooling interval the compressed index grows, and how wide the
+// state and the latent are. A quantization changes how many bytes each quantity occupies; it does
+// not change WHICH layers carry which mechanism. THE FIELD NAMES ARE config.json's OWN where the
+// upstream file names them (index_kpool is the config's key for the KPool interval), for the
+// reason extdeps.zhipu.glm_5_3 keeps its shape fields' names: a second name for one upstream fact
+// is a fork the next reader must translate back.
+//
+// THE CITATION IS OWNER-MEDIATED, and the row says so rather than upgrading it. The figures were
+// cited from config.json by the owner directive docs/plans/moa-memory-modeling.md (2026-09-25);
+// this corpus had not itself re-read config.json at the pinned checkpoint revision when the row
+// landed. A consumer that needs the byte-exact derivation of a group price (state dtype, page
+// layout) still owes that read; what this row vouches is the LAYER-LEVEL ROSTER SHAPE, which is
+// what the arm's cache fold checks completeness against. The interleave (~3:1) is a reading of
+// the same fact, not a separate field: 45 layers, 34 recurrent, 11 sparse.
+//
+// ACTIVE PARAMETER COUNT IS DELIBERATELY ABSENT alongside every other compute fact. The MoE's
+// ~320B total / ~18B active figures are compute facts (how much arithmetic a token triggers), not
+// residency facts (how many bytes stay on a rank): every expert is resident unless a placement
+// policy says otherwise, and a residency row carrying an active count invites the exact
+// capacity-overestimate the doctrine refuses. Residency derives from the checkpoint manifest;
+// this row models mechanisms.
+// THE SHAPE IS A PLAIN RECORD, not a sealed one: consumers (the arm's cache-roster fold and its
+// claims) build counterfactual variants -- one recurrent layer fewer, a different pool interval --
+// to show the proof binds the exact roster, and the consistency law below, not a constructor
+// seal, is what refuses a broken shape. A transcription that fails the law is refused before any
+// fold prices it.
+type Glm53FlashHybridShape {
+  num_hidden_layers: Nat
+  kda_linear_attention_layers: Nat
+  sparse_attention_layers: Nat
+  kda_heads: Nat
+  kda_head_dim: Nat
+  index_kpool: Nat
+  mla_latent_dim: Nat
+  read_by: NonEmptyStr
+}
+
+data glm_5_3_flash_hybrid_shape: Glm53FlashHybridShape = Glm53FlashHybridShape {
+  num_hidden_layers: 45,
+  kda_linear_attention_layers: 34,
+  sparse_attention_layers: 11,
+  kda_heads: 64,
+  kda_head_dim: 128,
+  index_kpool: 4,
+  mla_latent_dim: 512,
+  read_by: "config.json of zai-org/GLM-5.3-Flash as cited by the owner directive docs/plans/moa-memory-modeling.md on 2026-09-25: 45 layers = 34 KDA linear-attention + 11 sparse-attention (~3:1 interleave), 64 KDA heads of dim 128, index_kpool 4, 512-dim MLA latent. Owner-mediated citation: the corpus re-reads config.json at the pinned checkpoint revision before any byte-exact group price is derived from these figures" as NonEmptyStr,
+}
+
+// THE SHAPE'S OWN CONSISTENCY LAW: the recurrent and sparse counts must sum to the layer count,
+// because the roster they price is a partition of the model's layers. A row failing this is not a
+// model, it is a transcription error, and the fold that reads the roster refuses before pricing.
+fn glm_5_3_flash_hybrid_shape_consistent(s: Glm53FlashHybridShape) -> Bool {
+  s.kda_linear_attention_layers + s.sparse_attention_layers == s.num_hidden_layers
+    && s.index_kpool > 0
+    && s.kda_heads > 0
+    && s.kda_head_dim > 0
+    && s.mla_latent_dim > 0
+}
