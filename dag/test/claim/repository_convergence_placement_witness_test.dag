@@ -1,6 +1,8 @@
 module test.claim.repository_convergence_placement_witness_test
 
-import std.types { String, Bool }
+import std.types { String, Bool, NonEmptyStr }
+import extdeps.git { SafeDirectoryGrant, safe_directory_grant_authorizes_local_fetch }
+import gunbc.live_deploy.repository_convergence { convergence_fetch_trusted_directory }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead,
@@ -398,4 +400,29 @@ test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool
         }
     }
   }
+}
+
+// THE FETCH SOURCE IS TRUSTED AT ITS GIT DIR (#12246 follow-up). RED: the worktree-only grant #12246
+// shipped -- `safe.directory=<runner checkout>` -- does not authorize a local fetch, because upload-pack
+// compares `<checkout>/.git` (srv1 journal 2026-09-25 02:07:36). The trusted path the convergence
+// passes is derived from the operand, so a second source gets its own git dir, never the probe's,
+// never `*`. The execution-level control is not creatable in-session (a local fetch across two
+// owning principals needs two users); the wet control is the next srv1 dashboard_deploy.
+test fn the_worktree_only_grant_does_not_authorize_a_local_source_fetch() -> Bool {
+  let source = fixture_object_source as NonEmptyStr
+  let other = "/srv/another-checkout" as NonEmptyStr
+  !safe_directory_grant_authorizes_local_fetch(grant: SafeDirectoryGrant { path: source }, source: source)
+    && safe_directory_grant_authorizes_local_fetch(
+      grant: SafeDirectoryGrant { path: convergence_fetch_trusted_directory(remote: fixture_object_source) as NonEmptyStr },
+      source: source,
+    )
+    && safe_directory_grant_authorizes_local_fetch(
+      grant: SafeDirectoryGrant { path: convergence_fetch_trusted_directory(remote: other as String) as NonEmptyStr },
+      source: other,
+    )
+    && !safe_directory_grant_authorizes_local_fetch(
+      grant: SafeDirectoryGrant { path: convergence_fetch_trusted_directory(remote: fixture_object_source) as NonEmptyStr },
+      source: other,
+    )
+    && convergence_fetch_trusted_directory(remote: fixture_object_source) != "*"
 }
