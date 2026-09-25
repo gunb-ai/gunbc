@@ -930,6 +930,29 @@ fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
   append(git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }), items: ["-C", repo as String])
 }
 
+// gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
+// root of its working tree.
+data git_non_bare_git_dir_name: String = ".git"
+
+fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
+  join([worktree as String, "/", git_non_bare_git_dir_name], "") as NonEmptyStr
+}
+
+// A LOCAL FETCH SOURCE IS TRUSTED AT ITS GIT DIR, NOT ITS WORKTREE. `git fetch <path>` spawns
+// git-upload-pack(1) on <path>, and upload-pack enters the repository through enter_repo() (git
+// path.c), which probes `<path>/.git` before `<path>` and -- with the CVE-2024-32004 fix, present in srv1's
+// packaged git 1:2.43.0-1ubuntu7.3 (an Ubuntu security backport, so no upstream version number
+// bounds it) -- checks ownership with die_upon_dubious_ownership() against the directory it ENTERED. For a
+// non-bare source that is the git dir, so a safe.directory naming the worktree is never the path
+// compared (srv1 journal 2026-09-25 02:07:36: "detected dubious ownership in repository at
+// <checkout>/.git" under `-c safe.directory=<checkout>`). The worktree form is NOT added beside it:
+// upload-pack consults no working tree, and the fetching repository (`-C`) is the caller's own, so
+// a second trusted path would widen trust for nothing. The source this is derived for is a non-bare
+// checkout; a bare source would refuse loudly with the same typed cause, never pass silently.
+fn git_local_fetch_source_grant(source: NonEmptyStr) -> SafeDirectoryGrant {
+  SafeDirectoryGrant { path: git_non_bare_git_dir(worktree: source) }
+}
+
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
   ["git", "-C", repo as String, "config", "--local", key, value]
 }

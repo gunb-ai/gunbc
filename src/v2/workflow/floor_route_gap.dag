@@ -1117,8 +1117,13 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The four test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
-// sequential loser naming the winner, generation-two advance, and a non-contention store refusal.
+// The five test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
+// sequential loser naming the winner, generation-two advance, a non-contention store refusal, and the
+// head search reaching the Int maximum without overflowing -- plus the five
+// test.claim.approval_assertion_counter_wet_witness_test identities (replay refused, per-enrolment
+// standing, lost race refused, a 4200-generation prefix seeded through cas_file_slot_path past the
+// former 4096 cliff followed by real replay and admission reads, and an append interleaved between
+// the head search's reads), whose first effect is the same Mktemp.
 // First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment: this
 // expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the
 // gunbc.ci_layer_roots witness_exclusion_frontier LocalRepoWetLane row for
@@ -1134,10 +1139,28 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_assertion_counter_wet_witness_test.a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_assertion_counter_wet_witness_test.the_counter_standing_is_per_enrolment", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_assertion_counter_wet_witness_test.a_lost_counter_race_is_refused_not_admitted", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_assertion_counter_wet_witness_test.an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_assertion_counter_wet_witness_test.an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.an_established_empty_root_reads_the_slot_absent_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
   }
   }
   }
@@ -1151,8 +1174,12 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // gunbc.hermetic_mock_fidelity (fabricated digest of arbitrary bytes). The real terminal is this
 // lane: sha256sum over committed patch paths (DigestFile) or stdin of the empty string
 // (DigestStdin). Sibling functions in those entries stay hermetic; they do not reach the ops.
+// Plus the test.claim.approval_device_routes_wet_witness_test identity (gunbc#12000): the
+// bound-realization control's enrolment-store Read. Triple enrollment: this expectation, its
+// WetScheduledClaim row, and the gunbc.ci_layer_roots
+// LocalRepoWetLane row for approval_device_routes_wet_witness_test.dag.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_row_store_encode_witness.the_receipt_was_produced_by_the_rendered_program_the_mode_ships", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_engram_runtime_witness.the_live_storage_backed_patches_are_digestfile_of_committed_bytes", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.observed_patches_do_not_mint_a_patched_source_tree", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.the_live_candidate_is_keyed_end_to_end", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.digestfile_inhabits_the_committed_patch_population", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.empty_diff_has_a_real_digest", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Empty {} } } } } } }
+  Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_row_store_encode_witness.the_receipt_was_produced_by_the_rendered_program_the_mode_ships", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_engram_runtime_witness.the_live_storage_backed_patches_are_digestfile_of_committed_bytes", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.observed_patches_do_not_mint_a_patched_source_tree", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.the_live_candidate_is_keyed_end_to_end", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.digestfile_inhabits_the_committed_patch_population", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.empty_diff_has_a_real_digest", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness_test.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} }, tail: Empty {} } } } } } } }
 }
 
 // THE DECLARED-UNIT DIGEST MINT IS THE ONE ROUTE GAP THESE IDENTITIES SHARE.

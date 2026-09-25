@@ -38,7 +38,7 @@ import gunbc.runner_microvm {
   gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, runner_microvm_shape_refusal_text,
 }
 import gunbc.runner_microvm_shakedown {
-  microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_runner_group,
+  microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer,
 }
 import gunbc.fabric_control_plane { fabric_control_plane_store_root }
 import gunbc.fabric_required_build_cell {
@@ -59,14 +59,20 @@ import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptB
 import gunbc.github_effect_perform {
   JitMintPerformance, perform_organization_jit_mint, JitMintReceived, JitMintAppKeyNotCustodied,
   lifecycle_controller_app, lifecycle_controller_app_key,
-  JitMintClockUnread, JitMintAppJwtUnsigned, JitMintStepNotSucceeded,
+  JitMintClockUnread, JitMintAppJwtUnsigned, JitMintStepNotSucceeded, JitMintTokenForAnotherInstallation,
+  mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
+  read_runner_groups_with,
 }
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, plan_attempt_launch_reservation_authorized, attempt_jail_chroot_root, jail_jit_path,
 }
-import gunbc.runner_jit_mint { RunnerGroupRestrictionUnobserved }
+import gunbc.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
+  runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
+}
 import gunbc.runner.runner_jit_perform {
-  dispatch_jit_mint, JitMintDispatch,
+  dispatch_jit_mint, JitMintDispatch, JitMintDispatchRefused, JitMintDispatchAuthorized,
+  DispatchRefusedRunnerGroupUnrestricted,
   JitCredentialBoundToAttempt, JitCredentialNotDispatched, JitCredentialMintNotCreated,
 }
 import gunbc.runner_microvm_network {
@@ -256,17 +262,56 @@ fn controller_credential_authority() -> GitHubCredentialAuthority {
   }
 }
 
-fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
-  uses net: Network
-{
-  perform_organization_jit_mint(dispatch: dispatch_jit_mint(
+fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch {
+  dispatch_jit_mint(
     binding: binding,
     authority: controller_credential_authority(),
     control_plane: state,
     organization: github_organization_ref(),
-    runner_group: RunnerGroupRestrictionUnobserved { group: microvm_shakedown_runner_group },
+    runner_group: runner_group,
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
-  ))
+  )
+}
+
+// THE GROUP IS READ ONLY WHEN IT IS THE LAST THING STANDING. The plan is first taken with the
+// not-yet-observed standing: every gate before the group -- cell ownership, the App credential,
+// the attempt binding -- decides there with no I/O, exactly as before, and a dispatch refused by any
+// of them is returned without minting a token. Only when the group is the one remaining refusal is
+// the installation token minted, the organization's runner groups read with it, the sealed observer
+// run over that reading, and the plan taken again with the observed standing -- which is then the
+// ONLY route to JitMintAuthorized, because no other value of the standing's authorizing arm can be
+// written (gunbc.runner_group_restriction_observation). The same token performs the generate.
+fn mint_under_observed_group(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
+  uses net: Network
+{
+  match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id) {
+    ControllerTokenNotMinted { performance: p } => p
+    ControllerTokenMinted { token: t } => {
+      let standing = observe_shakedown_runner_group_restriction(
+        name: microvm_shakedown_runner_group_name,
+        listed: read_runner_groups_with(token: t, organization: github_organization_ref().login),
+      )
+      perform_organization_jit_mint(dispatch: attempt_dispatch(binding: binding, state: state, runner_group: standing), token: t)
+    }
+  }
+}
+
+fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
+  uses net: Network
+{
+  match attempt_dispatch(
+    binding: binding,
+    state: state,
+    runner_group: runner_group_restriction_not_yet_observed(name: microvm_shakedown_runner_group_name),
+  ) {
+    JitMintDispatchRefused { refusal: r } => match r {
+      DispatchRefusedRunnerGroupUnrestricted { group: _, cause: RunnerGroupRestrictionNotYetObserved } =>
+        mint_under_observed_group(binding: binding, state: state)
+      other => JitMintReceived { delivery: JitCredentialNotDispatched { refusal: other } }
+    }
+    JitMintDispatchAuthorized { attempt: _, app: _, installation: _, organization: _, request: _ } =>
+      mint_under_observed_group(binding: binding, state: state)
+  }
 }
 
 // ── stage 5: the slot network receipt, read from its durable host path ──────────────────────────
@@ -402,6 +447,7 @@ fn minted_registration(mint: JitMintPerformance) -> Int? {
     JitMintClockUnread { detail: _ } => none
     JitMintAppJwtUnsigned { detail: _ } => none
     JitMintStepNotSucceeded { step: _, performance: _ } => none
+    JitMintTokenForAnotherInstallation { app: _, installation: _ } => none
   }
 }
 
