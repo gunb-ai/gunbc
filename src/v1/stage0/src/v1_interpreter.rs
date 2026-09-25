@@ -11237,49 +11237,10 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.concat" { "concat" | "append" | "push" } => {
-                // A native String receiver extends only with string-like arguments: a native
-                // `Str`, a codepoint `Empty`/`Cons` chain (`free_monoid_to_string`), or -- for
-                // `push` -- one codepoint. Anything else refuses (DESIGN §5). It used to append
-                // `format!("{}", arg)`, the argument's DISPLAY rendering, so `"//"` concatenated
-                // with the codepoint chain of `ab` became the text `//[97, 98]` and an empty chain
-                // became `//Empty`: fabricated text whose length every v2 lexer extent after a
-                // line comment was advanced by (v2.compiler.tokenize `lex_rule_thunk` sequence arm).
                 if let Value::Str(s) = &$receiver {
                     let mut result = s.to_string();
                     for arg in $args {
-                        let piece = match arg {
-                            Value::Int(n) if $method == "push" => {
-                                u32::try_from(*n).ok().and_then(char::from_u32).map(String::from)
-                            }
-                            // Both operands of concat/append are one FreeMonoid<T>, so beside a
-                            // native String receiver (T = Char) a List's elements ARE codepoints;
-                            // the generic-collection exemption `free_monoid_to_string` applies to
-                            // a List seen alone does not hold here. A non-codepoint element refuses.
-                            Value::List(items) if $method != "push" => items
-                                .iter()
-                                .map(|it| match it {
-                                    Value::Int(n) => u32::try_from(*n).ok().and_then(char::from_u32),
-                                    _ => None,
-                                })
-                                .collect::<Option<String>>(),
-                            _ => free_monoid_to_string(arg),
-                        };
-                        match piece {
-                            Some(p) => result.push_str(&p),
-                            None => {
-                                return Err(InterpError::StringRealizationStraddle {
-                                    detail: format!(
-                                        "`{}` on a native String with an argument that is not string-like ({}); a String extends only by a String, a Char codepoint chain, or one codepoint",
-                                        $method,
-                                        match arg {
-                                            Value::List(_) => "a List collection",
-                                            Value::Int(_) => "an Int",
-                                            _ => "a value that is neither a String nor a codepoint chain",
-                                        }
-                                    ),
-                                });
-                            }
-                        }
+                        result.push_str(&format!("{}", arg));
                     }
                     return Ok(str_value(result));
                 }
@@ -20017,13 +19978,6 @@ macro_rules! v1_builtin_arms {
                         }
                     }
                     return Ok(Some(str_value(result)));
-                }
-                // A native String beside a codepoint chain is one String (the method arm's rule),
-                // never the mixed `[Str, codepoint..]` list the arms below would build.
-                if $positional.len() >= 2 && $positional.iter().any(|v| matches!(v, Value::Str(_))) {
-                    if let Some(parts) = $positional.iter().map(|v| free_monoid_to_string(v)).collect::<Option<Vec<String>>>() {
-                        return Ok(Some(str_value(parts.concat())));
-                    }
                 }
                 let record_push = |copied: usize| {
                     let mut counters = $ctx.mutation_counters.borrow_mut();

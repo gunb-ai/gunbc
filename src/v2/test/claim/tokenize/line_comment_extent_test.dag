@@ -13,14 +13,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A LINE COMMENT ADVANCES THE LEXER BY ITS OWN LENGTH, AND ITS CAPTURED TEXT IS ITSELF.
 //
 // The `.dag` line-comment rule is Sequence(Literal "//", Repeat(LineCommentTextChar)), and the
-// sequence arm of v2.compiler.tokenize lex_rule_thunk joins the two lexemes with list_append. On the
-// seed interpreter that join met a native String ("//") and a codepoint list, and the Str-receiver
-// concat arm appended the list's DISPLAY rendering: `// ab` became the text `//[32, 97, 98]` and a
-// bare `//` became `//Empty`. lex_walk_step advances every extent by the lexeme's length, so every
-// token after any line comment carried a ByteRange past its true offset -- past the end of the file
-// in comment-dense modules -- and every consumer of a locus after a comment (the XL-2 conservation
-// census, refusal carets) was reading the wrong bytes. The route here is the production one: the
-// `.dag` language's own rule set through lex_walk_artifact.
+// sequence arm of v2.compiler.tokenize lex_rule_thunk joins the two lexemes with list_append. The
+// literal matcher answered the pattern's own text -- a native String on the seed -- beside the
+// repeat's codepoint list, and the seed's concat renders a list it cannot tell from data: `// ab`
+// became the text `//[32, 97, 98]` and a bare `//` became `//Empty`. lex_walk_step advances every
+// extent by the lexeme's length, so every token after any line comment carried a ByteRange past its
+// true offset. The route here is the production one: the `.dag` language's own rule set through
+// lex_walk_artifact. Rostered as gunbc.recurring_failure_mode
+// lexer_literal_lexeme_straddles_its_sequence_partner.
 //
 // The sources are ASCII so byte and scalar offsets agree; the unit question is gunbc#12285's.
 fn token_starts(source: String) -> String {
