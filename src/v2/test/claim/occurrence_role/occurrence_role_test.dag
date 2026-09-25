@@ -8,6 +8,7 @@ import v2.compiler.occurrence_role {
   NameRoleRead,
   NamesAreReferences,
   OccurrenceRoleOutcome,
+  OccurrenceRoles,
   OccurrenceRoleTableRefused,
   OccurrenceRolesRead,
   ReadKwThenIdent,
@@ -19,7 +20,10 @@ import v2.compiler.occurrence_role {
 import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
 import v2.extdeps.languages.dag { dag_grammar_root }
 import v2.std.algebra { fold_list, length, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.collection { List, map_lookup }
+import v2.std.optional { Absent, Present }
+import v2.std.node { Conj, Edge, Named, Node, TypeNode, node_with_occurrence_id }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarProduction, GrammarRoot, grammar_atom, grammar_expr_terminal_lexeme }
 import v2.std.integer { Int }
@@ -85,7 +89,7 @@ test fn a_row_for_an_absent_production_refuses_as_unknown_holds() -> Bool {
 
 // ---- the walk on a controlled fixture -----------------------------------------------------------
 
-data roles_fixture_source: String = "module v2.test.occurrence_role_fixture\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_callee(k: Int) -> Int { k }\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: rc_callee(k: n) } }\n\ndata rc_row: Int = 3\n"
+data roles_fixture_source: String = "module v2.test.occurrence_role_fixture\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_callee(k: Int) -> Int { k }\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: rc_callee(k: n) } }\n\nfn rc_positional(n: Int) -> Int { rc_callee(n) }\n\ndata rc_row: Int = 3\n"
 
 fn roles_fixture_outcome() -> OccurrenceRoleOutcome {
   let subject = conservation_subject(id_tail: "occurrence_role", source: roles_fixture_source)
@@ -103,23 +107,59 @@ fn roles_count(outcome: OccurrenceRoleOutcome, role: OccurrenceRole, category: O
   }
 }
 
-// The fixture declares a type (RcRow), two fns (rc_callee, rc_make) and a data (rc_row); it labels
-// one record field (`v:` in RcRow { v: .. }) and one call argument (`k:` in rc_callee(k: n)). Every
+// The fixture declares a type (RcRow), three fns (rc_callee, rc_make, rc_positional) and a data
+// (rc_row); it labels one record field (`v:` in RcRow { v: .. }) and one call argument (`k:` in
+// rc_callee(k: n)); `rc_callee(n)` is a positional argument, which carries no name. Every
 // other name in it -- the parameters, the field declaration, the references -- is either a
 // reference (not recorded) or a production whose reader has not landed (counted, not recorded).
 test fn the_fixture_declarations_and_labels_are_recorded_holds() -> Bool {
   let o = roles_fixture_outcome()
   roles_count(outcome: o, role: DeclarationRole, category: TypeOccurrence) == 1
-    && roles_count(outcome: o, role: DeclarationRole, category: CallableOccurrence) == 2
+    && roles_count(outcome: o, role: DeclarationRole, category: CallableOccurrence) == 3
     && roles_count(outcome: o, role: DeclarationRole, category: LexicalValueOccurrence) == 1
     && roles_count(outcome: o, role: ReferenceRole, category: FieldOccurrence) == 1
     && roles_count(outcome: o, role: ReferenceRole, category: LexicalValueOccurrence) == 1
 }
 
-// The references are not recorded: exactly the six names above and nothing else.
+// The references are not recorded: exactly the seven names above and nothing else. And the
+// positional argument is a lawful absence of a name, not a reader refusal: no production of the
+// fixture counts one.
 test fn the_fixture_records_no_reference_to_a_module_scope_name_holds() -> Bool {
   match roles_fixture_outcome() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => false
-    OccurrenceRolesRead { roles: r } => length(xs: r.roles) == 6 && r.unminted == 0
+    OccurrenceRolesRead { roles: r } =>
+      length(xs: r.roles) == 7 && r.unminted == 0
+        && refused_at(roles: r, emitted: ^dag_surface_arg) == 0
+        && refused_at(roles: r, emitted: ^dag_surface_fn_decl) == 0
+        && refused_at(roles: r, emitted: ^dag_surface_field_init) == 0
+  }
+}
+
+fn refused_at(roles: OccurrenceRoles, emitted: Symbol) -> Int {
+  match map_lookup(m: roles.reader_refused, key: emitted) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// A READER REFUSAL IS COUNTED, NEVER READ AS NO BINDER (review 71392). Planted at the interface: a
+// production shell the parse tree would carry for an fn declaration, whose captured child holds no
+// `fn name` spine, so the declaration decoder refuses. The walk must count it at fn_decl and record
+// no role.
+fn planted_unreadable_fn_decl() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: grammar_atom(identity: ^dag_surface_fn_decl) },
+      Edge { label: Named { name: ^grammar_production_captured_node_projection }, target: grammar_atom(identity: ^occurrence_role_planted_not_a_spine) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  )
+}
+
+test fn an_unreadable_binder_is_counted_as_a_reader_refusal_holds() -> Bool {
+  match occurrence_roles_of_tree(tree: planted_unreadable_fn_decl(), root: dag_grammar_root(), rows: dag_name_production_rows()) {
+    OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => false
+    OccurrenceRolesRead { roles: r } => refused_at(roles: r, emitted: ^dag_surface_fn_decl) == 1 && length(xs: r.roles) == 0
   }
 }
