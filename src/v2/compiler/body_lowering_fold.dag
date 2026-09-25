@@ -6,9 +6,9 @@ import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.compiler.fold_lowering {
   FoldCallLowered,
   FunctionValueBinder,
-  FunctionValueBlockBody,
-  FunctionValueBody,
-  FunctionValueExprBody,
+  FunctionLiteralBlockBody,
+  FunctionLiteralBody,
+  FunctionLiteralExprBody,
   function_value_parts_optional,
   FoldCallNotAFold,
   FoldCallStepFormUnresolved,
@@ -3783,17 +3783,17 @@ fn body_lower_function_value_codomain_optional(ret: Node) -> Optional<FunctionVa
 // THE BODY, BY ITS FORM. An expression body (`p => e`) is read by the value reader; a block body
 // (`fn(..) { .. }`) by the named fn's own body lowering (body_lower_body_from_fn_captured), so let-
 // and block-tails lower exactly as they do in a named fn -- no second walker.
-fn body_lower_function_value_body(body: FunctionValueBody) -> Outcome<Optional<Node>> {
+fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional<Node>> {
   match body {
-    FunctionValueExprBody { expr: e } => body_lower_value_lowered(node: e)
-    FunctionValueBlockBody { fn_body: b } => body_lower_body_from_fn_captured(captured: b)
+    FunctionLiteralExprBody { expr: e } => body_lower_value_lowered(node: e)
+    FunctionLiteralBlockBody { fn_body: b } => body_lower_body_from_fn_captured(captured: b)
   }
 }
 
-fn body_lower_function_value_body_node(body: FunctionValueBody) -> Node {
+fn body_lower_function_value_body_node(body: FunctionLiteralBody) -> Node {
   match body {
-    FunctionValueExprBody { expr: e } => e
-    FunctionValueBlockBody { fn_body: b } => b
+    FunctionLiteralExprBody { expr: e } => e
+    FunctionLiteralBlockBody { fn_body: b } => b
   }
 }
 

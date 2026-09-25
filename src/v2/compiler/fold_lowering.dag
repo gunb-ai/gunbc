@@ -244,14 +244,14 @@ type FunctionValueBinder {
   at: Node
 }
 
-type FunctionValueBody
-  = FunctionValueExprBody { expr: Node }
-  | FunctionValueBlockBody { fn_body: Node }
+type FunctionLiteralBody
+  = FunctionLiteralExprBody { expr: Node }
+  | FunctionLiteralBlockBody { fn_body: Node }
 
 type FunctionValueParts {
   binders: List<FunctionValueBinder>
   return_clause: Node
-  body: FunctionValueBody
+  body: FunctionLiteralBody
 }
 
 fn fv_unwrap(node: Node) -> Node {
@@ -338,7 +338,7 @@ fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Opt
         value: FunctionValueParts {
           binders: binders,
           return_clause: fv_empty_return_clause(),
-          body: FunctionValueExprBody { expr: expr }
+          body: FunctionLiteralExprBody { expr: expr }
         }
       }
   }
@@ -503,7 +503,7 @@ fn fn_literal_parts_optional(fn_literal: Node) -> Optional<FunctionValueParts> {
                                           value: FunctionValueParts {
                                             binders: binders,
                                             return_clause: ret,
-                                            body: FunctionValueBlockBody { fn_body: fn_body }
+                                            body: FunctionLiteralBlockBody { fn_body: fn_body }
                                           }
                                         }
                                     }
@@ -553,8 +553,8 @@ fn fold_step_has_two_binders(parts: FunctionValueParts) -> Bool {
 
 fn fold_step_body(parts: FunctionValueParts) -> Optional<Node> {
   match parts.body {
-    FunctionValueExprBody { expr: e } => optional_present(value: e)
-    FunctionValueBlockBody { fn_body: b } => parse_production_captured_child_optional(node: fv_unwrap(node: b))
+    FunctionLiteralExprBody { expr: e } => optional_present(value: e)
+    FunctionLiteralBlockBody { fn_body: b } => parse_production_captured_child_optional(node: fv_unwrap(node: b))
   }
 }
 

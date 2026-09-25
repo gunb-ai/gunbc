@@ -93,16 +93,35 @@ fn btar_resolve_refused_at_authored_q(o: Outcome<Node>) -> Bool {
 }
 
 test fn btar_fn_literal_return_annotation_reaches_resolve() -> Bool {
-  btar_resolve_refused_at_authored_q(o: btar_fn_literal_annotated())
+  btar_fn_literal_outcomes().annotated_reaches_resolve
 }
 
 // (4) The unannotated let-bound literal is not erased: it lowers whole (gunbc#12210), its parameter
 // bound for its body, so the program is Accepted AND no `fn` keyword atom -- the eraser's answer --
 // survives in it. RED BEFORE gunbc#12248: Accepted with the literal lowered to its `fn` token.
-test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
-  match btar_fn_literal_plain() {
+fn btar_plain_literal_not_erased(o: Outcome<Node>) -> Bool {
+  match o {
     Accepted { value: tree, diagnostics: _ } => !btar_atom_in(n: tree, id: ^dag_token_kw_fn)
     Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
+  btar_fn_literal_outcomes().plain_not_erased
+}
+
+// ONE WARM PRODUCER FOR THE TWO FN-LITERAL VERDICTS (3) and (4): each once paid its own front end.
+// Enrolled in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the
+// claims only read their Bool.
+type BtarFnLiteralOutcomes {
+  annotated_reaches_resolve: Bool
+  plain_not_erased: Bool
+}
+
+fn btar_fn_literal_outcomes() -> BtarFnLiteralOutcomes {
+  BtarFnLiteralOutcomes {
+    annotated_reaches_resolve: btar_resolve_refused_at_authored_q(o: btar_fn_literal_annotated()),
+    plain_not_erased: btar_plain_literal_not_erased(o: btar_fn_literal_plain())
   }
 }
 
