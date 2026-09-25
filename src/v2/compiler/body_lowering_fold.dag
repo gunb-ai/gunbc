@@ -107,7 +107,7 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
-import v2.std.type_binder { cast_target_edge, type_alias_edge, type_body_edge, type_decl_view, type_params_edge }
+import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_params_edge }
 import v2.std.node_query {
   construct_node,
   construct_tag_optional,
