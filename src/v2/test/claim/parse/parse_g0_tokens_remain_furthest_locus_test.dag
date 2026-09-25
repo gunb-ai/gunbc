@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // parse_g0_tokens_remain refusals at the first token of a top-level item -- `test` 204, `fn` 117,
 // `service` 41 -- because the module's `repeat` stops at an item whose production fails as a
 // whole, and the diagnostic named the first leftover token. The treatment: an unadmitted token
-// inside a fn body is reported at that token, on a cold parse and again on a served one. The
+// inside a type body is reported at that token, on a cold parse and again on a served one. The
 // control: a failure that consumed nothing inside the item stays at the item's first token, so the
 // furthest rule does not invent depth.
 //
@@ -39,29 +39,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the real tokenizer emits exactly it. The unit claim's subject is the lexer, so it tokenizes and
 // parses nothing.
 
-data treatment_source: String = "module m.t\nfn f() -> Int {\n  let x = ]\n}\n"
+data treatment_source: String = "module m.t\ntype T {\n  x Int\n}\n"
 
 data control_source: String = "module m.t\nfn ok() -> Int { 1 }\n]\n"
 
-// `fn f` begins at 11; the `]` the let initializer cannot start with is at 37.
+// `type T` begins at 11; the field `x` demands a `:` and meets `Int` at 24. A type field rather than
+// an unadmitted expression token: a failed expression backtracks through every expression
+// alternative, which cost the floor 572ms per parse against a 302ms enrolment budget.
 fn treatment_stream() -> TokenStream {
   token_stream_new(all: [
     Token { class: ^dag_token_kw_module, lexeme: "module", file: ^furthest_locus_probe, start: 0, end: 6 },
     Token { class: ^dag_token_ident, lexeme: "m", file: ^furthest_locus_probe, start: 7, end: 8 },
     Token { class: ^dag_token_dot, lexeme: ".", file: ^furthest_locus_probe, start: 8, end: 9 },
     Token { class: ^dag_token_ident, lexeme: "t", file: ^furthest_locus_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^furthest_locus_probe, start: 11, end: 13 },
-    Token { class: ^dag_token_ident, lexeme: "f", file: ^furthest_locus_probe, start: 14, end: 15 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^furthest_locus_probe, start: 15, end: 16 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^furthest_locus_probe, start: 16, end: 17 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^furthest_locus_probe, start: 18, end: 20 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^furthest_locus_probe, start: 21, end: 24 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^furthest_locus_probe, start: 25, end: 26 },
-    Token { class: ^dag_token_kw_let, lexeme: "let", file: ^furthest_locus_probe, start: 29, end: 32 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^furthest_locus_probe, start: 33, end: 34 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^furthest_locus_probe, start: 35, end: 36 },
-    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^furthest_locus_probe, start: 37, end: 38 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^furthest_locus_probe, start: 39, end: 40 }
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^furthest_locus_probe, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "T", file: ^furthest_locus_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^furthest_locus_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^furthest_locus_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^furthest_locus_probe, start: 24, end: 27 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^furthest_locus_probe, start: 28, end: 29 }
   ])
 }
 
@@ -116,11 +112,14 @@ test fn control_stream_is_what_tokenize_emits() -> Bool {
   supplied_stream_matches_tokenize(text: control_source, file: ^furthest_locus_probe, supplied: control_stream())
 }
 
-// THE TREATMENT. The served-reparse claim that this locus survives a warm memo is
-// v2.test.claim.long.parse_g0_tokens_remain_served_locus: two parses cost more than the enrolment
-// budget, so it lives in the long home, which declares that expense structurally.
-test fn tokens_remain_mid_item_failure_is_located_at_the_construct() -> Bool {
-  tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream())) == 37
+// THE TREATMENT, AND THE LOCUS DOES NOT DEPEND ON CACHE WARMTH. The seed serves parse memo entries
+// across parses of one token stream (v1_interpreter parse_table_memo_scope_and_key), so the second
+// parse meets entries the first stored; each entry carries its own subparse's furthest record, and
+// the served parse must land on the same token. The cold assertion alone is implied by this claim.
+test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool {
+  let cold = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
+  let warm = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
+  cold == 24 && warm == 24
 }
 
 test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
