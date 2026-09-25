@@ -111,6 +111,7 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
   match resolve_node(
     ctx: ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: NamespaceOnlyY,
       position: qualified_name_snoc(qn: qmpr_consumer_qn, segment: ^LocalAlias),
@@ -129,6 +130,7 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
   match resolve_node(
     ctx: ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: NamespaceOnlyY,
       position: qmpr_consumer_qn,

@@ -85,6 +85,7 @@ import v2.std.symbol_index {
 }
 import v2.std.node {
   Arrow,
+  is_positional,
   Atom,
   Branch,
   Cardinality,
@@ -106,7 +107,7 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
-import v2.std.type_binder { type_decl_wrapper, type_params_edge }
+import v2.std.type_binder { cast_target_edge, type_decl_wrapper, type_params_edge }
 import v2.std.node_query {
   construct_node,
   construct_tag_optional,
@@ -1188,6 +1189,10 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
             Absent =>
               match sugar_sequence_pair_optional(node: node) {
                 Present { value: pair } =>
+                  match body_lower_cast_chain_read(node: node) {
+                    OperandRefLowered { lowered: cast } => OperandRefLowered { lowered: cast }
+                    OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
+                    OperandRefAbsent =>
                   match body_lower_dotted_reference_optional(node: node) {
                     Present { value: spine } => OperandRefLowered { lowered: spine }
                     Absent =>
@@ -1199,6 +1204,7 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
                           Absent => body_lower_operand_ref_sequence_read(node: node)
                         }
                       }
+                  }
                   }
                 Absent =>
                   match parse_production_captured_child_optional(node: node) {
@@ -2880,11 +2886,13 @@ fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
   }
 }
 
+// The head (positional 0) and a Named edge are kept as authored: the named edge is a
+// v2.std.type_binder marker (a cast's target type), never an operand to reify.
 fn body_lower_reify_transform_edge(
   done: List<Edge>,
   e: Edge
 ) -> Outcome<List<Edge>> {
-  if length(xs: done) == 0 {
+  if (length(xs: done) == 0) || !is_positional(e: e) {
     outcome_accepted(
       value: list_snoc_item(
         xs: done,
@@ -4139,10 +4147,16 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
 // A SECOND WALKER WOULD BE A SECOND AUTHORITY for "this is a dotted chain" (review 67903 on
 // gunbc#11612 refused exactly that fork), so the operand reading, the spine reading and the
 // general fold all consume THIS answer and differ only in what they build from it.
-type PostfixStep {
-  segment: Symbol
-  call_elem: Optional<Node>
-}
+//
+// A CAST IS A STEP OF THE SAME SEQUENCE. postfix_expr's repeat is choice(dot_suffix, as_suffix), so
+// `a.b as T`, `(x as T).f` and `x as A as B` are chains whose steps interleave projections and
+// casts, and the fold eliminates the accumulator with each in order: a cast step wraps what
+// precedes it in the typed cast node (body_lower_cast_node). The step carries the AUTHORED type
+// expression; the fold lowers it, and a type expression the lowering cannot read refuses
+// body_lowering_reason_type_annotation_not_carried located at it, never dropped.
+type PostfixStep
+  = PostfixProjection { segment: Symbol, call_elem: Optional<Node> }
+  | PostfixCast { target: Node }
 
 // THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
 // suffix slot is neither empty nor a paren call -- today the BRACE suffix, the module-qualified
@@ -4204,7 +4218,7 @@ type PostfixChainAcc
 
 fn body_lower_postfix_bare_steps(segments: List<Symbol>) -> List<PostfixStep> {
   fold(segments, init: Empty, f: fn(acc, segment) {
-    list_snoc_item(xs: acc, item: PostfixStep { segment: segment, call_elem: optional_absent() })
+    list_snoc_item(xs: acc, item: PostfixProjection { segment: segment, call_elem: optional_absent() })
   })
 }
 
@@ -4214,7 +4228,7 @@ fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Symbol)
       PostfixChainAccBare { segments: list_snoc_item(xs: segments, item: segment) }
     PostfixChainAccCalled { steps: steps } =>
       PostfixChainAccCalled {
-        steps: list_snoc_item(xs: steps, item: PostfixStep { segment: segment, call_elem: optional_absent() })
+        steps: list_snoc_item(xs: steps, item: PostfixProjection { segment: segment, call_elem: optional_absent() })
       }
   }
 }
@@ -4224,7 +4238,20 @@ fn body_lower_postfix_chain_acc_call_step(
   segment: Symbol,
   call_elem: Node
 ) -> PostfixChainAcc {
-  let step = PostfixStep { segment: segment, call_elem: optional_present(value: call_elem) }
+  let step = PostfixProjection { segment: segment, call_elem: optional_present(value: call_elem) }
+  match acc {
+    PostfixChainAccBare { segments: segments } =>
+      PostfixChainAccCalled {
+        steps: list_snoc_item(xs: body_lower_postfix_bare_steps(segments: segments), item: step)
+      }
+    PostfixChainAccCalled { steps: steps } =>
+      PostfixChainAccCalled { steps: list_snoc_item(xs: steps, item: step) }
+  }
+}
+
+// A cast closes a bare spine the way a call does: what follows it is a value, never a path segment.
+fn body_lower_postfix_chain_acc_cast_step(acc: PostfixChainAcc, target: Node) -> PostfixChainAcc {
+  let step = PostfixCast { target: target }
   match acc {
     PostfixChainAccBare { segments: segments } =>
       PostfixChainAccCalled {
@@ -4252,6 +4279,13 @@ fn body_lower_postfix_chain_steps_read(
     match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
       Absent => PostfixChainNotThisShape
       Present { value: repeat_elem } =>
+        match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
+          Present { value: target } =>
+            body_lower_postfix_chain_steps_grow(
+              repeat_capture: repeat_capture,
+              grown: body_lower_postfix_chain_acc_cast_step(acc: acc, target: target)
+            )
+          Absent =>
         match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
           Absent => PostfixChainNotThisShape
           Present { value: segment } =>
@@ -4273,6 +4307,7 @@ fn body_lower_postfix_chain_steps_read(
                   )
                 )
             }
+        }
         }
     }
   }
@@ -4384,20 +4419,37 @@ fn body_lower_postfix_chain_fold_step(
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: state, diagnostics: ad } =>
-      match step.call_elem {
+      match step {
+        PostfixCast { target: target } =>
+          match body_lower_type_expr_lowered_optional(node: target) {
+            Absent => body_lower_postfix_cast_target_not_carried(at: target)
+            Present { value: target_type } =>
+              outcome_with_diagnostics(
+                value: PostfixAccumValue {
+                  node: body_lower_cast_node(
+                    operand: body_lower_postfix_accum_node(acc: state, source: source),
+                    target_type: target_type,
+                    source: source
+                  )
+                },
+                diagnostics: ad
+              )
+          }
+        PostfixProjection { segment: step_segment, call_elem: step_call_elem } =>
+      match step_call_elem {
         Absent =>
           match state {
             PostfixAccumSpine { segments: segments } =>
               outcome_with_diagnostics(
                 value: PostfixAccumSpine {
-                  segments: list_snoc_item(xs: segments, item: step.segment)
+                  segments: list_snoc_item(xs: segments, item: step_segment)
                 },
                 diagnostics: ad
               )
             PostfixAccumValue { node: base } =>
               outcome_with_diagnostics(
                 value: PostfixAccumValue {
-                  node: field_projection_node(base: base, field: step.segment, source: source)
+                  node: field_projection_node(base: base, field: step_segment, source: source)
                 },
                 diagnostics: ad
               )
@@ -4412,7 +4464,7 @@ fn body_lower_postfix_chain_fold_step(
                     value: PostfixAccumValue {
                       node: body_lower_transform_call(
                         operator: body_lower_qualified_name_spine_node(
-                          segments: list_snoc_item(xs: segments, item: step.segment),
+                          segments: list_snoc_item(xs: segments, item: step_segment),
                           source: source
                         ),
                         args: args
@@ -4424,7 +4476,7 @@ fn body_lower_postfix_chain_fold_step(
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
                       node: body_lower_transform_call(
-                        operator: body_lower_method_operator_atom(sym: step.segment),
+                        operator: body_lower_method_operator_atom(sym: step_segment),
                         args: list_append(left: [receiver], right: args)
                       )
                     },
@@ -4434,6 +4486,7 @@ fn body_lower_postfix_chain_fold_step(
           }
       }
   }
+      }
 }
 
 // THE ONE DOOR THE EXPRESSION SITES CONSULT, AND IT SITS ABOVE THE FIRST-ATOM FALLBACK. Its
@@ -4482,7 +4535,7 @@ fn body_lower_postfix_chain_lowered_from_steps(
   steps: List<PostfixStep>
 ) -> Outcome<Optional<Node>> {
   let head_node = body_lower_postfix_chain_head_or_self(node: node)
-  match body_lower_dotted_head_symbol_optional(node: head_node) {
+  match body_lower_postfix_chain_head_symbol_for_steps(head_node: head_node, steps: steps) {
     Present { value: head } =>
       body_lower_postfix_chain_fold_from(
         steps: steps,
@@ -4500,6 +4553,69 @@ fn body_lower_postfix_chain_lowered_from_steps(
           )
       }
   }
+}
+
+// A bare head starts a SPINE only when a projection follows it (`a.b`); a head cast directly
+// (`x as T`) is an operand, read by the operand reader like any other value.
+fn body_lower_postfix_chain_head_symbol_for_steps(head_node: Node, steps: List<PostfixStep>) -> Optional<Symbol> {
+  match steps {
+    Cons { head: first, tail: _ } =>
+      match first {
+        PostfixCast { target: _ } => optional_absent()
+        PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_symbol_optional(node: head_node)
+      }
+    Empty => body_lower_dotted_head_symbol_optional(node: head_node)
+  }
+}
+
+fn body_lower_postfix_cast_target_not_carried(at: Node) -> Outcome<PostfixAccum> {
+  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: at))
+}
+
+// THE OPERAND READERS' CAST DOOR. A postfix chain carrying a cast step is lowered whole through the
+// chain fold (body_lower_dotted_chain_lowered_optional); any other node is not this reader's.
+fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
+  match body_lower_postfix_chain_read(node: node) {
+    PostfixChainFound { steps: steps } =>
+      if body_lower_postfix_steps_carry_cast(steps: steps) {
+        match body_lower_dotted_chain_lowered_optional(node: node) {
+          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+          Accepted { value: Present { value: lowered }, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+          Accepted { value: Absent, diagnostics: _ } => OperandRefAbsent
+        }
+      } else {
+        OperandRefAbsent
+      }
+    PostfixChainBare { segments: _ } => OperandRefAbsent
+    PostfixChainNotThisShape => OperandRefAbsent
+    PostfixChainSuffixCarried { at: _ } => OperandRefAbsent
+  }
+}
+
+fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
+  fold(steps, init: false, f: fn(acc, step) {
+    acc || match step {
+      PostfixCast { target: _ } => true
+      PostfixProjection { segment: _, call_elem: _ } => false
+    }
+  })
+}
+
+// THE TYPED CAST NODE. `e as T` is Transform[kw_as, e] with the v2.std.type_binder <cast-target>
+// edge -> T beside its positionals, appended after them. The operator is the surface token, as
+// every lowered infix operator is; v2.compiler.resolve canonicalizes it to the coercion
+// CanonicalOperation (v2.extdeps.languages.dag dag_surface_operator_canonicalization_lookup) and
+// binds T in type role. The named edge is never an operand: readers take a Transform's operands
+// through its positional children.
+fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: body_lower_method_operator_atom(sym: ^dag_token_kw_as) },
+      Edge { label: Positional, target: operand },
+      cast_target_edge(target_type: target_type)
+    ]
+  )
 }
 
 fn body_lower_postfix_chain_fold_from(
@@ -5357,22 +5473,18 @@ fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<N
 // A refused operand under the arm is the arm's refusal (OperandRefRefused), never Absent: a caller
 // that heard Absent tried the next reader, and the first-atom search behind it answered a part of the
 // arm for the whole -- `b && (u)` read as `b`.
-// A CAST IS NEVER AN OPERAND: the reader answered `x as Q` with `x`, dropping `Q`. It is the arm's
-// refusal at the authored `Q`, the same one body_lower_postfix_expr gives on the fold route.
+// A CAST IS READ WHOLE, NEVER AS ITS OPERAND: a reader that answered `x as Q` with `x` dropped `Q`
+// (gunbc.recurring_failure_mode as_cast_has_no_lowered_form). The arm's postfix chain is lowered
+// through the one chain fold, which builds the typed cast node or refuses at the authored type.
 fn body_lower_arm_operand_resolved_read(arm: Node) -> OperandRefRead {
-  match body_lower_shell_cast_target_optional(node: arm) {
-    Present { value: cast_target } =>
-      OperandRefRefused {
-        diagnostics: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: cast_target)
+  match body_lower_find_captured(root: arm, emitted: ^dag_surface_postfix_expr) {
+    ParseSubtreeFound { captured: postfix } =>
+      match body_lower_cast_chain_read(node: postfix) {
+        OperandRefAbsent => body_lower_arm_operand_resolved_uncast_read(arm: arm)
+        OperandRefLowered { lowered: l } => OperandRefLowered { lowered: l }
+        OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
       }
-    Absent => body_lower_arm_operand_resolved_uncast_read(arm: arm)
-  }
-}
-
-fn body_lower_shell_cast_target_optional(node: Node) -> Optional<Node> {
-  match body_lower_find_captured(root: node, emitted: ^dag_surface_postfix_expr) {
-    ParseSubtreeFound { captured: postfix } => body_lower_postfix_cast_target_optional(captured: postfix)
-    ParseSubtreeAbsent => optional_absent()
+    ParseSubtreeAbsent => body_lower_arm_operand_resolved_uncast_read(arm: arm)
   }
 }
 
@@ -7016,32 +7128,6 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
   }
 }
 
-// AN `as` CAST'S TARGET TYPE IS REFUSED, NEVER DROPPED. postfix_expr = seq(primary, repeat(choice(
-// dot_suffix, as_suffix))) (v2.extdeps.languages.dag dag_grammar_postfix_expr_expr), and no arm
-// below carries an as_suffix: each answered the primary or the chain before it, so `x as Q` was
-// Accepted with `Q` declared nowhere (gunbc.recurring_failure_mode as_cast_has_no_lowered_form).
-// Nothing in the lowered vocabulary carries a coercion's target, so the cast refuses
-// body_lowering_reason_type_annotation_not_carried located at the authored type expression -- the
-// one reason for a type the lowering cannot carry -- until a typed cast node carries it.
-fn body_lower_postfix_as_suffix_target_optional(repeat_capture: Node) -> Optional<Node> {
-  if is_empty_conj_root(n: repeat_capture) {
-    optional_absent()
-  } else {
-    match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
-      Absent => optional_absent()
-      Present { value: repeat_elem } =>
-        match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
-          Present { value: target } => optional_present(value: target)
-          Absent =>
-            match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-              Present { value: rest } => body_lower_postfix_as_suffix_target_optional(repeat_capture: rest)
-              Absent => optional_absent()
-            }
-        }
-    }
-  }
-}
-
 // as_suffix = seq(kw_as, type_expr): answers the type expression when the element is a cast.
 fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: repeat_elem)) {
@@ -7055,13 +7141,6 @@ fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_postfix_cast_target_optional(captured: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
-    Absent => optional_absent()
-    Present { value: pair } => body_lower_postfix_as_suffix_target_optional(repeat_capture: pair.right)
-  }
-}
-
 fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -7069,9 +7148,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
       )
     Present { value: captured } =>
-      match body_lower_postfix_cast_target_optional(captured: captured) {
-        Present { value: cast_target } => body_lower_type_annotation_not_carried(at: cast_target)
-        Absent =>
       match body_lower_postfix_lowered_primary_optional(captured: captured) {
         Present { value: lowered } => outcome_accepted(value: lowered)
         Absent =>
@@ -7109,7 +7185,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
       }
   }
   }
-      }
   }
 }
 

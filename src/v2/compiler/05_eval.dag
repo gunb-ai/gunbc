@@ -1,5 +1,6 @@
 module v2.compiler.eval
 
+import v2.std.type_binder { edge_is_cast_target }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
   DerivedGrounding,
@@ -1464,7 +1465,7 @@ fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) 
     EffectIoEvalPresent { bundle: _ } =>
       match node.kind {
         ComputationNode { behavior: Transform } =>
-          !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
+          !eval_transform_has_callee_reference(node: node) && count(node_positional_child_targets(node: node)) == 2
         _ => false
       }
   }
@@ -2256,6 +2257,9 @@ fn eval_fold_closure_argument_child_state(
   }
 }
 
+// A cast's <cast-target> (v2.std.type_binder) is a TYPE, read by infer and never evaluated: it is
+// folded like the callee reference -- Interpreted, contributing no runtime argument
+// (eval_edge_is_runtime_argument admits positional edges only).
 fn eval_fold_child_for_edge(
   acc: EvalFoldState,
   edge: Edge,
@@ -2269,7 +2273,7 @@ fn eval_fold_child_for_edge(
     parent: acc.node,
     progress: acc.progress,
     edge: edge
-  ) {
+  ) || edge_is_cast_target(e: edge) {
     eval_fold_callee_reference_child_state(edge: edge, tree: tree)
   } else if eval_fold_is_closure_argument_edge(
     parent: acc.node,

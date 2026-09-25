@@ -91,6 +91,7 @@ import v2.std.passing_candidate_fold {
   OnePassingCandidate,
   PassingCandidateFold
 }
+import v2.std.type_binder { cast_target_optional }
 import v2.std.node {
   Arrow,
   ArrowBodyEdges,
@@ -1174,6 +1175,7 @@ type CanonicalOperation
   | AlgebraInverseCompose { binary_field: Symbol, inverse_field: Symbol }
   | OrderingComparison { compare_field: Symbol, predicate: OrderingPredicate }
   | EqualityComparison { eq_field: Symbol, predicate: EqualityPredicate }
+  | CoercionCrossing { homomorphism_rule: Symbol }
 
 fn ordering_predicate_accepts(predicate: OrderingPredicate) -> List<Ordering> {
   match predicate {
@@ -1253,11 +1255,27 @@ fn canonical_operation_op_ne() -> CanonicalOperation {
   EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsNotEqual }
 }
 
+// A CAST IS A COERCION, NOT AN ALGEBRA OPERATION. `e as T` crosses e's type to T by the homomorphism
+// v2.std.coercion coercion_fold finds (its HomomorphismWitness.rule), so the operation is grounded
+// by that rule's identity, exactly as the rows above are grounded by an algebra field. The rule is a
+// Symbol rather than an import because v2.std.coercion imports this module. Whether a given crossing
+// holds is the fold's answer at infer, and how a target spells it is the target's realization row.
+fn canonical_operation_op_coerce() -> CanonicalOperation {
+  CoercionCrossing { homomorphism_rule: ^homomorphism_rule_exact_structural_equality }
+}
+
 type TargetOperatorShape
   = InfixToken { token: Symbol }
   | PrefixToken { token: Symbol }
   | CallIdent { ident: Symbol }
   | MethodIdent { ident: Symbol }
+  | OperandUnchanged
+
+// OperandUnchanged IS THE REALIZATION OF A REPRESENTATION-PRESERVING CROSSING: the target spells the
+// application as its one operand, with no operator token. It is how v1's emitter realizes a cast
+// whose source and target render to one representation (v1.compiler.emit emit_typed_cast_shared,
+// e.g. `"lit" as NonEmptyStr` where NonEmptyStr is String in Rust) -- not the target's own `as`,
+// which converts numerics and would claim a different operation.
 
 type TargetOperatorRealization {
   operation: CanonicalOperation
@@ -1624,6 +1642,17 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
         ],
         occurrence_id: OccurrenceSynthetic
       }
+    CoercionCrossing { homomorphism_rule: r } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: CoercionCrossing {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_homomorphism_rule,
+            target: target_model_type_atom_node(identity: r)
+          )
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
   }
 }
 
@@ -1704,6 +1733,10 @@ fn target_model_canonical_operations_roster_root() -> Node {
       target_model_canonical_operation_roster_edge(
         name: ^canonical_operation_roster_member_ne,
         operation: canonical_operation_op_ne()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_coerce,
+        operation: canonical_operation_op_coerce()
       )
     ],
     occurrence_id: OccurrenceSynthetic
@@ -1721,6 +1754,7 @@ fn canonical_operation_equal(
         AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
         OrderingComparison { compare_field: _, predicate: _ } => false
         EqualityComparison { eq_field: _, predicate: _ } => false
+        CoercionCrossing { homomorphism_rule: _ } => false
       }
     AlgebraInverseCompose { binary_field: lb, inverse_field: li } =>
       match right {
@@ -1729,6 +1763,7 @@ fn canonical_operation_equal(
           lb == rb && li == ri
         OrderingComparison { compare_field: _, predicate: _ } => false
         EqualityComparison { eq_field: _, predicate: _ } => false
+        CoercionCrossing { homomorphism_rule: _ } => false
       }
     OrderingComparison { compare_field: lc, predicate: lp } =>
       match right {
@@ -1737,6 +1772,7 @@ fn canonical_operation_equal(
         OrderingComparison { compare_field: rc, predicate: rp } =>
           lc == rc && ordering_predicate_equal(left: lp, right: rp)
         EqualityComparison { eq_field: _, predicate: _ } => false
+        CoercionCrossing { homomorphism_rule: _ } => false
       }
     EqualityComparison { eq_field: le, predicate: lp } =>
       match right {
@@ -1745,6 +1781,15 @@ fn canonical_operation_equal(
         OrderingComparison { compare_field: _, predicate: _ } => false
         EqualityComparison { eq_field: re, predicate: rp } =>
           le == re && equality_predicate_equal(left: lp, right: rp)
+        CoercionCrossing { homomorphism_rule: _ } => false
+      }
+    CoercionCrossing { homomorphism_rule: lr } =>
+      match right {
+        CoercionCrossing { homomorphism_rule: rr } => lr == rr
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
       }
   }
 }
@@ -1862,6 +1907,18 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
                     target_canonical_operation_wire_malformed_diagnostic(wire: wire)
                   )
               }
+            } else if id == discriminant(v: CoercionCrossing {}) {
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_homomorphism_rule
+              ) {
+                Present { value: rule } =>
+                  outcome_accepted(CoercionCrossing { homomorphism_rule: rule })
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
             } else {
               outcome_rejected(
                 target_canonical_operation_wire_malformed_diagnostic(wire: wire)
@@ -1934,6 +1991,12 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
         ],
         occurrence_id: OccurrenceSynthetic
       }
+    OperandUnchanged =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OperandUnchanged) } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
   }
 }
 
@@ -1947,8 +2010,14 @@ fn target_operator_shape_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
 
 fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
   match wire.kind {
-    TypeNode { connective: Atom { identity: _ } } =>
-      if name_occurrences(
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == discriminant(v: OperandUnchanged) {
+        if count(wire.children) == 0 {
+          outcome_accepted(true)
+        } else {
+          outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
+        }
+      } else if name_occurrences(
         name: ^target_operator_shape_field_token,
         children: wire.children
       ) != 1 {
@@ -2014,6 +2083,9 @@ fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorSha
     f: fn(_) {
       match wire.kind {
         TypeNode { connective: Atom { identity: id } } =>
+          if id == discriminant(v: OperandUnchanged) {
+            outcome_accepted(OperandUnchanged)
+          } else {
           bind_outcome(
             o: target_operator_shape_token_from_wire(wire: wire),
             f: fn(token) {
@@ -2032,6 +2104,7 @@ fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorSha
               }
             }
           )
+          }
         _ =>
           outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
       }
@@ -5383,6 +5456,20 @@ fn target_operator_shape_emit_primitive_apply_tokens(
       outcome_rejected(
         target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: expr)
       )
+    OperandUnchanged =>
+      match bindings {
+        Cons { head: binding, tail: Empty } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(binding: binding, projection: projection),
+              tail: Empty
+            }
+          )
+        _ =>
+          outcome_rejected(
+            target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+          )
+      }
   }
 }
 
@@ -13588,7 +13675,57 @@ fn target_value_expr_arrow_body_scope_binding(
   )
 }
 
+// A CAST projects as a ONE-operand primitive apply of the coercion operation: its <cast-target> is a
+// type infer has already judged, and the target's realization row (OperandUnchanged) spells the
+// crossing from the operand alone. Its shape is exactly [coerce, operand] + <cast-target>.
+fn target_project_cast_primitive_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  canonical_op: CanonicalOperation,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  let shape_ok = match cast_target_optional(n: body) {
+    Present { value: _ } => (length(xs: node_positional_child_targets(node: body)) == 2) && (count(body.children) == 3)
+    Absent => false
+  }
+  if !shape_ok {
+    outcome_rejected(
+      target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: body)
+    )
+  } else {
+    bind_outcome(
+      o: target_transform_positional_operand_binding(node: body, index: 1),
+      f: fn(operand_binding) {
+        bind_outcome(
+          o: target_value_expr_arrow_body_scope_binding(arrow: arrow, body: body, binding: operand_binding, target: target),
+          f: fn(scoped_operand_binding) {
+            outcome_accepted(
+              target_value_expression_primitive_apply(
+                operation: canonical_op,
+                operands: [target_value_expression_binding_ref(binding: scoped_operand_binding)]
+              )
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
 fn target_project_transform_primitive_apply_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  canonical_op: CanonicalOperation,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match canonical_op {
+    CoercionCrossing { homomorphism_rule: _ } =>
+      target_project_cast_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    _ => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+  }
+}
+
+fn target_project_binary_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
   canonical_op: CanonicalOperation,
