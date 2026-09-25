@@ -17,6 +17,7 @@ import v2.std.compilers.target_model { canonical_operation_op_coerce, target_mod
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
   NodeLocus,
   NonEmptyDiagnostics,
   None,
@@ -104,6 +105,14 @@ fn bcn_int_sum_as_int() -> Outcome<Node> {
 
 fn bcn_int_sum_as_bool() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n")
+}
+
+fn bcn_into_refinement() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n")
+}
+
+fn bcn_out_of_refinement() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
 }
 
 // The cast targets in a tree, in walk order.
@@ -351,4 +360,34 @@ test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
   let target = cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int))
   content_hash(n: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [op, operand, target]))
     == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [target, op, operand]))
+}
+
+// (14) THE STATED RESIDUE, ASSERTED: a cast INTO a refinement is not an exact structural crossing, and
+// v2.std.coercion does not yet decide a refinement's predicate on the operand, so infer REFUSES it --
+// loudly, with coercion's typed mismatch, located at the cast's operand -- rather than admitting it
+// by name (gunbc.recurring_failure_mode as_cast_has_no_lowered_form states the trigger). The cast
+// OUT of the same refinement is admitted. When the predicate is decided this row flips.
+fn bcn_mismatch_at_literal(x: Diagnostic) -> Bool {
+  (x.reason == discriminant(v: NoTargetCandidate))
+    && match x.at {
+      NodeLocus { anchor: a } => bcn_atom_in(n: a.at, id: ^dag_token_int_literal) && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
+      _ => false
+    }
+}
+
+test fn bcn_cast_into_a_refinement_refuses_at_infer() -> Bool {
+  tpb_accepts(o: bcn_into_refinement())
+    && match bcn_infers(o: bcn_into_refinement()) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bcn_mismatch_at_literal(x: d.head)
+          || fold(d.tail, init: false, f: fn(acc, x) { acc || bcn_mismatch_at_literal(x: x) })
+    }
+}
+
+test fn bcn_cast_out_of_a_refinement_admits() -> Bool {
+  match bcn_infers(o: bcn_out_of_refinement()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
