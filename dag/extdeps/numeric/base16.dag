@@ -1,6 +1,6 @@
 module extdeps.numeric.base16
 
-import std.types { Int, String, List, Bool }
+import std.types { Int, String, List, Bool, Map }
 import std.integer { QualifiedOctets, qualified_octets, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -138,9 +138,16 @@ fn base16_is_upper_digit_code_point(cp: Int) -> Bool {
 // answered Present { value: 10 } (review 69058). Its only caller already holds one character from
 // char_at, so the wrapper is deleted rather than guarded -- the caller's convention cannot repair an
 // operation whose own contract is wrong, and there is no second contract to keep honest.
+// THE LOOKUP IS AN INDEX OVER THE SAME ROWS, built once: decoding is two lookups per byte, and a scan of
+// all sixteen rows per digit made every decode cost sixteen times its length (a 264-byte record, ~8,500
+// steps). The rows stay the one authority; the index is derived from them, never written beside them.
+data base16_lower_digit_index: Map<Int, Int> = fold(base16_digit_rows, init: empty_map(), f: (acc, row) => map_insert(acc, code_point(row.lower), row.value))
+
 fn base16_lower_digit_value_at(cp: Int) -> Int? {
-  fold(base16_digit_rows, init: none, f: (acc, row) =>
-    if code_point(row.lower) == cp { Present { value: row.value } } else { acc })
+  match map_get(base16_lower_digit_index, cp) {
+    Present { value: v } => Present { value: v }
+    Absent => none
+  }
 }
 
 // The accumulation is over raw `Int` and the mint happens once, at the boundary below: every
