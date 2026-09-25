@@ -1,6 +1,7 @@
 module extdeps.numeric.base16
 
 import std.types { Int, String, List, Bool, Map }
+import v2.std.collection { empty_map, map_insert, map_get }
 import std.integer { QualifiedOctets, qualified_octets, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
