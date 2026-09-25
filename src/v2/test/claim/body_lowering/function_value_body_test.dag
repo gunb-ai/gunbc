@@ -21,12 +21,29 @@ fn fvb_lowers_well_formed(src: String) -> Bool {
   }
 }
 
+data fvb_fn_literal_body_source: String = "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n"
+
+data fvb_curried_lambda_source: String = "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n"
+
+// ONE NULLARY PRODUCER, ENROLLED WARM (v2.workflow.floor_pure_producer_share): each normalize is a
+// front end, more than one claim's budget, so the claims read its stored verdicts.
+type FvbLoweringVerdicts { fn_literal_body: Bool, curried_lambda: Bool }
+
+fn fvb_lowering_verdicts() -> FvbLoweringVerdicts {
+  FvbLoweringVerdicts {
+    fn_literal_body: fvb_lowers_well_formed(src: fvb_fn_literal_body_source),
+    curried_lambda: fvb_lowers_well_formed(src: fvb_curried_lambda_source)
+  }
+}
+
 // A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
 test fn a_fn_whose_body_is_a_fn_literal_lowers_well_formed() -> Bool {
-  fvb_lowers_well_formed(src: "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n")
+  let v = fvb_lowering_verdicts()
+  v.fn_literal_body
 }
 
 // A curried lambda: the outer lambda's body is itself a lambda.
 test fn a_curried_lambda_argument_lowers_well_formed() -> Bool {
-  fvb_lowers_well_formed(src: "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n")
+  let v = fvb_lowering_verdicts()
+  v.curried_lambda
 }
