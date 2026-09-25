@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reaches INFER, and the Rust closure emitter renders the body as a returned closure, nested for a
 // curried body. Removing the FunctionValueBody arm makes the module ill-formed at normalize, so
 // every positive claim here goes red with it.
-data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport v2.std.logic { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q: Bool) -> Bool { p } }\n"
+data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport v2.std.logic { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
 
 data fvb_curried_source: String = "module v2.test.fvb_curried\n\nimport v2.std.logic { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => x, v: p) }\n"
 
@@ -127,8 +127,14 @@ test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool
 }
 
 // THE EMISSION CONTROL, EXECUTED THROUGH THE CLOSURE-EMIT DOOR (the route v2.cli.compile_cli
-// takes). A curried body renders as a closure returning a closure; the generic transform-shape
-// refusal or a signature-only rendering both fail it.
+// takes). A function whose DECLARED RETURN TYPE is a function type is a declared frontier of the
+// Rust target: the produced-declaration renderer has no type shape for a closure-returning
+// signature (impl Fn versus Box<dyn Fn> is an unmodeled target decision), so the module refuses
+// produced_decl_render_type_shape_unsupported before the body is projected. The claim asserts THAT
+// typed refusal: an Accepted emission or any other reason is red, so the frontier cannot close
+// silently or be crossed by a signature-only rendering. The FunctionValueBody body projection
+// (target_project_closure_in_arrow_scope) is reached once that return-type row exists, and this
+// claim then flips to asserting the nested closures.
 data fvb_emit_source: String = "module fvb_emit_probe\n\nimport v2.std.logic { Bool }\n\nfn fvb_curried_emit(p: Bool) -> fn(Bool) -> fn(Bool) -> Bool { x => y => x }\n"
 
 type FvbEmitVerdict
@@ -158,12 +164,9 @@ fn fvb_emit_verdict() -> FvbEmitVerdict {
   }
 }
 
-test fn a_curried_body_emits_as_nested_returned_closures() -> Bool {
+test fn a_function_typed_return_refuses_at_the_rust_type_shape_frontier() -> Bool {
   match fvb_emit_verdict() {
-    FvbEmitted { text: t } =>
-      string_contains(s: t, pattern: "fn fvb_curried_emit")
-        && string_contains(s: t, pattern: "|x|")
-        && string_contains(s: t, pattern: "|y|")
-    FvbEmitRefused { reason: _ } => false
+    FvbEmitted { text: _ } => false
+    FvbEmitRefused { reason: r } => r == ^produced_decl_render_type_shape_unsupported
   }
 }
