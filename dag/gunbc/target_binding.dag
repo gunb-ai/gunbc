@@ -17,6 +17,10 @@ import std.integer { Int }
 // NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
 // QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
 // the meaning fork DESIGN section 3 forbids.
+// NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY, which is the point of carrying the entry
+// as a field: it emits the named std.compiler_entry NativeClaimDriver entry, builds it, runs it and
+// hands the report to gunbc.native_claim_program native_claim_program_standing, so the next program
+// of that shape is one more BINDING ROW naming its entry, never another producer arm.
 type TargetProducer
   = SelfHostProducer
   | RequiredFloorProducer
@@ -36,6 +40,7 @@ type TargetProducer
   | FloorMemoryQualificationProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
+  | NativeClaimProgramProducer { entry: String }
 
 type TargetBinding {
   target: Label

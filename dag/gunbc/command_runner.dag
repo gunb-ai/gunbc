@@ -18,13 +18,14 @@ import gunbc.remote_shell_command {
   SimpleCommandArgvRefused,
 }
 import extdeps.shell
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import extdeps.tools.stat { stat_owner_user_name_command }
 import std.algebra { Empty }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
 import extdeps.shell.exec {
   ExitZeroSucceeds, process_exit_is_admitted,
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  ProcessObservation, process_observation, classify_process_observation,
+  ProcessObservation, process_observation, classify_process_observation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned,
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -245,6 +246,35 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
           ),
         )
         process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+      }
+  }
+}
+
+// THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
+// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation. A
+// transport that refuses to build the command spawned nothing either, so it is the same arm, never
+// an exit code: no process ran, and a sentinel exit status would be a fabricated observation (§5).
+fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
+  uses net: Network
+{
+  match command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      ProcessNotSpawned {
+        program: command.program,
+        cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
+      }
+    CommandOverTransportBuilt { command: over } =>
+      {
+        let run = shell.Exec.RunArgvOutcome(
+          program: over.program,
+          arguments: process_argv_expansion(
+            surface: cli_surface_of_literal_words(words: over.arguments)
+          ),
+        )
+        match run.outcome {
+          ShellSpawnRefused { program: p, cause: why } => ProcessNotSpawned { program: p, cause: why }
+          ShellExited => ProcessRan { observation: process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) }
+        }
       }
   }
 }
