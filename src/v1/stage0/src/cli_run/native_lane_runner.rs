@@ -1478,6 +1478,10 @@ enum CliEmitProbeVerdict {
     DeterminingReasonDiffers { determining: String, locus: String },
     /// Non-zero, but nothing matching the CLI's refusal contract reached stderr.
     RefusalNotRendered,
+    /// The carrier's typed arm for the fixture and the stderr rendering disagree -- an emitted arm
+    /// under a refusal, or a refused arm whose reason is not the rendered one. Two representations of
+    /// one fact that differ are not a termination this door takes.
+    CarrierContradictsRendering { carried: String, rendered: String },
     /// A refusal whose stdout is neither empty nor the door's `ClosureEmission` carrier holding the
     /// fixture member's arm: bytes the door's contract does not produce.
     StdoutNotEmpty { stdout_bytes: usize },
@@ -1677,12 +1681,44 @@ fn adjudicate_cli_emit_probe(
     // a readable `ClosureEmission`; any other bytes there are not a termination this door takes.
     // A closure-level refusal writes nothing. The determining reason is read from stderr either way,
     // where the door renders the refused member's located chain.
-    if !run.stdout.is_empty() && cli_door_member_arm(&run.stdout, CLI_DOOR_ENTRY_MODULE).is_err() {
-        return CliEmitProbeVerdict::StdoutNotEmpty {
-            stdout_bytes: run.stdout.len(),
-        };
+    let carried_reason = if run.stdout.is_empty() {
+        None
+    } else {
+        match cli_door_member_arm(&run.stdout, CLI_DOOR_ENTRY_MODULE) {
+            Ok(CliDoorMemberArm::Refused(reason)) => Some(reason),
+            Ok(CliDoorMemberArm::Emitted(_)) => {
+                return CliEmitProbeVerdict::CarrierContradictsRendering {
+                    carried: "emitted".to_string(),
+                    rendered: cli_refusal_determining_reason(&run.stderr)
+                        .map(|r| r.determining_reason)
+                        .unwrap_or_default(),
+                }
+            }
+            Err(_) => {
+                return CliEmitProbeVerdict::StdoutNotEmpty {
+                    stdout_bytes: run.stdout.len(),
+                }
+            }
+        }
+    };
+    // THE CARRIED CAUSE IS THE TYPED ONE, AND THE RENDERING MUST AGREE WITH IT. When the door writes
+    // the carrier, the fixture member's arm carries its fatal reason as a value; the stderr rendering
+    // is a second representation of the same fact, so the two are required to be equal and the verdict
+    // is decided from the carried reason. Trusting stderr alone would admit any refusal whose text
+    // happened to render the pinned cause.
+    let rendering = match cli_refusal_determining_reason(&run.stderr) {
+        None => return CliEmitProbeVerdict::RefusalNotRendered,
+        Some(rendering) => rendering,
+    };
+    if let Some(carried) = carried_reason {
+        if carried != rendering.determining_reason {
+            return CliEmitProbeVerdict::CarrierContradictsRendering {
+                carried,
+                rendered: rendering.determining_reason,
+            };
+        }
     }
-    match cli_refusal_determining_reason(&run.stderr) {
+    match Some(rendering) {
         None => CliEmitProbeVerdict::RefusalNotRendered,
         Some(rendering) if rendering.determining_reason == CLI_DOOR_EMIT_BODY_REFUSAL => {
             CliEmitProbeVerdict::BodyRefusalReturned {
@@ -1761,6 +1797,13 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
              `<reason> @ <locus>`. A truncated or malformed render has no determining reason to \
              compare and must not be decoded as though it were complete. stderr: {}",
             run.status,
+            run.stderr.trim()
+        ),
+        CliEmitProbeVerdict::CarrierContradictsRendering { carried, rendered } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorCarrierContradictsRendering — the fixture member's \
+             arm in the door's ClosureEmission carrier says `{carried}` while stderr renders the \
+             determining reason `{rendered}`; one fact with two answers is refused rather than read \
+             either way. stderr: {}",
             run.stderr.trim()
         ),
         CliEmitProbeVerdict::StdoutNotEmpty { stdout_bytes } => format!(
@@ -2695,6 +2738,33 @@ mod cli_emit_probe_tests {
             CliEmitProbeVerdict::BodyRefusalReturned { .. } => {}
             other => panic!("expected BodyRefusalReturned, got {other:?}"),
         }
+    }
+
+    /// REFUSED: the carrier's arm names a DIFFERENT refusal than the one stderr renders, so a refusal
+    /// cannot pass by rendering the pinned cause over a carrier that says otherwise.
+    #[test]
+    fn a_carried_reason_that_differs_from_the_rendered_one_fails() {
+        assert!(matches!(
+            adjudicate(&run(
+                Some(1),
+                &carrier_refused(CLI_DOOR_EMIT_LIMITATION),
+                &located_body_refusal(),
+            )),
+            CliEmitProbeVerdict::CarrierContradictsRendering { .. }
+        ));
+    }
+
+    /// REFUSED: an emitted arm under a refusal status contradicts the rendering.
+    #[test]
+    fn an_emitted_arm_under_a_refusal_fails() {
+        assert!(matches!(
+            adjudicate(&run(
+                Some(1),
+                &carrier("fn x() {}"),
+                &located_body_refusal()
+            )),
+            CliEmitProbeVerdict::CarrierContradictsRendering { .. }
+        ));
     }
 
     /// REFUSED: exit 0 with the fixture's arm refused is not an emission, whatever else the carrier says.
