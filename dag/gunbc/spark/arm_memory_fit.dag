@@ -23,6 +23,7 @@ import extdeps.vllm.kv_layout {
   AdmissionCostBlocks, AdmissionCostUnestablished,
   AdmissionByteCostBytes, AdmissionByteCostUnestablished,
   KvGroupKind, FullAttention, SlidingWindowAttention, MambaState, KPoolIndex,
+  ResolvedKvAllocationPlan,
 }
 import extdeps.zhipu.glm_5_3_flash {
   Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_hybrid_shape_consistent,
@@ -2294,6 +2295,142 @@ fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, demand_bytes: Byt
       demand_bytes: demand_bytes,
       headroom_bytes: w.admitted_kv_arena_bytes,
     }
+  }
+}
+
+// ── THE PLAN ROSTER FOLD: THE ALLOCATION PLAN IS THE EXACT GROUP ROSTER ──────────────────────────
+//
+// THE DIRECT FOLD'S PLAN-SHAPED SIBLING. The fold above prices a ResolvedKvLayout whose groups are
+// per-mechanism rows charged by the growth taxonomy — the roster the doctrine required while no
+// engine vouched for its figures. THE ALLOCATION PLAN IS THAT ROSTER, READ OFF THE ENGINE: the
+// patched emission's groups ARE the allocator's units, and blocks_at_requested_length IS the
+// engine's own per-group charge at the requested length — the exact arithmetic of
+// get_max_concurrency_for_kv_cache_config, which the plan control reproduces against the printed
+// line before any consumer may cite the plan. So this fold does NOT re-derive blocks from kind
+// and block size (that is the layout projection's job, and on the plan's allocation grouping it
+// would double-count: group-0 rosters both the indexer.k_cache and the attn entries of each
+// sparse layer, and the mamba groups are charged per group, not per layer identity). IT PRICES
+// THE PLAN'S OWN VOUCHED FIGURES: per-seat blocks are the sum of blocks_at_requested_length,
+// per-seat bytes the sum of blocks_at_requested_length x page_size_bytes — the padded block the
+// allocator actually charges, which max_memory_usage_bytes stands behind on every row of the real
+// capture. The exact-model bind is the roster census below, computed from the plan's own layer
+// identities: a roster with a different KDA population, a different sparse coverage, or a missing
+// tail prices a different cache, exactly as the layout fold refuses the foreign roster.
+//
+// THE FOLD PRICES AT THE PLAN'S OWN REQUESTED LENGTH and nowhere else: blocks_at_requested_length
+// is vouched at that length alone. A consumer pricing another length uses the plan's growth
+// re-derivation (extdeps.vllm.kv_layout plan_admission_blocks_at_length), a different (weaker)
+// claim, and does not reach this verdict vocabulary.
+
+// THE CENSUS, from the plan's own layer identities. The GLM-5.3-Flash allocation grouping rosters
+// each recurrent layer once across the mamba groups; each sparse layer twice in the mla_attention
+// group (its indexer.k_cache and its attn entries) plus once in the sliding-window tail group
+// (its tail_cache entry). The suffixes are the emission's own spelling (the patched engine emits
+// list(group.layer_names)), and the counts bind the model: 34 KDA entries, 11 k_cache + 11 attn
+// entries, 11 tail entries — 67 identities over the 45 hidden layers, the engine's own
+// grouping_padding note.
+fn cache_plan_mamba_entries(plan: ResolvedKvAllocationPlan) -> Nat {
+  fold(plan.groups, init: 0, f: (acc, g) => match g.kind {
+    MambaState => acc + length(g.layer_identities)
+    _ => acc
+  })
+}
+
+fn cache_plan_windowed_entries(plan: ResolvedKvAllocationPlan) -> Nat {
+  fold(plan.groups, init: 0, f: (acc, g) => match g.kind {
+    SlidingWindowAttention { window: _ } => acc + length(g.layer_identities)
+    _ => acc
+  })
+}
+
+fn cache_plan_full_attention_identities_with(plan: ResolvedKvAllocationPlan, suffix: String) -> Nat {
+  fold(plan.groups, init: 0, f: (acc, g) => match g.kind {
+    FullAttention => acc + length(filter(g.layer_identities, id => string_contains(s: id as String, pattern: suffix)))
+    _ => acc
+  })
+}
+
+fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, shape: Glm53FlashHybridShape) -> List<NonEmptyStr> {
+  if !glm_5_3_flash_hybrid_shape_consistent(shape) {
+    ["the model's hybrid shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it" as NonEmptyStr]
+  } else if (plan.runtime.repository as String) != (vllm_source_revision_read.repository as String)
+    || (plan.runtime.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+    [join([
+      "the allocation plan was read at ", plan.runtime.repository as String, "@", plan.runtime.full_revision as String,
+      " but the capacity arithmetic is modelled against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+      ": a plan from another revision is a different engine's roster and this proof binds the exact one",
+    ], "") as NonEmptyStr]
+  } else {
+    let kda_entries = cache_plan_mamba_entries(plan: plan)
+    let kcache_entries = cache_plan_full_attention_identities_with(plan: plan, suffix: ".indexer.k_cache")
+    let attn_entries = cache_plan_full_attention_identities_with(plan: plan, suffix: ".self_attn.attn")
+    let tail_entries = cache_plan_windowed_entries(plan: plan)
+    concat(
+      match kda_entries == shape.kda_linear_attention_layers {
+        true => [] as List<NonEmptyStr>
+        false => [join([
+          "the roster's mamba groups roster ", to_string(kda_entries),
+          " recurrent-layer entries against the model's ", to_string(shape.kda_linear_attention_layers),
+          " KDA layers: a different recurrent population is a different capacity, and this proof binds the exact roster",
+        ], "") as NonEmptyStr]
+      },
+      concat(
+        match kcache_entries == shape.sparse_attention_layers && attn_entries == shape.sparse_attention_layers {
+          true => [] as List<NonEmptyStr>
+          false => [join([
+            "the roster's mla_attention group rosters ", to_string(kcache_entries), " indexer.k_cache and ", to_string(attn_entries),
+            " attn entries against the model's ", to_string(shape.sparse_attention_layers),
+            " sparse layers: the sparse coverage does not match the model, and a proof at one roster says nothing at another",
+          ], "") as NonEmptyStr]
+        },
+        match tail_entries == shape.sparse_attention_layers {
+          true => [] as List<NonEmptyStr>
+          false => [join([
+            "the roster's sliding-window tail group rosters ", to_string(tail_entries),
+            " tail_cache entries against the model's ", to_string(shape.sparse_attention_layers),
+            " sparse layers: the sparse-indexer tail is one state per sparse layer, and a roster missing or multiplying it prices a different cache than the engine allocates",
+          ], "") as NonEmptyStr]
+        }))
+  }
+}
+
+// THE PLAN FOLD. Order mirrors the layout fold: roster obligations, then supply obligations, then
+// the malformed-question wall (zero seats names no admission), then the per-rank decision — byte
+// wall first, block wall second, ranks in roster order, first refusal carries, and PROVED names
+// the worst rank's headroom. The demand is the plan's own figures times the seat count; the
+// length the verdict carries is the plan's requested length, the only length the plan vouches.
+fn cache_fit_verdict_from_plan(
+  plan: ResolvedKvAllocationPlan,
+  shape: Glm53FlashHybridShape,
+  seats: Nat,
+  supplies: List<ArmRankCacheSupply>,
+  rank_count: Nat,
+) -> CacheFitVerdict {
+  let roster_obligations = cache_plan_roster_obligations(plan: plan, shape: shape)
+  let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
+  let obligations = concat(roster_obligations, supply_obligations)
+  match length(obligations) > 0 {
+    true => CacheFitUnestablished { obligations: obligations }
+    false =>
+      match seats == 0 {
+        true => CacheFitUnestablished { obligations: ["zero seats name no admission: the cache question is how many full-length sequences the arm admits, and a seat population of zero prices nothing" as NonEmptyStr] }
+        false => {
+          let per_seat_blocks = fold(plan.groups, init: 0, f: (acc, g) => acc + allocator_block_count_value(c: g.blocks_at_requested_length))
+          let per_seat_bytes = fold(plan.groups, init: 0, f: (acc, g) => acc + allocator_block_count_value(c: g.blocks_at_requested_length) * byte_size_count(b: g.page_size_bytes))
+          let demand_blocks = allocator_block_count(count: per_seat_blocks * seats)
+          let demand_bytes = byte_size(count: per_seat_bytes * seats)
+          match cache_fit_rank_scan(
+            supplies: supplies,
+            demand_bytes: demand_bytes,
+            demand_blocks: demand_blocks,
+            seats: seats,
+            length: plan.requested_length,
+          ) {
+            Present { value: refused } => refused
+            Absent => cache_fit_proved_corner(supplies: supplies, demand_bytes: demand_bytes, seats: seats, length: plan.requested_length)
+          }
+        }
+      }
   }
 }
 

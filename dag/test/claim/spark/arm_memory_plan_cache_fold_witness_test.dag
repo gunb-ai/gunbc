@@ -1,0 +1,292 @@
+module test.claim.spark.arm_memory_plan_cache_fold_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat, nat_range_inclusive }
+import v2.std.optional { Present, Absent }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  ByteSize, byte_size, byte_size_count,
+}
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
+import extdeps.vllm.kv_layout {
+  ResolvedKvAllocationPlan, KvAllocationPlanGroup,
+  resolved_kv_allocation_plan_from_capture,
+  KvAllocationPlanAdmitted, KvAllocationPlanRefused,
+  MambaState,
+}
+import gunbc.spark.arm_memory_fit {
+  CacheFitVerdict, CacheFitProved, CacheFitRefused, CacheFitUnestablished,
+  ArmRankCacheSupply, cache_fit_verdict_from_plan,
+  CacheCapacityCandidate, cache_capacity_candidate,
+}
+import gunbc.spark.arm_memory_experiment_observed { arm_experiment_gib_hundredths_floor }
+import gunbc.spark.vllm_allocation_plan_observe {
+  kv_allocation_plan_capture_from_startup_log,
+  KvPlanCaptureParsed, KvPlanCaptureUnreadable,
+}
+import test.fixture.kv_allocation_plan_emission.real_262144x6_line { real_262144x6_kv_plan_line }
+
+// ── THE DIRECT ROSTER FOLD OVER THE REAL 262144x6 CAPTURE ────────────────────────────────────────
+//
+// THE SUBJECT is the allocation plan the patched engine printed at the bounded 262144x6
+// experiment's launch (2026-09-25, engine self-report 0.1.dev1+g8d09804c8, the capture committed
+// verbatim beside the shared fixture module and imported as real_262144x6_kv_plan_line). The plan
+// minted off those bytes IS the exact group roster the doctrine required — 6 allocation groups
+// rostering the model's 67 layer identities over 45 layers, with the engine's own
+// blocks_at_requested_length per group — and gunbc.spark.arm_memory_fit's
+// cache_fit_verdict_from_plan prices it: seats x the plan's own figures against every rank's
+// allocator evidence. THE DEMAND THE REAL BYTES PRICE: group-0 (mla_attention, the 11 sparse
+// layers' k_cache + attn) 114 blocks x 76032 bytes = 8,667,648; group-1 (the sparse-indexer tail,
+// window 4) 1 block x 76032 = 76,032; the four mamba groups (34 KDA layers) 2 blocks each x
+// 1511424 = 3,022,848 apiece — 123 blocks and 20,835,072 bytes per full-context seat.
+//
+// THE VERDICT STRUCTURE ON TODAY'S EVIDENCE: the block wall decides on the plan's allocator
+// inventory — 1035 blocks, the engine's own figure, computed from the LIMITING rank and uniform
+// across the tensor-parallel ranks by the engine's construction — and 6 seats x 123 = 738 <= 1035
+// decides on EVERY rank. The byte wall decides per rank against the observed KV arena: TP0/srv9's
+// worker line at this launch read 22.59 GiB (pool 121.69, envelope 104.25 at 8567 basis points);
+// the TP1-3 worker lines were NOT captured — the stop legs fired ~35 seconds after the head's
+// anchor, before the ranks printed — so the byte wall is decided on rank 0 and OPEN on ranks 1-3,
+// and the fold says exactly that: CacheFitUnestablished naming the three unobserved arenas, with
+// the block wall's proof and rank 0's byte proof visible in what did NOT refuse. The completing
+// act is one more bounded launch holding the stop legs past the ranks' prints; the
+// worst-arena-ever-observed completion below pins that the open wall is not the sensitive input.
+
+fn w_minted_real_plan() -> ResolvedKvAllocationPlan? {
+  match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_kv_plan_line) {
+    KvPlanCaptureUnreadable { cause: _ } => none
+    KvPlanCaptureParsed { capture: c } =>
+      match resolved_kv_allocation_plan_from_capture(capture: c) {
+        KvAllocationPlanRefused { cause: _ } => none
+        KvAllocationPlanAdmitted { plan: p } => Present { value: p }
+      }
+  }
+}
+
+fn w_plan_at_revision(p: ResolvedKvAllocationPlan, rev: VllmSourceRevision) -> ResolvedKvAllocationPlan {
+  ResolvedKvAllocationPlan {
+    runtime: rev,
+    image_digest: p.image_digest,
+    cache_format: p.cache_format,
+    allocator_blocks: p.allocator_blocks,
+    requested_length: p.requested_length,
+    scheduler_block_size: p.scheduler_block_size,
+    groups: p.groups,
+    grouping_padding: p.grouping_padding,
+  }
+}
+
+fn w_group_minus_one_identity(g: KvAllocationPlanGroup) -> KvAllocationPlanGroup {
+  KvAllocationPlanGroup {
+    identity: g.identity,
+    kind: g.kind,
+    layer_identities: skip(g.layer_identities, 1),
+    block_size: g.block_size,
+    page_size_bytes: g.page_size_bytes,
+    tokens_per_state: g.tokens_per_state,
+    max_memory_usage_bytes: g.max_memory_usage_bytes,
+    blocks_at_requested_length: g.blocks_at_requested_length,
+  }
+}
+
+fn w_plan_with_thinned_kda(p: ResolvedKvAllocationPlan) -> ResolvedKvAllocationPlan {
+  ResolvedKvAllocationPlan {
+    runtime: p.runtime,
+    image_digest: p.image_digest,
+    cache_format: p.cache_format,
+    allocator_blocks: p.allocator_blocks,
+    requested_length: p.requested_length,
+    scheduler_block_size: p.scheduler_block_size,
+    groups: map(p.groups, g => match g.kind {
+      MambaState => w_group_minus_one_identity(g: g)
+      _ => g
+    }),
+    grouping_padding: p.grouping_padding,
+  }
+}
+
+fn w_uniform_supplies(blocks: Nat, arena: ByteSize) -> List<ArmRankCacheSupply> {
+  map(nat_range_inclusive(lo: 1, hi: 4), i => ArmRankCacheSupply {
+    rank: i - 1,
+    allocator_blocks: allocator_block_count(count: blocks),
+    admitted_kv_arena_bytes: arena,
+  })
+}
+
+// TODAY'S EVIDENCE, one row per rank: the plan's 1035-block inventory on every rank (the
+// engine-derived launch-level figure), TP0's observed 22.59 GiB arena on rank 0, and the zero
+// spelling of unobserved on ranks 1-3 — the supply side stays open there, exactly the existing
+// zero wall's semantics.
+fn w_today_supplies() -> List<ArmRankCacheSupply> {
+  [
+    ArmRankCacheSupply { rank: 0, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: 2259) },
+    ArmRankCacheSupply { rank: 1, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: byte_size(count: 0) },
+    ArmRankCacheSupply { rank: 2, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: byte_size(count: 0) },
+    ArmRankCacheSupply { rank: 3, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: byte_size(count: 0) },
+  ]
+}
+
+// THE ROSTER BINDS THE EXACT MODEL on the real bytes: the census (34 KDA entries across the mamba
+// groups, 11 indexer.k_cache + 11 attn entries in the mla_attention group, 11 tail_cache entries
+// in the sliding-window group) holds against glm_5_3_flash_hybrid_shape, so no roster obligation
+// fires — and the thinned variant, one identity dropped from every mamba group, refuses naming
+// the recurrent population. A proof at one roster says nothing at another.
+test fn the_real_plan_roster_binds_the_exact_model() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      (match cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
+        rank_count: 4) {
+        CacheFitProved { rank: _, seats: s, length: l, demand_bytes: _, headroom_bytes: _ } =>
+          s == 6 && token_count_value(t: l) == 262144
+        _ => false
+      })
+        && (match cache_fit_verdict_from_plan(
+          plan: w_plan_with_thinned_kda(p: p), shape: glm_5_3_flash_hybrid_shape,
+          seats: 6,
+          supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
+          rank_count: 4) {
+          CacheFitUnestablished { obligations: os } => any(os, o => string_contains(s: o as String, pattern: "recurrent-layer entries"))
+          _ => false
+        })
+  }
+}
+
+// A PLAN FROM ANOTHER REVISION IS A DIFFERENT ENGINE'S ROSTER: the retired 1967a5627 stamp
+// refuses at the fold's revision wall naming both revisions — the wall-law flip the advance
+// landed, here at the fold itself.
+test fn a_pre_patch_revision_plan_refuses_at_the_roster_wall() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_fit_verdict_from_plan(
+        plan: w_plan_at_revision(p: p, rev: vllm_source_revision_1967a5627), shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
+        rank_count: 4) {
+        CacheFitUnestablished { obligations: os } =>
+          any(os, o => string_contains(s: o as String, pattern: "1967a5627bc3710b680bbec24ecb99aaddedf22b"))
+        _ => false
+      }
+  }
+}
+
+// ZERO SEATS NAMES NO ADMISSION: the malformed question is an obligation, not a vacuous proof
+// over a zero demand.
+test fn zero_seats_name_no_admission() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 0,
+        supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
+        rank_count: 4) {
+        CacheFitUnestablished { obligations: os } => any(os, o => string_contains(s: o as String, pattern: "zero seats name no admission"))
+        _ => false
+      }
+  }
+}
+
+// TODAY'S VERDICT, HONEST AS IT STANDS: the block wall proves on every rank (738 of 1035 blocks,
+// and no block refusal carries), the byte wall proves on rank 0 (125,010,432 bytes against
+// 22.59 GiB — the demand is 0.52% of the observed arena), and the verdict is
+// CacheFitUnestablished naming exactly the three ranks whose arenas were not captured today.
+test fn the_fold_over_todays_evidence_names_the_three_unobserved_arenas() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: w_today_supplies(),
+        rank_count: 4) {
+        CacheFitUnestablished { obligations: os } =>
+          length(os) == 3
+            && any(os, o => string_contains(s: o as String, pattern: "rank 1 carries a zero"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 2 carries a zero"))
+            && any(os, o => string_contains(s: o as String, pattern: "rank 3 carries a zero"))
+            && !any(os, o => string_contains(s: o as String, pattern: "rank 0"))
+        _ => false
+      }
+  }
+}
+
+// THE COMPLETING ARITHMETIC, PINNED AT THE WORST ARENA THIS ARM HAS EVER READ: the 64K run's
+// per-rank bundle read TP3/srv11's KV arena at 17.03 GiB — the smallest the arm has ever
+// observed. Pricing six seats at 20,835,072 bytes each against THAT floor on all four ranks (the
+// designed completion; the real rank lines replace it, and nothing about the completion is the
+// sensitive input — the demand is 0.68% even of the worst reading) yields CacheFitProved with
+// the six-seat byte demand carried: 125,010,432 bytes. This is the shape the adoption consumes
+// once the three arenas land.
+test fn the_completion_at_the_worst_prior_arena_proves_six_seats() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
+        rank_count: 4) {
+        CacheFitProved { rank: _, seats: s, length: l, demand_bytes: d, headroom_bytes: _ } =>
+          s == 6
+            && token_count_value(t: l) == 262144
+            && byte_size_count(b: d) == 125010432
+        _ => false
+      }
+  }
+}
+
+// THE BLOCK ARITHMETIC, PINNED END TO END: 6 seats x 123 blocks = 738 of 1035 — slack 297
+// blocks; the ceiling is floor(1035 / 123) = 8 seats (8 x 123 = 984 <= 1035, slack 51), and the
+// ninth seat refuses at 1107 > 1035. The byte demand at 8 seats is 166,680,576 — still 9.5% of
+// the worst arena — so the block wall is the binding constraint at every seat count through 8.
+test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      (match cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 8,
+        supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
+        rank_count: 4) {
+        CacheFitProved { rank: _, seats: s, length: _, demand_bytes: d, headroom_bytes: _ } =>
+          s == 8 && byte_size_count(b: d) == 166680576
+        _ => false
+      })
+        && (match cache_fit_verdict_from_plan(
+          plan: p, shape: glm_5_3_flash_hybrid_shape,
+          seats: 9,
+          supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
+          rank_count: 4) {
+          CacheFitRefused { rank: _, seats: _, length: _, demand_bytes: _, demand_blocks: db, supply_arena_bytes: _, supply_allocator_blocks: sb, cause: _ } =>
+            allocator_block_count_value(c: db) == 1107 && allocator_block_count_value(c: sb) == 1035
+          _ => false
+        })
+        && 1035 - 738 == 297
+        && 8 * 123 == 984
+        && 1035 - 984 == 51
+        && 9 * 123 == 1107
+  }
+}
+
+// THE HEADROOM FIGURES, PINNED: the printed pool is a full-context-equivalent projection —
+// 1035 blocks over a 123-block request is 8.4146 requests, and 8.4146 x 262,144 tokens =
+// 2,205,845 tokens, the printed line — so the printed candidate reads floor(2,205,845 / 262,144)
+// = 8 seats, and the direct fold AGREES with the candidate at the floor (8 x 123 = 984 <= 1035).
+// The declared six seats hold 1,572,864 tokens, leaving 632,981 printed tokens (≈ 2.4 seats) and
+// 297 blocks (≈ 2 seats by the fold) of slack. The candidate stays what it is — a sizing hint no
+// verdict consumes — and the fold stays the only proof.
+test fn the_headroom_figures_are_pinned() -> Bool {
+  (match cache_capacity_candidate(printed_pool_tokens: token_count(count: 2205845), division_length: token_count(count: 262144)) {
+    Present { value: c } => c.seats_by_division == 8
+    Absent => false
+  })
+    && 2205845 - 6 * 262144 == 632981
+    && 262144 * 6 == 1572864
+}
