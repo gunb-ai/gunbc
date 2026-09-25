@@ -2241,20 +2241,35 @@ fn unimported_bare_provider_roster_source_at_base(
         "unimported_bare_provider_roster_at_base",
         &args,
     )?;
-    let v1_interpreter::Value::Record { fields, .. } = &shown else {
+    // `UnimportedBareProviderBaseRoster` is a SUM type (`BaseRosterShown | BaseRosterUnreadable`),
+    // so the reading is decoded by its variant name, never as a record.
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &shown
+    else {
         return Err(format!(
             "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
             floor_value_shape(Some(&shown))
         ));
     };
-    match (ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
-        (Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
-        (_, Some(v1_interpreter::Value::Str(err))) => Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
-             path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
-             so it must exist at the base"
+    match ctx.resolve(*variant_name).as_str() {
+        "BaseRosterShown" => match ctx.field(fields, "source") {
+            Some(v1_interpreter::Value::Str(src)) => Ok(src.to_string()),
+            _ => Err("BaseRosterShown carries no `source` string".to_string()),
+        },
+        "BaseRosterUnreadable" => match ctx.field(fields, "stderr") {
+            Some(v1_interpreter::Value::Str(err)) => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
+                 path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
+                 so it must exist at the base"
+            )),
+            _ => Err("BaseRosterUnreadable carries no `stderr` string".to_string()),
+        },
+        other => Err(format!(
+            "unimported_bare_provider_roster_at_base returned variant {other}, expected BaseRosterShown or BaseRosterUnreadable"
         )),
-        _ => Err("UnimportedBareProviderBaseRoster carries neither `source` nor `stderr`".to_string()),
     }
 }
 
