@@ -27,7 +27,7 @@ import gunbc.floor_demand {
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.fabric.isolation {
   IsolationProfile,
   IsolationGuarantee,
@@ -75,7 +75,7 @@ import extdeps.virtualization.firecracker {
 }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 
-data runner_microvm_disposition: Disposition = SingleAuthority
+data runner_microvm_disposition: ConstructionMechanism = SingleAuthority
 
 // THE GUEST IMAGE IS AN IDENTITY, NOT A PATH.
 //

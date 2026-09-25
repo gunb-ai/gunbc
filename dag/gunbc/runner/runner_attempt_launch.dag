@@ -3,7 +3,7 @@ module gunbc.runner_attempt_launch
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import v2.std.optional { Absent, Present }
 import std.algebra { trim }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, mebibyte_to_byte_size }
 import extdeps.exec.command { ArgvCommand, LocalExec }
@@ -72,7 +72,7 @@ import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-data runner_attempt_launch_disposition: Disposition = SingleAuthority
+data runner_attempt_launch_disposition: ConstructionMechanism = SingleAuthority
 
 // THE CUTOVER CAPABILITY, NOT AN ARTIFACT. Shadow Y is this planner. The transition fires when
 // THIS planner (or its successor of the same root) EXECUTES AT HOST BOOT and the host image is

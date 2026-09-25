@@ -1,9 +1,9 @@
 module gunbc.runner_microvm_attempt_bounds
 
 import std.measure { Second, second }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 
-data runner_microvm_attempt_bounds_disposition: Disposition = SingleAuthority
+data runner_microvm_attempt_bounds_disposition: ConstructionMechanism = SingleAuthority
 
 // THE FOUR TIME BOUNDS OF ONE microVM ATTEMPT, IN A LEAF MODULE, because three modules on both
 // sides of the deploy boundary consume them: the launch planner bounds the jailer with the deadline

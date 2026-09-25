@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^compile_eval_thesis_descent_dimension }
+    strict: v2.std.cardinality.RankingComponent { measured: ^compile_eval_thesis_descent_dimension }
   }
 }
 
