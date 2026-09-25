@@ -1,5 +1,7 @@
 module gunbc.spark.v41_capacity_measurement
 
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_min }
 import std.measure {
@@ -76,7 +78,7 @@ data v41_engram_arm_bindings: List<V41EngramArmBinding> = []
 data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image is built (after #12294) and its source-patch digest is read from the image (gunbc.spark.v41_runtime_realized); that digest is bound to EngramCacheRetained. The image built after the Engram page-release change lands is bound to EngramCacheReleased. SUFFICIENT FOR: every residency timeline cell names the arm by image content, not by a flag or a label." as NonEmptyStr)
 
 fn v41_engram_arm_of(patch_digest: ContentHash, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
-  match get(xs: filter(bindings, b => b.patch_digest == patch_digest), index: 0) {
+  match list_at_optional(xs: filter(bindings, b => b.patch_digest == patch_digest), index: 0) {
     Present { value: b } => Present { value: b.arm }
     Absent => none
   }
@@ -293,7 +295,7 @@ fn v41_admit_startup(readings: List<V41RankStartupReading>) -> V41StartupAdmissi
   if length(shape) != 0 {
     StartupRefused { causes: shape }
   } else {
-    match get(xs: receipts, index: 0) {
+    match list_at_optional(xs: receipts, index: 0) {
       Absent => StartupRefused { causes: ["no rank reading was supplied"] }
       Present { value: first } => {
         let disagreements = flat_map(receipts, r => concat(concat(
@@ -609,7 +611,7 @@ fn v41_run_staircase(policy: V41PolicyStanding, run_id: NonEmptyStr, steps: List
             if length(at) != 1 {
               V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: StopReadingMissing { concurrency: c, cause: "no single step reading for this run at this concurrency" as NonEmptyStr } } }, last: acc.last, previous_per_request: acc.previous_per_request }
             } else {
-              match get(xs: at, index: 0) {
+              match list_at_optional(xs: at, index: 0) {
                 Absent => acc
                 Present { value: step } => match v41_step_stop(policy: p, step: step, previous_per_request: acc.previous_per_request) {
                   Present { value: stop } => V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: stop } }, last: acc.last, previous_per_request: acc.previous_per_request }
@@ -650,7 +652,7 @@ fn v41_kv_admission_capacity(s: V41StartupAdmission) -> V41Capacity {
     StartupAdmitted { receipt: r } => {
       let pool = token_count_value(t: r.min_rank.reported.pool.tokens)
       let fits = filter(v41_staircase_concurrencies, c => v41_pool_tokens_needed(concurrency: c) <= pool)
-      match get(xs: reverse(fits), index: 0) {
+      match list_at_optional(xs: reverse(fits), index: 0) {
         Present { value: c } => CapacityAt { concurrency: c }
         Absent => CapacityBelowFirstStep
       }

@@ -37,7 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type MincoreFileResidency sole_constructor {
   file: NonEmptyStr
   file_bytes: ByteSize
-  page_bytes: Nat
+  page_bytes: ByteSize
   resident_pages: Nat
 }
 
@@ -45,12 +45,12 @@ type MincoreResidencyAdmission
   = MincoreResidencyAdmitted { residency: MincoreFileResidency }
   | MincoreResidencyRefused { file: NonEmptyStr, cause: NonEmptyStr }
 
-fn mincore_page_count(file_bytes: ByteSize, page_bytes: Nat) -> Nat {
-  (byte_size_count(b: file_bytes) + page_bytes - 1) / page_bytes
+fn mincore_page_count(file_bytes: ByteSize, page_bytes: ByteSize) -> Nat {
+  (byte_size_count(b: file_bytes) + byte_size_count(b: page_bytes) - 1) / byte_size_count(b: page_bytes)
 }
 
-fn mincore_file_residency(file: NonEmptyStr, file_bytes: ByteSize, page_bytes: Nat, resident_pages: Nat) -> MincoreResidencyAdmission {
-  if page_bytes == 0 {
+fn mincore_file_residency(file: NonEmptyStr, file_bytes: ByteSize, page_bytes: ByteSize, resident_pages: Nat) -> MincoreResidencyAdmission {
+  if byte_size_count(b: page_bytes) == 0 {
     MincoreResidencyRefused { file: file, cause: "a zero page size is not a page size" as NonEmptyStr }
   } else if resident_pages > mincore_page_count(file_bytes: file_bytes, page_bytes: page_bytes) {
     MincoreResidencyRefused { file: file, cause: "more resident pages than the file has pages; the vector covered a different range" as NonEmptyStr }
@@ -62,5 +62,5 @@ fn mincore_file_residency(file: NonEmptyStr, file_bytes: ByteSize, page_bytes: N
 }
 
 fn mincore_resident_bytes(r: MincoreFileResidency) -> ByteSize {
-  byte_size(count: r.resident_pages * r.page_bytes)
+  byte_size(count: r.resident_pages * byte_size_count(b: r.page_bytes))
 }

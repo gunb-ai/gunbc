@@ -1,10 +1,12 @@
 module extdeps.linux.diskstats
 
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
-import std.measure { ByteSize, byte_size, Microsecond, microsecond, Millisecond, millisecond, millisecond_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, Millisecond, millisecond, millisecond_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
@@ -37,7 +39,7 @@ data diskstats_positional_layout_since_release: LinuxKernelRelease = "2.6" as Li
 
 // iostats.rst: "sectors" in this file are ALWAYS 512 bytes, whatever the device's logical block
 // size is. Multiplying by the device's own sector size would be a wrong reading on 4Kn drives.
-data diskstats_sector_bytes: Nat = 512
+data diskstats_sector_bytes: ByteSize = byte_size(count: 512)
 
 // The read-side fields, by their iostats.rst numbers (field 1 = first after the device name).
 // Write-side fields are not read here because the measurement that consumes this is read-only
@@ -56,7 +58,7 @@ type DiskstatsReading
   | DiskstatsUnparseable { device: NonEmptyStr, line: String }
 
 fn diskstats_nat_at(words: List<String>, index: Nat) -> Nat? {
-  match get(xs: words, index: index) {
+  match list_at_optional(xs: words, index: index) {
     Absent => none
     Present { value: w } => match parse_int(s: w) {
       Absent => none
@@ -68,7 +70,7 @@ fn diskstats_nat_at(words: List<String>, index: Nat) -> Nat? {
 // Word 2 is the device name; words 3, 5, 6 and 11 are iostats fields 1, 3, 4 and 9.
 fn diskstats_row_of_line(device: NonEmptyStr, line: String) -> DiskstatsReading? {
   let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
-  match get(xs: words, index: 2) {
+  match list_at_optional(xs: words, index: 2) {
     Absent => none
     Present { value: name } =>
       if name != (device as String) {
@@ -98,7 +100,7 @@ fn diskstats_row_of_line(device: NonEmptyStr, line: String) -> DiskstatsReading?
 }
 
 fn parse_diskstats(body: String, device: NonEmptyStr) -> DiskstatsReading {
-  match get(xs: flat_map(split(s: body, delimiter: "\n"), l => match diskstats_row_of_line(device: device, line: l) {
+  match list_at_optional(xs: flat_map(split(s: body, delimiter: "\n"), l => match diskstats_row_of_line(device: device, line: l) {
     Present { value: r } => [r]
     Absent => [] as List<DiskstatsReading>
   }), index: 0) {
@@ -132,7 +134,7 @@ fn disk_read_interval(before: DiskstatsReading, after: DiskstatsReading) -> Disk
           let reads = a.reads_completed - b.reads_completed
           let ticks = millisecond_count(m: a.read_ticks) - millisecond_count(m: b.read_ticks)
           DiskReadMeasured {
-            read_bytes: byte_size(count: (a.sectors_read - b.sectors_read) * diskstats_sector_bytes),
+            read_bytes: byte_size(count: (a.sectors_read - b.sectors_read) * byte_size_count(b: diskstats_sector_bytes)),
             reads: reads,
             mean_read_await: if reads == 0 { none } else { Present { value: microsecond(count: (ticks * 1000) / reads) } },
           }

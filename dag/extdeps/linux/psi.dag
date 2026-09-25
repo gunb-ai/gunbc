@@ -1,5 +1,7 @@
 module extdeps.linux.psi
 
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.nat { Nat }
@@ -58,13 +60,13 @@ fn psi_line_keyword(k: PsiLineKind) -> String {
 
 fn psi_total_of_line(line: String, kind: PsiLineKind) -> Microsecond? {
   let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
-  match get(xs: words, index: 0) {
+  match list_at_optional(xs: words, index: 0) {
     Absent => none
     Present { value: head } =>
       if head != psi_line_keyword(k: kind) {
         none
       } else {
-        match get(xs: filter(words, w => starts_with(s: w, prefix: "total=")), index: 0) {
+        match list_at_optional(xs: filter(words, w => starts_with(s: w, prefix: "total=")), index: 0) {
           Absent => none
           Present { value: field } =>
             match parse_int(s: substring(s: field, start: 6, end: string_length(s: field))) {
@@ -77,7 +79,7 @@ fn psi_total_of_line(line: String, kind: PsiLineKind) -> Microsecond? {
 }
 
 fn psi_total_in_body(body: String, kind: PsiLineKind) -> Microsecond? {
-  get(xs: flat_map(split(s: body, delimiter: "\n"), l => match psi_total_of_line(line: l, kind: kind) {
+  list_at_optional(xs: flat_map(split(s: body, delimiter: "\n"), l => match psi_total_of_line(line: l, kind: kind) {
     Present { value: t } => [t]
     Absent => [] as List<Microsecond>
   }), index: 0)

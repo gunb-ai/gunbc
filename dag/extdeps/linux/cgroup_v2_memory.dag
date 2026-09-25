@@ -1,5 +1,7 @@
 module extdeps.linux.cgroup_v2_memory
 
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
 import std.algebra { trim }
 import std.checked_arithmetic { nat_magnitude }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -214,13 +216,13 @@ type CgroupMemoryStatReading
   | CgroupMemoryStatIncomplete { missing: List<String> }
 
 fn cgroup_memory_stat_value(body: String, key: String) -> Nat? {
-  get(xs: flat_map(split(s: body, delimiter: "\n"), line => {
+  list_at_optional(xs: flat_map(split(s: body, delimiter: "\n"), line => {
     let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
-    match get(xs: words, index: 0) {
+    match list_at_optional(xs: words, index: 0) {
       Absent => [] as List<Nat>
       Present { value: k } =>
         if k != key { [] as List<Nat> } else {
-          match get(xs: words, index: 1) {
+          match list_at_optional(xs: words, index: 1) {
             Absent => [] as List<Nat>
             Present { value: v } => match parse_int(s: v) {
               Absent => [] as List<Nat>

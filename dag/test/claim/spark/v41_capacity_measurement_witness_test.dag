@@ -1,5 +1,6 @@
 module test.claim.spark.v41_capacity_measurement_witness
 
+import v2.std.algebra { filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
@@ -207,11 +208,11 @@ test fn an_absent_device_is_not_a_zero_read() -> Bool {
 }
 
 test fn mincore_refuses_more_resident_pages_than_the_file_has() -> Bool {
-  let ok = match mincore_file_residency(file: "rank0.engram" as NonEmptyStr, file_bytes: byte_size(count: 8193), page_bytes: 4096, resident_pages: 3) {
+  let ok = match mincore_file_residency(file: "rank0.engram" as NonEmptyStr, file_bytes: byte_size(count: 8193), page_bytes: byte_size(count: 4096), resident_pages: 3) {
     MincoreResidencyAdmitted { residency: _ } => true
     MincoreResidencyRefused { file: _, cause: _ } => false
   }
-  let red = match mincore_file_residency(file: "rank0.engram" as NonEmptyStr, file_bytes: byte_size(count: 8193), page_bytes: 4096, resident_pages: 4) {
+  let red = match mincore_file_residency(file: "rank0.engram" as NonEmptyStr, file_bytes: byte_size(count: 8193), page_bytes: byte_size(count: 4096), resident_pages: 4) {
     MincoreResidencyRefused { file: _, cause: _ } => true
     MincoreResidencyAdmitted { residency: _ } => false
   }
