@@ -58,13 +58,14 @@ fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
     let valid = assemble(if inject_fault { UNPARSEABLE } else { WELL_FORMED });
     let valid_accepts = valid.is_ok();
-    println!("assemble well_formed inject_fault={inject_fault} outcome={valid:?}");
+    println!("assemble well_formed inject_fault={inject_fault} accepts={valid_accepts}");
     // The ROUTE, not only the verdict: the refusal must carry the parse stage's syntax error, so a
     // refusal reached for some other reason (a grammar-level residue riding the chain) does not
     // count.
     let invalid = assemble(UNPARSEABLE);
     let invalid_refuses = matches!(&invalid, Err(reasons) if reasons.iter().any(|r| r == "parse_e1_syntax_error"));
-    println!("assemble unparseable outcome={invalid:?} refuses_with_syntax_error={invalid_refuses}");
+    let distinct: std::collections::BTreeSet<&String> = invalid.as_ref().err().into_iter().flatten().collect();
+    println!("assemble unparseable distinct_reasons={distinct:?} refuses_with_syntax_error={invalid_refuses}");
     if valid_accepts && invalid_refuses {
         println!("SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
