@@ -14,7 +14,7 @@ import gunbc.runner.runner_jit_perform {
   JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched,
 }
 import gunbc.github_effect_perform {
-  jit_mint_performance_of_generate, perform_organization_jit_mint,
+  jit_mint_performance_of_generate, jit_mint_generate_gate, JitMintDecidedBeforeGenerate,
   JitMintReceived, JitMintStepNotSucceeded, GenerateJitConfigStep,
   JitMintAppKeyNotCustodied, lifecycle_controller_app,
 }
@@ -131,18 +131,19 @@ test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_gith
 // guard would be a wall nothing executes: dropping it while the key still points at the CI App's
 // pem would leave every other witness green (review 68748).
 test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool {
-  match perform_organization_jit_mint(dispatch: dispatched(owned: true, perms: runner_grant)) {
-    JitMintAppKeyNotCustodied { app: a } => a == gunbai_bot_declared && a != lifecycle_controller_app
+  match jit_mint_generate_gate(dispatch: dispatched(owned: true, perms: runner_grant)) {
+    JitMintDecidedBeforeGenerate { performance: JitMintAppKeyNotCustodied { app: a } } => a == gunbai_bot_declared && a != lifecycle_controller_app
     _ => false
   }
 }
 
 // A REFUSED DISPATCH PERFORMS NOTHING: no key is read and no request is sent, and the refusal the
 // plan reached is what comes back. This executes the real perform function, which reaches no
-// effect on this arm.
+// effect on this arm: the gate perform_organization_jit_mint matches on decides it before any token
+// is presented.
 test fn witness_a_refused_dispatch_performs_no_mint() -> Bool {
-  match perform_organization_jit_mint(dispatch: dispatched(owned: false, perms: runner_grant)) {
-    JitMintReceived { delivery: JitCredentialNotDispatched { refusal: _ } } => true
+  match jit_mint_generate_gate(dispatch: dispatched(owned: false, perms: runner_grant)) {
+    JitMintDecidedBeforeGenerate { performance: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: _ } } } => true
     _ => false
   }
 }

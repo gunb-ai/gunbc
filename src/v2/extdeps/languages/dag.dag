@@ -973,7 +973,7 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
 // what StampClass published there BEFORE promotion: dag_grammar_caret_symbol_expr's
 // referenced identifier. dag_grammar_generic_params_expr's parameter names USED to share
 // this helper and no longer do: a type parameter is a BINDER, and a binder whose spelling
-// the tree does not carry cannot be lowered onto v2.std.node's ^arrow_type_params_edge, so
+// the tree does not carry cannot be lowered onto v2.std.type_binder's type-parameter edge, so
 // resolve had nothing to scope and `T` fell through to the ordinary name chain
 // (gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2).
 // Those names now go through dag_grammar_ident_or_type_decl_modifier_name -- the SAME three

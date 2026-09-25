@@ -1,0 +1,283 @@
+module gunbc.runner_group_restriction_ensure_run
+
+import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.measure { Second, second, second_count, Minute, minute }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationScope, AuthorizationRequest, AuthorizedAction,
+  authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
+}
+import extdeps.github.org_actions { runner_group_visibility_wire }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet.org_actions_inspection { read_runner_groups, org_admin_token_env_name, RunnerGroupListDecode, RunnerGroupListDecodeRefused }
+import extdeps.shell.credentials { env_credential }
+import gunbc.auth.approval_gate {
+  ApprovalGate, GateAdmitted, GateRefused, approval_refusal_text,
+  approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
+  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
+}
+import gunbc.auth.approval_request_client { stored_request_from_authorization }
+import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
+import gunbc.runner_group_restriction_ensure {
+  RunnerGroupCreateSubject, microvm_runner_group_create_subject, runner_group_create_subject_text,
+  RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused, plan_runner_group_ensure,
+  CreatedGroupRestricted, CreatedGroupNotRestricted, readback_after_create,
+}
+
+// THE CREATE, PERFORMED UNDER ONE OPERATOR APPROVAL -- the first site that turns an admitted approval
+// into a performed provider effect (gunbc.auth.privileged_effect_census rows it as
+// RealizedApprovalCapability).
+//
+// WHY APPROVAL AND NOT THE RUN'S FEDERATED IDENTITY: the pattern is SELECTED, not chosen here.
+// gunbc.auth.authorization_pattern_selection select_authorization_pattern, run over this effect's
+// characteristics, returns OperatorApprovedCapability because the credential that performs the
+// POST -- a gunbai-ci installation token holding organization self-hosted-runners write -- reaches
+// every runner group in the organization, which is account-wide (ruling via quiet-koi-746,
+// 2026-09-23; the census row carries the same characteristics, and the contradiction with the
+// dispatch_jit_mint row is filed as gunbc.recurring_failure_mode
+// one_credential_mint_classified_at_two_reaches).
+//
+// THE ORDER IS READ, THEN ASK, THEN ACT, THEN READ. The organization is read before anything is filed,
+// so a group already restricted to exactly the shakedown workflow ends the run with no request and
+// no tap, and a group holding the name with any other restriction refuses before the operator is
+// asked to approve something this run would not do. Only a planned create is filed. The POST runs
+// only on GateAdmitted, and the run succeeds only when the organization, read again, holds the
+// sealed restriction (gunbc.runner_group_restriction_observation).
+//
+// A RERUN NEEDS NO CLAIM SLOT, because the effect's own readback is its idempotence: a run that dies
+// after the POST leaves a group the next run's first read finds restricted, and that run is a noop.
+// A run that dies before the POST leaves nothing. What neither can do is create a second group: the
+// name is held by the first, and the plan refuses an ambiguous or differently restricted name.
+//
+// WHERE IT RUNS. The approval broker is reached on srv1's loopback, so the run refuses anywhere else
+// before reading a credential. The org-admin token is minted in-run by the step's prelude
+// (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
+// never an argv word and never leaves the step.
+
+data microvm_runner_group_ensure_receipt_path: String = "artifacts/microvm-runner-group-ensure-receipt.txt"
+data microvm_runner_group_ensure_artifact_glob: String = "artifacts/microvm-runner-group-ensure-*"
+data microvm_runner_group_submit_body_file_name: String = "microvm-runner-group-approval-submit.json"
+
+data microvm_runner_group_poll_cadence: Second = second(count: 15)
+data microvm_runner_group_poll_tick_budget: Int = 60
+data microvm_runner_group_submit_timeout: Second = second(count: 30)
+data microvm_runner_group_prelude_allowance: Second = second(count: 120)
+data microvm_runner_group_effect_allowance: Second = second(count: 120)
+
+fn microvm_runner_group_approval_window() -> Second {
+  second(count: microvm_runner_group_poll_tick_budget * (second_count(s: microvm_runner_group_poll_cadence) as Int))
+}
+
+fn microvm_runner_group_step_timeout_minutes() -> Minute {
+  let secs = second_count(s: microvm_runner_group_prelude_allowance)
+    + second_count(s: microvm_runner_group_approval_window())
+    + second_count(s: microvm_runner_group_effect_allowance)
+  minute(count: (secs + 59) / 60)
+}
+
+// ── The request the operator approves ─────────────────────────────────────────────────────────
+
+// The execution revision is part of what is approved: an approval is for this subject created by
+// this executable, so a rerun from another revision files its own request.
+type MicrovmRunnerGroupCreateApproval {
+  group: RunnerGroupCreateSubject
+  execution_revision: NonEmptyStr
+}
+
+data microvm_runner_group_create_resource: NamespacePosition = NamespacePosition {
+  tree: ServiceOpTree { service: "github" },
+  path: ["orgs", "actions", "runner-groups"],
+}
+
+data microvm_runner_group_create_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: microvm_runner_group_create_resource,
+  action: "github.orgs.actions.runner-groups.create" as AuthorizedAction,
+}
+
+fn microvm_runner_group_create_intent_text(a: MicrovmRunnerGroupCreateApproval) -> String {
+  join([runner_group_create_subject_text(s: a.group), " execution_revision=", a.execution_revision as String], "")
+}
+
+fn microvm_runner_group_create_intent_hash(a: MicrovmRunnerGroupCreateApproval) -> ContentHash {
+  content_hash_of_value(value: microvm_runner_group_create_intent_text(a: a) as NonEmptyStr)
+}
+
+fn microvm_runner_group_create_request(
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  execution_revision: NonEmptyStr,
+) -> AuthorizationRequest<MicrovmRunnerGroupCreateApproval> {
+  let subject = MicrovmRunnerGroupCreateApproval { group: microvm_runner_group_create_subject(), execution_revision: execution_revision }
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scopes: [microvm_runner_group_create_scope],
+    subject: subject,
+    purpose: join([
+      "Create the GitHub runner group the microVM shakedown mints into, restricted so only the shakedown workflow can use it: ",
+      microvm_runner_group_create_intent_text(a: subject),
+    ], "") as NonEmptyStr,
+    attempt: attempt,
+    intent_hash: microvm_runner_group_create_intent_hash(a: subject),
+    destructive: false,
+  }
+}
+
+// ── The reads and the POST ────────────────────────────────────────────────────────────────────
+
+// The step prelude mints the org-admin installation token into GUNBC_ORG_ADMIN_TOKEN; the read is
+// the one runner-groups read every consumer shares (gunbc.fleet.org_actions_inspection
+// read_runner_groups), so this run and the microVM controller cannot disagree about the group.
+fn read_org_runner_groups(organization: NonEmptyStr) -> RunnerGroupListDecode uses net: std.resources.Network {
+  match env_credential(env_var: org_admin_token_env_name).token {
+    Absent => RunnerGroupListDecodeRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent; no bearer token to read the runner groups with" }
+    Present { value: token } => read_runner_groups(token: token, organization: organization)
+  }
+}
+
+fn write_receipt(line: String) -> ProcessExit {
+  let kept = Filesystem.Write(path: microvm_runner_group_ensure_receipt_path, content: concat(line, "\n"))
+  if kept.success { ExitSuccess } else { exit_failure(reason: concat("microvm runner group: receipt write refused: ", kept.error)) }
+}
+
+// THE EFFECT, ONLY UNDER AN ADMITTED GATE, re-authorized at the instant before the POST: the gate
+// admitted the grant when the poll returned, and a grant whose window closed since then must not
+// act. The subject posted is the one the grant names, not a fresh derivation, so the POST cannot
+// differ from what was approved.
+fn microvm_runner_group_after_gate(
+  gate: ApprovalGate<MicrovmRunnerGroupCreateApproval>,
+  request: AuthorizationRequest<MicrovmRunnerGroupCreateApproval>,
+) -> ProcessExit {
+  match gate {
+    GateRefused { cause: c } =>
+      exit_failure(reason: concat("microvm runner group: not created; the approval was not admitted: ", approval_refusal_text(cause: c)))
+    GateAdmitted { authorization: auth } => match approval_instant_now() {
+      Absent => exit_failure(reason: "microvm runner group: clock unreadable after admission; not created")
+      Present { value: at } => match authorize(authorization: auth, request: request, observed_at: at) {
+        AuthorizationRefused { cause: c } =>
+          exit_failure(reason: concat("microvm runner group: not created: ", authorization_refusal_reason(cause: c)))
+        AuthorizationPermitted { grant: g } => microvm_runner_group_create_under(
+          s: g.subject.group,
+          escalation: g.escalation_id,
+          decided_by: g.granted_by,
+        )
+      }
+    }
+  }
+}
+
+fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: NonEmptyStr, decided_by: NonEmptyStr) -> ProcessExit {
+  let created = github.CliOrgRunnerGroups.CreateRunnerGroupJson(
+    org: s.organization,
+    name: s.name,
+    visibility: runner_group_visibility_wire(v: s.visibility),
+    selected_repository_id: s.selected_repository_id,
+    allows_public_repositories: s.allows_public_repositories,
+    restricted_to_workflows: s.restricted_to_workflows,
+    selected_workflow: s.selected_workflow,
+  )
+  if !created.success {
+    exit_failure(reason: concat("microvm runner group: POST /orgs/\{org\}/actions/runner-groups refused: ", created.stderr))
+  } else {
+    match readback_after_create(subject: s, listed: read_org_runner_groups(organization: s.organization)) {
+      CreatedGroupNotRestricted { cause } =>
+        exit_failure(reason: concat("microvm runner group: created but the readback refuses: ", cause as String))
+      CreatedGroupRestricted { restriction } =>
+        write_receipt(line: join([
+          "microvm-runner-group=created escalation_id=", escalation as String,
+          " decided_by=", decided_by as String,
+          " group_id=", to_string(restriction.group.value),
+          " selected_workflow=", restriction.selected_workflow as String,
+        ], ""))
+    }
+  }
+}
+
+fn microvm_runner_group_file_and_create(escalation: NonEmptyStr, sha: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  let request = microvm_runner_group_create_request(
+    escalation_id: escalation,
+    attempt: escalation as AttemptIdentity,
+    execution_revision: sha as NonEmptyStr,
+  )
+  match approval_instant_now() {
+    Absent => exit_failure(reason: "microvm runner group: clock unreadable; cannot mint an approval window; nothing filed")
+    Present { value: issued } => {
+      let expires = approval_expires_at(issued: issued, window: microvm_runner_group_approval_window())
+      match approval_file_stored_request(
+        stored: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires),
+        body_file_name: microvm_runner_group_submit_body_file_name,
+        submit_timeout: microvm_runner_group_submit_timeout,
+      ) {
+        ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("microvm runner group: not filed: ", r))
+        ApprovalFiled => microvm_runner_group_after_gate(
+          gate: approval_gate_from_outcome(
+            outcome: approval_poll_ticks(
+              remaining: microvm_runner_group_poll_tick_budget,
+              cadence: microvm_runner_group_poll_cadence,
+              escalation_id: escalation,
+              expires_at: expires,
+            ),
+            request: request,
+          ),
+          request: request,
+        )
+      }
+    }
+  }
+}
+
+fn microvm_runner_group_ensure_on_srv1() -> ProcessExit
+  uses net: std.resources.Network
+{
+  if actions_variable_trimmed(name: org_admin_token_env_name) == "" {
+    return exit_failure(reason: "microvm runner group: GUNBC_ORG_ADMIN_TOKEN is absent; the step prelude mints it from the gunbai-ci App key, and without it no read or create can be formed")
+  }
+  let run_id = match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  let sha = match actions_variable_read(name: github_sha_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if run_id == "" || sha == "" {
+    return exit_failure(reason: "microvm runner group: GITHUB_RUN_ID or GITHUB_SHA is unset; the escalation id and the approved revision bind them")
+  }
+  let subject = microvm_runner_group_create_subject()
+  match plan_runner_group_ensure(subject: subject, listed: read_org_runner_groups(organization: subject.organization)) {
+    GroupEnsureRefused { cause } => exit_failure(reason: concat("microvm runner group: ", cause as String))
+    GroupAlreadyRestricted { restriction } =>
+      write_receipt(line: join([
+        "microvm-runner-group=already-restricted group_id=", to_string(restriction.group.value),
+        " selected_workflow=", restriction.selected_workflow as String, " (nothing filed)",
+      ], ""))
+    GroupCreateRequired { subject: _ } =>
+      if actions_variable_trimmed(name: approval_submission_mac_key_path_env) == "" {
+        exit_failure(reason: concat("microvm runner group: the create is required and ", concat(approval_submission_mac_key_path_env as String, " is unset, so no approval can be filed")))
+      } else {
+        microvm_runner_group_file_and_create(escalation: concat("microvm-runner-group-", run_id) as NonEmptyStr, sha: sha)
+      }
+  }
+}
+
+fn microvm_runner_group_ensure_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["microvm runner group: ", v, " ", d, "; approval filing is loopback on srv1 only"], ""))
+    ActionsVariablePresent { value: host } =>
+      if host == (operator_host_srv1 as String) {
+        microvm_runner_group_ensure_on_srv1()
+      } else {
+        exit_failure(reason: join(["microvm runner group refuses host '", host, "': POST/GET /approvals is loopback on ", operator_host_srv1 as String], ""))
+      }
+  }
+}
