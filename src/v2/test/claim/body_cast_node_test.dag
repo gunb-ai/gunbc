@@ -78,6 +78,10 @@ fn bcn_match_arm_cast() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n")
 }
 
+fn bcn_call_operand_cast() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n")
+}
+
 fn bcn_tail_undeclared() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
 }
@@ -192,6 +196,13 @@ test fn bcn_if_arm_cast_carries_its_target() -> Bool {
 
 test fn bcn_match_arm_cast_carries_its_target() -> Bool {
   bcn_one_cast(o: bcn_match_arm_cast())
+}
+
+// (5b) A CAST WHOSE OPERAND IS A CALL is carried too. RED BEFORE (measured): the chain door
+// declined a head the operand reader does not read, and the tail reader behind it lowered only the
+// primary `g(v: x)` -- Accepted with no cast node. A chain carrying a cast now never declines.
+test fn bcn_call_operand_cast_carries_its_target() -> Bool {
+  bcn_one_cast(o: bcn_call_operand_cast())
 }
 
 // (6) An undeclared target refuses at resolve, located at the authored `Q` -- never dropped, and

@@ -4505,8 +4505,16 @@ fn body_lower_postfix_chain_fold_step(
 // a computed head.
 fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_postfix_chain_read(node: node) {
-    PostfixChainNotThisShape => outcome_accepted(value: optional_absent())
+    PostfixChainNotThisShape =>
+      if body_lower_postfix_chain_carries_as_suffix(node: node) {
+        outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: node))
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
     PostfixChainSuffixCarried { at: at } =>
+      if body_lower_postfix_chain_carries_as_suffix(node: node) {
+        outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_postfix_suffix_carried, n: at))
+      } else {
       outcome_with_diagnostics(
         value: optional_absent(),
         diagnostics: Some {
@@ -4518,6 +4526,7 @@ fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node
           )
         }
       )
+      }
     PostfixChainBare { segments: segments } =>
       body_lower_postfix_chain_lowered_from_steps(
         node: node,
@@ -4544,13 +4553,38 @@ fn body_lower_postfix_chain_lowered_from_steps(
       )
     Absent =>
       match body_lower_operand_ref_optional(node: head_node) {
-        Absent => outcome_accepted(value: optional_absent())
+        Absent =>
+          if body_lower_postfix_steps_carry_cast(steps: steps) {
+            body_lower_postfix_cast_chain_computed_head(head_node: head_node, steps: steps, source: node)
+          } else {
+            outcome_accepted(value: optional_absent())
+          }
         Present { value: head_value } =>
           body_lower_postfix_chain_fold_from(
             steps: steps,
             init: PostfixAccumValue { node: head_value },
             source: node
           )
+      }
+  }
+}
+
+// A CHAIN CARRYING A CAST NEVER DECLINES. Every arm after this door reads the primary and ignores
+// the suffixes, so declining `g(v: x) as T` answered it with `g(v: x)` and dropped the cast --
+// Accepted with no cast node (measured). A head the operand reader does not read (a call, a group)
+// is lowered as the primary expression it is; a head that does not lower refuses with that
+// lowering's own diagnostic.
+fn body_lower_postfix_cast_chain_computed_head(
+  head_node: Node,
+  steps: List<PostfixStep>,
+  source: Node
+) -> Outcome<Optional<Node>> {
+  match body_lower_primary_expr(shell: head_node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: head_value, diagnostics: hd } =>
+      match body_lower_postfix_chain_fold_from(steps: steps, init: PostfixAccumValue { node: head_value }, source: source) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: hd, rejected: r) }
+        Accepted { value: v, diagnostics: d } => outcome_with_diagnostics(value: v, diagnostics: diagnostics_merge(outer: hd, inner: d))
       }
   }
 }
@@ -4575,20 +4609,17 @@ fn body_lower_postfix_cast_target_not_carried(at: Node) -> Outcome<PostfixAccum>
 // THE OPERAND READERS' CAST DOOR. A postfix chain carrying a cast step is lowered whole through the
 // chain fold (body_lower_dotted_chain_lowered_optional); any other node is not this reader's.
 fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
-  match body_lower_postfix_chain_read(node: node) {
-    PostfixChainFound { steps: steps } =>
-      if body_lower_postfix_steps_carry_cast(steps: steps) {
-        match body_lower_dotted_chain_lowered_optional(node: node) {
-          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
-          Accepted { value: Present { value: lowered }, diagnostics: _ } => OperandRefLowered { lowered: lowered }
-          Accepted { value: Absent, diagnostics: _ } => OperandRefAbsent
+  if body_lower_postfix_chain_carries_as_suffix(node: node) {
+    match body_lower_dotted_chain_lowered_optional(node: node) {
+      Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+      Accepted { value: Present { value: lowered }, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+      Accepted { value: Absent, diagnostics: _ } =>
+        OperandRefRefused {
+          diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: node))
         }
-      } else {
-        OperandRefAbsent
-      }
-    PostfixChainBare { segments: _ } => OperandRefAbsent
-    PostfixChainNotThisShape => OperandRefAbsent
-    PostfixChainSuffixCarried { at: _ } => OperandRefAbsent
+    }
+  } else {
+    OperandRefAbsent
   }
 }
 
@@ -7125,6 +7156,35 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
       } else {
         optional_absent()
       }
+  }
+}
+
+// A CAST IN A CHAIN THIS READ DECLINES IS REFUSED, NOT DECLINED: the arms behind the door read the
+// head and not the suffixes, so declining would drop the cast. The carried suffix is the refusal's
+// cause and locus.
+fn body_lower_postfix_chain_carries_as_suffix(node: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: node)) {
+    Absent => false
+    Present { value: pair } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: pair.right)
+  }
+}
+
+fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
+  if is_empty_conj_root(n: repeat_capture) {
+    false
+  } else {
+    match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
+      Absent => false
+      Present { value: repeat_elem } =>
+        match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
+          Present { value: _ } => true
+          Absent =>
+            match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+              Present { value: rest } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: rest)
+              Absent => false
+            }
+        }
+    }
   }
 }
 

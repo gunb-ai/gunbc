@@ -23,6 +23,7 @@ data as_cast_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_call_argument_cast_carries_its_target", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_if_arm_cast_carries_its_target", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_match_arm_cast_carries_its_target", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_call_operand_cast_carries_its_target", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_undeclared_target_refuses_at_q", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_generic_target_binds_the_type_parameter", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_value_binder_does_not_answer_the_target", field: WholeDeclaration },

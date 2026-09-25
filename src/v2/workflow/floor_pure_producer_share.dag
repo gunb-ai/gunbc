@@ -817,6 +817,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_call_argument_cast",
   "v2.test.claim.body_cast_node.bcn_if_arm_cast",
   "v2.test.claim.body_cast_node.bcn_match_arm_cast",
+  "v2.test.claim.body_cast_node.bcn_call_operand_cast",
   "v2.test.claim.body_cast_node.bcn_tail_undeclared",
   "v2.test.claim.body_cast_node.bcn_match_arm_undeclared",
   "v2.test.claim.body_cast_node.bcn_generic_cast",
