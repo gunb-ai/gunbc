@@ -93,6 +93,12 @@ import v2.std.passing_candidate_fold {
 }
 import v2.std.node {
   Arrow,
+  ComputationBody,
+  DirectAtomBody,
+  FunctionValueBody,
+  RecordConstructBody,
+  UnsupportedArrowBody,
+  classify_arrow_body_form,
   ArrowBodyEdges,
   Atom,
   Branch,
@@ -13487,6 +13493,23 @@ fn target_value_expr_arrow_has_record_construct_body(arrow: Node) -> Bool {
   }
 }
 
+// A BODY THAT IS ITSELF A FUNCTION VALUE (v2.std.node FunctionValueBody) projects as a closure
+// returned by the enclosing function, through target_project_closure_in_arrow_scope -- the same
+// projector a closure in subexpression position uses, so a curried body renders nested closures.
+fn target_value_expr_arrow_has_function_value_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody => true
+        DirectAtomBody => false
+        RecordConstructBody => false
+        ComputationBody { behavior: _ } => false
+        UnsupportedArrowBody => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
   target_value_expr_arrow_has_transform_body(arrow: arrow)
     || target_value_expr_arrow_has_branch_body(arrow: arrow)
@@ -13494,6 +13517,7 @@ fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
     || target_value_expr_arrow_has_loop_body(arrow: arrow)
     || target_value_expr_arrow_has_match_body(arrow: arrow)
     || target_value_expr_arrow_has_record_construct_body(arrow: arrow)
+    || target_value_expr_arrow_has_function_value_body(arrow: arrow)
 }
 
 fn target_value_expr_binding_in_declared_param_list(
@@ -14767,10 +14791,17 @@ fn target_project_arrow_body_to_value_expression(
               )
             )
           }
+        TypeNode { connective: Arrow } =>
+          target_project_closure_in_arrow_scope(
+            closure: body,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
         _ =>
           outcome_rejected(
             target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
+              reason: ^target_value_expr_reason_arrow_body_form_unsupported,
               node: body
             )
           )

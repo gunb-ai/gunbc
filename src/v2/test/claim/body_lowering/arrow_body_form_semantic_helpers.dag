@@ -23,6 +23,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   DirectAtomBody,
+  FunctionValueBody,
   Edge,
   Node,
   Positional,
@@ -48,6 +49,7 @@ type ArrowBodyFormAdmissionMirror
   = ArrowBodyFormAdmissionProduction
   | ArrowBodyFormAdmissionRedNoDirectAtom
   | ArrowBodyFormAdmissionRedNoComputationBody
+  | ArrowBodyFormAdmissionRedNoFunctionValueBody
 
 fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
   match target.kind {
@@ -67,6 +69,16 @@ fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyFo
   }
 }
 
+// The FunctionValueBody arm deleted: an Arrow body falls to UnsupportedArrowBody, as before the arm.
+fn classify_arrow_body_form_red_no_function_value_body(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    _ => UnsupportedArrowBody
+  }
+}
+
 fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAdmissionMirror) -> Bool {
   match mirror {
     ArrowBodyFormAdmissionProduction => arrow_body_target_is_valid_realization(target: target)
@@ -75,6 +87,7 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
         UnsupportedArrowBody => false
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
         DirectAtomBody => true
+        FunctionValueBody => true
         ComputationBody { behavior: _ } => true
       }
     ArrowBodyFormAdmissionRedNoComputationBody =>
@@ -82,6 +95,15 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
         UnsupportedArrowBody => false
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
         DirectAtomBody => true
+        FunctionValueBody => true
+        ComputationBody { behavior: _ } => true
+      }
+    ArrowBodyFormAdmissionRedNoFunctionValueBody =>
+      match classify_arrow_body_form_red_no_function_value_body(target: target) {
+        UnsupportedArrowBody => false
+        RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DirectAtomBody => true
+        FunctionValueBody => true
         ComputationBody { behavior: _ } => true
       }
   }
