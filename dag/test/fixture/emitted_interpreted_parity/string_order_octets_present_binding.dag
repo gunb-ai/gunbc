@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
 // ONE PROGRAM, RUN TWICE: interpreted (`gunbc run`) and emitted (`gunbc compile --target rust`, then
 // the crate built and executed). The two outputs must be byte-identical, and the expected line is
-// `T F T F T 6 2962370309 97 0 989`. Each field discriminates one emitter defect the native App Attest
+// `T F T F T 6 2962370309 97 0 989 ex none q`. Each field discriminates one emitter defect the native App Attest
 // closure hit (stern-raven-24, gunbc#12251):
 //   1-5  String ordering over the Timestamp alias (extdeps.standards.rfc_5280 x509_validity_at).
 //        `"Z" < "a"` is T and `"é" < "z"` is F only under byte-lexicographic UTF-8 order, which is
@@ -20,6 +20,9 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 //   10   The same arm shape inside a TAIL-RECURSIVE function, whose matches the tail-call
 //        lowering renders by its own arm emitter (extdeps.standards.rfc_5280
 //        read_extensions_list was the specimen): the octet sum 97+195+169+226+130+172.
+//   11-13 The same arm shape in a STRING-RESULT match that also carries a string-literal arm, which
+//        the emitter renders through its String-literal re-emission: the bind arm must bind the
+//        present value and the literal arm must match only a present value.
 fn ts_before(a: Timestamp, b: Timestamp) -> Bool {
   a < b
 }
@@ -39,6 +42,19 @@ fn octet_sum_from(xs: List<Int>, i: Int, acc: Int) -> Int {
   match xs |> get(i) {
     null => acc
     x => octet_sum_from(xs: xs, i: i + 1, acc: acc + x)
+  }
+}
+
+// The optional comes from `first`, the corpus's ordinary producer, and NOT from a function that
+// returns `Present { value: s }` at a `String?` result: the interpreter keeps that literal as a
+// variant value, so a literal arm never matches it and `v` binds the whole variant although
+// inference types `v` as String -- an interpreter/inference representation divergence reported
+// separately (gunbc#12261 thread), not an emitter defect, and not what these fields discriminate.
+fn label(names: List<String>) -> String {
+  match names |> first {
+    null => "none"
+    "x" => "ex"
+    v => v
   }
 }
 
@@ -62,12 +78,15 @@ fn observed_line() -> String {
     to_string(value: positional_fold(xs: o)),
     to_string(value: first_or_zero(xs: o)),
     to_string(value: first_or_zero(xs: [])),
-    to_string(value: octet_sum_from(xs: o, i: 0, acc: 0))
+    to_string(value: octet_sum_from(xs: o, i: 0, acc: 0)),
+    label(names: ["x"]),
+    label(names: []),
+    label(names: ["q"])
   ]
   join(parts, separator: " ")
 }
 
-data expected_line: String = "T F T F T 6 2962370309 97 0 989"
+data expected_line: String = "T F T F T 6 2962370309 97 0 989 ex none q"
 
 fn main() -> ProcessExit {
   let line = observed_line()

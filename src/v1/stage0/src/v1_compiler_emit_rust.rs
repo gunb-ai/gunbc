@@ -30170,21 +30170,31 @@ pub fn emit_typed_match(
                     } else {
                         if needs_string_from.clone() {
                             {
+                                let sf_absent_arm_index =
+                                    crate::v1_compiler_infer::match_unguarded_absent_arm_index(
+                                        arms.clone(),
+                                    );
+                                let sf_scrut_optional =
+                                    (crate::v1_compiler_infer_types::resolved_type(
+                                        scrutinee.clone(),
+                                    )
+                                    .return_cardinality
+                                    .clone()
+                                        == Cardinality::CardOptional);
                                 let sf_arm_strs = Rc::new({
                                     let mut __result = Vec::new();
-                                    for arm in arms.iter().cloned() {
-                                        __result.push(emit_typed_match_arm(
-                                            arm.clone(),
-                                            registry.clone(),
-                                            scope.clone(),
-                                            depth.clone(),
-                                            shared_types.clone(),
-                                            emit_info.clone(),
-                                            scrut_type.clone(),
-                                            match_result_type.clone(),
-                                            true,
-                                            false,
-                                        ));
+                                    for pair in Rc::new(
+                                        arms.clone()
+                                            .iter()
+                                            .cloned()
+                                            .enumerate()
+                                            .map(|(i, v)| (i as i64, v))
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
+                                        __result.push(emit_typed_match_arm(pair.1.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), true, (crate::v1_compiler_infer::optional_scrutinee_binding_is_present(crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()), crate::v1_std_core::arm_pattern(pair.1.clone()), pair.0.clone(), sf_absent_arm_index.clone()) || (sf_scrut_optional.clone() && is_string_lit_pattern(crate::v1_std_core::arm_pattern(pair.1.clone()))))));
                                     }
                                     __result
                                 });
@@ -30311,25 +30321,42 @@ pub fn emit_typed_match_arm(
         let pat_str = if string_from_mode.clone() {
             match (*arm_pat.clone()).clone() {
                 MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
-                    LiteralValue::LitStr { value: s, .. } => v1_rt::concat(
-                        v1_rt::concat(
-                            "ref __s if __s == \"".to_string(),
-                            crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                                s.clone(),
-                            ),
-                        ),
-                        "\"".to_string(),
-                    ),
+                    LiteralValue::LitStr { value: s, .. } => {
+                        if present_binding.clone() {
+                            v1_rt::concat(v1_rt::concat("Some(ref __s) if __s == \"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(s.clone())), "\"".to_string())
+                        } else {
+                            v1_rt::concat(v1_rt::concat("ref __s if __s == \"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(s.clone())), "\"".to_string())
+                        }
+                    }
                     _ => crate::v1_compiler_emit::rust_literal_for_pattern(v.clone()),
                 },
-                _ => emit_pattern(
-                    arm_pat.clone(),
-                    Rc::new(vec![]),
-                    shared_types.clone(),
-                    scrut_type.clone(),
-                    si.clone(),
-                    emit_info.clone(),
-                ),
+                _ => {
+                    if present_binding.clone() {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "Some(".to_string(),
+                                emit_pattern(
+                                    arm_pat.clone(),
+                                    Rc::new(vec![]),
+                                    shared_types.clone(),
+                                    scrut_type.clone(),
+                                    si.clone(),
+                                    emit_info.clone(),
+                                ),
+                            ),
+                            ")".to_string(),
+                        )
+                    } else {
+                        emit_pattern(
+                            arm_pat.clone(),
+                            Rc::new(vec![]),
+                            shared_types.clone(),
+                            scrut_type.clone(),
+                            si.clone(),
+                            emit_info.clone(),
+                        )
+                    }
+                }
             }
         } else {
             if rc_analysis.needs_rc_pattern.clone() {

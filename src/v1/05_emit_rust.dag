@@ -13564,7 +13564,11 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
 // from the checker's own predicate, never re-derived here, so the pattern and the typing cannot
 // disagree about which arm narrows: in exactly that arm the binding is emitted `Some(v)`, which the
 // earlier `None` arm keeps exhaustive. The tail-call lowering's own arm emitter
-// (emit_typed_tco_match_arm) reads the same predicate, so the two match renderings agree.
+// (emit_typed_tco_match_arm) and the String-literal re-emission (emit_typed_match's needs_string_from
+// arm) read the same predicate, so the three match renderings agree. In that re-emission a string
+// LITERAL arm over an optional scrutinee is `Some(ref __s)` as well: a literal matches only a
+// present value (the interpreter's Null never equals a Str), which is pattern semantics over an
+// optional carrier rather than the checker's narrowing, so it is keyed on the scrutinee's cardinality.
 fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
@@ -13634,7 +13638,11 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   } else if needs_as_str {
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
-    let sf_arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true, present_binding: false))
+    let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
+    let sf_scrut_optional = resolved_type(n: scrutinee).return_cardinality == CardOptional
+    let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
+      present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)
+        || (sf_scrut_optional && is_string_lit_pattern(p: arm_pattern(n: pair.second)))))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
@@ -13667,10 +13675,14 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   let pat_str = if string_from_mode {
     match arm_pat {
       LitPattern { value: v } => match v {
-        LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
+        LitStr { value: s } =>
+          if present_binding { concat("Some(ref __s) if __s == \"", escape_string_literal_body(s: s), "\"") }
+          else { concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"") }
         _ => rust_literal_for_pattern(value: v)
       }
-      _ => emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+      _ =>
+        if present_binding { concat("Some(", emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info), ")") }
+        else { emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info) }
     }
   } else if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
