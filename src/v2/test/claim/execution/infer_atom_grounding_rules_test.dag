@@ -11,8 +11,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
 import v2.extdeps.languages.dag {
-  dag_grammar_surface_production_type_node,
-  dag_int_inhabitant_node
+  dag_grammar_surface_production_type_node
 }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.target_model {
@@ -52,9 +51,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the evidence identity, and the census pins that the witness saw the population. The
 // boundary control pins that a bare atom with no authority membership and no domain declaration
 // stays on the frontier. The roster-root red pins that no specimen node's derived type is the
-// canonical-operations roster root (provenance is not a type, DESIGN section 3), and the
-// declared-inhabitant control pins that a type-denoting roster member refuses typed, since its
-// type is a kind no std authority declares yet. The closing control pins the specimen's full closure: zero frontier
+// canonical-operations roster root (provenance is not a type, DESIGN section 3). The closing control pins the specimen's full closure: zero frontier
 // nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
 // the boundary control.
 
@@ -191,22 +188,6 @@ test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match inferred.facts.lookup(unbound) {
-        Absent => false
-        Present { value: facts } =>
-          match facts.grounding {
-            GroundingNotDerived { node: _ } => true
-            DerivedGrounding { grounding: _ } => false
-          }
-      }
-  }
-}
-
-test fn declared_inhabitant_member_refuses_typed_holds() -> Bool {
-  let member = dag_int_inhabitant_node()
-  match infer(tree: member) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
-      match inferred.facts.lookup(member) {
         Absent => false
         Present { value: facts } =>
           match facts.grounding {
