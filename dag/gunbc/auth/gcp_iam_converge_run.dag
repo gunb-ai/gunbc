@@ -43,7 +43,11 @@ data gcp_iam_converge_file_window: Second = second(count: 1800)
 
 data gcp_iam_converge_poll_cadence: Second = second(count: 15)
 
-data gcp_iam_converge_poll_ticks: Int = 120
+// DERIVED, not spelled beside the two values it depends on (review 71318): the ticks are the filing
+// window divided by the cadence, so changing either keeps the poll covering the whole window.
+fn gcp_iam_converge_poll_ticks() -> Int {
+  second_count(s: gcp_iam_converge_file_window) / second_count(s: gcp_iam_converge_poll_cadence)
+}
 
 data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 
@@ -104,7 +108,7 @@ fn request_and_wait(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessE
       match approval_file_stored_request(stored: stored, body_file_name: "gcp-iam-converge-submit.json", submit_timeout: gcp_iam_converge_submit_timeout) {
         ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("gcp iam converge: filing refused: ", r))
         ApprovalFiled =>
-          match approval_poll_ticks(remaining: gcp_iam_converge_poll_ticks, cadence: gcp_iam_converge_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
+          match approval_poll_ticks(remaining: gcp_iam_converge_poll_ticks(), cadence: gcp_iam_converge_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
             PollClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable while waiting for the decision")
             PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "gcp iam converge: filed; no decision within the window, nothing applied")
             PollObservedAt { standing: s, observed_at: _ } =>
