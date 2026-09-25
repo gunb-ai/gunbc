@@ -1482,6 +1482,9 @@ enum CliEmitProbeVerdict {
     /// under a refusal, or a refused arm whose reason is not the rendered one. Two representations of
     /// one fact that differ are not a termination this door takes.
     CarrierContradictsRendering { carried: String, rendered: String },
+    /// The pinned member refusal rendered on stderr with NO carrier on stdout. The door writes every
+    /// member's arm when a member refuses, so this is the door losing its output, not the regression.
+    MemberRefusalCarrierMissing { locus: String },
     /// A refusal whose stdout is neither empty nor the door's `ClosureEmission` carrier holding the
     /// fixture member's arm: bytes the door's contract does not produce.
     StdoutNotEmpty { stdout_bytes: usize },
@@ -1710,13 +1713,25 @@ fn adjudicate_cli_emit_probe(
         None => return CliEmitProbeVerdict::RefusalNotRendered,
         Some(rendering) => rendering,
     };
-    if let Some(carried) = carried_reason {
-        if carried != rendering.determining_reason {
-            return CliEmitProbeVerdict::CarrierContradictsRendering {
-                carried,
-                rendered: rendering.determining_reason,
+    match carried_reason {
+        Some(carried) => {
+            if carried != rendering.determining_reason {
+                return CliEmitProbeVerdict::CarrierContradictsRendering {
+                    carried,
+                    rendered: rendering.determining_reason,
+                };
+            }
+        }
+        // A BODY REFUSAL IS A MEMBER'S REFUSAL, AND A MEMBER'S REFUSAL ARRIVES WITH THE CARRIER. By the
+        // door's contract it is `CliEmitted` -- every member's arm on stdout -- plus the located chain
+        // on stderr. An empty stdout beside that rendering is the door dropping its own output (the
+        // shape the pre-fix main produced), so it is refused here and never read as the pinned cause.
+        None if rendering.determining_reason == CLI_DOOR_EMIT_BODY_REFUSAL => {
+            return CliEmitProbeVerdict::MemberRefusalCarrierMissing {
+                locus: rendering.determining_locus,
             };
         }
+        None => {}
     }
     match Some(rendering) {
         None => CliEmitProbeVerdict::RefusalNotRendered,
@@ -1797,6 +1812,13 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
              `<reason> @ <locus>`. A truncated or malformed render has no determining reason to \
              compare and must not be decoded as though it were complete. stderr: {}",
             run.status,
+            run.stderr.trim()
+        ),
+        CliEmitProbeVerdict::MemberRefusalCarrierMissing { locus } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorMemberRefusalCarrierMissing — the built CLI \
+             rendered the member refusal `{CLI_DOOR_EMIT_BODY_REFUSAL}` at {locus} with an EMPTY \
+             stdout; a member's refusal is written with the ClosureEmission carrier, so the door \
+             dropped its own output. stderr: {}",
             run.stderr.trim()
         ),
         CliEmitProbeVerdict::CarrierContradictsRendering { carried, rendered } => format!(
@@ -2639,7 +2661,11 @@ mod cli_emit_probe_tests {
     /// REFUSED: the body refusal this probe pinned before the rendering landed -- the regression.
     #[test]
     fn the_old_body_refusal_is_a_regression() {
-        match adjudicate(&run(Some(1), "", &located_body_refusal())) {
+        match adjudicate(&run(
+            Some(1),
+            &carrier_refused(CLI_DOOR_EMIT_BODY_REFUSAL),
+            &located_body_refusal(),
+        )) {
             CliEmitProbeVerdict::BodyRefusalReturned { locus } => {
                 assert!(locus.contains("door_probe.dag bytes 43..47"));
             }
@@ -2765,6 +2791,42 @@ mod cli_emit_probe_tests {
             )),
             CliEmitProbeVerdict::CarrierContradictsRendering { .. }
         ));
+    }
+
+    /// REFUSED: status 1, EMPTY stdout, and the located body refusal on stderr -- exactly what the
+    /// door produced before its main wrote the fold's text on every status. It must not pass as the
+    /// pinned body refusal.
+    #[test]
+    fn a_body_refusal_without_its_carrier_is_not_the_pinned_arm() {
+        assert!(matches!(
+            adjudicate(&run(Some(1), "", &located_body_refusal())),
+            CliEmitProbeVerdict::MemberRefusalCarrierMissing { .. }
+        ));
+    }
+
+    /// THE GENERATED MAIN WRITES THE FOLD'S TEXT ONCE, BEFORE IT DISPATCHES ON THE STATUS: removing the
+    /// write, duplicating it into the arms, or moving it after the dispatch reds here, so no per-status
+    /// write can drift from the fold that decides the text.
+    #[test]
+    fn the_cli_main_writes_the_fold_text_once_before_the_status_dispatch() {
+        let main = crate::v1_compiler_emit_rust::emit_native_cli_driver_main_rs(
+            "crate_x".to_string(),
+            "pipeline_x".to_string(),
+        );
+        let source = main.content.as_str();
+        let write = "print!(\"{text}\");";
+        let dispatch = "match &*v2_cli_exit(outcome)";
+        assert_eq!(
+            source.matches(write).count(),
+            1,
+            "exactly one write of the fold's text"
+        );
+        let at_write = source.find(write).expect("the write");
+        let at_dispatch = source.find(dispatch).expect("the status dispatch");
+        assert!(
+            at_write < at_dispatch,
+            "the write precedes the status dispatch"
+        );
     }
 
     /// REFUSED: exit 0 with the fixture's arm refused is not an emission, whatever else the carrier says.
