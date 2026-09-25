@@ -27,7 +27,16 @@ import v2.compiler.compile {
   native_demand_eval_identity,
   native_demand_infer_identity,
   native_demand_plan,
-  native_demand_resolve_identity
+  native_demand_resolve_identity,
+  NativeCostPrepare,
+  NativeCostEval,
+  NativeCostUnclassified,
+  native_demand_cost_class,
+  native_demand_observation_rollup,
+  native_demand_observation_complete,
+  NativeDemandRun,
+  native_demand_eval_samples,
+  NativeDemandTransition
 }
 import std.content_hash { Fnv1a64Structural }
 import std.judgment_contract { DeclaredInput }
@@ -147,4 +156,142 @@ test fn the_compiler_input_is_part_of_the_demand_identity_holds() -> Bool {
   }
   demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
     != demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: other))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE OBSERVATION SEAM: MEANING FLOWS FROM TYPES TO TEXT AND NEVER BACK
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// These claims are about the classification and rollup, whose subject is one interface: given a
+// demand identity and a settled engine, which exclusive cost class does its transition inhabit and
+// is every transition accounted for. The identities are SUPPLIED, because deriving them would run
+// the compiler inside a claim about arithmetic.
+
+fn g_unknown_kind_identity() -> DemandIdentity {
+  DemandIdentity {
+    kind: parse_source_artifact_kind,
+    subject: Fnv1a64Structural { digest: "00000000000000ff" },
+    declared_inputs: []
+  }
+}
+
+// THE SPECIMEN THAT PROVES THE FAIL-OPEN ARM CANNOT RETURN. The previous seam derived a stage word
+// and answered "unbound" when a plan binding was absent, while the totals recognised only three
+// spellings -- so a transition could contribute to NEITHER total and NEITHER sample population and
+// disappear into the unattributed residual. A demand whose kind is outside the three contracts must
+// now be COUNTED as unclassified, because a count is what makes the rollup's completeness check
+// able to fail.
+test fn a_demand_kind_outside_the_contracts_is_counted_not_dropped_holds() -> Bool {
+  match native_demand_cost_class(identity: g_unknown_kind_identity()) {
+    NativeCostUnclassified => true
+    _ => false
+  }
+}
+
+// THE THREE CONTRACT KINDS REACH THE PARTITION THE DRIVER REPORTS, and resolve and infer are ONE
+// exclusive row while eval is another -- which is the partition std.compiler_entry owns, not a
+// vocabulary this module invented.
+test fn resolve_and_infer_are_prepare_and_eval_is_eval_holds() -> Bool {
+  g_is_prepare(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
+    && g_is_prepare(id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()))
+    && g_is_eval(
+      id: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler())
+    )
+}
+
+fn g_is_prepare(id: DemandIdentity) -> Bool {
+  match native_demand_cost_class(identity: id) {
+    NativeCostPrepare => true
+    _ => false
+  }
+}
+
+fn g_is_eval(id: DemandIdentity) -> Bool {
+  match native_demand_cost_class(identity: id) {
+    NativeCostEval => true
+    _ => false
+  }
+}
+
+// CLASSIFICATION IS A FUNCTION OF THE CONTRACT-OWNED KIND AND NOTHING ELSE. Two eval demands for
+// different declarations of different modules -- different subjects, different keys -- share a cost
+// class, because the class is about which judgment this is and not about which subject it names.
+test fn cost_class_follows_the_kind_not_the_subject_holds() -> Bool {
+  g_is_eval(id: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler()))
+    && g_is_eval(id: native_demand_eval_identity(module: "p.b", declaration: "h9", compiler: g_compiler()))
+}
+
+// A BLOCKED DEMAND PRODUCES NO TRANSITION, so it can contribute no sample. The previous shape could
+// not state this: a fabricated zero-duration sample and a demand that genuinely cost nothing are the
+// same number once the span is gone, and only the absence of a row distinguishes them.
+test fn a_blocked_demand_contributes_no_transition_holds() -> Bool {
+  let plan = g_one_module_plan()
+  let refused = demand_engine_settle(
+    e: plan.engine,
+    id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()),
+    state: DemandRefused
+  )
+  let run = NativeDemandRun { engine: refused, transitions: [], rows: [] }
+  (length(xs: native_demand_eval_samples(run: run)) == 0)
+    && (native_demand_observation_rollup(run: run).classified == 0)
+    && native_demand_observation_complete(run: run)
+}
+
+// RENDERING CANNOT MOVE A TOTAL, and this is the claim that makes the one-way rule checkable rather
+// than merely stated. The receipt lines are produced FROM the rollup's inputs; the rollup is produced
+// from typed identities and typed engine state. So the two are computed over the same transitions
+// and neither reads the other: rendering every line and then re-deriving the rollup must leave every
+// figure identical, because rendering is not in the path that decides them.
+//
+// The previous seam would have FAILED this by construction, since its totals were folded from the
+// rendered stage word -- rename the word and the exclusive rows move.
+test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
+  let plan = g_one_module_plan()
+  let settled = demand_engine_settle(
+    e: plan.engine,
+    id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
+    state: DemandRefused
+  )
+  let run = NativeDemandRun {
+    engine: settled,
+    transitions: [
+      NativeDemandTransition {
+        identity: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
+        nanos: 11
+      },
+      NativeDemandTransition {
+        identity: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler()),
+        nanos: 22
+      }
+    ],
+    rows: []
+  }
+  let before = native_demand_observation_rollup(run: run)
+  let rendered = native_demand_run_receipt_lines(run: run)
+  let after = native_demand_observation_rollup(run: run)
+  (length(xs: rendered) == 2)
+    && (before.prepare_nanos == after.prepare_nanos)
+    && (before.eval_nanos == after.eval_nanos)
+    && (after.prepare_nanos == 11)
+    && (after.eval_nanos == 22)
+    && (after.classified == 2)
+    && (after.unclassified == 0)
+    && native_demand_observation_complete(run: run)
+}
+
+// AND THE COMPLETENESS CHECK CAN ACTUALLY FAIL. A transition whose kind no contract issues leaves the
+// rollup incomplete, which is the whole point of counting the unclassified rather than skipping it:
+// a check that cannot go red is a decoration (DESIGN section 4b).
+test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> Bool {
+  let run = NativeDemandRun {
+    engine: g_one_module_plan().engine,
+    transitions: [NativeDemandTransition { identity: g_unknown_kind_identity(), nanos: 7 }],
+    rows: []
+  }
+  let r = native_demand_observation_rollup(run: run)
+  (r.unclassified == 1)
+    && (r.classified == 0)
+    && (r.prepare_nanos == 0)
+    && (r.eval_nanos == 0)
+    && !native_demand_observation_complete(run: run)
 }
