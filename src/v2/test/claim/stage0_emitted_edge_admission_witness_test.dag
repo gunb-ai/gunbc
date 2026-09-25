@@ -2,13 +2,25 @@ module test.claim.stage0_emitted_edge_admission_witness
 
 import std.types { Bool, List, String }
 import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, semantic_source_reference_edge }
-import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow, generated_partition_crate_rows }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedLayeredCoreCrate,
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+import gunbc.stage0_executable_assembly_generated {
+  generated_host_shell_package_name,
+  generated_host_shell_partition_dependencies
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.stage0_emitted_edge_admission {
   Stage0EmittedEdgesAdmitted,
   Stage0EmittedEdgesNotCovered,
   Stage0EmittedEdgesRefused,
+  Stage0EmittedTreePackages,
   stage0_emitted_edge_admission,
+  stage0_package_direct_dependencies,
+  stage0_package_reach_table,
+  stage0_package_reaches,
   stage0_emitted_edge_admission_refusal
 }
 
@@ -25,13 +37,25 @@ import gunbc.stage0_emitted_edge_admission {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+fn tree_packages(rows: List<GeneratedPartitionCrateRow>) -> Stage0EmittedTreePackages {
+  Stage0EmittedTreePackages {
+    rows: rows,
+    host_shell_package_name: generated_host_shell_package_name,
+    host_shell_dependencies: generated_host_shell_partition_dependencies
+  }
+}
+
+fn committed_tree_packages() -> Stage0EmittedTreePackages {
+  tree_packages(rows: generated_partition_crate_rows)
+}
+
 // RED: a foundation crate re-exports nothing, so an edge out of the runtime into v1-infer names a
 // module its crate cannot see -- the E0432 a partition build would report, refused here by name.
 test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
     host_shell_modules: [],
-    rows: generated_partition_crate_rows
+    packages: committed_tree_packages()
   ) {
     Stage0EmittedEdgesRefused { crossings: crossings } =>
       (crossings |> count) == 1
@@ -50,7 +74,7 @@ test fn an_edge_from_a_partition_crate_into_the_host_shell_is_refused() -> Bool 
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "cli_run")],
     host_shell_modules: ["cli_run"],
-    rows: generated_partition_crate_rows
+    packages: committed_tree_packages()
   ) {
     Stage0EmittedEdgesRefused { crossings: crossings } =>
       (crossings |> count) == 1
@@ -69,7 +93,7 @@ test fn edges_down_the_layering_are_admitted() -> Bool {
       semantic_source_reference_edge(from: "cli_run", to_module: "v1_rt")
     ],
     host_shell_modules: ["cli_run"],
-    rows: generated_partition_crate_rows
+    packages: committed_tree_packages()
   ) {
     Stage0EmittedEdgesAdmitted { edge_count: n } => n == 3
     _ => false
@@ -82,7 +106,7 @@ test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool {
   match stage0_emitted_edge_admission(
     edges: rust_prelude_emitted_edges(module: "v1_compiler_infer"),
     host_shell_modules: [],
-    rows: generated_partition_crate_rows
+    packages: committed_tree_packages()
   ) {
     Stage0EmittedEdgesAdmitted { edge_count: _ } => true
     _ => false
@@ -95,7 +119,7 @@ test fn a_module_outside_the_seed_is_not_covered_rather_than_admitted() -> Bool 
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "fixture_closure_module", to_module: "std_types")],
     host_shell_modules: ["cli_run"],
-    rows: generated_partition_crate_rows
+    packages: committed_tree_packages()
   ) {
     Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
       (uncovered |> count) == 1
@@ -110,7 +134,7 @@ test fn the_refusal_names_modules_packages_and_provenance() -> Bool {
     outcome: stage0_emitted_edge_admission(
       edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
       host_shell_modules: [],
-      rows: generated_partition_crate_rows
+      packages: committed_tree_packages()
     )
   ) {
     Present { value: message } =>
@@ -147,11 +171,11 @@ fn rows_with_a_module_added(rows: List<GeneratedPartitionCrateRow>, package_name
 test fn a_module_added_to_the_supplied_partition_is_admitted_where_the_predecessor_rows_do_not_cover_it() -> Bool {
   let edge = semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "fixture_added_std_core_module")
   let added = rows_with_a_module_added(rows: generated_partition_crate_rows, package_name: "v1-stage0-std-core", module: "fixture_added_std_core_module")
-  let admitted_against_the_change = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], rows: added) {
+  let admitted_against_the_change = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], packages: tree_packages(rows: added)) {
     Stage0EmittedEdgesAdmitted { edge_count: n } => n == 1
     _ => false
   }
-  let not_covered_against_the_predecessor = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], rows: generated_partition_crate_rows) {
+  let not_covered_against_the_predecessor = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], packages: committed_tree_packages()) {
     Stage0EmittedEdgesNotCovered { uncovered: uncovered } => uncovered |> all(u => u.module == "fixture_added_std_core_module")
     _ => false
   }
@@ -166,7 +190,7 @@ test fn the_supplied_partition_still_refuses_crossings_and_uncovered_modules() -
   let crossing_refused = match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "fixture_added_std_core_module")],
     host_shell_modules: [],
-    rows: added
+    packages: tree_packages(rows: added)
   ) {
     Stage0EmittedEdgesRefused { crossings: crossings } =>
       crossings |> all(c => c.from_package == "v1-stage0-runtime" && c.to_package == "v1-stage0-std-core")
@@ -175,11 +199,34 @@ test fn the_supplied_partition_still_refuses_crossings_and_uncovered_modules() -
   let uncovered_refused = match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "fixture_added_std_core_module", to_module: "fixture_module_no_row_lists")],
     host_shell_modules: [],
-    rows: added
+    packages: tree_packages(rows: added)
   ) {
     Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
       (uncovered |> count) == 1 && uncovered |> all(u => u.module == "fixture_module_no_row_lists")
     _ => false
   }
   crossing_refused && uncovered_refused
+}
+
+// THE EMIT-CORE ARM FOLLOWS THE SUPPLIED PACKAGE SET. The emit shell depends on EVERY module-bearing
+// package of the set it sits in, so a change that adds a PACKAGE (not only a module) must widen the
+// emit shell's edges in the change's own graph. Here the supplied set gains one layered package while
+// the committed rows stay as they are: the emit shell's direct dependencies and reach include it
+// against the supplied set and exclude it against the committed one -- so neither answer re-enters
+// the rows compiled into the asker.
+test fn the_emit_core_dependency_and_reach_follow_the_supplied_package_set() -> Bool {
+  let added_package = "v1-stage0-fixture-added"
+  let supplied = tree_packages(rows: generated_partition_crate_rows |> concat([GeneratedPartitionCrateRow {
+    package_name: added_package,
+    crate_dir: "src/v1/stage0_fixture_added",
+    kind: GeneratedLayeredCoreCrate,
+    modules: ["fixture_added_package_module"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }]))
+  let emit_core = "v1-stage0-emit-core"
+  (stage0_package_direct_dependencies(package_name: emit_core, packages: supplied) |> any(p => p == added_package))
+    && !(stage0_package_direct_dependencies(package_name: emit_core, packages: committed_tree_packages()) |> any(p => p == added_package))
+    && stage0_package_reaches(reach: stage0_package_reach_table(packages: supplied), from_package: emit_core, to_package: added_package)
+    && !stage0_package_reaches(reach: stage0_package_reach_table(packages: committed_tree_packages()), from_package: emit_core, to_package: added_package)
 }
