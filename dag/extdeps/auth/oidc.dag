@@ -2,7 +2,7 @@ module extdeps.auth.oidc
 
 import std.types { String, NonEmptyStr, Bool, List, Email, Timestamp }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https, uri_https }
+import extdeps.uri { Uri, Https }
 import extdeps.auth.jwt {
   NumericDate,
   NumericDateWholeSeconds,
