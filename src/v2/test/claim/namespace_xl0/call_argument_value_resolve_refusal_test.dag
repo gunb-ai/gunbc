@@ -463,10 +463,14 @@ test fn a_caret_symbol_operand_refuses_at_normalize() -> Bool {
   }
 }
 
+// The cast refuses as a TYPE THE LOWERING CANNOT CARRY, at normalize: the postfix is folded before
+// the operator reader sees its operand, and v2.compiler.body_lowering_fold body_lower_postfix_expr
+// refuses the cast's target rather than dropping it (gunbc.recurring_failure_mode
+// as_cast_has_no_lowered_form). It refused operator_operand_unread before that fold refused it.
 test fn an_as_cast_operand_refuses_at_normalize() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: v, else_less_if: _ } =>
-      cav_is_file_refused_for(v: v, reason: ^body_lowering_reason_operator_operand_unread)
+      cav_is_file_refused_for(v: v, reason: ^body_lowering_reason_type_annotation_not_carried)
     CavContextRefused => false
   }
 }
