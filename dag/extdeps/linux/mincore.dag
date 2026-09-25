@@ -1,0 +1,66 @@
+module extdeps.linux.mincore
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+
+// mincore(2): "determine whether pages are resident in memory". For a mapping of a file it returns
+// one byte per page of the range, whose least significant bit is set when the page is resident in
+// the page cache. It answers RESIDENCY at the instant of the call, and nothing about which pages any
+// process touched: a page read by readahead, by a checksum pass, or by another process is resident
+// exactly like a page a lookup fetched. That is the whole reason this reading is never a touch count.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man2/mincore.2.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.mincore",
+      decl_name: "MincoreFileResidency",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The vector covers ceil(length / page_size) pages; the resident count is the number of bytes in it
+// with bit 0 set. Resident BYTES are pages times page size, so the file's partial last page counts
+// whole -- that is what the page cache holds, and it can exceed the file length by less than a page.
+type MincoreFileResidency sole_constructor {
+  file: NonEmptyStr
+  file_bytes: ByteSize
+  page_bytes: Nat
+  resident_pages: Nat
+}
+
+type MincoreResidencyAdmission
+  = MincoreResidencyAdmitted { residency: MincoreFileResidency }
+  | MincoreResidencyRefused { file: NonEmptyStr, cause: NonEmptyStr }
+
+fn mincore_page_count(file_bytes: ByteSize, page_bytes: Nat) -> Nat {
+  (byte_size_count(b: file_bytes) + page_bytes - 1) / page_bytes
+}
+
+fn mincore_file_residency(file: NonEmptyStr, file_bytes: ByteSize, page_bytes: Nat, resident_pages: Nat) -> MincoreResidencyAdmission {
+  if page_bytes == 0 {
+    MincoreResidencyRefused { file: file, cause: "a zero page size is not a page size" as NonEmptyStr }
+  } else if resident_pages > mincore_page_count(file_bytes: file_bytes, page_bytes: page_bytes) {
+    MincoreResidencyRefused { file: file, cause: "more resident pages than the file has pages; the vector covered a different range" as NonEmptyStr }
+  } else {
+    MincoreResidencyAdmitted { residency: MincoreFileResidency {
+      file: file, file_bytes: file_bytes, page_bytes: page_bytes, resident_pages: resident_pages,
+    } }
+  }
+}
+
+fn mincore_resident_bytes(r: MincoreFileResidency) -> ByteSize {
+  byte_size(count: r.resident_pages * r.page_bytes)
+}

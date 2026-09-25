@@ -1,0 +1,120 @@
+module extdeps.linux.psi
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.checked_arithmetic { nat_magnitude }
+import std.measure { Microsecond, microsecond, microsecond_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import v2.std.optional { Present, Absent }
+
+// Pressure Stall Information, Documentation/accounting/psi.rst. The interface first shipped in
+// Linux 4.20; the per-cgroup files (memory.pressure, io.pressure, cpu.pressure) in cgroup-v2 share
+// this exact format (the same document, "Cgroup2 interface").
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/accounting/psi.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.psi",
+      decl_name: "PsiReading",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The first kernel release that carries the interface, as psi.rst's version history states it.
+data psi_first_kernel_release: LinuxKernelRelease = "4.20" as LinuxKernelRelease
+
+// THE FILE IS TWO LINES, `some` AND `full`, each "avg10=A avg60=B avg300=C total=T". The averages
+// are the kernel's own exponentially-decayed ratios over windows the kernel chose; `total` is the
+// cumulative stall time in MICROSECONDS since boot (or cgroup creation). Only `total` is carried:
+// a stall fraction over an interval the measurement itself chose is the delta of two totals over
+// that interval's length, and the kernel's decayed averages would be a second, differently-windowed
+// answer to the same question. `full` is absent from the system-wide cpu file on kernels before
+// 5.13 and is carried as optional for that reason, never defaulted to zero.
+type PsiLineKind = PsiSome | PsiFull
+
+type PsiReading
+  = PsiRead { some_total: Microsecond, full_total: Microsecond? }
+  | PsiUnparseable { body: String, cause: NonEmptyStr }
+
+fn psi_line_keyword(k: PsiLineKind) -> String {
+  match k {
+    PsiSome => "some"
+    PsiFull => "full"
+  }
+}
+
+fn psi_total_of_line(line: String, kind: PsiLineKind) -> Microsecond? {
+  let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+  match get(xs: words, index: 0) {
+    Absent => none
+    Present { value: head } =>
+      if head != psi_line_keyword(k: kind) {
+        none
+      } else {
+        match get(xs: filter(words, w => starts_with(s: w, prefix: "total=")), index: 0) {
+          Absent => none
+          Present { value: field } =>
+            match parse_int(s: substring(s: field, start: 6, end: string_length(s: field))) {
+              Absent => none
+              Present { value: n } => if n < 0 { none } else { Present { value: microsecond(count: nat_magnitude(a: n)) } }
+            }
+        }
+      }
+  }
+}
+
+fn psi_total_in_body(body: String, kind: PsiLineKind) -> Microsecond? {
+  get(xs: flat_map(split(s: body, delimiter: "\n"), l => match psi_total_of_line(line: l, kind: kind) {
+    Present { value: t } => [t]
+    Absent => [] as List<Microsecond>
+  }), index: 0)
+}
+
+fn parse_psi(body: String) -> PsiReading {
+  match psi_total_in_body(body: body, kind: PsiSome) {
+    Absent => PsiUnparseable { body: body, cause: "no `some ... total=N` line" as NonEmptyStr }
+    Present { value: s } => PsiRead { some_total: s, full_total: psi_total_in_body(body: body, kind: PsiFull) }
+  }
+}
+
+// THE STALL OVER AN INTERVAL IS A DELTA OF TWO CUMULATIVE TOTALS, and a total that went BACKWARDS
+// is not a small interval: it is a reset (a new cgroup, a reboot) and the pair measures nothing.
+type PsiStallInterval
+  = PsiStallMeasured { stalled: Microsecond, window: Microsecond }
+  | PsiStallUnmeasurable { cause: NonEmptyStr }
+
+fn psi_full_stall_interval(before: PsiReading, after: PsiReading, window: Microsecond) -> PsiStallInterval {
+  match before {
+    PsiUnparseable { body: _, cause: c } => PsiStallUnmeasurable { cause: c }
+    PsiRead { some_total: _, full_total: fb } => match after {
+      PsiUnparseable { body: _, cause: c } => PsiStallUnmeasurable { cause: c }
+      PsiRead { some_total: _, full_total: fa } => match fb {
+        Absent => PsiStallUnmeasurable { cause: "the `full` line is absent from the before reading" as NonEmptyStr }
+        Present { value: b } => match fa {
+          Absent => PsiStallUnmeasurable { cause: "the `full` line is absent from the after reading" as NonEmptyStr }
+          Present { value: a } =>
+            if microsecond_count(m: a) < microsecond_count(m: b) {
+              PsiStallUnmeasurable { cause: "the cumulative `full` total went backwards; the counter was reset between readings" as NonEmptyStr }
+            } else if microsecond_count(m: window) == 0 {
+              PsiStallUnmeasurable { cause: "a zero-length window measures no stall fraction" as NonEmptyStr }
+            } else {
+              PsiStallMeasured { stalled: microsecond(count: microsecond_count(m: a) - microsecond_count(m: b)), window: window }
+            }
+        }
+      }
+    }
+  }
+}

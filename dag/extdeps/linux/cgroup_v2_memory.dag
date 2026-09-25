@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.types { Int, NonEmptyStr, String, List }
+import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -191,4 +192,69 @@ fn cgroup_v2_bounding_dirs(mount_point: NonEmptyStr, relative_path: NonEmptyStr)
       let next = join([acc.prefix, "/", part], "")
       CgroupBoundingDirsFold { prefix: next, dirs: acc.dirs |> list_push(next as NonEmptyStr) }
     }).dirs
+}
+
+// ── memory.stat: THE FIVE KEYS A RESIDENCY READING NEEDS ───────────────────────────────────────
+//
+// cgroup-v2 ("memory.stat") documents the file as flat "key value" lines. Its keys have two
+// different kinds. anon, file and file_mapped are Instantaneous byte counts. workingset_refault_file
+// and pgmajfault are CumulativeCounter event counts, so only a before/after pair of them measures an
+// interval. The kinds are named per field here because this one file mixes them; that is also why
+// memory.stat is not a CgroupMemoryInterfaceFile variant with a single kind.
+type CgroupMemoryStat {
+  anon: ByteSize
+  file: ByteSize
+  file_mapped: ByteSize
+  workingset_refault_file: Nat
+  pgmajfault: Nat
+}
+
+type CgroupMemoryStatReading
+  = CgroupMemoryStatRead { stat: CgroupMemoryStat }
+  | CgroupMemoryStatIncomplete { missing: List<String> }
+
+fn cgroup_memory_stat_value(body: String, key: String) -> Nat? {
+  get(xs: flat_map(split(s: body, delimiter: "\n"), line => {
+    let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+    match get(xs: words, index: 0) {
+      Absent => [] as List<Nat>
+      Present { value: k } =>
+        if k != key { [] as List<Nat> } else {
+          match get(xs: words, index: 1) {
+            Absent => [] as List<Nat>
+            Present { value: v } => match parse_int(s: v) {
+              Absent => [] as List<Nat>
+              Present { value: n } => if n < 0 { [] as List<Nat> } else { [nat_magnitude(a: n)] }
+            }
+          }
+        }
+    }
+  }), index: 0)
+}
+
+fn parse_cgroup_memory_stat(body: String) -> CgroupMemoryStatReading {
+  let keys = ["anon", "file", "file_mapped", "workingset_refault_file", "pgmajfault"]
+  let missing = filter(keys, k => match cgroup_memory_stat_value(body: body, key: k) { Present { value: _ } => false  Absent => true })
+  match cgroup_memory_stat_value(body: body, key: "anon") {
+    Absent => CgroupMemoryStatIncomplete { missing: missing }
+    Present { value: anon } => match cgroup_memory_stat_value(body: body, key: "file") {
+      Absent => CgroupMemoryStatIncomplete { missing: missing }
+      Present { value: file } => match cgroup_memory_stat_value(body: body, key: "file_mapped") {
+        Absent => CgroupMemoryStatIncomplete { missing: missing }
+        Present { value: mapped } => match cgroup_memory_stat_value(body: body, key: "workingset_refault_file") {
+          Absent => CgroupMemoryStatIncomplete { missing: missing }
+          Present { value: refault } => match cgroup_memory_stat_value(body: body, key: "pgmajfault") {
+            Absent => CgroupMemoryStatIncomplete { missing: missing }
+            Present { value: majfault } => CgroupMemoryStatRead { stat: CgroupMemoryStat {
+              anon: byte_size(count: anon),
+              file: byte_size(count: file),
+              file_mapped: byte_size(count: mapped),
+              workingset_refault_file: refault,
+              pgmajfault: majfault,
+            } }
+          }
+        }
+      }
+    }
+  }
 }

@@ -1,0 +1,142 @@
+module extdeps.linux.diskstats
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.checked_arithmetic { nat_magnitude }
+import std.measure { ByteSize, byte_size, Microsecond, microsecond, Millisecond, millisecond, millisecond_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import v2.std.optional { Present, Absent }
+
+// /proc/diskstats, Documentation/admin-guide/iostats.rst. The 14-field-after-name layout this
+// module reads has been stable since 2.6; later kernels APPEND discard (4.18) and flush (5.5)
+// fields, which is why fields are read by position from the front and never by line length.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/iostats.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.diskstats",
+      decl_name: "DiskstatsRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data diskstats_positional_layout_since_release: LinuxKernelRelease = "2.6" as LinuxKernelRelease
+
+// iostats.rst: "sectors" in this file are ALWAYS 512 bytes, whatever the device's logical block
+// size is. Multiplying by the device's own sector size would be a wrong reading on 4Kn drives.
+data diskstats_sector_bytes: Nat = 512
+
+// The read-side fields, by their iostats.rst numbers (field 1 = first after the device name).
+// Write-side fields are not read here because the measurement that consumes this is read-only
+// against the Engram files; a later consumer adds them as fields, not as a second row type.
+type DiskstatsRow {
+  device: NonEmptyStr
+  reads_completed: Nat
+  sectors_read: Nat
+  read_ticks: Millisecond
+  in_flight: Nat
+}
+
+type DiskstatsReading
+  = DiskstatsDeviceRead { row: DiskstatsRow }
+  | DiskstatsDeviceAbsent { device: NonEmptyStr }
+  | DiskstatsUnparseable { device: NonEmptyStr, line: String }
+
+fn diskstats_nat_at(words: List<String>, index: Nat) -> Nat? {
+  match get(xs: words, index: index) {
+    Absent => none
+    Present { value: w } => match parse_int(s: w) {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else { Present { value: nat_magnitude(a: n) } }
+    }
+  }
+}
+
+// Word 2 is the device name; words 3, 5, 6 and 11 are iostats fields 1, 3, 4 and 9.
+fn diskstats_row_of_line(device: NonEmptyStr, line: String) -> DiskstatsReading? {
+  let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+  match get(xs: words, index: 2) {
+    Absent => none
+    Present { value: name } =>
+      if name != (device as String) {
+        none
+      } else {
+        match diskstats_nat_at(words: words, index: 3) {
+          Absent => Present { value: DiskstatsUnparseable { device: device, line: line } }
+          Present { value: reads } => match diskstats_nat_at(words: words, index: 5) {
+            Absent => Present { value: DiskstatsUnparseable { device: device, line: line } }
+            Present { value: sectors } => match diskstats_nat_at(words: words, index: 6) {
+              Absent => Present { value: DiskstatsUnparseable { device: device, line: line } }
+              Present { value: ticks } => match diskstats_nat_at(words: words, index: 11) {
+                Absent => Present { value: DiskstatsUnparseable { device: device, line: line } }
+                Present { value: inflight } => Present { value: DiskstatsDeviceRead { row: DiskstatsRow {
+                  device: device,
+                  reads_completed: reads,
+                  sectors_read: sectors,
+                  read_ticks: millisecond(count: ticks),
+                  in_flight: inflight,
+                } } }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn parse_diskstats(body: String, device: NonEmptyStr) -> DiskstatsReading {
+  match get(xs: flat_map(split(s: body, delimiter: "\n"), l => match diskstats_row_of_line(device: device, line: l) {
+    Present { value: r } => [r]
+    Absent => [] as List<DiskstatsReading>
+  }), index: 0) {
+    Present { value: r } => r
+    Absent => DiskstatsDeviceAbsent { device: device }
+  }
+}
+
+// A READ INTERVAL IS A DELTA OF TWO CUMULATIVE ROWS. iostats.rst warns the counters may wrap; a
+// field that went backwards is a wrap or a device re-registration, and the pair measures nothing.
+// The mean await is the kernel's own definition (read ticks spent per completed read), floored to
+// whole microseconds; with no completed reads there is no await, which is a distinct arm from zero.
+type DiskReadInterval
+  = DiskReadMeasured { read_bytes: ByteSize, reads: Nat, mean_read_await: Microsecond? }
+  | DiskReadUnmeasurable { cause: NonEmptyStr }
+
+fn disk_read_interval(before: DiskstatsReading, after: DiskstatsReading) -> DiskReadInterval {
+  match before {
+    DiskstatsDeviceAbsent { device: d } => DiskReadUnmeasurable { cause: "the device is absent from the before reading" as NonEmptyStr }
+    DiskstatsUnparseable { device: _, line: _ } => DiskReadUnmeasurable { cause: "the before line is unparseable" as NonEmptyStr }
+    DiskstatsDeviceRead { row: b } => match after {
+      DiskstatsDeviceAbsent { device: d } => DiskReadUnmeasurable { cause: "the device is absent from the after reading" as NonEmptyStr }
+      DiskstatsUnparseable { device: _, line: _ } => DiskReadUnmeasurable { cause: "the after line is unparseable" as NonEmptyStr }
+      DiskstatsDeviceRead { row: a } =>
+        if b.device != a.device {
+          DiskReadUnmeasurable { cause: "the two readings name different devices" as NonEmptyStr }
+        } else if a.reads_completed < b.reads_completed || a.sectors_read < b.sectors_read
+          || millisecond_count(m: a.read_ticks) < millisecond_count(m: b.read_ticks) {
+          DiskReadUnmeasurable { cause: "a cumulative field went backwards (wrap or re-registration)" as NonEmptyStr }
+        } else {
+          let reads = a.reads_completed - b.reads_completed
+          let ticks = millisecond_count(m: a.read_ticks) - millisecond_count(m: b.read_ticks)
+          DiskReadMeasured {
+            read_bytes: byte_size(count: (a.sectors_read - b.sectors_read) * diskstats_sector_bytes),
+            reads: reads,
+            mean_read_await: if reads == 0 { none } else { Present { value: microsecond(count: (ticks * 1000) / reads) } },
+          }
+        }
+    }
+  }
+}
