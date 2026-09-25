@@ -3546,7 +3546,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
   let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
-  let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
+  let crate_name = if has_pipeline { seed_host_crate_name() } else { emitted_closure_crate_name() }
   let cargo = emit_cargo_toml(
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
@@ -17446,6 +17446,38 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
 //   operations above, which needs a `.dag` driver to receive host effects as values.
 // Until then the growth is bounded to this function; a new mode or phase is a new clause here, not
 // a new driver.
+// THE TWO EMITTED PACKAGE NAMES, EACH WITH ONE HOME.
+//
+// The choice between them is `compiler_pipeline_entry_is_retained_host`, so the discriminator is
+// WHETHER THE CLOSURE RETAINS THE HOST CLAP CLI -- not which generation emitted it. `v1_compiled`
+// therefore names every emitted crate that is not the seed's own, including the native v2 compiler,
+// and the name says something it does not mean.
+//
+// IT HAS ALREADY COST ONE DEFECT. A row in v2.compiler.compile records that an earlier draft
+// hardcoded `v1_compiled` as the binary's own name and "so was wrong for every binary this plan runs
+// in", because that spelling belongs to the pipeline-free crate rather than to whatever crate a fold
+// happens to be emitted into.
+//
+// NAMING IT HERE IS THE PRECONDITION FOR RENAMING IT, not the rename. A literal minted at its point
+// of use cannot be changed in one place; a declaration can. The rename itself is deferred because it
+// also touches census rows pinned by FixedPackageName and three instrument renderers that mint the
+// same string inside Cargo.toml text -- and those three are already declared scaffolds carrying
+// dissolution triggers, so threading a shared declaration through them would spend effort on
+// artifacts scheduled for deletion (DESIGN section 6: work expected to be thrown away is presumed
+// redundant).
+//
+// WHAT THE REPLACEMENT NAME MUST NOT BE: anything asserting a generation. A v1 closure emitted
+// without the host CLI takes this same name, so `v2_native_compiled` would be a new lie replacing
+// the old one. The honest spelling describes the predicate -- an emitted closure without the seed's
+// CLI -- and `gunbc.v1.v1_consumer_census`'s pinned rows are the population that must move with it.
+fn emitted_closure_crate_name() -> String {
+  "v1_compiled"
+}
+
+fn seed_host_crate_name() -> String {
+  "v1_compiler"
+}
+
 fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   TextFile {

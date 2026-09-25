@@ -3851,7 +3851,7 @@ fn native_demand_binding(plan: NativeDemandPlan, id: DemandIdentity) -> Optional
 // distinction this lane has to establish, violated by the instrument meant to observe it.
 type NativeDemandTransition {
   identity: DemandIdentity
-  nanos: Int
+  elapsed: ElapsedObservation
 }
 
 // THE COST CLASS IS DERIVED FROM THE CONTRACT-OWNED ARTIFACT KIND, never from a rendered stage word.
@@ -4038,6 +4038,46 @@ fn native_demand_execute(
 //
 // NEITHER GRAIN DECIDES ORDER. Both ask the engine for the next admissible demand; the difference
 // is only who holds the clock.
+// AN ELAPSED READING IS TYPED, AND A BACKWARDS ONE IS NOT ZERO.
+//
+// An earlier revision clamped `finish < start` to 0. That turns a broken measurement into "this
+// demand was free" -- the failure-as-value class the whole observation model exists to remove, and
+// the same shape as the "unbound" stage that used to vanish into the residual. If finish precedes
+// start then one of four things is false: the two readings share one process-local epoch, the
+// runtime is monotone, the pair was correctly matched, or the representation preserved the values.
+// None of those is a duration.
+//
+// So the reading carries its own standing, an invalid one is COUNTED, and the rollup's completeness
+// predicate goes false -- which is the same discipline as the unclassified kind, applied to the
+// other way an observation can fail. Conversion saturation inside the runtime body is a separate
+// rule and stays there: v1.runtime_rust clamps u128 nanoseconds into the substrate Int, which is a
+// representational ceiling rather than a reversed pair.
+type ElapsedObservation
+  = ElapsedObserved { nanos: Int }
+  | ElapsedObservationInvalid { start: Int, finish: Int }
+
+fn elapsed_observation(start: Int, finish: Int) -> ElapsedObservation {
+  if finish >= start {
+    ElapsedObserved { nanos: finish - start }
+  } else {
+    ElapsedObservationInvalid { start: start, finish: finish }
+  }
+}
+
+fn elapsed_observed_nanos(e: ElapsedObservation) -> Int {
+  match e {
+    ElapsedObserved { nanos: n } => n
+    ElapsedObservationInvalid { start: _, finish: _ } => 0
+  }
+}
+
+fn elapsed_is_valid(e: ElapsedObservation) -> Bool {
+  match e {
+    ElapsedObserved { nanos: _ } => true
+    ElapsedObservationInvalid { start: _, finish: _ } => false
+  }
+}
+
 fn native_demand_step(
   run: NativeDemandRun,
   plan: NativeDemandPlan,
@@ -4057,14 +4097,15 @@ fn native_demand_step(
         refusal_index: refusal_index,
         compiler: compiler
       )
-      let elapsed = observed_monotonic_nanos("native-demand-step-finish") - started
+      let finished = observed_monotonic_nanos("native-demand-step-finish")
+      let elapsed = elapsed_observation(start: started, finish: finished)
       NativeDemandRun {
         engine: demand_engine_settle(e: run.engine, id: identity, state: settled),
         transitions: list_snoc_item(
           xs: run.transitions,
           item: NativeDemandTransition {
             identity: identity,
-            nanos: elapsed
+            elapsed: elapsed
           }
         ),
         rows: native_demand_collect_rows(rows: run.rows, settled: settled)
@@ -4233,6 +4274,7 @@ type NativeDemandObservationRollup {
   prepare_refused: Int
   classified: Int
   unclassified: Int
+  invalid_elapsed: Int
 }
 
 fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
@@ -4244,7 +4286,8 @@ fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
     prepare_ok: 0,
     prepare_refused: 0,
     classified: 0,
-    unclassified: 0
+    unclassified: 0,
+    invalid_elapsed: 0
   }
 }
 
@@ -4291,30 +4334,34 @@ fn native_demand_rollup_step(
   t: NativeDemandTransition
 ) -> NativeDemandObservationRollup {
   let standing = native_demand_preparation_standing(run: run, identity: t.identity)
+  let nanos = elapsed_observed_nanos(e: t.elapsed)
+  let invalid_delta = if elapsed_is_valid(e: t.elapsed) { 0 } else { 1 }
   let ok_delta = match standing { PreparationSucceeded => 1  _ => 0 }
   let refused_delta = match standing { PreparationRefused => 1  _ => 0 }
   match native_demand_cost_class(identity: t.identity) {
     NativeCostPrepare =>
       NativeDemandObservationRollup {
-        prepare_nanos: acc.prepare_nanos + t.nanos,
+        prepare_nanos: acc.prepare_nanos + nanos,
         eval_nanos: acc.eval_nanos,
-        prepare_samples: list_snoc_item(xs: acc.prepare_samples, item: t.nanos),
+        prepare_samples: list_snoc_item(xs: acc.prepare_samples, item: nanos),
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok + ok_delta,
         prepare_refused: acc.prepare_refused + refused_delta,
         classified: acc.classified + 1,
-        unclassified: acc.unclassified
+        unclassified: acc.unclassified,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
       }
     NativeCostEval =>
       NativeDemandObservationRollup {
         prepare_nanos: acc.prepare_nanos,
-        eval_nanos: acc.eval_nanos + t.nanos,
+        eval_nanos: acc.eval_nanos + nanos,
         prepare_samples: acc.prepare_samples,
-        eval_samples: list_snoc_item(xs: acc.eval_samples, item: t.nanos),
+        eval_samples: list_snoc_item(xs: acc.eval_samples, item: nanos),
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
         classified: acc.classified + 1,
-        unclassified: acc.unclassified
+        unclassified: acc.unclassified,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
       }
     NativeCostUnclassified =>
       NativeDemandObservationRollup {
@@ -4325,7 +4372,8 @@ fn native_demand_rollup_step(
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
         classified: acc.classified,
-        unclassified: acc.unclassified + 1
+        unclassified: acc.unclassified + 1,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
       }
   }
 }
@@ -4343,7 +4391,9 @@ fn native_demand_observation_rollup(run: NativeDemandRun) -> NativeDemandObserva
 // never attributed.
 fn native_demand_observation_complete(run: NativeDemandRun) -> Bool {
   let r = native_demand_observation_rollup(run: run)
-  (r.unclassified == 0) && (r.classified == length(xs: run.transitions))
+  (r.unclassified == 0)
+    && (r.invalid_elapsed == 0)
+    && (r.classified == length(xs: run.transitions))
 }
 
 fn native_demand_prepare_nanos(run: NativeDemandRun) -> Int {
@@ -4415,6 +4465,18 @@ fn native_demand_cost_class_label(c: NativeDemandCostClass) -> String {
   }
 }
 
+// AN INVALID READING RENDERS AS INVALID, not as a number. Printing 0 for a reversed pair would put
+// a plausible duration in the receipt for a measurement that did not happen -- the same
+// failure-as-value the typed observation exists to prevent, reintroduced at the presentation layer
+// where a reader would have no way to tell.
+fn elapsed_label(e: ElapsedObservation) -> String {
+  match e {
+    ElapsedObserved { nanos: n } => to_string(n)
+    ElapsedObservationInvalid { start: st, finish: fi } =>
+      concat(concat("INVALID(start=", to_string(st)), concat(" finish=", concat(to_string(fi), ")")))
+  }
+}
+
 fn native_demand_transition_line(run: NativeDemandRun, t: NativeDemandTransition) -> String {
   let settled = match demand_engine_entry(e: run.engine, id: t.identity) {
     Absent => "absent"
@@ -4424,7 +4486,7 @@ fn native_demand_transition_line(run: NativeDemandRun, t: NativeDemandTransition
     concat(concat(demand_identity_key(id: t.identity), " "), settled),
     concat(
       concat(" ", native_demand_cost_class_label(c: native_demand_cost_class(identity: t.identity))),
-      concat(" ", to_string(t.nanos))
+      concat(" ", elapsed_label(e: t.elapsed))
     )
   )
 }

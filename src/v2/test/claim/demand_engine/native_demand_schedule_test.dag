@@ -36,7 +36,9 @@ import v2.compiler.compile {
   native_demand_observation_complete,
   NativeDemandRun,
   native_demand_eval_samples,
-  NativeDemandTransition
+  NativeDemandTransition,
+  ElapsedObserved,
+  ElapsedObservationInvalid
 }
 import std.content_hash { Fnv1a64Structural }
 import std.judgment_contract { DeclaredInput }
@@ -257,11 +259,11 @@ test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
     transitions: [
       NativeDemandTransition {
         identity: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
-        nanos: 11
+        elapsed: ElapsedObserved { nanos: 11 }
       },
       NativeDemandTransition {
         identity: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler()),
-        nanos: 22
+        elapsed: ElapsedObserved { nanos: 22 }
       }
     ],
     rows: []
@@ -285,7 +287,7 @@ test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
 test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> Bool {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
-    transitions: [NativeDemandTransition { identity: g_unknown_kind_identity(), nanos: 7 }],
+    transitions: [NativeDemandTransition { identity: g_unknown_kind_identity(), elapsed: ElapsedObserved { nanos: 7 } }],
     rows: []
   }
   let r = native_demand_observation_rollup(run: run)
@@ -293,5 +295,40 @@ test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> B
     && (r.classified == 0)
     && (r.prepare_nanos == 0)
     && (r.eval_nanos == 0)
+    && !native_demand_observation_complete(run: run)
+}
+
+// A REVERSED READING IS NOT A FREE DEMAND. If finish precedes start then the two observations did not
+// share one process-local epoch, or the runtime is not monotone, or the pair was mismatched, or the
+// representation lost the values -- and none of those is a duration. An earlier revision clamped it
+// to 0, which reports "this demand cost nothing" for a measurement that did not happen: the same
+// failure-as-value the unclassified kind arm exists to prevent, one field over.
+test fn a_reversed_elapsed_reading_is_invalid_not_zero_holds() -> Bool {
+  match elapsed_observation(start: 900, finish: 100) {
+    ElapsedObservationInvalid { start: st, finish: fi } => (st == 900) && (fi == 100)
+    ElapsedObserved { nanos: _ } => false
+  }
+}
+
+// AND IT BREAKS COMPLETENESS, so the totals cannot be read as whole while one reading is broken. The
+// classified count still rises -- the demand DID reach a cost class -- which is why invalid elapsed
+// is counted separately from unclassified kind: two independent ways an observation fails, and the
+// rollup must not conflate them.
+test fn an_invalid_elapsed_reading_makes_the_observation_incomplete_holds() -> Bool {
+  let run = NativeDemandRun {
+    engine: g_one_module_plan().engine,
+    transitions: [
+      NativeDemandTransition {
+        identity: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
+        elapsed: ElapsedObservationInvalid { start: 900, finish: 100 }
+      }
+    ],
+    rows: []
+  }
+  let r = native_demand_observation_rollup(run: run)
+  (r.invalid_elapsed == 1)
+    && (r.classified == 1)
+    && (r.unclassified == 0)
+    && (r.prepare_nanos == 0)
     && !native_demand_observation_complete(run: run)
 }

@@ -1138,6 +1138,46 @@ fn rt_resolution_silent_pick_telemetry() -> String {
     "}\n\n")
 }
 
+// THE REALIZATION-MEASUREMENT FRAGMENT. std.realization_measurement models the observations; this
+// is their emitted-runtime realization, and it is its own fragment rather than lines inside an
+// unrelated block so the population that must grow with the memory program -- peak, current and
+// allocator residency -- has one home to grow in.
+//
+// WHY THIS FRAGMENT HAD TO EXIST AT ALL. The clock was typed on the builtin surface and realized in
+// the interpreter, and the emitted route panicked at its first native call: a modeled operation, an
+// interpreter implementation and an emitted-runtime realization are THREE capabilities, and evidence
+// about either of the first two is not evidence about the third. std.primitive_identity already
+// rosters five derived surfaces including EmitHandler, and a runtime BODY surface is not among them
+// -- which is how a registry row with no body passed every rostered check.
+fn rt_realization_measurement() -> String {
+  concat(
+    "/// THE EMITTED REALIZATION OF std.realization_measurement ObserveElapsedAtSubject.\n",
+    "///\n",
+    "/// The builtin was registered for the INTERPRETER and had no emitted body, so a .dag fold that\n",
+    "/// read the clock typechecked, ran under `gunbc run`, and PANICKED in the emitted binary --\n",
+    "/// which is where the native route actually executes. The two capabilities are different and\n",
+    "/// registering one does not supply the other.\n",
+    "///\n",
+    "/// The label is not identity material and is never hashed or keyed on. It exists so two\n",
+    "/// observations around one subject cannot be collapsed by pure-call memoization into a single\n",
+    "/// read, which would make every measured span zero.\n",
+    "///\n",
+    "/// The epoch is process-local and monotone: callers subtract two readings around the subject\n",
+    "/// they are measuring, so the absolute value is neither calendar time nor comparable across\n",
+    "/// processes. A saturating subtraction at the call site is therefore the caller's obligation.\n",
+    "pub fn observed_monotonic_nanos(_label: String) -> i64 \{\n",
+    "    use std::sync::OnceLock;\n",
+    "    use std::time::Instant;\n",
+    "    static EPOCH: OnceLock<Instant> = OnceLock::new();\n",
+    "    let epoch = EPOCH.get_or_init(Instant::now);\n",
+    "    // i64 nanoseconds saturates at ~292 years of uptime; clamping is honest rather than\n",
+    "    // wrapping into a negative duration that would read as a span running backwards.\n",
+    "    let nanos = epoch.elapsed().as_nanos();\n",
+    "    if nanos > i64::MAX as u128 \{ i64::MAX \} else \{ nanos as i64 \}\n",
+    "\}\n",
+    "\n")
+}
+
 fn rust_runtime_source() -> String {
   concat(
     rt_header(),
@@ -1154,6 +1194,7 @@ fn rust_runtime_source() -> String {
     rt_hash_ops(),
     rt_filesystem(),
     rt_checked_int_ops(),
+    rt_realization_measurement(),
     rt_accelerator_demo_kernel())
 }
 
