@@ -12,8 +12,14 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 // entire boot closure (unit hold, SOL, virtual media, handoff, diagnostics), and run 36170715248 was
 // still typechecking when the step's 5-minute budget killed it. The fold needs two facts -- the
 // dispatch's host input and the store host -- so its module imports exactly those, and the boot run
-// imports this module rather than the reverse (a control in test.claim.long enrolls that the
-// closure excludes the boot run).
+// imports this module rather than the reverse.
+//
+// DECLARED FRONTIER: the guarantee that this closure excludes the boot run has NO floor-enrolled
+// control. A whole-tree live closure scan (v2.lens.module_graph import_closure_live) could not
+// reach a verdict on the armed line (floor run 36185768935), so it was withdrawn rather than left
+// red. TRIGGER: a control that fits the armed line -- e.g. over this module's SUPPLIED import graph
+// (its declared imports and their transitive declared imports, read as data), with one real-path
+// check kept on the long home.
 //
 // THE HOST ADMISSION, ONE FOLD FOR BOTH SEAMS: the dispatch's host input must name the store host.
 // The boot job always starts on srv1's runner (its labels never read the input), so a dispatch naming
