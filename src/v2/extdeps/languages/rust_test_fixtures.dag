@@ -65,7 +65,7 @@ import v2.std.logic { bool_boolean_algebra }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data rust_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn rust_grammar_production_fn_bind_literal() -> GrammarProduction {
   GrammarProduction {
