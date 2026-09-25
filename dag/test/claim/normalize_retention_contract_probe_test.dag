@@ -163,21 +163,21 @@ test fn roster_identity_separates_reordered_rows_RED() -> Bool {
 test fn classifier_reads_graft_refusal_behind_a_prepended_diagnostic() -> Bool {
   frontend_stage_eq(
     a: classify_reasons(
-      first: ^body_lowering_reason_wrapper_retained_emitted,
+      first: ^normalized_tree_reason_wrapper_retention_not_normalized,
       rest: [^namespace_graft_body_dissolved_refused]
     ),
     b: NormalizeGraftRefused
   )
 }
 
-test fn classifier_reads_retention_pair_behind_a_prepended_diagnostic() -> Bool {
+// Since MQ-4 normalize refuses retention BEFORE the well-formedness gate, at the retained shell, under
+// the normalized-tree door's cause; the gate's reason no longer accompanies it, so the door cause
+// alone is the retention verdict.
+test fn classifier_reads_retention_behind_a_prepended_diagnostic() -> Bool {
   frontend_stage_eq(
     a: classify_reasons(
       first: ^body_lowering_reason_unsupported_form,
-      rest: [
-        ^body_lowering_reason_wrapper_retained_emitted,
-        ^normalize_reason_post_normalize_not_well_formed
-      ]
+      rest: [^normalized_tree_reason_wrapper_retention_not_normalized]
     ),
     b: NormalizeRetained
   )
@@ -190,9 +190,9 @@ test fn classifier_calls_a_plain_rejection_other() -> Bool {
   )
 }
 
-test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
+test fn classifier_does_not_call_a_bare_well_formedness_refusal_retained_RED() -> Bool {
   frontend_stage_eq(
-    a: classify_reasons(first: ^body_lowering_reason_wrapper_retained_emitted, rest: []),
+    a: classify_reasons(first: ^normalize_reason_post_normalize_not_well_formed, rest: []),
     b: NormalizeOther
   )
 }
@@ -200,7 +200,7 @@ test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
 test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
   reasons_contain(
     reasons: [
-      ^body_lowering_reason_wrapper_retained_emitted,
+      ^normalized_tree_reason_wrapper_retention_not_normalized,
       ^normalize_reason_post_normalize_not_well_formed
     ],
     sym: ^normalize_reason_post_normalize_not_well_formed
@@ -209,7 +209,7 @@ test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
 
 test fn containment_read_refuses_absent_reason_RED() -> Bool {
   reasons_contain(
-    reasons: [^body_lowering_reason_wrapper_retained_emitted],
+    reasons: [^normalized_tree_reason_wrapper_retention_not_normalized],
     sym: ^normalize_reason_post_normalize_not_well_formed
   ) == false
 }

@@ -8,7 +8,7 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.std.algebra { length }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   List,
   Map
@@ -89,7 +89,7 @@ data runtime_run_dependencies: List<DependencyView> = []
 fn runtime_run_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^runtime_run_descent_dimension }
+    strict: v2.std.cardinality.RankingComponent { measured: ^runtime_run_descent_dimension }
   }
 }
 

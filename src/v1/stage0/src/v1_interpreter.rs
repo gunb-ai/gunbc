@@ -17880,6 +17880,12 @@ pub enum RestResponseDecodeCause {
     NotAString { json_kind: &'static str },
     /// The string names no arm under the contract's naming policy.
     UnknownSpelling { spelling: String },
+    /// A record member is spelled as a renamed field's AUTHORED name rather than its declared
+    /// wire key (`from`). The authored name is reserved: it is not a wire spelling of that field.
+    AuthoredNameIsNotTheWireKey { authored: String, wire: String },
+    /// Both the wire key and the authored name of one renamed field are present; which one
+    /// populates the field would be decided by iteration order.
+    AmbiguousWireSpelling { authored: String, wire: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -17910,6 +17916,16 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::NotAString { json_kind } => {
                 write!(f, "expected a JSON string, found {}", json_kind)
             }
+            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!(
+                f,
+                "member `{}` is the authored name of a field whose declared wire key is `{}`",
+                authored, wire
+            ),
+            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!(
+                f,
+                "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
+                wire, authored
+            ),
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
@@ -18148,21 +18164,60 @@ fn decode_json_by_declared_type(
     if let serde_json::Value::Object(obj) = json {
         if ty.connective == Connective::Conj && !ty.children.is_empty() {
             let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+            // A declared field is found by its WIRE key -- its `from` key when it carries one,
+            // else its authored name -- and the decoded value is stored under the AUTHORED name,
+            // which is the only name a program's field access reads. Keying the record by the
+            // wire spelling left every renamed nested field (`issuerUri` for `issuer_uri`) absent
+            // to its reader: gunbc.auth.heal_publisher_provision read a live provider whose
+            // oidc.issuerUri, attributeCondition and attributeMapping all matched and refused it
+            // as "issuer is null" (gunbc.recurring_failure_mode
+            // rest_response_nested_from_key_ignored).
+            // A renamed field's AUTHORED name is reserved: it is not a wire spelling, so a member
+            // carrying it refuses rather than populating the field around `from` and the typed
+            // decode, and a body carrying both spellings refuses rather than letting iteration
+            // order choose.
+            for f in ty.children.iter() {
+                if let Some(wire) = extract_from_key(f, ctx) {
+                    let authored = authored_name_at(ctx.si(), f.clone());
+                    if authored != wire && obj.contains_key(&authored) {
+                        let cause = if obj.contains_key(&wire) {
+                            RestResponseDecodeCause::AmbiguousWireSpelling {
+                                authored: authored.clone(),
+                                wire,
+                            }
+                        } else {
+                            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
+                                authored: authored.clone(),
+                                wire,
+                            }
+                        };
+                        return Err(RestResponseDecodeRefusal {
+                            field_path: format!("{}.{}", path, authored),
+                            coproduct: name.clone(),
+                            cause,
+                        });
+                    }
+                }
+            }
             for (key, value) in obj.iter() {
-                let declared = ty
-                    .children
-                    .iter()
-                    .find(|f| authored_name_at(ctx.si(), (*f).clone()) == *key);
-                let decoded = match declared {
-                    Some(f) => decode_json_by_declared_field_at(
-                        value,
-                        f,
-                        &format!("{}.{}", path, key),
-                        ctx,
-                    )?,
-                    None => json_to_value(value),
+                let declared = ty.children.iter().find(|f| {
+                    extract_from_key(f, ctx)
+                        .unwrap_or_else(|| authored_name_at(ctx.si(), (*f).clone()))
+                        == *key
+                });
+                let (stored, decoded) = match declared {
+                    Some(f) => (
+                        authored_name_at(ctx.si(), f.clone()),
+                        decode_json_by_declared_field_at(
+                            value,
+                            f,
+                            &format!("{}.{}", path, key),
+                            ctx,
+                        )?,
+                    ),
+                    None => (key.clone(), json_to_value(value)),
                 };
-                if let Some(ck) = CanonKey::new(str_value(key.clone())) {
+                if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
                 }
             }
@@ -19880,6 +19935,12 @@ macro_rules! v1_builtin_arms {
                 let s = expect_str($positional.first().copied(), "utf8_encode_bytes")?;
                 let items: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
                 Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.pure_dag_seam_unreachable" { "pure_dag_seam_unreachable" } => {
+                Err(InterpError::TypeError {
+                    msg: "std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated".to_string(),
+                })
             },
 
             arm "free_call.discriminant" { "discriminant" } => match $positional.first() {
