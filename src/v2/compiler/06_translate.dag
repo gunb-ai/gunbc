@@ -159,6 +159,8 @@ import v2.std.compilers.target_model {
   target_text_is_empty,
   render_target_text,
   token_spelling_from_model,
+  token_text_from_model,
+  target_text_layout_balanced,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
   serialize_type_expr_arrow_param_spelling,
@@ -1152,10 +1154,10 @@ fn target_serialize_relation_row_from_model_bounded(
                           Accepted { value: partial, diagnostics: ad } =>
                             match token_sequence_item_kind(item: token_node) {
                               Accepted { value: TokenSequenceConcreteToken, diagnostics: kd } =>
-                                match token_spelling_from_model(target: target, token: token_node) {
+                                match token_text_from_model(target: target, token: token_node) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: target_text_seq(acc: partial, next: text_atom(lexeme: source)),
+                                      value: target_text_seq(acc: partial, next: source),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -1209,6 +1211,15 @@ fn target_serialize_relation_row_from_model_bounded(
     )
   }
 }
+// A layout token class's DocDedent without its DocIndent (or an indent left open) would render a
+// block at the wrong depth; the exit refuses rather than rendering it.
+fn translate_layout_unbalanced_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_layout_unbalanced,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^translate_lex_rule_literal_not_found,
@@ -1249,12 +1260,7 @@ fn token_item_to_source_bounded(
     f: fn(item_kind) {
       match item_kind {
         TokenSequenceConcreteToken =>
-          bind_outcome(
-            o: token_spelling_from_model(target: target, token: item),
-            f: fn(spelling) {
-              outcome_accepted(text_atom(lexeme: spelling))
-            }
-          )
+          token_text_from_model(target: target, token: item)
         TokenSequenceNonterminal =>
           target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
       }
@@ -1377,7 +1383,11 @@ fn target_serialize_source_from_model(
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
         f: fn(text) {
-          target_source_medium(text: render_target_text(t: text), target: target)
+          if target_text_layout_balanced(t: text) {
+            target_source_medium(text: render_target_text(t: text), target: target)
+          } else {
+            outcome_rejected(translate_layout_unbalanced_diagnostic(emitted: emitted))
+          }
         }
       )
     }

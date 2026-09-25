@@ -1,0 +1,61 @@
+module v2.test.emit.target_text_layout
+
+import std.layout { Doc, DocLine, DocIndent, DocDedent }
+import v2.std.compilers.target_model {
+  TargetText,
+  text_atom,
+  target_text_seq,
+  target_text_empty,
+  target_text_layout,
+  target_text_layout_balanced,
+  render_target_text
+}
+
+// THE SERIALIZER CARRIER'S LAYOUT, at its own interface (DESIGN §3: supplied values, one interface).
+// An EmitLayout token class contributes std.layout parts around its lexeme (target_text_layout);
+// these witnesses supply those parts directly and read the rendered text. The rows that produce
+// them are a target's business; what is claimed here is that the carrier renders them.
+
+fn seq3(a: TargetText, b: TargetText, c: TargetText) -> TargetText {
+  target_text_seq(acc: target_text_seq(acc: a, next: b), next: c)
+}
+
+// A brace block: the opening token indents and breaks, the body lines carry the indent, the closing
+// token dedents onto its own line.
+test fn a_block_renders_indented_between_its_braces() -> Bool {
+  let open = target_text_layout(before: [], lexeme: "f() \{", after: [DocIndent { unit: "    " }, DocLine])
+  let body = seq3(a: text_atom(lexeme: "a()"), b: target_text_layout(before: [], lexeme: "", after: [DocLine]), c: text_atom(lexeme: "b()"))
+  let close = target_text_layout(before: [DocDedent, DocLine], lexeme: "\}", after: [])
+  render_target_text(t: seq3(a: open, b: body, c: close)) == "f() \{\n    a()\n    b()\n\}"
+}
+
+// Significant indentation (Python's NEWLINE / INDENT / DEDENT) is the same three parts with no
+// closing lexeme: the dedent ends the block and the next line starts at the outer depth.
+test fn significant_indentation_falls_out_of_the_same_parts() -> Bool {
+  let head = target_text_layout(before: [], lexeme: "if c:", after: [DocIndent { unit: "    " }, DocLine])
+  let body = target_text_layout(before: [], lexeme: "pass", after: [DocDedent, DocLine])
+  render_target_text(t: seq3(a: head, b: body, c: text_atom(lexeme: "done()"))) == "if c:\n    pass\ndone()"
+}
+
+// Nested blocks accumulate their units and release them innermost first.
+test fn nested_blocks_stack_their_units() -> Bool {
+  let outer = target_text_layout(before: [], lexeme: "a", after: [DocIndent { unit: "  " }, DocLine])
+  let inner = target_text_layout(before: [], lexeme: "b", after: [DocIndent { unit: "  " }, DocLine])
+  let leaf = target_text_layout(before: [], lexeme: "c", after: [DocDedent, DocLine])
+  let back = target_text_layout(before: [], lexeme: "d", after: [DocDedent, DocLine])
+  render_target_text(t: target_text_seq(acc: seq3(a: outer, b: inner, c: leaf), next: seq3(a: back, b: text_atom(lexeme: "e"), c: target_text_empty))) == "a\n  b\n    c\n  d\ne"
+}
+
+// With no layout parts the carrier is the concatenation of its atoms, byte for byte -- the property
+// every target that declares no EmitLayout class relies on.
+test fn without_layout_parts_the_carrier_is_concatenation() -> Bool {
+  render_target_text(t: seq3(a: text_atom(lexeme: "fn "), b: text_atom(lexeme: "add"), c: text_atom(lexeme: "(x)\n  y"))) == "fn add(x)\n  y"
+}
+
+// The balance check the serializer exit consults: a dedent with no open indent, or an indent left
+// open, is unbalanced; a matched pair is balanced.
+test fn unbalanced_markers_are_detected() -> Bool {
+  target_text_layout_balanced(t: target_text_layout(before: [DocIndent { unit: " " }], lexeme: "x", after: [DocDedent]))
+    && !target_text_layout_balanced(t: target_text_layout(before: [DocDedent], lexeme: "x", after: [DocIndent { unit: " " }]))
+    && !target_text_layout_balanced(t: target_text_layout(before: [DocIndent { unit: " " }], lexeme: "x", after: []))
+}

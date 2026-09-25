@@ -1,6 +1,7 @@
 module std.layout
 
 import std.render_repeat_string_bootstrap { repeat_string }
+import v2.std.algebra { list_append, length }
 
 type Doc
   = DocEmpty
@@ -8,6 +9,8 @@ type Doc
   | DocLine
   | DocConcat { parts: List<Doc> }
   | DocNest { levels: Int, body: Doc }
+  | DocIndent { unit: String }
+  | DocDedent
 
 type LayoutProtocol {
   indent_unit: String
@@ -16,6 +19,42 @@ type LayoutProtocol {
 type RenderState {
   out: String
   at_line_start: Bool
+  units: List<String>
+}
+
+// DocIndent and DocDedent are DocNest's two ends as separate parts, for a document assembled as a
+// flat sequence (a token stream) rather than as a tree: every line started after a DocIndent is
+// prefixed by its unit until the matching DocDedent. The unit travels on the marker because a flat
+// sequence has no enclosing LayoutProtocol that knows it -- the producer of the sequence does.
+// render assumes the markers balance; a producer that takes them from data checks
+// doc_parts_balanced first and refuses, so an unmatched dedent never reaches render.
+fn doc_parts_balanced(parts: List<Doc>) -> Bool {
+  let r = fold(parts, init: DocBalance { depth: 0, underflowed: false }, f: (acc, d) => match d {
+    DocIndent { unit: _ } => DocBalance { depth: acc.depth + 1, underflowed: acc.underflowed }
+    DocDedent => DocBalance { depth: acc.depth - 1, underflowed: acc.underflowed || acc.depth == 0 }
+    _ => acc
+  })
+  !r.underflowed && r.depth == 0
+}
+
+type DocBalance {
+  depth: Int
+  underflowed: Bool
+}
+
+fn doc_units_prefix(units: List<String>) -> String {
+  fold(units, init: "", f: (acc, u) => concat(acc, u))
+}
+
+fn doc_units_pop(units: List<String>) -> List<String> {
+  fold(units, init: DocUnitPop { remaining: length(xs: units) - 1, kept: [] }, f: (acc, u) =>
+    if acc.remaining > 0 { DocUnitPop { remaining: acc.remaining - 1, kept: list_append(left: acc.kept, right: [u]) } } else { acc }
+  ).kept
+}
+
+type DocUnitPop {
+  remaining: Int
+  kept: List<String>
 }
 
 fn doc_text(text: String) -> Doc {
@@ -45,11 +84,13 @@ fn render_go(doc: Doc, level: Int, proto: LayoutProtocol, st: RenderState) -> Re
       if t == "" {
         st
       } else if st.at_line_start {
-        RenderState { out: concat(concat(st.out, repeat_string(s: proto.indent_unit, n: level)), t), at_line_start: false }
+        RenderState { out: concat(concat(st.out, concat(repeat_string(s: proto.indent_unit, n: level), doc_units_prefix(units: st.units))), t), at_line_start: false, units: st.units }
       } else {
-        RenderState { out: concat(st.out, t), at_line_start: false }
+        RenderState { out: concat(st.out, t), at_line_start: false, units: st.units }
       }
-    DocLine => RenderState { out: concat(st.out, "\n"), at_line_start: true }
+    DocLine => RenderState { out: concat(st.out, "\n"), at_line_start: true, units: st.units }
+    DocIndent { unit: u } => RenderState { out: st.out, at_line_start: st.at_line_start, units: list_append(left: st.units, right: [u]) }
+    DocDedent => RenderState { out: st.out, at_line_start: st.at_line_start, units: doc_units_pop(units: st.units) }
     DocConcat { parts: parts } =>
       fold(parts, init: st, f: (acc, part) => render_go(doc: part, level: level, proto: proto, st: acc))
     DocNest { levels: n, body: body } => render_go(doc: body, level: level + n, proto: proto, st: st)
@@ -57,5 +98,5 @@ fn render_go(doc: Doc, level: Int, proto: LayoutProtocol, st: RenderState) -> Re
 }
 
 fn render(doc: Doc, proto: LayoutProtocol) -> String {
-  render_go(doc: doc, level: 0, proto: proto, st: RenderState { out: "", at_line_start: true }).out
+  render_go(doc: doc, level: 0, proto: proto, st: RenderState { out: "", at_line_start: true, units: [] }).out
 }
