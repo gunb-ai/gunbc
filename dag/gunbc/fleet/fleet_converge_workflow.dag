@@ -82,7 +82,7 @@ import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_store_host }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
-import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime_seconds }
+import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
 import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
 import gunbc.auth.mtcollins1_boot_federation {
@@ -3435,7 +3435,7 @@ fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
         kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_observe_wif_provider_resource())),
         kv(key: "service_account", value: yaml_string(s: iam_converge_service_account as String)),
         kv(key: "token_format", value: yaml_string(s: "access_token")),
-        kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(iam_converge_token_lifetime_seconds), "s"))),
+        kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
         kv(key: "create_credentials_file", value: yaml_bool(b: false))
       ]
     },

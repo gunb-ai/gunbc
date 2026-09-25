@@ -1,6 +1,7 @@
 module gunbc.auth.gcp_iam_converge
 
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret }
+import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
@@ -52,7 +53,7 @@ import gunbc.auth.gcp_iam_converge_federation {
 //   gate      -- the request step emits the job output that admits the next step only when the
 //                approval store holds an approval over exactly this request (gunbc.auth.gcp_iam_converge_run).
 //   impersonate -- only then does the workflow's second auth step federate to iam-converge, for
-//                iam_converge_token_lifetime_seconds.
+//                iam_converge_token_lifetime.
 //   actuate   -- the apply step re-plans under iam-observe, re-derives the request, re-reads the
 //                recorded approval and refuses unless it is for that revision, then runs the existing
 //                provisioning protocol (gunbc.auth.heal_publisher_provision provision_dedicated_federation)
@@ -94,7 +95,7 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 // THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
 // provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with
 // readback) and ends before a leaked token is worth much.
-data iam_converge_token_lifetime_seconds: Int = 600
+data iam_converge_token_lifetime: Second = second(count: 600)
 
 // ── The reach of setIamPolicy, bounded in three layers ───────────────────────────────────────
 // 1. TWO CUSTOM ROLES, split on what the permission can reach. Creating a pool, provider or
@@ -488,7 +489,7 @@ fn gcp_iam_converge_purpose(d: GcpIamEstateDiff) -> NonEmptyStr {
     "GCP IAM converge (project ", fleet_secrets_project_id as String, ") -- ",
     join(map(d.diffs, t => target_diff_sentence(d: t)), " || "),
     ". Approving lets this run, and only this run, impersonate ", iam_converge_service_account as String,
-    " for ", to_string(iam_converge_token_lifetime_seconds), "s.",
+    " for ", to_string(second_count(s: iam_converge_token_lifetime)), "s.",
   ], "") as NonEmptyStr
 }
 
