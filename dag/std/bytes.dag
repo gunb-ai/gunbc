@@ -1,7 +1,7 @@
 module std.bytes
 
 import std.types { Bytes }
-import std.integer { UInt8, QualifiedOctetsResult, uint8_octets_of_ints }
+import std.integer { QualifiedOctetsResult, uint8_octets_of_ints }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -124,7 +124,7 @@ fn bytes_qualified_octets(b: Bytes) -> QualifiedOctetsResult {
   uint8_octets_of_ints(values: bytes_octets(b: b))
 }
 
-fn octets_bytes(o: List<UInt8>) -> Bytes {
+fn octets_bytes(o: List<Int>) -> Bytes {
   o as Bytes
 }
 

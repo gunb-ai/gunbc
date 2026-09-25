@@ -6,7 +6,7 @@ import std.content_hash {
   compare_content_hash, content_hash_of_value, content_hash_from_structural_digest,
   serialize_content_hash,
 }
-import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
+import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasUnreadableSlot }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree, durable_hold_owner_equal }
 import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
 import product.fabric.demand { Demand }
@@ -169,8 +169,8 @@ type RequiredBuildCellSnapshot sole_constructor {
 type RequiredBuildCellObservation
   = RequiredBuildCellObserved { snapshot: RequiredBuildCellSnapshot }
   | ReservationAbsent { slot_key: NonEmptyStr }
-  | ReservationUnreadable { slot_key: NonEmptyStr }
-  | ReservationPayloadUndecodable { slot_key: NonEmptyStr }
+  | ReservationUnreadable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | ReservationPayloadUndecodable { slot_key: NonEmptyStr, detail: NonEmptyStr }
   | ReservationPayloadWorkMismatch { slot_key: NonEmptyStr }
   | SelectedOfferCellMismatch { slot_key: NonEmptyStr, executor: NonEmptyStr }
   | CellSubstrateNotConverged { cell: CellId }
@@ -276,11 +276,11 @@ fn observe_required_build_cell_wet(
     SelectedOfferCellMismatch { slot_key: slot_key, executor: offer.executor }
   } else {
     match observe_cas_slot_state(root: root, key: slot_key) {
-      CasObservedUnreadable { cause: _ } => ReservationUnreadable { slot_key: slot_key }
+      CasObservedUnreadable { cause: c } => ReservationUnreadable { slot_key: slot_key, cause: c }
       CasObservedReadable { readable: CasReadableAbsent } => ReservationAbsent { slot_key: slot_key }
       CasObservedReadable { readable: CasReadablePresent { version: version } } =>
         match decode_hold_slot_payload(payload: version.value) {
-          HoldPayloadUndecodable { detail: _ } => ReservationPayloadUndecodable { slot_key: slot_key }
+          HoldPayloadUndecodable { detail: d } => ReservationPayloadUndecodable { slot_key: slot_key, detail: d }
           HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => ReservationAbsent { slot_key: slot_key }
           HoldPayloadDecoded { state: DurableHoldHeld { owner: held } } =>
             if !durable_hold_owner_equal(
@@ -381,8 +381,8 @@ fn required_build_cell_lifetime_sample(observation: RequiredBuildCellObservation
       },
     }
     ReservationAbsent { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
-    ReservationUnreadable { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
-    ReservationPayloadUndecodable { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    ReservationUnreadable { slot_key: _, cause: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    ReservationPayloadUndecodable { slot_key: _, detail: _ } => RequiredBuildCellLifetimeSampleUndecodable
     ReservationPayloadWorkMismatch { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
     SelectedOfferCellMismatch { slot_key: _, executor: _ } => RequiredBuildCellLifetimeSampleUndecodable
     CellSubstrateNotConverged { cell: _ } => RequiredBuildCellLifetimeSampleUndecodable
@@ -471,7 +471,7 @@ fn required_build_cell_lifetime_verdict(
 ) -> RequiredBuildCellLifetimeVerdict {
   match after {
     ReservationAbsent { slot_key: _ } => ReservationLifetimeDependentOnSubmitter { slot_key: before.slot_key }
-    ReservationUnreadable { slot_key: _ } => ReservationLifetimeDependentOnSubmitter { slot_key: before.slot_key }
+    ReservationUnreadable { slot_key: _, cause: _ } => ReservationLifetimeDependentOnSubmitter { slot_key: before.slot_key }
     RequiredBuildCellObserved { snapshot: a } =>
       if before.generation != a.generation {
         ReservationGenerationChanged { expected_generation: before.generation, observed_generation: a.generation }
@@ -492,7 +492,7 @@ fn required_build_cell_lifetime_verdict(
           }
         }
       }
-    ReservationPayloadUndecodable { slot_key: _ } => RequiredBuildCellObservationRefused
+    ReservationPayloadUndecodable { slot_key: _, detail: _ } => RequiredBuildCellObservationRefused
     ReservationPayloadWorkMismatch { slot_key: _ } => RequiredBuildCellObservationRefused
     SelectedOfferCellMismatch { slot_key: _, executor: _ } => RequiredBuildCellObservationRefused
     CellSubstrateNotConverged { cell: _ } => RequiredBuildCellObservationRefused
