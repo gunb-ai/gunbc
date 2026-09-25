@@ -18,3 +18,6 @@ A new runbook must be linked from this index in the same PR that adds it — the
   procedure to confirm nbd-proxy is compiled into srv3 bmcweb before L2 seed client or capability flip.
 - [srv3 OS install actuation (prefix:os-install-actuated)](srv3-os-install-actuate.md) — runnable
   gunbc prep + operator-gated NBD-proxy virtual-media serve, boot-once CD, and post-install subsumption checks.
+- [GLM arm: derived image rebuild with the KV allocation plan emission patch](glm-kv-allocation-plan-image-rebuild.md) —
+  operator procedure to layer the reviewable vLLM emission patch over the recorded derived image, probe it,
+  relaunch the arm, and capture the plan emission for the model lane.
