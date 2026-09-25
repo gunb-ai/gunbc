@@ -2664,7 +2664,10 @@ mod tests {
     #[test]
     fn an_adjudicate_marker_without_frontier_refuses() {
         let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}\n";
-        let cause = parse_native_run_output(stdout).expect_err("a marker without frontier");
+        let cause = match parse_native_run_output(stdout) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a marker without frontier must refuse"),
+        };
         assert!(cause.contains("carries no frontier"), "got: {cause}");
     }
 }
