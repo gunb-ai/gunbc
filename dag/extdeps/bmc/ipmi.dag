@@ -1,6 +1,5 @@
 module extdeps.bmc.ipmi
 
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, NonEmptyStr, Unit }
@@ -54,6 +53,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // distinguishes a controller that applied the override from one that ignored it. Measured on the
 // Mt. Collins unit 2026-09-05: before "No override", after "Force PXE", "Options apply to only next
 // boot".
+//
+// ChassisStatus AND ChassisBootParamGet RUN UNDER coreutils `timeout` AND HAVE NO UNBOUNDED TWIN.
+// Every caller polls or gates on them (the boot handoff's power read-back, the fan series, the boot
+// diagnostics), and an unbounded read is a step that can outlive its derived timeout. The bound is
+// the caller's policy, passed in as deadline and kill_after; one operation per command, so the argv
+// has one home (review 71095 on gunbc#12263 refused a second, bounded copy of each).
 //
 // THIS PROSE SITS ABOVE THE SERVICE AND NOT BESIDE EACH OPERATION because §4c admits annotations at
 // module-item grain only; a `//` block inside a declaration body is a hard error, which is how the
@@ -211,38 +216,6 @@ service diagnostic.ipmi.Tool {
     }
   }
 
-  operation ChassisBootParamGetBounded {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
-    output {
-      stdout: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
-    exit {
-      0 => Unit
-      nonzero => String "ipmitool bounded chassis bootparam get failed"
-    }
-  }
-
-  operation ChassisStatusBounded {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
-    output {
-      stdout: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
-    exit {
-      0 => Unit
-      nonzero => String "ipmitool bounded chassis status failed"
-    }
-  }
-
   operation MasterWriteReadAuthenticated {
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, bus: NonEmptyStr, slave_address: NonEmptyStr, read_count: NonEmptyStr, write_first: NonEmptyStr, write_second: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
@@ -289,10 +262,15 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisBootParamGet {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis bootparam get failed"
@@ -310,10 +288,15 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisStatus {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis status failed"

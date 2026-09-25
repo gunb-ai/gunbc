@@ -1036,7 +1036,7 @@ fn mtcollins1_boot_sensors(username: NonEmptyStr, password_file: NonEmptyStr, sd
 fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> BootParam5Reading
 {
   let at = clock_now_probed_at_or_unknown()
-  let r = diagnostic.ipmi.Tool.ChassisBootParamGetBounded(
+  let r = diagnostic.ipmi.Tool.ChassisBootParamGet(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
@@ -1053,7 +1053,7 @@ fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> 
 
 fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation
 {
-  let r = diagnostic.ipmi.Tool.ChassisStatusBounded(
+  let r = diagnostic.ipmi.Tool.ChassisStatus(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,

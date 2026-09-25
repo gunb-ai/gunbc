@@ -12,6 +12,7 @@ import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ObservationRoundCount, SdrUndecodedLineCount, Second, observation_round_count_value, sdr_undecoded_line_count_value, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.ipmi_sdr {
   SdrFanDuty,
   SdrFanNoReading,
@@ -196,6 +197,13 @@ type FanObservationSeries
   = FanObservationTaken { rounds: List<FanObservationRound>, interval: Second }
   | FanObservationRefused { cause: NonEmptyStr }
 
+// THE CHASSIS READ IS BOUNDED (extdeps.bmc.ipmi ChassisStatus has no unbounded form), so a
+// controller that stops answering ends one round's power reading as unreadable rather than stalling
+// the series.
+data fan_round_ipmi_read_deadline: Second = second(count: 20)
+
+data fan_round_ipmi_kill_after: Second = second(count: 5)
+
 // ONE ROUND: THREE READS, IN THE ORDER THAT MAKES THE SAMPLE COHERENT. Power is read first because
 // it is the fact that decides what the other two mean; the thermal read comes before the fan read so
 // that a fan reading is never paired with a thermal state observed after it.
@@ -210,6 +218,8 @@ fn observe_fan_round(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
+    deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
   )
   temps = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
