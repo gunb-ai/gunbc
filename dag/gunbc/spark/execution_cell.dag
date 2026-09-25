@@ -1,0 +1,462 @@
+module gunbc.spark.execution_cell
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.list { first_duplicate_by_key }
+import v2.std.optional { Present, Absent }
+
+// ── THE EXECUTION-CELL CONTRACT (owner directive 2026-09-25) ─────────────────────────────────────
+//
+// THE RULING THIS MODULE MODELS, verbatim from docs/plans/execution-cell-contract.md: treat the
+// Group B start failure as a MISSING EXECUTION-GENERATION DEPENDENCY, not as incidental residue.
+// The new unit's cleanup hooks are downstream of systemd start admission, so they cannot repair
+// start-rate state or orphan resources that prevent the start. Prior-generation inventory,
+// quiescence, disposal, manager-state settlement, and readback move AHEAD of preparation; every
+// rank prepares before any activates; a four-rank arm is ONE cohort, so preparation failure starts
+// none, partial activation rolls back all started members, and success is one exact generation
+// observed across every rank.
+//
+// THE RECEIPTS BEHIND THE PHASE ORDER. Run 2 of the bounded memory experiment (GLM four-rank arm,
+// srv9 head + srv10/11/12 ranks) died because start-rate-limit counters left from the crash era and
+// an orphan docker container from Sep 23 blocked start admission BEFORE the unit's own ExecStartPre
+// cleanup could run — the cleanup hooks are downstream of the admission they needed to repair. Run 3
+// (after manual cleanup) died because the bracket was SEQUENTIAL across hosts: each leg started a
+// unit and blocked on its own wait loop, so srv10's rank started 21:41 and timed out at 22:02 while
+// srv9's head did not start until 22:43 — the ranks and head were never alive simultaneously, and a
+// rendezvous arm cannot converge that way. Settlement (systemctl reset-failed) is therefore a
+// MODELED LEG here, not an operator action, and activation is a cohort verb whose starts are
+// non-blocking with ONE collective readback, never per-host blocking waits.
+//
+// REALIZATION-NEUTRAL, BY CONSTRUCTION. This module names phases and the verbs a realization must
+// supply; it never names systemd, docker, or Firecracker. systemd/Docker is the current Group B
+// realization (gunbc.spark.systemd_execution_cell); Firecracker is the next, for disposable harness
+// workers. IDEMPOTENCY IS NEVER A PROPERTY OF THE SUBSTRATE: the host controller owns operation
+// identity, compare-and-set on admission, resource conservation, disposal, and readback, for every
+// realization — that is why those are TYPES here and not prose about systemd.
+//
+// GENERIC OVER THE MEMBER COORDINATE M. A member is whatever a realization converges one slot of —
+// for systemd/Docker it is a host plus its unit and container; for Firecracker it will be a host
+// plus its microVM. The contract is generic over M exactly so the phase law, the cohort semantics,
+// and the refusal vocabulary survive a change of substrate; the realization and the bracket bind M.
+
+// ── THE PHASE VOCABULARY, AND THE ORDER IS LAW ───────────────────────────────────────────────────
+//
+// EIGHT PHASES, IN CONTRACT ORDER. The order below is not a preference: inventory of the prior
+// generation, its quiescence, its disposal, manager-state settlement, and readback must all
+// complete before the new generation's preparation, because nothing in the new generation's own
+// cleanup hooks can repair the prior generation's start-admission state (the run-2 receipt).
+// Preparation is per-member but precedes ANY activation (the cohort law). Activation precedes
+// rollback, and rollback appears only as the reaction to a partial activation's failure.
+type ExecutionCellPhase
+  = CellPhaseInventory
+  | CellPhaseQuiescence
+  | CellPhaseDisposal
+  | CellPhaseSettlement
+  | CellPhaseReadback
+  | CellPhasePreparation
+  | CellPhaseActivation
+  | CellPhaseRollback
+
+fn execution_cell_phase_wire(p: ExecutionCellPhase) -> String {
+  match p {
+    CellPhaseInventory => "inventory"
+    CellPhaseQuiescence => "quiescence"
+    CellPhaseDisposal => "disposal"
+    CellPhaseSettlement => "settlement"
+    CellPhaseReadback => "readback"
+    CellPhasePreparation => "preparation"
+    CellPhaseActivation => "activation"
+    CellPhaseRollback => "rollback"
+  }
+}
+
+// THE ORDER AS DATA, so the law is checkable rather than restated. A list of phases is in contract
+// order exactly when its indices are non-decreasing; a prepare leg preceding a settlement leg is
+// then index 5 before index 3, which the fold below refuses — the phase order is enforced by
+// construction on the emitted leg list, not by a comment asking a reader to trust it.
+fn execution_cell_phase_index(p: ExecutionCellPhase) -> Nat {
+  match p {
+    CellPhaseInventory => 0
+    CellPhaseQuiescence => 1
+    CellPhaseDisposal => 2
+    CellPhaseSettlement => 3
+    CellPhaseReadback => 4
+    CellPhasePreparation => 5
+    CellPhaseActivation => 6
+    CellPhaseRollback => 7
+  }
+}
+
+fn execution_cell_phase_precedes(a: ExecutionCellPhase, b: ExecutionCellPhase) -> Bool {
+  execution_cell_phase_index(p: a) < execution_cell_phase_index(p: b)
+}
+
+fn execution_cell_nat_non_decreasing(xs: List<Nat>) -> Bool {
+  match fold(xs, init: Present { value: 0 }, f: fn(acc, x) {
+    match acc {
+      Absent => none
+      Present { value: prev } => if x >= prev { Present { value: x } } else { none }
+    }
+  }) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn execution_cell_phases_in_contract_order(ps: List<ExecutionCellPhase>) -> Bool {
+  execution_cell_nat_non_decreasing(xs: map(ps, p => execution_cell_phase_index(p: p)))
+}
+
+// ── ONE GENERATION, ONE OPERATION ────────────────────────────────────────────────────────────────
+//
+// THE GENERATION IS THE IDENTITY OF THE RENDERED INTENT. A cohort admits exactly one generation,
+// and success is that one exact identity observed on every member — never "three ranks on G, one on
+// G-1". The identity is the content hash of the canonical launch-intent key the cohort renders
+// from, so a member running anything else is a different generation by construction and the
+// convergence fold below can split on it. The mint takes the canonical intent key (for the arm,
+// gunbc.spark.serving_arm serving_launch_profile_key) rather than caller-chosen bytes.
+type ExecutionGeneration {
+  identity: ContentHash
+  of_intent: NonEmptyStr
+}
+
+fn execution_generation_of_intent(intent_key: NonEmptyStr) -> ExecutionGeneration {
+  ExecutionGeneration {
+    identity: content_hash_of_value(value: intent_key),
+    of_intent: intent_key,
+  }
+}
+
+// COMPARISON THROUGH THE WIRE, not a bare union ==: every generation this contract mints is the
+// Fnv1a64 structural family, but comparing serialized forms keeps the convergence fold total even
+// if a future realization grounds the identity in a cited cryptographic family instead.
+fn execution_generation_eq(a: ExecutionGeneration, b: ExecutionGeneration) -> Bool {
+  serialize_content_hash(hash: a.identity) == serialize_content_hash(hash: b.identity)
+}
+
+// OPERATION IDENTITY = THE ATTEMPT PLUS THE GENERATION IT ADMITS. The attempt names this one
+// actuation (the ssh attempt identity the trust bracket already mints); the generation names the
+// exact rendered intent the attempt may converge. Carrying both is what makes "which run wrote
+// this" and "which intent did it run" one question with one answer.
+type ExecutionOperationIdentity {
+  attempt: NonEmptyStr
+  generation: ExecutionGeneration
+}
+
+// COMPARE-AND-SET ON ADMISSION, OVER ExecutionGeneration rather than the Int generation of
+// std.durable_compare_and_set (that one is a fencing token for a keyed store row; this one is the
+// occupancy of a member slot by an exact rendered intent). A slot is admitted to preparation and
+// activation only over ExpectCellSlotAbsent — the prior-generation readback observed the slot
+// actually free. ExpectCellSlotGeneration is the distinct re-admission arm: an operation that
+// means "replace exactly this live generation" can never be conflated with one that means
+// "create because absent", the conflation std.durable_compare_and_set exists to refuse.
+type ExecutionCellSlotExpectation
+  = ExpectCellSlotAbsent
+  | ExpectCellSlotGeneration { generation: ExecutionGeneration }
+
+// CONSERVATION, AS A TYPE. "Nothing leaks, nothing is double-consumed" is not a hope about the
+// substrate; it is a verdict over two counts this operation owes. started names every member the
+// activation started; rolled_back names every started member the operation disposed before it
+// refused. A refusal with rolled_back short of started is a LEAK — a running generation the
+// operation will not answer for — and it is typed, never a neutral "done".
+type ExecutionConservation
+  = ExecutionConservationHeld { started: Nat, rolled_back: Nat }
+  | ExecutionConservationLeaked { started: Nat, rolled_back: Nat, cause: NonEmptyStr }
+
+fn execution_cell_conservation(started: Nat, rolled_back: Nat) -> ExecutionConservation {
+  if rolled_back >= started {
+    ExecutionConservationHeld { started: started, rolled_back: rolled_back }
+  } else {
+    ExecutionConservationLeaked {
+      started: started,
+      rolled_back: rolled_back,
+      cause: "a member started and was not rolled back after its cohort refused: the operation leaks a running generation it will not answer for, and conservation is rolled_back >= started" as NonEmptyStr,
+    }
+  }
+}
+
+// ── TYPED REFUSALS, ONE PER PHASE, NONE NEUTRAL ──────────────────────────────────────────────────
+//
+// THE REFUSAL CARRIER IS A CLOSED COPRODUCT WITH ONE ARM PER PHASE, and there is deliberately no
+// bare "Refused" arm: a refusal that does not name its phase, its member, and its cause collapses
+// to neutral, and a neutral refusal cannot be routed, remedied, or witnessed. Each arm carries the
+// member that refused and a located cause; the accessors below project phase and cause so a
+// receipt can fold refusals without a second match over the whole coproduct.
+type ExecutionCellRefusal<M>
+  = ExecutionCellInventoryRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellQuiescenceRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellDisposalRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellSettlementRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellReadbackRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellPreparationRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellActivationRefused { member: M, cause: NonEmptyStr }
+  | ExecutionCellRollbackRefused { member: M, cause: NonEmptyStr }
+
+fn execution_cell_refusal_phase<M>(r: ExecutionCellRefusal<M>) -> ExecutionCellPhase {
+  match r {
+    ExecutionCellInventoryRefused { member: _, cause: _ } => CellPhaseInventory
+    ExecutionCellQuiescenceRefused { member: _, cause: _ } => CellPhaseQuiescence
+    ExecutionCellDisposalRefused { member: _, cause: _ } => CellPhaseDisposal
+    ExecutionCellSettlementRefused { member: _, cause: _ } => CellPhaseSettlement
+    ExecutionCellReadbackRefused { member: _, cause: _ } => CellPhaseReadback
+    ExecutionCellPreparationRefused { member: _, cause: _ } => CellPhasePreparation
+    ExecutionCellActivationRefused { member: _, cause: _ } => CellPhaseActivation
+    ExecutionCellRollbackRefused { member: _, cause: _ } => CellPhaseRollback
+  }
+}
+
+fn execution_cell_refusal_cause<M>(r: ExecutionCellRefusal<M>) -> NonEmptyStr {
+  match r {
+    ExecutionCellInventoryRefused { member: _, cause: c } => c
+    ExecutionCellQuiescenceRefused { member: _, cause: c } => c
+    ExecutionCellDisposalRefused { member: _, cause: c } => c
+    ExecutionCellSettlementRefused { member: _, cause: c } => c
+    ExecutionCellReadbackRefused { member: _, cause: c } => c
+    ExecutionCellPreparationRefused { member: _, cause: c } => c
+    ExecutionCellActivationRefused { member: _, cause: c } => c
+    ExecutionCellRollbackRefused { member: _, cause: c } => c
+  }
+}
+
+// ── THE ACTUATION, THE RESULT, AND THE REALIZATION INTERFACE ─────────────────────────────────────
+//
+// AN ACTUATION IS ONE PHASE'S CONCRETE WORK FOR ONE MEMBER. The body is the realization-bound
+// actuation text — shell for systemd/Docker — and the contract does not interpret it; the contract
+// owns the phase tag and the member, which is what the order law and the cohort folds consume.
+type ExecutionCellActuation<M> {
+  member: M
+  phase: ExecutionCellPhase
+  body: String
+}
+
+// THE ORDER LAW OVER EMITTED ACTUATIONS: the phase tags, read in list order, must be
+// non-decreasing. The bracket builds its leg list phase-by-phase, so this holds by construction;
+// the witness re-derives it over the emitted list so a future edit that interleaves a prepare
+// ahead of a settlement goes red instead of shipping.
+fn execution_cell_actuations_in_contract_order<M>(legs: List<ExecutionCellActuation<M>>) -> Bool {
+  execution_cell_phases_in_contract_order(ps: map(legs, l => l.phase))
+}
+
+// ONE PHASE'S RESULT: the actuation to run, or a typed refusal. Every verb of the realization
+// interface answers this one sum, so a phase cannot return a bare success code and it cannot
+// return a refusal that names no phase.
+type ExecutionCellPhaseResult<M>
+  = ExecutionCellActuated { actuation: ExecutionCellActuation<M> }
+  | ExecutionCellPhaseRefused { refusal: ExecutionCellRefusal<M> }
+
+// THE OPERATION A VERB IS INVOKED FOR: the member, plus the operation identity the actuation is
+// accountable to. The identity reaches every verb so a realization can render the generation into
+// its actuation (the unit the prepare verb writes is this generation's render).
+type ExecutionCellOperation<M> {
+  member: M
+  identity: ExecutionOperationIdentity
+}
+
+// THE REALIZATION INTERFACE — THE VERBS A REALIZATION MUST SUPPLY. Eight verbs, one per phase;
+// a realization that cannot supply a verb cannot construct this record, so a substrate with no
+// modeled settlement (for example) is unwritable rather than silently unprepared. This is the
+// whole content of "realization-neutral": the contract names what a realization must DO, never
+// how a substrate does it.
+type ExecutionCellRealization<M> {
+  inventory: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  quiescence: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  disposal: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  settlement: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  readback: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  prepare: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  activate: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+  rollback: fn(ExecutionCellOperation<M>) -> ExecutionCellPhaseResult<M>
+}
+
+// ── THE COHORT ───────────────────────────────────────────────────────────────────────────────────
+//
+// AN N-RANK ARM IS ONE EXECUTION CELL, NOT N UNITS. The cohort carries the member roster and the
+// ONE generation every member must converge; because the generation is a single field, "every
+// member runs the same generation" is not a check the roster can fail by construction — the
+// convergence fold below is what catches a member OBSERVED on a different generation.
+type ExecutionCellCohort<M> {
+  members: List<M>
+  generation: ExecutionGeneration
+}
+
+type ExecutionCellCohortAdmission<M>
+  = ExecutionCellCohortAdmitted { cohort: ExecutionCellCohort<M> }
+  | ExecutionCellCohortRefused { cause: NonEmptyStr }
+
+// THE COHORT MINT. Non-empty (an empty roster is not a cell) and duplicate-free under the caller's
+// member key: a roster naming one slot twice would converge it twice, which is double-consumption
+// the admission refuses rather than the substrate racing to discover.
+fn execution_cell_cohort_admit<M>(members: List<M>, generation: ExecutionGeneration, member_key: fn(M) -> String) -> ExecutionCellCohortAdmission<M> {
+  if length(members) == 0 {
+    ExecutionCellCohortRefused {
+      cause: "a cohort with no members is not an execution cell: there is no generation to observe across zero ranks" as NonEmptyStr,
+    }
+  } else {
+    match first_duplicate_by_key(xs: members, key: member_key) {
+      Present { value: _ } =>
+        ExecutionCellCohortRefused {
+          cause: "the cohort roster names one member slot twice: converging it twice is double-consumption, and the roster must name each member exactly once" as NonEmptyStr,
+        }
+      Absent =>
+        ExecutionCellCohortAdmitted {
+          cohort: ExecutionCellCohort { members: members, generation: generation },
+        }
+    }
+  }
+}
+
+// ── THE PRIOR-GENERATION READBACK FOLDS INTO THE ADMISSION'S CAS ─────────────────────────────────
+//
+// THE SLOT STANDING: every prior-generation readback verb result folded into whether the cohort's
+// slots are actually free. All read back free is the only state that maps to ExpectCellSlotAbsent,
+// the expectation activation is admitted over; any member still holding the prior generation is
+// Occupied, and preparation must not begin. This fold is the typed half of "readback(the prior
+// generation is actually gone)" — the run-2 failure mode (start-rate state and an orphan container
+// still resident) is an Occupied arm here, refused before any prepare leg exists.
+type ExecutionCellSlotStanding<M>
+  = ExecutionCellSlotsFree { members: List<M> }
+  | ExecutionCellSlotsOccupied { refusal: ExecutionCellRefusal<M> }
+
+type ExecutionCellReadbackFold<M>
+  = ExecutionCellReadbackGoing { freed: List<M> }
+  | ExecutionCellReadbackStopped { refusal: ExecutionCellRefusal<M> }
+
+fn execution_cell_readback_standing<M>(readbacks: List<ExecutionCellPhaseResult<M>>) -> ExecutionCellSlotStanding<M> {
+  match fold(readbacks, init: ExecutionCellReadbackGoing { freed: [] }, f: fn(acc, r) {
+    match acc {
+      ExecutionCellReadbackStopped { refusal: refusal } => ExecutionCellReadbackStopped { refusal: refusal }
+      ExecutionCellReadbackGoing { freed: freed } =>
+        match r {
+          ExecutionCellActuated { actuation: a } =>
+            ExecutionCellReadbackGoing { freed: concat(freed, [a.member]) }
+          ExecutionCellPhaseRefused { refusal: refusal } =>
+            ExecutionCellReadbackStopped { refusal: refusal }
+        }
+    }
+  }) {
+    ExecutionCellReadbackGoing { freed: freed } => ExecutionCellSlotsFree { members: freed }
+    ExecutionCellReadbackStopped { refusal: refusal } => ExecutionCellSlotsOccupied { refusal: refusal }
+  }
+}
+
+// ── PREPARATION IS ALL-OR-NOTHING ────────────────────────────────────────────────────────────────
+//
+// PREPARE EVERY MEMBER BEFORE ANY ACTIVATES. The fold runs over the phase's per-member RESULTS —
+// rendered actuations at plan time, executed outcomes at run time — and stops at the first
+// refusal: the result names the members prepared so far AND the refusal, and a caller that sees
+// PrepareHalted starts NONE — the unit files written for the prepared members are inert without a
+// start, which is the whole safety argument for preparing all hosts before any activation.
+type ExecutionCellPreparation<M>
+  = ExecutionCellAllPrepared { actuations: List<ExecutionCellActuation<M>> }
+  | ExecutionCellPrepareHalted { prepared: List<ExecutionCellActuation<M>>, refusal: ExecutionCellRefusal<M> }
+
+fn execution_cell_preparation_verdict<M>(results: List<ExecutionCellPhaseResult<M>>) -> ExecutionCellPreparation<M> {
+  fold(results, init: ExecutionCellAllPrepared { actuations: [] }, f: fn(acc, r) {
+    match acc {
+      ExecutionCellPrepareHalted { prepared: p, refusal: ref } =>
+        ExecutionCellPrepareHalted { prepared: p, refusal: ref }
+      ExecutionCellAllPrepared { actuations: done } =>
+        match r {
+          ExecutionCellActuated { actuation: a } =>
+            ExecutionCellAllPrepared { actuations: concat(done, [a]) }
+          ExecutionCellPhaseRefused { refusal: ref } =>
+            ExecutionCellPrepareHalted { prepared: done, refusal: ref }
+        }
+    }
+  })
+}
+
+// ── ACTIVATION IS A COHORT VERB, AND PARTIAL ACTIVATION ROLLS BACK ───────────────────────────────
+//
+// THE COHORT ACTIVATION VERDICT, over the phase's per-member results. The fold collects the
+// started actuations; the FIRST refusal stops the cohort (a later member is not activated into a
+// failing cell). All members started is Converged. A refusal with members already started is
+// PartiallyActivated — the caller owes those started members a rollback before it refuses. A
+// refusal before any start is RefusedBeforeStart, and owes nothing. Modeling the concurrency as
+// ONE verb is the run-3 repair: the realization's activate is non-blocking, so issuing the legs
+// sequentially still starts the cohort concurrently, and the single collective readback — not
+// per-host waits — is what witnesses convergence.
+type ExecutionCellActivation<M>
+  = ExecutionCellConverged { started: List<ExecutionCellActuation<M>> }
+  | ExecutionCellPartiallyActivated { started: List<ExecutionCellActuation<M>>, refusal: ExecutionCellRefusal<M> }
+  | ExecutionCellActivationRefusedBeforeStart { refusal: ExecutionCellRefusal<M> }
+
+type ExecutionCellActivationFold<M>
+  = ExecutionCellActivationsGoing { started: List<ExecutionCellActuation<M>> }
+  | ExecutionCellActivationStopped { started: List<ExecutionCellActuation<M>>, refusal: ExecutionCellRefusal<M> }
+
+fn execution_cell_activation_verdict<M>(results: List<ExecutionCellPhaseResult<M>>) -> ExecutionCellActivation<M> {
+  match fold(results, init: ExecutionCellActivationsGoing { started: [] }, f: fn(acc, r) {
+    match acc {
+      ExecutionCellActivationStopped { started: s, refusal: ref } =>
+        ExecutionCellActivationStopped { started: s, refusal: ref }
+      ExecutionCellActivationsGoing { started: s } =>
+        match r {
+          ExecutionCellActuated { actuation: a } =>
+            ExecutionCellActivationsGoing { started: concat(s, [a]) }
+          ExecutionCellPhaseRefused { refusal: ref } =>
+            ExecutionCellActivationStopped { started: s, refusal: ref }
+        }
+    }
+  }) {
+    ExecutionCellActivationsGoing { started: s } => ExecutionCellConverged { started: s }
+    ExecutionCellActivationStopped { started: s, refusal: ref } =>
+      match first(s) {
+        Absent => ExecutionCellActivationRefusedBeforeStart { refusal: ref }
+        Present { value: _ } => ExecutionCellPartiallyActivated { started: s, refusal: ref }
+      }
+  }
+}
+
+// THE ROLLBACK OBLIGATION. Exactly the members the cohort started owe a rollback when activation
+// did not converge; a refused-before-start cohort owes nothing, and a converged cohort owes
+// nothing (its members are the live generation, disposed by the operation's own stop contract,
+// downstream of the cell's phases). Conservation is checked against THIS list: started minus
+// rolled-back must be empty, or the operation leaked.
+fn execution_cell_rollback_members<M>(activation: ExecutionCellActivation<M>) -> List<M> {
+  match activation {
+    ExecutionCellConverged { started: _ } => []
+    ExecutionCellPartiallyActivated { started: s, refusal: _ } => map(s, x => x.member)
+    ExecutionCellActivationRefusedBeforeStart { refusal: _ } => []
+  }
+}
+
+// ── SUCCESS IS ONE EXACT GENERATION OBSERVED ON EVERY MEMBER ─────────────────────────────────────
+//
+// THE CONVERGENCE WITNESS. The realization's collective readback hands back one observation per
+// member — the generation that member is actually running — and convergence is the fold that
+// checks them against the admitted generation. All equal on a complete roster is
+// ExecutionCellOneGeneration; a member observed on any other identity is ExecutionCellGenerationSplit
+// (the "three ranks on G, one on G-1" the contract forbids); a member with no reading is a refused
+// convergence, because an unobserved member is not a converged one.
+type ExecutionCellGenerationObservation<M> {
+  member: M
+  observed: ExecutionGeneration
+}
+
+type ExecutionCellConvergence<M>
+  = ExecutionCellOneGeneration { generation: ExecutionGeneration, observed_on: List<M> }
+  | ExecutionCellGenerationSplit { observations: List<ExecutionCellGenerationObservation<M>> }
+  | ExecutionCellConvergenceRefused { member: M, cause: NonEmptyStr }
+
+fn execution_cell_convergence_of<M>(cohort: ExecutionCellCohort<M>, observations: List<ExecutionCellGenerationObservation<M>>, member_key: fn(M) -> String) -> ExecutionCellConvergence<M> {
+  let wanted = cohort.generation
+  match first(filter(cohort.members, m => !any(observations, o => member_key(o.member) == member_key(m)))) {
+    Present { value: missing } =>
+      ExecutionCellConvergenceRefused {
+        member: missing,
+        cause: "the cohort handed back no generation reading for this member: success is one exact generation observed on EVERY member, and an unobserved member is not convergence" as NonEmptyStr,
+      }
+    Absent =>
+      match first(filter(observations, o => !execution_generation_eq(a: o.observed, b: wanted))) {
+        Present { value: _ } =>
+          ExecutionCellGenerationSplit { observations: observations }
+        Absent =>
+          match length(observations) == length(cohort.members) {
+            true => ExecutionCellOneGeneration { generation: wanted, observed_on: cohort.members }
+            false => ExecutionCellGenerationSplit { observations: observations }
+          }
+      }
+  }
+}

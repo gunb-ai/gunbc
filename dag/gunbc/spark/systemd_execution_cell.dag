@@ -1,0 +1,270 @@
+module gunbc.spark.systemd_execution_cell
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat, nat_range_inclusive }
+import product.placement_supply { HostIdentity }
+import extdeps.exec.command { shell_quote }
+import gunbc.spark.execution_cell {
+  ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,
+  CellPhaseReadback, CellPhasePreparation, CellPhaseActivation, CellPhaseRollback,
+  ExecutionCellActuation, ExecutionCellOperation, ExecutionCellPhaseResult,
+  ExecutionCellActuated, ExecutionCellPhaseRefused,
+  ExecutionCellRealization,
+  ExecutionCellRefusal,
+  ExecutionCellInventoryRefused, ExecutionCellQuiescenceRefused, ExecutionCellDisposalRefused,
+  ExecutionCellSettlementRefused, ExecutionCellReadbackRefused, ExecutionCellPreparationRefused,
+  ExecutionCellActivationRefused, ExecutionCellRollbackRefused,
+}
+
+// ── THE systemd/Docker REALIZATION OF THE EXECUTION-CELL VERBS ───────────────────────────────────
+//
+// THE CONTRACT NAMES PHASES; THIS MODULE IS ONE REALIZATION OF THEM. gunbc.spark.execution_cell is
+// realization-neutral — it names what a realization must supply and never how a substrate does it.
+// This module supplies the eight verbs for the current Group B substrate (systemd units over docker
+// containers), rendering one privileged shell actuation per member per phase. Firecracker is the
+// next realization, for disposable harness workers; it will inhabit the same record with different
+// bodies, and the host controller — not the substrate — still owns identity, CAS, conservation,
+// disposal and readback.
+//
+// THE TWO RECEIPTS THE SCRIPTS EMBODY. Run 2 died because a tripped start-rate counter and an orphan
+// container blocked start admission before the unit's own ExecStartPre could clean them — so here
+// settlement (systemctl reset-failed) and disposal (docker rm -f) are MODELED LEGS that run ahead
+// of preparation, never hooks downstream of start. Run 3 died because each leg blocked on its own
+// wait loop and the four ranks were never alive together — so here activation is a NON-BLOCKING
+// start and the one bounded wait lives in a single collective readback leg the bracket issues after
+// all four starts.
+
+// A MEMBER OF THE systemd/Docker CELL: one host, the unit it converges, the container the unit
+// supervises, the log the engine appends, and the rendered unit text preparation installs. The
+// unit_text is the member's render of the cohort's one generation; carrying it here is what lets
+// the prepare verb install exactly the rendered intent, byte for byte.
+type SystemdExecutionMember {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  container_name: NonEmptyStr
+  log_path: NonEmptyStr
+  unit_text: String
+}
+
+// THE MEMBER KEY the cohort admission and the convergence fold match members through: one host
+// converges at most one unit of an arm, so the host names the slot.
+fn systemd_member_key(m: SystemdExecutionMember) -> String {
+  m.host as String
+}
+
+// ── THE RESIDUE CLASSES AND THE PHASE THAT REPAIRS EACH ──────────────────────────────────────────
+//
+// WHAT THE PRIOR GENERATION LEAVES BEHIND, read off one member by the inventory phase. Three
+// classes cover the two receipts: a FAILED unit and a TRIPPED start-rate counter both block systemd
+// start admission and sit downstream of any cleanup hook the new unit carries (the run-2 lesson —
+// settlement must be a modeled leg, not an operator's manual reset-failed); an ORPHAN container
+// holds pool bytes the arm needs back (the Sep-23 residue). The repair mapping is the typed half of
+// the planted-residue proof: a planted failed unit routes to settlement, a planted orphan container
+// routes to disposal, and both precede preparation.
+type SystemdResidueClass
+  = SystemdResidueUnitFailed
+  | SystemdResidueStartRateTripped
+  | SystemdResidueOrphanContainer
+
+fn systemd_residue_repair_phase(r: SystemdResidueClass) -> ExecutionCellPhase {
+  match r {
+    SystemdResidueUnitFailed => CellPhaseSettlement
+    SystemdResidueStartRateTripped => CellPhaseSettlement
+    SystemdResidueOrphanContainer => CellPhaseDisposal
+  }
+}
+
+fn systemd_residue_class_wire(r: SystemdResidueClass) -> String {
+  match r {
+    SystemdResidueUnitFailed => "unit-failed"
+    SystemdResidueStartRateTripped => "start-rate-tripped"
+    SystemdResidueOrphanContainer => "orphan-container"
+  }
+}
+
+// ── THE PHASE SCRIPTS ────────────────────────────────────────────────────────────────────────────
+//
+// INVENTORY READS THE PRIOR GENERATION; IT DOES NOT JUDGE IT. Every probe is `|| true` because the
+// census must succeed over whatever is there — nothing at all included — and its value is the
+// printed state, which the receipt records for the planted-residue proof. The failed/active/unit and
+// container lines are the exact fields the settlement and disposal legs then repair.
+fn systemd_inventory_script(member: SystemdExecutionMember) -> String {
+  let unit = member.unit_name as String
+  let container = member.container_name as String
+  join([
+    "set -e\n",
+    "echo \"inventory unit=", unit, "\"\n",
+    "systemctl list-unit-files 'gunbc-glm-native-*' 2>/dev/null || true\n",
+    "echo \"active-state ", unit, ": $(systemctl is-active ", unit, " 2>/dev/null || echo unknown)\"\n",
+    "systemctl show ", unit, " -p Id -p ActiveState -p SubState -p Result -p NFailed -p StartLimitBurst -p StartLimitIntervalUSec 2>/dev/null || true\n",
+    "echo \"inventory container=", container, "\"\n",
+    "docker ps -a --filter name=", container, " --format '{{.Names}} {{.Status}}' 2>/dev/null || true\n",
+    "echo inventory-complete\n",
+  ], "")
+}
+
+// QUIESCENCE STOPS WHAT IS THERE; ABSENCE IS NOT AN ERROR. A unit already gone stops as a no-op, so
+// the prior generation is withdrawn before disposal and settlement touch it.
+fn systemd_quiescence_script(member: SystemdExecutionMember) -> String {
+  join([
+    "set -e\n",
+    "systemctl stop ", member.unit_name as String, " 2>/dev/null || true\n",
+    "echo quiesced ", member.unit_name as String, "\n",
+  ], "")
+}
+
+// DISPOSAL REMOVES THE ORPHAN CONTAINER; the `|| true` idiom is load-bearing, not lenient — an
+// absent container is the success state, and a container docker genuinely cannot remove surfaces at
+// the readback leg, which refuses instead of admitting a slot that still holds pool bytes.
+fn systemd_disposal_script(member: SystemdExecutionMember) -> String {
+  join([
+    "set -e\n",
+    "docker rm -f ", member.container_name as String, " >/dev/null 2>&1 || true\n",
+    "echo disposed ", member.container_name as String, "\n",
+  ], "")
+}
+
+// SETTLEMENT CLEARS THE MANAGER STATE THAT BLOCKS ADMISSION. systemctl reset-failed drops the
+// failed state AND the start-rate counter the crash era left behind; it is idempotent, so it runs
+// unconditionally ahead of preparation rather than conditionally on what inventory happened to
+// find. THIS IS THE RUN-2 LEG: it is modeled here, in the route, never an operator action taken
+// between runs.
+fn systemd_settlement_script(member: SystemdExecutionMember) -> String {
+  join([
+    "set -e\n",
+    "systemctl reset-failed ", member.unit_name as String, " 2>/dev/null || true\n",
+    "echo settled ", member.unit_name as String, "\n",
+  ], "")
+}
+
+// READBACK REFUSES UNLESS THE SLOT IS ACTUALLY FREE. Unlike the cleanup legs, this check is strict
+// under `set -e`: an active unit, a unit still failed after settlement, or a container still present
+// after disposal each exit non-zero, and the bracket reads that as the typed refusal that stops the
+// cohort before any preparation. Settlement-then-readback is the fail-closed pair: settlement
+// attempts the repair, readback verifies it.
+fn systemd_readback_script(member: SystemdExecutionMember) -> String {
+  let unit = member.unit_name as String
+  let container = member.container_name as String
+  join([
+    "set -e\n",
+    "if systemctl is-active ", unit, " >/dev/null 2>&1; then echo \"readback: ", unit, " still active\"; exit 1; fi\n",
+    "if systemctl is-failed ", unit, " >/dev/null 2>&1; then echo \"readback: ", unit, " still failed after settlement\"; exit 1; fi\n",
+    "if docker container inspect ", container, " >/dev/null 2>&1; then echo \"readback: orphan container ", container, " still present after disposal\"; exit 1; fi\n",
+    "echo \"readback: slot free ", unit, "\"\n",
+  ], "")
+}
+
+// PREPARATION INSTALLS THE RENDERED INTENT AND DOES NOT START IT. Write, compare, move, reload,
+// truncate the log so the anchor grep can only match this epoch — and stop. No systemctl start, no
+// enable: the experiment unit carries no [Install] section and starting it is activation's verb,
+// downstream of every member's preparation.
+fn systemd_prepare_script(member: SystemdExecutionMember) -> String {
+  let unit = member.unit_name as String
+  join([
+    "set -e\n",
+    "install -d -m 755 /var/log/gunbc\n",
+    "printf '%s' ", shell_quote(arg: member.unit_text), " > /etc/systemd/system/", unit, ".next\n",
+    "if cmp -s /etc/systemd/system/", unit, ".next /etc/systemd/system/", unit, "; then changed=0; else changed=1; fi\n",
+    "mv -f /etc/systemd/system/", unit, ".next /etc/systemd/system/", unit, "\n",
+    "systemctl daemon-reload\n",
+    ": > ", member.log_path as String, "\n",
+    "echo prepared ", unit, " changed=$changed\n",
+  ], "")
+}
+
+// ACTIVATION IS A NON-BLOCKING START — the run-3 repair. systemctl start admits the unit and
+// returns while the engine loads; there is deliberately no wait loop here, so the bracket can issue
+// the four starts sequentially and still have all four ranks alive together, with the single
+// bounded wait living in the collective readback leg. Failure to admit the start exits non-zero
+// under `set -e`, which is what makes a partial activation observable and rollbackable.
+fn systemd_activate_script(member: SystemdExecutionMember) -> String {
+  join([
+    "set -e\n",
+    "systemctl start ", member.unit_name as String, "\n",
+    "echo started ", member.unit_name as String, "\n",
+  ], "")
+}
+
+// ROLLBACK STOPS A STARTED MEMBER. `systemctl stop` runs the unit's ExecStop (docker stop) and
+// ExecStopPost (docker rm -f), so a rolled-back member leaves no container holding pool bytes; a
+// member that never started stops as a no-op.
+fn systemd_rollback_script(member: SystemdExecutionMember) -> String {
+  join([
+    "set -e\n",
+    "systemctl stop ", member.unit_name as String, " 2>/dev/null || true\n",
+    "systemctl is-active ", member.unit_name as String, " || echo stopped ", member.unit_name as String, "\n",
+  ], "")
+}
+
+// ── THE VERBS, WRAPPED INTO THE CONTRACT'S REALIZATION RECORD ────────────────────────────────────
+
+fn systemd_inventory_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseInventory, body: systemd_inventory_script(member: op.member) } }
+}
+
+fn systemd_quiescence_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseQuiescence, body: systemd_quiescence_script(member: op.member) } }
+}
+
+fn systemd_disposal_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseDisposal, body: systemd_disposal_script(member: op.member) } }
+}
+
+fn systemd_settlement_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseSettlement, body: systemd_settlement_script(member: op.member) } }
+}
+
+fn systemd_readback_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseReadback, body: systemd_readback_script(member: op.member) } }
+}
+
+fn systemd_prepare_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhasePreparation, body: systemd_prepare_script(member: op.member) } }
+}
+
+fn systemd_activate_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseActivation, body: systemd_activate_script(member: op.member) } }
+}
+
+fn systemd_rollback_verb(op: ExecutionCellOperation<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: op.member, phase: CellPhaseRollback, body: systemd_rollback_script(member: op.member) } }
+}
+
+// THE REALIZATION RECORD. Every verb is always constructible for this substrate — systemd has an
+// answer for each phase — so the record builds wholesale; a substrate that could not settle could
+// not construct it, which is the contract's point.
+fn systemd_execution_realization() -> ExecutionCellRealization<SystemdExecutionMember> {
+  ExecutionCellRealization {
+    inventory: fn(op) { systemd_inventory_verb(op: op) },
+    quiescence: fn(op) { systemd_quiescence_verb(op: op) },
+    disposal: fn(op) { systemd_disposal_verb(op: op) },
+    settlement: fn(op) { systemd_settlement_verb(op: op) },
+    readback: fn(op) { systemd_readback_verb(op: op) },
+    prepare: fn(op) { systemd_prepare_verb(op: op) },
+    activate: fn(op) { systemd_activate_verb(op: op) },
+    rollback: fn(op) { systemd_rollback_verb(op: op) },
+  }
+}
+
+// ── THE COLLECTIVE READBACK: ONE LEG, ON THE HEAD, BOUNDED BY THE ADMITTED SECONDS ───────────────
+//
+// THE CONVERGENCE WITNESS, and it is ONE leg — the run-3 repair. It runs on the head and polls the
+// head's log for the engine's own memory-profiling anchor, the same prefix extdeps.vllm.memory_profile
+// parses, so a captured line is parseable by construction. The poll is bounded by the experiment
+// plan's admitted runtime seconds (the same figure RuntimeMaxSec carries), and each iteration also
+// asserts the head unit is still active: a rank that dies after its non-blocking start strands the
+// head's rendezvous, the head never reaches its profiling line, the bound expires, and the bracket
+// rolls the cohort back. "All ranks alive" is established before this leg is issued — every
+// activation leg has already returned success, and systemd's start admission is what "alive" means
+// here — and is what the anchor line then witnesses, since the head cannot profile without its
+// ranks at the store.
+fn systemd_collective_readback_script(head: SystemdExecutionMember, profile_anchor: String, admitted_seconds: Nat) -> String {
+  let iterations = nat_range_inclusive(lo: 1, hi: (admitted_seconds + 4) / 5)
+  let unit = head.unit_name as String
+  join([
+    "set -e\n",
+    "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if grep -q \"", profile_anchor, "\" ", head.log_path as String, " 2>/dev/null; then echo profile-line-seen; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-profile; exit 1; fi; sleep 5; done\n",
+    "grep \"", profile_anchor, "\" ", head.log_path as String, " | tail -1\n",
+    "systemctl is-active ", unit, "\n",
+  ], "")
+}

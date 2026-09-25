@@ -1,0 +1,397 @@
+module test.claim.spark.execution_cell_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.execution_cell {
+  ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,
+  CellPhaseReadback, CellPhasePreparation, CellPhaseActivation, CellPhaseRollback,
+  execution_cell_phase_precedes, execution_cell_phases_in_contract_order,
+  execution_cell_actuations_in_contract_order,
+  ExecutionGeneration, execution_generation_of_intent, execution_generation_eq,
+  ExecutionCellActuation, ExecutionCellOperation, ExecutionCellPhaseResult,
+  ExecutionCellActuated, ExecutionCellPhaseRefused,
+  ExecutionCellRefusal,
+  ExecutionCellInventoryRefused, ExecutionCellQuiescenceRefused, ExecutionCellDisposalRefused,
+  ExecutionCellSettlementRefused, ExecutionCellReadbackRefused, ExecutionCellPreparationRefused,
+  ExecutionCellActivationRefused, ExecutionCellRollbackRefused,
+  ExecutionCellCohort, execution_cell_cohort_admit,
+  ExecutionCellPreparation, ExecutionCellAllPrepared, ExecutionCellPrepareHalted, execution_cell_preparation_verdict,
+  ExecutionCellActivation, ExecutionCellConverged, ExecutionCellPartiallyActivated,
+  ExecutionCellActivationRefusedBeforeStart, execution_cell_activation_verdict, execution_cell_rollback_members,
+  ExecutionCellSlotStanding, ExecutionCellSlotsFree, ExecutionCellSlotsOccupied, execution_cell_readback_standing,
+  ExecutionConservation, ExecutionConservationHeld, ExecutionConservationLeaked, execution_cell_conservation,
+  ExecutionCellGenerationObservation, ExecutionCellConvergence, ExecutionCellOneGeneration,
+  ExecutionCellGenerationSplit, ExecutionCellConvergenceRefused, execution_cell_convergence_of,
+}
+import gunbc.spark.systemd_execution_cell {
+  SystemdExecutionMember, systemd_member_key,
+  systemd_inventory_script, systemd_quiescence_script, systemd_disposal_script, systemd_settlement_script,
+  systemd_readback_script, systemd_prepare_script, systemd_activate_script, systemd_rollback_script,
+  systemd_collective_readback_script,
+  SystemdResidueClass, SystemdResidueUnitFailed, SystemdResidueStartRateTripped, SystemdResidueOrphanContainer,
+  systemd_residue_repair_phase,
+}
+import gunbc.spark.native_experiment_apply {
+  ArmExperimentActuationAdmission, ArmExperimentActuationAdmitted, ArmExperimentActuationRefused,
+  spark_native_experiment_default_actuation, spark_experiment_route,
+  spark_native_experiment_profile_anchor,
+}
+import gunbc.spark.pair_serving_apply {
+  SparkPairHostApplyPlan, SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed,
+  spark_pair_apply_all_applied,
+}
+import gunbc.spark.pair_serving_launch_receipt { serving_standing }
+import gunbc.spark.native_serving_realization { glm_native_head_unit_name, glm_native_rank_unit_name }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import gunbc.spark.serving_arm { serving_launch_profile_key }
+
+// ── WHAT THIS SUITE ESTABLISHES ──────────────────────────────────────────────────────────────────
+//
+// The execution-cell contract (gunbc.spark.execution_cell) and its systemd/Docker realization
+// (gunbc.spark.systemd_execution_cell), consumed by the reshaped experiment bracket
+// (gunbc.spark.native_experiment_apply). Each witness names the receipt it locks out: run 2 (a
+// tripped start-rate counter and an orphan container blocked start admission downstream of every
+// cleanup hook) and run 3 (a sequential bracket whose ranks and head were never alive together).
+// The contract-level arms supply their inputs at the fold boundary (per DESIGN 3's witness rule);
+// the route-level arms supply the leg runner and keep the real wet entry as the inhabitance claim.
+
+fn fx_host(raw: String) -> HostIdentity {
+  raw as HostIdentity
+}
+
+fn fx_member(host: String, unit: NonEmptyStr) -> SystemdExecutionMember {
+  SystemdExecutionMember {
+    host: fx_host(raw: host),
+    unit_name: unit,
+    container_name: "glm-native-tp4" as NonEmptyStr,
+    log_path: "/var/log/gunbc/glm-native-rank.log" as NonEmptyStr,
+    unit_text: "[Unit]\nfx\n",
+  }
+}
+
+fn fx_generation() -> ExecutionGeneration {
+  execution_generation_of_intent(intent_key: "fx-launch-intent" as NonEmptyStr)
+}
+
+fn fx_actuated(m: SystemdExecutionMember, p: ExecutionCellPhase) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: m, phase: p, body: "fx" } }
+}
+
+fn fx_refused(r: ExecutionCellRefusal<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellPhaseRefused { refusal: r }
+}
+
+fn fx_applied(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  SparkPairHostApplied { host: plan.host, detail: "ok", standing: serving_standing(attempts: []) }
+}
+
+fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  SparkPairHostApplyFailed { host: plan.host, cause: "planted leg failure" }
+}
+
+// ── THE PHASE ORDER IS LAW ───────────────────────────────────────────────────────────────────────
+
+test fn w_phase_order_prior_generation_before_preparation_before_activation() -> Bool {
+  execution_cell_phase_precedes(a: CellPhaseInventory, b: CellPhaseSettlement)
+    && execution_cell_phase_precedes(a: CellPhaseQuiescence, b: CellPhaseSettlement)
+    && execution_cell_phase_precedes(a: CellPhaseDisposal, b: CellPhaseReadback)
+    && execution_cell_phase_precedes(a: CellPhaseSettlement, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: CellPhaseReadback, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: CellPhasePreparation, b: CellPhaseActivation)
+    && execution_cell_phase_precedes(a: CellPhaseActivation, b: CellPhaseRollback)
+    && execution_cell_phases_in_contract_order(ps: [CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement, CellPhaseReadback, CellPhasePreparation, CellPhaseActivation])
+    && !execution_cell_phases_in_contract_order(ps: [CellPhasePreparation, CellPhaseSettlement])
+    && !execution_cell_phases_in_contract_order(ps: [CellPhaseActivation, CellPhasePreparation])
+    && !execution_cell_phases_in_contract_order(ps: [CellPhaseReadback, CellPhaseInventory])
+}
+
+// ── THE COHORT MINT ──────────────────────────────────────────────────────────────────────────────
+
+test fn w_cohort_admission_refuses_empty_and_duplicate_rosters() -> Bool {
+  let g = fx_generation()
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let m4 = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let empty = execution_cell_cohort_admit(members: [] as List<SystemdExecutionMember>, generation: g, member_key: systemd_member_key)
+  let dup = execution_cell_cohort_admit(members: [m1, m1, m2, m3], generation: g, member_key: systemd_member_key)
+  let good = execution_cell_cohort_admit(members: [m1, m2, m3, m4], generation: g, member_key: systemd_member_key)
+  (match empty { ExecutionCellCohortRefused { cause: _ } => true  _ => false })
+    && (match dup { ExecutionCellCohortRefused { cause: _ } => true  _ => false })
+    && (match good {
+      ExecutionCellCohortAdmitted { cohort: c } => length(c.members) == 4
+      _ => false
+    })
+}
+
+// ── PREPARATION IS ALL-OR-NOTHING ────────────────────────────────────────────────────────────────
+
+test fn w_preparation_failure_halts_and_starts_none() -> Bool {
+  let g = fx_generation()
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let halt = execution_cell_preparation_verdict(results: [
+    fx_actuated(m: m1, p: CellPhasePreparation),
+    fx_actuated(m: m2, p: CellPhasePreparation),
+    fx_refused(r: ExecutionCellPreparationRefused { member: m3, cause: "planted rank-2 prepare failure" as NonEmptyStr }),
+    fx_actuated(m: m1, p: CellPhasePreparation),
+  ])
+  let all = execution_cell_preparation_verdict(results: map([m1, m2, m3], x => fx_actuated(m: x, p: CellPhasePreparation)))
+  (match halt {
+    ExecutionCellPrepareHalted { prepared: p, refusal: r } =>
+      length(p) == 2 && (match r { ExecutionCellPreparationRefused { member: _, cause: _ } => true  _ => false })
+    _ => false
+  })
+    && (match all {
+      ExecutionCellAllPrepared { actuations: a } => length(a) == 3
+      _ => false
+    })
+}
+
+// ── PARTIAL ACTIVATION ROLLS BACK THE STARTED MEMBERS ────────────────────────────────────────────
+
+test fn w_partial_activation_rolls_back_exactly_the_started_members() -> Bool {
+  let g = fx_generation()
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let partial = execution_cell_activation_verdict(results: [
+    fx_actuated(m: m1, p: CellPhaseActivation),
+    fx_actuated(m: m2, p: CellPhaseActivation),
+    fx_refused(r: ExecutionCellActivationRefused { member: m3, cause: "planted rank-3 start failure" as NonEmptyStr }),
+  ])
+  let refused_first = execution_cell_activation_verdict(results: [
+    fx_refused(r: ExecutionCellActivationRefused { member: m1, cause: "planted first start failure" as NonEmptyStr }),
+    fx_actuated(m: m2, p: CellPhaseActivation),
+  ])
+  let converged = execution_cell_activation_verdict(results: map([m1, m2, m3], x => fx_actuated(m: x, p: CellPhaseActivation)))
+  (match partial {
+    ExecutionCellPartiallyActivated { started: s, refusal: _ } =>
+      length(s) == 2 && length(execution_cell_rollback_members(activation: partial)) == 2
+    _ => false
+  })
+    && (match refused_first {
+      ExecutionCellActivationRefusedBeforeStart { refusal: _ } =>
+        length(execution_cell_rollback_members(activation: refused_first)) == 0
+      _ => false
+    })
+    && (match converged {
+      ExecutionCellConverged { started: s } =>
+        length(s) == 3 && length(execution_cell_rollback_members(activation: converged)) == 0
+      _ => false
+    })
+}
+
+// ── CONSERVATION: NOTHING LEAKS ──────────────────────────────────────────────────────────────────
+
+test fn w_conservation_counts_started_against_rolled_back() -> Bool {
+  (match execution_cell_conservation(started: 2, rolled_back: 2) { ExecutionConservationHeld { started: _, rolled_back: _ } => true  _ => false })
+    && (match execution_cell_conservation(started: 0, rolled_back: 0) { ExecutionConservationHeld { started: _, rolled_back: _ } => true  _ => false })
+    && (match execution_cell_conservation(started: 2, rolled_back: 1) { ExecutionConservationLeaked { started: s, rolled_back: r, cause: _ } => s == 2 && r == 1  _ => false })
+}
+
+// ── SUCCESS IS ONE EXACT GENERATION OBSERVED ON EVERY MEMBER ─────────────────────────────────────
+
+test fn w_convergence_splits_when_any_member_observes_another_generation() -> Bool {
+  let g = fx_generation()
+  let other = execution_generation_of_intent(intent_key: "fx-other-intent" as NonEmptyStr)
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let m4 = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let cohort = match execution_cell_cohort_admit(members: [m1, m2, m3, m4], generation: g, member_key: systemd_member_key) {
+    ExecutionCellCohortAdmitted { cohort: c } => c
+    _ => ExecutionCellCohort { members: [], generation: g }
+  }
+  let obs = map([m1, m2, m3, m4], x => ExecutionCellGenerationObservation { member: x, observed: g })
+  let split_obs = [
+    ExecutionCellGenerationObservation { member: m1, observed: g },
+    ExecutionCellGenerationObservation { member: m2, observed: g },
+    ExecutionCellGenerationObservation { member: m3, observed: g },
+    ExecutionCellGenerationObservation { member: m4, observed: other },
+  ]
+  let short_obs = [
+    ExecutionCellGenerationObservation { member: m1, observed: g },
+    ExecutionCellGenerationObservation { member: m2, observed: g },
+    ExecutionCellGenerationObservation { member: m3, observed: g },
+  ]
+  (match execution_cell_convergence_of(cohort: cohort, observations: obs, member_key: systemd_member_key) {
+    ExecutionCellOneGeneration { generation: gen, observed_on: on } =>
+      execution_generation_eq(a: gen, b: g) && length(on) == 4
+    _ => false
+  })
+    && (match execution_cell_convergence_of(cohort: cohort, observations: split_obs, member_key: systemd_member_key) {
+      ExecutionCellGenerationSplit { observations: _ } => true
+      _ => false
+    })
+    && (match execution_cell_convergence_of(cohort: cohort, observations: short_obs, member_key: systemd_member_key) {
+      ExecutionCellConvergenceRefused { member: _, cause: _ } => true
+      _ => false
+    })
+}
+
+// ── THE PRIOR-GENERATION READBACK FOLDS INTO THE ADMISSION'S CAS ─────────────────────────────────
+
+test fn w_readback_standing_occupies_until_every_slot_reads_free() -> Bool {
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let free = execution_cell_readback_standing(readbacks: [
+    fx_actuated(m: m1, p: CellPhaseReadback),
+    fx_actuated(m: m2, p: CellPhaseReadback),
+  ])
+  let occupied = execution_cell_readback_standing(readbacks: [
+    fx_actuated(m: m1, p: CellPhaseReadback),
+    fx_refused(r: ExecutionCellReadbackRefused { member: m2, cause: "planted: prior generation still resident" as NonEmptyStr }),
+  ])
+  (match free { ExecutionCellSlotsFree { members: ms } => length(ms) == 2  _ => false })
+    && (match occupied {
+      ExecutionCellSlotsOccupied { refusal: r } =>
+        (match r { ExecutionCellReadbackRefused { member: _, cause: _ } => true  _ => false })
+      _ => false
+    })
+}
+
+// ── THE REALIZATION'S PHASE SCRIPTS ──────────────────────────────────────────────────────────────
+
+test fn w_settlement_disposal_and_prepare_carry_the_run2_repair() -> Bool {
+  let m = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let settlement = systemd_settlement_script(member: m)
+  let disposal = systemd_disposal_script(member: m)
+  let prepare = systemd_prepare_script(member: m)
+  string_contains(s: settlement, pattern: "systemctl reset-failed")
+    && !string_contains(s: settlement, pattern: "docker rm")
+    && string_contains(s: disposal, pattern: "docker rm -f glm-native-tp4")
+    && !string_contains(s: disposal, pattern: "reset-failed")
+    && !string_contains(s: prepare, pattern: "systemctl start")
+    && !string_contains(s: prepare, pattern: "systemctl enable")
+    && string_contains(s: prepare, pattern: "systemctl daemon-reload")
+}
+
+test fn w_activation_is_non_blocking_and_the_wait_is_collective() -> Bool {
+  let m = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let activate = systemd_activate_script(member: m)
+  let readback = systemd_collective_readback_script(head: m, profile_anchor: spark_native_experiment_profile_anchor, admitted_seconds: 3600)
+  string_contains(s: activate, pattern: "systemctl start")
+    && !string_contains(s: activate, pattern: spark_native_experiment_profile_anchor)
+    && !string_contains(s: activate, pattern: "sleep")
+    && string_contains(s: readback, pattern: spark_native_experiment_profile_anchor)
+    && string_contains(s: readback, pattern: "sleep 5")
+    && string_contains(s: readback, pattern: "systemctl is-active")
+}
+
+// ── THE PLANTED RESIDUE ROUTES TO THE PHASE THAT REPAIRS IT, AHEAD OF PREPARATION ────────────────
+
+test fn w_planted_residue_is_settled_or_disposed_before_any_prepare() -> Bool {
+  let failed = systemd_residue_repair_phase(r: SystemdResidueUnitFailed)
+  let tripped = systemd_residue_repair_phase(r: SystemdResidueStartRateTripped)
+  let orphan = systemd_residue_repair_phase(r: SystemdResidueOrphanContainer)
+  execution_cell_phase_precedes(a: failed, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: tripped, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: orphan, b: CellPhasePreparation)
+    && (match failed { CellPhaseSettlement => true  _ => false })
+    && (match tripped { CellPhaseSettlement => true  _ => false })
+    && (match orphan { CellPhaseDisposal => true  _ => false })
+}
+
+// ── THE ADMITTED BRACKET IS ONE CELL, PHASE-ORDERED, ONE GENERATION ──────────────────────────────
+
+fn w_admitted_shape(
+  admission: ArmExperimentActuationAdmission,
+  order_ok: fn(List<ExecutionCellActuation<SystemdExecutionMember>>) -> Bool,
+) -> Bool {
+  match admission {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: readback, stop_legs: stop, admitted_seconds: admitted } =>
+      length(cohort.members) == 4
+        && length(prior) == 20
+        && length(prep) == 4
+        && length(act) == 4
+        && length(stop) == 4
+        && order_ok(concat(prior, concat(prep, act)))
+        && all(prior, a => {
+          (match a.phase {
+            CellPhaseSettlement => string_contains(s: a.body, pattern: "systemctl reset-failed")
+            _ => true
+          })
+        })
+        && all(act, a => !string_contains(s: a.body, pattern: spark_native_experiment_profile_anchor) && !string_contains(s: a.body, pattern: "sleep"))
+        && (readback.host as String) != ""
+        && admitted > 0
+  }
+}
+
+test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bool {
+  w_admitted_shape(
+    admission: spark_native_experiment_default_actuation(),
+    order_ok: fn(legs) { execution_cell_actuations_in_contract_order(legs: legs) })
+}
+
+// ONE EXACT GENERATION ACROSS ALL FOUR MEMBERS: the cohort's generation is the launch-profile
+// hash, and every member's rendered unit embeds that profile's served alias — the generation
+// identity is on each unit by construction, never "three ranks on G, one on G-1".
+test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, collective_readback: _, stop_legs: _, admitted_seconds: _ } =>
+      match group_b_restoration_executable() {
+        Absent => false
+        Present { value: executable } =>
+          let expected = execution_generation_of_intent(intent_key: serving_launch_profile_key(p: executable.profile))
+          let alias = executable.profile.served_alias as String
+          execution_generation_eq(a: cohort.generation, b: expected)
+            && all(cohort.members, m => string_contains(s: m.unit_text, pattern: alias))
+      }
+  }
+}
+
+// ── THE ROUTE'S SEQUENCING, DRIVEN BY A SUPPLIED LEG RUNNER ──────────────────────────────────────
+
+fn fx_route_outcomes(run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> List<SparkPairHostApplyOutcome> {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => [] as List<SparkPairHostApplyOutcome>
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, collective_readback: readback, stop_legs: stop, admitted_seconds: _ } =>
+      spark_experiment_route(
+        prior_generation_actuations: prior,
+        preparation_actuations: prep,
+        activation_actuations: act,
+        collective_readback: readback,
+        stop_legs: stop,
+        run_leg: run_leg)
+  }
+}
+
+fn fx_run_fail_prepare(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: "prepared ") { fx_failed(plan: plan) } else { fx_applied(plan: plan) }
+}
+
+fn fx_run_fail_rank_activation(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if (plan.unit_name as String) == (glm_native_rank_unit_name as String) && string_contains(s: plan.script, pattern: "systemctl start") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+// A PREPARATION FAILURE STARTS NONE: 20 prior-generation legs + 4 halted preparations, no
+// activation, no readback, no stop — the all-or-nothing law, observed at the route boundary.
+test fn w_route_prepare_failure_starts_none() -> Bool {
+  let outcomes = fx_route_outcomes(run_leg: fx_run_fail_prepare)
+  length(outcomes) == 24 && !spark_pair_apply_all_applied(outcomes: outcomes)
+}
+
+// A PARTIAL ACTIVATION ROLLS BACK BEFORE IT REFUSES: 20 prior + 4 prepared + 4 activation attempts
+// + exactly 1 rollback leg for the started head = 28 outcomes, and the run refuses.
+test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool {
+  let outcomes = fx_route_outcomes(run_leg: fx_run_fail_rank_activation)
+  length(outcomes) == 29 && !spark_pair_apply_all_applied(outcomes: outcomes)
+}
+
+// THE POSITIVE CONTROL: every leg applies, 20 prior + 4 prepared + 4 activated + 1 collective
+// readback + 4 stopped = 33 outcomes, and the run reports convergence.
+test fn w_route_full_success_runs_prior_prepare_activate_readback_stop() -> Bool {
+  let outcomes = fx_route_outcomes(run_leg: fx_applied)
+  length(outcomes) == 33 && spark_pair_apply_all_applied(outcomes: outcomes)
+}
