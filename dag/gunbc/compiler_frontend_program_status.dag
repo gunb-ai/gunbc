@@ -282,7 +282,7 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
 fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
   match p {
     PlainCallArgumentReferenceVisibility => PrerequisiteDelivered {
-      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_reaches_the_denominator_holds"),
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_is_reachable_by_the_collector_holds"),
       evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
       qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility, compound argument values CompoundCallArgumentValueLowering." as NonEmptyStr,
     }

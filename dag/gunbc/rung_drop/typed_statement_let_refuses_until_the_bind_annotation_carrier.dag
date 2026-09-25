@@ -1,0 +1,39 @@
+module gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for the typed statement-form let on the v2 route (DESIGN 4b(3)), landed by
+// gunbc#12248, which turned a silently dropped let annotation into a typed refusal.
+//
+// WHAT FELL. v2.test.claim.body_lowering.statement_let_bind typed_statement_let_lowers_holds -- a
+// REQUIRED claim since gunbc#12230 -- asserted that `let x: Int = 1` lowers through normalize. It
+// lowered by DROPPING `: Int` before resolve (gunbc.recurring_failure_mode
+// body_type_annotation_dropped_before_resolve_in_v2): `let y: Q = x` was accepted with `Q`
+// declared nowhere, which is outside the ladder. gunbc#12248 refuses the annotation
+// (body_lowering_reason_type_annotation_not_carried, located at the authored type), so the claim is
+// restated as typed_statement_let_refuses_at_its_annotation_holds for the duration of this row. The
+// SAFETY position improved (silent -> typed refusal); what is dropped is the CAPABILITY the required
+// claim held -- an annotated statement let reaching resolve -- and every annotated let on the v2
+// route now refuses where it used to lower.
+data typed_statement_let_refuses_until_the_bind_annotation_carrier: RungDrop = RungDrop {
+  identity: "typed_statement_let_refuses_until_the_bind_annotation_carrier" as NonEmptyStr,
+
+  subject: "a type-annotated statement-form let (`let x: T = e`) lowering through v2 body lowering to a Bind that reaches resolve (v2.test.claim.body_lowering.statement_let_bind, a required claim module)",
+
+  declared: "2026-09-25",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a v2.std.node Bind carrier for the let annotation -- at most one Named edge under the unauthorable v2.std.type_binder `<type-annotation>` label beside Bind's three positional edges (shape ruled by neat-boar-16) -- resolved by v2.compiler.resolve in a type-position frame and checked by v2.compiler.infer (lane adhoc-5cc9c032-d3f, item 2a)" },
+    population: [
+      "v2.test.claim.body_lowering.statement_let_bind typed_statement_let_refuses_at_its_annotation_holds (was typed_statement_let_lowers_holds)",
+      "every type-annotated statement-form let on the v2 route, each refused body_lowering_reason_type_annotation_not_carried at its annotation; counted by that reason in the gen-two census",
+    ],
+    restoration_trigger: "an annotated statement let lowers to a Bind CARRYING its annotation (not explaining it as dropped), the annotation's type names resolve in a type-position frame -- a body annotation's `T` binds to the enclosing fn's <T>, and a type parameter in value position still refuses -- and infer checks the bound value against it. Observed at retirement: typed_statement_let_refuses_at_its_annotation_holds flips back to asserting the typed let lowers with its annotation carried, and passes on a required run; this row retires in that change. Lowering the let while dropping or explaining away its annotation does not discharge this row."
+  }
+}

@@ -10431,6 +10431,20 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
     Ok(str_value(result))
 }
 
+/// The wire key a record field is encoded under: its declared `from` key when the record's type
+/// declares one for that field, else the authored name. The encode-side twin of the lookup
+/// `decode_json_by_declared_type` performs, so one declaration governs both directions.
+pub(crate) fn record_field_wire_key(ctx: &InterpContext, type_name: &str, field: &str) -> String {
+    lookup_type_item_across_modules(ctx, type_name)
+        .and_then(|ty| {
+            ty.children
+                .iter()
+                .find(|f| authored_name_at(ctx.si(), (*f).clone()) == field)
+                .and_then(|f| extract_from_key(f, ctx))
+        })
+        .unwrap_or_else(|| field.to_string())
+}
+
 fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
     if eval_profile_enabled() {
         TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
@@ -19881,6 +19895,12 @@ macro_rules! v1_builtin_arms {
                 let s = expect_str($positional.first().copied(), "utf8_encode_bytes")?;
                 let items: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
                 Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.pure_dag_seam_unreachable" { "pure_dag_seam_unreachable" } => {
+                Err(InterpError::TypeError {
+                    msg: "std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated".to_string(),
+                })
             },
 
             arm "free_call.discriminant" { "discriminant" } => match $positional.first() {
