@@ -134,12 +134,10 @@ fn rbracket_start(src: String) -> Int {
   }
 }
 
-// THE UNIT IS CODE POINTS TODAY, WHATEVER THE EXTENT IS CALLED. Three two-byte scalars in the string
-// precede the `]`: code-point offset 6, byte offset 9. v2.compiler.tokenize advances its position by
-// the lexeme's length in code points and the carrier is v2.std.diagnostic ByteRange, so every v2
-// token extent -- this refusal's locus included -- is mislabelled. Converting is a lexer-wide change
-// with consumers that slice source by these offsets; when it lands this claim must flip to 9, not
-// be deleted.
-test fn tokens_remain_offset_unit_is_code_points_as_lexed() -> Bool {
-  rbracket_start(src: "\"ééé\" ]") == 6
+// THE UNIT IS UTF-8 OCTETS, AS v2.std.diagnostic ByteRange NAMES IT. Three two-byte scalars in the
+// string precede the `]`: byte offset 9, code-point offset 6. This refusal's locus is the lexer's
+// extent, so it carries whatever unit tokenize counts; gunbc#12285 made that octets, and this control
+// goes red (6) if the lexer ever counts code points again.
+test fn tokens_remain_offset_unit_is_octets_as_lexed() -> Bool {
+  rbracket_start(src: "\"ééé\" ]") == 9
 }

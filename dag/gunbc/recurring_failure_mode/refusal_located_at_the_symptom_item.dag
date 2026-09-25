@@ -19,7 +19,7 @@ data refusal_located_at_the_symptom_item: RecurringFailureMode = RecurringFailur
 
     "NAMED FRONTIER, NOT CLOSED: THE EXPECTED SET. The locus says WHERE; it does not say WHAT the grammar would have admitted there. v2.std.diagnostic Diagnostic is `{ reason, at, correction }` with no payload that could carry the expected FirstKey set at the furthest token, so a reader still derives the missing production by reading the grammar at that token. NEXT-RUNG TRIGGER: a Diagnostic carrier that admits a typed detail payload, sufficient for `parse_g0_tokens_remain` to report the expected terminal set at its locus and for a census to group refusals by that set without reading source.",
 
-    "ADJACENT DEFECT, SEPARATE LANE: the offsets are code points labelled `ByteRange` (v2.compiler.tokenize advances position by lexeme length in code points), corpus-wide and not specific to this refusal. The control tokens_remain_offset_unit_is_code_points_as_lexed pins today's unit and must flip, not be deleted, when the lexer counts bytes.",
+    "ADJACENT DEFECT, CLOSED BY gunbc#12285: the offsets were code points labelled `ByteRange`; tokenize now counts UTF-8 octets. The control tokens_remain_offset_unit_is_octets_as_lexed pins the octet unit and goes red if the lexer counts code points again.",
   ],
 
   evidence: [],
