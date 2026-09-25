@@ -55,6 +55,8 @@ data vrr_let_value_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  let
 
 data vrr_swallowed_fold_refusal_source: String = vrr_header + "fn leaf(v: Bool) -> Bool = v\n\nfn p(s: List<Bool>) -> Bool {\n  let folded = fold(map(s, l => leaf(l)), init: true, f: fn(acc, e) {\n    let y = leaf(e)\n    y\n  })\n  folded\n}\n"
 
+data vrr_block_arm_lambda_source: String = vrr_header + "fn leaf(v: Bool) -> Bool = v\n\nfn p(v: Bool, s: List<Bool>) -> Bool {\n  match v {\n    true => v\n    false => {\n      let o = leaf(v)\n      all(s, a => leaf(a))\n    }\n  }\n}\n"
+
 data vrr_field_initializer_source: String = vrr_header + "fn p(v: Bool) -> VrrRecord {\n  VrrRecord { f: fn(y) { y } }\n}\n"
 
 type VrrVerdict
@@ -158,6 +160,24 @@ test fn an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_c
 // a `let` because a body the walker can lower is what the swallow latched onto.
 test fn a_fold_refusal_inside_a_let_value_propagates_instead_of_binding_an_inner_subtree_holds() -> Bool {
   match vrr_normalize(source: vrr_swallowed_fold_refusal_source) {
+    VrrNotRefused => false
+    VrrRefused { fatal: d } =>
+      (d.reason == ^body_lowering_reason_call_argument_unread)
+        && match d.at {
+             NodeLocus { anchor: a } => vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda)
+             _ => false
+           }
+  }
+}
+
+// A BLOCK ARM WHOSE CONTENT REFUSES KEEPS ITS CONTENT'S REFUSAL. The arm position is read twice --
+// as an arm, then as a repeat element around one -- and the second reading used to run whenever the
+// first refused for ANY reason, so a lambda call argument inside a block arm body (call_argument_unread)
+// was reported as match_arm_navigation_refused at a locus holding no source at all
+// (dag/extdeps/vllm/engram_layout.dag vllm_engram_is_prime). The retry is now owed only to a shape
+// miss, and the arm's own refusal stands, located at the lambda.
+test fn a_block_arm_whose_content_refuses_keeps_the_content_refusal_not_navigation_holds() -> Bool {
+  match vrr_normalize(source: vrr_block_arm_lambda_source) {
     VrrNotRefused => false
     VrrRefused { fatal: d } =>
       (d.reason == ^body_lowering_reason_call_argument_unread)

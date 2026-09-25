@@ -57,6 +57,7 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
+  diagnostics_fatal_reason,
   Accepted,
   CorrectionNotModeled,
   Diagnostic,
@@ -4990,11 +4991,22 @@ fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: Node) -> Outcome<Nod
   }
 }
 
+// TWO READINGS OF ONE ARM POSITION, AND ONLY A SHAPE MISS MAY TRY THE SECOND. The position is read as
+// an arm first and, failing that, as a repeat element wrapping one. The second reading is owed only
+// when the first found NO ARM SHAPE (match_arm_navigation_refused). When the first found the arm and
+// its CONTENT refused -- a lambda call argument in a block arm body, `call_argument_unread` -- that
+// refusal is the arm's, and retrying used to discard it and report the second reading's navigation
+// failure instead, located nowhere useful (dag/extdeps/vllm/engram_layout.dag
+// vllm_engram_is_prime, surfaced by the full-corpus census on the PR that deleted the value carry).
 fn body_lower_extract_comma_list_arm_head(node: Node) -> Outcome<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match body_lower_wire_match_arm_capture(arm_capture: stripped) {
-    Rejected { diagnostics: _ } =>
-      body_lower_match_arm_from_comma_repeat_elem(repeat_elem: stripped)
+    Rejected { diagnostics: r } =>
+      if diagnostics_fatal_reason(d: r) == ^body_lowering_reason_match_arm_navigation_refused {
+        body_lower_match_arm_from_comma_repeat_elem(repeat_elem: stripped)
+      } else {
+        Rejected { diagnostics: r }
+      }
     Accepted { value: arm, diagnostics: d } =>
       Accepted { value: arm, diagnostics: d }
   }
