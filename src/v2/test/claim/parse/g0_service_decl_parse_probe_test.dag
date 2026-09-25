@@ -17,9 +17,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `service`, then a dotted name, then a brace body of operations (and optional
 // transport/config). The marker words are literal terminals over ident, not keyword classes. The first native fatal was leftover token `service` at
 // dag/extdeps/access/posix_effective_principal_read_op.dag. The family is the
-// nest below; service-level `config` and the v2-inline operation form remain
-// v1-admitted remainder. Lowering is a separate stage: the route rows below pin what the
-// normalized-tree door does with a parsed service.
+// nest below; service-level `config` is admitted over v1's closed field set, and the v2-inline
+// operation form remains v1-admitted remainder. Lowering is a separate stage: the route rows below
+// pin what normalize does with a parsed service.
 
 data probe_cached_lm: LanguageModel = dag_language_model()
 
@@ -80,6 +80,22 @@ data field_default_without_expr_red_source: String = "module m\nservice S {\n  o
 data posix_effective_principal_service_source: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n}\n"
 
 data remaining_arms_service_source: String = "module m\nservice S {\n  transport rest { base: \"u\" }\n  operation Op {\n    input { x: Int }\n    idempotent\n    hermetic\n    response {\n      200 => Int\n      404 => String \"missing\"\n    }\n  }\n}\n"
+
+// The shape of the config block in dag/extdeps/github/workflow_runs.dag service
+// github.WorkflowRuns: newline-separated fields, one of them a struct literal. Trimmed to two
+// fields and no operation so the claim pays only for the production it is about.
+data service_config_source: String = "module m\nservice S {\n  config {\n    endpoint: e\n    auth_source: EnvVar { name: \"T\" }\n  }\n}\n"
+
+// v1 parse_config_fields refuses a field outside endpoint/auth/auth_input/auth_source/rate_limit
+// by name; the grammar's closed choice must refuse it too.
+data service_config_unknown_field_red_source: String = "module m\nservice S {\n  config {\n    endpoint: e\n    region: r\n  }\n}\n"
+
+data service_config_without_colon_red_source: String = "module m\nservice S {\n  config {\n    endpoint e\n  }\n}\n"
+
+// A service whose only entry is config: config binds the transport (endpoint, auth), so it is
+// realization, set aside, and full normalize refuses the service for it -- carried to a typed
+// refusal, never dropped on the way to resolve.
+data config_only_service_source: String = "module m\nservice S { config {} }\n"
 
 data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  operation Op {\n    exit {\n      0 Unit\n    }\n  }\n}\n"
 
@@ -175,6 +191,18 @@ test fn remaining_service_arms_parse_holds() -> Bool {
   parses(src: remaining_arms_service_source)
 }
 
+test fn service_config_parses_holds() -> Bool {
+  parses(src: service_config_source)
+}
+
+test fn service_config_unknown_field_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: service_config_unknown_field_red_source)
+}
+
+test fn service_config_without_colon_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: service_config_without_colon_red_source)
+}
+
 test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
   refuses_at_parse(src: exit_entry_without_arrow_red_source)
 }
@@ -196,12 +224,13 @@ test fn type_field_from_key_still_refuses_holds() -> Bool {
 }
 
 // ROUTE, not only parse. A service now LOWERS at declaration grade (v2.compiler.body_lowering_fold
-// body_lower_service_decl): its interface onto existing connectives, its realization members set
-// aside, typed and located. Full normalize is what resolution, eval and emission consume, so it
-// refuses a service with a set-aside realization, for that reason rather than for retention; an
-// empty service sets nothing aside and is admitted. This pair was the retention route before the
-// lowering landed; the climb keeps it as the permanent control that normalize discriminates on what a
-// service carries (DESIGN section 4b(4)).
+// body_lower_service_decl): its interface onto existing connectives, its realization members
+// (transport, config, exit, response, mock_response) set aside, typed and located. Full normalize is
+// what resolution, eval and emission consume, so it refuses a service with a set-aside realization,
+// for that reason rather than for retention; an empty service sets nothing aside and is admitted.
+// This pair was the retention route before the lowering landed; the climb keeps it as the permanent
+// control that normalize discriminates on what a service carries (DESIGN section 4b(4)). The type
+// control is the positive half: a lowered type declaration is the cheapest lowered item.
 fn refused_for_set_aside_realization(ne: NonEmptyDiagnostics) -> Bool {
   fold_list(
     xs: ne.tail,
@@ -248,6 +277,10 @@ test fn an_empty_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool
   normalize_admits(src: empty_service_source)
 }
 
-test fn fn_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
-  normalize_admits(src: fn_control_source)
+test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
+  normalize_admits(src: plain_type_source)
+}
+
+test fn config_only_service_is_refused_for_its_set_aside_realization_holds() -> Bool {
+  normalize_refuses_for_set_aside_realization(src: config_only_service_source)
 }

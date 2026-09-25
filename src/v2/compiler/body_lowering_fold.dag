@@ -7346,7 +7346,8 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
 // node_minimal's TransportSlot is NOT promoted: transport is a realization handler, not a node field).
 //
 // WHAT IS NOT LOWERED IS SET ASIDE, TYPED AND LOCATED, UNDER TWO COUNTED REASONS:
-//  - body_lowering_reason_realization_member_set_aside: transport / exit / response / mock_response.
+//  - body_lowering_reason_realization_member_set_aside: transport / config / exit / response /
+//    mock_response. config binds the transport's endpoint and authentication.
 //    Realization per DESIGN section 3, never part of the interface, so the interface lowers without it.
 //  - body_lowering_reason_interface_member_unmodeled: readonly / idempotent / hermetic and an io
 //    field's `from "key"` / `= default` tail. These ARE interface facts (idempotent governs retry,
@@ -7616,7 +7617,7 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
               outcome_accepted(value: BodyLowerServiceAcc { operations: list_snoc_item(xs: a.operations, item: op.edge), set_aside: list_append(left: a.set_aside, right: op.set_aside) })
             }
           })
-        } else if id == ^dag_surface_transport {
+        } else if (id == ^dag_surface_transport) || (id == ^dag_surface_service_config) {
           outcome_accepted(
             value: BodyLowerServiceAcc {
               operations: a.operations,
