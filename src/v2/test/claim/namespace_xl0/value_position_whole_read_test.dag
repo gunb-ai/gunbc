@@ -37,7 +37,12 @@ import v2.std.node {
   arrow_type_params_target_lookup,
   node_subtree_nodes
 }
-import v2.std.node_query { call_argument_targets, call_callee_target, node_positional_child_targets }
+import v2.std.node_query {
+  call_argument_targets,
+  call_callee_target,
+  field_projection_optional,
+  node_positional_child_targets
+}
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -108,6 +113,12 @@ data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport 
 // gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2): the let's value
 // once lowered to the literal's first token, dropping the literal and its `-> Bool`.
 data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
+
+// A FIELD PROJECTION ON A CALL RESULT (warm-bear-132's 02_parse c02590, parse_memo_recurrence_census:
+// `acc + expr_parse_demand_fold(expr: p.expression).discarding_sites`), once as an operator operand
+// inside a fn literal -- the specimen -- and once as a two-step projection in fn-body value position.
+// Before the chain door lowered a call head, the first refused its module operator_operand_unread.
+data vpw_call_projection_source: String = "module v2.test.vpw_call_projection\n\nimport v2.std.logic { Bool }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_fold(f: fn(acc, q) { acc + vpw_demand(e: q.expression).sites }) }\n\nfn vpw_probe_chain(p: Bool) -> Bool { vpw_demand_two(e: p).outer.inner }\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -288,7 +299,10 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
               head: vpw_read(source: vpw_two_lambdas_source, id: ^vpw_two_lambdas_artifact, unit: ^vpw_two_lambdas_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_two_lambdas.dag"),
               tail: Cons {
                 head: vpw_read(source: vpw_let_fn_literal_source, id: ^vpw_let_fn_literal_artifact, unit: ^vpw_let_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_let_fn_literal.dag"),
-                tail: Empty
+                tail: Cons {
+                  head: vpw_read(source: vpw_call_projection_source, id: ^vpw_call_projection_artifact, unit: ^vpw_call_projection_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_call_projection.dag"),
+                  tail: Empty
+                }
               }
             }
           }
@@ -596,5 +610,48 @@ fn vpw_is_let_bound_arrow(n: Node) -> Bool {
 test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> Bool {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_let_bound_arrow(n: n) })
+  })
+}
+
+// THE PROJECTION IS KEPT, OFF THE CALL (gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, the call-then-field residue). The operand is
+// v2.std.node_query field_projection_node over the lowered call: the projection is the one form a
+// field access off any value lowers to, the call its base. A lowering that dropped the projection
+// (answering the call), kept the head atom, or refused the module (the shape ingest then refuses
+// whole) fails these.
+fn vpw_projects(n: Node, field: Symbol) -> Optional<Node> {
+  match field_projection_optional(n: n) {
+    Present { value: fp } => if fp.field == field { optional_present(value: fp.base) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+}
+
+fn vpw_is_projection_of_call(n: Node, field: Symbol, callee: Symbol) -> Bool {
+  match vpw_projects(n: n, field: field) {
+    Present { value: base } => vpw_is_call_to(n: base, callee: callee)
+    Absent => false
+  }
+}
+
+fn vpw_is_two_step_projection_of_call(n: Node) -> Bool {
+  match vpw_projects(n: n, field: ^inner) {
+    Present { value: mid } => vpw_is_projection_of_call(n: mid, field: ^outer, callee: ^vpw_demand_two)
+    Absent => false
+  }
+}
+
+test fn a_field_projection_on_a_call_result_in_an_operand_lowers_whole() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_projection_of_call(n: n, field: ^sites, callee: ^vpw_demand)
+    })
+  })
+}
+
+test fn a_two_step_projection_on_a_call_result_lowers_every_step() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_two_step_projection_of_call(n: n)
+    })
   })
 }
