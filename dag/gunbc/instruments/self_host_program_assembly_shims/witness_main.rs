@@ -24,7 +24,8 @@ const WELL_FORMED: &str =
     "module self_host.program_assembly_witness\nfn add(x: Int, y: Int) -> Int { x + y }\n";
 const UNPARSEABLE: &str = "module self_host.program_assembly_witness\nfn add(x: Int, y: Int -> Int {\n";
 
-fn assembles(text: &str) -> bool {
+// Accepted, or the refusal reasons in chain order.
+fn assemble(text: &str) -> Result<(), Vec<String>> {
     let read = Rc::new(DagSourceReadWitness {
         source: lossless_source(text.to_string()),
         artifact: Rc::new(Artifact {
@@ -43,12 +44,11 @@ fn assembles(text: &str) -> bool {
     });
     let outcome = emitted::assemble_program_from_ingest(Rc::new(vec![read]), admission, dag_language_model());
     match &*outcome {
-        Outcome::Accepted { .. } => true,
-        Outcome::Rejected { diagnostics } => {
-            let shown: String = format!("{:?}", diagnostics).chars().take(400).collect();
-            println!("  rejected: {shown}");
-            false
-        }
+        Outcome::Accepted { .. } => Ok(()),
+        Outcome::Rejected { diagnostics } => Err(std::iter::once(&diagnostics.head)
+            .chain(diagnostics.tail.iter())
+            .map(|d| d.reason.clone())
+            .collect()),
     }
 }
 
@@ -56,10 +56,15 @@ fn assembles(text: &str) -> bool {
 // fault run goes red only if emitted assembly really refuses it.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let valid_accepts = assembles(if inject_fault { UNPARSEABLE } else { WELL_FORMED });
-    println!("assemble well_formed inject_fault={inject_fault} accepts={valid_accepts}");
-    let invalid_refuses = !assembles(UNPARSEABLE);
-    println!("assemble unparseable refuses={invalid_refuses}");
+    let valid = assemble(if inject_fault { UNPARSEABLE } else { WELL_FORMED });
+    let valid_accepts = valid.is_ok();
+    println!("assemble well_formed inject_fault={inject_fault} outcome={valid:?}");
+    // The ROUTE, not only the verdict: the refusal must carry the parse stage's syntax error, so a
+    // refusal reached for some other reason (a grammar-level residue riding the chain) does not
+    // count.
+    let invalid = assemble(UNPARSEABLE);
+    let invalid_refuses = matches!(&invalid, Err(reasons) if reasons.iter().any(|r| r == "parse_e1_syntax_error"));
+    println!("assemble unparseable outcome={invalid:?} refuses_with_syntax_error={invalid_refuses}");
     if valid_accepts && invalid_refuses {
         println!("SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);

@@ -1,4 +1,3 @@
-use im::vector as vec;
 use std::rc::Rc;
 
 use v1_compiled::v2_compiler_program_partition as emitted;
@@ -12,7 +11,7 @@ use v1_compiled::v2_std_node::{node_synthetic, Behavior, Connective, Edge, EdgeL
 // type node, keeps the first per name, and skips value declarations and positional edges.
 
 fn leaf(kind: NodeKind) -> Rc<Node> {
-    node_synthetic(Rc::new(kind), Rc::new(vec![]))
+    node_synthetic(Rc::new(kind), Rc::new(im::vector![]))
 }
 
 fn type_node(connective: Connective) -> Rc<Node> {
@@ -45,7 +44,7 @@ fn module_root() -> Rc<Node> {
         Rc::new(NodeKind::TypeNode {
             connective: Rc::new(Connective::Conj),
         }),
-        Rc::new(vec![
+        Rc::new(im::vector![
             edge(named("Shape"), type_node(Connective::Disj)),
             edge(named("value_decl"), value_node()),
             edge(named("Shape"), type_node(Connective::Conj)),

@@ -1,4 +1,3 @@
-use im::vector as vec;
 use std::rc::Rc;
 
 use v1_compiled::extdeps_communication_medium::DecodeFidelity;
@@ -22,7 +21,7 @@ fn atom(identity: &str) -> Rc<Node> {
                 identity: identity.to_string(),
             }),
         }),
-        Rc::new(vec![]),
+        Rc::new(im::vector![]),
     )
 }
 
@@ -57,7 +56,7 @@ fn with_fail_closed() -> Rc<Node> {
             Rc::new(NodeKind::ComputationNode {
                 behavior: Behavior::Value,
             }),
-            Rc::new(vec![]),
+            Rc::new(im::vector![]),
         ),
     )]);
     conj(vec![
