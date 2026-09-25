@@ -5363,7 +5363,9 @@ fn body_lower_arm_operand_resolved_read(arm: Node) -> OperandRefRead {
   match body_lower_shell_cast_target_optional(node: arm) {
     Present { value: cast_target } =>
       OperandRefRefused {
-        diagnostics: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: cast_target)
+        diagnostics: diagnostics_singleton(
+          d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: cast_target)
+        )
       }
     Absent => body_lower_arm_operand_resolved_uncast_read(arm: arm)
   }
