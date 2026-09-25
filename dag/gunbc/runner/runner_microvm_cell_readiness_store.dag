@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import std.algebra { trim }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem }
 import extdeps.exec.command { LocalExec }
@@ -44,7 +44,7 @@ import gunbc.runner_microvm_cell_readiness {
   record_cell,
 }
 
-data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthority
+data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = SingleAuthority
 
 // THE ON-DISK REALIZATION OF gunbc.runner_microvm_cell_readiness's STORE.
 //

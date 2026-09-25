@@ -2,7 +2,7 @@ module gunbc.fabric_cell_converge
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.string_type { string_is_lexicographically_before }
 import v2.std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
@@ -29,7 +29,7 @@ import gunbc.runner_slot_allocation {
   SlotServesGitHubActions,
 }
 
-data fabric_cell_converge_authority_disposition: Disposition = SingleAuthority
+data fabric_cell_converge_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE ANSWERS ONE QUESTION AND IT IS NOT THE ONE gunbc.runner_lifecycle ANSWERS.
 // runner_lifecycle owns the GitHub Actions runner lifecycle and permanently refuses fabric slots;

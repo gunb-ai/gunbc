@@ -32,7 +32,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_files,
   deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_index_tensor_count,
 }
-import gunbc.spark.v41_engram_row_store {
+import gunbc.spark.v41_engram_row_store { V41StoreReadback, V41StoreReadbackUnread, V41StoreReadbackVerified,
   V41PublishedRowStoreKeyed,
   V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow,
   v41_source_row, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of,
@@ -45,7 +45,7 @@ import gunbc.spark.v41_runtime_realized {
   V41OciImageDigest, V41PatchesConsumedByImage, V41PatchConsumptionEvidence,
   v41_oci_image_digest, v41_residency_limits,
   v41_realized_runtime, V41RuntimeRealized, V41RuntimeRealizationRefused, V41RuntimeRealizationUnestablished,
-  v41_realized_candidate, v41_selectable, V41Selectable, V41NotSelectable, v41_specification_is_not_selectable,
+  v41_realized_candidate, v41_selectable, V41SelectableRuntime, V41Selectable, V41NotSelectable, v41_specification_is_not_selectable,
   v41_open_rank_store, V41StoreHandle, V41StoreOpenRefused, v41_distributed_launch,
   v41_token_time, V41TokenTimeLocal, V41TokenTimeRefused,
   v41_residency_under_trace, V41ResidencyWithinBound, V41ResidencyExceeded,
@@ -61,6 +61,12 @@ import gunbc.spark.v41_engram_staging {
 }
 import gunbc.spark.serving_deployment_selection { id_component_budget_authority }
 import std.decl_ref { declaration_ref_eq }
+
+// THE CANDIDATE'S DERIVATION EVIDENCE, SUPPLIED: these claims are about the key, which the readback never
+// enters, so they pass the one arm that leaves a keyed standing keyed.
+fn w_readback_unread() -> V41StoreReadback {
+  V41StoreReadbackUnread { obligation: "fixture: the stores were not read back" as NonEmptyStr }
+}
 
 data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
   members: deepseek_v4_1_flash_engram_index_members,
@@ -189,9 +195,9 @@ fn w_keys() -> List<ContentHash> {
 }
 
 test fn control_patch_digest_or_order_changes_runtime_and_candidate_keys() -> Bool {
-  let a = v41_candidate_standing(c: w_default(patches: w_two_patches()))
-  let b = v41_candidate_standing(c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "9" }, WPatchSpec { path: "engram_prefetch.patch", c: "2" }], partition: PartitionByLaunchConfiguration)))
-  let ba = v41_candidate_standing(c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_prefetch.patch", c: "2" }, WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionByLaunchConfiguration)))
+  let a = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
+  let b = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_storage.patch", c: "9" }, WPatchSpec { path: "engram_prefetch.patch", c: "2" }], partition: PartitionByLaunchConfiguration)))
+  let ba = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_observed(pairs: [WPatchSpec { path: "engram_prefetch.patch", c: "2" }, WPatchSpec { path: "engram_storage.patch", c: "1" }], partition: PartitionByLaunchConfiguration)))
   w_key(s: a, which: "runtime") != w_key(s: b, which: "runtime")
     && w_key(s: a, which: "candidate") != w_key(s: b, which: "candidate")
     && w_key(s: a, which: "runtime") != w_key(s: ba, which: "runtime")
@@ -210,12 +216,12 @@ test fn control_weight_or_tokenizer_change_moves_source_and_candidate_keys() -> 
     topology: a.topology,
     device: a.device,
   }
-  w_key(s: v41_candidate_standing(c: a), which: "candidate") != w_key(s: v41_candidate_standing(c: b), which: "candidate")
+  w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: a), which: "candidate") != w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: b), which: "candidate")
 }
 
 test fn control_route_b_versus_d_moves_engram_not_runtime() -> Bool {
-  let b = v41_candidate_standing(c: w_default(patches: w_two_patches()))
-  let d = v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_d_identity))
+  let b = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
+  let d = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_d_identity))
   w_key(s: b, which: "runtime") == w_key(s: d, which: "runtime")
     && w_key(s: b, which: "engram") != w_key(s: d, which: "engram")
 }
@@ -226,8 +232,8 @@ test fn control_partition_set_reordering_does_not_change_identity() -> Bool {
     storage_backed: a.storage_backed.sort_by(n => n as String),
     resident: a.resident.sort_by(n => n as String),
   }
-  w_key(s: v41_candidate_standing(c: w_default(patches: w_two_patches())), which: "engram")
-    == w_key(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: swapped, route: engram_route_b_identity)), which: "engram")
+  w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches())), which: "engram")
+    == w_key(s: v41_candidate_standing(readback: w_readback_unread(), c: w_inputs(patches: w_two_patches(), partition: swapped, route: engram_route_b_identity)), which: "engram")
 }
 
 test fn control_incomplete_manifests_stay_unestablished() -> Bool {
@@ -243,7 +249,7 @@ test fn control_incomplete_manifests_stay_unestablished() -> Bool {
     topology: a.topology,
     device: a.device,
   }
-  match v41_candidate_standing(c: incomplete).standing {
+  match v41_candidate_standing(readback: w_readback_unread(), c: incomplete).standing {
     V41CandidateUnestablished { obligations: o } => any(o, x => (x as String).contains("weights unread"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
@@ -297,20 +303,16 @@ test fn control_missing_local_store_cannot_use_nfs() -> Bool {
 }
 
 test fn control_published_infeasibility_is_not_weakened_by_a_keyed_specification() -> Bool {
-  v41_specification_is_not_selectable(spec: v41_candidate_standing(c: w_default(patches: V41PatchesAbsentByObservation)))
-    && match v41_candidate().standing {
-      V41CandidateUnestablished { obligations: _ } => true
-      V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
-      V41CandidateRefused { defects: _ } => false
-    }
+  v41_specification_is_not_selectable(spec: v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: V41PatchesAbsentByObservation)))
+    && v41_specification_is_not_selectable(spec: v41_candidate())
 }
 
 test fn a_keyed_specification_is_not_selectable_even_when_every_axis_keys() -> Bool {
-  v41_specification_is_not_selectable(spec: v41_candidate_standing(c: w_default(patches: w_two_patches())))
+  v41_specification_is_not_selectable(spec: v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches())))
 }
 
 test fn realized_identity_requires_produced_image_digest_and_consumed_patches() -> Bool {
-  let spec = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let spec = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
   match spec.standing {
     V41CandidateKeyed { runtime_artifact: rk, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
       match v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: AdoptedUnderExpectedTag, consumed: w_consumed()) {
@@ -323,23 +325,37 @@ test fn realized_identity_requires_produced_image_digest_and_consumed_patches() 
   }
 }
 
-test fn only_the_realized_candidate_is_selectable() -> Bool {
-  let spec = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+fn w_realized_under(readback: V41StoreReadback) -> V41SelectableRuntime? {
+  let spec = v41_candidate_standing(readback: readback, c: w_default(patches: w_two_patches()))
   match spec.standing {
     V41CandidateKeyed { runtime_artifact: rk, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } =>
       match w_identified() {
-        Absent => false
-        Present { value: enc } => match v41_selectable(realized: v41_realized_candidate(
+        Absent => none
+        Present { value: enc } => Present { value: v41_selectable(realized: v41_realized_candidate(
           runtime: v41_realized_runtime(spec_runtime: rk, image: w_image(), provenance: BuiltByThisRun, consumed: w_consumed()),
           row_store: enc,
           spec: spec,
-        )) {
-          V41Selectable { candidate: _ } => true
-          V41NotSelectable { reason: _ } => false
-        }
+        )) }
       }
-    V41CandidateUnestablished { obligations: _ } => false
-    V41CandidateRefused { defects: _ } => false
+    V41CandidateUnestablished { obligations: _ } => none
+    V41CandidateRefused { defects: _ } => none
+  }
+}
+
+test fn only_the_realized_candidate_is_selectable() -> Bool {
+  match w_realized_under(readback: V41StoreReadbackVerified { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, samples: 40 }) {
+    Present { value: V41Selectable { candidate: _ } } => true
+    _ => false
+  }
+}
+
+// A REALIZED CANDIDATE IS SELECTABLE, SO THE SPECIFICATION'S DERIVATION EVIDENCE GATES IT: the same keyed
+// specification, image and stores that are selectable once the stores are read back are not while the
+// readback is unread, and the reason is the readback's obligation.
+test fn an_unread_readback_keeps_a_realized_candidate_unselectable() -> Bool {
+  match w_realized_under(readback: w_readback_unread()) {
+    Present { value: V41NotSelectable { reason: r } } => (r as String).contains("the stores were not read back")
+    _ => false
   }
 }
 

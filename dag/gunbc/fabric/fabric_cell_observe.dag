@@ -1,7 +1,7 @@
 module gunbc.fabric_cell_observe
 
 import std.types { String, List, Bool, NonEmptyStr }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.runner_slot_allocation {
@@ -46,7 +46,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_canonical_refusals,
 }
 
-data fabric_cell_observe_authority_disposition: Disposition = SingleAuthority
+data fabric_cell_observe_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE IS THE PURE HALF OF THE OBSERVER AND CARRIES NO HOST EFFECT. It turns probe RESULTS
 // into the observation vocabulary gunbc.fabric_cell_converge already owns; acquiring those results
