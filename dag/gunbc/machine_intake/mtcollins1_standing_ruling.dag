@@ -19,6 +19,7 @@ import gunbc.auth.approval_gate {
 }
 import gunbc.auth.approval_request_client { ApprovalPollStanding, stored_request_from_authorization }
 import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 
 // ── THE OPERATOR'S STANDING CONSENT, ATTESTED OUTSIDE THE DIFF (review 70369; decision A) ──────
 //
@@ -74,18 +75,9 @@ data mtcollins1_boot_standing_ruling: StandingRuling = StandingRuling {
 }
 
 // ── ONE INJECTIVE ENCODING OF THE COMPLETE RULING ─────────────────────────────────────────────
-// Every field is tag:length:value; so no separator redistribution between fields can reproduce an
-// encoding (the length fixes where each value ends), and the tags fix which field each value is. A
-// list carries its element count first. Every component is encoded: text, effect subject, every
-// root, the scope's verb, resource tree (and its service), every path segment, action, interlock.
-fn ruling_field(tag: String, value: String) -> String {
-  join([tag, ":", to_string(string_length(value)), ":", value, ";"], "")
-}
-
-fn ruling_list_field(tag: String, values: List<String>) -> String {
-  concat(ruling_field(tag: concat(tag, "#"), value: to_string(values.length())), join(map(values, v => ruling_field(tag: tag, value: v)), ""))
-}
-
+// The field encoding is gunbc.auth.consent_preimage's. Every component is encoded: text, effect
+// subject, every root, the scope's verb, resource tree (and its service), every path segment,
+// action, interlock.
 fn verb_wire(v: Verb) -> String {
   match v {
     Read => "Read"
@@ -96,25 +88,25 @@ fn verb_wire(v: Verb) -> String {
 
 fn tree_wire(t: NamespaceTree) -> String {
   match t {
-    FilesystemPathTree => ruling_field(tag: "tree", value: "FilesystemPathTree")
-    UriTree => ruling_field(tag: "tree", value: "UriTree")
-    ProcTree => ruling_field(tag: "tree", value: "ProcTree")
-    CodeNameTree => ruling_field(tag: "tree", value: "CodeNameTree")
-    ServiceOpTree { service: sv } => concat(ruling_field(tag: "tree", value: "ServiceOpTree"), ruling_field(tag: "service", value: sv))
+    FilesystemPathTree => consent_field(tag: "tree", value: "FilesystemPathTree")
+    UriTree => consent_field(tag: "tree", value: "UriTree")
+    ProcTree => consent_field(tag: "tree", value: "ProcTree")
+    CodeNameTree => consent_field(tag: "tree", value: "CodeNameTree")
+    ServiceOpTree { service: sv } => concat(consent_field(tag: "tree", value: "ServiceOpTree"), consent_field(tag: "service", value: sv))
   }
 }
 
 fn standing_ruling_preimage(r: StandingRuling) -> String {
   join([
-    ruling_field(tag: "encoding", value: "gunbc-standing-ruling/2"),
-    ruling_field(tag: "text", value: r.text as String),
-    ruling_field(tag: "effect", value: r.effect_subject as String),
-    ruling_list_field(tag: "root", values: map(r.roots, d => declaration_ref_display_key(ref: d))),
-    ruling_field(tag: "verb", value: verb_wire(v: r.scope.verb)),
+    consent_field(tag: "encoding", value: "gunbc-standing-ruling/2"),
+    consent_field(tag: "text", value: r.text as String),
+    consent_field(tag: "effect", value: r.effect_subject as String),
+    consent_list_field(tag: "root", values: map(r.roots, d => declaration_ref_display_key(ref: d))),
+    consent_field(tag: "verb", value: verb_wire(v: r.scope.verb)),
     tree_wire(t: r.scope.resource.tree),
-    ruling_list_field(tag: "path", values: r.scope.resource.path),
-    ruling_field(tag: "action", value: r.scope.action as String),
-    ruling_field(tag: "interlock", value: declaration_ref_display_key(ref: r.interlock)),
+    consent_list_field(tag: "path", values: r.scope.resource.path),
+    consent_field(tag: "action", value: r.scope.action as String),
+    consent_field(tag: "interlock", value: declaration_ref_display_key(ref: r.interlock)),
   ], "")
 }
 

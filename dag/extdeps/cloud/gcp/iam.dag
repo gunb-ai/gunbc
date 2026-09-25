@@ -363,6 +363,11 @@ type GcpGenerateAccessToken200Body {
   expire_time: String from "expireTime"
 }
 
+// GenerateAccessToken: THE REQUEST BODY IS UPSTREAM'S, and it was missing: projects.serviceAccounts.generateAccessToken
+// (https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken)
+// REQUIRES `scope` and takes `lifetime` as a protobuf Duration string ("600s"), so the earlier
+// shape -- no body, lifetime as a bare input nothing sent -- could only ever be answered 400. The
+// default lifetime is upstream's (3600s); the ceiling without the org's lifetime extension is 1h.
 service gcp.IAM {
   config {
     endpoint: "https://iamcredentials.googleapis.com"
@@ -374,15 +379,21 @@ service gcp.IAM {
     input {
       access_token: Secret
       target_sa: ServiceAccountEmail
-      lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
+      scope: List<String> = ["https://www.googleapis.com/auth/cloud-platform"]
+      lifetime: String = "3600s"
     }
     output {
       access_token: Secret from "accessToken"
       expire_time: String from "expireTime"
+      outcome: RestOutcome
     }
 
     idempotent
-    transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
+    transport rest {
+      method: POST,
+      path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken",
+      body: { scope: scope, lifetime: lifetime }
+    }
     response {
       200 => GcpGenerateAccessToken200Body
       401 => GcpErrorShape

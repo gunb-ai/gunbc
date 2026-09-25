@@ -17,7 +17,7 @@ import gunbc.auth.approval_broker_marker {
 }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ActuationMintHandler,
   approval_broker_route_specs,
   approval_broker_route_table_build,
   approval_broker_respond,
@@ -39,6 +39,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port,
   approval_broker_submit_url,
   approval_broker_status_url,
+  approval_broker_actuation_mint_path,
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
 
@@ -75,13 +76,16 @@ test fn approval_broker_table_selects_the_four_routes() -> Bool {
     && broker_selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
-// THE TABLE IS EXACTLY THE FOUR. A fifth row is not a neutral addition: every route this process
+// THE TABLE IS EXACTLY THE FIVE. A new row is not a neutral addition: every route this process
 // serves is one more thing whose demand shares the broker's slice, and the split exists because
-// co-tenancy is what made an approval poll depend on a dashboard render.
+// co-tenancy is what made an approval poll depend on a dashboard render. The fifth, the actuation
+// mint (gunbc.auth.gcp_iam_actuation_mint), is admitted because it is the approval's own
+// redemption: one call per approved IAM converge, and it must be the broker's because the broker
+// alone holds the minter key.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 4
+  count(approval_broker_route_specs()) == 5
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 4
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 5
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
 }
@@ -267,6 +271,16 @@ test fn the_loopback_submit_url_names_the_brokers_one_port() -> Bool {
   let url = approval_broker_submit_url(port: approval_broker_listen_port) as String
   string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))
     && string_contains(s: url, pattern: approval_broker_submit_path as String)
+}
+
+// THE MINT ROUTE IS A POST ON ITS OWN FIRST SEGMENT. Under /approvals/ it would be reachable from the
+// tailnet through the status route's front-door prefix mount; the RED this discriminates is a mint
+// path moved under the approvals collection, which the prefix check below refuses.
+test fn the_actuation_mint_is_a_post_outside_every_front_door_prefix() -> Bool {
+  broker_selects(method: POST, path: approval_broker_actuation_mint_path as String, want: ActuationMintHandler)
+    && !broker_selects(method: GET, path: approval_broker_actuation_mint_path as String, want: ActuationMintHandler)
+    && !starts_with(s: approval_broker_actuation_mint_path as String, prefix: concat(approval_broker_submit_path as String, "/"))
+    && !starts_with(s: approval_broker_actuation_mint_path as String, prefix: "/approve/")
 }
 
 // THE STATUS URL IS THE SUBMIT COLLECTION PLUS A MEMBER, and the claim is here because the obvious

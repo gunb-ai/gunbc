@@ -9,7 +9,7 @@ pattern optional_impersonation(
   impersonated = gcp.IAM.GenerateAccessToken(
     access_token: access_token,
     target_sa: service_account,
-    lifetime_seconds: lifetime_seconds
+    lifetime: concat(to_string(lifetime_seconds), "s")
   ) [when service_account != none]
   let result_token = match service_account {
     Present { value: _sa } => impersonated.access_token

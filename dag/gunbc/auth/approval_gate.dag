@@ -241,35 +241,53 @@ type ApprovalFiling
   = ApprovalFiled
   | ApprovalFilingRefused { reason: String }
 
-fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
+// ONE SIGNED POST TO THE BROKER, SHARED BY EVERY ROUTE THAT TAKES A SUBMISSION ENVELOPE. Filing a
+// request and redeeming an approved one for an actuation credential (gunbc.auth.gcp_iam_actuation_mint)
+// both present the canonical request MAC'd under the submission key; the key read, the owner-only body
+// file and its deletion are one protocol, so they are one fold, and the two callers differ only in the
+// URL and in how they read the answer.
+type SignedEnvelopePost
+  = SignedEnvelopeAnswered { success: Bool, body: String }
+  | SignedEnvelopeNotSent { reason: String }
+
+fn approval_post_signed_envelope(stored: StoredApprovalRequest, body_file_name: String, url: NonEmptyStr, timeout: Second) -> SignedEnvelopePost
 {
   let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
   if sub_path == "" {
-    ApprovalFilingRefused { reason: join([approval_submission_mac_key_path_env as String, " is unset; the request cannot be filed"], "") }
+    SignedEnvelopeNotSent { reason: join([approval_submission_mac_key_path_env as String, " is unset; the envelope cannot be signed"], "") }
   } else {
     let key_read = Filesystem.Read(path: sub_path)
     if !key_read.success {
-      ApprovalFilingRefused { reason: join(["submission MAC key unreadable: ", key_read.error], "") }
+      SignedEnvelopeNotSent { reason: join(["submission MAC key unreadable: ", key_read.error], "") }
     } else {
       match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
-        SubmissionMacKeyNotHex { key_id: k } => ApprovalFilingRefused { reason: join(["submission MAC key is not hex: ", k as String], "") }
+        SubmissionMacKeyNotHex { key_id: k } => SignedEnvelopeNotSent { reason: join(["submission MAC key is not hex: ", k as String], "") }
         SubmissionMacReady { tag_hex: tag } => {
           let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
           if tmp == "" {
-            ApprovalFilingRefused { reason: "RUNNER_TEMP is unset; cannot write the submit body" }
+            SignedEnvelopeNotSent { reason: "RUNNER_TEMP is unset; cannot write the envelope body" }
           } else {
             let body_path = join([tmp, "/", body_file_name], "")
             let written = Filesystem.WriteOwnerOnly(path: body_path, content: submission_envelope_json(request: stored, tag_hex: tag))
             if !written.success {
-              ApprovalFilingRefused { reason: join(["could not write the submit body: ", written.error], "") }
+              SignedEnvelopeNotSent { reason: join(["could not write the envelope body: ", written.error], "") }
             } else {
-              let posted = http.Client.PostJsonFromFile(url: approval_submit_url(), request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: submit_timeout)) as NonEmptyStr)
+              let posted = http.Client.PostJsonFromFile(url: url, request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: timeout)) as NonEmptyStr)
               let _wiped = Filesystem.Delete(path: body_path)
-              if submission_body_admits_poll(body: posted.body) { ApprovalFiled } else { ApprovalFilingRefused { reason: join(["POST /approvals refused: ", posted.body], "") } }
+              SignedEnvelopeAnswered { success: posted.success, body: posted.body }
             }
           }
         }
       }
     }
+  }
+}
+
+fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
+{
+  match approval_post_signed_envelope(stored: stored, body_file_name: body_file_name, url: approval_submit_url(), timeout: submit_timeout) {
+    SignedEnvelopeNotSent { reason: r } => ApprovalFilingRefused { reason: r }
+    SignedEnvelopeAnswered { success: _, body: b } =>
+      if submission_body_admits_poll(body: b) { ApprovalFiled } else { ApprovalFilingRefused { reason: join(["POST /approvals refused: ", b], "") } }
   }
 }

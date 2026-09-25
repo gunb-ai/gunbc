@@ -1,0 +1,240 @@
+module gunbc.auth.gcp_iam_actuation_mint
+
+import std.types { Int, List, NonEmptyStr, String, Timestamp, Secret, Bool, EpochSecs }
+import v2.std.optional { Present, Absent }
+import extdeps.auth.jws {
+  HostKeyFile, jws_rs256_signing_input, jws_compact_serialization,
+  JwsEncoded, JwsEncodeNotOctets, JwsSigned, JwsSignRefused, JwsSerialized, JwsSignatureNotOctets,
+}
+import extdeps.cloud.gcp.iam
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
+import gunbc.jws_signer_realize { jws_rs256_sign }
+import gunbc.clock_read { clock_now_probed_at }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis }
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload,
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, file_compare_and_set,
+}
+import std.durable_compare_and_set { CasCommitted, CasPreconditionFailed, CasStoreRefused, ExpectSlotAbsent }
+import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied }
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
+  approval_decision_store_root, observe_escalation,
+}
+import gunbc.auth.approval_request_submission {
+  parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
+  admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, read_submission_keyring,
+}
+import gunbc.auth.gcp_iam_converge {
+  gcp_iam_converge_escalation_prefix, iam_converge_service_account, iam_converge_token_lifetime_seconds,
+  approval_broker_minter_service_account,
+}
+
+// ── ONE APPROVAL, ONE SHORT-LIVED CREDENTIAL FOR EXACTLY THE APPROVED DIFF ───────────────────
+// Operator decisions 2026-09-25: the approval broker mints the actuation credential (A), holding a
+// keyed minter service account whose ONLY grant is token creation on iam-converge (A1). This module
+// is the broker's half: a loopback route a converging run on srv1 POSTs to after the operator's tap.
+//
+// WHAT MAKES THE APPROVAL NECESSARY AT THE CREDENTIAL LAYER, not only in the run's code: no workflow
+// identity can impersonate iam-converge (its policy names only the minter), and the minter key is
+// readable only by the broker account on srv1. So the one path to an iam-converge token is this
+// route, and this route mints only when every one of these holds:
+//   1. the body is a submission envelope whose MAC verifies under the submission key -- the same
+//      enrolment that admits a filing, so an unenrolled caller cannot even ask;
+//   2. the escalation id is in the gcp-iam-converge family, so an approval of anything else (a boot
+//      ruling, a device enrolment) is not redeemable here;
+//   3. the stored slot holds an APPROVAL (not pending, not denied, not unreadable) whose revision --
+//      the intent hash, i.e. the digest of the diff -- equals the presented revision;
+//   4. the approval's execute_by has not passed;
+//   5. this escalation has not been minted for before: the mint slot is created once, BEFORE the
+//      token is requested. A failure after the claim spends the approval rather than risking a
+//      second token for one consent; the run then refuses and the operator is asked again.
+//
+// WHAT IT DOES NOT BIND, stated so it is not assumed: WHICH PROCESS on srv1 receives the token. The
+// route is loopback-only and never mounted on the tailnet front door, and the caller must hold the
+// submission MAC key, but any srv1 process holding that key could redeem an approved escalation
+// before the run does. srv1 is already the approval trust root -- it holds both MAC keys, so it can
+// forge the approval itself -- which is why decision A1 accepted this residue rather than a new root.
+
+// WHERE THE MINTER KEY LIVES ON srv1: a PEM private key, 0440, owned by the broker account. It is
+// placed by the host credential custody converge from Secret Manager custody, never authored here.
+data approval_broker_minter_key_path: NonEmptyStr = "/etc/gunbc-approval-broker/iam-minter-key.pem"
+
+// THE MINT SLOT SHARES THE APPROVAL STORE'S ROOT under its own key, so it inherits the store's
+// single-writer discipline and 0600 publication, and cannot collide with a decision slot (whose keys
+// are escalation ids, none of which begin with this prefix).
+data actuation_mint_slot_prefix: String = "actuation-mint-"
+
+fn actuation_mint_slot_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  concat(actuation_mint_slot_prefix, escalation_id as String) as NonEmptyStr
+}
+
+// ── Admission: pure, so every arm is witnessable on a supplied slot ──────────────────────────
+type MintRefusal
+  = MintEscalationOutsideFamily { escalation_id: NonEmptyStr }
+  | MintEscalationNotFiled
+  | MintEscalationPending
+  | MintEscalationDenied
+  | MintStoreUnreadable { detail: NonEmptyStr }
+  | MintForAnotherIntent { presented: NonEmptyStr, approved: NonEmptyStr }
+  | MintApprovalExpired { execute_by: Timestamp, observed_at: Timestamp }
+
+type MintAdmission
+  = MintAdmitted { escalation_id: NonEmptyStr, execute_by: Timestamp }
+  | MintNotAdmitted { refusal: MintRefusal }
+
+fn in_iam_converge_family(escalation_id: NonEmptyStr) -> Bool {
+  starts_with(s: escalation_id as String, prefix: gcp_iam_converge_escalation_prefix as String)
+}
+
+fn actuation_mint_admission(presented: StoredApprovalRequest, slot: EscalationSlot, observed_at: Timestamp) -> MintAdmission {
+  if !in_iam_converge_family(escalation_id: presented.escalation_id) {
+    MintNotAdmitted { refusal: MintEscalationOutsideFamily { escalation_id: presented.escalation_id } }
+  } else {
+    match slot {
+      EscalationNotFiled => MintNotAdmitted { refusal: MintEscalationNotFiled }
+      EscalationPending { request: _ } => MintNotAdmitted { refusal: MintEscalationPending }
+      EscalationUnreadable { detail: d } => MintNotAdmitted { refusal: MintStoreUnreadable { detail: d } }
+      EscalationDecided { decision: d } => match d {
+        BrokerDenied { escalation_id: _, revision: _, decided_by: _, decided_at: _, reason: _ } =>
+          MintNotAdmitted { refusal: MintEscalationDenied }
+        BrokerApproved { escalation_id: e, revision: r, decided_by: _, decided_at: _, obligation: o } =>
+          if e != presented.escalation_id || r != presented.request_revision {
+            MintNotAdmitted { refusal: MintForAnotherIntent { presented: presented.request_revision, approved: r } }
+          } else if !(observed_at < o.execute_by) {
+            MintNotAdmitted { refusal: MintApprovalExpired { execute_by: o.execute_by, observed_at: observed_at } }
+          } else {
+            MintAdmitted { escalation_id: e, execute_by: o.execute_by }
+          }
+      }
+    }
+  }
+}
+
+fn mint_refusal_reason(r: MintRefusal) -> String {
+  match r {
+    MintEscalationOutsideFamily { escalation_id: e } => join(["escalation ", e as String, " is not a GCP IAM converge request; only that family is redeemable for an actuation credential"], "")
+    MintEscalationNotFiled => "no request is filed under this escalation"
+    MintEscalationPending => "the operator has not decided this request"
+    MintEscalationDenied => "the operator denied this request"
+    MintStoreUnreadable { detail: d } => d as String
+    MintForAnotherIntent { presented: p, approved: a } => join(["the approval is for revision ", a as String, ", not the presented ", p as String, "; the diff changed after the operator consented"], "")
+    MintApprovalExpired { execute_by: b, observed_at: t } => join(["the approval's execution window closed at ", b, " (observed ", t, ")"], "")
+  }
+}
+
+// ── The minter's own credential: a self-signed JWT for the IAM Credentials API ──────────────
+// Google accepts a JWT signed by a service account key directly as a bearer for its APIs when the
+// audience is the API's service endpoint (https://developers.google.com/identity/protocols/oauth2/service-account#jwt-auth),
+// so the minter needs no OAuth token exchange: one signature, one call.
+data iam_credentials_audience: String = "https://iamcredentials.googleapis.com/"
+
+data minter_jwt_lifetime_seconds: Int = 300
+
+fn minter_jwt_claims_json(now_epoch_secs: EpochSecs) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "iss", value: json_string(s: approval_broker_minter_service_account as String)),
+    json_kv(key: "sub", value: json_string(s: approval_broker_minter_service_account as String)),
+    json_kv(key: "aud", value: json_string(s: iam_credentials_audience)),
+    json_kv(key: "iat", value: json_int(n: now_epoch_secs)),
+    json_kv(key: "exp", value: json_int(n: now_epoch_secs + minter_jwt_lifetime_seconds)),
+  ]))
+}
+
+type MinterJwt
+  = MinterJwtSigned { jwt: Secret }
+  | MinterJwtUnsigned { detail: String }
+
+fn minter_jwt(now_epoch_secs: EpochSecs) -> MinterJwt {
+  match jws_rs256_signing_input(payload_json: minter_jwt_claims_json(now_epoch_secs: now_epoch_secs)) {
+    JwsEncodeNotOctets { observed: o } => MinterJwtUnsigned { detail: concat("the signing input carried a member outside octet range: ", to_string(o)) }
+    JwsEncoded { text: t } => {
+      let signing_input = t as NonEmptyStr
+      match jws_rs256_sign(signing_input: signing_input, key: HostKeyFile { path: approval_broker_minter_key_path }) {
+        JwsSignRefused { detail: d } => MinterJwtUnsigned { detail: d }
+        JwsSigned { signature: sig } =>
+          match jws_compact_serialization(signing_input: signing_input, signature: sig) {
+            JwsSignatureNotOctets { observed: o } => MinterJwtUnsigned { detail: concat("the signer returned a member outside octet range: ", to_string(o)) }
+            JwsSerialized { jwt: j } => MinterJwtSigned { jwt: j as Secret }
+          }
+      }
+    }
+  }
+}
+
+// ── The mint ─────────────────────────────────────────────────────────────────────────────────
+type ActuationMint
+  = ActuationMinted { token: Secret, expire_time: String }
+  | ActuationMintRefused { status: Int, reason: String }
+
+fn claim_mint_slot(escalation_id: NonEmptyStr, observed_at: Timestamp) -> ActuationMint? {
+  let payload = serialize_json(v: json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "actuation-mint")),
+    json_kv(key: "escalation_id", value: json_string(s: escalation_id as String)),
+    json_kv(key: "minted_at", value: json_string(s: observed_at)),
+    json_kv(key: "target", value: json_string(s: iam_converge_service_account as String)),
+  ])) as NonEmptyStr
+  match admit_cas_attempt_for_derived_payload(key: actuation_mint_slot_key(escalation_id: escalation_id), expected: ExpectSlotAbsent, proposed: payload) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => Present { value: ActuationMintRefused { status: 500, reason: "the mint slot key is not slot-addressable" } }
+    DerivedPayloadAdmitted { verified: v } =>
+      match file_compare_and_set(root: approval_decision_store_root, publication: OwnerOnlyCreateOnly, verified: v) {
+        CasCommitted { committed: _ } => Absent
+        CasPreconditionFailed { expected: _, observed: _ } => Present { value: ActuationMintRefused { status: 409, reason: "this approval has already been redeemed for a credential; one approval mints one token" } }
+        CasStoreRefused { cause: _ } => Present { value: ActuationMintRefused { status: 503, reason: "the approval store refused the mint claim" } }
+      }
+  }
+}
+
+fn generate_iam_converge_token(minter: Secret) -> ActuationMint
+{
+  let r = gcp.IAM.GenerateAccessToken(
+    access_token: minter,
+    target_sa: iam_converge_service_account,
+    lifetime: concat(to_string(iam_converge_token_lifetime_seconds), "s"),
+  )
+  match r.outcome {
+    RestOk => ActuationMinted { token: r.access_token, expire_time: r.expire_time }
+    RestStatusRefused { status: s, body: b } => ActuationMintRefused { status: 502, reason: join(["generateAccessToken answered ", to_string(s as Int), ": ", b], "") }
+    RestTransportRefused { cause: c } => ActuationMintRefused { status: 502, reason: concat("generateAccessToken transport: ", c as String) }
+    RestBodyUndecodable { status: s, cause: c } => ActuationMintRefused { status: 502, reason: join(["generateAccessToken ", to_string(s as Int), " undecodable: ", c as String], "") }
+  }
+}
+
+fn mint_admitted(escalation_id: NonEmptyStr, observed_at: Timestamp) -> ActuationMint
+{
+  match claim_mint_slot(escalation_id: escalation_id, observed_at: observed_at) {
+    Present { value: refused } => refused
+    Absent =>
+      match clock_unix_millis_read() {
+        ClockUnixMillisRefused { detail: d } => ActuationMintRefused { status: 503, reason: concat("clock unreadable after the mint claim; the approval is spent: ", d) }
+        ClockUnixMillisObserved { millis: ms } =>
+          match minter_jwt(now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
+            MinterJwtUnsigned { detail: d } => ActuationMintRefused { status: 503, reason: concat("the minter key could not sign; the approval is spent: ", d) }
+            MinterJwtSigned { jwt: j } => generate_iam_converge_token(minter: j)
+          }
+      }
+  }
+}
+
+// THE WHOLE ROUTE'S FOLD over a request body. The serve adapter renders its answer; the token is
+// the body of a 200 and appears nowhere else -- not in a log line, not in a marker.
+fn actuation_mint_for_body(body: String) -> ActuationMint
+{
+  match parse_submission_envelope(text: body) {
+    SubmissionEnvelopeUnreadable { detail: d } => ActuationMintRefused { status: 400, reason: concat("mint request unreadable: ", d as String) }
+    SubmissionEnvelopeParsed { tag_hex: tag, request: presented } =>
+      match admit_parsed_submission(tag_hex: tag, request: presented, keyring: read_submission_keyring()) {
+        SubmissionNotAdmitted { refusal: _ } => ActuationMintRefused { status: 403, reason: "the mint request is not signed by the enrolled submission key" }
+        SubmissionVerified { request: verified } =>
+          match clock_now_probed_at() {
+            Absent => ActuationMintRefused { status: 503, reason: "clock unreadable; cannot judge the approval's execution window" }
+            Present { value: now } =>
+              match actuation_mint_admission(presented: verified, slot: observe_escalation(root: approval_decision_store_root, escalation_id: verified.escalation_id), observed_at: now as Timestamp) {
+                MintNotAdmitted { refusal: why } => ActuationMintRefused { status: 403, reason: mint_refusal_reason(r: why) }
+                MintAdmitted { escalation_id: e, execute_by: _ } => mint_admitted(escalation_id: e, observed_at: now as Timestamp)
+              }
+          }
+      }
+  }
+}
