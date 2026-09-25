@@ -1,0 +1,177 @@
+module v2.std.type_binder
+
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import std.algebra { Empty, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+  node_synthetic,
+  type_binder_conj_conforms
+}
+
+// THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
+// its binder Conj on its Arrow under this label, and `type Box<T>` / `type R<T> { .. }` carry theirs
+// on the declaration, in the wrapper below, under the same label.
+//
+// THE LABEL IS UNAUTHORABLE, NOT MERELY REFUSED. This lexeme is not an identifier in the dag grammar
+// -- the precedent is v2.std.qualified_name declaration_reference_marker -- so no authored field,
+// variant, binder or name can carry it, and only the producers below write it. The shape of the Conj
+// it targets is v2.std.node's (type_binder_conj_conforms).
+fn type_params_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<type-parameters>")
+}
+
+// The wrapper's other edge: the declaration's member (the record's field Conj, the coproduct's Disj).
+fn type_body_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<type-body>")
+}
+
+fn edge_is_type_params(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == type_params_marker()
+    Positional => false
+  }
+}
+
+fn edge_is_type_body(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == type_body_marker()
+    Positional => false
+  }
+}
+
+// THE ONE PRODUCER of the edge on an Arrow (consumed by v2.compiler.body_lowering_fold).
+fn type_params_edge(conj: Node) -> Edge {
+  Edge { label: Named { name: type_params_marker() }, target: conj }
+}
+
+// A GENERIC TYPE DECLARATION'S TARGET IS A WRAPPER BESIDE ITS MEMBER, NEVER A MEMBER WITH ITS
+// BINDERS MIXED IN. `type Box<T> = Full { value: T } | Empty` lowers its Named declaration edge to
+// Conj { <type-parameters>: Conj { T: T }, <type-body>: Disj { Full: .., Empty: .. } }. The member's
+// children stay exactly its authored fields or variants, so no reader of a member can meet a binder:
+// the state "a binder edge among a member's children" has no producer, and
+// type_binder_labels_conform refuses it on any tree resolve is handed (gunbc#12240 review 71065
+// ruled the mixed-in shape a hidden sum). THE ONE PRODUCER of the wrapper.
+fn type_decl_wrapper(binders: Node, member: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: type_params_marker() }, target: binders },
+      Edge { label: Named { name: type_body_marker() }, target: member }
+    ]
+  )
+}
+
+// THE ONE UNWRAP, TYPED. Only a generic declaration is wrapped -- a non-generic one keeps its member
+// as its target, unchanged -- so a reader of a declaration target has two cases, and this function is
+// the only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
+// v2.compiler.symbol_index_fill (which indexes the member, never the wrapper) and
+// v2.std.compilers.semantic_decl_emission (which refuses a generic declaration).
+type TypeDeclView
+  = GenericTypeDecl { binders: Node, member: Node }
+  | PlainTypeDecl { member: Node }
+
+fn type_decl_wrapper_is(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      (count(n.children) == 2)
+        && (fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_params(e: e) { acc + 1 } else { acc } }) == 1)
+        && (fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_body(e: e) { acc + 1 } else { acc } }) == 1)
+    _ => false
+  }
+}
+
+fn type_decl_view(target: Node) -> TypeDeclView {
+  if type_decl_wrapper_is(n: target) {
+    GenericTypeDecl {
+      binders: type_decl_wrapper_target(wrapper: target, params: true),
+      member: type_decl_wrapper_target(wrapper: target, params: false)
+    }
+  } else {
+    PlainTypeDecl { member: target }
+  }
+}
+
+fn type_decl_wrapper_target(wrapper: Node, params: Bool) -> Node {
+  fold(wrapper.children, init: wrapper, f: fn(acc, e) {
+    if params && edge_is_type_params(e: e) {
+      e.target
+    } else if !params && edge_is_type_body(e: e) {
+      e.target
+    } else {
+      acc
+    }
+  })
+}
+
+// The declared type-parameter names a node carries -- an Arrow, or a type-declaration wrapper -- in
+// declaration order; empty when it carries none. A node carrying two marker edges is malformed
+// (type_binder_labels_conform) and answers empty here.
+fn type_param_names(n: Node) -> List<Symbol> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: Empty, f: fn(acc, t) { binder_conj_names(conj: t) })
+  } else {
+    Empty
+  }
+}
+
+fn binder_conj_names(conj: Node) -> List<Symbol> {
+  fold(conj.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } => list_snoc_item(xs: acc, item: sym)
+      Positional => acc
+    }
+  })
+}
+
+// WHERE THE MARKERS MAY STAND, stated over the whole tree. The type-parameter edge sits only on an
+// Arrow (a fn's signature) or in a type-declaration wrapper, once, targeting a well-formed binder
+// Conj; the type-body edge sits only in a wrapper; and an Arrow's non-body Named edge -- which
+// v2.std.node admits by SHAPE -- is the type-parameter edge. So a member carrying a binder among its
+// fields or variants is refused here, on the tree v2.compiler.resolve checks beside v2.std.node
+// well_formed, not filtered by its readers.
+fn type_binder_node_conforms(n: Node) -> Bool {
+  let params = fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_params(e: e) { acc + 1 } else { acc } })
+  let bodies = fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_body(e: e) { acc + 1 } else { acc } })
+  let params_ok = (params == 0) || ((params == 1) && marker_targets_conform(n: n))
+  match n.kind {
+    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
+    _ =>
+      if type_decl_wrapper_is(n: n) {
+        params_ok
+      } else {
+        (params == 0) && (bodies == 0)
+      }
+  }
+}
+
+fn marker_targets_conform(n: Node) -> Bool {
+  fold(n.children, init: true, f: fn(acc, e) {
+    acc && (!edge_is_type_params(e: e) || type_binder_conj_conforms(t: e.target))
+  })
+}
+
+fn arrow_named_labels_conform(n: Node) -> Bool {
+  fold(n.children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == type_params_marker()))
+    }
+  })
+}
+
+fn type_binder_labels_conform(root: Node) -> Bool {
+  fold(node_subtree_nodes(root: root), init: true, f: fn(acc, n) { acc && type_binder_node_conforms(n: n) })
+}

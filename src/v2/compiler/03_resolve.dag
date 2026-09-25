@@ -103,13 +103,13 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  arrow_type_param_names,
   fold_node,
   match_arm_body,
   match_arm_pattern,
   node_with_occurrence_id,
   well_formed,
 }
+import v2.std.type_binder { edge_is_type_params, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
@@ -1504,20 +1504,25 @@ fn resolve_children_homogeneous_scope(
   n: Node
 ) -> ResolveNodeWalk {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
     true =>
       ScopeFrame {
         locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-        outer: ctx.scope
+        outer: scope_type
       }
-    false => ctx.scope
+    false => scope_type
   }
   let child_ctx = resolve_ctx_with_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: child_ctx, e: e))
+    if edge_is_type_params(e: e) {
+      child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
+    } else {
+      child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: child_ctx, e: e))
+    }
   }))
 }
 
@@ -1541,17 +1546,24 @@ fn resolve_children_homogeneous_scope(
 // (gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2). An
 // Arrow declaring no type parameters walks exactly as before: its type frame is empty.
 //
+// A TYPE DECLARATION'S PARAMETERS ARE THE SAME FRAME OVER ITS MEMBER. `type Box<T> = Full { value: T }
+// | Empty` lowers to the wrapper Conj { <type-parameters>: binders, <type-body>: member }
+// (v2.std.type_binder type_decl_wrapper), and resolve_children_homogeneous_scope opens this frame over
+// the wrapper -- so over the member -- and checks its binders through resolve_type_params_conj: the
+// helpers below, shared with resolve_arrow_node, not copied.
+// A type declaration has no body of VALUE positions, so its frame covers the whole member.
+//
 // NO SHADOWING. A type parameter whose spelling already names something visible at the
 // declaration REFUSES resolve_reason_type_parameter_shadows_visible_name, located at the binder.
 // It is not a style rule: v2.compiler.infer recognizes a type variable by the callee Arrow's own
-// type-parameter edge (v2.std.node arrow_type_param_names), and that reading is sound only because
+// type-parameter edge (v2.std.type_binder type_param_names), and that reading is sound only because
 // no `T` inside the Arrow can mean anything but its binder.
 fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
-  match arrow_type_param_names(n: n) {
+  match type_param_names(n: n) {
     Empty => outer
     Cons { head: _, tail: _ } =>
       ScopeFrame {
-        locals: fold(arrow_type_param_names(n: n), init: empty_map(), f: fn(acc, name) {
+        locals: fold(type_param_names(n: n), init: empty_map(), f: fn(acc, name) {
           map_insert(acc, name, name)
         }),
         outer: outer
@@ -1594,7 +1606,7 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 
 // THE ARROW'S DOMAIN IS NOT A SCOPE-PRODUCING PREREQUISITE in the sense the Bind binder is: its
 // parameter names are read syntactically by add_arrow_domain_named_params (and its type parameters by
-// v2.std.node arrow_type_param_names), so a domain that refuses
+// v2.std.type_binder type_param_names), so a domain that refuses
 // to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
 // invented by that refusal.
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
@@ -1604,8 +1616,8 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
-      Named { name: sym } =>
-        if sym == ^arrow_type_params_edge {
+      Named { name: _ } =>
+        if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
         } else {
           child_walk_step(
@@ -1730,7 +1742,7 @@ fn resolve_walk_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> ResolveNodeWalk {
-  if well_formed(n: tree.root) {
+  if well_formed(n: tree.root) && type_binder_labels_conform(root: tree.root) {
     resolve_node_walk(
       ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy),
       n: tree.root
