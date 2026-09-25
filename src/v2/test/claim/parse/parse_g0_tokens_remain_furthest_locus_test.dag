@@ -11,15 +11,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // furthest rule does not invent depth: a failure that consumed nothing inside the item stays at
 // the item's first token. The third pins the offset unit as it stands.
 
-// -1 is no tokens_remain refusal on a source extent; every claim compares against a positive offset.
+// The fatal diagnostic is the last one (v2.std.diagnostic diagnostics_fatal); grammar advisories ride
+// ahead of it. -1 is no tokens_remain refusal on a source extent; every claim compares against a positive offset.
 fn tokens_remain_start(src: String) -> Int {
   let lm = dag_language_model()
   match tokenize(text: src, file: ^probe, rules: lm.lex) {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          if d.head.reason == ^parse_g0_tokens_remain {
-            match d.head.at {
+          let fatal = diagnostics_fatal(d: d)
+          if fatal.reason == ^parse_g0_tokens_remain {
+            match fatal.at {
               SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s
               SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
               Textual { file: _, extent: _ } => -1
