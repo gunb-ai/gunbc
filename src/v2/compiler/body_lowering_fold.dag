@@ -3572,8 +3572,8 @@ fn body_lower_function_value(shell: Node, capture: FunctionValueCapture) -> Outc
 // character of the dag lexer (IdentStartChar / IdentContinueChar), so no authored name can spell one:
 // the binder never shadows a visible name (resolve refuses one that does), never collides with a
 // declaration, and the primes keep repeated parameter names (`fn(_, _)`) distinct as
-// arrow_type_params_target_conforms requires. Each type parameter is anchored at the occurrence it
-// stands for, and each function value's Arrow carries its own, so no two lambdas share one.
+// arrow_type_params_target_conforms requires. Each function value's Arrow carries its own type
+// parameters in its own frame, so no two lambdas share one.
 fn body_lower_function_value_type_var(base: String, primes: String) -> Symbol {
   symbol_intern_lexeme(lexeme: "'" + base + primes)
 }
@@ -3582,22 +3582,53 @@ type FunctionValueSignature {
   domain: List<Edge>
   type_params: List<Edge>
   primes: String
+  wildcard_primes: String
+}
+
+// A fresh type variable is minted by the compiler, not authored, so it is a SYNTHETIC atom: it must
+// not wear the binder's authored occurrence under a different spelling, which the reference
+// conservation census reads as the authored binder dropped (a projected occurrence is XL-2's
+// prerequisite, not modeled yet).
+fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: tv } }, children: [])
+}
+
+// A `_` parameter binds nothing, and a domain is a record (v2.std.node edges_conform: every edge
+// Named, every name distinct), so `fn(_, _)` cannot carry two fields named `_`. The FIRST wildcard
+// keeps the name `_` it was written with; each later one takes `_` followed by one prime per earlier
+// wildcard -- `_'`, `_''`, .. -- which no authored name can spell, so it stays distinct and no body
+// can refer to it. (The reference-conservation census matches an erased binder to its label by
+// spelling, so a second `_` has no label to match; occurrence projection, XL-2, dissolves that.)
+fn body_lower_function_value_binder_name(b: FunctionValueBinder, wildcard_primes: String) -> Symbol {
+  if b.name == ^_ {
+    symbol_intern_lexeme(lexeme: "_" + wildcard_primes)
+  } else {
+    b.name
+  }
+}
+
+fn body_lower_function_value_next_wildcard_primes(b: FunctionValueBinder, wildcard_primes: String) -> String {
+  if b.name == ^_ { wildcard_primes + "'" } else { wildcard_primes }
 }
 
 fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> FunctionValueSignature {
   let no_edges: List<Edge> = []
-  fold(binders, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, primes: "" }, f: fn(acc, b) {
+  fold(binders, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, primes: "", wildcard_primes: "" }, f: fn(acc, b) {
     let tv = body_lower_function_value_type_var(base: symbol_lexeme(sym: b.name), primes: acc.primes)
     FunctionValueSignature {
       domain: list_append(
         left: acc.domain,
-        right: [Edge { label: Named { name: b.name }, target: body_lower_param_ref_atom(source: b.at, identity: tv) }]
+        right: [Edge {
+          label: Named { name: body_lower_function_value_binder_name(b: b, wildcard_primes: acc.wildcard_primes) },
+          target: body_lower_function_value_type_var_atom(tv: tv)
+        }]
       ),
       type_params: list_append(
         left: acc.type_params,
-        right: [Edge { label: Named { name: tv }, target: body_lower_param_ref_atom(source: b.at, identity: tv) }]
+        right: [Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }]
       ),
-      primes: acc.primes + "'"
+      primes: acc.primes + "'",
+      wildcard_primes: body_lower_function_value_next_wildcard_primes(b: b, wildcard_primes: acc.wildcard_primes)
     }
   })
 }
@@ -3615,7 +3646,7 @@ fn body_lower_function_value_arrow(
       let return_tv = body_lower_function_value_type_var(base: "", primes: sig.primes)
       let codomain_node = match codomain {
         CodomainAuthored { type_node: t } => t
-        CodomainElided => body_lower_param_ref_atom(source: shell, identity: return_tv)
+        CodomainElided => body_lower_function_value_type_var_atom(tv: return_tv)
       }
       let type_params = match codomain {
         CodomainAuthored { type_node: _ } => sig.type_params
