@@ -1,0 +1,205 @@
+module test.claim.approve_ios_project_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping,
+  YamlKeyLookup, YamlKeyPresent, YamlKeyAbsent, yaml_lookup, kv, yaml_string, yaml_mapping, yaml_sequence
+}
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml }
+import extdeps.apple.xcode { XcodeRelease, xcode_26_6, xcode_release_text }
+import extdeps.xcodegen.project_spec { xcodegen_last_upgrade_check }
+import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequiredLane, approve_ios_build_unexecuted_frontier }
+import gunbc.approve_ios_project { expected_approve_ios_project_yml, ApproveIosProjectGenerated, ApproveIosProjectRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THE OPERATOR'S MAC NEEDS FROM apps/approve-ios/project.yml, READ BACK FROM THE BYTES. XcodeGen
+// writes Info.plist from targets.Approve.info.properties and ignores INFOPLIST_KEY_* build settings,
+// so each required key is asserted at THAT path of the document the generated-artifact gate commits
+// -- the real route (gunbc.approve_ios_project expected_approve_ios_project_yml, emitted, then read
+// back by the YAML reader), not the .dag record it was projected from. The predicate is shown to
+// discriminate over supplied documents below, one red per failure the Mac actually hit.
+
+fn at(v: YamlValue, path: List<String>) -> YamlKeyLookup {
+  fold(path, init: YamlKeyPresent { value: v }, f: (acc, k) => match acc {
+    YamlKeyPresent { value: YamlMapping { entries: es } } => yaml_lookup(entries: es, key: k)
+    _ => YamlKeyAbsent
+  })
+}
+
+fn is_string(v: YamlValue, path: List<String>, expected: String) -> Bool {
+  at(v: v, path: path) == YamlKeyPresent { value: YamlString { value: expected } }
+}
+
+fn no_infoplist_key_settings(v: YamlValue) -> Bool {
+  match at(v: v, path: ["targets", "Approve", "settings", "base"]) {
+    YamlKeyPresent { value: YamlMapping { entries: es } } => all(es, e => !starts_with(s: e.key, prefix: "INFOPLIST_KEY_"))
+    YamlKeyAbsent => true
+    _ => false
+  }
+}
+
+fn project_carries_required_content(v: YamlValue) -> Bool {
+  let props = ["targets", "Approve", "info", "properties"]
+  (at(v: v, path: concat(props, ["UILaunchScreen"])) == YamlKeyPresent { value: YamlMapping { entries: [] } })
+    && is_string(v: v, path: concat(props, ["NSFaceIDUsageDescription"]), expected: "Approving a request signs it with a key that only unlocks with Face ID.")
+    && is_string(v: v, path: concat(props, ["CFBundleDisplayName"]), expected: "Approve")
+    && (at(v: v, path: concat(props, ["UIBackgroundModes"])) == YamlKeyPresent { value: YamlSequence { elements: [YamlString { value: "remote-notification" }] } })
+    && (at(v: v, path: concat(props, ["UISupportedInterfaceOrientations"])) == YamlKeyPresent { value: YamlSequence { elements: [
+      YamlString { value: "UIInterfaceOrientationPortrait" }, YamlString { value: "UIInterfaceOrientationPortraitUpsideDown" },
+      YamlString { value: "UIInterfaceOrientationLandscapeLeft" }, YamlString { value: "UIInterfaceOrientationLandscapeRight" }
+    ] } })
+    && is_string(v: v, path: concat(props, ["ApproveServerHost"]), expected: "$(APPROVE_SERVER_HOST)")
+    && is_string(v: v, path: concat(props, ["ApproveApnsEnvironment"]), expected: "$(APNS_ENVIRONMENT)")
+    && is_string(v: v, path: ["targets", "Approve", "settings", "base", "PRODUCT_BUNDLE_IDENTIFIER"], expected: "ai.gunb.approve")
+    && is_string(v: v, path: ["settings", "base", "SWIFT_VERSION"], expected: "5.10")
+    && is_string(v: v, path: ["targets", "Approve", "info", "path"], expected: "Approve/Info.plist")
+    && no_infoplist_key_settings(v: v)
+    && is_string(v: v, path: ["options", "xcodeVersion"], expected: xcode_release_text(r: xcode_26_6))
+    && is_string(v: v, path: ["options", "deploymentTarget", "iOS"], expected: "17.0")
+    && is_string(v: v, path: ["settings", "base", "ENABLE_USER_SCRIPT_SANDBOXING"], expected: "YES")
+    && is_string(v: v, path: ["settings", "base", "STRING_CATALOG_GENERATE_SYMBOLS"], expected: "YES")
+    && is_string(v: v, path: ["settings", "base", "SWIFT_TREAT_WARNINGS_AS_ERRORS"], expected: "YES")
+    && is_string(v: v, path: ["settings", "base", "GCC_TREAT_WARNINGS_AS_ERRORS"], expected: "YES")
+    && is_string(v: v, path: ["settings", "base", "SWIFT_STRICT_CONCURRENCY"], expected: "complete")
+    && is_string(v: v, path: ["targets", "ApproveTests", "settings", "base", "GENERATE_INFOPLIST_FILE"], expected: "YES")
+}
+
+// Xcode 26.6 identifies itself as 2660 (observed on the operator's Mac, Xcode > About, 2026-09-24).
+// The spec writes the RELEASE; XcodeGen derives LastUpgradeCheck from it. The prompt stops only when
+// that derivation lands on the building Xcode's own number, and 26.0 (2600) did not.
+test fn the_declared_release_stamps_the_building_xcodes_upgrade_check() -> Bool {
+  (xcodegen_last_upgrade_check(r: xcode_26_6) == "2660")
+    && (xcodegen_last_upgrade_check(r: XcodeRelease { major: 26, minor: 0, release_notes: xcode_26_6.release_notes }) == "2600")
+    && (xcodegen_last_upgrade_check(r: XcodeRelease { major: 9, minor: 1, release_notes: xcode_26_6.release_notes }) == "0910")
+}
+
+test fn the_committed_projection_carries_every_required_info_plist_key_and_setting() -> Bool {
+  match expected_approve_ios_project_yml() {
+    ApproveIosProjectRefused { reason: _ } => false
+    ApproveIosProjectGenerated { content: t } => match ingest_yaml_source(src: t) {
+      IngestedYaml { value: v } => project_carries_required_content(v: v)
+      _ => false
+    }
+  }
+}
+
+// ── Discrimination, over supplied documents ────────────────────────────────────────────────
+
+
+fn supplied_with(properties: List<YamlKeyValue>, approve_settings: List<YamlKeyValue>, xcode_version: String, tests_settings: List<YamlKeyValue>) -> YamlValue {
+  supplied_full(properties: properties, approve_settings: approve_settings, xcode_version: xcode_version, tests_settings: tests_settings, swift_version: [swift_version])
+}
+
+fn supplied_full(properties: List<YamlKeyValue>, approve_settings: List<YamlKeyValue>, xcode_version: String, tests_settings: List<YamlKeyValue>, swift_version: List<YamlKeyValue>) -> YamlValue {
+  yaml_mapping(entries: [
+    kv(key: "options", value: yaml_mapping(entries: [
+      kv(key: "deploymentTarget", value: yaml_mapping(entries: [kv(key: "iOS", value: yaml_string(s: "17.0"))])),
+      kv(key: "xcodeVersion", value: yaml_string(s: xcode_version))
+    ])),
+    kv(key: "settings", value: yaml_mapping(entries: [kv(key: "base", value: yaml_mapping(entries: concat(swift_version, [
+      kv(key: "ENABLE_USER_SCRIPT_SANDBOXING", value: yaml_string(s: "YES")),
+      kv(key: "STRING_CATALOG_GENERATE_SYMBOLS", value: yaml_string(s: "YES")),
+      kv(key: "SWIFT_TREAT_WARNINGS_AS_ERRORS", value: yaml_string(s: "YES")),
+      kv(key: "GCC_TREAT_WARNINGS_AS_ERRORS", value: yaml_string(s: "YES")),
+      kv(key: "SWIFT_STRICT_CONCURRENCY", value: yaml_string(s: "complete"))
+    ])))])),
+    kv(key: "targets", value: yaml_mapping(entries: [kv(key: "Approve", value: yaml_mapping(entries: [
+      kv(key: "settings", value: yaml_mapping(entries: [kv(key: "base", value: yaml_mapping(entries: approve_settings))])),
+      kv(key: "info", value: yaml_mapping(entries: [
+        kv(key: "path", value: yaml_string(s: "Approve/Info.plist")),
+        kv(key: "properties", value: yaml_mapping(entries: properties))
+      ]))
+    ])), kv(key: "ApproveTests", value: yaml_mapping(entries: [
+      kv(key: "settings", value: yaml_mapping(entries: [kv(key: "base", value: yaml_mapping(entries: tests_settings))]))
+    ]))]))
+  ])
+}
+
+data tests_infoplist: YamlKeyValue = kv(key: "GENERATE_INFOPLIST_FILE", value: yaml_string(s: "YES"))
+
+fn supplied(properties: List<YamlKeyValue>, approve_settings: List<YamlKeyValue>, xcode_version: String) -> YamlValue {
+  supplied_with(properties: properties, approve_settings: approve_settings, xcode_version: xcode_version, tests_settings: [tests_infoplist])
+}
+
+data launch: YamlKeyValue = kv(key: "UILaunchScreen", value: yaml_mapping(entries: []))
+data face_id: YamlKeyValue = kv(key: "NSFaceIDUsageDescription", value: yaml_string(s: "Approving a request signs it with a key that only unlocks with Face ID."))
+data display: YamlKeyValue = kv(key: "CFBundleDisplayName", value: yaml_string(s: "Approve"))
+data modes: YamlKeyValue = kv(key: "UIBackgroundModes", value: yaml_sequence(elements: [yaml_string(s: "remote-notification")]))
+data orientations: YamlKeyValue = kv(key: "UISupportedInterfaceOrientations", value: yaml_sequence(elements: [
+  yaml_string(s: "UIInterfaceOrientationPortrait"), yaml_string(s: "UIInterfaceOrientationPortraitUpsideDown"),
+  yaml_string(s: "UIInterfaceOrientationLandscapeLeft"), yaml_string(s: "UIInterfaceOrientationLandscapeRight")
+]))
+data apns: YamlKeyValue = kv(key: "ApproveApnsEnvironment", value: yaml_string(s: "$(APNS_ENVIRONMENT)"))
+data swift_version: YamlKeyValue = kv(key: "SWIFT_VERSION", value: yaml_string(s: "5.10"))
+data host: YamlKeyValue = kv(key: "ApproveServerHost", value: yaml_string(s: "$(APPROVE_SERVER_HOST)"))
+data bundle_id: YamlKeyValue = kv(key: "PRODUCT_BUNDLE_IDENTIFIER", value: yaml_string(s: "ai.gunb.approve"))
+
+test fn witness_a_complete_supplied_document_is_admitted() -> Bool {
+  project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+// The Mac's letterboxing: UILaunchScreen missing from the written Info.plist.
+test fn red_a_document_without_a_launch_screen_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+// The Mac's crash on first Face ID use: no purpose string.
+test fn red_a_document_without_a_face_id_purpose_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+test fn red_a_document_without_a_display_name_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+// The shape that hid all three: the keys spelled as INFOPLIST_KEY_* settings XcodeGen's own plist ignores.
+test fn red_a_dead_infoplist_key_setting_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(
+    properties: [launch, face_id, display, orientations, modes, host, apns],
+    approve_settings: [bundle_id, kv(key: "INFOPLIST_KEY_CFBundleDisplayName", value: yaml_string(s: "Approve"))],
+    xcode_version: "26.6"
+  ))
+}
+
+// The upgrade prompt: a project stamped with an Xcode older than the one building it.
+test fn red_a_stale_xcode_version_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "16.0"))
+    && !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.0"))
+}
+
+// The test bundle with no Info.plist source: ApproveTests did not build.
+test fn red_a_test_target_without_an_info_plist_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied_with(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: []))
+}
+
+// Xcode's "All interface orientations must be supported" warning, fatal under warnings-as-errors.
+test fn red_a_document_without_supported_orientations_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, display, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+// The standing never claims an executing lane, and names the trigger that would retire that.
+test fn the_ios_build_standing_names_its_missing_lane() -> Bool {
+  match approve_ios_build_standing() {
+    NotExecutedByAnyRequiredLane { latest_receipt: _, trigger: t } => t == approve_ios_build_unexecuted_frontier
+  }
+}
+
+// The three rows the app's identity and runtime read: omitted or substituted, each is refused.
+data all_properties: List<YamlKeyValue> = [launch, face_id, display, orientations, modes, host, apns]
+
+test fn red_an_omitted_or_substituted_apns_environment_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host], approve_settings: [bundle_id], xcode_version: "26.6"))
+    && !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, kv(key: "ApproveApnsEnvironment", value: yaml_string(s: "production"))], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+test fn red_an_omitted_or_substituted_bundle_identifier_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: all_properties, approve_settings: [], xcode_version: "26.6"))
+    && !project_carries_required_content(v: supplied(properties: all_properties, approve_settings: [kv(key: "PRODUCT_BUNDLE_IDENTIFIER", value: yaml_string(s: "ai.gunb.other"))], xcode_version: "26.6"))
+}
+
+test fn red_an_omitted_or_substituted_swift_version_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied_full(properties: all_properties, approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: [tests_infoplist], swift_version: []))
+    && !project_carries_required_content(v: supplied_full(properties: all_properties, approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: [tests_infoplist], swift_version: [kv(key: "SWIFT_VERSION", value: yaml_string(s: "6.0"))]))
+}

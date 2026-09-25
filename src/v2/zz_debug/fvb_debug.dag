@@ -1,0 +1,32 @@
+module v2.zz_debug.fvb_debug
+
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
+import v2.test.claim.body_lowering.function_value_body_route {
+  FvbContextRefused, FvbInferred, FvbOutcomesDecided, FvbRefused, FvbVerdict, fvb_outcomes
+}
+
+fn fvb_debug_verdict(v: FvbVerdict) -> String {
+  match v {
+    FvbInferred => "inferred"
+    FvbRefused { reason: r, at_atom: a } =>
+      "refused " + symbol_lexeme(sym: r) + " at " + match a {
+        Present { value: s } => symbol_lexeme(sym: s)
+        Absent => "-"
+      }
+  }
+}
+
+fn fvb_debug() -> String {
+  match fvb_outcomes() {
+    FvbContextRefused { reason: r } => "context refused " + symbol_lexeme(sym: r)
+    FvbOutcomesDecided { direct: d, curried: c, curried_undeclared: u } =>
+      "direct=" + fvb_debug_verdict(v: d) + " | curried=" + fvb_debug_verdict(v: c) + " | undeclared=" + fvb_debug_verdict(v: u)
+  }
+}
+
+fn fvb_debug_exit() -> ProcessExit {
+  exit_failure(reason: fvb_debug())
+}
