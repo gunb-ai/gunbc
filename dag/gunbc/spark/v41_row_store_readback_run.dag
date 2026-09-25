@@ -1,0 +1,235 @@
+module gunbc.spark.v41_row_store_readback_run
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.algebra { trim }
+import std.measure { ByteSize, byte_size_count }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { od_hex_span_command }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_revision,
+  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+}
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run, HostCli }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
+  V41RowStoreEncodingSpec, V41ReadbackSample, V41ReadbackRegion, V41RegionInStore, V41RegionInWeight, V41RegionInScale,
+  v41_row_store_spec, v41_published_span_plan, v41_live_head_sizes,
+  v41_readback_samples, v41_readback_region, v41_readback_sample_key,
+}
+import gunbc.spark.v41_row_store_encode {
+  V41StoreEncodeArgs, V41StoreEncodePlanned, V41StoreEncodeUnplannable, v41_store_encode_plan,
+}
+import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_directory }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { admit_host_held_by_subject }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_openssh_trust_policy_of,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused,
+  spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+
+// ── THE READBACK RUN: THE PRODUCED STORES' BYTES AT EVERY SEAM, READ WHERE THEY ARE ─────────────
+//
+// The instrument of gunbc.spark.v41_engram_row_store v41_published_store_readback_readings. On ONE Group
+// A host that holds both the verified shards and the eight stores the encode run produced, it reads every
+// sample v41_readback_samples owes -- each store's magic, first and last record, and the published source
+// rows at the same global rows -- at the byte region v41_readback_region names: a store region at that
+// offset of the store's file (v41_store_encode_plan's out path), a source region at that offset past its
+// table's published span (the plan's shard and span offsets). It READS ONLY: od(1) over each region, and
+// nothing is written on the host. The receipt, printed into the step's log, carries one
+// `sample <key> hex=<bytes>` line per sample; the verdict is not taken here but by v41_store_readback over
+// the transcribed readings, where each record is compared against v41_place_row.
+
+data v41_readback_run_attempt_raw: String = "v41-row-store-readback"
+data v41_readback_run_receipt_path: String = "target/v41-row-store-readback-receipt.txt"
+
+// WHERE ONE SAMPLE IS ON THE HOST: a file and an absolute byte offset, with the region's length.
+type V41HostRegion {
+  sample: V41ReadbackSample
+  path: String
+  offset: Int
+  length: Int
+}
+
+fn v41_layer_args(plan: List<V41StoreEncodeArgs>, layer: Nat) -> V41StoreEncodeArgs? {
+  first(filter(plan, a => a.layer == layer))
+}
+
+fn v41_rank_args(plan: List<V41StoreEncodeArgs>, layer: Nat, rank: Nat) -> V41StoreEncodeArgs? {
+  first(filter(plan, a => a.layer == layer && a.rank == rank))
+}
+
+fn v41_shard_path(a: V41StoreEncodeArgs) -> String {
+  join([v41_checkpoint_directory as String, "/", a.shard as String], "")
+}
+
+fn v41_host_region(spec: V41RowStoreEncodingSpec, plan: List<V41StoreEncodeArgs>, s: V41ReadbackSample) -> V41HostRegion? {
+  match v41_readback_region(spec: spec, s: s) {
+    V41RegionInStore { layer: l, rank: r, offset: o, length: n } => match v41_rank_args(plan: plan, layer: l, rank: r) {
+      Absent => none
+      Present { value: a } => Present { value: V41HostRegion { sample: s, path: a.out as String, offset: byte_size_count(b: o), length: byte_size_count(b: n) } }
+    }
+    V41RegionInWeight { layer: l, offset: o, length: n } => match v41_layer_args(plan: plan, layer: l) {
+      Absent => none
+      Present { value: a } => Present { value: V41HostRegion { sample: s, path: v41_shard_path(a: a), offset: byte_size_count(b: a.weight_offset) + byte_size_count(b: o), length: byte_size_count(b: n) } }
+    }
+    V41RegionInScale { layer: l, offset: o, length: n } => match v41_layer_args(plan: plan, layer: l) {
+      Absent => none
+      Present { value: a } => Present { value: V41HostRegion { sample: s, path: v41_shard_path(a: a), offset: byte_size_count(b: a.scale_offset) + byte_size_count(b: o), length: byte_size_count(b: n) } }
+    }
+  }
+}
+
+type V41SampleRead
+  = V41SampleReadOk { region: V41HostRegion, hex: String }
+  | V41SampleReadFailed { region: V41HostRegion, cause: NonEmptyStr }
+
+// od prints the bytes as whitespace-separated two-digit hex over several lines; the reading is their
+// concatenation. A short read is not repaired here: the fold's length check refuses it.
+fn v41_od_hex(stdout: String) -> String {
+  replace(s: replace(s: replace(s: stdout, from: "\n", to: ""), from: " ", to: ""), from: "\t", to: "")
+}
+
+fn v41_read_sample(ctx: SparkMaterializeContext, r: V41HostRegion) -> V41SampleRead {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: od_hex_span_command(path: r.path, offset: r.offset, length: r.length))) {
+    RemoteUnreachable { cause: c } => V41SampleReadFailed { region: r, cause: join(["the od leg did not run: ", c], "") as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: o, stderr: err } =>
+      if code != 0 { V41SampleReadFailed { region: r, cause: join(["od exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
+        V41SampleReadOk { region: r, hex: v41_od_hex(stdout: o) }
+      }
+  }
+}
+
+fn v41_sample_line(r: V41SampleRead) -> String {
+  match r {
+    V41SampleReadOk { region: g, hex: h } => join(["sample ", v41_readback_sample_key(s: g.sample), " hex=", h, "\n"], "")
+    V41SampleReadFailed { region: g, cause: c } => join(["sample ", v41_readback_sample_key(s: g.sample), " UNREAD ", c as String, " path=", g.path, " offset=", to_string(g.offset), " length=", to_string(g.length), "\n"], "")
+  }
+}
+
+type V41ReadbackRun
+  = V41ReadbackRefusedBeforeRun { cause: NonEmptyStr }
+  | V41ReadbackRan { owed: Nat, reads: List<V41SampleRead> }
+
+fn v41_readback_all(ctx: SparkMaterializeContext) -> V41ReadbackRun {
+  match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+    V41RowStoreSpecRefused { defects: d } => V41ReadbackRefusedBeforeRun { cause: join(["the row-store spec refused: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+    V41RowStoreSpecAdmitted { spec: spec } =>
+      match v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files) {
+        V41PublishedSpansUnplannable { defects: d } => V41ReadbackRefusedBeforeRun { cause: join(["the span plan refused: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+        V41PublishedSpansPlanned { spans: spans } =>
+          match v41_store_encode_plan(spec: spec, spans: spans) {
+            V41StoreEncodeUnplannable { defects: d } => V41ReadbackRefusedBeforeRun { cause: join(["the encode plan refused: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+            V41StoreEncodePlanned { stores: plan } => {
+              let owed = v41_readback_samples(spec: spec)
+              let located = flat_map(owed, s => match v41_host_region(spec: spec, plan: plan, s: s) { Present { value: r } => [r]  Absent => [] as List<V41HostRegion> })
+              if length(located) != length(owed) {
+                V41ReadbackRefusedBeforeRun { cause: "a sample the spec owes names a store or table the encode plan does not, so it has no place on the host" as NonEmptyStr }
+              } else {
+                V41ReadbackRan { owed: length(owed), reads: map(located, r => v41_read_sample(ctx: ctx, r: r)) }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn v41_readback_succeeded(run: V41ReadbackRun) -> Bool {
+  match run {
+    V41ReadbackRefusedBeforeRun { cause: _ } => false
+    V41ReadbackRan { owed: n, reads: rs } => n != 0 && length(rs) == n && all(rs, r => match r { V41SampleReadOk { region: _, hex: _ } => true  V41SampleReadFailed { region: _, cause: _ } => false })
+  }
+}
+
+fn v41_readback_body(run: V41ReadbackRun) -> String {
+  match run {
+    V41ReadbackRefusedBeforeRun { cause: c } => join(["refused-before-run: ", c as String, "\n"], "")
+    V41ReadbackRan { owed: _, reads: rs } => join(map(rs, r => v41_sample_line(r: r)), "")
+  }
+}
+
+// THE FLEET-CONVERGE DOOR: `spark_v41_row_store_readback` with `target` naming ONE Group A Spark that holds
+// the stores; the same admission as spark_v41_row_store_encode, and nothing on the host is written.
+fn v41_row_store_readback_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode reads back the V4.1 row stores on ONE host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_row_store_readback_ci: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: path } =>
+              match read_bootstrap_credential() {
+                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                BootstrapCredentialReady { secret: administrator } =>
+                  match fleet_ssh_attempt_identity(raw: v41_readback_run_attempt_raw) {
+                    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                    Present { value: attempt } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_openssh_trust_policy_of(outcome: materialization) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: trust } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-v41-row-store-readback-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              v41_readback_all(ctx: SparkMaterializeContext {
+                                host: target_host,
+                                trust: trust,
+                                path: path,
+                                admin_credential: administrator as Secret,
+                                admin_credential_file: file,
+                                executor: HostCli,
+                              })
+                            },
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: run } => {
+                              let body = join([
+                                join(["v41 row store readback probed_at=", probed_at_word(reading: now) as String, " host=", target_host as String, " revision=", deepseek_v4_1_flash_revision as String, "\n"], ""),
+                                v41_readback_body(run: run),
+                                join(["executor=", executor, "\n"], ""),
+                                known_hosts_materialization_receipt(outcome: materialization),
+                              ], "")
+                              let w = Filesystem.Write(path: v41_readback_run_receipt_path, content: body)
+                              if !w.success {
+                                exit_failure(reason: join(["v41 row store readback receipt write failed: ", w.error], ""))
+                              } else if v41_readback_succeeded(run: run) {
+                                ExitSuccess
+                              } else {
+                                exit_failure(reason: join(["not every owed sample was read on ", target_host as String, ":\n", body], ""))
+                              }
+                            }
+                          }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

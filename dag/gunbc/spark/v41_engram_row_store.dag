@@ -2,7 +2,8 @@ module gunbc.spark.v41_engram_row_store
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Map }
 import std.nat { Nat }
-import std.integer { UInt8 }
+import std.integer { UInt8, qualified_octet_members }
+import extdeps.numeric.base16 { base16_decode_lower }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, serialize_content_hash }
@@ -1006,5 +1007,259 @@ data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStore
     V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 1, digest: Sha256Digest { hex: "f59d2f01751827ce5dd74400b4904ec8fccda0bb17fa1fcbc527ec6be564030b" as Sha256DigestHex }), size: byte_size(count: 25345045974) },
     V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 2, digest: Sha256Digest { hex: "20da211045f113916088fede485cd1fa4058a9efe6fc21b9ba58bbb99a5dde91" as Sha256DigestHex }), size: byte_size(count: 25345200678) },
     V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 3, digest: Sha256Digest { hex: "02450652d87576ab116348f1b3182540dc43d0eb1c1134d7d629eb287e378fb9" as Sha256DigestHex }), size: byte_size(count: 25345351158) },
+  ],
+}
+
+// ── THE BOUNDARY-STRATIFIED READBACK: THE REAL STORES' BYTES AT EVERY SEAM, AGAINST v41_place_row ──
+//
+// The digests above say WHICH bytes the eight stores hold; they do not say those bytes are the model's.
+// The differential that admitted the host program (#12122) ran over two adjacent layer-1 rows, which
+// cannot see a wiring error: a wrong first or last row for one rank, an off-by-one rank boundary, layer
+// 14 handed layer 1's offsets, one rank's plan handed to another, a wrong termination
+// (proud-deer-538, 2026-09-24). So the produced stores are read back at exactly the rows where those
+// errors live -- each store's magic, its first and its last record -- and the published source rows at
+// the same global rows (which, rank by rank, are row 0, the last row, and both sides of every rank
+// boundary), and each store record must equal what v41_place_row makes of its source row, at the rank
+// and local row the spec assigns. Termination is the size check the key already makes (v41_store_size).
+// The sample is DERIVED from the admitted spec, never authored: a spec whose ranges move moves it.
+//
+// A SHIFT THAT CANNOT BE SEEN MUST REFUSE, NOT PASS: where the source rows on both sides of a boundary are
+// byte-identical, a store shifted by one row there would read back equal, so the readback refuses as
+// undiscriminating rather than calling it verified.
+
+type V41ReadbackSample
+  = V41SampleMagic { layer: Nat, rank: Nat }
+  | V41SampleStoreRecord { layer: Nat, rank: Nat, local_row: Nat }
+  | V41SampleSourceWeight { layer: Nat, global_row: Nat }
+  | V41SampleSourceScale { layer: Nat, global_row: Nat }
+
+fn v41_readback_sample_key(s: V41ReadbackSample) -> String {
+  match s {
+    V41SampleMagic { layer: l, rank: r } => join(["magic ", v41_store_key(layer: l, rank: r)], "")
+    V41SampleStoreRecord { layer: l, rank: r, local_row: k } => join(["record ", v41_store_key(layer: l, rank: r), " row ", to_string(k)], "")
+    V41SampleSourceWeight { layer: l, global_row: g } => join(["weight layer.", to_string(l), " row ", to_string(g)], "")
+    V41SampleSourceScale { layer: l, global_row: g } => join(["scale layer.", to_string(l), " row ", to_string(g)], "")
+  }
+}
+
+// WHERE A SAMPLE LIVES: a byte region of one store, or of one layer's weight or scale table (the offset is
+// from the table's start; the host run adds the published span's file offset).
+type V41ReadbackRegion
+  = V41RegionInStore { layer: Nat, rank: Nat, offset: ByteSize, length: ByteSize }
+  | V41RegionInWeight { layer: Nat, offset: ByteSize, length: ByteSize }
+  | V41RegionInScale { layer: Nat, offset: ByteSize, length: ByteSize }
+
+fn v41_readback_region(spec: V41RowStoreEncodingSpec, s: V41ReadbackSample) -> V41ReadbackRegion {
+  let record = v41_row_bytes(g: spec.geometry)
+  match s {
+    V41SampleMagic { layer: l, rank: r } => V41RegionInStore { layer: l, rank: r, offset: byte_size(count: 0), length: v41_row_store_magic_size() }
+    V41SampleStoreRecord { layer: l, rank: r, local_row: k } => V41RegionInStore { layer: l, rank: r, offset: byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + k * byte_size_count(b: record)), length: record }
+    V41SampleSourceWeight { layer: l, global_row: g } => V41RegionInWeight { layer: l, offset: byte_size(count: g * byte_size_count(b: weight_bytes(g: spec.geometry))), length: weight_bytes(g: spec.geometry) }
+    V41SampleSourceScale { layer: l, global_row: g } => V41RegionInScale { layer: l, offset: byte_size(count: g * byte_size_count(b: scale_bytes(g: spec.geometry))), length: scale_bytes(g: spec.geometry) }
+  }
+}
+
+fn v41_region_length(r: V41ReadbackRegion) -> ByteSize {
+  match r {
+    V41RegionInStore { layer: _, rank: _, offset: _, length: n } => n
+    V41RegionInWeight { layer: _, offset: _, length: n } => n
+    V41RegionInScale { layer: _, offset: _, length: n } => n
+  }
+}
+
+// THE GLOBAL ROWS A RANK'S STORE IS SAMPLED AT: its first and its last (one, when the range is one row).
+fn v41_rank_edge_rows(r: VllmEngramRankRows) -> List<Int> {
+  if r.end - r.start == 1 { [r.start] } else { [r.start, r.end - 1] }
+}
+
+fn v41_rank_samples(layer: Nat, r: VllmEngramRankRows) -> List<V41ReadbackSample> {
+  concat([V41SampleMagic { layer: layer, rank: r.rank } as V41ReadbackSample],
+    flat_map(v41_rank_edge_rows(r: r), g => [
+      V41SampleStoreRecord { layer: layer, rank: r.rank, local_row: g - r.start } as V41ReadbackSample,
+      V41SampleSourceWeight { layer: layer, global_row: g } as V41ReadbackSample,
+      V41SampleSourceScale { layer: layer, global_row: g } as V41ReadbackSample,
+    ]))
+}
+
+// EVERY SAMPLE THE SPEC OWES, in spec order. A rank with no rows owes none (its store is magic only, and
+// the spec admits no such rank: vllm_engram_every_rank_has_heads).
+fn v41_readback_samples(spec: V41RowStoreEncodingSpec) -> List<V41ReadbackSample> {
+  flat_map(spec.layers, t => flat_map(filter(t.ranks, r => r.end > r.start), r => v41_rank_samples(layer: t.layer, r: r)))
+}
+
+type V41ReadbackReading {
+  sample: V41ReadbackSample
+  hex: String
+}
+
+type V41StoreReadbackReadings
+  = V41StoreReadbackRead { host: NonEmptyStr, observed_at: NonEmptyStr, readings: List<V41ReadbackReading> }
+  | V41StoreReadbackReadingsUnread { obligation: NonEmptyStr }
+
+type V41StoreReadback
+  = V41StoreReadbackVerified { host: NonEmptyStr, observed_at: NonEmptyStr, samples: Nat }
+  | V41StoreReadbackUnread { obligation: NonEmptyStr }
+  | V41StoreReadbackRefused { defects: List<NonEmptyStr> }
+
+fn v41_readback_octets(hex: String) -> List<UInt8>? {
+  match base16_decode_lower(hex: hex) {
+    Absent => none
+    Present { value: q } => Present { value: qualified_octet_members(q: q) }
+  }
+}
+
+// THE READINGS, JOINED TO THE SAMPLE BY IDENTITY: every owed sample exactly once, nothing foreign, every
+// reading exactly its region's length. A reading that is not lowercase hex decodes to no bytes, which
+// v41_place_row and the magic check then refuse: each reading is decoded once, where it is compared.
+fn v41_readback_join_defects(spec: V41RowStoreEncodingSpec, owed: List<V41ReadbackSample>, readings: List<V41ReadbackReading>) -> List<NonEmptyStr> {
+  let owed_index = v41_key_counts(keys: map(owed, s => v41_readback_sample_key(s: s)))
+  let read_index = v41_key_counts(keys: map(readings, r => v41_readback_sample_key(s: r.sample)))
+  let missing = map(filter(owed, s => v41_key_count(index: read_index, key: v41_readback_sample_key(s: s)) == 0), s => join(["the readback owes ", v41_readback_sample_key(s: s), " and it was not read"], "") as NonEmptyStr)
+  let twice = map(filter(owed, s => v41_key_count(index: read_index, key: v41_readback_sample_key(s: s)) > 1), s => join(["", v41_readback_sample_key(s: s), " was read more than once"], "") as NonEmptyStr)
+  let foreign = map(filter(readings, r => v41_key_count(index: owed_index, key: v41_readback_sample_key(s: r.sample)) == 0), r => join(["a reading of ", v41_readback_sample_key(s: r.sample), " is not a sample the spec owes"], "") as NonEmptyStr)
+  let malformed = map(filter(readings, r => string_length(r.hex) != 2 * byte_size_count(b: v41_region_length(r: v41_readback_region(spec: spec, s: r.sample)))),
+    r => join(["the reading of ", v41_readback_sample_key(s: r.sample), " is not ", to_string(2 * byte_size_count(b: v41_region_length(r: v41_readback_region(spec: spec, s: r.sample)))), " hex digits (", to_string(byte_size_count(b: v41_region_length(r: v41_readback_region(spec: spec, s: r.sample)))), " bytes)"], "") as NonEmptyStr)
+  concat(concat(concat(missing, twice), foreign), malformed)
+}
+
+fn v41_reading_hex(index: Map<String, String>, s: V41ReadbackSample) -> String {
+  match map_get(index, v41_readback_sample_key(s: s)) {
+    Present { value: h } => h
+    Absent => ""
+  }
+}
+
+fn v41_reading_octets(index: Map<String, String>, s: V41ReadbackSample) -> List<UInt8> {
+  match v41_readback_octets(hex: v41_reading_hex(index: index, s: s)) {
+    Present { value: o } => o
+    Absent => [] as List<UInt8>
+  }
+}
+
+// ONE STORE RECORD AGAINST v41_place_row OF ITS SOURCE ROW: the placement must land at this rank and
+// local row, and its record must be the store's bytes there.
+fn v41_record_defects(spec: V41RowStoreEncodingSpec, index: Map<String, String>, layer: Nat, r: VllmEngramRankRows, g: Int) -> List<NonEmptyStr> {
+  let at = join([v41_store_key(layer: layer, rank: r.rank), " row ", to_string(g - r.start), " (global row ", to_string(g), ")"], "")
+  let row = v41_source_row(layer: layer, global_row: g,
+    weight: v41_reading_octets(index: index, s: V41SampleSourceWeight { layer: layer, global_row: g }),
+    scale: v41_reading_octets(index: index, s: V41SampleSourceScale { layer: layer, global_row: g }))
+  match v41_place_row(row: row, spec: spec) {
+    V41PlacementRefused { defect: d } => [join(["store ", at, ": v41_place_row refused its source row: ", d as String], "") as NonEmptyStr]
+    V41Placed { row: p } =>
+      if p.rank != r.rank || p.local_row != g - r.start {
+        [join(["store ", at, ": v41_place_row places this row at ", v41_store_key(layer: layer, rank: p.rank), " row ", to_string(p.local_row)], "") as NonEmptyStr]
+      } else if p.record != v41_reading_octets(index: index, s: V41SampleStoreRecord { layer: layer, rank: r.rank, local_row: g - r.start }) {
+        [join(["store ", at, ": the stored record is not v41_place_row of the published source row"], "") as NonEmptyStr]
+      } else { [] as List<NonEmptyStr> }
+  }
+}
+
+fn v41_magic_defects(index: Map<String, String>, layer: Nat, r: VllmEngramRankRows) -> List<NonEmptyStr> {
+  if v41_reading_octets(index: index, s: V41SampleMagic { layer: layer, rank: r.rank }) == v41_magic_octets() { [] as List<NonEmptyStr> } else {
+    [join(["store ", v41_store_key(layer: layer, rank: r.rank), ": the header is not the row-store magic"], "") as NonEmptyStr]
+  }
+}
+
+// A BOUNDARY WHOSE TWO SOURCE ROWS ARE BYTE-IDENTICAL CANNOT SEE A SHIFT ACROSS IT.
+fn v41_undiscriminated_boundaries(index: Map<String, String>, t: V41LayerTable) -> List<NonEmptyStr> {
+  map(filter(filter(t.ranks, r => r.start > 0 && r.end > r.start), r =>
+      v41_reading_hex(index: index, s: V41SampleSourceWeight { layer: t.layer, global_row: r.start - 1 }) == v41_reading_hex(index: index, s: V41SampleSourceWeight { layer: t.layer, global_row: r.start })
+        && v41_reading_hex(index: index, s: V41SampleSourceScale { layer: t.layer, global_row: r.start - 1 }) == v41_reading_hex(index: index, s: V41SampleSourceScale { layer: t.layer, global_row: r.start })),
+    r => join(["layer ", to_string(t.layer), " rows ", to_string(r.start - 1), " and ", to_string(r.start), " (the rank ", to_string(r.rank), " boundary) are byte-identical, so a shift across it cannot be seen; the readback is undiscriminating there"], "") as NonEmptyStr)
+}
+
+fn v41_readback_content_defects(spec: V41RowStoreEncodingSpec, index: Map<String, String>) -> List<NonEmptyStr> {
+  flat_map(spec.layers, t => concat(
+    v41_undiscriminated_boundaries(index: index, t: t),
+    flat_map(filter(t.ranks, r => r.end > r.start), r => concat(
+      v41_magic_defects(index: index, layer: t.layer, r: r),
+      flat_map(v41_rank_edge_rows(r: r), g => v41_record_defects(spec: spec, index: index, layer: t.layer, r: r, g: g))))))
+}
+
+// THE VERDICT: Unread until a readback run's receipt is transcribed; any join or content defect refuses.
+fn v41_store_readback(spec: V41RowStoreEncodingSpec, readings: V41StoreReadbackReadings) -> V41StoreReadback {
+  match readings {
+    V41StoreReadbackReadingsUnread { obligation: o } => V41StoreReadbackUnread { obligation: o }
+    V41StoreReadbackRead { host: h, observed_at: at, readings: rs } => {
+      let owed = v41_readback_samples(spec: spec)
+      let join_defects = v41_readback_join_defects(spec: spec, owed: owed, readings: rs)
+      if length(join_defects) != 0 { V41StoreReadbackRefused { defects: join_defects } } else {
+        let index = fold(rs, init: empty_map(), f: (acc, r) => map_insert(acc, v41_readback_sample_key(s: r.sample), r.hex))
+        let content = v41_readback_content_defects(spec: spec, index: index)
+        if length(content) != 0 { V41StoreReadbackRefused { defects: content } } else {
+          V41StoreReadbackVerified { host: h, observed_at: at, samples: length(owed) }
+        }
+      }
+    }
+  }
+}
+
+// THE LIVE READBACK. Its instrument is the spark_v41_row_store_readback fleet-converge mode
+// (gunbc.spark.v41_row_store_readback_run v41_row_store_readback_ci_wet), which reads every owed sample on
+// the host holding the stores and prints one `sample <key> hex=<bytes>` line each; a Read row is
+// transcribed from one run's log, naming that run and host. While it is Unread the candidate carries that
+// obligation in its derivation evidence, and no deployment authorization can be minted over it.
+// srv5's eight stores read back at every seam by spark_v41_row_store_readback (fleet-converge run
+// 36126002186, main 6136fcf, 2026-09-25): 56 samples, every one read.
+data v41_published_store_readback_readings: V41StoreReadbackReadings = V41StoreReadbackRead {
+  host: "srv5" as NonEmptyStr,
+  observed_at: "fleet-converge run 36126002186" as NonEmptyStr,
+  readings: [
+    V41ReadbackReading { sample: V41SampleMagic { layer: 1, rank: 0 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 0, local_row: 0 }, hex: "e36aed4fc6d9f5e8e0f6f2715af1cde27b44f949e4d1f0ee745b6370dcd7edbbf07470d9ec71e4f477716b57f8625bebeef0f8d8f8ef7478df5a6cdfdf75686a67717964705f58726c61fb7974ef73e3e57bdc78d7f371eb7571f7ecf07549435be7e26363f4eae86ceb6ce26d71f654e7526a576fee76ece87377fae974ea666d7669f3f26775ebefd5e5f8edddf071e077ef4b6860da6edff16af1f6e54b78cf6b75e873e7eaf5725dece5e958f8ec5bebf1e8646852666871ec7276f165f4f15ad55268e970f5726955f46edd62ec6ade6768e6f070725dd876eadef9e95e6962d075e3f6f0da51ed4ddaf172ecf2f4f770eed86bee6de2eb69627061f5547878777878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 0 }, hex: "e36aed4fc6d9f5e8e0f6f2715af1cde27b44f949e4d1f0ee745b6370dcd7edbbf07470d9ec71e4f477716b57f8625bebeef0f8d8f8ef7478df5a6cdfdf75686a67717964705f58726c61fb7974ef73e3e57bdc78d7f371eb7571f7ecf07549435be7e26363f4eae86ceb6ce26d71f654e7526a576fee76ece87377fae974ea666d7669f3f26775ebefd5e5f8edddf071e077ef4b6860da6edff16af1f6e54b78cf6b75e873e7eaf5725dece5e958f8ec5bebf1e8646852666871ec7276f165f4f15ad55268e970f5726955f46edd62ec6ade6768e6f070725dd876eadef9e95e6962d075e3f6f0da51ed4ddaf172ecf2f4f770eed86bee6de2eb69627061f554" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 0 }, hex: "7878777878787878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 0, local_row: 96000563 }, hex: "5b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a607878787878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 96000563 }, hex: "5b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a60" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 96000563 }, hex: "7878787878787878" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 1, rank: 1 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 1, local_row: 0 }, hex: "e9f6f3e17de9685271f57bf1f7fdfb71e679ea76f9fbfdeed2f67174fa78f17bc162eb5578f3f8696d66626f6def35f375f069e16072f5c0f1746a346ee969ddd0eb57f1f5f26f68ecf8e65c70f1e865dcddfbdb586cfad479f8f1f27bedf67662625ce2696de3ef70ebec72fcd366e9edd3e15aee61e9eadb7072f3e66b5b6c5cf0707262ed644877666869e664eee06071c760eae5d36c6a7560dcfb6a63eb79c178756af1687c45eb63f4f0f3f0f1e9f6555df4f8f1f16c6d6ff1e37d72efe35d71d2605cf26de1ebf3f469f96bf1d36ff768ef5ff270eced6c53e6de6ef4d9e96cebeb4c6eecefed7261e4ecbe73456d70ed635cf95972dfd1e8e0eaf0707778777878777878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 96000564 }, hex: "e9f6f3e17de9685271f57bf1f7fdfb71e679ea76f9fbfdeed2f67174fa78f17bc162eb5578f3f8696d66626f6def35f375f069e16072f5c0f1746a346ee969ddd0eb57f1f5f26f68ecf8e65c70f1e865dcddfbdb586cfad479f8f1f27bedf67662625ce2696de3ef70ebec72fcd366e9edd3e15aee61e9eadb7072f3e66b5b6c5cf0707262ed644877666869e664eee06071c760eae5d36c6a7560dcfb6a63eb79c178756af1687c45eb63f4f0f3f0f1e9f6555df4f8f1f16c6d6ff1e37d72efe35d71d2605cf26de1ebf3f469f96bf1d36ff768ef5ff270eced6c53e6de6ef4d9e96cebeb4c6eecefed7261e4ecbe73456d70ed635cf95972dfd1e8e0eaf070" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 96000564 }, hex: "7778777878777878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 1, local_row: 96001175 }, hex: "ecda6a6f76eaea6ad1e8a6eff1d7fa6ee1e958e464f2e96d727371eae3d9f36865dae8d8f1ea6c6c69e9f061f3e7e3e0f7ec52f16062ee6bebeb5ad3dbefd3eb5cf1f3796eef59fbf5696b66f4faf168d2f67373f27668f563ecdbe97976d2e278e878eb6e736a73f6eae96bf3fe75786b77f566f0e274e8fbf8776c7aeb617c6be7f4da6ddf6f68f0eae55fe7f1f1f8e96aebe2f1d965ea736ddf61e0ecd36cf2eeed6a6ff9f5f9f6dadcda737869f4e1f27aebf2e97661f8d3725c6c73fdfcd955d9794ced71e9e8f0f66461f1ecd6f3ec4a5e4ce3ef73eaf069736f695c6e74d66dee726969eaebe9f9745efbecf37278f963586a73f94ff873dd444ceb6e7878777778777877" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 192001739 }, hex: "ecda6a6f76eaea6ad1e8a6eff1d7fa6ee1e958e464f2e96d727371eae3d9f36865dae8d8f1ea6c6c69e9f061f3e7e3e0f7ec52f16062ee6bebeb5ad3dbefd3eb5cf1f3796eef59fbf5696b66f4faf168d2f67373f27668f563ecdbe97976d2e278e878eb6e736a73f6eae96bf3fe75786b77f566f0e274e8fbf8776c7aeb617c6be7f4da6ddf6f68f0eae55fe7f1f1f8e96aebe2f1d965ea736ddf61e0ecd36cf2eeed6a6ff9f5f9f6dadcda737869f4e1f27aebf2e97661f8d3725c6c73fdfcd955d9794ced71e9e8f0f66461f1ecd6f3ec4a5e4ce3ef73eaf069736f695c6e74d66dee726969eaebe9f9745efbecf37278f963586a73f94ff873dd444ceb6e" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 192001739 }, hex: "7878777778777877" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 1, rank: 2 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 2, local_row: 0 }, hex: "69e2ef6a61f159d15bf4e8567876586df0f1f2c471eef1eed4f386726b42f1f1f2edc7646bdde1ebc55af24c6e5b6d5f73db6471674cd665f9e160e86de3666ada4d64f0e3dc69716bf469e9ea746e64d9e4e577cb53e96ae862f078f2eb67e7615c75ec797063f3e6ef7875f574f648eaea4176f077786570f772f5e0f069ef5df6f0f166426bc57749f16c6cf1def1664e6e69f660ebf36a7672f3f0d9e8e1f3ed6ae86af170e4e97769e2d1dfe8e2e0e9f2e7e171ede7e965ce6360e9ebe1736df3e874e5666eef63734abe6be96f7669694c44ee76605d68b864e6eae9e2e062f0eee9e05b776ceb4fd96f6c6c43e170ebf0eaddea625072ef6457efe9587878787778787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 192001740 }, hex: "69e2ef6a61f159d15bf4e8567876586df0f1f2c471eef1eed4f386726b42f1f1f2edc7646bdde1ebc55af24c6e5b6d5f73db6471674cd665f9e160e86de3666ada4d64f0e3dc69716bf469e9ea746e64d9e4e577cb53e96ae862f078f2eb67e7615c75ec797063f3e6ef7875f574f648eaea4176f077786570f772f5e0f069ef5df6f0f166426bc57749f16c6cf1def1664e6e69f660ebf36a7672f3f0d9e8e1f3ed6ae86af170e4e97769e2d1dfe8e2e0e9f2e7e171ede7e965ce6360e9ebe1736df3e874e5666eef63734abe6be96f7669694c44ee76605d68b864e6eae9e2e062f0eee9e05b776ceb4fd96f6c6c43e170ebf0eaddea625072ef6457efe958" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 192001740 }, hex: "7878787778787878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 2, local_row: 96001913 }, hex: "73f3fb745b7268f94fef737b705efc6f74eceedd60ece871f2fbe476e4fbf27c6fe9f55769daf1f3e57072d4ecebeff86b6fd467d36bd957ed65e4ea746c6ccfea7972d1716367f7f7fd5ee6c2e177e26174536e63edf275f57d6ce3f27bea70e1e7e2f16a67b36b63726e59e56f7071e0f070286bf666ecf568df6eecdae6f3e17051f5baf475e776fc79f1fcfee1f6686f59ebe159f2fbf873f3f06ef5e36b786ff1fc6cea6770e8f170f3f07b6f69d9f1eefc5be5e2cc6e7063e1e2ec7e65e4f9547160ea6b5fe5ddf0eaf06c72d2dbe4e762eceadc72ed6be35550e6e769e46a51eef05ce4736956f2d7e4e46befe2dbdaf7edf1d6da676860da5fdf676a7778777877777878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 288003653 }, hex: "73f3fb745b7268f94fef737b705efc6f74eceedd60ece871f2fbe476e4fbf27c6fe9f55769daf1f3e57072d4ecebeff86b6fd467d36bd957ed65e4ea746c6ccfea7972d1716367f7f7fd5ee6c2e177e26174536e63edf275f57d6ce3f27bea70e1e7e2f16a67b36b63726e59e56f7071e0f070286bf666ecf568df6eecdae6f3e17051f5baf475e776fc79f1fcfee1f6686f59ebe159f2fbf873f3f06ef5e36b786ff1fc6cea6770e8f170f3f07b6f69d9f1eefc5be5e2cc6e7063e1e2ec7e65e4f9547160ea6b5fe5ddf0eaf06c72d2dbe4e762eceadc72ed6be35550e6e769e46a51eef05ce4736956f2d7e4e46befe2dbdaf7edf1d6da676860da5fdf676a" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 288003653 }, hex: "7778777877777878" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 1, rank: 3 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 3, local_row: 0 }, hex: "e46474ea60eee57653ebe366784e6062cfea307276e6edf5eef26bdde1ce5966f378f8f870f6d37aeff2f1757779f9f14ceeed587369fa4aeff75967f5e9f1f8ee52d5eff1655a72f0f760e35bf1f1e7eb4568686b53ed75e753ee455d6774eb79e6e95672feecf07273ea766778fb78fae1ccf5f7eb726ef1f2eb7170e572e7eb63f3f7f1f6f0e171f252f8ea7579687277f8f1766270f57d7bf3e8f365e06ddad9516156d66960d3e4ede974e17068e86f736f66ef79e8e964715bf26fe440ea6dd5e7e16e5ed4766dd16c626f5e60776ac464f4e562d458f6d9e56fe2faf5f1e767ddf0ed6be5dbf2ec6ddccce87456e7647668e16d6adb4befd5e4615b637877787777787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 288003654 }, hex: "e46474ea60eee57653ebe366784e6062cfea307276e6edf5eef26bdde1ce5966f378f8f870f6d37aeff2f1757779f9f14ceeed587369fa4aeff75967f5e9f1f8ee52d5eff1655a72f0f760e35bf1f1e7eb4568686b53ed75e753ee455d6774eb79e6e95672feecf07273ea766778fb78fae1ccf5f7eb726ef1f2eb7170e572e7eb63f3f7f1f6f0e171f252f8ea7579687277f8f1766270f57d7bf3e8f365e06ddad9516156d66960d3e4ede974e17068e86f736f66ef79e8e964715bf26fe440ea6dd5e7e16e5ed4766dd16c626f5e60776ac464f4e562d458f6d9e56fe2faf5f1e767ddf0ed6be5dbf2ec6ddccce87456e7647668e16d6adb4befd5e4615b63" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 288003654 }, hex: "7877787777787878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 1, rank: 3, local_row: 96002513 }, hex: "d7f26f726270e1e9687674776dec61f0d0c3e76e55e86edf6862ebe3e4e66174eaf55b60f678eafc79eb777b75fa5e7977d47769796f6fe5fd6853795f7bf773edeaede8e064f26e5d6a686275eff2d4eaec72f1e25d60f1f5e8785b4e5949e3f6e7e3faf67d7afa74f8fbf1f2fd7af8787efddf76f9f66676f9e078ebf0e1f7f369a5ec3b4f6361d1ecf170edf17a696e62735765f4596d68e96268f1e0ede7d0edd86c72eae8e9e865e96d78f268d36c6ef275e9f1665d6966f1e0eaee7674f168ed68e560626ce97872dce9ef72f0f6ee757eeb7c63e8506bf3706ef5f36977726f5461e8e1655df26470e5e0e972756368edf3455c71e8f2e3f265cc71e17877787778787778" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 1, global_row: 384006167 }, hex: "d7f26f726270e1e9687674776dec61f0d0c3e76e55e86edf6862ebe3e4e66174eaf55b60f678eafc79eb777b75fa5e7977d47769796f6fe5fd6853795f7bf773edeaede8e064f26e5d6a686275eff2d4eaec72f1e25d60f1f5e8785b4e5949e3f6e7e3faf67d7afa74f8fbf1f2fd7af8787efddf76f9f66676f9e078ebf0e1f7f369a5ec3b4f6361d1ecf170edf17a696e62735765f4596d68e96268f1e0ede7d0edd86c72eae8e9e865e96d78f268d36c6ef275e9f1665d6966f1e0eaee7674f168ed68e560626ce97872dce9ef72f0f6ee757eeb7c63e8506bf3706ef5f36977726f5461e8e1655df26470e5e0e972756368edf3455c71e8f2e3f265cc71e1" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 1, global_row: 384006167 }, hex: "7877787778787778" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 14, rank: 0 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 0, local_row: 0 }, hex: "69c0efe0686373e1ebf876f3d7706b7070b365d47bf7dc6de061e2f57463e0eee6f167625ddbe86fe5697675f4f9604859ea6ee8d06aef58696c7279f2f66d77f6effaec5d63b5ece9676668f2f3756de8e86772ec6deaf17267e47159dcf4ea5eddf171f16cee646b6f73e6e3e7ecce6963adc070e0efe9e2ea72e972ec77f86be74f7874bd6a5a28e96c6c707161f4707066606f686d76f6f6e268db5e63756b66e367f2d9dc5d49ebd870d5ee7070e4ea67df76f764ee77e4e9d36e74f56e6b7272e26579586465ebebf1f3f0ebf371ec5bf161e77957765d72cfdee4ed70f5dc65f06967ce6ee2e94ceef3eeec72d9e862dce1d7d2d7e1ef74ed57f85ce97878787878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 0 }, hex: "69c0efe0686373e1ebf876f3d7706b7070b365d47bf7dc6de061e2f57463e0eee6f167625ddbe86fe5697675f4f9604859ea6ee8d06aef58696c7279f2f66d77f6effaec5d63b5ece9676668f2f3756de8e86772ec6deaf17267e47159dcf4ea5eddf171f16cee646b6f73e6e3e7ecce6963adc070e0efe9e2ea72e972ec77f86be74f7874bd6a5a28e96c6c707161f4707066606f686d76f6f6e268db5e63756b66e367f2d9dc5d49ebd870d5ee7070e4ea67df76f764ee77e4e9d36e74f56e6b7272e26579586465ebebf1f3f0ebf371ec5bf161e77957765d72cfdee4ed70f5dc65f06967ce6ee2e94ceef3eeec72d9e862dce1d7d2d7e1ef74ed57f85ce9" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 0 }, hex: "7878787878787878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 0, local_row: 96003053 }, hex: "6a5f71e07361ea60ebc162e7cb51e2e6e44ecedbda64ee5f72e6ed61e4786158546f6056e8e85ceed5ef62ecea734e6e5feef065f9ebec4e6470e6766d746ed3e0eae0f25fd66be977765c5ddce26fd549706c70f2e06bf65f5453f96cb37069f1def96df364c36ee863e74fec70ef6f596268d9ef6bf3606152f0e362ed66f674e5fa61efe27474edec76bb527971f271716b4c736ff2f8f2eaf4d879f27472f0f8e060f8fe69f9f6fa76e8795a7051e3f3f1f0f974ec7c7952f379f8e6756c71646d6de571786969f4ea6640f5687362f1dfe4e26cde67e5dc69f1f26d63686cd173d8ede85c6bd8e760e8e0e8da30c867efde68e774f8e1776af37066d9dc7878787877777878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 96003053 }, hex: "6a5f71e07361ea60ebc162e7cb51e2e6e44ecedbda64ee5f72e6ed61e4786158546f6056e8e85ceed5ef62ecea734e6e5feef065f9ebec4e6470e6766d746ed3e0eae0f25fd66be977765c5ddce26fd549706c70f2e06bf65f5453f96cb37069f1def96df364c36ee863e74fec70ef6f596268d9ef6bf3606152f0e362ed66f674e5fa61efe27474edec76bb527971f271716b4c736ff2f8f2eaf4d879f27472f0f8e060f8fe69f9f6fa76e8795a7051e3f3f1f0f974ec7c7952f379f8e6756c71646d6de571786969f4ea6640f5687362f1dfe4e26cde67e5dc69f1f26d63686cd173d8ede85c6bd8e760e8e0e8da30c867efde68e774f8e1776af37066d9dc" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 96003053 }, hex: "7878787877777878" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 14, rank: 1 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 1, local_row: 0 }, hex: "ef3ce5ea6270eb676077dc68d4eee9e86a4d58f1e673f378eef16f7468eb7a55797237e0dae2ea6b73e276dce8df7965dc5c7370f5e1f5f266e04a7658dddb7172ea73ea6b62f0bee0ec696ce8406d65c3e9f3f4ede461e6ec65fcf371725a6e65dd7568d352dd6570e7f5d86765fa6a7469eeefd2ebf3e55b68cfdc6974e9d8e3ee49606464dcf87a6c66f260e1f45cdd605fe16760e26fefe870f3f1726c62faf350b5f0e67073eae9537365e5725ef3eff565e8f16aea61656ff2e46471e66df7f1f54bf46459eff35070e4dc6e695fd169ea6aeb66e8f0f47969736370d6edeaf0eb5f6c59e466f9f36a4bf2e771d1e54cf16df2e7e66573736bdac168d17878787878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 96003054 }, hex: "ef3ce5ea6270eb676077dc68d4eee9e86a4d58f1e673f378eef16f7468eb7a55797237e0dae2ea6b73e276dce8df7965dc5c7370f5e1f5f266e04a7658dddb7172ea73ea6b62f0bee0ec696ce8406d65c3e9f3f4ede461e6ec65fcf371725a6e65dd7568d352dd6570e7f5d86765fa6a7469eeefd2ebf3e55b68cfdc6974e9d8e3ee49606464dcf87a6c66f260e1f45cdd605fe16760e26fefe870f3f1726c62faf350b5f0e67073eae9537365e5725ef3eff565e8f16aea61656ff2e46471e66df7f1f54bf46459eff35070e4dc6e695fd169ea6aeb66e8f0f47969736370d6edeaf0eb5f6c59e466f9f36a4bf2e771d1e54cf16df2e7e66573736bdac168d1" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 96003054 }, hex: "7878787878787878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 1, local_row: 96003961 }, hex: "7679ef68e176ec74e974f068754efb776ef06af0d5f4e1ec7168e5eee969ebd171f9cce36474735d70e66f525971efdaebe3e859e6db66ede56969ead24fe468eef0e960eaf668e56df5e965e3ca6c6c687661f9ebeaea5ad16be2d46d68edf36d766854f67756e26d6af16e59e461ea6d6a625d5f487070e56af65c12717359e16f686ed3ef68ebee606fccf0ca60635e595a6d5ff7eb6c59f076e0e8e56569e2677470e4f67069dc686cebf66a5d5b69e1d8725a6e6ee2c86be9da74f66873d4ea65624a66f3dbdfe3d26aecee6b7ce8e4efe96f7032eff2ed6ae0e3f9f7e9f15177f3bff4b562f6e96fe16f6f63db56dbe7724b6ee4ef64f4ef43ec7578707778787878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 192007015 }, hex: "7679ef68e176ec74e974f068754efb776ef06af0d5f4e1ec7168e5eee969ebd171f9cce36474735d70e66f525971efdaebe3e859e6db66ede56969ead24fe468eef0e960eaf668e56df5e965e3ca6c6c687661f9ebeaea5ad16be2d46d68edf36d766854f67756e26d6af16e59e461ea6d6a625d5f487070e56af65c12717359e16f686ed3ef68ebee606fccf0ca60635e595a6d5ff7eb6c59f076e0e8e56569e2677470e4f67069dc686cebf66a5d5b69e1d8725a6e6ee2c86be9da74f66873d4ea65624a66f3dbdfe3d26aecee6b7ce8e4efe96f7032eff2ed6ae0e3f9f7e9f15177f3bff4b562f6e96fe16f6f63db56dbe7724b6ee4ef64f4ef43ec757870" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 192007015 }, hex: "7778787878787878" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 14, rank: 2 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 2, local_row: 0 }, hex: "fae9e86ed17776ecf5ddd766f370ee64e774f87260f5b4683ae7716156699c47686becf4ebee7158fcec705aebea64d552706ad561edf2e3685fe3e6656350e76b696550ed61ea59e86bf355715ad966f879e8eef5d57669e871eaeef1eded655dea59faf4f2ed6cf379656f70f4f16a7369ede96860e9e9d561daea736572eef2e976fc656cf9f3f5787879f7fae66d79f5536360f6f1f272ded979ee767d7267e1e4e9e656d7eee0695b5ee1e36a7871ef717151796a65d6ddee716d6ad9d3b8dfebec7a73e45c6ce0f4515e77e0766163eb6a685dea636170406bedde4b7562745470fcf477716a7ef97774fadae6f2fbe966fcf178d8f9f252ed797c67fe7878787877787877" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 192007016 }, hex: "fae9e86ed17776ecf5ddd766f370ee64e774f87260f5b4683ae7716156699c47686becf4ebee7158fcec705aebea64d552706ad561edf2e3685fe3e6656350e76b696550ed61ea59e86bf355715ad966f879e8eef5d57669e871eaeef1eded655dea59faf4f2ed6cf379656f70f4f16a7369ede96860e9e9d561daea736572eef2e976fc656cf9f3f5787879f7fae66d79f5536360f6f1f272ded979ee767d7267e1e4e9e656d7eee0695b5ee1e36a7871ef717151796a65d6ddee716d6ad9d3b8dfebec7a73e45c6ce0f4515e77e0766163eb6a685dea636170406bedde4b7562745470fcf477716a7ef97774fadae6f2fbe966fcf178d8f9f252ed797c67fe" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 192007016 }, hex: "7878787877787877" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 2, local_row: 96004547 }, hex: "3472e9e3e8e85cf9de60d7eeecf368d16aea5bdcf72ce86b6c44ee6aeaeb735fd8ec71f16be96b51f15671e65c76e95fe1eaedd75e6c5a6b62f97be361e1e4f1f6db70705e596464d56f5bc365f7dc3c46f5736bf25ddbe4d76ce65ce3f6e36b5b756cee5f5862d372e564e1f2e46a6bfb56eaf2e3e8756f60e96954e4ef696671e16473f3e964eef6ef78fa77f176ed72f2f27273dbfcbc7ae75670ebe0776b646ced706accd3e5daf1e9f8f05e54eaf673ed60626f70e9eedc605f656269de7c7777f0ebca736261667bd17cfefbe3f47865736e79f256e1e966faedf179e0dcf85f58d969dff267f2e2e9f34065dbeafb7355f26eeeebf177e4f1f2f4edf17878787877787778" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 288011563 }, hex: "3472e9e3e8e85cf9de60d7eeecf368d16aea5bdcf72ce86b6c44ee6aeaeb735fd8ec71f16be96b51f15671e65c76e95fe1eaedd75e6c5a6b62f97be361e1e4f1f6db70705e596464d56f5bc365f7dc3c46f5736bf25ddbe4d76ce65ce3f6e36b5b756cee5f5862d372e564e1f2e46a6bfb56eaf2e3e8756f60e96954e4ef696671e16473f3e964eef6ef78fa77f176ed72f2f27273dbfcbc7ae75670ebe0776b646ced706accd3e5daf1e9f8f05e54eaf673ed60626f70e9eedc605f656269de7c7777f0ebca736261667bd17cfefbe3f47865736e79f256e1e966faedf179e0dcf85f58d969dff267f2e2e9f34065dbeafb7355f26eeeebf177e4f1f2f4edf1" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 288011563 }, hex: "7878787877787778" },
+    V41ReadbackReading { sample: V41SampleMagic { layer: 14, rank: 3 }, hex: "454e4752310a" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 3, local_row: 0 }, hex: "63f27361edeadeed6ef9716d6d636cfa69f8e5656170716a6bedf2e5ee716663547169e3636066425762695575eee54a674f726871e9586bf167df3de0f8ebf45b6766e069686e5d6b5d6d54f753dd73556de9db77656eec6c4e5d71f365e8dff2e0e6f0f05f6d61e96ceeda6557e8e86d65777071f7e3e772ecd26cf57057736d676a60706aed69e1e970cd72695ed4ec66eae5716ef76be36e50e5d74de374ee53e275686c5def6d704b7277efe1eff2e9ee665bf4def2e6d2f57367556a7b6e5a68e1e4f86f6cecf16bede374ebecf36a6a5fe4d4756d72625ee8f271e1e973656e67e1f0ed6571f6c2cffbdcd3fcebdcea6af6e9f075e2f968e871d8686f7878787878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 288011564 }, hex: "63f27361edeadeed6ef9716d6d636cfa69f8e5656170716a6bedf2e5ee716663547169e3636066425762695575eee54a674f726871e9586bf167df3de0f8ebf45b6766e069686e5d6b5d6d54f753dd73556de9db77656eec6c4e5d71f365e8dff2e0e6f0f05f6d61e96ceeda6557e8e86d65777071f7e3e772ecd26cf57057736d676a60706aed69e1e970cd72695ed4ec66eae5716ef76be36e50e5d74de374ee53e275686c5def6d704b7277efe1eff2e9ee665bf4def2e6d2f57367556a7b6e5a68e1e4f86f6cecf16bede374ebecf36a6a5fe4d4756d72625ee8f271e1e973656e67e1f0ed6571f6c2cffbdcd3fcebdcea6af6e9f075e2f968e871d8686f" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 288011564 }, hex: "7878787878787878" },
+    V41ReadbackReading { sample: V41SampleStoreRecord { layer: 14, rank: 3, local_row: 96005117 }, hex: "6d5150d1646968eedbd86b6f6cf179e2586a6e6aef6659da62e561f2ebe1f367ec7a6972f9d5fbf2f9f37df9f8f1dc74c1697eea6ed2f2f56379f172eb4ae2f4e74be267e7e9ce78f6f5eef2777ced777a757569bb7c79f0f3f2f9f2706de2eaf2e6e4e9694dedeb6e6ee3f5ec6b556df2e9be5aef6e625f79d565dbe3e86e6e6ce7f1eb6f6ddbe6f1d7e9d3e07b6cddf3ee6b62e26769da74546df04af2e16f646cb4e8f37ed2ee5af56ce97d5cfce760dade67706bf0f1e9ef7571e35369b4ed6d6af368ebe9e1ef586df4c9da6964dcd56cd372f1516df26c78c8dd65f06a596567e25bf4f8bbf2e86cf5eb5966f1645adce9dee3655cd766ee593f56d9dd7877777878787878" },
+    V41ReadbackReading { sample: V41SampleSourceWeight { layer: 14, global_row: 384016681 }, hex: "6d5150d1646968eedbd86b6f6cf179e2586a6e6aef6659da62e561f2ebe1f367ec7a6972f9d5fbf2f9f37df9f8f1dc74c1697eea6ed2f2f56379f172eb4ae2f4e74be267e7e9ce78f6f5eef2777ced777a757569bb7c79f0f3f2f9f2706de2eaf2e6e4e9694dedeb6e6ee3f5ec6b556df2e9be5aef6e625f79d565dbe3e86e6e6ce7f1eb6f6ddbe6f1d7e9d3e07b6cddf3ee6b62e26769da74546df04af2e16f646cb4e8f37ed2ee5af56ce97d5cfce760dade67706bf0f1e9ef7571e35369b4ed6d6af368ebe9e1ef586df4c9da6964dcd56cd372f1516df26c78c8dd65f06a596567e25bf4f8bbf2e86cf5eb5966f1645adce9dee3655cd766ee593f56d9dd" },
+    V41ReadbackReading { sample: V41SampleSourceScale { layer: 14, global_row: 384016681 }, hex: "7877777878787878" },
   ],
 }

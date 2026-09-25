@@ -1,11 +1,11 @@
 module gunbc.runner_microvm_stop_propagation_probe
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf, ActiveState }
 
-data runner_microvm_stop_propagation_probe_disposition: Disposition = SingleAuthority
+data runner_microvm_stop_propagation_probe_disposition: ConstructionMechanism = SingleAuthority
 
 // THE ONE FACT THE LIFETIME EDGE RESTS ON, PROBED WITHOUT A GUEST.
 //

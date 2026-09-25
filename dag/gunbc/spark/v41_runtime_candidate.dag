@@ -43,6 +43,9 @@ import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
   v41_row_store_encoding_key, v41_published_span_readings, v41_published_store_readings, v41_live_head_sizes,
+  V41StoreReadback, V41StoreReadbackVerified, V41StoreReadbackUnread, V41StoreReadbackRefused,
+  V41StoreReadbackReadingsUnread, V41StoreReadbackRead, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,
+  v41_store_readback, v41_row_store_spec, v41_published_store_readback_readings,
 }
 import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
@@ -589,8 +592,29 @@ type V41CandidateInputs {
 // with arbitrary hashes in it is writable too -- which would defeat the whole module: the point is that a
 // key exists only when every axis was established. Consumers therefore take this record, which only
 // v41_candidate_standing mints. The input records stay constructible; they are what a caller supplies.
+// THE DERIVATION EVIDENCE RIDES BESIDE THE STANDING AND OUTSIDE EVERY KEY (proud-deer-538, 2026-09-24):
+// the boundary-stratified readback of the produced row stores says the stores were DERIVED correctly,
+// which is evidence about the key's referent and not a coordinate of it, so it enters none of the five
+// ContentHashes. A readback that REFUSED refuses the candidate (a store proven wrong is not a candidate);
+// one still UNREAD leaves a keyed candidate keyed and is an obligation deployment authorization must
+// consume (gunbc.spark.pair_serving_d0_authorization d0_subject_of_candidate refuses over it).
 type V41CandidateVerdict sole_constructor {
   standing: V41CandidateStanding
+  derivation: V41DerivationEvidence
+}
+
+type V41DerivationEvidence {
+  row_store_readback: V41StoreReadback
+}
+
+// WHAT THE DERIVATION EVIDENCE STILL OWES before anything may be authorized to run the candidate. A
+// refused readback owes nothing here: it has already refused the standing.
+fn v41_derivation_obligations(d: V41DerivationEvidence) -> List<NonEmptyStr> {
+  match d.row_store_readback {
+    V41StoreReadbackUnread { obligation: o } => [o]
+    V41StoreReadbackVerified { host: _, observed_at: _, samples: _ } => [] as List<NonEmptyStr>
+    V41StoreReadbackRefused { defects: _ } => [] as List<NonEmptyStr>
+  }
 }
 
 type V41CandidateStanding
@@ -653,8 +677,18 @@ fn v41_standing_obligations(s: V41IdentityStanding) -> List<NonEmptyStr> {
 
 // REFUSALS DOMINATE OBLIGATIONS. A candidate that is both malformed and incomplete reports what is
 // wrong, because finishing it would not make it right.
-fn v41_candidate_standing(c: V41CandidateInputs) -> V41CandidateVerdict {
-  V41CandidateVerdict { standing: v41_candidate_standing_of(c: c) }
+fn v41_candidate_standing(c: V41CandidateInputs, readback: V41StoreReadback) -> V41CandidateVerdict {
+  let standing = v41_candidate_standing_of(c: c)
+  V41CandidateVerdict {
+    standing: match readback {
+      V41StoreReadbackRefused { defects: rd } => match standing {
+        V41CandidateRefused { defects: d } => V41CandidateRefused { defects: concat(d, rd) }
+        _ => V41CandidateRefused { defects: rd }
+      }
+      _ => standing
+    },
+    derivation: V41DerivationEvidence { row_store_readback: readback },
+  }
 }
 
 fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
@@ -803,8 +837,20 @@ fn v41_row_store_encoding_standing() -> V41PublishedRowStoreKey {
   )
 }
 
+// THE LIVE READBACK over the live spec. An unread readback costs no bucket-layout search.
+fn v41_live_store_readback() -> V41StoreReadback {
+  match v41_published_store_readback_readings {
+    V41StoreReadbackReadingsUnread { obligation: o } => V41StoreReadbackUnread { obligation: o }
+    V41StoreReadbackRead { host: _, observed_at: _, readings: _ } =>
+      match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+        V41RowStoreSpecRefused { defects: d } => V41StoreReadbackRefused { defects: d }
+        V41RowStoreSpecAdmitted { spec: spec } => v41_store_readback(spec: spec, readings: v41_published_store_readback_readings)
+      }
+  }
+}
+
 fn v41_candidate() -> V41CandidateVerdict {
-  v41_candidate_standing(c: v41_candidate_inputs)
+  v41_candidate_standing(c: v41_candidate_inputs, readback: v41_live_store_readback())
 }
 
 data v41_engram_file_backed_overlay_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr

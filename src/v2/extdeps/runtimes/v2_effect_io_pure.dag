@@ -33,8 +33,8 @@ import v2.std.runtime {
   EffectHandlerBinding,
   EffectReceipt,
   EffectReceiptLog,
-  EffectRequest,
-  EffectRequestKind,
+  OperationCall,
+  OperationCallKind,
   EvaluationEnvironment,
   EvaluationFrame,
   ReadResource,
@@ -229,7 +229,7 @@ fn effect_io_pure_store_lookup(
 
 fn effect_io_pure_handle_read(
   store: EffectIoFixtureStore,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
@@ -239,7 +239,7 @@ fn effect_io_pure_handle_read(
 
 fn effect_io_pure_handle_write(
   store: EffectIoFixtureStore,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } =>
@@ -264,7 +264,7 @@ fn effect_io_pure_handle_write(
 
 fn effect_io_pure_invoke_handler(
   handler: EffectHandler,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match handler {
     EffectHandler { handle: h } => h(request)
@@ -304,10 +304,10 @@ fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> Effec
 }
 
 fn effect_io_pure_request(
-  kind: EffectRequestKind,
+  kind: OperationCallKind,
   args: List<RuntimeValue>
-) -> EffectRequest {
-  EffectRequest {
+) -> OperationCall {
+  OperationCall {
     kind: kind,
     operation: effect_io_pure_operation_ref(),
     arguments: args,
@@ -315,17 +315,17 @@ fn effect_io_pure_request(
   }
 }
 
-fn effect_io_pure_read_request(args: List<RuntimeValue>) -> EffectRequest {
+fn effect_io_pure_read_request(args: List<RuntimeValue>) -> OperationCall {
   effect_io_pure_request(kind: ReadResource, args: args)
 }
 
-fn effect_io_pure_write_request(args: List<RuntimeValue>) -> EffectRequest {
+fn effect_io_pure_write_request(args: List<RuntimeValue>) -> OperationCall {
   effect_io_pure_request(kind: WriteResource, args: args)
 }
 
 fn effect_io_pure_append_receipt(
   log: EffectReceiptLog,
-  request: EffectRequest,
+  request: OperationCall,
   result: Outcome<RuntimeValue>
 ) -> EffectReceiptLog {
   EffectReceiptLog {

@@ -1,0 +1,177 @@
+module v2.test.claim.namespace_xl0.wildcard_arm_resolve
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WILDCARD MATCH ARM BINDS NOTHING AND NAMES NOTHING, SO RESOLVE KEEPS IT AS IT IS.
+//
+// THE SUBJECT IS v2.compiler.resolve resolve_pattern_node_walk on the native lane's route
+// (native_test_context_from_ingest, then native_census_module_resolution). It recognized `_` only as
+// a constructor field's target, so a bare `_` arm pattern fell to resolve_node_walk and was looked up
+// as a reference to a symbol spelled `_`: the whole module refused at `_` (the recurring failure mode
+// gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name). The wildcard is now
+// recognized at every pattern depth.
+//
+// FOUR MODULES, ONE VARIABLE EACH. `arm` is the specimen: exhaustive only through its `_` arm; on main
+// it refused unbound at `_`. `field` puts `_` in a constructor field, the position main already
+// accepted. `binder` is exhaustive through named arms only and binds `r` in one of them, so a binder
+// still binds. `body` puts an undeclared name in the `_` arm's body: it must still refuse unbound at
+// that name's atom, and as the ONLY refusal chain -- on main the first chain was the spurious `_`.
+data wc_arm_source: String = "module v2.test.wc_arm\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  _ => c\n} }\n"
+
+data wc_field_source: String = "module v2.test.wc_field\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  WcB { r: _ } => c\n  WcC => c\n} }\n"
+
+data wc_binder_source: String = "module v2.test.wc_binder\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  WcB { r: r } => r\n  WcC => c\n} }\n"
+
+data wc_body_source: String = "module v2.test.wc_body\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  _ => wc_undeclared_body\n} }\n"
+
+fn wc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data wc_ingest: SourceRootIngest = Cons {
+    head: wc_read(source: wc_arm_source, id: ^wc_arm_artifact, unit: ^wc_arm_cu, path: "src/v2/test/fixture/namespace_xl0/wc_arm.dag"),
+    tail: Cons {
+    head: wc_read(source: wc_field_source, id: ^wc_field_artifact, unit: ^wc_field_cu, path: "src/v2/test/fixture/namespace_xl0/wc_field.dag"),
+    tail: Cons {
+    head: wc_read(source: wc_binder_source, id: ^wc_binder_artifact, unit: ^wc_binder_cu, path: "src/v2/test/fixture/namespace_xl0/wc_binder.dag"),
+    tail: Cons {
+    head: wc_read(source: wc_body_source, id: ^wc_body_artifact, unit: ^wc_body_cu, path: "src/v2/test/fixture/namespace_xl0/wc_body.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason cav_outcomes is: the stored value is a verdict per module with no context, Node or closure.
+type WcVerdict
+  = WcResolved
+  | WcRefused { reason: Symbol, at_atom: Optional<Symbol>, sole_chain: Bool }
+  | WcFileRefused
+  | WcAbsent
+
+type WcOutcomes
+  = WcContextRefused
+  | WcOutcomesDecided { arm: WcVerdict, field: WcVerdict, binder: WcVerdict, body: WcVerdict }
+
+fn wc_verdict_of(outcome: NativeCensusModuleOutcome) -> WcVerdict {
+  match outcome {
+    NativeCensusModuleResolved => WcResolved
+    NativeCensusModuleFileRefused => WcFileRefused
+    NativeCensusModuleResolveRefused { first: d, rest: rest, observation: _ } =>
+      WcRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        },
+        sole_chain: match rest {
+          Empty => true
+          Cons { head: _, tail: _ } => false
+        }
+      }
+  }
+}
+
+fn wc_verdict_in(context: NativeTestContext, module_name: String) -> WcVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: wc_ingest),
+    empty: WcAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        wc_verdict_of(
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn wc_outcomes() -> WcOutcomes {
+  match native_test_context_from_ingest(ingest: wc_ingest) {
+    Rejected { diagnostics: _ } => WcContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      WcOutcomesDecided {
+        arm: wc_verdict_in(context: context, module_name: "v2.test.wc_arm"),
+        field: wc_verdict_in(context: context, module_name: "v2.test.wc_field"),
+        binder: wc_verdict_in(context: context, module_name: "v2.test.wc_binder"),
+        body: wc_verdict_in(context: context, module_name: "v2.test.wc_body")
+      }
+  }
+}
+
+fn wc_is_resolved(v: WcVerdict) -> Bool {
+  match v {
+    WcResolved => true
+    _ => false
+  }
+}
+
+test fn a_match_exhaustive_through_a_wildcard_arm_resolves() -> Bool {
+  match wc_outcomes() {
+    WcOutcomesDecided { arm: v, field: _, binder: _, body: _ } => wc_is_resolved(v: v)
+    WcContextRefused => false
+  }
+}
+
+test fn a_wildcard_in_a_constructor_field_resolves() -> Bool {
+  match wc_outcomes() {
+    WcOutcomesDecided { arm: _, field: v, binder: _, body: _ } => wc_is_resolved(v: v)
+    WcContextRefused => false
+  }
+}
+
+test fn a_named_binder_arm_still_binds() -> Bool {
+  match wc_outcomes() {
+    WcOutcomesDecided { arm: _, field: _, binder: v, body: _ } => wc_is_resolved(v: v)
+    WcContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom() -> Bool {
+  match wc_outcomes() {
+    WcOutcomesDecided { arm: _, field: _, binder: _, body: v } =>
+      match v {
+        WcRefused { reason: r, at_atom: Present { value: id }, sole_chain: sole } =>
+          (r == ^resolve_reason_unbound_symbol) && (id == ^wc_undeclared_body) && sole
+        _ => false
+      }
+    WcContextRefused => false
+  }
+}

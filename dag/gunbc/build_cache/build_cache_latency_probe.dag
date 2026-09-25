@@ -2,7 +2,7 @@ module gunbc.build_cache_latency_probe
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.measure { Millisecond, millisecond, measure_count }
-import std.disposition { Disposition, Terminal, SingleAuthority }
+import std.disposition { ConstructionMechanism, Disposition, Terminal, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
@@ -244,7 +244,7 @@ data srv1_verdict_2026_08_05: BuildLatencyVerdict = build_latency_verdict(
 // ACTUATION of the srv1 repair is a separate gate: this instrument only measures whether the repair
 // worked once builds run again.
 
-data build_cache_latency_producer_disposition: Disposition = SingleAuthority
+data build_cache_latency_producer_disposition: ConstructionMechanism = SingleAuthority
 
 type ActionsBuildJobObservation {
   run_id: NonEmptyStr

@@ -2,14 +2,14 @@ module gunbc.executor_privileged_apply
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, executor_privileged_operation_elevated,
 }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 
-data executor_privileged_apply_disposition: Disposition = SingleAuthority
+data executor_privileged_apply_disposition: ConstructionMechanism = SingleAuthority
 
 // THE OPERATIONS WERE AUTHORIZED AND NEVER APPLIED, AND THAT GAP WAS FOUND BY BEING ASKED.
 //

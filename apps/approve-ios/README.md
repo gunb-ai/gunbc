@@ -11,7 +11,7 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 
 | file | what it is |
 |---|---|
-| `project.yml` | XcodeGen spec; no `.xcodeproj` is committed |
+| `project.yml` | XcodeGen spec, GENERATED from `gunbc.approve_ios_project` (drift-gated; never hand-edit); no `.xcodeproj` is committed |
 | `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APPROVE_SERVER_HOST` (srv1 tailnet host), `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT` |
 | `Approve/Protocol.swift` | `framed` (the injective `<n>:<field>,` rendering), `enrolment_transcript`, `device_redemption_signing_input`, `device_read_client_data`, the protocol records |
 | `Approve/Wire.swift` | mirror of the modeled HTTP wire: emitter, strict readers, routes, headers; `URLSession` over the tailnet |

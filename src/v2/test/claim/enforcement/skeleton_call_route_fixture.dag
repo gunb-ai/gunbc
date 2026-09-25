@@ -1,0 +1,11 @@
+module v2.test.claim.enforcement.skeleton_call_route_fixture
+
+import v2.std.collection { List }
+import v2.std.integer { Int }
+
+// The subject of v2.test.claim.enforcement.skeleton_call_route_witness: one call whose argument
+// the host fn-arrow marshal does not project (a data reference is neither a parameter nor a
+// variant value). The marshal wraps it: count(x) => Transform[count, Conj[Conj[]]].
+data skeleton_call_route_fixture_rows: List<Int> = []
+
+fn skeleton_call_route_fixture_caller() -> Int = count(skeleton_call_route_fixture_rows)

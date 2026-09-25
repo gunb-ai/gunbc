@@ -2,7 +2,7 @@ module gunbc.runner_unit
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import extdeps.systemd.unit_file {
@@ -14,7 +14,7 @@ import extdeps.systemd.unit_file {
   systemd_kill_mode_reaches_whole_cgroup,
 }
 
-data gunbc_runner_unit_scope_disposition: Disposition = SingleAuthority
+data gunbc_runner_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE OWNED UNIT CONTRACT: WHICH SYSTEMD UNIT A RUNNER SLOT IS, SPELLED ONCE.
 //

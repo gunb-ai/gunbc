@@ -19,6 +19,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // (`v2.workflow.floor_unimported_bare_provider_debt`: coherence, the edit against the base, and the
 // standing against the tree). The host only reads facts a fold cannot: which roster files exist,
 // the pairs each checked file carries, and the roster's bytes at the diff base.
+// unimported_bare_provider_base_roster_decoded is the base read's decode, split out so a unit test
+// can drive it: it matches the two arms of the .dag's UnimportedBareProviderBaseRoster coproduct by
+// name (gunbc#12205's reader destructured it as a Record, so every roster-editing change refused).
 data unimported_bare_provider_gate_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "UnimportedBareProvider", field: WholeDeclaration },
@@ -30,6 +33,7 @@ data unimported_bare_provider_gate_seed_growth_justification: SeedGrowthJustific
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_gate", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_entry_refusals", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_roster_source_at_base", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_base_roster_decoded", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_base_reading", field: WholeDeclaration }
   ],
   reason: "The rule refuses, on the required floor and on the claim_batch entry route alike, a (file, name) pair where a file declaring an import line bare-references a declaration outside its own import closure. The pairs come from the loader's own seed-only provider selection (visit_bare_reference_providers). The host reads the committed roster (and its base copy, evaluated standalone), supplies the facts only it can read -- which roster files exist and which pairs each checked file carries -- and passes them to the .dag judgments, which decide every refusal; it prints what they return.",
