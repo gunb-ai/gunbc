@@ -2,6 +2,7 @@
 // Source module: std.compiler_entry
 
 use self::CompilerEntryDriver::*;
+use self::NativeClaimTerminal::*;
 use self::NativeDriverChildStanding::*;
 use self::NativeDriverCostAccounting::*;
 use self::NativeDriverCostRowStanding::*;
@@ -10,8 +11,6 @@ pub use crate::std_measure::Nanosecond;
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count,
 };
-pub use crate::std_process::ProcessExit;
-use crate::std_process::ProcessExit::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -20,9 +19,26 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeClaimTerminal {
+    NativeClaimHeld,
+    NativeClaimNotHeld { reason: String },
+    NativeClaimNoObservation { reason: String },
+}
+impl NativeClaimTerminal {
+    pub fn reason(&self) -> String {
+        match self {
+            NativeClaimTerminal::NativeClaimHeld => panic!("no reason on unit variant"),
+            NativeClaimTerminal::NativeClaimNotHeld { reason: __val, .. } => __val.clone(),
+            NativeClaimTerminal::NativeClaimNoObservation { reason: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeClaimReport {
     pub stdout: String,
-    pub exit: Rc<ProcessExit>,
+    pub terminal: Rc<NativeClaimTerminal>,
 }
 
 #[derive(
