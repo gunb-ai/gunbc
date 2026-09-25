@@ -2,7 +2,6 @@ module test.claim.parse_test_fn_decl_return_clause
 
 import v2.compiler.body_lowering_fold {
   BodyLowered,
-  body_lower_arrow_domain_binding_symbols,
   body_lower_fn_decl_to_arrow,
   body_lower_fn_decl_to_census_arrow,
   body_lower_outcome_is_wrapper_retained,
@@ -18,7 +17,6 @@ import v2.extdeps.languages.dag {
   dag_lex,
   parse_production_emitted_identity_optional
 }
-import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unavailable }
 import v2.std.logic { Bool }
@@ -324,19 +322,19 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
 // The Arrow domain is a Conj keyed by binding name, so a repeated binding has no well-formed domain.
 // Before v2.compiler.body_lowering_fold body_lower_fn_signature_bindings_refusal the lowering built
 // that Conj, and normalize's recursive well_formed gate refused the module with
-// normalize_reason_post_normalize_not_well_formed at the module root (gen-two census:
-// std.key_relation global_key_scope_eq, provider_readiness_independence_claim). These rows parse a
+// normalize_reason_post_normalize_not_well_formed at the module root (the gen-two census specimens,
+// std.key_relation and provider_readiness_independence_claim, were repeated `_`, which now lower to
+// distinct minted binders). These rows parse a
 // real fn and run the fn_decl producer itself, body_lower_fn_decl_to_arrow, the same entry
 // nfbcp_hazard_no_return_type_retains_wrapper_holds uses; the normalize chain that reaches it is
 // already run end to end by nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds,
 // so these rows do not pay for it again (DESIGN section 3, a witness discriminates at one interface).
 // Each asserts the cause and that the locus is the SECOND binding's type (B; the first is A).
-// Answering optional_absent from the bindings arm restores the ill-formed domain and reds both.
+// Answering optional_absent from the bindings arm restores the ill-formed domain and reds the
+// named-repeat row.
 // Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
 // Two `_` parameters are NOT a repeat: each anonymous slot lowers to its own minted binder
-// (v2.std.anonymous_binder), so this producer builds the Arrow. This row replaced the interim
-// refusal gunbc#12287 enrolled for that shape.
-data nfbcp_anonymous_repeat_source: String = "module m\nfn g(_: A, _: B) -> A { a }\n"
+// (v2.std.anonymous_binder), and v2.test.claim.anonymous_param_binder holds that route.
 data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A { a }\n"
 
 fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
@@ -360,27 +358,6 @@ fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Boo
           fold(ne.tail, init: (ne.head.reason == reason) && nfbcp_locus_is_atom(d: ne.head, atom: atom), f: fn(found, d) {
             found || ((d.reason == reason) && nfbcp_locus_is_atom(d: d, atom: atom))
           })
-      }
-  }
-}
-
-// The producer answers Conj { g: Arrow }; the domain reader conses, so it answers the labels in
-// reverse slot order.
-test fn nfbcp_two_anonymous_params_lower_to_distinct_minted_binders_holds() -> Bool {
-  match nfbcp_fn_decl_shell(text: nfbcp_anonymous_repeat_source) {
-    Absent => false
-    Present { value: shell } =>
-      match body_lower_fn_decl_to_arrow(shell: shell) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: lowering, diagnostics: _ } =>
-          match lowering {
-            BodyLowered { node: member } =>
-              fold(member.children, init: false, f: fn(found, e) {
-                found || (body_lower_arrow_domain_binding_symbols(arrow: e.target)
-                  == [anonymous_param_label(slot: 2), anonymous_param_label(slot: 1)])
-              })
-            _ => false
-          }
       }
   }
 }
