@@ -5508,6 +5508,67 @@ fn dag_call_named_arg_value_under_children(node: Node, name: Symbol) -> Optional
   })
 }
 
+// The DIRECT argument at one declared POSITION of one call, under the same stopping rule as the
+// named lookup above: the walk counts each ^dag_surface_arg it reaches, in source order, and never
+// descends into one. A NAMED argument sitting at that position answers Absent -- its slot is
+// decided by its name, never by where it was written -- so a call reaches its step by exactly one
+// of the two readings.
+type DagPositionalArgScan {
+  seen: Int
+  decided: Bool
+  found: Optional<Node>
+}
+
+fn dag_call_positional_arg_value_optional(node: Node, position: Int) -> Optional<Node> {
+  let scan = dag_call_positional_arg_scan(
+    node: node,
+    position: position,
+    acc: DagPositionalArgScan { seen: 0, decided: false, found: dag_named_arg_value_absent() }
+  )
+  scan.found
+}
+
+fn dag_call_positional_arg_scan(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  if acc.decided {
+    acc
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } =>
+        if id == ^dag_surface_arg {
+          dag_call_positional_arg_visit(node: node, position: position, acc: acc)
+        } else {
+          dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
+        }
+      Absent => dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
+    }
+  }
+}
+
+fn dag_call_positional_arg_visit(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  if acc.seen == position {
+    DagPositionalArgScan { seen: acc.seen + 1, decided: true, found: dag_positional_arg_value(arg: node) }
+  } else {
+    DagPositionalArgScan { seen: acc.seen + 1, decided: false, found: acc.found }
+  }
+}
+
+fn dag_positional_arg_value(arg: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: arg) {
+    Absent => dag_named_arg_value_absent()
+    Present { value: arg_capture } =>
+      match dag_named_arg_value_optional(arg_capture: arg_capture) {
+        Present { value: _ } => dag_named_arg_value_absent()
+        Absent => dag_named_arg_value_present(node: arg_capture)
+      }
+  }
+}
+
+fn dag_call_positional_arg_scan_children(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  fold(node.children, init: acc, f: fn(inner, e) {
+    dag_call_positional_arg_scan(node: e.target, position: position, acc: inner)
+  })
+}
+
 fn dag_named_arg_value_absent() -> Optional<Node> {
   Absent
 }

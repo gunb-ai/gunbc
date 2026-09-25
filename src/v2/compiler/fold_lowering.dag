@@ -4,6 +4,7 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_call_named_arg_value_optional,
+  dag_call_positional_arg_value_optional,
   dag_lex_token_symbol,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
@@ -25,6 +26,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import std.algebra { collection_fold_shape, template_step_position }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node {
   Atom,
@@ -127,6 +129,29 @@ fn fold_step_argument_name(head: Symbol) -> Optional<Symbol> {
   }
 }
 
+// THE STEP'S POSITION IS READ FROM THE PRIMITIVE'S DECLARED SIGNATURE, NEVER FROM A LITERAL
+// INDEX. `fold` is the collection primitive whose free-call signature std.algebra
+// collection_fold_shape declares, receiver first, so `fold(xs, 0, fn(acc, y) { .. })` places its
+// step where template_step_position reads it off that row; both spellings then reach the same
+// step node and lower to the same Loop through the one path below.
+//
+// fold_list, fold_list_right and fold_node answer Absent, and that is a declared frontier rather
+// than an omission: their signatures are ordinary v2.std.algebra / v2.std.node fn declarations with
+// no data projection this stage can read, and no positional call site of any of them exists (DESIGN
+// section 3c). A positional one keeps reading as StepByName -- the counted
+// FoldCallStepFormUnresolved state -- until those signatures are readable here. The row also carries
+// no parameter NAMES, so the name above stays authored per head; the two facts are separate.
+fn fold_step_argument_position(head: Symbol) -> Optional<Int> {
+  if head == ^fold {
+    match template_step_position(t: collection_fold_shape()) {
+      Present { value: k } => Present { value: k }
+      Absent => Absent
+    }
+  } else {
+    Absent
+  }
+}
+
 // Descends the CAPTURED-CHILD CHAIN of the step argument's value and nothing else: an expr
 // wrapper chain has exactly one captured child per link, so this reaches the step's own
 // production or runs out. It never folds over siblings, which is what stops a literal written
@@ -154,6 +179,17 @@ fn fold_call_step_form(fold_call: Node, head: Symbol) -> FoldStepForm {
     Absent => StepByName
     Present { value: step_name } =>
       match dag_call_named_arg_value_optional(node: fold_call, name: step_name) {
+        Present { value: step_value } => fold_step_form_at(node: step_value)
+        Absent => fold_call_positional_step_form(fold_call: fold_call, head: head)
+      }
+  }
+}
+
+fn fold_call_positional_step_form(fold_call: Node, head: Symbol) -> FoldStepForm {
+  match fold_step_argument_position(head: head) {
+    Absent => StepByName
+    Present { value: position } =>
+      match dag_call_positional_arg_value_optional(node: fold_call, position: position) {
         Absent => StepByName
         Present { value: step_value } => fold_step_form_at(node: step_value)
       }

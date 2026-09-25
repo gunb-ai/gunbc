@@ -385,3 +385,55 @@ test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
       }
   }
 }
+
+// THE POSITIONAL STEP (MQ-1). `fold(xs, 0, fn(acc, x) { acc })` -- the spelling
+// dag/extdeps/container/oci/linux.dag and dag/gunbc/instruments/rust_stage0_gates.dag
+// use -- names no `f:`, so a name-only reading classified it StepByName and it
+// never lowered, leaving `fold` an ordinary call that resolve refuses as
+// unbound. The step's position is read from std.algebra collection_fold_shape,
+// and the claim is SHAPE EQUALITY with the named form, not merely "a Loop came
+// out": both spellings must reach the same step through the one lowering path.
+// content_hash folds node kind and edge labels only, so the differing source
+// offsets of the two snippets do not enter the comparison.
+data positional_fold_snippet: String = "module positional_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, 0, fn(acc, x) { acc })\n}\n"
+
+data positional_named_step_fold_snippet: String = "module positional_named_step_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, 0, step)\n}\n"
+
+fn lowered_loop_of(source_text: String, file: Symbol) -> Optional<Node> {
+  match lowering_of(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: l } =>
+      match l {
+        FoldCallLowered { seam_loop: loop } => Present { value: loop }
+        FoldCallStepFormUnresolved { diagnostic: _ } => Absent
+        FoldCallStepShapeInvalid { diagnostic: _ } => Absent
+        FoldCallNotAFold { diagnostic: _ } => Absent
+      }
+  }
+}
+
+fn loop_shape(n: Node) -> v2.std.node.Hash {
+  v2.std.node.content_hash(n: n)
+}
+
+test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
+  match lowered_loop_of(source_text: positional_fold_snippet, file: ^positional_probe_file) {
+    Absent => false
+    Present { value: positional } =>
+      match lowered_fixture_loop() {
+        Absent => false
+        Present { value: named } => loop_shape(n: positional) == loop_shape(n: named)
+      }
+  }
+}
+
+// THE RED CONTROL ON THE SAME POSITION: a step passed BY NAME at the declared
+// position is still a callee-resolution fact this stage does not have, so it
+// stays the counted unresolved state -- the positional reading must not widen
+// into accepting whatever sits in the slot.
+test fn positional_named_step_fold_is_step_form_unresolved() -> Bool {
+  is_step_form_unresolved(
+    source_text: positional_named_step_fold_snippet,
+    file: ^positional_named_step_probe_file
+  )
+}
