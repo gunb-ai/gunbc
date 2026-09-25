@@ -13,12 +13,14 @@ import std.types { List, String }
 // This module lives under dag/ because the v1 emitter imports it and the v2 partition imports it:
 // one producer, two readers, no second list.
 
-// Only the provenances a producer below emits are arms. The typed use-line rows (helper
-// carriers, authored and reference-derived imports, service/CLI surfaces) add their arms in the
-// change that lands their producer, not before it.
+// Only the provenances a producer emits are arms. SemanticSourceReference is a use-line the
+// emitter derives from the source: an authored import (emit_imports), a reference-derived import
+// (reference_derived_use_line_plan), or a service import (emit_module_full). Helper-carrier and
+// service/CLI runtime-surface arms land with their producers, not before them.
 type EmittedEdgeProvenance
   = RuntimePrelude
   | ReexportFacade
+  | SemanticSourceReference
 
 type EmittedEdgeTarget
   = EmittedModuleTarget { module: String }
@@ -28,6 +30,21 @@ type EmittedEdge {
   from: String
   to: EmittedEdgeTarget
   provenance: EmittedEdgeProvenance
+}
+
+// THE ENDPOINT NAME. An edge row names a module by the basename of the file the emitter writes for
+// it, so the projection from a module's dotted name to that basename is this module's fact, not the
+// emitter's private one: v1.compiler.emit_rust renders files and paths with it, and a partition
+// derived over dotted module names (v2.workflow.emitted_crate_workspace) maps onto edge endpoints
+// with the same function. `main` renders as `main_mod` because it collides with the crate's own
+// entry file.
+fn module_to_filename(name: String) -> String {
+  name |> split(delimiter: ".") |> join(separator: "_")
+}
+
+fn rust_module_emit_filename(module_name: String) -> String {
+  let raw = module_to_filename(name: module_name)
+  if raw == "main" { "main_mod" } else { raw }
 }
 
 // The runtime-support module every emitted module paths into. emit_prelude renders its prelude
@@ -50,6 +67,10 @@ fn rust_prelude_emitted_edges(module: String) -> List<EmittedEdge> {
       EmittedEdge { from: module, to: EmittedCrateRootTarget, provenance: ReexportFacade }
     ]
   }
+}
+
+fn semantic_source_reference_edge(from: String, to_module: String) -> EmittedEdge {
+  EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: SemanticSourceReference }
 }
 
 fn emitted_edge_target_module(edge: EmittedEdge) -> List<String> {

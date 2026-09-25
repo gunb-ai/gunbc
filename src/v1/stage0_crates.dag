@@ -17,9 +17,9 @@ import gunbc.rust_crate_package_ident {
   rust_crate_package_idents
 }
 import gunbc.stage0_partition_package_graph {
-  stage0_partition_package_dependency_names,
-  stage0_partition_row_is_module_bearing_package
+  partition_package_dependency_names_over
 }
+import gunbc.stage0_emitted_edge_admission { partition_module_owner_packages_over }
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFoundationCrate,
@@ -45,6 +45,7 @@ type Stage0CrateSpec {
   features: List<CargoFeature>
   carries_non_empty_wrappers: Bool
   package_idents: List<PackageIdentBinding>
+  partition_rows: List<GeneratedPartitionCrateRow>
 }
 
 type Stage0CratePlan {
@@ -184,14 +185,8 @@ type Stage0CrateBoundaryEmitOutcome
   = Stage0CrateBoundaryEmitOk { files: List<TextFile> }
   | Stage0CrateBoundaryEmitRefused { cause: Stage0CrateBoundaryEmitRefusalCause }
 
-fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {
-  let matches = generated_partition_crate_rows
-    |> filter(row =>
-      stage0_partition_row_is_module_bearing_package(row: row)
-        && (row.modules |> any(m => m == module_basename))
-    )
-  let package_name = matches
-    |> map(row => row.package_name)
+fn stage0_lookup_module_owner_package_name(module_basename: String, rows: List<GeneratedPartitionCrateRow>) -> Stage0ModuleOwnerLookup {
+  let package_name = partition_module_owner_packages_over(module_basename: module_basename, rows: rows)
     |> fold(init: "", f: fn(acc, pkg) { if acc == "" { pkg } else { acc } })
   if package_name == "" {
     Stage0ModuleOwnerRefused {
@@ -202,8 +197,8 @@ fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0Mod
   }
 }
 
-fn stage0_lookup_package_crate_dir(package_name: String) -> Stage0PackageCrateDirLookup {
-  let matches = generated_partition_crate_rows
+fn stage0_lookup_package_crate_dir(package_name: String, rows: List<GeneratedPartitionCrateRow>) -> Stage0PackageCrateDirLookup {
+  let matches = rows
     |> filter(row => row.package_name == package_name)
   let crate_dir = matches
     |> fold(init: "", f: fn(acc, row) { if acc == "" { row.crate_dir } else { acc } })
@@ -270,7 +265,8 @@ fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
 }
 
 fn stage0_reexport_path_dependencies_outcome(
-  reexport_packages: List<String>
+  reexport_packages: List<String>,
+  rows: List<GeneratedPartitionCrateRow>
 ) -> Stage0ReexportPathDepsOutcome {
   reexport_packages
     |> fold(init: Stage0ReexportPathDepsOk { deps: [] }, f: fn(acc, pkg) {
@@ -278,7 +274,7 @@ fn stage0_reexport_path_dependencies_outcome(
         Stage0ReexportPathDepsRefused { cause: cause } =>
           Stage0ReexportPathDepsRefused { cause: cause }
         Stage0ReexportPathDepsOk { deps: deps } =>
-          match stage0_lookup_package_crate_dir(package_name: pkg) {
+          match stage0_lookup_package_crate_dir(package_name: pkg, rows: rows) {
             Stage0PackageCrateDirFound { crate_dir: crate_dir } =>
               Stage0ReexportPathDepsOk {
                 deps: deps |> concat([
@@ -320,10 +316,12 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
 // here with the emit shell's rule written out a second time; they no longer differ at all, which
 // is what having one graph means.
 fn stage0_partition_row_dependencies_outcome(
-  row: GeneratedPartitionCrateRow
+  row: GeneratedPartitionCrateRow,
+  rows: List<GeneratedPartitionCrateRow>
 ) -> Stage0PartitionRowDepsOutcome {
   match stage0_reexport_path_dependencies_outcome(
-    reexport_packages: stage0_partition_package_dependency_names(row: row)
+    reexport_packages: partition_package_dependency_names_over(row: row, rows: rows),
+    rows: rows
   ) {
     Stage0ReexportPathDepsOk { deps: path_deps } =>
       Stage0PartitionRowDepsOk {
@@ -355,9 +353,10 @@ fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoF
 
 fn stage0_partition_row_to_spec_outcome(
   row: GeneratedPartitionCrateRow,
-  package_idents: List<PackageIdentBinding>
+  package_idents: List<PackageIdentBinding>,
+  rows: List<GeneratedPartitionCrateRow>
 ) -> Stage0PartitionRowSpecOutcome {
-  match stage0_partition_row_dependencies_outcome(row: row) {
+  match stage0_partition_row_dependencies_outcome(row: row, rows: rows) {
     Stage0PartitionRowDepsRefused { cause: cause } =>
       Stage0PartitionRowSpecRefused { cause: cause }
     Stage0PartitionRowDepsOk { deps: deps } =>
@@ -372,7 +371,8 @@ fn stage0_partition_row_to_spec_outcome(
           dependencies: deps,
           features: stage0_partition_row_features(row: row),
           carries_non_empty_wrappers: row.carries_non_empty_wrappers,
-          package_idents: package_idents
+          package_idents: package_idents,
+          partition_rows: rows
         }
       }
   }
@@ -471,7 +471,8 @@ fn render_stage0_layered_core_lib(spec: Stage0CrateSpec, reexport_idents: List<S
 
 fn stage0_emit_shell_module_reexports_outcome(
   modules: List<String>,
-  package_idents: List<PackageIdentBinding>
+  package_idents: List<PackageIdentBinding>,
+  rows: List<GeneratedPartitionCrateRow>
 ) -> Stage0EmitShellReexportsOutcome {
   modules
     |> fold(init: Stage0EmitShellReexportsOk { lines: [] }, f: fn(acc, module_basename) {
@@ -481,7 +482,7 @@ fn stage0_emit_shell_module_reexports_outcome(
         Stage0EmitShellReexportsIdentUnbound { package_name: missing } =>
           Stage0EmitShellReexportsIdentUnbound { package_name: missing }
         Stage0EmitShellReexportsOk { lines: lines } =>
-          match stage0_lookup_module_owner_package_name(module_basename: module_basename) {
+          match stage0_lookup_module_owner_package_name(module_basename: module_basename, rows: rows) {
             Stage0ModuleOwnerFound { package_name: owner } =>
               match package_ident_bound(bindings: package_idents, package_name: owner) {
                 Absent => Stage0EmitShellReexportsIdentUnbound { package_name: owner }
@@ -504,7 +505,7 @@ fn stage0_emit_shell_module_reexports_outcome(
 }
 
 fn render_stage0_emit_core_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOutcome {
-  match stage0_emit_shell_module_reexports_outcome(modules: spec.modules, package_idents: spec.package_idents) {
+  match stage0_emit_shell_module_reexports_outcome(modules: spec.modules, package_idents: spec.package_idents, rows: spec.partition_rows) {
     Stage0EmitShellReexportsRefused { cause: cause } =>
       Stage0CrateLibEmitRefused { cause: cause }
     Stage0EmitShellReexportsIdentUnbound { package_name: package_name } =>
@@ -565,16 +566,24 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
 // names are hyphen-only and cannot collide, so this admission changes no rendered byte. It is landed
 // because the derived partition will supply names nobody reviewed one at a time.
 fn stage0_crate_plan_outcome() -> Stage0CratePlanOutcome {
+  partition_crate_plan_outcome_over(rows: generated_partition_crate_rows)
+}
+
+// ONE RENDERER FOR EVERY PARTITION ROW SET. The committed stage0 rows are one set; a derivation
+// that partitions an emitted closure (v2.workflow.emitted_crate_workspace) produces another of the
+// same shape, and it is rendered here rather than by a second manifest and lib.rs writer beside
+// this one. Every lookup below reads the set it was handed, never the committed one.
+fn partition_crate_plan_outcome_over(rows: List<GeneratedPartitionCrateRow>) -> Stage0CratePlanOutcome {
   match rust_crate_package_idents(
-    package_names: generated_partition_crate_rows |> map(row => row.package_name)
+    package_names: rows |> map(row => row.package_name)
   ) {
     PackageIdentSetRefused { cause: cause } => Stage0CratePlanIdentRefused { cause: cause }
-    PackageIdentSetOk { bindings: bindings } => stage0_crate_plan_from_admitted_rows(package_idents: bindings)
+    PackageIdentSetOk { bindings: bindings } => stage0_crate_plan_from_admitted_rows(package_idents: bindings, rows: rows)
   }
 }
 
-fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding>) -> Stage0CratePlanOutcome {
-  generated_partition_crate_rows
+fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding>, rows: List<GeneratedPartitionCrateRow>) -> Stage0CratePlanOutcome {
+  rows
     |> fold(init: Stage0CratePlanOk { plan: Stage0CratePlan { crates: [] } }, f: fn(acc, row) {
       match acc {
         Stage0CratePlanRefused { cause: cause } =>
@@ -582,7 +591,7 @@ fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding
         Stage0CratePlanIdentRefused { cause: cause } =>
           Stage0CratePlanIdentRefused { cause: cause }
         Stage0CratePlanOk { plan: plan } =>
-          match stage0_partition_row_to_spec_outcome(row: row, package_idents: package_idents) {
+          match stage0_partition_row_to_spec_outcome(row: row, package_idents: package_idents, rows: rows) {
             Stage0PartitionRowSpecRefused { cause: cause } =>
               Stage0CratePlanRefused { cause: cause }
             Stage0PartitionRowSpecOk { spec: spec } =>
@@ -627,7 +636,11 @@ fn emit_stage0_crate_boundary_files_outcome(
 }
 
 fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
-  match stage0_crate_plan_outcome() {
+  partition_crate_boundary_emit_outcome_over(rows: generated_partition_crate_rows)
+}
+
+fn partition_crate_boundary_emit_outcome_over(rows: List<GeneratedPartitionCrateRow>) -> Stage0CrateBoundaryEmitOutcome {
+  match partition_crate_plan_outcome_over(rows: rows) {
     Stage0CratePlanRefused { cause: cause } =>
       Stage0CrateBoundaryEmitRefused {
         cause: stage0_map_package_dir_refusal_to_boundary(cause: cause)

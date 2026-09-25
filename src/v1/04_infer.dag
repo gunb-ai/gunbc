@@ -130,7 +130,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -190,7 +190,8 @@ import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
-  inferred_to_outputs, item_kind, item_is_effectful_callee
+  inferred_to_outputs, item_kind, item_is_effectful_callee,
+  ResourceRequirement, resource_requirements_of_uses
 }
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
@@ -534,11 +535,27 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
   )
 }
 
+// THE RESOLVED LEAF NAMES THE DECLARATION IT STANDS FOR. A nominal declaration (a resource such as
+// std.resources Filesystem) is bound by this reference, and resolving a bare spelling of it yields
+// the leaf below. That leaf used to be nominal_leaf_type(name), spanned kernel_span(name): a
+// synthetic `<kernel:Filesystem>` node carrying nothing but the spelling, while the qualified
+// spelling `std.resources.Filesystem` resolved to the declaration itself. So ONE declaration had two
+// resolved identities chosen by how a use site spelled it, and the uses-requirement join refused a
+// correct caller whose spelling differed from its callee's (gunbc#12047). The leaf now carries the
+// declaration's own span and ident_span, so the census join (v1.compiler.infer_env
+// declaration_ref_of_type_node) recovers the same DeclarationRef from either spelling, and nothing
+// kernel-minted stands where a corpus declaration exists.
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
+  let declared_leaf = Node {
+    occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
+    connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+  }
   Node {
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [],
-    inferred: Present { value: Resolved { node: nominal_leaf_type(name: name) } },
+    inferred: Present { value: Resolved { node: declared_leaf } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
@@ -631,7 +648,20 @@ fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   }
 }
 
+// The locals binding already carries the owner coproduct NODE (constructor_binding_authority),
+// so its authored name is read off that node, never re-derived by looking the owner's bare name
+// up again: under a closure that also reaches a same-spelled non-coproduct declaration
+// (v2.std.artifact GeneratedArtifact beside gunbc.generated_artifact GeneratedArtifact) the
+// re-lookup lands on the other declaration, no VariantValueBinding is stamped, and the
+// interpreter answers NoSuchVariable at run time for a reference the typechecker accepted.
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+  match local_coproduct_owner_from_locals(scope: scope, name: name) {
+    Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+    Absent => lookup_variant_parent_enum_by_owner_name(scope: scope, name: name)
+  }
+}
+
+fn lookup_variant_parent_enum_by_owner_name(scope: InferScope, name: String) -> String? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -1094,6 +1124,64 @@ fn constructor_call_admission_diags(
           )
         ]
     }
+  }
+}
+
+// THE RESOURCE BINDING A CALL PASSES IS THE CALLER'S, MATCHED BY RESOLVED DECLARATION. The Rust
+// realization passes each resource a callee requires as a parameter, and before this fold the
+// emitter appended the CALLEE's binding name: the emitted call agreed with the declaration's arity
+// while its argument named nothing in the caller's scope. v1.compiler.emit_rust emit_typed_call
+// asks this fold for the caller's binding of each requirement, and renders a located
+// compile_error! where there is none.
+//
+// WHAT THIS FOLD IS NOT: it is not an admission wall. Whether a caller ESTABLISHES a resource is
+// owned by DESIGN D13's derived DependencyDemand (docs/plans/demand-engine-program.md), under which
+// a transparent function's demand is derived rather than authored. This fold reads the caller's
+// AUTHORED `uses` rows only because no derived carrier with a binding identity exists yet
+// (its return is the next-rung trigger on gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target). A caller whose
+// requirement is derived gets the compile_error! arm, so the target compiler refuses the artifact
+// rather than accepting a call that names an unbound identifier.
+//
+// IDENTITY IS THE RESOLVED DECLARATION, NOT A SPELLING: see resource_declaration_identity below. A
+// comparison of resolved NODES forked by spelling (a bare name resolved to a kernel-spanned stand-in,
+// the qualified one to the declaration), which broke calls that compiled on main (review 70670;
+// gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation).
+// IDENTITY IS READ OFF THE RESOLVED NODE, NEVER RE-LOOKED-UP BY SPELLING. The previous body rendered
+// the resource's spelling and looked it up again in the CALLER's environment, so a callee's
+// requirement was re-resolved under the caller's imports, and the answer was a node compared
+// structurally -- which forked by spelling, because a bare `Filesystem` resolved to a kernel-spanned
+// stand-in while `std.resources.Filesystem` resolved to the declaration (gunbc#12047). The stand-in
+// now carries its declaration's spans (nominal_ref_node), and this join asks the census which
+// declaration the resolved node names: by the declaration span it carries, or by an authored
+// qualified name whose module prefix the census row must equal. There is no bare-spelling hop.
+fn resource_declaration_identity(scope: InferScope, resource: Node) -> DeclarationRef? {
+  let resolved = match resource.inferred {
+    Present { value: Resolved { node: r } } => r
+    _ => resource
+  }
+  declaration_ref_of_type_node(rt: resolved, source_indices: scope.type_env.source_indices, env: scope.type_env)
+}
+
+fn established_resource_binding(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> String? {
+  match resource_declaration_identity(scope: scope, resource: required.resource) {
+    Absent => none
+    Present { value: required_decl } =>
+      match established |> filter(e =>
+        match resource_declaration_identity(scope: scope, resource: e.resource) {
+          Present { value: e_decl } => e_decl == required_decl
+          Absent => false
+        }
+      ) |> first {
+        Present { value: e } => Present { value: e.binding_name }
+        Absent => none
+      }
+  }
+}
+
+fn caller_resource_requirements(scope: InferScope) -> List<ResourceRequirement> {
+  match map_get(scope.item_registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: scope.caller_decl_name })) {
+    Present { value: info } => info.resource_requirements
+    Absent => []
   }
 }
 
@@ -6669,7 +6757,7 @@ fn spine_root_is_shadowed(scope: InferScope, root: String) -> Bool {
   }
 }
 
-fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
+fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan, expected: Node?) -> InferResult? {
   match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
     Absent => none
     Present { value: spine } =>
@@ -6686,12 +6774,13 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
                   Absent => decl
                 }
               }
-              let value_type = qualify_borrowed_type_names(
+              let declared_type = qualify_borrowed_type_names(
                 n: raw_value_type,
                 owner_module_path: qualified_all_but_last(name: spine.dotted),
                 env: scope.type_env,
                 excluded: empty_map()
               )
+              let value_type = qualified_function_value_type(decl: decl, declared: declared_type, expected: expected)
               Present { value: ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                 name: spine.dotted,
                 expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
@@ -6736,8 +6825,27 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
 // collect_typed_service_calls records it and emit_func_params renders the service parameter as
 // `: &` with neither identifier nor type — a signature that is syntactically present and useless.
 // qualified_value_projection beside this uses kernel_span for the same reason.
-fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
-  match qualified_value_projection(texpr: texpr, scope: scope, span: span) {
+// A QUALIFIED FUNCTION NAME IN VALUE POSITION IS THE FUNCTION, TYPED BY ITS ARROW -- the same
+// judgment the bare-name arm makes with resolved_callable_type. A function declaration's `inferred`
+// is its RETURN type, so reading it as the value's type typed `pred: m.analyze.finding_is_suspect`
+// as Bool; once direct_call_arg_type_mismatch began judging function-typed arguments (#12143) that
+// became a refusal of a correct program, while the bare spelling of the same reference was
+// accepted. The nullary rule is the bare arm's too: a nullary function where no arrow is expected
+// keeps its existing reading, and where an arrow is expected it is the function itself.
+fn qualified_function_value_type(decl: Node, declared: Node, expected: Node?) -> Node {
+  match decl.module_item_kind {
+    ModuleItemFunction =>
+      if ((decl.params |> count) == 0) && !expected_type_is_arrow(expected: expected) {
+        declared
+      } else {
+        resolved_callable_type(func_params: decl.params, ret: declared)
+      }
+    _ => declared
+  }
+}
+
+fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceSpan, expected: Node?) -> InferResult? {
+  match qualified_value_projection(texpr: texpr, scope: scope, span: span, expected: expected) {
     Present { value: proj } => Present { value: proj }
     Absent =>
       match service_spine_projection(texpr: texpr, scope: scope) {
@@ -7206,7 +7314,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let field_name = field_access_field_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let base_expr = field_access_base(texpr: texpr)
-      match qualified_or_service_projection(texpr: texpr, scope: scope, span: span) {
+      match qualified_or_service_projection(texpr: texpr, scope: scope, span: span, expected: expected) {
         Present { value: proj } => proj
         Absent =>
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
@@ -12747,7 +12855,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: item.properties,
+      uses: item.uses, body: none, transport: none, properties: item.properties,
       type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
@@ -14011,7 +14119,7 @@ fn refresh_direct_service_names(
 
 fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
   let kind = item_kind(item: item)
-  let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_indices: source_indices))
+  let requirements = resource_requirements_of_uses(uses: item.uses, source_indices: source_indices)
   let item_name_str = authored_name_at(source_indices: source_indices, node: item)
   match kind {
     FnItem =>
@@ -14020,7 +14128,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
         module_name: module_name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
-        resource_names: res_names,
+        resource_requirements: requirements,
         params: item.params,
         is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item_name_str, source_indices: source_indices) },
         has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item_name_str, in_tail: true, source_indices: source_indices) }
@@ -14031,7 +14139,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
         module_name: module_name,
         kind: kind,
         service_names: [],
-        resource_names: res_names,
+        resource_requirements: requirements,
         params: item.params,
         is_self_recursive: false,
         has_non_tail_self_call: false

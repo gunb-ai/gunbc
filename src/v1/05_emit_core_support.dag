@@ -10,6 +10,7 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget }
+import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule, leaf_owner_modules_from_registry }
 
@@ -24,9 +25,12 @@ import v1.compiler.languages {
   language_spec_for_target, test_conventions_for_target
 }
 
+// emitted_edges are the Rust realization edges (gunbc.rust_emitted_edge) of the published modules;
+// every other target, and every refused emission, carries none.
 type EmitResult {
   files: List<TextFile>
   diagnostics: List<ErrorNode>
+  emitted_edges: List<EmittedEdge>
 }
 
 type TestProjection {
@@ -45,10 +49,6 @@ fn escape_json_string(s: String) -> String {
     |> split(delimiter: "\"") |> join(separator: "\\\"")
     |> split(delimiter: "\n") |> join(separator: "\\n")
     |> split(delimiter: "\t") |> join(separator: "\\t")
-}
-
-fn module_to_filename(name: String) -> String {
-  name |> split(delimiter: ".") |> join(separator: "_")
 }
 
 type ModuleFilenameOwners {

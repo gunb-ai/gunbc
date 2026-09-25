@@ -1,8 +1,43 @@
 module extdeps.apple.app_attest
 
-import std.types { NonEmptyStr, String, Int, List }
+import std.types { NonEmptyStr, String, Int, List, Timestamp }
+import std.logic { Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.measure { byte_size_count }
+import std.encoding { base64_decode, base64_encode, base64_octets, Standard, UrlSafe }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.crypto.sha2 { sha256, sha384 }
+import extdeps.crypto.nist_prime_curve { PrimeCurve, curve_ecdsa_verify_octets }
+import extdeps.crypto.nist_p256 { p256_curve }
+import extdeps.crypto.nist_p384 { p384_curve }
+import extdeps.standards.rfc_8949 {
+  CborValue, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document, cbor_decode_item, CborDecoded, CborRefused,
+  CborMemberFound, CborMemberAbsent, CborMemberDuplicated, CborMemberNotAMap, cbor_map_unique_text_member,
+  cbor_byte_string_octets, cbor_text_string_value, cbor_array_items, cbor_unsigned_value,
+}
+import extdeps.standards.webauthn_authenticator_data {
+  AuthenticatorData, AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data,
+  AuthenticatorDataPrefix, AuthenticatorDataPrefixDecoded, AuthenticatorDataPrefixRefused, decode_authenticator_data_prefix,
+  authenticator_data_prefix_size,
+}
+import extdeps.standards.x690_der {
+  DerContextSpecific, DerElementRead, DerRefused, der_read_element, der_expect_sequence, der_expect, der_value, der_tag_octet_string,
+}
+import extdeps.standards.rfc_5280 {
+  X509Certificate, X509Decoded, X509Refused, decode_certificate,
+  x509_extension, X509ExtensionFound, X509ExtensionAbsent, X509ExtensionDuplicated,
+  ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
+  x509_ca_authority, X509CaAuthorized, X509CaRefused,
+  X509BasicConstraintsAbsent, X509BasicConstraintsDuplicated, X509BasicConstraintsMalformed, X509NotACa,
+  X509PathLengthExceeded, X509KeyUsageDuplicated, X509KeyUsageMalformed, X509KeyCertSignAbsent,
+  X509IntermediatesBelowNegative,
+  x509_validity_at, X509ValidAt, X509NotYetValid, X509Expired, X509ValidityUndecodable,
+  oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_prime256v1, oid_secp384r1,
+}
+import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
 
 // DeviceCheck DCAppAttestService, and Apple's server-side validation procedure for its attestation
 // objects. Cited pages: "Establishing your app's integrity", "Validating apps that connect to your
@@ -40,6 +75,15 @@ type AppAttestEnvironment
 // Apple's current procedure; each failure is its own refusal because each is a different incident.
 //
 //   1. x5c chains to the Apple App Attestation Root CA
+//
+// AttestationChainUntrusted is step 1 over the one path Apple presents (credential certificate <-
+// intermediate <- pinned root), checked with the RFC 5280 CA-authority checks modeled here rather
+// than full path validation: exactly two certificates, issuer/subject
+// name joins, validity windows at the expectation's clock, the intermediate's AUTHORITY TO ACT AS
+// A CA (rfc_5280 x509_ca_authority: basicConstraints cA TRUE, pathLenConstraint over zero
+// intermediates below, keyUsage keyCertSign when present), and both ECDSA signatures. NOT modeled,
+// and not claimed: revocation (Apple publishes no CRL or OCSP for this chain), certificate
+// policies, name constraints, and the critical-extension-recognition rule of §6.1.4 (o).
 //   2. nonce = SHA256(authData || clientDataHash)
 //   3. nonce equals the credential certificate extension OID 1.2.840.113635.100.8.2
 //   4. SHA256(credential public key) equals the key id
@@ -62,7 +106,9 @@ type AttestationRefusal
   | AttestationEnvironmentUnexpected { expected: AppAttestEnvironment }
   | AttestationCredentialIdMismatch { declared: AttestKeyId }
   | AttestationValidationCategoryRefused { category: Int }
+  | AttestationValidationCategoryAbsent
   | AttestationBundleVersionAbsent
+  | AttestationBundleVersionUnexpected { declared: String }
   | AttestationUndecodable { cause: String }
 
 
@@ -131,6 +177,12 @@ type AttestationVerification
   = AttestationVerified { verified: VerifiedAttestation }
   | AttestationRefused { cause: AttestationRefusal }
 
+// THE SUCCESS MINT IS SEALED (review 5289941544). Its admitted callers are ITS ONE REAL SUPPLIER
+// and, beside it, the named fixture declarations of test.claim.approval_device_redemption_witness_test,
+// which supply verified evidence to redemption admission at THAT interface (DESIGN section 3). Every
+// non-supplier entry is a test.* declaration; a module not on this roster cannot mint a success at
+// all, and is refused at compile time. THE PAIRING OBLIGATION, stated so a reader sees that supplying
+// the evidence did not remove the last real execution: the attestation's real path runs in test.claim.app_attest_verifier_witness_test the_sample_passes_every_step_before_the_extension_steps (Apple's object through verify_attestation), and the chain's P-384 signatures are the declared frontier gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier, triggered by MachineWidth<N> reification letting this closure emit.
 fn attestation_verification_from_implementation(
   key_id: AttestKeyId,
   public_key_point_b64url: NonEmptyStr,
@@ -138,7 +190,13 @@ fn attestation_verification_from_implementation(
   environment: AppAttestEnvironment,
   client_data: NonEmptyStr,
   refusal: AttestationRefusal?,
-) -> AttestationVerification {
+) -> AttestationVerification
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "verify_attestation"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "fx_attestation"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_a_refused_attestation"),
+  ]
+{
   match refusal {
     Present { value: r } => AttestationRefused { cause: r }
     Absent => AttestationVerified {
@@ -166,7 +224,9 @@ type AssertionRefusal
   = AssertionSignatureInvalid
   | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
   | AssertionValidationCategoryRefused { category: Int }
+  | AssertionValidationCategoryAbsent
   | AssertionBundleVersionAbsent
+  | AssertionBundleVersionUnexpected { declared: String }
   | AssertionUndecodable { cause: String }
 
 type AuthenticAssertion sole_constructor {
@@ -180,15 +240,781 @@ type AssertionVerification
   = AssertionAuthentic { authentic: AuthenticAssertion }
   | AssertionRefused { cause: AssertionRefusal }
 
+// THE SUCCESS MINT IS SEALED (review 5289941544). Its admitted callers are ITS ONE REAL SUPPLIER
+// and, beside it, the named fixture declarations of test.claim.approval_device_redemption_witness_test,
+// which supply verified evidence to redemption admission at THAT interface (DESIGN section 3). Every
+// non-supplier entry is a test.* declaration; a module not on this roster cannot mint a success at
+// all, and is refused at compile time. THE PAIRING OBLIGATION, stated so a reader sees that supplying
+// the evidence did not remove the last real execution: the assertion's real path runs in test.claim.app_attest_verifier_witness_test the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions (Apple's object through verify_assertion); its P-256 signature verification is the declared frontier gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier, triggered by MachineWidth<N> reification letting this closure emit.
 fn assertion_verification_from_implementation(
   key_id: AttestKeyId,
   public_key_point_b64url: NonEmptyStr,
   counter: Int,
   client_data: NonEmptyStr,
   refusal: AssertionRefusal?,
-) -> AssertionVerification {
+) -> AssertionVerification
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "verify_assertion"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "assertion_over"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_under_another_public_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_refused_assertion"),
+  ]
+{
   match refusal {
     Present { value: r } => AssertionRefused { cause: r }
     Absent => AssertionAuthentic { authentic: AuthenticAssertion { key_id: key_id, public_key_point_b64url: public_key_point_b64url, counter: counter, client_data: client_data } }
+  }
+}
+
+
+// ══ THE VERIFIER FOLDS ═══════════════════════════════════════════════════════════════════════
+// Apple's procedure above, executed over the readers: CBOR (extdeps.standards.rfc_8949), the
+// authenticator data (webauthn_authenticator_data), DER and X.509 (x690_der, rfc_5280), the pinned
+// root (rfc_7468 over apple_app_attestation_root_ca_pem_lines), SHA-256/SHA-384 (crypto.sha2) and
+// the two NIST curves (crypto.nist_p256, nist_p384). These are the folds that SUPPLY
+// attestation_verification_from_implementation and assertion_verification_from_implementation;
+// nothing else does, and the seams keep minting VerifiedAttestation / AuthenticAssertion.
+//
+// ORDER OF THE CHECKS, and why it is not Apple's list order. The verdict is a conjunction, so the
+// order changes only which refusal is reported first, and it is chosen by cost: every structural
+// check (decode, nonce, key id, RP ID, counter, AAGUID, credentialId, category, version, names
+// and validity of the chain) runs before the two ECDSA verifications of the chain, because one
+// interpreted P-384 verification is minutes and gigabytes (gunbc#11645, the roadmap row
+// v1-interpreter-p256-verify-cost-shape) and an object that fails a cheap check must not pay for
+// the expensive one. Apple's step 1 -- the chain signatures -- is therefore the LAST thing to run.
+//
+// WHAT THE CALLER SUPPLIES, all of it the caller's own fact: the object as received; the key id
+// as the app sent it (standard base64 of 32 octets); the client data the app attested over, which
+// the caller hashes here (Apple: clientDataHash = SHA-256 of the challenge); the App ID it is
+// configured with (app_attest_app_id); the environment it expects; the instant it observes; and
+// the launch categories it admits and the bundle version it distributed, for steps 9 and 10.
+
+data app_attest_format: String = "apple-appattest"
+data app_attest_aaguid_development: String = "appattestdevelop"
+data app_attest_validation_category_extension_key: String = "apple_validation_category_01"
+data app_attest_bundle_version_extension_key: String = "apple_bundle_version_01"
+
+fn app_attest_aaguid_octets(environment: AppAttestEnvironment) -> List<Int> {
+  match environment {
+    AppAttestDevelopment => bytes_octets(b: utf8_encode_bytes(s: app_attest_aaguid_development))
+    AppAttestProduction => concat(bytes_octets(b: utf8_encode_bytes(s: "appattest")), [0, 0, 0, 0, 0, 0, 0])
+  }
+}
+
+type AttestationExpectation {
+  key_id: AttestKeyId
+  client_data: NonEmptyStr
+  app_id: NonEmptyStr
+  environment: AppAttestEnvironment
+  observed_at: Timestamp
+  admitted_validation_categories: List<Int>
+  expected_bundle_version: NonEmptyStr
+}
+
+fn app_attest_undecodable(cause: String) -> AttestationRefusal {
+  AttestationUndecodable { cause: cause }
+}
+
+fn app_attest_member(v: CborValue, key: String) -> CborValue? {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } => Present { value: m }
+    _ => none
+  }
+}
+
+fn app_attest_member_octets(v: CborValue, key: String) -> List<Int>? {
+  match app_attest_member(v: v, key: key) {
+    Absent => none
+    Present { value: m } => cbor_byte_string_octets(v: m)
+  }
+}
+
+// The decoded object's parts, once the shape is established.
+type AttestationParts {
+  leaf: List<Int>
+  ca: List<Int>
+  receipt: List<Int>
+  auth_data: List<Int>
+}
+
+type AttestationPartsRead
+  = AttestationPartsOk { parts: AttestationParts }
+  | AttestationPartsRefused { cause: AttestationRefusal }
+
+fn attestation_parts(object: List<Int>) -> AttestationPartsRead {
+  match cbor_decode_document(octets: object) {
+    CborDocumentRefused { cause: _ } => AttestationPartsRefused { cause: app_attest_undecodable(cause: "attestation object is not one CBOR item") }
+    CborDocumentDecoded { value: att } => {
+      let fmt = match app_attest_member(v: att, key: "fmt") {
+        Absent => ""
+        Present { value: f } => match cbor_text_string_value(v: f) {
+          Present { value: t } => t
+          Absent => ""
+        }
+      }
+      if fmt != app_attest_format { AttestationPartsRefused { cause: AttestationFormatUnexpected { declared: fmt } } }
+      else {
+        match app_attest_member(v: att, key: "attStmt") {
+          Absent => AttestationPartsRefused { cause: app_attest_undecodable(cause: "attStmt absent") }
+          Present { value: stmt } =>
+            match app_attest_member(v: stmt, key: "x5c") {
+              Absent => AttestationPartsRefused { cause: app_attest_undecodable(cause: "x5c absent") }
+              Present { value: x5c_v } =>
+                match cbor_array_items(v: x5c_v) {
+                  Absent => AttestationPartsRefused { cause: app_attest_undecodable(cause: "x5c is not an array") }
+                  Present { value: x5c } =>
+                    if count(x5c) != 2 { AttestationPartsRefused { cause: AttestationChainUntrusted { detail: "x5c carries " + to_string(count(x5c)) + " certificates, not the credential certificate and the intermediate" } } }
+                    else {
+                      let leaf = match x5c |> get(0) {
+                        null => []
+                        c => match cbor_byte_string_octets(v: c) {
+                          Present { value: o } => o
+                          Absent => []
+                        }
+                      }
+                      let ca = match x5c |> get(1) {
+                        null => []
+                        c => match cbor_byte_string_octets(v: c) {
+                          Present { value: o } => o
+                          Absent => []
+                        }
+                      }
+                      match app_attest_member_octets(v: stmt, key: "receipt") {
+                        Absent => AttestationPartsRefused { cause: app_attest_undecodable(cause: "receipt absent or not a byte string") }
+                        Present { value: receipt } =>
+                          match app_attest_member_octets(v: att, key: "authData") {
+                            Absent => AttestationPartsRefused { cause: app_attest_undecodable(cause: "authData absent or not a byte string") }
+                            Present { value: auth_data } =>
+                              if count(leaf) == 0 || count(ca) == 0 { AttestationPartsRefused { cause: app_attest_undecodable(cause: "an x5c member is not a byte string") } }
+                              else { AttestationPartsOk { parts: AttestationParts { leaf: leaf, ca: ca, receipt: receipt, auth_data: auth_data } } }
+                          }
+                      }
+                    }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+// Step 3's extension value: DER SEQUENCE { [1] { OCTET STRING nonce } }.
+fn credential_certificate_nonce(leaf: X509Certificate) -> List<Int>? {
+  match x509_extension(cert: leaf, oid: app_attest_nonce_extension_oid as String) {
+    X509ExtensionFound { extension: x } =>
+      match der_expect_sequence(octets: x.value, at: 0) {
+        DerRefused { cause: _ } => none
+        DerElementRead { element: seq } =>
+          match der_expect(octets: x.value, at: seq.value_at, class: DerContextSpecific, tag_number: app_attest_nonce_extension_context_tag, constructed: true) {
+            DerRefused { cause: _ } => none
+            DerElementRead { element: ctx } =>
+              match der_read_element(octets: x.value, at: ctx.value_at) {
+                DerRefused { cause: _ } => none
+                DerElementRead { element: inner } => if inner.tag_number == der_tag_octet_string { Present { value: der_value(octets: x.value, e: inner) } } else { none }
+              }
+          }
+      }
+    _ => none
+  }
+}
+
+fn app_attest_certificate(octets: List<Int>) -> X509Certificate? {
+  match decode_certificate(octets: octets) {
+    X509Decoded { certificate: c } => Present { value: c }
+    X509Refused { cause: _ } => none
+  }
+}
+
+fn app_attest_root() -> X509Certificate? {
+  match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
+    PemRefused { cause: _ } => none
+    PemDecoded { der: der } => app_attest_certificate(octets: der)
+  }
+}
+
+// One chain link: `subject` signed by `issuer`, under the issuer's key, with the digest the
+// subject's signature algorithm names. `none` is an encoding refusal -- an algorithm or curve the
+// verifier does not carry, or a signature that is not an ECDSA-Sig-Value for the issuer's width --
+// and never a verdict. ITS EVIDENCE: the refusing arms are claimed cheaply over the real leaf
+// (test.claim.app_attest_verifier_witness_test); the two verifying links are enrolled there and in
+// test.claim.p384_dag_ecdsa_witness_test and are NOT executed on the interpreter: a P-384
+// verification at 16 limbs exceeds what a session container holds, by the instrument the roadmap
+// row v1-interpreter-p256-verify-cost-shape names; their executing route is the native gunbc test
+// row the frontier names.
+// THE DIGEST IS COMPUTED ONLY AFTER BOTH ENCODING REFUSALS HAVE BEEN ASKED: the algorithm and the
+// curve are facts of the two certificates' fields, and a link that will refuse on its issuer's
+// curve owes no hash of its subject's TBS.
+fn chain_link_digest_of(subject: X509Certificate) -> List<Int> {
+  if subject.signature_algorithm == oid_ecdsa_with_sha256 { sha256(message: subject.tbs.tbs_octets) } else { sha384(message: subject.tbs.tbs_octets) }
+}
+
+fn chain_link_verifies(subject: X509Certificate, issuer: X509Certificate) -> Bool? {
+  if subject.signature_algorithm != oid_ecdsa_with_sha256 && subject.signature_algorithm != oid_ecdsa_with_sha384 { none } else {
+    match issuer.tbs.spki_named_curve {
+      Absent => none
+      Present { value: curve } =>
+        match issuer_curve(named_curve: curve) {
+          Absent => none
+          Present { value: c } => ecdsa_verifies_on(c: c, key: issuer.tbs.spki_public_key, signature_octets: subject.signature_octets, digest: chain_link_digest_of(subject: subject))
+        }
+    }
+  }
+}
+
+// The issuer's key selects the curve, and the curve row is the one authority for the coordinate
+// width the DER SIG-VALUE is read at and the verifier checks (review 69750 of gunbc#11989: a
+// `width:` literal beside the curve value that owns it was a second authority for one fact).
+fn issuer_curve(named_curve: String) -> PrimeCurve? {
+  if named_curve == oid_secp384r1 { Present { value: p384_curve } }
+  else if named_curve == oid_prime256v1 { Present { value: p256_curve } }
+  else { none }
+}
+
+fn ecdsa_verifies_on(c: PrimeCurve, key: List<Int>, signature_octets: List<Int>, digest: List<Int>) -> Bool? {
+  match ecdsa_sig_value(octets: signature_octets, width: c.coordinate_octets) {
+    EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: c, key: key, signature: rs, digest: digest)
+    _ => none
+  }
+}
+
+fn chain_link_refusal(subject: X509Certificate, issuer: X509Certificate, which: String) -> AttestationRefusal? {
+  match chain_link_verifies(subject: subject, issuer: issuer) {
+    Absent => Present { value: AttestationChainUntrusted { detail: which + " signature is not an admitted encoding for the issuer's key" } }
+    Present { value: true } => none
+    Present { value: false } => Present { value: AttestationChainUntrusted { detail: which + " signature does not verify under its issuer" } }
+  }
+}
+
+fn ca_authority_refused(reason: String) -> AttestationRefusal? {
+  Present { value: AttestationChainUntrusted { detail: "the intermediate is not authorized to act as a CA: " + reason } }
+}
+
+fn ca_authority_refusal(ca: X509Certificate) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  match x509_ca_authority(cert: ca, intermediates_below: 0) {
+    X509CaAuthorized { path_len_constraint: _ } => none
+    X509CaRefused { cause: c } => match c {
+      X509BasicConstraintsAbsent => ca_authority_refused(reason: "basicConstraints is absent")
+      X509BasicConstraintsDuplicated => ca_authority_refused(reason: "basicConstraints appears twice")
+      X509BasicConstraintsMalformed { cause: _ } => ca_authority_refused(reason: "basicConstraints does not decode")
+      X509NotACa => ca_authority_refused(reason: "basicConstraints cA is not TRUE")
+      X509PathLengthExceeded { path_len_constraint: n, intermediates_below: _ } => ca_authority_refused(reason: "pathLenConstraint " + to_string(n) + " is exceeded")
+      X509KeyUsageDuplicated => ca_authority_refused(reason: "keyUsage appears twice")
+      X509KeyUsageMalformed { cause: _ } => ca_authority_refused(reason: "keyUsage does not decode")
+      X509KeyCertSignAbsent => ca_authority_refused(reason: "keyUsage lacks keyCertSign")
+      X509IntermediatesBelowNegative { intermediates_below: _ } => ca_authority_refused(reason: "the intermediate count below it is negative")
+    }
+  }
+}
+
+fn validity_refusal(cert: X509Certificate, observed_at: Timestamp, which: String) -> AttestationRefusal? {
+  match x509_validity_at(cert: cert, observed_at: observed_at) {
+    X509ValidAt => none
+    X509NotYetValid { not_before: nb, observed_at: _ } => Present { value: AttestationChainUntrusted { detail: which + " certificate is not valid before " + nb } }
+    X509Expired { not_after: na, observed_at: _ } => Present { value: AttestationChainUntrusted { detail: which + " certificate expired at " + na } }
+    X509ValidityUndecodable { text: t } => Present { value: AttestationChainUntrusted { detail: which + " certificate carries an undecodable time " + t } }
+  }
+}
+
+// Steps 9 and 10 read the authenticator data's extensions map. EACH READER HAS ITS OWN RESULT
+// SUM, NAMING EXACTLY WHAT IT CAN CONCLUDE (review 69983 of gunbc#11989). Returning the whole
+// AttestationRefusal made the reader's real range -- three constructors -- invisible to its
+// consumers, so the assertion mappers had to carry a fallback arm for ten constructors the reader
+// cannot emit, and that arm needed a hand-written table of the sum's own constructor names to
+// print. A fallback that cannot fire is a decoration (DESIGN section 4b) and the name table was a
+// second naming authority for constructors the Node tree already names (section 3). With the range
+// declared, BOTH consumers below are total by construction and neither needs either.
+type ValidationCategoryReading
+  = ValidationCategoryAdmitted
+  | ValidationCategoryReadAbsent
+  | ValidationCategoryReadRefused { category: Int }
+  | ValidationCategoryReadUndecodable { cause: String }
+
+type BundleVersionReading
+  = BundleVersionMatched
+  | BundleVersionReadAbsent
+  | BundleVersionReadUnexpected { declared: String }
+  | BundleVersionReadUndecodable { cause: String }
+
+fn read_validation_category(extensions: CborValue?, admitted: List<Int>) -> ValidationCategoryReading {
+  match extensions {
+    Absent => ValidationCategoryReadAbsent
+    Present { value: ext } =>
+      match app_attest_member(v: ext, key: app_attest_validation_category_extension_key) {
+        Absent => ValidationCategoryReadAbsent
+        Present { value: v } =>
+          match cbor_unsigned_value(v: v) {
+            Absent => ValidationCategoryReadUndecodable { cause: "apple_validation_category_01 is not a CBOR unsigned integer" }
+            Present { value: category } =>
+              if any(admitted, a => a == category) { ValidationCategoryAdmitted } else { ValidationCategoryReadRefused { category: category } }
+          }
+      }
+  }
+}
+
+fn read_bundle_version(extensions: CborValue?, expected: NonEmptyStr) -> BundleVersionReading {
+  match extensions {
+    Absent => BundleVersionReadAbsent
+    Present { value: ext } =>
+      match app_attest_member(v: ext, key: app_attest_bundle_version_extension_key) {
+        Absent => BundleVersionReadAbsent
+        Present { value: v } =>
+          match cbor_text_string_value(v: v) {
+            Absent => BundleVersionReadUndecodable { cause: "apple_bundle_version_01 is not a CBOR text string" }
+            Present { value: declared } => if declared == (expected as String) { BundleVersionMatched } else { BundleVersionReadUnexpected { declared: declared } }
+          }
+      }
+  }
+}
+
+fn validation_category_refusal(extensions: CborValue?, admitted: List<Int>) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  match read_validation_category(extensions: extensions, admitted: admitted) {
+    ValidationCategoryAdmitted => none
+    ValidationCategoryReadAbsent => Present { value: AttestationValidationCategoryAbsent }
+    ValidationCategoryReadRefused { category: c } => Present { value: AttestationValidationCategoryRefused { category: c } }
+    ValidationCategoryReadUndecodable { cause: c } => Present { value: app_attest_undecodable(cause: c) }
+  }
+}
+
+fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  match read_bundle_version(extensions: extensions, expected: expected) {
+    BundleVersionMatched => none
+    BundleVersionReadAbsent => Present { value: AttestationBundleVersionAbsent }
+    BundleVersionReadUnexpected { declared: d } => Present { value: AttestationBundleVersionUnexpected { declared: d } }
+    BundleVersionReadUndecodable { cause: c } => Present { value: app_attest_undecodable(cause: c) }
+  }
+}
+
+fn base64_of(octets: List<Int>, url_safe: Bool) -> String? {
+  match base64_octets(values: octets) {
+    QualifiedOctetsRefused { observed: _ } => none
+    QualifiedOctetsReady { value: q } => Present { value: base64_encode(octets: q, variant: if url_safe { UrlSafe } else { Standard }) }
+  }
+}
+
+// THE STRUCTURAL STEPS, EACH A NAMED CHECK over the decoded object (steps 2..10 and the chain's names,
+// validity and CA authority; the chain signatures are step 1 and run last in verify_attestation).
+// Named so a claim can discriminate ONE step at its own interface (DESIGN section 3) instead of
+// paying every earlier step's hashes to reach it; the ORDER is its own declared fact,
+// attestation_step_order, which the fold below consumes and a witness pins.
+type AttestationStep
+  = KeyIdLengthStep
+  | NonceStep
+  | KeyIdStep
+  | AppIdStep
+  | CounterStep
+  | EnvironmentStep
+  | CredentialIdStep
+  | LeafIssuerStep
+  | IntermediateIssuerStep
+  | LeafValidityStep
+  | IntermediateValidityStep
+  | IntermediateCaAuthorityStep
+  | ValidationCategoryStep
+  | BundleVersionStep
+
+fn attestation_step_order() -> List<AttestationStep> {
+  [
+    KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
+    LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep,
+    IntermediateCaAuthorityStep, ValidationCategoryStep, BundleVersionStep,
+  ]
+}
+
+fn expected_key_id_octets(e: AttestationExpectation) -> List<Int> {
+  match base64_decode(s: e.key_id as String, variant: Standard) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+fn key_id_length_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  if count(expected_key_id_octets(e: e)) != 32 { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } else { none }
+}
+
+// Step 2-3: the leaf's nonce extension is SHA-256(authData || SHA-256(clientData)).
+fn nonce_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  match credential_certificate_nonce(leaf: d.leaf) {
+    Absent => Present { value: AttestationNonceMismatch }
+    Present { value: n } =>
+      if n == sha256(message: concat(d.parts.auth_data, sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String))))) { none }
+      else { Present { value: AttestationNonceMismatch } }
+  }
+}
+
+fn key_id_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  if sha256(message: d.leaf.tbs.spki_public_key) == expected_key_id_octets(e: e) { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } }
+}
+
+fn app_id_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  if d.auth.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AttestationAppIdMismatch { expected_app_id: e.app_id } } }
+}
+
+fn counter_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  if d.auth.sign_count == 0 { none } else { Present { value: AttestationCounterNonZero { counter: d.auth.sign_count } } }
+}
+
+fn environment_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  match d.auth.attested_credential {
+    Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
+    Present { value: c } => if c.aaguid == app_attest_aaguid_octets(environment: e.environment) { none } else { Present { value: AttestationEnvironmentUnexpected { expected: e.environment } } }
+  }
+}
+
+fn credential_id_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  match d.auth.attested_credential {
+    Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
+    Present { value: c } => if c.credential_id == expected_key_id_octets(e: e) { none } else { Present { value: AttestationCredentialIdMismatch { declared: e.key_id } } }
+  }
+}
+
+fn leaf_issuer_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  if d.leaf.tbs.issuer_octets == d.ca.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } }
+}
+
+fn intermediate_issuer_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  if d.ca.tbs.issuer_octets == d.root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } }
+}
+
+fn leaf_validity_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  validity_refusal(cert: d.leaf, observed_at: e.observed_at, which: "credential")
+}
+
+fn intermediate_validity_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
+  validity_refusal(cert: d.ca, observed_at: e.observed_at, which: "intermediate")
+}
+
+// THE DISPATCHER IS REACHABLE ONLY THROUGH THE ORDER: the fold and ordered_step_refusal are its only
+// admitted callers, and each named check admits only this dispatcher. So no claim or consumer can run
+// a step except through attestation_step_order -- a step absent from the order is unreachable
+// rather than silently green (review 5289941544).
+fn attestation_step_refusal(step: AttestationStep, d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_structural_refusal"),
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "ordered_step_refusal"),
+  ]
+{
+  match step {
+    KeyIdLengthStep => key_id_length_step(d: d, e: e)
+    NonceStep => nonce_step(d: d, e: e)
+    KeyIdStep => key_id_step(d: d, e: e)
+    AppIdStep => app_id_step(d: d, e: e)
+    CounterStep => counter_step(d: d, e: e)
+    EnvironmentStep => environment_step(d: d, e: e)
+    CredentialIdStep => credential_id_step(d: d, e: e)
+    LeafIssuerStep => leaf_issuer_step(d: d, e: e)
+    IntermediateIssuerStep => intermediate_issuer_step(d: d, e: e)
+    LeafValidityStep => leaf_validity_step(d: d, e: e)
+    IntermediateValidityStep => intermediate_validity_step(d: d, e: e)
+    IntermediateCaAuthorityStep => ca_authority_refusal(ca: d.ca)
+    ValidationCategoryStep => validation_category_refusal(extensions: d.auth.extensions, admitted: e.admitted_validation_categories)
+    BundleVersionStep => bundle_version_refusal(extensions: d.auth.extensions, expected: e.expected_bundle_version)
+  }
+}
+
+// ONE STEP, REACHED THROUGH THE ORDER. A step that attestation_step_order does not list answers
+// AttestationStepNotInOrder instead of running, so a unit claim over a step dropped from production's
+// order goes red even though the step's own check is unchanged.
+type OrderedStepReading
+  = OrderedStepRan { refusal: AttestationRefusal? }
+  | AttestationStepNotInOrder
+
+fn ordered_step_refusal(step: AttestationStep, d: AttestationDecoded, e: AttestationExpectation) -> OrderedStepReading {
+  if attestation_step_order() |> any(s => s == step) { OrderedStepRan { refusal: attestation_step_refusal(step: step, d: d, e: e) } }
+  else { AttestationStepNotInOrder }
+}
+
+// The fold over the declared order; a step is evaluated only while nothing has refused.
+fn attestation_structural_refusal(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  fold(attestation_step_order(), init: none, f: (acc, step) => match acc {
+    Present { value: a } => Present { value: a }
+    Absent => attestation_step_refusal(step: step, d: d, e: e)
+  })
+}
+
+// EVERYTHING DECODED ONCE, then carried: the parts, both certificates, the pinned root and the
+// authenticator data are read here and handed to the refusal fold and to the success mint alike
+// (review 69631 of gunbc#11989: an earlier cut re-decoded the object on the success path, which is
+// the shared-ancestor duplication DESIGN §2 names).
+type AttestationDecoded {
+  parts: AttestationParts
+  leaf: X509Certificate
+  ca: X509Certificate
+  root: X509Certificate
+  auth: AuthenticatorData
+}
+
+type AttestationDecode
+  = AttestationDecodeOk { decoded: AttestationDecoded }
+  | AttestationDecodeRefused { cause: AttestationRefusal }
+
+fn decode_attestation(object: List<Int>) -> AttestationDecode {
+  match attestation_parts(object: object) {
+    AttestationPartsRefused { cause: c } => AttestationDecodeRefused { cause: c }
+    AttestationPartsOk { parts: parts } =>
+      match app_attest_certificate(octets: parts.leaf) {
+        Absent => AttestationDecodeRefused { cause: AttestationChainUntrusted { detail: "credential certificate does not decode as X.509" } }
+        Present { value: leaf } =>
+          match app_attest_certificate(octets: parts.ca) {
+            Absent => AttestationDecodeRefused { cause: AttestationChainUntrusted { detail: "intermediate certificate does not decode as X.509" } }
+            Present { value: ca } =>
+              match app_attest_root() {
+                Absent => AttestationDecodeRefused { cause: AttestationChainUntrusted { detail: "the pinned root does not decode" } }
+                Present { value: root } =>
+                  match decode_authenticator_data(octets: parts.auth_data) {
+                    AuthenticatorDataRefused { cause: _ } => AttestationDecodeRefused { cause: app_attest_undecodable(cause: "authData does not decode as WebAuthn authenticator data") }
+                    AuthenticatorDataDecoded { data: auth } => AttestationDecodeOk { decoded: AttestationDecoded { parts: parts, leaf: leaf, ca: ca, root: root, auth: auth } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The two chain links are SEQUENCED, not listed: a list evaluates both elements, and each is the
+// most expensive computation in the corpus, so a refused first link must not buy the second
+// (review 69668 of gunbc#11989).
+fn attestation_refusal(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  match attestation_structural_refusal(d: d, e: e) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match chain_link_refusal(subject: d.leaf, issuer: d.ca, which: "credential certificate") {
+        Present { value: r } => Present { value: r }
+        Absent => chain_link_refusal(subject: d.ca, issuer: d.root, which: "intermediate")
+      }
+  }
+}
+
+// THE SUPPLIER of attestation_verification_from_implementation. On success the verified facts
+// are the credential certificate's public key (SEC 1 point, base64url), the receipt (base64) and
+// the environment the AAGUID named, over exactly the client data supplied.
+fn verify_attestation(object: List<Int>, e: AttestationExpectation) -> AttestationVerification {
+  match decode_attestation(object: object) {
+    AttestationDecodeRefused { cause: c } => AttestationRefused { cause: c }
+    AttestationDecodeOk { decoded: d } =>
+      match attestation_refusal(d: d, e: e) {
+        Present { value: r } => AttestationRefused { cause: r }
+        Absent =>
+          match base64_of(octets: d.leaf.tbs.spki_public_key, url_safe: true) {
+            Absent => AttestationRefused { cause: app_attest_undecodable(cause: "credential public key octets are not bytes") }
+            Present { value: point } =>
+              match base64_of(octets: d.parts.receipt, url_safe: false) {
+                Absent => AttestationRefused { cause: app_attest_undecodable(cause: "receipt octets are not bytes") }
+                Present { value: receipt } =>
+                  attestation_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: point as NonEmptyStr, receipt_b64: receipt as NonEmptyStr, environment: e.environment, client_data: e.client_data, refusal: none)
+              }
+          }
+      }
+  }
+}
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+// The assertion is CBOR { signature, authenticatorData }. Apple's authenticatorData here is the
+// 37-octet prefix -- rpIdHash || flags || counter -- with the AT bit set and no attested data
+// (extdeps.apple.app_attest_sample_ios_14_4); when the ED bit is set, an extensions CBOR map
+// follows and consumes the rest. Anything else is refused.
+type AssertionAuthenticatorData {
+  prefix: AuthenticatorDataPrefix
+  extensions: CborValue?
+}
+
+fn apple_assertion_authenticator_data(octets: List<Int>) -> AssertionAuthenticatorData? {
+  match decode_authenticator_data_prefix(octets: octets |> take(byte_size_count(b: authenticator_data_prefix_size))) {
+    AuthenticatorDataPrefixRefused { cause: _ } => none
+    AuthenticatorDataPrefixDecoded { prefix: p } =>
+      if count(octets) == byte_size_count(b: authenticator_data_prefix_size) { Present { value: AssertionAuthenticatorData { prefix: p, extensions: none } } }
+      else if !p.flags.extension_data_included { none }
+      else {
+        match cbor_decode_item(octets: octets, at: byte_size_count(b: authenticator_data_prefix_size), depth: 0) {
+          CborRefused { cause: _ } => none
+          CborDecoded { value: v, next: n } => if n == count(octets) { Present { value: AssertionAuthenticatorData { prefix: p, extensions: Present { value: v } } } } else { none }
+        }
+      }
+  }
+}
+
+type AssertionExpectation {
+  key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
+  client_data: NonEmptyStr
+  app_id: NonEmptyStr
+  admitted_validation_categories: List<Int>
+  expected_bundle_version: NonEmptyStr
+}
+
+type AssertionParts {
+  signature: List<Int>
+  auth: AssertionAuthenticatorData
+  auth_octets: List<Int>
+}
+
+type AssertionPartsRead
+  = AssertionPartsOk { parts: AssertionParts }
+  | AssertionPartsRefused { cause: AssertionRefusal }
+
+fn assertion_parts(object: List<Int>) -> AssertionPartsRead {
+  match cbor_decode_document(octets: object) {
+    CborDocumentRefused { cause: _ } => AssertionPartsRefused { cause: AssertionUndecodable { cause: "assertion is not one CBOR item" } }
+    CborDocumentDecoded { value: v } =>
+      match app_attest_member_octets(v: v, key: "signature") {
+        Absent => AssertionPartsRefused { cause: AssertionUndecodable { cause: "signature absent or not a byte string" } }
+        Present { value: sig } =>
+          match app_attest_member_octets(v: v, key: "authenticatorData") {
+            Absent => AssertionPartsRefused { cause: AssertionUndecodable { cause: "authenticatorData absent or not a byte string" } }
+            Present { value: ad } =>
+              match apple_assertion_authenticator_data(octets: ad) {
+                Absent => AssertionPartsRefused { cause: AssertionUndecodable { cause: "authenticatorData is not the 37-octet prefix with optional extensions" } }
+                Present { value: auth } => AssertionPartsOk { parts: AssertionParts { signature: sig, auth: auth, auth_octets: ad } }
+              }
+          }
+      }
+  }
+}
+
+// The assertion's steps 7 and 8 share the attestation's READERS -- not its refusal sum -- so each
+// reading maps to its assertion twin directly and every arm is reachable (review 69983 of
+// gunbc#11989). An undecodable member stays undecodable with its cause (review 69702: a wildcard
+// had reported a malformed category as absent); there is no wildcard left to regress to.
+fn assertion_category_refusal(extensions: CborValue?, admitted: List<Int>) -> AssertionRefusal? {
+  match read_validation_category(extensions: extensions, admitted: admitted) {
+    ValidationCategoryAdmitted => none
+    ValidationCategoryReadAbsent => Present { value: AssertionValidationCategoryAbsent }
+    ValidationCategoryReadRefused { category: c } => Present { value: AssertionValidationCategoryRefused { category: c } }
+    ValidationCategoryReadUndecodable { cause: c } => Present { value: AssertionUndecodable { cause: c } }
+  }
+}
+
+fn assertion_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> AssertionRefusal? {
+  match read_bundle_version(extensions: extensions, expected: expected) {
+    BundleVersionMatched => none
+    BundleVersionReadAbsent => Present { value: AssertionBundleVersionAbsent }
+    BundleVersionReadUnexpected { declared: d } => Present { value: AssertionBundleVersionUnexpected { declared: d } }
+    BundleVersionReadUndecodable { cause: c } => Present { value: AssertionUndecodable { cause: c } }
+  }
+}
+
+// THE CHECKS ARE THUNKS, SO THE FIRST REFUSAL ENDS THE FOLD: a list of values evaluates every
+// check -- several of them SHA-256s -- even after an earlier step has already refused, which is
+// work no consumer reads (the same shape review 69668 of gunbc#11989 removed from the chain links).
+fn first_assertion_refusal(rs: List<fn() -> AssertionRefusal?>) -> AssertionRefusal? {
+  fold(rs, init: none, f: (acc, r) => match acc {
+    Present { value: a } => Present { value: a }
+    Absent => r()
+  })
+}
+
+// Steps 1-4, 7 and 8 (the module's stated scope for AssertionAuthentic); the counter is carried
+// out for the consumer's step 5 and the client data for its step 6. As with attestations the
+// P-256 verification (step 3) runs after the structural checks.
+fn assertion_refusal(parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
+  match first_assertion_refusal(rs: [
+    fn() { if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } } } },
+    fn() { assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories) },
+    fn() { assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version) },
+  ]) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match assertion_signature_verifies(parts: parts, e: e) {
+        Present { value: true } => none
+        Present { value: false } => Present { value: AssertionSignatureInvalid }
+        Absent => Present { value: AssertionUndecodable { cause: "the stored key or the assertion signature is not an admitted P-256 encoding" } }
+      }
+  }
+}
+
+// Steps 1-3 alone: nonce = SHA-256(authenticatorData || SHA-256(clientData)), and the DER
+// signature verifies for it under the stored P-256 key. THE NONCE IS THE SIGNED MESSAGE, NOT THE
+// DIGEST: Apple's "signature is valid for nonce" is an ECDSA-with-SHA256 signature over the
+// 32-octet nonce, so the curve verifier receives SHA-256(nonce). Established on the sample by
+// execution -- the fold first supplied the nonce as the digest and Apple's real signature refused,
+// while openssl `dgst -sha256 -verify` over the nonce bytes accepted it. Its own producer so it
+// can be claimed over real bytes independently of the structural steps (the sample assertion
+// predates the extensions steps 7 and 8 read, so the whole fold refuses on it before this runs).
+// The stored key is decoded FIRST: an undecodable key is an encoding refusal and owes no nonce.
+fn assertion_signature_verifies(parts: AssertionParts, e: AssertionExpectation) -> Bool? {
+  match base64_decode(s: e.public_key_point_b64url as String, variant: UrlSafe) {
+    Absent => none
+    Present { value: key } => {
+      let client_data_hash = sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String)))
+      let nonce = sha256(message: concat(parts.auth_octets, client_data_hash))
+      ecdsa_verifies_on(c: p256_curve, key: key, signature_octets: parts.signature, digest: sha256(message: nonce))
+    }
+  }
+}
+
+fn assertion_signature_verifies_for(object: List<Int>, e: AssertionExpectation) -> Bool? {
+  match assertion_parts(object: object) {
+    AssertionPartsRefused { cause: _ } => none
+    AssertionPartsOk { parts: parts } => assertion_signature_verifies(parts: parts, e: e)
+  }
+}
+
+// THE SUPPLIER of assertion_verification_from_implementation: the document is decoded once and
+// both the counter and the refusal are read from that decode. A refusal is built as the refusal
+// arm directly; the seam is reached only with the facts a success carries, so no stand-in counter
+// or key ever exists (review 69652 of gunbc#11989).
+fn verify_assertion(object: List<Int>, e: AssertionExpectation) -> AssertionVerification {
+  match assertion_parts(object: object) {
+    AssertionPartsRefused { cause: c } => AssertionRefused { cause: c }
+    AssertionPartsOk { parts: parts } =>
+      match assertion_refusal(parts: parts, e: e) {
+        Present { value: r } => AssertionRefused { cause: r }
+        Absent => assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: parts.auth.prefix.sign_count, client_data: e.client_data, refusal: none)
+      }
   }
 }

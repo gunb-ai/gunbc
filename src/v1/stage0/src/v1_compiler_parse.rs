@@ -53,7 +53,6 @@ pub use crate::std_syntax::{
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -145,7 +144,7 @@ pub fn token_stream_first(stream: Rc<TokenStream>) -> Option<Rc<Token>> {
 pub fn token_stream_advance(stream: Rc<TokenStream>, n: i64) -> Rc<TokenStream> {
     Rc::new(TokenStream {
         all: stream.all.clone(),
-        pos: (stream.pos.clone() + n.clone()),
+        pos: v1_rt::int_add(stream.pos.clone(), n.clone()),
     })
 }
 
@@ -153,7 +152,7 @@ pub fn token_stream_peek(stream: Rc<TokenStream>, offset: i64) -> Option<Rc<Toke
     stream
         .all
         .clone()
-        .get((stream.pos.clone() + offset.clone()) as usize)
+        .get((v1_rt::int_add(stream.pos.clone(), offset.clone())) as usize)
         .cloned()
 }
 
@@ -2784,7 +2783,10 @@ pub fn occurrence_allocator_after_index(
                 <= entry.projection.clone().occurrence.clone().value.clone())
             {
                 OccurrenceIdAllocator {
-                    next_id: (entry.projection.clone().occurrence.clone().value.clone() + 1),
+                    next_id: v1_rt::int_add(
+                        entry.projection.clone().occurrence.clone().value.clone(),
+                        1,
+                    ),
                 }
             } else {
                 current.clone()
@@ -2801,7 +2803,7 @@ pub fn occurrence_allocator_after_identity(
         NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
             if (alloc.next_id.clone() <= id.value.clone()) {
                 OccurrenceIdAllocator {
-                    next_id: (id.value.clone() + 1),
+                    next_id: v1_rt::int_add(id.value.clone(), 1),
                 }
             } else {
                 alloc
@@ -2810,7 +2812,7 @@ pub fn occurrence_allocator_after_identity(
         NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => {
             if (alloc.next_id.clone() <= id.value.clone()) {
                 OccurrenceIdAllocator {
-                    next_id: (id.value.clone() + 1),
+                    next_id: v1_rt::int_add(id.value.clone(), 1),
                 }
             } else {
                 alloc
@@ -3909,7 +3911,7 @@ pub fn last_consumed_token_end(
             match all.clone().get((from.clone()) as usize).cloned() {
                 std::option::Option::None => {
                     let __tco_0 = all;
-                    let __tco_1 = (from + 1);
+                    let __tco_1 = v1_rt::int_add(from, 1);
                     let __tco_2 = until;
                     let __tco_3 = end;
                     __tco_loop_all = __tco_0;
@@ -3922,7 +3924,7 @@ pub fn last_consumed_token_end(
                     if is_newline_shape(t.shape.clone()) {
                         {
                             let __tco_0 = all;
-                            let __tco_1 = (from + 1);
+                            let __tco_1 = v1_rt::int_add(from, 1);
                             let __tco_2 = until;
                             let __tco_3 = end;
                             __tco_loop_all = __tco_0;
@@ -3934,7 +3936,7 @@ pub fn last_consumed_token_end(
                     } else {
                         {
                             let __tco_0 = all;
-                            let __tco_1 = (from + 1);
+                            let __tco_1 = v1_rt::int_add(from, 1);
                             let __tco_2 = until;
                             let __tco_3 = Some(t.span.clone().end.clone());
                             __tco_loop_all = __tco_0;
@@ -10451,8 +10453,8 @@ pub fn int_to_string_acc(
         if (value.clone() == 0) {
             break acc.clone();
         } else {
-            let rest = (value.clone() / 10);
-            let digit = (value.clone() - (rest.clone() * 10));
+            let rest = v1_rt::int_div(value.clone(), 10);
+            let digit = v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10));
             let digit_chars = Rc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
@@ -12628,28 +12630,28 @@ pub fn heads_skip_data_value_tokens_at(
                     }
                     Some(t) => {
                         let b = if is_lbrace_shape(t.shape.clone()) {
-                            (braces.clone() + 1)
+                            v1_rt::int_add(braces.clone(), 1)
                         } else {
                             if is_rbrace_shape(t.shape.clone()) {
-                                (braces.clone() - 1)
+                                v1_rt::int_sub(braces.clone(), 1)
                             } else {
                                 braces.clone()
                             }
                         };
                         let p = if is_lparen_shape(t.shape.clone()) {
-                            (parens.clone() + 1)
+                            v1_rt::int_add(parens.clone(), 1)
                         } else {
                             if is_rparen_shape(t.shape.clone()) {
-                                (parens.clone() - 1)
+                                v1_rt::int_sub(parens.clone(), 1)
                             } else {
                                 parens.clone()
                             }
                         };
                         let s = if is_lbracket_shape(t.shape.clone()) {
-                            (brackets.clone() + 1)
+                            v1_rt::int_add(brackets.clone(), 1)
                         } else {
                             if is_rbracket_shape(t.shape.clone()) {
-                                (brackets.clone() - 1)
+                                v1_rt::int_sub(brackets.clone(), 1)
                             } else {
                                 brackets.clone()
                             }
@@ -12666,7 +12668,7 @@ pub fn heads_skip_data_value_tokens_at(
                         } else {
                             {
                                 let __tco_0 = tokens;
-                                let __tco_1 = (offset + 1);
+                                let __tco_1 = v1_rt::int_add(offset, 1);
                                 let __tco_2 = b.clone();
                                 let __tco_3 = p.clone();
                                 let __tco_4 = s.clone();
@@ -12741,7 +12743,7 @@ pub fn heads_skip_block_tokens(
                     if is_lbrace_shape(t.shape.clone()) {
                         {
                             let __tco_0 = token_stream_advance(tokens, 1);
-                            let __tco_1 = (depth + 1);
+                            let __tco_1 = v1_rt::int_add(depth, 1);
                             __tco_loop_tokens = __tco_0;
                             __tco_loop_depth = __tco_1;
                             continue;
@@ -12750,7 +12752,7 @@ pub fn heads_skip_block_tokens(
                         if is_rbrace_shape(t.shape.clone()) {
                             {
                                 let __tco_0 = token_stream_advance(tokens, 1);
-                                let __tco_1 = (depth - 1);
+                                let __tco_1 = v1_rt::int_sub(depth, 1);
                                 __tco_loop_tokens = __tco_0;
                                 __tco_loop_depth = __tco_1;
                                 continue;
@@ -15698,28 +15700,37 @@ pub fn arm_start_after_qualified_path(
         ) {
             break false;
         } else {
-            match token_stream_first(token_stream_advance(tokens.clone(), (offset.clone() + 1))) {
+            match token_stream_first(token_stream_advance(
+                tokens.clone(),
+                v1_rt::int_add(offset.clone(), 1),
+            )) {
                 Some(seg) => {
                     if !is_ident_shape(seg.shape.clone()) {
                         break false;
                     } else {
                         if is_uppercase_start(seg.text.clone()) {
-                            if peek_is_fat_arrow_at(tokens.clone(), (offset.clone() + 2)) {
+                            if peek_is_fat_arrow_at(
+                                tokens.clone(),
+                                v1_rt::int_add(offset.clone(), 2),
+                            ) {
                                 break true;
                             } else {
                                 if peek_is_expected_at(
                                     tokens.clone(),
-                                    (offset.clone() + 2),
+                                    v1_rt::int_add(offset.clone(), 2),
                                     Rc::new(ExpectedToken::ExpectLBrace),
                                 ) {
                                     break scan_for_fat_arrow_after_braces(
-                                        token_stream_advance(tokens.clone(), (offset.clone() + 3)),
+                                        token_stream_advance(
+                                            tokens.clone(),
+                                            v1_rt::int_add(offset.clone(), 3),
+                                        ),
                                         1,
                                     );
                                 } else {
                                     {
                                         let __tco_0 = tokens;
-                                        let __tco_1 = (offset + 2);
+                                        let __tco_1 = v1_rt::int_add(offset, 2);
                                         __tco_loop_tokens = __tco_0;
                                         __tco_loop_offset = __tco_1;
                                         continue;
@@ -15729,7 +15740,7 @@ pub fn arm_start_after_qualified_path(
                         } else {
                             {
                                 let __tco_0 = tokens;
-                                let __tco_1 = (offset + 2);
+                                let __tco_1 = v1_rt::int_add(offset, 2);
                                 __tco_loop_tokens = __tco_0;
                                 __tco_loop_offset = __tco_1;
                                 continue;
@@ -15827,7 +15838,7 @@ pub fn scan_for_fat_arrow_after_braces(
                     if is_lbrace_shape(t.shape.clone()) {
                         {
                             let __tco_0 = token_stream_advance(remaining, 1);
-                            let __tco_1 = (depth + 1);
+                            let __tco_1 = v1_rt::int_add(depth, 1);
                             __tco_loop_remaining = __tco_0;
                             __tco_loop_depth = __tco_1;
                             continue;
@@ -15836,7 +15847,7 @@ pub fn scan_for_fat_arrow_after_braces(
                         if is_rbrace_shape(t.shape.clone()) {
                             {
                                 let __tco_0 = token_stream_advance(remaining, 1);
-                                let __tco_1 = (depth - 1);
+                                let __tco_1 = v1_rt::int_sub(depth, 1);
                                 __tco_loop_remaining = __tco_0;
                                 __tco_loop_depth = __tco_1;
                                 continue;

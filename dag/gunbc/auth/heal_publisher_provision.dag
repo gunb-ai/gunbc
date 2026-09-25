@@ -1,7 +1,7 @@
 module gunbc.auth.heal_publisher_provision
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.types { NonEmptyStr, String, Secret, List, Bool }
+import std.types { NonEmptyStr, String, Secret, List, Bool, Map }
 import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
@@ -9,6 +9,7 @@ import extdeps.cloud.gcp.iam {
   reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_from_wire
 }
 import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
@@ -21,7 +22,7 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_wif_principal_set, heal_publisher_service_account, heal_publisher_service_account_id,
   heal_publisher_service_account_display_name, heal_publisher_service_account_member
 }
-import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for_member }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant, secret_access_ensure_for_member }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
 import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 
@@ -32,9 +33,9 @@ import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 //
 // NEITHER ENTRY IS A ONE-SHOT IN THE SENSE THAT MATTERS. Three creates cannot be one request, so a
 // failure at the third leaves the first two committed and the operator reruns. That rerun is the
-// case the shape below is built for: a 409 is carried as an unverified presence, the reconcilable
-// step still runs, and the run refuses at the end naming what nobody read -- rather than aborting at
-// the first create and leaving the rest to be done by hand.
+// case the shape below is built for: the run READS what exists before it writes anything, a subject
+// that exists and matches its declaration is taken as present, and one that exists and differs halts
+// the run with nothing granted (provision_dedicated_federation).
 
 fn rest_refusal_text(o: RestOutcome) -> String {
   match o {
@@ -51,6 +52,44 @@ fn rest_ok(o: RestOutcome) -> Bool {
     RestStatusRefused { status: _, body: _ } => false
     RestTransportRefused { cause: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
+  }
+}
+
+// ONE DEDICATED FEDERATION, AS A RECORD. The heal publisher was the first job to get its own pool,
+// provider and service account; the Mt. Collins boot (gunbc.auth.mtcollins1_boot_federation) is the
+// second. The provisioning below was written against the heal publisher's names, and a second copy
+// differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
+// so the names are a record and each federation binds its own. Everything else -- the 409 handling,
+// the impersonation reconcile with readback, the grant last -- is the one protocol.
+type DedicatedFederation {
+  label: String
+  pool_id: NonEmptyStr
+  pool_display_name: NonEmptyStr
+  provider_id: NonEmptyStr
+  attribute_mapping: Map<String, String>
+  attribute_condition: String
+  principal_set: String
+  service_account: ServiceAccountEmail
+  service_account_id: NonEmptyStr
+  service_account_display_name: NonEmptyStr
+  service_account_member: String
+  secret_grants: List<SecretAccessGrant>
+}
+
+fn heal_publisher_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "heal publisher provision",
+    pool_id: heal_publisher_wif_pool_id,
+    pool_display_name: heal_publisher_wif_pool_display_name,
+    provider_id: heal_publisher_wif_provider_id,
+    attribute_mapping: heal_publisher_wif_attribute_mapping,
+    attribute_condition: heal_publisher_wif_attribute_condition(),
+    principal_set: heal_publisher_wif_principal_set(),
+    service_account: heal_publisher_service_account,
+    service_account_id: heal_publisher_service_account_id,
+    service_account_display_name: heal_publisher_service_account_display_name,
+    service_account_member: heal_publisher_service_account_member(),
+    secret_grants: [secret_accessor_grant(target: gunbai_bot_app_pem_secret)],
   }
 }
 
@@ -73,61 +112,69 @@ fn rest_ok(o: RestOutcome) -> Bool {
 //
 // Until then the pool is the honest description of the member, and the guard that actually holds is
 // the provider's attribute condition -- one provider, whose condition is the wall.
-fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
+fn impersonation_cell(f: DedicatedFederation) -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
-    member: heal_publisher_wif_principal_set(),
+    member: f.principal_set,
     condition: none
   }
 }
 
-fn heal_publisher_impersonation_owned() -> GcpIamOwnedCellUniverse {
-  GcpIamOwnedCellUniverse { cells: [heal_publisher_impersonation_cell()] }
+fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
+  impersonation_cell(f: heal_publisher_dedicated_federation())
+}
+
+fn impersonation_owned(f: DedicatedFederation) -> GcpIamOwnedCellUniverse {
+  GcpIamOwnedCellUniverse { cells: [impersonation_cell(f: f)] }
 }
 
 // A WHOLE-POLICY REPLACE THAT RETURNED 200 HAS NOT BEEN SHOWN TO CONTAIN THE CELL IT WAS WRITTEN FOR,
 // so the write is followed by looking for that cell in what came back.
-fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
-  gcp_cell_in(c: heal_publisher_impersonation_cell(), xs: gcp_policy_cells(p: policy))
+fn impersonation_binding_present_for(f: DedicatedFederation, policy: GcpPolicy) -> Bool {
+  gcp_cell_in(c: impersonation_cell(f: f), xs: gcp_policy_cells(p: policy))
 }
 
-fn bind_publisher_impersonation(token: Secret) -> ProcessExit
+fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
+  impersonation_binding_present_for(f: heal_publisher_dedicated_federation(), policy: policy)
+}
+
+fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
 {
   let observed = gcp.IamAdmin.GetServiceAccountIamPolicy(
     access_token: token,
     project_id: fleet_secrets_project_id,
-    service_account: heal_publisher_service_account
+    service_account: f.service_account
   )
   if !rest_ok(o: observed.outcome) {
-    exit_failure(reason: concat("heal publisher provision: the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)))
+    exit_failure(reason: join([f.label, ": the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)], ""))
   } else {
     let observed_policy = gcp_policy_from_wire(bindings: observed.bindings, etag: observed.etag, version: observed.version)
     match reconcile_gcp_policy(
       observed: observed_policy,
-      desired_owned: [heal_publisher_impersonation_cell()],
-      owned_universe: heal_publisher_impersonation_owned()
+      desired_owned: [impersonation_cell(f: f)],
+      owned_universe: impersonation_owned(f: f)
     ) {
       GcpPolicyRepresentationLossy { conditional_roles: _ } =>
-        exit_failure(reason: "heal publisher provision: the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing.")
+        exit_failure(reason: concat(concat(f.label, ": "), "the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing."))
       GcpPolicyAlreadyConverged { policy: p } =>
-        if impersonation_binding_present(policy: p) {
+        if impersonation_binding_present_for(f: f, policy: p) {
           ExitSuccess
         } else {
-          exit_failure(reason: "heal publisher provision: reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported")
+          exit_failure(reason: concat(concat(f.label, ": "), "reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported"))
         }
       GcpPolicyDeltaRequired { policy: desired_policy, added: _, removed: _, preserved: _ } => {
         let written = gcp.IamAdmin.SetServiceAccountIamPolicy(
           access_token: token,
           project_id: fleet_secrets_project_id,
-          service_account: heal_publisher_service_account,
+          service_account: f.service_account,
           policy: desired_policy
         )
         if !rest_ok(o: written.outcome) {
-          exit_failure(reason: concat("heal publisher provision: the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)))
-        } else if impersonation_binding_present(policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
+          exit_failure(reason: join([f.label, ": the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)], ""))
+        } else if impersonation_binding_present_for(f: f, policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
           ExitSuccess
         } else {
-          exit_failure(reason: "heal publisher provision: setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell")
+          exit_failure(reason: concat(concat(f.label, ": "), "setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell"))
         }
       }
     }
@@ -159,187 +206,285 @@ fn subject_creation(o: RestOutcome) -> SubjectCreation {
   }
 }
 
-fn creation_refusal(subject: String, c: SubjectCreation) -> String {
-  match c {
-    SubjectCreated => ""
-    SubjectAlreadyPresentUnverified => ""
-    SubjectCreateRefused { cause } => join([subject, ": ", cause, ". "], "")
+// ── OBSERVE, CLASSIFY, AND ONLY THEN WRITE (side-chat review 5286225278 on gunbc#12101) ─────────
+// The first protocol treated a 409 as an "unverified presence", went on to bind the pool as the
+// account's impersonator and to grant the secret cells, and refused only at the END. A pre-existing
+// provider with a lax condition would therefore have been handed the secrets before anything said so.
+// Now nothing is written through a subject until its configuration has been READ and classified
+// against the declaration: the pool, its WHOLE provider population (deleted ones included), each
+// provider's issuer, mapping and condition, and the account. An existing subject that does not match
+// halts the run with no write at all; adopting an existing, differing subject is a separate path this
+// entry does not take. A create is issued only for a subject observed ABSENT, and the run re-reads
+// and re-classifies after creating, so a policy write only ever follows a readback that matched.
+
+type PoolReading
+  = PoolObservedAbsent
+  | PoolObserved { pool: WifPoolWire }
+  | PoolUnreadable { cause: String }
+
+type ProvidersReading
+  = ProvidersObserved { providers: List<WifProviderWire> }
+  | ProvidersUnreadable { cause: String }
+
+type AccountReading
+  = AccountObservedAbsent
+  | AccountObserved { email: String }
+  | AccountUnreadable { cause: String }
+
+type FederationClassification
+  = FederationClassified { create_pool: Bool, create_provider: Bool, create_account: Bool }
+  | FederationUnclassified { reasons: List<String> }
+
+fn outcome_is_not_found(o: RestOutcome) -> Bool {
+  match o {
+    RestStatusRefused { status, body: _ } => (status as Int) == 404
+    RestOk => false
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
   }
 }
 
-fn creation_unverified(subject: String, c: SubjectCreation) -> String {
-  match c {
-    SubjectCreated => ""
-    SubjectAlreadyPresentUnverified => join([subject, " "], "")
-    SubjectCreateRefused { cause: _ } => ""
+fn string_or_empty(v: String?) -> String {
+  match v {
+    Present { value: x } => x
+    Absent => ""
   }
 }
 
-// THE IMPERSONATION BINDING IS REACHED EVEN WHEN A SUBJECT WAS ALREADY PRESENT, because it is a
-// read-reconcile-write with its own readback: it is the one step here that is safe to repeat and
-// that establishes its own result. A run that skipped it on a 409 would leave the binding unmade in
-// exactly the rerun case this shape exists for. It is NOT reached when a create was refused, which
-// is why this decides first and the caller performs second -- an argument position would have run
-// the binding against an account this run just failed to create.
-type FederationDisposition
-  = FederationBindable
-  | FederationStopped { reason: String }
+fn bool_or_false(v: Bool?) -> Bool {
+  match v {
+    Present { value: x } => x
+    Absent => false
+  }
+}
 
-// WHAT THE CREATE PHASE LEAVES FOR THE RECONCILE PHASE. Halted means no reconcilable step may run --
-// a create was refused, or the account is not the declared one. Reconcilable means both bindings
-// SHOULD run, and carries the unverified subjects forward so the run can refuse AFTER reconciling
-// rather than instead of it.
-type FederationOutcome
-  = FederationHalted { reason: String }
-  | FederationReconcilable { unverified: String }
+fn ends_with_segment(name: String, segment: String) -> Bool {
+  ends_with(s: name, suffix: concat("/", segment))
+}
 
-fn federation_verdict(
-  pool: SubjectCreation,
-  provider: SubjectCreation,
-  account: SubjectCreation
-) -> FederationDisposition {
-  let refusals = join([
-    creation_refusal(subject: "the pool", c: pool),
-    creation_refusal(subject: "the provider", c: provider),
-    creation_refusal(subject: "the service account", c: account)
-  ], "")
-  if refusals != "" {
-    FederationStopped { reason: concat("heal publisher provision: a subject could not be created -- ", refusals) }
+fn mapping_equal(a: Map<String, String>?, b: Map<String, String>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: m } => m == b
+  }
+}
+
+fn pool_reasons(f: DedicatedFederation, pool: PoolReading) -> List<String> {
+  match pool {
+    PoolObservedAbsent => []
+    PoolUnreadable { cause: c } => [concat("the pool could not be read: ", c)]
+    PoolObserved { pool: p } => concat(
+      if ends_with_segment(name: p.name, segment: f.pool_id as String) { [] } else { [concat("the pool read back as ", p.name)] },
+      concat(
+        if bool_or_false(v: p.disabled) { ["the pool is disabled"] } else { [] },
+        if string_or_empty(v: p.state) == "ACTIVE" { [] } else { [concat("the pool state is ", string_or_empty(v: p.state))] },
+      ),
+    )
+  }
+}
+
+fn provider_reasons(f: DedicatedFederation, p: WifProviderWire) -> List<String> {
+  let issuer = match p.oidc { Present { value: o } => o.issuer_uri  Absent => "" }
+  concat(
+    if ends_with_segment(name: p.name, segment: f.provider_id as String) { [] } else { [concat("an undeclared provider is in the pool: ", p.name)] },
+    concat(
+      if string_or_empty(v: p.state) == "ACTIVE" { [] } else { [join(["provider ", p.name, " state is ", string_or_empty(v: p.state)], "")] },
+      concat(
+        if bool_or_false(v: p.disabled) { [concat("provider is disabled: ", p.name)] } else { [] },
+        concat(
+          if issuer == (github_wif_issuer_uri as String) { [] } else { [join(["provider ", p.name, " issuer is '", issuer, "'"], "")] },
+          concat(
+            if string_or_empty(v: p.attribute_condition) == f.attribute_condition { [] } else { [join(["provider ", p.name, " condition is '", string_or_empty(v: p.attribute_condition), "', not the declared one"], "")] },
+            if mapping_equal(a: p.attribute_mapping, b: f.attribute_mapping) { [] } else { [join(["provider ", p.name, " attribute mapping differs from the declared one"], "")] },
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn providers_reasons(f: DedicatedFederation, providers: ProvidersReading) -> List<String> {
+  match providers {
+    ProvidersUnreadable { cause: c } => [concat("the provider population could not be read: ", c)]
+    ProvidersObserved { providers: ps } =>
+      if ps.length() > 1 {
+        concat([join(["the pool holds ", to_string(ps.length()), " providers; exactly one is declared"], "")], flat_map(ps, p => provider_reasons(f: f, p: p)))
+      } else {
+        flat_map(ps, p => provider_reasons(f: f, p: p))
+      }
+  }
+}
+
+fn account_reasons(f: DedicatedFederation, account: AccountReading) -> List<String> {
+  match account {
+    AccountObservedAbsent => []
+    AccountUnreadable { cause: c } => [concat("the service account could not be read: ", c)]
+    AccountObserved { email: e } =>
+      if e == (f.service_account as String) { [] } else { [join(["the service account read back as ", e, ", not ", f.service_account as String], "")] }
+  }
+}
+
+fn providers_absent(providers: ProvidersReading) -> Bool {
+  match providers {
+    ProvidersObserved { providers: ps } => ps.length() == 0
+    ProvidersUnreadable { cause: _ } => false
+  }
+}
+
+// THE CLASSIFIER IS PURE: the witness supplies readings, and the only arm that lets the run proceed
+// is one where every present subject matched field by field.
+fn classify_dedicated_federation(f: DedicatedFederation, pool: PoolReading, providers: ProvidersReading, account: AccountReading) -> FederationClassification {
+  let reasons = concat(pool_reasons(f: f, pool: pool), concat(providers_reasons(f: f, providers: providers), account_reasons(f: f, account: account)))
+  if reasons.length() > 0 {
+    FederationUnclassified { reasons: reasons }
   } else {
-    FederationBindable
-  }
-}
-
-// A 409 DOES NOT STOP THE RUN AND DOES NOT LET IT REPORT SUCCESS. The binding is still reconciled --
-// that is the whole point of rerunning -- and the run then refuses, naming the subjects whose
-// configuration nobody read, so the operator's next move is a classification rather than a guess.
-fn unverified_subjects(pool: SubjectCreation, provider: SubjectCreation, account: SubjectCreation) -> String {
-  join([
-    creation_unverified(subject: "pool", c: pool),
-    creation_unverified(subject: "provider", c: provider),
-    creation_unverified(subject: "service-account", c: account)
-  ], "")
-}
-
-fn bound_verdict(unverified: String, bound: ProcessExit) -> ProcessExit {
-  if unverified == "" {
-    bound
-  } else {
-    match bound {
-      ExitSuccess =>
-        exit_failure(reason: join([
-          "heal publisher provision: the impersonation binding is reconciled and read back, but these subjects already ",
-          "existed and this run did not read their configuration: ", unverified,
-          "-- classify them against gunbc.gcp_estate_adoption gcp_estate_desired_roster before treating this federation ",
-          "as provisioned. A provider whose attribute condition differs from the declared one admits workflows this ",
-          "model never authorized, and a 409 establishes only that the id is taken."
-        ], ""))
-      _ => bound
+    FederationClassified {
+      create_pool: match pool { PoolObservedAbsent => true  _ => false },
+      create_provider: providers_absent(providers: providers),
+      create_account: match account { AccountObservedAbsent => true  _ => false },
     }
   }
 }
 
-fn provision_federation(token: Secret) -> FederationOutcome
+fn federation_fully_present(c: FederationClassification) -> Bool {
+  match c {
+    FederationClassified { create_pool: a, create_provider: b, create_account: d } => !a && !b && !d
+    FederationUnclassified { reasons: _ } => false
+  }
+}
+
+fn read_pool(f: DedicatedFederation, token: Secret) -> PoolReading
 {
-  let pool = gcp.IamAdmin.CreateWorkloadIdentityPool(
-    access_token: token,
-    project_id: fleet_secrets_project_id,
-    pool_id: heal_publisher_wif_pool_id,
-    display_name: heal_publisher_wif_pool_display_name
+  let r = gcp.IamAdmin.GetWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id)
+  if rest_ok(o: r.outcome) {
+    PoolObserved { pool: WifPoolWire { name: r.pool_name, display_name: r.display_name, disabled: r.disabled, state: r.state } }
+  } else if outcome_is_not_found(o: r.outcome) {
+    PoolObservedAbsent
+  } else {
+    PoolUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  }
+}
+
+fn read_providers(f: DedicatedFederation, token: Secret) -> ProvidersReading
+{
+  let r = gcp.IamAdmin.ListWorkloadIdentityPoolProviders(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id)
+  if rest_ok(o: r.outcome) {
+    ProvidersObserved { providers: match r.providers { Present { value: ps } => ps  Absent => [] } }
+  } else if outcome_is_not_found(o: r.outcome) {
+    ProvidersObserved { providers: [] }
+  } else {
+    ProvidersUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  }
+}
+
+fn read_account(f: DedicatedFederation, token: Secret) -> AccountReading
+{
+  let r = gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: f.service_account)
+  if rest_ok(o: r.outcome) {
+    AccountObserved { email: r.email as String }
+  } else if outcome_is_not_found(o: r.outcome) {
+    AccountObservedAbsent
+  } else {
+    AccountUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  }
+}
+
+fn observe_and_classify(f: DedicatedFederation, token: Secret) -> FederationClassification
+{
+  classify_dedicated_federation(f: f, pool: read_pool(f: f, token: token), providers: read_providers(f: f, token: token), account: read_account(f: f, token: token))
+}
+
+fn unclassified_exit(f: DedicatedFederation, phase: String, reasons: List<String>) -> ProcessExit {
+  exit_failure(reason: join([f.label, ": ", phase, " -- nothing was granted: ", join(reasons, "; "), ". Adopting an existing, differing subject is a separate path; this entry does not take it."], ""))
+}
+
+// A CREATE IS ISSUED ONLY FOR A SUBJECT OBSERVED ABSENT, so every answer but a 200 is a halt: a 409
+// here means someone created the id between the read and the write.
+fn create_if(wanted: Bool, subject: String, outcome: RestOutcome) -> String {
+  if !wanted {
+    ""
+  } else {
+    match subject_creation(o: outcome) {
+      SubjectCreated => ""
+      SubjectAlreadyPresentUnverified => join([subject, " appeared between the read and the create; "], "")
+      SubjectCreateRefused { cause } => join([subject, ": ", cause, "; "], "")
+    }
+  }
+}
+
+fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationClassification) -> String
+{
+  match c {
+    FederationUnclassified { reasons: _ } => "unclassified; nothing created"
+    FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } => {
+      let pool = if cp {
+        create_if(wanted: true, subject: "the pool", outcome: gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name).outcome)
+      } else { "" }
+      if pool != "" {
+        return pool
+      }
+      let provider = if cv {
+        create_if(wanted: true, subject: "the provider", outcome: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, provider_id: f.provider_id, issuer_uri: github_wif_issuer_uri, attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition as NonEmptyStr).outcome)
+      } else { "" }
+      if provider != "" {
+        return provider
+      }
+      if ca {
+        create_if(wanted: true, subject: "the service account", outcome: gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: f.service_account_id, display_name: f.service_account_display_name).outcome)
+      } else { "" }
+    }
+  }
+}
+
+fn grant_secret_reads(fed: DedicatedFederation, token: Secret) -> ProcessExit
+{
+  fold(fed.secret_grants, init: ExitSuccess, f: (acc, g) =>
+    match acc {
+      ExitSuccess => secret_access_ensure_for_member(grant: g, member: fed.service_account_member, token_source: OperatorSuppliedToken { token: token })
+      failed => failed
+    }
   )
-  let provider = gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
-    access_token: token,
-    project_id: fleet_secrets_project_id,
-    pool_id: heal_publisher_wif_pool_id,
-    provider_id: heal_publisher_wif_provider_id,
-    issuer_uri: github_wif_issuer_uri,
-    attribute_mapping: heal_publisher_wif_attribute_mapping,
-    attribute_condition: heal_publisher_wif_attribute_condition() as NonEmptyStr
-  )
-  let account = gcp.IamAdmin.CreateServiceAccount(
-    access_token: token,
-    project_id: fleet_secrets_project_id,
-    account_id: heal_publisher_service_account_id,
-    display_name: heal_publisher_service_account_display_name
-  )
-  let pool_c = subject_creation(o: pool.outcome)
-  let provider_c = subject_creation(o: provider.outcome)
-  let account_c = subject_creation(o: account.outcome)
-  match federation_verdict(pool: pool_c, provider: provider_c, account: account_c) {
-    FederationStopped { reason: r } => FederationHalted { reason: r }
-    FederationBindable =>
-      match account_c {
-        SubjectCreated =>
-          if (account.email as String) != (heal_publisher_service_account as String) {
-            FederationHalted { reason: join([
-              "heal publisher provision: the created service account is ", account.email as String,
-              ", not the declared ", heal_publisher_service_account as String,
-              " -- the federation declares the account the workflow presents, so a different address would leave the workflow federating to nothing"
-            ], "") }
-          } else {
-            FederationReconcilable { unverified: unverified_subjects(pool: pool_c, provider: provider_c, account: account_c) }
-          }
-        _ =>
-          FederationReconcilable { unverified: unverified_subjects(pool: pool_c, provider: provider_c, account: account_c) }
+}
+
+// THE ORDER IS THE PROTOCOL: observe and classify; create only what was absent; re-observe and
+// require every subject present and matching; only then write who may act as the account and what
+// it may read. No policy write precedes a matching readback of the pool, its whole provider
+// population and the account.
+fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> ProcessExit
+{
+  let before = observe_and_classify(f: f, token: token)
+  match before {
+    FederationUnclassified { reasons: rs } => return unclassified_exit(f: f, phase: "an existing subject does not match its declaration", reasons: rs)
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } => {}
+  }
+  let created = create_absent_subjects(f: f, token: token, c: before)
+  if created != "" {
+    return exit_failure(reason: join([f.label, ": a create did not land -- nothing was granted: ", created], ""))
+  }
+  let after = observe_and_classify(f: f, token: token)
+  match after {
+    FederationUnclassified { reasons: rs } => unclassified_exit(f: f, phase: "the readback after creating does not match the declaration", reasons: rs)
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } =>
+      if !federation_fully_present(c: after) {
+        exit_failure(reason: concat(f.label, ": a created subject is not yet visible on readback -- nothing was granted; rerun once it reads back"))
+      } else {
+        match bind_impersonation(f: f, token: token) {
+          ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+          ExitSuccess => grant_secret_reads(fed: f, token: token)
+        }
       }
   }
 }
 
-// THE ONE ENTRY. The pool, its single provider, the service account, who may act as it, and what it
-// may read. It is one entry rather than two because there is no longer a key-custody step with
-// failure modes of its own: the App key already exists in Secret Manager as gunbai-bot's, labelled
-// purpose=ci-heal-push by the effort that was meant to build this publisher, so all this run adds is
-// a reader.
-//
-// AN EARLIER REVISION CREATED THE SECRET TOO -- snapshot, container, verified version -- for a
-// dedicated App that was never registered. That machinery is deleted rather than kept for a future
-// caller: gunbc.secret_provision_actuator still owns it, and a second, unused copy of a credential
-// path is the redundant work DESIGN section 2 prices, on the one surface where a stale copy is most
-// dangerous.
-//
-// THE GRANT IS LAST, AND ON PURPOSE. The accessor binding names the service account, so it cannot be
-// made before that account exists; running it against a missing principal would write a policy for a
-// member that is not there, and setIamPolicy is a whole-policy replace.
-fn grant_publisher_read_of_the_app_key(token: Secret) -> ProcessExit
+fn dedicated_federation_provision_with_supplied_token(f: DedicatedFederation) -> ProcessExit
 {
-  secret_access_ensure_for_member(
-    grant: secret_accessor_grant(target: gunbai_bot_app_pem_secret),
-    member: heal_publisher_service_account_member(),
-    token_source: OperatorSuppliedToken { token: token }
-  )
-}
-
-// BOTH RECONCILABLE STEPS RUN BEFORE ANY UNVERIFIED-SUBJECT REFUSAL, and the first cut of this got
-// it wrong in a way only a rerun could show. It applied the unverified verdict to the impersonation
-// binding and then gated the accessor grant on that ProcessExit -- so on the SECOND run, where the
-// three creates answer 409 and the verdict is a refusal by design, the grant became unreachable and
-// silently never happened. The first run cannot expose it, because on a first run nothing is
-// unverified. That is the same reasoning already written above bind_publisher_impersonation, applied
-// to only one of the two steps it governs.
-//
-// So the refusal is applied ONCE, at the end, to the pair. A step that fails on its own merits still
-// reports its own cause, because that cause is what the operator needs and the unverified wording
-// must never replace it.
-fn provision_publisher_identity(token: Secret) -> ProcessExit
-{
-  match provision_federation(token: token) {
-    FederationHalted { reason: r } => exit_failure(reason: r)
-    FederationReconcilable { unverified: u } =>
-      match bind_publisher_impersonation(token: token) {
-        ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-        ExitSuccess =>
-          match grant_publisher_read_of_the_app_key(token: token) {
-            ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-            ExitSuccess => bound_verdict(unverified: u, bound: ExitSuccess)
-          }
-      }
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+    SuppliedTokenReady { token: t } => provision_dedicated_federation(f: f, token: t)
   }
 }
 
 fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
 {
-  match read_supplied_access_token() {
-    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
-    SuppliedTokenReady { token: t } => provision_publisher_identity(token: t)
-  }
+  dedicated_federation_provision_with_supplied_token(f: heal_publisher_dedicated_federation())
 }

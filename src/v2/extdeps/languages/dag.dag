@@ -112,6 +112,7 @@ import v2.std.node {
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
+  IntLiteralUnwired,
   ProducedDeclUnwired,
   CanonicalOperation,
   ConcreteSyntaxToken,
@@ -754,7 +755,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
     )
   )
@@ -967,15 +968,21 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
   )
 }
 
-// The identity-preserving sibling, for the two name sites that were dag_grammar_terminal
+// The identity-preserving sibling, for the name site that was dag_grammar_terminal
 // (StampClass) before the modifier classes were admitted, and that must keep publishing
 // what StampClass published there BEFORE promotion: dag_grammar_caret_symbol_expr's
-// referenced identifier and dag_grammar_generic_params_expr's parameter names. Admitting
+// referenced identifier. dag_grammar_generic_params_expr's parameter names USED to share
+// this helper and no longer do: a type parameter is a BINDER, and a binder whose spelling
+// the tree does not carry cannot be lowered onto v2.std.node's ^arrow_type_params_edge, so
+// resolve had nothing to scope and `T` fell through to the ordinary name chain
+// (gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2).
+// Those names now go through dag_grammar_ident_or_type_decl_modifier_name -- the SAME three
+// token classes, lexeme-stamped, exactly as every other declared name. Admitting
 // two more token classes is the whole of this change, and PRESERVING THE STAMP MODE IS NOT
 // ENOUGH TO PRESERVE THE IDENTITY. Two distinct transitions have to be held out:
 //
 //   1. StampClass -> StampLexeme. Routing these sites through the lexeme-stamped helper
-//      would make every caret literal and generic parameter carry its own text as the
+//      would make every caret literal carry its own text as the
 //      node's atom identity (v2.compiler.02_parse symbol_intern_lexeme).
 //   2. The token CLASS a class stamp publishes. v2.compiler.02_parse resolves it as
 //      exactly `StampClass => tok.class`. Before promotion these spellings lexed as
@@ -4665,6 +4672,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^dag_token_kw_true,
       false_token: ^dag_token_kw_false
     },
+    int_literal_form: IntLiteralUnwired,
     block_evaluation_mode: dag_block_evaluation_mode()
   }
 }

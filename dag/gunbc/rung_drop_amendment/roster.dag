@@ -7,9 +7,13 @@ module gunbc.rung_drop_amendment.roster
 import std.types { String, List, NonEmptyStr }
 import gunbc.rung_drop_amendment { RungDropAmendment }
 import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign { namespace_wave_admission_carrier_redesign }
+import gunbc.rung_drop_amendment.stage0_mirrors_left_outside_the_restored_drift_gate { stage0_mirrors_left_outside_the_restored_drift_gate }
+import gunbc.rung_drop_amendment.stage0_mirror_line_without_an_authority_import { stage0_mirror_line_without_an_authority_import }
 
 data rung_drop_amendment_roster: List<RungDropAmendment> = [
   namespace_wave_admission_carrier_redesign,
+  stage0_mirrors_left_outside_the_restored_drift_gate,
+  stage0_mirror_line_without_an_authority_import,
 ]
 
 // THE JOIN THE PROJECTION FOLDS, so a drop's amendments are selected in one place rather than at

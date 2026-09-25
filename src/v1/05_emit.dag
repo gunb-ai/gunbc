@@ -55,7 +55,7 @@ import v1.compiler.infer_sigs {
 }
 
 import v1.compiler.infer_items {
-  TypedModule, ResolvedGraph, ItemInfo, item_is_effectful_callee
+  TypedModule, ResolvedGraph, ItemInfo, item_is_effectful_callee, item_resource_names
 }
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
@@ -3488,7 +3488,7 @@ fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallS
     Present { value: info } =>
       let has_effects = item_is_effectful_callee(info: info)
       if has_effects {
-        let resource_args = info.resource_names |> map(rn => emit_ident(name: rn, target: target))
+        let resource_args = item_resource_names(info: info) |> map(rn => emit_ident(name: rn, target: target))
         let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
         concat(resource_args, service_args)
       } else { [] }

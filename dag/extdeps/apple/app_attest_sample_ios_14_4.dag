@@ -1,7 +1,6 @@
 module extdeps.apple.app_attest_sample_ios_14_4
 
 import std.types { Int, List, NonEmptyStr }
-import std.integer { UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -43,19 +42,18 @@ data sample_bundle_identifier: NonEmptyStr = "de.vincent-haupert.apple-appattest
 // keyIdBase64, standard base64 of the 32-octet key id.
 data sample_key_id_b64: NonEmptyStr = "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3M="
 
-// clientDataHashSha256Base64: the app attested over SHA-256 of the client data "wurzelpfropf".
-// CONSUMED BY A NAMED LATER CHANGE (DESIGN section 3c, the trigger stated here): the X.509
-// witness of the App Attest step-2 PR (gunbc#11975, test.claim.x509_rfc5280_witness_test) reads
-// it to establish nonce == SHA-256(authData || clientDataHash) over the credential certificate's
-// extension; step 1 has no reader of it and carries it because the corpus publishes the two
-// facts as one record.
+// clientDataBase64 decodes to the text "wurzelpfropf" -- the client data the app attested over and
+// signed the assertion for -- and clientDataHashSha256Base64 is its SHA-256. The text is the one
+// carrier of that datum (review 69725 of gunbc#11989: a witness literal is not an authority); the
+// hash row is consumed by the step-2 nonce claim, the text by the verifier witnesses (gunbc#11989).
+data sample_client_data: NonEmptyStr = "wurzelpfropf"
 data sample_client_data_hash_b64: NonEmptyStr = "i+ZcylFa0JfJU5Z9GNY12G3XihQu09B3UmvtEca+xns="
 
 // The assertion's authenticatorData is 37 octets with counter 1.
 data sample_assertion_counter: Int = 1
 
 // The attestation object, 5274 octets.
-data sample_attestation_octets: List<UInt8> = [
+data sample_attestation_octets: List<Int> = [
   163, 99, 102, 109, 116, 111, 97, 112, 112, 108, 101, 45, 97, 112, 112, 97, 116, 116, 101, 115, 116, 103, 97, 116, 116, 83, 116, 109, 116, 162, 99, 120, 53, 99, 130, 89, 2, 249, 48, 130,
   2, 245, 48, 130, 2, 123, 160, 3, 2, 1, 2, 2, 6, 1, 119, 47, 41, 247, 72, 48, 10, 6, 8, 42, 134, 72, 206, 61, 4, 3, 2, 48, 79, 49, 35, 48, 33, 6, 3, 85,
   4, 3, 12, 26, 65, 112, 112, 108, 101, 32, 65, 112, 112, 32, 65, 116, 116, 101, 115, 116, 97, 116, 105, 111, 110, 32, 67, 65, 32, 49, 49, 19, 48, 17, 6, 3, 85, 4, 10, 12,
@@ -191,7 +189,7 @@ data sample_attestation_octets: List<UInt8> = [
 ]
 
 // The assertion object, 140 octets.
-data sample_assertion_octets: List<UInt8> = [
+data sample_assertion_octets: List<Int> = [
   162, 105, 115, 105, 103, 110, 97, 116, 117, 114, 101, 88, 70, 48, 68, 2, 32, 73, 232, 20, 255, 65, 30, 188, 245, 66, 178, 243, 134, 50, 55, 116, 67, 201, 214, 3, 244, 165, 80, 216,
   20, 209, 43, 236, 117, 139, 199, 179, 168, 2, 32, 24, 206, 193, 177, 150, 210, 184, 94, 147, 142, 98, 186, 198, 211, 133, 122, 76, 149, 202, 55, 252, 106, 65, 175, 167, 154, 133, 68, 105,
   189, 45, 60, 113, 97, 117, 116, 104, 101, 110, 116, 105, 99, 97, 116, 111, 114, 68, 97, 116, 97, 88, 37, 69, 101, 18, 234, 126, 38, 148, 118, 171, 147, 225, 183, 151, 22, 133, 89, 47,

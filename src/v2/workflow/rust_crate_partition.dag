@@ -313,6 +313,9 @@ fn stage0_std_primitive_modules() -> List<String> {
   ]
 }
 
+// gunbc_rust_emitted_edge is here because v1_compiler_emit_core_support (v1-infer unit) carries
+// its EmittedEdge on EmitResult, and a crate:: path from that unit resolves only into a package it
+// re-exports; the module names only std_types, so the lowest unit that reaches it is this one.
 fn stage0_std_core_modules() -> List<String> {
   stage0_std_primitive_modules()
     |> concat([
@@ -327,6 +330,7 @@ fn stage0_std_core_modules() -> List<String> {
       "std_graph",
       "extdeps_uri",
       "extdeps_external_authority",
+      "extdeps_ietf_http_semantics",
       "std_process_termination",
       "std_primitive_projection",
       "extdeps_container_oci_digest",
@@ -340,7 +344,8 @@ fn stage0_std_core_modules() -> List<String> {
       "std_literal_elaboration",
       "std_operator_realization",
       "std_import",
-      "v1_std_core"
+      "v1_std_core",
+      "gunbc_rust_emitted_edge"
     ])
 }
 
@@ -450,6 +455,7 @@ fn stage0_v1_artifact_modules() -> List<String> {
 
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   [
+    "gunbc_rust_emitted_edge",
     "v1_compiler_artifact",
     "v1_compiler_infer_env",
     "v1_compiler_infer_items",
@@ -547,6 +553,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso8601"),
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso_80000_3"),
     stage0_module_dag_edge(from: "std_effects", to: "std_types"),
+    stage0_module_dag_edge(from: "std_effects", to: "extdeps_ietf_http_semantics"),
     stage0_module_dag_edge(from: "std_execution_mode", to: "std_types"),
     stage0_module_dag_edge(from: "std_interface_summary", to: "std_decl_ref"),
     stage0_module_dag_edge(from: "std_interface_summary", to: "std_disposition"),
@@ -557,6 +564,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_types"),
     stage0_module_dag_edge(from: "std_unicode_types", to: "std_types"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),
+    stage0_module_dag_edge(from: "extdeps_ietf_http_semantics", to: "extdeps_external_authority"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "std_roster_frontier"),
     stage0_module_dag_edge(from: "std_keyed_row", to: "std_types"),
     stage0_module_dag_edge(from: "std_keyed_roster", to: "std_keyed_row"),
@@ -606,6 +614,8 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_types"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "extdeps_languages_dag_syntax"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "v1_std_core"),
+    stage0_module_dag_edge(from: "gunbc_rust_emitted_edge", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_edge"),
   ]
 }
 

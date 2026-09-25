@@ -126,6 +126,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: filename_collisions.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let symbol_collisions =
@@ -136,6 +137,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: symbol_collisions.clone(),
+                emitted_edges: Rc::new(vec![]),
             });
         }
         let registry = typed.item_registry.clone();
@@ -197,6 +199,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         Rc::new(EmitResult {
             files: files.clone(),
             diagnostics: Rc::new(vec![]),
+            emitted_edges: Rc::new(vec![]),
         })
     }
 }
@@ -415,13 +418,14 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
         let struct_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             projection.service_name.clone(),
         );
-        let indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let indent =
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
         let mock_setup = Rc::new({
             let mut __result = Vec::new();
             for mp in projection.mock_field_inits.clone().iter().cloned() {
                 __result.push(emit_go_mock_prop_setup(
                     mp.clone(),
-                    (depth.clone() + 1),
+                    v1_rt::int_add(depth.clone(), 1),
                     projection.source_indices.clone(),
                 ));
             }
@@ -499,8 +503,7 @@ pub fn emit_go_module(
             __result
         })
         .join(&"\n\n".to_string());
-        let mod_dir =
-            crate::v1_compiler_emit_core_support::module_to_filename(mod_name_str.clone());
+        let mod_dir = crate::gunbc_rust_emitted_edge::module_to_filename(mod_name_str.clone());
         let filename = mod_dir.clone();
         let content = v1_rt::concat(
             v1_rt::concat(
@@ -627,7 +630,7 @@ pub fn emit_go_imports(
             let mut __result = Vec::new();
             for imp in imports.iter().cloned() {
                 __result.push({
-                    let mod_name = crate::v1_compiler_emit_core_support::module_to_filename(
+                    let mod_name = crate::gunbc_rust_emitted_edge::module_to_filename(
                         crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
                     );
                     v1_rt::concat(

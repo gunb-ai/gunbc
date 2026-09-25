@@ -821,9 +821,9 @@ pub fn param_growth_multiply(a: Rc<ParamGrowth>, b: Rc<ParamGrowth>) -> Rc<Param
             ParamGrowth::OrderableGrowth { rank: rb, .. } => {
                 Rc::new(ParamGrowth::OrderableGrowth {
                     rank: GrowthRank {
-                        degree: (ra.degree.clone() + rb.degree.clone()),
-                        logs: (ra.logs.clone() + rb.logs.clone()),
-                        bodies: (ra.bodies.clone() + rb.bodies.clone()),
+                        degree: v1_rt::int_add(ra.degree.clone(), rb.degree.clone()),
+                        logs: v1_rt::int_add(ra.logs.clone(), rb.logs.clone()),
+                        bodies: v1_rt::int_add(ra.bodies.clone(), rb.bodies.clone()),
                     },
                 })
             }
@@ -1079,17 +1079,18 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                         if (base.clone() == 1) {
                             Some(1)
                         } else {
-                            if (base.clone() == (0 - 1)) {
+                            if (base.clone() == v1_rt::int_sub(0, 1)) {
                                 {
-                                    let half = (e.clone() / 2);
-                                    if ((half.clone() + half.clone()) == e.clone()) {
+                                    let half = v1_rt::int_div(e.clone(), 2);
+                                    if (v1_rt::int_add(half.clone(), half.clone()) == e.clone()) {
                                         Some(1)
                                     } else {
-                                        Some((0 - 1))
+                                        Some(v1_rt::int_sub(0, 1))
                                     }
                                 }
                             } else {
-                                match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
+                                match int_pow_bounded(base.clone(), v1_rt::int_sub(exp.clone(), 1))
+                                {
                                     Some(prev) => {
                                         match crate::std_checked_arithmetic::checked_int_optional(
                                             crate::std_checked_arithmetic::checked_int_multiply(

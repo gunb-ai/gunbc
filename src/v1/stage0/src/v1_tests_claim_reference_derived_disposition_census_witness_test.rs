@@ -27,7 +27,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
 use crate::v1_std_core::LeafOwner::*;
 pub use crate::v1_std_core::{diagnostic_to_message, is_error_diagnostic, no_span};
-pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex, Node};
+pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -48,7 +48,7 @@ pub fn fixture_item_info(name: String, module_name: String) -> Rc<ItemInfo> {
         module_name: module_name.clone(),
         kind: ItemKind::FnItem,
         service_names: Rc::new(vec![]),
-        resource_names: Rc::new(vec![]),
+        resource_requirements: Rc::new(vec![]),
         params: Rc::new(vec![]),
         is_self_recursive: false,
         has_non_tail_self_call: false,
@@ -194,11 +194,19 @@ pub fn census_counts_each_arm_separately() -> bool {
             && (census.registry_absent.clone() == 1))
             && (census.export_proof_failed.clone() == 1))
             && (census.candidates.clone()
-                == (((((census.survived.clone() + census.own_module.clone())
-                    + census.variant_delegated_to_parent.clone())
-                    + census.variant_parent_unresolved.clone())
-                    + census.registry_absent.clone())
-                    + census.export_proof_failed.clone())))
+                == v1_rt::int_add(
+                    v1_rt::int_add(
+                        v1_rt::int_add(
+                            v1_rt::int_add(
+                                v1_rt::int_add(census.survived.clone(), census.own_module.clone()),
+                                census.variant_delegated_to_parent.clone(),
+                            ),
+                            census.variant_parent_unresolved.clone(),
+                        ),
+                        census.registry_absent.clone(),
+                    ),
+                    census.export_proof_failed.clone(),
+                )))
     }
 }
 

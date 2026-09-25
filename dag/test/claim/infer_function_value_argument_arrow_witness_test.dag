@@ -49,6 +49,15 @@ data lambda_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport
 
 data deep_nested_matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn deep(g: fn(fn(fn(fn(fn(fn(fn(fn(fn(Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int { 0 }\nfn apply(f: fn(fn(fn(fn(fn(fn(fn(fn(fn(fn(Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int { 0 }\nfn host() -> Int { apply(f: deep) }\n"
 
+// A QUALIFIED function name in value position is the same function value as its bare spelling.
+// Before the repair the seed typed it as the function's RETURN, so the matching cell refused
+// (`expected Node(fn), got ...`) -- the defect that reddened
+// v2.test.claim.long.live_read_classification through v2.lens.complexity_accumulator_copy.roster_gate
+// -- and the mismatching cell is the control that the qualified value is judged, not waved through.
+data qualified_matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn inc(x: Int) -> Int { x + 1 }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: test.claim.tmp_fn_value_arrow_probe.inc) }\n"
+
+data qualified_mismatched_parameter_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn convert(s: String) -> String { s }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: test.claim.tmp_fn_value_arrow_probe.convert) }\n"
+
 
 fn refuses_as_type_mismatch(source: String) -> Bool {
   any_class_count_for(source: source, wanted_class: "TypeMismatch") > 0
@@ -120,4 +129,12 @@ test fn lambda_accepted() -> Bool {
 
 test fn deep_nested_matching_accepted() -> Bool {
   total_blocking_count_for(source: deep_nested_matching_source) == 0
+}
+
+test fn qualified_matching_accepted() -> Bool {
+  total_blocking_count_for(source: qualified_matching_source) == 0
+}
+
+test fn qualified_mismatched_parameter_refuses() -> Bool {
+  refuses_as_type_mismatch(source: qualified_mismatched_parameter_source)
 }

@@ -1,5 +1,15 @@
 module v2.test.claim.body_lowering.statement_let_bind
 
+import v2.compiler.reference_conservation_admission {
+  ExplainedDrop,
+  StatementLetBinder,
+  conservation_subject_of_text,
+  conserved_normalize,
+  no_explained_drops
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, and they are written as invariants
@@ -20,20 +30,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not
 // retire when the capability lands; it is the standing control that the capability stayed honest.
 
-fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^statement_let_bind_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-          }
-      }
-  }
+// A statement-form let's binder -- and, when it has one, its type annotation -- is lost by
+// lowering today, pinned by
+// v2.test.claim.namespace_xl0.reference_conservation a_statement_let_binder_is_reported_dropped_holds.
+fn let_binder_lost_at(start: Int, end: Int) -> ExplainedDrop {
+  ExplainedDrop { start: start, end: end, shape: StatementLetBinder }
 }
 
 data statement_let_then_reference_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
@@ -55,26 +56,71 @@ data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x
 data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
 
 test fn statement_let_then_reference_lowers_holds() -> Bool {
-  normalize_outcome(src: statement_let_then_reference_source) == "ACCEPTED"
+  match conserved_normalize(subject: let_then_reference_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn statement_let_chain_lowers_holds() -> Bool {
-  normalize_outcome(src: statement_let_chain_source) == "ACCEPTED"
+  match conserved_normalize(subject: let_chain_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 45, end: 46), tail: Empty } }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn unbound_statement_prefix_refuses_holds() -> Bool {
-  normalize_outcome(src: unbound_statement_prefix_source)
-    == "body_lowering_reason_statement_precedes_without_binding"
+  match conserved_normalize(subject: unbound_prefix_subject(), explained: no_explained_drops()) {
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
 
 test fn single_statement_body_unchanged_holds() -> Bool {
-  normalize_outcome(src: single_statement_source) == "ACCEPTED"
+  match conserved_normalize(subject: single_statement_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn let_in_form_unchanged_holds() -> Bool {
-  normalize_outcome(src: let_in_form_source) == "ACCEPTED"
+  match conserved_normalize(subject: let_in_form_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn typed_statement_let_lowers_holds() -> Bool {
-  normalize_outcome(src: typed_statement_let_source) == "ACCEPTED"
+  match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 36, end: 39), tail: Empty } }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
+// are paid once and the claim is charged only the admitted route it names.
+fn let_then_reference_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: statement_let_then_reference_source)
+}
+
+fn let_chain_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: statement_let_chain_source)
+}
+
+fn let_in_form_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: let_in_form_source)
+}
+
+fn unbound_prefix_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: unbound_statement_prefix_source)
+}
+
+fn single_statement_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: single_statement_source)
+}
+
+fn typed_let_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "statement_let_bind_subject", text: typed_statement_let_source)
+}
+

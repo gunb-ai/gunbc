@@ -36,6 +36,51 @@ import v2.std.node {
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
+// WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
+// callee Arrow's type parameters (v2.std.node arrow_type_param_names) is a DECLARED TYPE VARIABLE:
+// universally quantified at the declaration and instantiated afresh at each application. It is
+// its own constructor, never an inference variable -- the conflation
+// gunbc.recurring_failure_mode type_variable_means_both_declared_generic_and_inference_variable
+// rosters in v1's InferredNode TypeVariable. Reading it off the Arrow is sound because
+// v2.compiler.resolve refuses a type parameter that would shadow a visible name, so inside the
+// Arrow the spelling `T` can mean nothing but its binder.
+type FormalDeclaration
+  = DeclaredTypeVariable { binder: Symbol }
+  | DeclaredType { declared: Node }
+
+fn inhabitance_formal_declaration(declared: Node, type_params: List<Symbol>) -> FormalDeclaration {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if (count(declared.children) == 0)
+        && fold(type_params, init: false, f: fn(acc, p) { acc || (p == id) }) {
+        DeclaredTypeVariable { binder: id }
+      } else {
+        DeclaredType { declared: declared }
+      }
+    _ => DeclaredType { declared: declared }
+  }
+}
+
+// ONE APPLICATION'S INSTANTIATION: the type each declared type variable took at its first
+// derived argument. It is built per application and discarded with it, so two applications of
+// one generic fn -- or two generic fns spelling the same `T` -- never share an instance.
+type TypeVariableInstance {
+  binder: Symbol
+  instance: Node
+}
+
+fn type_variable_instance_lookup(
+  instances: List<TypeVariableInstance>,
+  binder: Symbol
+) -> Optional<Node> {
+  fold(instances, init: Absent, f: fn(acc, i) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if i.binder == binder { optional_present(value: i.instance) } else { Absent }
+    }
+  })
+}
+
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
