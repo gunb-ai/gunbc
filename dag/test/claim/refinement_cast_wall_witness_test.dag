@@ -97,6 +97,17 @@ test fn w_nat_difference_leaves_the_refinement() -> Bool {
   blocking_count(source: nat_difference_source) >= 1
 }
 
+// THE DIFFERENCE IS AN INT, AND ONLY ONE ROW MAY SAY SO. A Nat difference returned as Int compiles
+// clean. If refinement_cast_rules carried a second row for the same std.nat.Nat declaration with a
+// different source type, the checker must REFUSE (SubtractionRefinementAmbiguous) rather than take
+// whichever row comes first -- so under that mutation this claim goes red, while an order-picking
+// implementation would stay green.
+data nat_difference_as_int_source: String = "module probe_refinement_nat_difference_int\nimport std.types { Int }\nimport std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Int { a - b }\n"
+
+test fn w_nat_difference_is_an_int() -> Bool {
+  blocking_count(source: nat_difference_as_int_source) == 0
+}
+
 test fn w_nat_sum_stays_in_the_refinement() -> Bool {
   blocking_count(source: nat_sum_source) == 0
 }

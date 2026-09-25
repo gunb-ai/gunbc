@@ -284,10 +284,26 @@ fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
 // spelling, is not a refinement of Int, and subtracts through its own typed nat_sub. Absent means
 // the operand's declaration is the target of no refinement row, and the operand's own algebra
 // decides as before.
-fn dag_subtraction_result_type(operand: DeclarationRef) -> String? {
-  match refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand)) |> first {
-    Present { value: r } => Present { value: r.from_type }
-    Absent => none
+// ZERO, ONE OR MANY -- never "the first". Two rows naming one exact declaration with different
+// source types would make the difference's type depend on row ORDER, which is not a fact about
+// the declaration; that is a coherence defect in this table, so it is answered as its own arm and
+// the checker refuses on it (v1.compiler.infer_types subtraction_refinement_of) rather than picking.
+type SubtractionRefinement
+  = SubtractionStaysInOperandAlgebra
+  | SubtractionEscapesTo { from_type: String }
+  | SubtractionRefinementAmbiguous { from_types: List<String> }
+
+fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
+  let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
+  if (hits |> count) == 0 {
+    SubtractionStaysInOperandAlgebra
+  } else if (hits |> count) == 1 {
+    match hits |> first {
+      Present { value: r } => SubtractionEscapesTo { from_type: r.from_type }
+      Absent => SubtractionStaysInOperandAlgebra
+    }
+  } else {
+    SubtractionRefinementAmbiguous { from_types: hits |> map(r => r.from_type) }
   }
 }
 
