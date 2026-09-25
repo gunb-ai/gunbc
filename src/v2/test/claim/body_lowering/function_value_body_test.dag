@@ -29,12 +29,28 @@ fn fvb_refuses_at_an_inner_arrow(src: String) -> Bool {
   }
 }
 
-// A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
-test fn a_fn_whose_body_is_a_fn_literal_refuses_at_the_inner_function_value() -> Bool {
-  fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n")
+// ONE WARM PRODUCER, TWO VERDICTS. Each claim once paid its own normalization; the two verdicts are
+// computed here once, as a nullary pure producer enrolled in
+// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm, and each claim only reads
+// its Bool.
+type FvbOutcomes {
+  fn_body: Bool
+  curried: Bool
 }
 
-// A curried lambda: the outer lambda's body is itself a lambda.
+fn fvb_outcomes() -> FvbOutcomes {
+  FvbOutcomes {
+    // A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
+    fn_body: fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n"),
+    // A curried lambda: the outer lambda's body is itself a lambda.
+    curried: fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n")
+  }
+}
+
+test fn a_fn_whose_body_is_a_fn_literal_refuses_at_the_inner_function_value() -> Bool {
+  fvb_outcomes().fn_body
+}
+
 test fn a_curried_lambda_argument_refuses_at_the_inner_lambda() -> Bool {
-  fvb_refuses_at_an_inner_arrow(src: "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n")
+  fvb_outcomes().curried
 }
