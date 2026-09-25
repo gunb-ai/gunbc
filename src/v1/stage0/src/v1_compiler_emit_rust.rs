@@ -24402,30 +24402,26 @@ pub fn emit_typed_expr(
             ExprData::ExprListLit => {
                 if rust_list_lit_holds_callables(texpr.clone()) {
                     crate::v1_compiler_emit::emit_list_lit_expr(
-                        Rc::new(
-                            texpr
-                                .children
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .map(|el| {
-                                    rust_callable_list_element(
-                                        el.clone(),
-                                        rust_list_lit_callable_element_type(
-                                            texpr.clone(),
-                                            shared_types.clone(),
-                                            scope.clone(),
-                                            emit_info.clone(),
-                                        ),
-                                        registry.clone(),
-                                        scope.clone(),
-                                        depth.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for el in texpr.children.clone().iter().cloned() {
+                                __result.push(rust_callable_list_element(
+                                    el.clone(),
+                                    rust_list_lit_callable_element_type(
+                                        texpr.clone(),
                                         shared_types.clone(),
+                                        scope.clone(),
                                         emit_info.clone(),
-                                    )
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
+                                    ),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ));
+                            }
+                            __result
+                        }),
                         RenderTarget::Rust,
                     )
                 } else {
@@ -24454,15 +24450,19 @@ pub fn emit_typed_expr(
 }
 
 pub fn rust_list_lit_holds_callables(texpr: Rc<Node>) -> bool {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .any(|el| match (*el.expr_data.clone()).clone() {
-            ExprData::ExprLambda => true,
-            _ => false,
-        })
+    {
+        let mut __found = false;
+        for el in texpr.children.clone().iter().cloned() {
+            if match (*el.expr_data.clone()).clone() {
+                ExprData::ExprLambda => true,
+                _ => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn rust_list_lit_callable_element_type(
@@ -24471,14 +24471,14 @@ pub fn rust_list_lit_callable_element_type(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Option<String> {
-    match resolved_type(texpr.clone())
+    match crate::v1_compiler_infer_types::resolved_type(texpr.clone())
         .children
         .clone()
         .first()
         .cloned()
     {
         Some(el) => {
-            let et = child_type_node(el.clone());
+            let et = crate::v1_compiler_infer_types::child_type_node(el.clone());
             if (et.connective.clone() == Connective::Arrow) {
                 Some(render_rust_type(
                     et.clone(),
