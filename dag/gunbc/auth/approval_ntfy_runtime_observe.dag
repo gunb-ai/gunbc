@@ -412,7 +412,8 @@ fn ntfy_runtime_observe_read(read: String, command: ArgvCommand) -> NtfyObserved
 // readlink(1) ends its line with one newline; exactly that one is removed, so the target is otherwise
 // VERBATIM (a ` (deleted)` suffix stays).
 fn readlink_target(stdout: String) -> String {
-  if ends_with(s: stdout, suffix: "\n") { substring(s: stdout, start: 0, end: string_length(s: stdout) - 1) } else { stdout }
+  let n = string_length(s: stdout)
+  if n > 0 && substring(s: stdout, start: n - 1, end: n) == "\n" { substring(s: stdout, start: 0, end: n - 1) } else { stdout }
 }
 
 // /proc/<pid>/environ: NAME=value entries, each NUL-terminated. Only the names are kept, in order.
