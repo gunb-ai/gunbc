@@ -2819,10 +2819,14 @@ fn dag_grammar_surface_production_type_node() -> Node {
   dag_grammar_atom(id: ^dag_grammar_surface_production_type_atom)
 }
 
+fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool {
+  production.emitted == n
+}
+
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
   if any(
     xs: dag_grammar_root().productions,
-    predicate: fn(production) { production.emitted == n }
+    predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
   ) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {

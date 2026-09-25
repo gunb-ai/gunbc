@@ -1736,34 +1736,54 @@ fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Opti
   }
 }
 
+fn target_model_canonical_operation_wire_child_member_type(
+  acc: Optional<Node>,
+  child_edge: Edge,
+  n: Node
+) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if child_edge.target == n {
+        target_model_canonical_operation_wire_child_declared_type(edge: child_edge)
+      } else {
+        acc
+      }
+  }
+}
+
+fn target_model_canonical_operation_roster_member_type(
+  acc: Optional<Node>,
+  roster_edge: Edge,
+  n: Node
+) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if roster_edge.target == n {
+        optional_present(value: target_model_canonical_operation_type_node())
+      } else {
+        fold_list(
+          xs: roster_edge.target.children,
+          empty: optional_absent(),
+          cons: fn(inner, child_edge) {
+            target_model_canonical_operation_wire_child_member_type(
+              acc: inner,
+              child_edge: child_edge,
+              n: n
+            )
+          }
+        )
+      }
+  }
+}
+
 fn target_model_canonical_operation_member_declared_type(n: Node) -> Optional<Node> {
   fold_list(
     xs: target_model_canonical_operations_roster_root().children,
     empty: optional_absent(),
     cons: fn(acc, roster_edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if roster_edge.target == n {
-            optional_present(value: target_model_canonical_operation_type_node())
-          } else {
-            fold_list(
-              xs: roster_edge.target.children,
-              empty: optional_absent(),
-              cons: fn(inner, child_edge) {
-                match inner {
-                  Present { value: _ } => inner
-                  Absent =>
-                    if child_edge.target == n {
-                      target_model_canonical_operation_wire_child_declared_type(edge: child_edge)
-                    } else {
-                      inner
-                    }
-                }
-              }
-            )
-          }
-      }
+      target_model_canonical_operation_roster_member_type(acc: acc, roster_edge: roster_edge, n: n)
     }
   )
 }
