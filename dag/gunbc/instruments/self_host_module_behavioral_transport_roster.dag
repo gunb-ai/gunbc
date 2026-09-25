@@ -101,7 +101,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     pass_marker: "SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
-        entry_rel: "src/v2/test/claim/manual/structured_body_dispatch.dag",
+        entry_rel: "src/v2/test/claim/manual/structured_body_dispatch_test.dag",
         function: "structured_body_dispatch_accepts_transform_call"
       }
     ],
