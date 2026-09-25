@@ -234,29 +234,30 @@ fn closure_ingest_step(
 
 // PHASE ONE: EVERY FILE PARSED AND CENSUSED, ONE OCCURRENCE ALLOCATOR THREADED ACROSS THE WHOLE
 // INGEST (the seeded front end). A refused file is recorded and the census continues, so the
-// refusal set is complete; the grammar failing to prepare is the one refusal with no file.
-fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureIngestState {
+// refusal set is complete. The grammar failing to prepare is NOT a file's refusal -- no file was
+// read -- so it is its own arm and refuses the emission before any census exists (review 71156).
+type ClosureCensus
+  = ClosureGrammarUnprepared { diagnostics: NonEmptyDiagnostics }
+  | ClosureCensusRead { state: ClosureIngestState }
+
+fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureCensus {
   match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } =>
-      ClosureIngestState {
-        ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
-        refusals: Cons { head: ClosureCensusRefusal { path: "", diagnostics: d }, tail: Empty },
-        alloc: occurrence_id_allocator_initial(),
-        spans: span_index_empty()
-      }
+    Rejected { diagnostics: d } => ClosureGrammarUnprepared { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
-      fold_list(
-        xs: ingest,
-        empty: ClosureIngestState {
-          ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
-          refusals: Empty,
-          alloc: occurrence_id_allocator_initial(),
-          spans: span_index_empty()
-        },
-        cons: fn(state, read) {
-          closure_ingest_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
-        }
-      )
+      ClosureCensusRead {
+        state: fold_list(
+          xs: ingest,
+          empty: ClosureIngestState {
+            ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
+            refusals: Empty,
+            alloc: occurrence_id_allocator_initial(),
+            spans: span_index_empty()
+          },
+          cons: fn(state, read) {
+            closure_ingest_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
+          }
+        )
+      }
   }
 }
 
@@ -448,8 +449,23 @@ fn emit_closure_from_ingest_located(
   target: TargetModel
 ) -> ClosureEmissionLocated {
   let lm = dag_language_model()
-  let census = closure_ingest(ingest: ingest, lm: lm)
   let active_roots = source_root_set_from_ingest(ingest: ingest)
+  match closure_ingest(ingest: ingest, lm: lm) {
+    ClosureGrammarUnprepared { diagnostics: d } =>
+      ClosureEmissionLocated { spans: span_index_empty(), census_refusals: Empty, outcome: Rejected { diagnostics: d } }
+    ClosureCensusRead { state: census } =>
+      closure_emission_from_census(lm: lm, census: census, entry: entry, entry_locus: entry_locus, active_roots: active_roots, target: target)
+  }
+}
+
+fn closure_emission_from_census(
+  lm: LanguageModel,
+  census: ClosureIngestState,
+  entry: QualifiedName,
+  entry_locus: Node,
+  active_roots: FreeMonoid<SourceRootRef>,
+  target: TargetModel
+) -> ClosureEmissionLocated {
   ClosureEmissionLocated {
     spans: census.spans,
     census_refusals: census.refusals,

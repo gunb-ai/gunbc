@@ -183,15 +183,19 @@ test fn a_module_outside_the_closure_that_does_not_parse_refuses_the_emission_ho
   }
 }
 
+// Whether some census refusal row names exactly this file.
+fn ce_census_names(located: ClosureEmissionLocated, path: String) -> Bool {
+  fold_list(xs: located.census_refusals, empty: false, cons: fn(found, r) { found || r.path == path })
+}
+
 // THE CENSUS REPORTS EVERY FILE IT COULD NOT READ, NOT THE FIRST: two unparseable outsiders are two
-// refusal rows, each naming its own file, so one run yields the whole file-grain blocking set.
+// refusal rows, and EACH file is named by one of them -- two rows naming the same file fail, which is
+// the first-only behaviour this row exists to catch (review 71156).
 test fn the_census_names_every_file_it_could_not_read_holds() -> Bool {
   let located = ce_emission_outsider_unparseable()
   length(xs: located.census_refusals) == 2
-    && fold_list(xs: located.census_refusals, empty: true, cons: fn(ok, r) {
-      ok && (r.path == "src/v2/test/fixture/closure_emission/unparseable.dag"
-        || r.path == "src/v2/test/fixture/closure_emission/unparseable_two.dag")
-    })
+    && ce_census_names(located: located, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
+    && ce_census_names(located: located, path: "src/v2/test/fixture/closure_emission/unparseable_two.dag")
     && (match located.outcome {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: _ } => true
