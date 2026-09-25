@@ -2,7 +2,6 @@ module test.claim.x509_rfc5280_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List, NonEmptyStr }
-import std.integer { UInt8 }
 import std.encoding { base64_decode, Standard }
 import extdeps.crypto.sha2 { sha256, sha256_hex }
 import extdeps.standards.rfc_8949 {
@@ -35,7 +34,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sam
 // object carries elsewhere (the credential key, the nonce). Designed DER refusals are claimed
 // beside them so the reader's walls are exercised where a certificate cannot exercise them.
 
-fn x5_member_octets(v: CborValue, key: String) -> List<UInt8> {
+fn x5_member_octets(v: CborValue, key: String) -> List<Int> {
   match cbor_map_unique_text_member(v: v, key: key) {
     CborMemberFound { value: m } =>
       match cbor_byte_string_octets(v: m) {
@@ -60,7 +59,7 @@ fn x5_sample_attestation() -> CborValue {
   }
 }
 
-fn sample_x5c(i: Int) -> List<UInt8> {
+fn sample_x5c(i: Int) -> List<Int> {
   match cbor_array_items(v: x5_member_value(v: x5_member_value(v: x5_sample_attestation(), key: "attStmt"), key: "x5c")) {
     Absent => []
     Present { value: items } =>
@@ -74,7 +73,7 @@ fn sample_x5c(i: Int) -> List<UInt8> {
   }
 }
 
-fn x509_decoded_or_none(octets: List<UInt8>) -> X509Certificate? {
+fn x509_decoded_or_none(octets: List<Int>) -> X509Certificate? {
   match decode_certificate(octets: octets) {
     X509Decoded { certificate: c } => Present { value: c }
     X509Refused { cause: _ } => none
@@ -135,7 +134,7 @@ test fn the_sample_leaf_reads_as_openssl_reads_it() -> Bool {
 
 // Apple's steps 2 and 3 on real bytes: the nonce in extension 1.2.840.113635.100.8.2 -- DER
 // SEQUENCE { [1] { OCTET STRING } } -- equals SHA-256(authData || clientDataHash).
-fn nonce_of(leaf: X509Certificate) -> List<UInt8> {
+fn nonce_of(leaf: X509Certificate) -> List<Int> {
   match x509_extension(cert: leaf, oid: app_attest_nonce_extension_oid as String) {
     X509ExtensionFound { extension: x } =>
       match der_expect_sequence(octets: x.value, at: 0) {

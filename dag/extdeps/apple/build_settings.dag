@@ -42,6 +42,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // (and only then reads INFOPLIST_KEY_*); a target with neither it nor an INFOPLIST_FILE has no
 // Info.plist and does not build.
 //
+// MARKETING_VERSION ("Marketing Version") becomes CFBundleShortVersionString and
+// CURRENT_PROJECT_VERSION ("Current Project Version") becomes CFBundleVersion in the Info.plist
+// XcodeGen writes.
+//
 // NO INFOPLIST_KEY_* ARM EXISTS, deliberately: the INFOPLIST_KEY_*
 // settings are read only when Xcode generates the Info.plist, so a target that supplies its own
 // Info.plist (INFOPLIST_FILE, as XcodeGen does for a target with `info`) must carry those keys in
@@ -57,6 +61,8 @@ type BuildSettingName
   | SwiftTreatWarningsAsErrors
   | GccTreatWarningsAsErrors
   | GenerateInfoPlistFile
+  | MarketingVersion
+  | CurrentProjectVersion
 
 fn build_setting_name_token(n: BuildSettingName) -> String {
   match n {
@@ -70,6 +76,8 @@ fn build_setting_name_token(n: BuildSettingName) -> String {
     SwiftTreatWarningsAsErrors => "SWIFT_TREAT_WARNINGS_AS_ERRORS"
     GccTreatWarningsAsErrors => "GCC_TREAT_WARNINGS_AS_ERRORS"
     GenerateInfoPlistFile => "GENERATE_INFOPLIST_FILE"
+    MarketingVersion => "MARKETING_VERSION"
+    CurrentProjectVersion => "CURRENT_PROJECT_VERSION"
   }
 }
 

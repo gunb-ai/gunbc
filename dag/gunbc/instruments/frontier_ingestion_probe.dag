@@ -191,8 +191,7 @@ fn classify_normalize_diagnostics(d: NonEmptyDiagnostics) -> FrontendStage {
   let rs = all_reasons(d: d)
   if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
     NormalizeGraftRefused
-  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
-    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
+  } else if reasons_contain(reasons: rs, sym: ^normalized_tree_reason_wrapper_retention_not_normalized) {
     NormalizeRetained
   } else {
     NormalizeOther

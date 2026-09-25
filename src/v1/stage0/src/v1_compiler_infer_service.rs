@@ -514,7 +514,7 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
         .iter()
         .cloned()
         .fold(0, |acc: i64, info: Rc<ItemInfo>| {
-            (acc + (info.service_names.clone().len() as i64))
+            v1_rt::int_add(acc, (info.service_names.clone().len() as i64))
         })
 }
 
@@ -669,7 +669,7 @@ pub fn expand_transitive_services_loop(
                     partial: next.clone(),
                     causes: Rc::new(vec![Rc::new(
                         EffectIncompleteness::ExpansionBudgetExhausted {
-                            remaining_delta: (after.clone() - before.clone()),
+                            remaining_delta: v1_rt::int_sub(after.clone(), before.clone()),
                         },
                     )]),
                 });
@@ -677,7 +677,7 @@ pub fn expand_transitive_services_loop(
                 {
                     let __tco_0 = module_callees;
                     let __tco_1 = next.clone();
-                    let __tco_2 = (remaining_passes - 1);
+                    let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
                     __tco_loop_module_callees = __tco_0;
                     __tco_loop_registry = __tco_1;
                     __tco_loop_remaining_passes = __tco_2;
@@ -706,7 +706,13 @@ pub fn expansion_pass_bound(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 
                 std::option::Option::None => acc.clone(),
             },
         );
-        ((item_count.clone() * (Rc::new(v1_rt::map_keys(&distinct_service_keys)).len() as i64)) + 1)
+        v1_rt::int_add(
+            v1_rt::int_mul(
+                item_count.clone(),
+                (Rc::new(v1_rt::map_keys(&distinct_service_keys)).len() as i64),
+            ),
+            1,
+        )
     }
 }
 

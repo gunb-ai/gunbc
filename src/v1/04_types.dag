@@ -532,6 +532,9 @@ fn enrich_kernel_type(name: String, base: Node, source_indices: Map<String, Newl
   }
 }
 
+// A CallableOf return variable binds to what a CALL of the argument produces: a lambda argument is
+// typed as its body, a function value (named, or a let-bound lambda) as its arrow, so an arrow is
+// read at its return.
 fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   match template {
     AlgebraTypeVariable { id: var_id } =>
@@ -558,7 +561,11 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       if map_get(subst, "__element__") != none { subst }
       else { map_insert(subst, "__element__", concrete) }
     CallableOf { params: _, return_type: ret_template } =>
-      unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst, source_indices: source_indices)
+      let produced = match concrete.connective {
+        Arrow => match concrete.inferred { Present { value: Resolved { node: r } } => r  _ => concrete }
+        _ => concrete
+      }
+      unify_template(template: ret_template, concrete: produced, receiver: receiver, subst: subst, source_indices: source_indices)
     ContainerOf { source: src, element: elem_template } =>
       let expected_name = match src { SameAsReceiver => container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))  Named { name: n } => n }
       if container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: concrete)) != expected_name { subst }

@@ -8,7 +8,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
   WorkflowPermissions, PermRead, PermWrite, 
-  RunnerSpec, RunsOnExpression,
+  RunnerSpec, RunsOnExpression, SelfHosted,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
 import gunbc.action_use_admission {
@@ -54,6 +54,8 @@ import gunbc.fleet_workflow_steps {
   ci_fleet_key_agent_step,
   ci_fleet_key_agent_step_when,
   ci_fleet_key_agent_cleanup_step,
+  ci_wif_auth_step_for,
+  gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_fleet_converge_plan_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
@@ -69,6 +71,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
+  fleet_host_mutation_group_prefix,
   fleet_arm_mutation_group_glm_group_b_native, fleet_arm_mutation_group_deepseek_group_a,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
@@ -77,12 +80,17 @@ import gunbc.fleet_workflow_steps {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_store_host }
+import gunbc.auth.mtcollins1_boot_federation {
+  mtcollins1_boot_environment, mtcollins1_boot_wif_provider_resource, mtcollins1_boot_service_account,
+}
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,
   app_key_verify_record_env_name,
   app_key_verify_receipt_path,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
+import gunbc.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.ci_spec {
   site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
@@ -102,6 +110,8 @@ import gunbc.ci_spec {
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
+  gunbc_ci_microvm_runner_group_ensure_invoke,
+  gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_pair_serving_d0_invoke,
   gunbc_ci_pair_serving_d0_admit_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
@@ -250,6 +260,7 @@ type FleetConvergeWorkflowMode
   | MtCollins1FanObserve
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
+  | MicrovmRunnerGroupEnsure
   | OrgRunnerRosterObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
@@ -297,6 +308,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MtCollins1FanObserve => "mtcollins1_fan_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
+    MicrovmRunnerGroupEnsure => "microvm_runner_group_ensure"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
@@ -322,7 +334,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -388,6 +400,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MtCollins1FanObserve => none
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
+    MicrovmRunnerGroupEnsure => none
     OrgRunnerRosterObserve => none
   }
 }
@@ -507,6 +520,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
+    MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
   }
 }
 
@@ -655,6 +669,7 @@ fn fleet_converge_host_reset_return_job() -> Job {
     id: "host-reset-return",
     name: none,
     runner: fleet_converge_reset_observer_runner_spec(),
+    environment: none,
     steps: concat(
       concat(
         fleet_converge_consumer_prelude_steps(),
@@ -848,6 +863,7 @@ fn fleet_converge_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_runner_spec(),
+    environment: none,
     steps: fleet_converge_build_job_steps(),
     needs: fleet_converge_job_needs(id: "build" as NonEmptyStr),
     env: none,
@@ -1056,6 +1072,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MtCollins1FanObserve => ExecutorDomain
     FabricWriterIdentityObserve => ExecutorDomain
     MtCollins1CensusImagePublish => ExecutorDomain
+    MicrovmRunnerGroupEnsure => ExecutorDomain
     OrgRunnerRosterObserve => ExecutorDomain
   }
 }
@@ -1320,8 +1337,8 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
 }
 
 // THIS MODE READS; IT INSTALLS NOTHING. The microVM network mutations are not granted to the job
-// user and must not be -- that pair would be root (gunbc.runner_microvm_network_converge
-// microvm_network_host_mutation_principal_frontier) -- so this mode reads the slot taps, their
+// user and must not be -- that pair would be root (review 69104; the
+// mutations run under gunbc.runner_microvm_network_apply) -- so this mode reads the slot taps, their
 // addresses, routes and v6 standing, the host's forwarding, ruleset digest and helper standing, and
 // records them as a ConvergedSlotNetwork receipt. It is its own dispatch rather than a step of the
 // host converge because the two fail for different reasons and an operator routinely wants one
@@ -2114,6 +2131,46 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
 data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_mode_step_if(mode: ApprovalKeyringConverge)
 data fleet_converge_mtcollins1_boot_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1Boot)
 
+data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge_mode_step_if(mode: MicrovmRunnerGroupEnsure)
+
+// THE MICROVM RUNNER GROUP ENSURE (gunbc.runner_group_restriction_ensure_run). It reaches GitHub over
+// gh under the in-run org-admin token and the approval broker over srv1 loopback, and opens no host
+// session, so it holds no fleet SSH key; it is srv1-pinned because the broker is loopback there.
+fn fleet_converge_microvm_runner_group_ensure_step() -> Step {
+  RunStep {
+    name: Present { value: "microVM runner group: read, file one approval if absent, create restricted to the shakedown workflow, read back" },
+    id: Present { value: "microvm_runner_group_ensure" },
+    run: gunbc_ci_microvm_runner_group_ensure_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_microvm_runner_group_ensure_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(microvm_runner_group_step_timeout_minutes()) }
+  }
+}
+
+fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the microVM runner group ensure receipt" },
+    id: Present { value: "microvm_runner_group_ensure_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "microvm-runner-group-ensure-receipts")),
+      kv(key: "path", value: yaml_string(s: microvm_runner_group_ensure_artifact_glob)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_microvm_runner_group_ensure_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_approval_keyring_converge_step() -> Step {
   RunStep {
     name: Present { value: "Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
@@ -2131,9 +2188,27 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
   }
 }
 
+// THE HOST ADMISSION RUNS BEFORE ANY CREDENTIAL: after the release bins are verified and before the
+// WIF token and the fleet key, it refuses a dispatch naming any host but the store host.
+fn fleet_converge_mtcollins1_boot_admit_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins boot admission (credential-free): the dispatch names the unit hold store host" },
+    id: Present { value: "mtcollins1_boot_admit" },
+    run: gunbc_ci_mtcollins1_boot_admit_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_step() -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins unit 1 approval-gated diskless boot (file request, poll, grant, attach, CD handoff)" },
+    name: Present { value: "Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)" },
     id: Present { value: "mtcollins1_boot" },
     run: gunbc_ci_mtcollins1_boot_invoke(),
     shell: none,
@@ -2394,6 +2469,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
     id: "dashboard-deploy",
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -2509,6 +2585,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
     id: "microvm-controller-install",
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -2539,6 +2616,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
     id: "approval-broker-dark-install",
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -2800,7 +2878,37 @@ fn fleet_converge_spark_v41_row_store_encode_step() -> Step {
 // merge queue. When no expected_revision is given the dispatched ref is checked out, exactly as
 // before. There is no expected_healed_sha preflight here (unlike ci.yml heal revalidation), so the
 // ci_artifact_consumer_prelude_steps paste-through is still not used.
-data fleet_converge_checkout_ref_expr: String = "${{ github.event.inputs.expected_revision || github.ref }}"
+//
+// THE MT. COLLINS BOOT IS THE EXCEPTION, AND ITS ARM COMES FIRST (side-chat review 5286225278 on
+// gunbc#12101). That mode federates as its own identity through a provider that pins
+// fleet-converge.yml at main -- but expected_revision is a caller-supplied input and not an OIDC
+// claim, so honouring it there would let a trusted main dispatch build and run other bytes under the
+// boot's credentials. For that mode the build job and the boot job both check out the EVENT's own
+// sha, which is the main commit the provider admitted; expected_revision cannot reach either.
+data fleet_converge_checkout_ref_expr: String = join([
+  "${{ github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "' && github.sha || github.event.inputs.expected_revision || github.ref }}",
+], "")
+
+// THE BOOT JOB'S OWN CHECKOUT NAMES ONLY THE EVENT SHA, with no input in the expression at all.
+data fleet_converge_mtcollins1_boot_checkout_ref_expr: String = "${{ github.sha }}"
+
+fn fleet_converge_mtcollins1_boot_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout (the event sha only; no dispatch input selects these bytes)" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "ref", value: yaml_string(s: fleet_converge_mtcollins1_boot_checkout_ref_expr)),
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
 
 fn fleet_converge_checkout_step() -> Step {
   UsesStep {
@@ -2824,6 +2932,92 @@ fn fleet_converge_consumer_prelude_steps() -> List<Step> {
   [fleet_converge_checkout_step()]
 }
 
+// ── THE MT. COLLINS BOOT JOB (operator ruling 2026-09-23) ───────────────────────────────────
+// The boot is its own job because its identity is: OIDC tokens are minted per job, and the boot
+// federates through a dedicated pool whose provider pins this workflow file at main, a
+// workflow_dispatch on main, and the job's `environment` (gunbc.auth.mtcollins1_boot_federation).
+// A step inside the shared converge job could only present the shared job's token, which the
+// repo-wide provider admits for every job in the repository. It consumes the fleet key because the
+// census medium readback on srv2 runs over fleet ssh; the dedicated account holds a pinned cell for
+// that version and for the BMC credential, and nothing else.
+data fleet_converge_shared_job_if: String = join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'"], "")
+
+// THE RUNNER AND THE CONCURRENCY DOMAIN ARE FIXED TO THE STORE HOST, never read from the dispatch's
+// `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals derived from
+// the hold store host, and the concurrency group is srv1's mutation domain. The job condition reads
+// ONLY the mode. A host term here would SKIP the job for a dispatch naming another host, and GitHub
+// reports a skipped job as success -- a green run standing in for a refusal (review 70894, DESIGN
+// section 5). Instead the job starts on srv1 and its credential-free admission step
+// (fleet_converge_mtcollins1_boot_admit_step, gunbc.machine_intake_mtcollins1_boot_run
+// mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
+// or the fleet key exist; the wet entry re-runs the same fold.
+data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_mtcollins1_boot_step_if
+data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, mtcollins1_unit_hold_store_host as String], "")
+
+// THE BOOT JOB'S RUNNER AND STEPS ARE THEIR OWN PRODUCERS for the same reason as the credential
+// prelude below: which runner holds the credentials, and which bytes the steps fetch and execute, are
+// facts a witness reads, and reading them here costs those parts rather than the whole job's.
+fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
+  SelfHosted { labels: ["self-hosted", "linux", "arm64", mtcollins1_unit_hold_store_host as String] }
+}
+
+// The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
+// expensive parts, so the composition takes them as parameters: a witness of the composition supplies
+// them, and the witnesses of each script read that producer alone (DESIGN section 3).
+fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
+  [
+    fleet_converge_mtcollins1_boot_checkout_step(),
+    ci_release_bins_download_step(),
+    ci_release_bins_unpack_verify_step(),
+    fleet_converge_mtcollins1_boot_admit_step(),
+    ci_wif_auth_step_for(
+      name: "WIF auth (OIDC -> dedicated mtcollins1-boot pool -> mtcollins1-boot SA, access token only)",
+      provider_resource: mtcollins1_boot_wif_provider_resource(),
+      service_account: mtcollins1_boot_service_account as String,
+    ),
+    fleet_key_step,
+    boot_step,
+    fleet_converge_mtcollins1_boot_receipt_upload_step(),
+    ci_fleet_key_agent_cleanup_step(),
+  ]
+}
+
+fn fleet_converge_mtcollins1_boot_steps() -> List<Step> {
+  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: ci_fleet_key_agent_step(), boot_step: fleet_converge_mtcollins1_boot_step())
+}
+
+fn fleet_converge_mtcollins1_boot_job() -> Job {
+  Job {
+    id: "mtcollins1-boot",
+    name: none,
+    runner: fleet_converge_mtcollins1_boot_runner(),
+    environment: Present { value: mtcollins1_boot_environment as String },
+    steps: fleet_converge_mtcollins1_boot_steps(),
+    needs: fleet_converge_job_needs(id: "mtcollins1-boot" as NonEmptyStr),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_boot_job_if },
+    timeout_minutes: Present { value: gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes(boot_step_minutes: minute_count(mtcollins1_boot_step_timeout_minutes())) },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_converge_mtcollins1_boot_concurrency_group,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: Present { value: PermWrite },
+      }
+    }
+  }
+}
+
 // THE CREDENTIAL PRELUDE, IN ORDER: the release binaries, then the credential-free D0 admission,
 // then the WIF token and the fleet key. It is its own producer because the ORDER is a fact a witness
 // reads -- admission before any credential is minted -- and reading it here costs these five steps
@@ -2843,6 +3037,7 @@ fn fleet_converge_job() -> Job {
     id: "fleet-converge",
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,
     steps: concat(
       concat(
         fleet_converge_consumer_prelude_steps(),
@@ -2881,8 +3076,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_object_write_mint_step(),
         fleet_converge_r2_object_write_mint_receipt_upload_step(),
         fleet_converge_approval_keyring_converge_step(),
-        fleet_converge_mtcollins1_boot_step(),
-        fleet_converge_mtcollins1_boot_receipt_upload_step(),
+        fleet_converge_microvm_runner_group_ensure_step(),
+        fleet_converge_microvm_runner_group_ensure_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
         fleet_converge_guest_image_converge_step(),
         fleet_converge_guest_image_receipt_upload_step(),
@@ -2921,7 +3116,7 @@ fn fleet_converge_job() -> Job {
     needs: fleet_converge_job_needs(id: "fleet-converge" as NonEmptyStr),
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_shared_job_if },
     timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
@@ -2975,6 +3170,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
     id: "rlm-launch-deployment-receipt",
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,
     steps: concat(
       concat(
         fleet_converge_consumer_prelude_steps(),
@@ -3067,6 +3263,7 @@ data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [] },
   FleetConvergeJobEdge { id: "fleet-converge" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "mtcollins1-boot" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "host-reset-return" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "dashboard-deploy" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "approval-broker-dark-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
@@ -3101,6 +3298,7 @@ fn fleet_converge_jobs() -> List<Job> {
   [
     fleet_converge_build_job(),
     fleet_converge_job(),
+    fleet_converge_mtcollins1_boot_job(),
     fleet_converge_host_reset_return_job(),
     fleet_converge_dashboard_deploy_job(),
     fleet_converge_approval_broker_dark_install_job(),
@@ -3121,7 +3319,7 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   },
   DispatchInput {
     name: "mode",
-    description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); microvm_network_apply stages the slot and host network files the model renders at the named expected_revision as root:root 0600 in a root-only directory over the fleet SSH edge as the host's ADMINISTRATOR, installs them with the modeled operations, reloads networkd, systemd-sysctl and the nft loader unit, and reads the ruleset back -- the job user is granted none of it, because install plus systemctl over content that principal can write is arbitrary root for any pull request; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; spark_v41_checkpoint_materialize fetches the admitted published DeepSeek V4.1 files onto the selected Group A Spark (about 510 GB; spark_v41_row_store_encode encodes the eight Engram row stores from the verified shards on the selected Group A Spark and reads each store's sha256; it states the requirement and refuses before fetching when the disk cannot hold it), publishes each only after its sha256 matches the manifest, leaves a present file with the right digest alone and refuses one with the wrong digest, and reads the storage-backed Engram spans from the verified shards; a transfer runs detached and a rerun reattaches; spark_v41_runtime_image_build PRODUCES the DeepSeek V4.1 image on the selected Spark -- it verifies the candidate's three FlashInfer wheels against the digests the candidate keys, converges the patched source tree, builds from it, reads the produced configuration digest back from inside the image through the probe route, and admits that digest against the candidate's own recipe, refusing a digest that does not recompute from it -- and it is a separate mode from the probe because it occupies one host for hours where the probe occupies it for minutes; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; microvm_controller_install writes the microVM slot controller's root-owned release locus (gunbc + sources + Firecracker + jailer) and the gunbc-microvm-slot@ template unit on srv1 and starts no instance; microvm_slot_start starts the shakedown slot's controller unit once on srv1 (the instance is derived from the model, never an input), waits for it bounded by the unit's own stop timeout, and uploads that invocation's controller receipt" },
+    description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); microvm_network_apply stages the slot and host network files the model renders at the named expected_revision as root:root 0600 in a root-only directory over the fleet SSH edge as the host's ADMINISTRATOR, installs them with the modeled operations, reloads networkd, systemd-sysctl and the nft loader unit, and reads the ruleset back -- the job user is granted none of it, because install plus systemctl over content that principal can write is arbitrary root for any pull request; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; spark_v41_checkpoint_materialize fetches the admitted published DeepSeek V4.1 files onto the selected Group A Spark (about 510 GB; spark_v41_row_store_encode encodes the eight Engram row stores from the verified shards on the selected Group A Spark and reads each store's sha256; it states the requirement and refuses before fetching when the disk cannot hold it), publishes each only after its sha256 matches the manifest, leaves a present file with the right digest alone and refuses one with the wrong digest, and reads the storage-backed Engram spans from the verified shards; a transfer runs detached and a rerun reattaches; spark_v41_runtime_image_build PRODUCES the DeepSeek V4.1 image on the selected Spark -- it verifies the candidate's three FlashInfer wheels against the digests the candidate keys, converges the patched source tree, builds from it, reads the produced configuration digest back from inside the image through the probe route, and admits that digest against the candidate's own recipe, refusing a digest that does not recompute from it -- and it is a separate mode from the probe because it occupies one host for hours where the probe occupies it for minutes; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; microvm_controller_install writes the microVM slot controller's root-owned release locus (gunbc + sources + Firecracker + jailer) and the gunbc-microvm-slot@ template unit on srv1 and starts no instance; microvm_slot_start starts the shakedown slot's controller unit once on srv1 (the instance is derived from the model, never an input), waits for it bounded by the unit's own stop timeout, and uploads that invocation's controller receipt; microvm_runner_group_ensure (srv1 only) reads the organization's runner groups and, only when the microvm-shakedown group is absent, files ONE operator approval, creates it restricted to the shakedown workflow on the default branch, and refuses unless the readback holds that restriction" },
     required: true,
     default: none,
     type: InputChoice { options: fleet_converge_mode_options },

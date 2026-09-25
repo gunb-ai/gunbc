@@ -418,7 +418,7 @@ test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_s
 // pre-credential return in mtcollins1_boot_wet_on_srv1 goes through, and its reason is what the
 // bundle's NOT TAKEN sections carry.
 test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool {
-  match mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset"), escalation_id: none).bmc {
+  match mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset")).bmc {
     BmcAccessNotReached { reason: r } => contains(r as String, "GITHUB_SHA is unset")
     _ => false
   }

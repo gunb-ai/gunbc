@@ -10,8 +10,10 @@ import extdeps.apple.info_plist {
 import extdeps.apple.build_settings {
   BuildSetting, build_setting_bool,
   SwiftVersion, SwiftStrictConcurrency, CodeSignStyle, ProductBundleIdentifier, AssetCatalogCompilerAppIconName,
-  EnableUserScriptSandboxing, StringCatalogGenerateSymbols, SwiftTreatWarningsAsErrors, GccTreatWarningsAsErrors, GenerateInfoPlistFile
+  EnableUserScriptSandboxing, StringCatalogGenerateSymbols, SwiftTreatWarningsAsErrors, GccTreatWarningsAsErrors, GenerateInfoPlistFile,
+  MarketingVersion, CurrentProjectVersion
 }
+import gunbc.auth.approval_app_attest_config { approval_app_bundle_id, approval_app_bundle_version }
 import extdeps.apple.xcode { xcode_26_6 }
 import extdeps.xcodegen.project_spec {
   ProjectSpec, ProjectOptions, ConfigFile, XcodeGenTarget, XcodeGenPlist, PlatformDeploymentTarget, DottedVersion,
@@ -110,13 +112,22 @@ data approve_project_settings: List<BuildSetting> = [
   build_setting_bool(name: GccTreatWarningsAsErrors, on: true)
 ]
 
+// THE BUNDLE IDENTIFIER AND MARKETING VERSION ARE THE APP ATTEST VERIFIER'S ROWS
+// (gunbc.auth.approval_app_attest_config), read here rather than restated: the server admits an
+// attestation only for that App ID and CFBundleShortVersionString, so the build and the verifier
+// cannot disagree. CURRENT_PROJECT_VERSION (CFBundleVersion) is the build number, which nothing on
+// the server checks; it is 1 for the bring-up build.
+data approve_build_number: String = "1"
+
 data approve_app_target: XcodeGenTarget = XcodeGenTarget {
   name: "Approve",
   product_type: ApplicationProduct,
   platform: IosPlatform,
   sources: [SourcePath { path: "Approve" }],
   settings: [
-    BuildSetting { name: ProductBundleIdentifier, value: "ai.gunb.approve" },
+    BuildSetting { name: ProductBundleIdentifier, value: approval_app_bundle_id },
+    BuildSetting { name: MarketingVersion, value: approval_app_bundle_version },
+    BuildSetting { name: CurrentProjectVersion, value: approve_build_number },
     BuildSetting { name: AssetCatalogCompilerAppIconName, value: "AppIcon" }
   ],
   info: WritesPlist { plist: XcodeGenPlist { path: "Approve/Info.plist", properties: approve_info_properties(i: approve_app_info) } },
