@@ -144,14 +144,22 @@ fn fold_step_argument_name(head: Symbol) -> Optional<Symbol> {
 // section 3c). A positional one keeps reading as StepByName -- the counted
 // FoldCallStepFormUnresolved state -- until those signatures are readable here. The row also carries
 // no parameter NAMES, so the name above stays authored per head; the two facts are separate.
+fn some_step_argument_position(position: Int) -> Optional<Int> {
+  Present { value: position }
+}
+
+fn no_step_argument_position() -> Optional<Int> {
+  Absent
+}
+
 fn fold_step_argument_position(head: Symbol) -> Optional<Int> {
   if head == ^fold {
     match template_step_position(t: collection_fold_shape()) {
-      Present { value: k } => Present { value: k }
-      Absent => Absent
+      Present { value: k } => some_step_argument_position(position: k)
+      Absent => no_step_argument_position()
     }
   } else {
-    Absent
+    no_step_argument_position()
   }
 }
 

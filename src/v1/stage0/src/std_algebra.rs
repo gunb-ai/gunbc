@@ -242,6 +242,21 @@ pub struct FinitePowerSet<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
+pub fn freemonoid_empty<T: Clone>() -> Rc<FreeMonoid<T>> {
+    Rc::new(vec![])
+}
+
+pub fn list_append<T: Clone>(
+    left: Rc<FreeMonoid<T>>,
+    right: Rc<FreeMonoid<T>>,
+) -> Rc<FreeMonoid<T>> {
+    v1_rt::concat(left.clone(), right.clone())
+}
+
+pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
+    v1_rt::rc_list_push(xs.clone(), item.clone())
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound(
     serialize = "T: Clone + serde::Serialize",
@@ -452,6 +467,66 @@ pub fn collection_filter_shape() -> Rc<AlgebraFieldTemplate> {
         cost_shape: Some(CostShape::ShapeIterateBody),
         callback_element_position: Some(0),
     })
+}
+
+pub fn collection_fold_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "fold".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                id: "FoldAccumulator".to_string(),
+            }),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![
+                    Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                        id: "FoldAccumulator".to_string(),
+                    }),
+                    Rc::new(AlgebraTypeTemplate::ReceiverElement),
+                ]),
+                return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                    id: "FoldAccumulator".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+            id: "FoldAccumulator".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(1),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StepPositionScan {
+    pub next: i64,
+    pub found: Option<i64>,
+}
+
+pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    {
+        let scan = t.param_types.clone().iter().cloned().fold(
+            StepPositionScan {
+                next: 0,
+                found: std::option::Option::None,
+            },
+            |acc: StepPositionScan, p: Rc<AlgebraTypeTemplate>| match acc.found.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => match (*p.clone()).clone() {
+                    AlgebraTypeTemplate::CallableOf { .. } => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: Some(acc.next.clone()),
+                    },
+                    _ => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                },
+            },
+        );
+        scan.found.clone()
+    }
 }
 
 pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
@@ -1202,31 +1277,7 @@ pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeIterateBody),
             callback_element_position: Some(0),
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "fold".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "FoldAccumulator".to_string(),
-                }),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![
-                        Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                            id: "FoldAccumulator".to_string(),
-                        }),
-                        Rc::new(AlgebraTypeTemplate::ReceiverElement),
-                    ]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "FoldAccumulator".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                id: "FoldAccumulator".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(1),
-        }),
+        collection_fold_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "any".to_string(),
             param_types: Rc::new(vec![
@@ -1582,31 +1633,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeIterateBody),
             callback_element_position: Some(0),
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "fold".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "FoldAccumulator".to_string(),
-                }),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![
-                        Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                            id: "FoldAccumulator".to_string(),
-                        }),
-                        Rc::new(AlgebraTypeTemplate::ReceiverElement),
-                    ]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "FoldAccumulator".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                id: "FoldAccumulator".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(1),
-        }),
+        collection_fold_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "any".to_string(),
             param_types: Rc::new(vec![
