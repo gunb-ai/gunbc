@@ -46,6 +46,7 @@ import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_grow
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
+import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
@@ -273,6 +274,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     shared_fill_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
+    native_claim_program_seed_growth_justification,
     census_memo_seed_growth_justification,
     kind_reflection_seed_growth_justification,
     typed_module_store_seed_growth_justification,

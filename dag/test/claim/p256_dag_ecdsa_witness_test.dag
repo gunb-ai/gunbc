@@ -48,9 +48,11 @@ test fn the_base_point_is_on_the_curve() -> Bool {
 // same disposition, and for the same stated reason, as the P-256 and P-384 signature verifications
 // of this family: it is an ordinary fn so the floor does not plan it, and its consumer is the
 // native gunbc test row that gunbc.auth.approval_device_redemption
-// ecdsa_verification_realization_frontier names, executing once MachineWidth<N> reification lets
-// this closure emit. Until then a quiet host runs it by name; it is not evidence the acceptance
-// path has, and this annotation is the declaration of that gap rather than a silence about it.
+// ecdsa_verification_realization_frontier names, and that row now exists: `gunbc test
+// //gunbc/instruments:native-crypto-vectors` executes this closure natively and asserts
+// p256_the_base_point_has_order_n with p256_red_n_minus_one_times_g_is_finite as its control. That
+// row is run by name, not on the merge path, so this fn is still not evidence the ACCEPTANCE path
+// has; what changed is that the fact now executes somewhere, natively and with its red.
 fn the_base_point_has_order_n() -> Bool {
   let zero = p256_hex_zero()
   jacobian_is_infinity(p: p256_double_scalar(u1: p256_n, g: p256_affine(x: p256_gx, y: p256_gy), u2: zero, q: p256_affine(x: p256_gx, y: p256_gy)))
