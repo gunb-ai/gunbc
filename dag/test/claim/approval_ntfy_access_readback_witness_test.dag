@@ -16,7 +16,7 @@ import gunbc.auth.approval_ntfy_access_readback {
   AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
   ActiveNtfyRuntimeUnbound, ActiveNtfyRuntimeGap,
   NtfyRuntimeRead, ReadUnitBefore, ReadPidStatBefore, ReadBootTime, ReadClockTicks, ReadCommandLine, ReadBinaryCtime,
-  ReadVersion, ReadManagerEnvironment, ReadServerUid, ReadNetTcp, ReadNetTcp6, ReadConfigIdentityBefore, ReadConfig,
+  ReadVersion, ReadManagerEnvironment, ReadServerUid, ReadTcpSocketTable, ReadTcp6SocketTable, ReadConfigIdentityBefore, ReadConfig,
   ReadConfigIdentityAfter, ReadAuthFileIdentityBefore, ReadAccessList, ReadAuthFileIdentityAfter, ReadFrontDoor, ReadUnitAfter, ReadPidStatAfter,
   NtfyRuntimeReadFailure, ReadNotSpawned, ReadExitedNonzero, ReadUnparseable,
   RuntimeReadFailed, RuntimeUnitNotActive, RuntimeRestartedDuringRead, RuntimeCommandLineNotDeclared,
@@ -630,8 +630,8 @@ test fn pin_binary_ctime() -> Bool { pinned(read: ReadBinaryCtime, want: "timeou
 test fn pin_version() -> Bool { pinned(read: ReadVersion, want: "timeout --kill-after 2s 10s /usr/bin/ntfy --version") }
 test fn pin_manager_environment() -> Bool { pinned(read: ReadManagerEnvironment, want: "timeout --kill-after 2s 10s /usr/bin/systemctl show-environment") }
 test fn pin_server_uid() -> Bool { pinned(read: ReadServerUid, want: "timeout --kill-after 2s 10s id -u -- gunbc-ntfy") }
-test fn pin_net_tcp() -> Bool { pinned(read: ReadNetTcp, want: "timeout --kill-after 2s 10s cat /proc/net/tcp") }
-test fn pin_net_tcp6() -> Bool { pinned(read: ReadNetTcp6, want: "timeout --kill-after 2s 10s cat /proc/net/tcp6") }
+test fn pin_net_tcp() -> Bool { pinned(read: ReadTcpSocketTable, want: "timeout --kill-after 2s 10s cat /proc/net/tcp") }
+test fn pin_net_tcp6() -> Bool { pinned(read: ReadTcp6SocketTable, want: "timeout --kill-after 2s 10s cat /proc/net/tcp6") }
 test fn pin_config_identity_before() -> Bool { pinned(read: ReadConfigIdentityBefore, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /etc/gunbc-ntfy/server.yml") }
 test fn pin_config_identity_after() -> Bool { pinned(read: ReadConfigIdentityAfter, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /etc/gunbc-ntfy/server.yml") }
 test fn pin_config() -> Bool { pinned(read: ReadConfig, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy cat /etc/gunbc-ntfy/server.yml") }

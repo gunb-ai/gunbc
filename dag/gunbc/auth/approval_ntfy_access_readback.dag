@@ -137,8 +137,8 @@ type NtfyRuntimeRead
   | ReadVersion
   | ReadManagerEnvironment
   | ReadServerUid
-  | ReadNetTcp
-  | ReadNetTcp6
+  | ReadTcpSocketTable
+  | ReadTcp6SocketTable
   | ReadConfigIdentityBefore
   | ReadConfig
   | ReadConfigIdentityAfter
@@ -249,8 +249,8 @@ fn approval_ntfy_read_command(read: NtfyRuntimeRead, pid: String) -> ArgvCommand
     ReadVersion => ntfy_version_command(binary: approval_ntfy_binary_path)
     ReadManagerEnvironment => systemctl_show_environment_command()
     ReadServerUid => id_uid_of_command(user: approval_ntfy_principal_name)
-    ReadNetTcp => cat_command(path: procfs_path_literal(p: ProcNetTcp) as String)
-    ReadNetTcp6 => cat_command(path: procfs_path_literal(p: ProcNetTcp6) as String)
+    ReadTcpSocketTable => cat_command(path: procfs_path_literal(p: ProcNetTcp) as String)
+    ReadTcp6SocketTable => cat_command(path: procfs_path_literal(p: ProcNetTcp6) as String)
     ReadConfigIdentityBefore => as_ntfy_server(command: stat_identity_command(path: approval_ntfy_config_path as String))
     ReadConfig => as_ntfy_server(command: cat_command(path: approval_ntfy_config_path as String))
     ReadConfigIdentityAfter => as_ntfy_server(command: stat_identity_command(path: approval_ntfy_config_path as String))
@@ -320,8 +320,8 @@ fn approval_ntfy_runtime_reading() -> NtfyRuntimeReading
       let version = approval_ntfy_run(read: ReadVersion, pid: pid)
       let manager_environment = approval_ntfy_run(read: ReadManagerEnvironment, pid: pid)
       let server_uid = approval_ntfy_run(read: ReadServerUid, pid: pid)
-      let net_tcp = approval_ntfy_run(read: ReadNetTcp, pid: pid)
-      let net_tcp6 = approval_ntfy_run(read: ReadNetTcp6, pid: pid)
+      let net_tcp = approval_ntfy_run(read: ReadTcpSocketTable, pid: pid)
+      let net_tcp6 = approval_ntfy_run(read: ReadTcp6SocketTable, pid: pid)
       let config_identity_before = approval_ntfy_run(read: ReadConfigIdentityBefore, pid: pid)
       let config = approval_ntfy_run(read: ReadConfig, pid: pid)
       let config_identity_after = approval_ntfy_run(read: ReadConfigIdentityAfter, pid: pid)
@@ -408,8 +408,8 @@ fn reads_in_order(r: NtfyRuntimeReads) -> List<ReadRun> {
     ReadRun { read: ReadVersion, run: r.version },
     ReadRun { read: ReadManagerEnvironment, run: r.manager_environment },
     ReadRun { read: ReadServerUid, run: r.server_uid },
-    ReadRun { read: ReadNetTcp, run: r.net_tcp },
-    ReadRun { read: ReadNetTcp6, run: r.net_tcp6 },
+    ReadRun { read: ReadTcpSocketTable, run: r.net_tcp },
+    ReadRun { read: ReadTcp6SocketTable, run: r.net_tcp6 },
     ReadRun { read: ReadConfigIdentityBefore, run: r.config_identity_before },
     ReadRun { read: ReadConfig, run: r.config },
     ReadRun { read: ReadConfigIdentityAfter, run: r.config_identity_after },
@@ -671,9 +671,9 @@ fn approval_ntfy_listeners(r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   let uid = trim(s: run_stdout(run: r.server_uid))
   if parse_int(s: uid) == none { unparseable(read: ReadServerUid, detail: "not an integer") }
   else { match proc_net_tcp_table(text: run_stdout(run: r.net_tcp)) {
-    ProcNetTcpUnparseable { line: l } => unparseable(read: ReadNetTcp, detail: l)
+    ProcNetTcpUnparseable { line: l } => unparseable(read: ReadTcpSocketTable, detail: l)
     ProcNetTcpParsed { rows: rows4 } => match proc_net_tcp_table(text: run_stdout(run: r.net_tcp6)) {
-      ProcNetTcpUnparseable { line: l } => unparseable(read: ReadNetTcp6, detail: l)
+      ProcNetTcpUnparseable { line: l } => unparseable(read: ReadTcp6SocketTable, detail: l)
       ProcNetTcpParsed { rows: rows6 } => {
         let mine4 = filter(rows4, x => x.state == tcp_listen_state_hex && x.uid == uid)
         let mine6 = filter(rows6, x => x.state == tcp_listen_state_hex && x.uid == uid)
@@ -709,8 +709,8 @@ fn approval_ntfy_read_label(read: NtfyRuntimeRead) -> String {
     ReadVersion => "the binary's version"
     ReadManagerEnvironment => "the service manager's environment"
     ReadServerUid => "the server principal's uid"
-    ReadNetTcp => "/proc/net/tcp"
-    ReadNetTcp6 => "/proc/net/tcp6"
+    ReadTcpSocketTable => "/proc/net/tcp"
+    ReadTcp6SocketTable => "/proc/net/tcp6"
     ReadConfigIdentityBefore => "the config's identity (first)"
     ReadConfig => "the config"
     ReadConfigIdentityAfter => "the config's identity (last)"
