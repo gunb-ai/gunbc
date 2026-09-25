@@ -38,10 +38,17 @@ fn first_or_zero(xs: List<Int>) -> Int {
   }
 }
 
+// The tail is built from builtins no corpus module also declares (enumerate, fold, list_push): a
+// bare `skip` or `get` in a file that declares imports is refused at file grain (gunbc#12205),
+// because corpus modules declare those names too.
+fn after_first(xs: List<Int>) -> List<Int> {
+  xs |> enumerate |> fold(init: [], f: (acc, p) => if p.first == 0 { acc } else { acc |> list_push(p.second) })
+}
+
 fn octet_sum_from(xs: List<Int>, acc: Int) -> Int {
   match xs |> first {
     null => acc
-    x => octet_sum_from(xs: xs |> skip(1), acc: acc + x)
+    x => octet_sum_from(xs: after_first(xs: xs), acc: acc + x)
   }
 }
 
