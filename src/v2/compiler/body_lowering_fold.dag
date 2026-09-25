@@ -4816,13 +4816,6 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
 // resolver instead of vanishing (the loss gunbc#11998 turned into
 // body_lowering_reason_positional_pattern_binder_unlowered, retired here). Positional arity is
 // one, as the seed's parse admits; more refuses with a located cause.
-fn body_lower_pattern_head_symbol_optional(head: Node) -> Optional<Symbol> {
-  match body_lower_pattern_leaf_atom_optional(node: head) {
-    Absent => Absent
-    Present { value: atom } => node_atom_identity_optional(node: atom)
-  }
-}
-
 fn body_lower_pattern_reject<T>(pattern_capture: Node) -> Outcome<T> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: pattern_capture)
@@ -4904,9 +4897,12 @@ fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: 
                 match body_lower_comma_list_items_optional(list_capture: inner.left) {
                   Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
                   Present { value: items } =>
-                    match body_lower_pattern_head_symbol_optional(head: head) {
+                    match body_lower_pattern_leaf_atom_optional(node: head) {
                       Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
-                      Present { value: tag } =>
+                      Present { value: tag_atom } =>
+                        match node_atom_identity_optional(node: tag_atom) {
+                          Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+                          Present { value: tag } =>
                         bind_outcome(
                           o: body_lower_pattern_field_edges(
                             items: items,
@@ -4915,10 +4911,11 @@ fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: 
                           ),
                           f: fn(edges) {
                             outcome_accepted(
-                              value: construct_node(tag: tag, field_edges: edges, source: pattern_capture)
+                              value: construct_node(tag: tag, tag_source: tag_atom, field_edges: edges, source: pattern_capture)
                             )
                           }
                         )
+                        }
                     }
                 }
             }
@@ -7114,7 +7111,14 @@ fn body_lower_record_literal_field_items_optional(captured: Node) -> Optional<Li
   }
 }
 
-fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<Symbol> {
+// The tag is read with the atom it was read from, so the construct's tag atom can be lowered from
+// that token rather than from the whole capture (v2.std.node_query construct_tag_edge).
+type RecordLiteralTag {
+  tag: Symbol
+  at: Node
+}
+
+fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLiteralTag> {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => Absent
     Present { value: pair } =>
@@ -7122,7 +7126,7 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<Symbol> {
         Present { value: tag } =>
           match dag_lex_token_symbol(sym: tag) {
             true => optional_absent()
-            false => optional_present(value: tag)
+            false => optional_present(value: RecordLiteralTag { tag: tag, at: pair.left })
           }
         Absent => Absent
       }
@@ -7132,7 +7136,7 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<Symbol> {
 fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_literal_tag_optional(captured: captured) {
     Absent => outcome_accepted(value: optional_absent())
-    Present { value: tag } =>
+    Present { value: read } =>
       match body_lower_record_literal_field_items_optional(captured: captured) {
         Absent => outcome_accepted(value: optional_absent())
         Present { value: items } =>
@@ -7146,7 +7150,7 @@ fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: edges, diagnostics: d } =>
               Accepted {
-                value: optional_present(value: construct_node(tag: tag, field_edges: edges, source: captured)),
+                value: optional_present(value: construct_node(tag: read.tag, tag_source: read.at, field_edges: edges, source: captured)),
                 diagnostics: d
               }
           }
