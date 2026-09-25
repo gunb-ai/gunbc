@@ -158,9 +158,12 @@ fn order_n_cases() -> List<NativeCryptoCase> {
 
 // ── THE CURVE PARAMETERS THEMSELVES: P-256's and P-384's base points satisfy their curve equations,
 // the P-384 group law closes over the curve, and Apple's real P-384 keys are on it. These are the
-// ten identities gunbc.rung_drop app_attest_interpreted_crypto_new_witness_eval_step_cost named
-// (the three SHA-384 FIPS vectors are the sha384_* cases above), moved off the interpreted floor
-// onto this native row, each still evaluating the real curve equation or the real hash. Every
+// ten identities gunbc.rung_drop app_attest_interpreted_crypto_new_witness_eval_step_cost names
+// (the three SHA-384 FIPS vectors are the sha384_* cases above), now ALSO executing natively here,
+// each still evaluating the real curve equation or the real hash. ADDITIVE, NOT A REPLACEMENT: this
+// row runs by name and is not on the merge path, so the interpreted claims stay on the floor as the
+// acceptance-path evidence, and the drop stays standing until this row itself executes on the merge
+// path (its trigger; review 71377 of gunbc#12306 caught a first cut that retired it early). Every
 // positive has a red built from the same published parameters: G's neighbour (y + 1) is off the
 // curve and stays off under doubling, and a point whose x is p itself is refused before arithmetic.
 fn p384_g_neighbour_y() -> BigNat {
