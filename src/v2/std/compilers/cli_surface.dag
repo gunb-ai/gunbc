@@ -141,6 +141,7 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
   admit_callers: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
   ]
   = CliSurface {
     arguments: fold_list(
