@@ -1926,9 +1926,11 @@ pub fn declared_type_conformance_diags(
                     scope.module_name.clone(),
                 )])
             } else {
-                if ((type_node_is_arrow(declared.clone()) && type_node_is_arrow(produced.clone()))
-                    && callable_signature_mismatch(declared.clone(), produced.clone(), si.clone()))
-                {
+                if coproduct_payload_where_parent_required(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.clone(),
+                ) {
                     Rc::new(vec![type_mismatch_error(
                         crate::v1_compiler_infer_types::node_type_shape(
                             declared.clone(),
@@ -1942,28 +1944,50 @@ pub fn declared_type_conformance_diags(
                         scope.module_name.clone(),
                     )])
                 } else {
-                    if !both_ground.clone() {
-                        Rc::new(vec![])
-                    } else {
-                        if crate::v1_compiler_infer_types::node_type_compatible(
+                    if ((type_node_is_arrow(declared.clone())
+                        && type_node_is_arrow(produced.clone()))
+                        && callable_signature_mismatch(
                             declared.clone(),
                             produced.clone(),
                             si.clone(),
-                        ) {
+                        ))
+                    {
+                        Rc::new(vec![type_mismatch_error(
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                declared.clone(),
+                                si.clone(),
+                            ),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                produced.clone(),
+                                si.clone(),
+                            ),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )])
+                    } else {
+                        if !both_ground.clone() {
                             Rc::new(vec![])
                         } else {
-                            Rc::new(vec![type_mismatch_error(
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    declared.clone(),
-                                    si.clone(),
-                                ),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    produced.clone(),
-                                    si.clone(),
-                                ),
-                                span.clone(),
-                                scope.module_name.clone(),
-                            )])
+                            if crate::v1_compiler_infer_types::node_type_compatible(
+                                declared.clone(),
+                                produced.clone(),
+                                si.clone(),
+                            ) {
+                                Rc::new(vec![])
+                            } else {
+                                Rc::new(vec![type_mismatch_error(
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        declared.clone(),
+                                        si.clone(),
+                                    ),
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        produced.clone(),
+                                        si.clone(),
+                                    ),
+                                    span.clone(),
+                                    scope.module_name.clone(),
+                                )])
+                            }
                         }
                     }
                 }

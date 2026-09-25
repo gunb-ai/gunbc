@@ -56,7 +56,7 @@ fn host_identity_transport_label(transport: HostEffectTransport) -> String {
 }
 
 fn host_identity_adopt_model_hash() -> ContentHash {
-  content_hash_atom(value: gunbc_host_identity_adopt_model_marker)
+  as_content_hash_structural(structural: content_hash_atom(value: gunbc_host_identity_adopt_model_marker))
 }
 
 fn host_identity_adopt_receipt(

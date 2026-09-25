@@ -1,7 +1,7 @@
 module gunbc.runner_microvm_cell_readiness
 
 import std.types { String, NonEmptyStr, Bool, List, Int, Map }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.fabric.sanitation {
   CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved,
   required_sanitation_facts, SlotScopedNetwork,
@@ -9,7 +9,7 @@ import product.fabric.sanitation {
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_microvm_attempt { MicroVmAttempt, runner_microvm_attempt_unit_name }
 
-data runner_microvm_cell_readiness_disposition: Disposition = SingleAuthority
+data runner_microvm_cell_readiness_disposition: ConstructionMechanism = SingleAuthority
 
 // THE HOST-LOCAL RECORD OF WHETHER A CELL MAY RUN ITS NEXT INCARNATION.
 //

@@ -15,7 +15,7 @@ import v2.compiler.infer {
 }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, length }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   List,
   Map,
@@ -69,8 +69,8 @@ import v2.std.runtime {
   EffectHandlerBinding,
   EffectReceipt,
   EffectReceiptLog,
-  EffectRequest,
-  EffectRequestKind,
+  OperationCall,
+  OperationCallKind,
   ReadResource,
   WriteResource,
   effect_handler_for_kind,
@@ -743,7 +743,7 @@ fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
   )
 }
 
-fn ranking_dimension_digest(d: v2.std.cardinality.RankingDimension) -> Hash {
+fn ranking_dimension_digest(d: v2.std.cardinality.RankingComponent) -> Hash {
   test_claim_symbol_digest(sym: d.measured)
 }
 
@@ -1476,7 +1476,7 @@ fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) 
 
 fn eval_invoke_effect_handler(
   bundle: EffectIoEvalBundle,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   let handler = effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
   effect_io_pure_invoke_handler(handler: handler, request: request)
@@ -1484,7 +1484,7 @@ fn eval_invoke_effect_handler(
 
 fn eval_bundle_with_receipt_appended(
   bundle: EffectIoEvalBundle,
-  request: EffectRequest,
+  request: OperationCall,
   result: Outcome<RuntimeValue>
 ) -> EffectIoEvalBundle {
   EffectIoEvalBundle {
@@ -1501,7 +1501,7 @@ fn eval_bundle_with_receipt_appended(
 
 fn eval_yield_effect_request(
   bundle: EffectIoEvalBundle,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<EffectIoYieldOutcome> {
   let result = eval_invoke_effect_handler(bundle: bundle, request: request)
   let logged_bundle = eval_bundle_with_receipt_appended(

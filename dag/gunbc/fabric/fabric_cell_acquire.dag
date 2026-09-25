@@ -2,7 +2,7 @@ module gunbc.fabric_cell_acquire
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -54,7 +54,7 @@ import gunbc.fabric_cell_observe {
   AddressStateReadRefused,
 }
 
-data fabric_cell_acquire_authority_disposition: Disposition = SingleAuthority
+data fabric_cell_acquire_authority_disposition: ConstructionMechanism = SingleAuthority
 
 data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonEmptyStr
 
