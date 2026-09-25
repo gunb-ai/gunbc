@@ -2041,7 +2041,8 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // plain idents, as v1 parse_transport_binding matches rest/shell/file as ShIdent. io fields carry
 // v1's `Type [from "key"] [= default]` tail (extdeps.shell `Find` declares `max_depth: Int = 1`);
 // general type fields do not (see dag_grammar_io_field_decl_expr).
-// The v2-inline operation form and service-level `config` are v1-admitted and not yet in this
+// Service-level `config` follows v1 parse_service_config_block: `config` `{` (field `:` expr)* `}`
+// over v1's closed field set. The v2-inline operation form is v1-admitted and not yet in this
 // nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
 // no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
 // (body_lowering_fold body_lower_wrapper_retained_shell, counted by body_lowering_retention_census)
@@ -2206,10 +2207,58 @@ fn dag_grammar_operation_expr() -> GrammarExpr {
   )
 }
 
+// v1 parse_config_fields admits exactly five config field names and refuses any other by name;
+// the closed set is a choice of literal terminals here, so an unknown field still refuses at parse.
+fn dag_grammar_service_config_field_name_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "endpoint")),
+    right: dag_grammar_choice(
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "auth")),
+      right: dag_grammar_choice(
+        left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "auth_input")),
+        right: dag_grammar_choice(
+          left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "auth_source")),
+          right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "rate_limit"))
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_service_config_field_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_service_config_field_name_expr(),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_colon),
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    )
+  )
+}
+
+fn dag_grammar_service_config_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "config")),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(
+          element: dag_grammar_comma_list_expr(
+            item: dag_grammar_nonterminal(production: ^dag_production_service_config_field)
+          )
+        ),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
 fn dag_grammar_service_body_entry_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_operation),
-    right: dag_grammar_nonterminal(production: ^dag_production_transport)
+    left: dag_grammar_nonterminal(production: ^dag_production_service_config),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_operation),
+      right: dag_grammar_nonterminal(production: ^dag_production_transport)
+    )
   )
 }
 
@@ -2519,6 +2568,16 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_operation_body_entry_expr(),
     emitted: ^dag_surface_operation_body_entry
   )
+  let service_config = dag_grammar_production(
+    name: ^dag_production_service_config,
+    expression: dag_grammar_service_config_expr(),
+    emitted: ^dag_surface_service_config
+  )
+  let service_config_field = dag_grammar_production(
+    name: ^dag_production_service_config_field,
+    expression: dag_grammar_service_config_field_expr(),
+    emitted: ^dag_surface_service_config_field
+  )
   let transport = dag_grammar_production(
     name: ^dag_production_transport,
     expression: dag_grammar_transport_expr(),
@@ -2758,6 +2817,8 @@ fn dag_grammar_root() -> GrammarRoot {
       test_fn_decl,
       service_decl,
       service_body_entry,
+      service_config,
+      service_config_field,
       operation,
       operation_body_entry,
       transport,
