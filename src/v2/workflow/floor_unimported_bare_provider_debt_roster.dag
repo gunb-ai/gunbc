@@ -312,7 +312,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/tailscale/acl.dag", name: "any", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/tailscale/acl.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/tailscale/acl.dag", name: "length", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/tailscale/serve.dag", name: "members", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/tailscale/serve.dag", name: "members", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/tmux/tmux.dag", name: "append", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/tmux/tmux.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/tools/coreutils_stat.dag", name: "get", standing: ActiveDebt },
