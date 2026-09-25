@@ -16,7 +16,8 @@ import extdeps.languages.json.parse {
   FieldAbsent, FieldRead, FieldMalformed,
 }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.runtime_defaults { vllm_modelled_revisions, defaults_source_revision }
 import extdeps.vllm.kv_layout {
   KvGroupKind,
   KvAllocationPlanCapture, KvAllocationPlanCaptureGroup,
@@ -57,18 +58,21 @@ import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
 // the log channel is substring-scanned out of captured container stdout, which the fleet already
 // collects for the startup capacity lines. Both reduce to the same parse below.
 //
-// THE REVISION IS THE EMISSION'S OWN SELF-REPORT, READ, NOT STAMPED. The record carries
-// vllm.__version__ verbatim, whose trailing +g<sha> names the source tree the running package
-// claims it was built from (extdeps.vllm.runtime_defaults Vllm8d09804 carries the same string
-// with the same caveat recorded there: the image SAYS which tree it was built from; the saying is
-// not a comparison of bytes). The parse below extracts that sha into the capture's
-// observed_at_revision, and the mint then decides whether THIS corpus has read that revision's
-// emission shape. A capture whose revision is not modelled refuses at the mint's revision wall
-// rather than being trusted — which is why a real capture from the patched 8d09804 image refuses
-// today: kv_layout's modeled revision has not advanced to the patched tree. That refusal is the
-// wall working as designed, stated here so it is not read as a defect in the route; advancing the
-// modeled revision to the patched source, after the fleet runs the image and its emission is read
-// at that revision, is the model lane's separate act.
+// THE REVISION IS THE EMISSION'S OWN SELF-REPORT, READ, NOT STAMPED — AND NOW RESOLVED, NOT
+// GUESSED. The record carries vllm.__version__ verbatim, whose trailing +g<sha> names the source
+// tree the running package claims it was built from (extdeps.vllm.runtime_defaults Vllm8d09804
+// carries the same string with the same caveat recorded there: the image SAYS which tree it was
+// built from; the saying is not a comparison of bytes). The parse below extracts that token and
+// resolves it against the corpus' cited revisions (see kv_plan_resolve_revision_token), and the
+// mint then decides whether THIS corpus has read that revision's emission shape. A capture whose
+// revision is not modelled refuses at the mint's revision wall rather than being trusted. BOTH
+// ACTS OF THE 2026-09-25 MODEL LANE HAVE NOW LANDED: the modeled revision advanced to the patched
+// source (extdeps.vllm.server vllm_source_revision_read is
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83, the emission at that revision read off the bounded
+// 262144x6 experiment's captured startup line), and the fleet build's nine-character abbreviation
+// resolves to that full sha through the cited roster — so the real capture admits, and the refusal
+// arm below stands as the regression control for the next foreign revision, exactly the flip
+// kv_group_metadata's capture frontier describes.
 //
 // THE CONTROL'S TWO SIDES NEVER SHARE A SOURCE. The plan comes off the emission; the reported
 // capacity comes from the engine's startup stdout lines (extdeps.vllm.log_lines), captured and
@@ -146,26 +150,78 @@ type KvPlanCaptureParse
   | KvPlanCaptureUnreadable { cause: NonEmptyStr }
 
 // THE SOURCE REVISION RIDES THE VERSION STRING'S +g<sha> SUFFIX, the spelling setuptools-scm
-// produced at build time (v0.1.dev1+g8d09804c8 for the arm's runtime). The parse is deliberately
-// small: split on the last +g, require nine or more lowercase hex characters (the fleet builds
-// abbreviate to nine; upstream full shas are forty, and the git object store's sha1 authority is
-// exactly the forty case, so nothing shorter than the observed abbreviation is trusted). A
-// version string without that suffix is a self-report about a build nobody read; it refuses
-// rather than being stamped with whatever revision this corpus happens to model.
-fn kv_plan_source_revision_of(package_version: String) -> VllmSourceRevision? {
-  let segments = split(s: package_version, delimiter: "+g")
-  match reverse(segments) |> first {
-    Absent => none
-    Present { value: sha } =>
-      if string_length(s: sha) >= 9 && content_hash_validate_lower_hex_syntax(text: sha) {
-        Present {
-          value: vllm_source_revision(
-            repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-            full_revision: sha as NonEmptyStr,
-          ),
+// produced at build time (v0.1.dev1+g8d09804c8 for the arm's runtime). The fleet build abbreviates
+// to nine characters; upstream full shas are forty; the git object store's sha1 authority is the
+// forty case. So the token is read in two acts, and the split is the module's own comment keeping
+// them apart:
+//
+//   LEXICAL (here): split on the last +g, require nine or more lowercase hex characters. A version
+//   string without that suffix is a self-report about a build nobody read; it refuses rather than
+//   being stamped with whatever revision this corpus happens to model.
+//
+//   RESOLUTION (kv_plan_resolve_revision_token below): the well-formed token is matched against the
+//   revisions THIS CORPUS cites — extdeps.vllm.runtime_defaults' modelled roster, each row read on
+//   its own dated evidence — by prefix. A fleet abbreviation names exactly the cited revision it
+//   prefixes; the full sha is the trivial prefix of itself. A token that prefixes nothing cited is
+//   the engine claiming a tree this corpus has no authority for, and it refuses naming that,
+//   rather than being silently widened or narrowed to a revision that happens to be modelled.
+//   Today's real capture is the case this exists for: its self-report is the abbreviation
+//   8d09804c8, which resolves to the patched source 8d09804c877c48165c6ba69bc9dc02d09bae0b83 —
+//   the resolution act deliverable, stated here in the capture leg where the module header
+//   promised it.
+type KvPlanRevisionParse
+  = KvPlanRevisionResolved { revision: VllmSourceRevision }
+  | KvPlanRevisionUnresolved { cause: NonEmptyStr }
+
+fn kv_plan_source_revision_of(package_version: String) -> KvPlanRevisionParse {
+  if !string_contains(s: package_version, pattern: "+g") {
+    KvPlanRevisionUnresolved {
+      cause: "the emission's runtime self-report does not carry a +g<sha> source revision suffix" as NonEmptyStr,
+    }
+  } else {
+    match reverse(split(s: package_version, delimiter: "+g")) |> first {
+      Absent =>
+        KvPlanRevisionUnresolved {
+          cause: "unreachable: the +g presence check above already refused the suffix-less self-report" as NonEmptyStr,
         }
-      } else {
-        none
+      Present { value: sha } =>
+        if string_length(s: sha) < 9 || !content_hash_validate_lower_hex_syntax(text: sha) {
+          KvPlanRevisionUnresolved {
+            cause: join([
+              "the self-report's +g token `", sha,
+              "` is not nine or more lowercase hex characters (a fleet build abbreviates to nine; an upstream full sha is forty), so it names no revision its capture could be bound to",
+            ], "") as NonEmptyStr,
+          }
+        } else {
+          match kv_plan_resolve_revision_token(token: sha) {
+            Absent =>
+              KvPlanRevisionUnresolved {
+                cause: join([
+                  "the self-report's +g token `", sha,
+                  "` resolves against no revision cited by this corpus (extdeps.vllm.runtime_defaults' modelled roster, each row read on its own evidence): the engine claims a tree this corpus has no authority for, and the claim is not stamped onto whatever revision happens to be modelled",
+                ], "") as NonEmptyStr,
+              }
+            Present { value: r } => KvPlanRevisionResolved { revision: r }
+          }
+        }
+    }
+  }
+}
+
+// THE CITED SET IS runtime_defaults' OWN ROSTER, not a local spelling: the resolution authority is
+// where each revision's row already carries its read evidence, and a capture leg that re-cited the
+// shas itself would be a second home for one fact. Exactly one prefix match resolves; zero or more
+// than one both refuse (zero: no authority; more than one: the abbreviation is ambiguous within
+// the cited set, which for nine hex characters is not expected but is not assumed away either).
+fn kv_plan_resolve_revision_token(token: String) -> VllmSourceRevision? {
+  let matches = filter(vllm_modelled_revisions, r =>
+    starts_with(s: (defaults_source_revision(r: r)).full_revision as String, prefix: token))
+  match length(matches) == 1 {
+    false => none
+    true =>
+      match first(matches) {
+        Absent => none
+        Present { value: r } => Present { value: defaults_source_revision(r: r) }
       }
   }
 }
@@ -186,14 +242,9 @@ fn kv_plan_revision_member(obj: JsonValue) -> KvPlanMemberRead<VllmSourceRevisio
         FieldMalformed { cause: c } => KvPlanMemberMalformed { cause: c as NonEmptyStr }
         FieldRead { value: pv } =>
           match kv_plan_source_revision_of(pv) {
-            Absent =>
-              KvPlanMemberMalformed {
-                cause: join([
-                  "the emission's runtime self-report `", pv,
-                  "` does not carry a +g<sha> source revision suffix",
-                ], "") as NonEmptyStr,
-              }
-            Present { value: r } => KvPlanMemberPresent { value: r }
+            KvPlanRevisionUnresolved { cause: c } =>
+              KvPlanMemberMalformed { cause: c }
+            KvPlanRevisionResolved { revision: r } => KvPlanMemberPresent { value: r }
           }
       }
   }

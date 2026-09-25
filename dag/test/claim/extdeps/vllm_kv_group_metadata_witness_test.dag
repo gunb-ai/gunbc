@@ -60,10 +60,14 @@ fn fx_emission(
 }
 
 // THE PINNED REVISION'S SHAPE: layer count and page size are what the emission does not carry,
-// so they stay absent exactly as a real capture at this revision would leave them.
+// so they stay absent exactly as a real capture at this revision would leave them. THE PIN IS
+// THIS MODULE'S OWN — kv_group_metadata_modeled_revision — and not the corpus-wide
+// vllm_source_revision_read: the corpus pin advanced to the patched 8d09804 source on 2026-09-25,
+// and this surface (the lazy get_kv_cache_group_metadata query) was read at 1967a5627 and not
+// re-read at the patched tree, so its modeled revision stays where the reading happened.
 fn fx_pinned_emission(kind: VllmKvCacheSpecKind, window: TokenCount?) -> VllmKvGroupMetadata {
   fx_emission(
-    revision: vllm_source_revision_read,
+    revision: kv_group_metadata_modeled_revision,
     kind: kind,
     window: window,
     layers: Absent,
@@ -73,7 +77,8 @@ fn fx_pinned_emission(kind: VllmKvCacheSpecKind, window: TokenCount?) -> VllmKvG
 
 test fn w_the_modeled_shape_binds_to_the_pinned_revision() -> Bool {
   (kv_group_metadata_modeled_revision.repository as String) == "github.com/vllm-project/vllm"
-    && (kv_group_metadata_modeled_revision.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+    && (kv_group_metadata_modeled_revision.full_revision as String) == "1967a5627bc3710b680bbec24ecb99aaddedf22b"
+    && (kv_group_metadata_modeled_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String)
     && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindFullAttention) as String) == "full_attention"
     && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindMlaAttention) as String) == "mla_attention"
     && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindSlidingWindowMla) as String) == "sliding_window_mla"
@@ -95,7 +100,7 @@ test fn w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fie
 test fn w_a_complete_emission_constructs_the_layout() -> Bool {
   let window = token_count(count: 131072)
   match kv_group_layout_from_emission(m: fx_emission(
-    revision: vllm_source_revision_read,
+    revision: kv_group_metadata_modeled_revision,
     kind: VllmSpecKindSlidingWindowMla,
     window: Present { value: window },
     layers: Present { value: attention_layer_count(count: 30) },
@@ -116,7 +121,7 @@ test fn w_a_complete_emission_constructs_the_layout() -> Bool {
 
 test fn w_the_full_and_mamba_kinds_map_onto_the_growth_shape() -> Bool {
   (match kv_group_layout_from_emission(m: fx_emission(
-    revision: vllm_source_revision_read,
+    revision: kv_group_metadata_modeled_revision,
     kind: VllmSpecKindMlaAttention,
     window: Absent,
     layers: Present { value: attention_layer_count(count: 6) },
@@ -126,7 +131,7 @@ test fn w_the_full_and_mamba_kinds_map_onto_the_growth_shape() -> Bool {
     KvGroupLayoutFromEmissionReady { layout: l } => match l.kind { FullAttention => true  _ => false }
   })
     && (match kv_group_layout_from_emission(m: fx_emission(
-      revision: vllm_source_revision_read,
+      revision: kv_group_metadata_modeled_revision,
       kind: VllmSpecKindMamba,
       window: Absent,
       layers: Present { value: attention_layer_count(count: 1) },
@@ -191,7 +196,7 @@ test fn w_window_inconsistency_refuses_in_both_directions() -> Bool {
 
 test fn w_zero_walls_refuse_the_same_group() -> Bool {
   (match kv_group_layout_from_emission(m: fx_emission(
-    revision: vllm_source_revision_read,
+    revision: kv_group_metadata_modeled_revision,
     kind: VllmSpecKindMlaAttention,
     window: Absent,
     layers: Present { value: attention_layer_count(count: 0) },
@@ -201,7 +206,7 @@ test fn w_zero_walls_refuse_the_same_group() -> Bool {
     KvGroupLayoutFromEmissionReady { layout: _ } => false
   })
     && (match kv_group_layout_from_emission(m: fx_emission(
-      revision: vllm_source_revision_read,
+      revision: kv_group_metadata_modeled_revision,
       kind: VllmSpecKindMlaAttention,
       window: Absent,
       layers: Present { value: attention_layer_count(count: 6) },

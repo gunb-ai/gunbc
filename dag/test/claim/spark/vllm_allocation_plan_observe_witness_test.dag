@@ -7,8 +7,9 @@ import std.measure {
   token_count, token_count_value,
   concurrent_request_hundredths,
   allocator_block_count_value,
+  byte_size_count,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { vllm_source_revision_read }
@@ -17,6 +18,8 @@ import extdeps.vllm.kv_cache { vllm_observed_kv_pool_from_reading, KvPoolAdmitte
 import extdeps.vllm.kv_layout {
   VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
   FullAttention, SlidingWindowAttention, MambaState,
+  resolved_kv_allocation_plan_from_capture,
+  KvAllocationPlanAdmitted, KvAllocationPlanRefused,
 }
 import gunbc.spark.vllm_allocation_plan_observe {
   kv_allocation_plan_log_marker,
@@ -35,24 +38,25 @@ import gunbc.spark.vllm_allocation_plan_observe {
 // emission's are: per-group blocks are the engine's own cdiv(max_usage, page), their sum (4,098)
 // against the allocator inventory (28,236 blocks) predicts 689 hundredths — the 6.89x the engine
 // printed for the 1,805,689-token pool on the bounded-experiment launch. The runtime self-report
-// carries the corpus's modeled revision as a FULL sha: the fleet build abbreviates (v0.1.dev1
-// +g8d09804c8 is nine hex characters), and expanding the prefix to the full sha is the wet route's
-// resolution act against the cited remote, stated in gunbc.spark.vllm_allocation_plan_observe —
-// this fixture stands for the resolved reading, the shape the capture has once resolution ran.
+// carries the patched source's FULL sha: the fleet build abbreviates (v0.1.dev1 +g8d09804c8 is
+// nine hex characters), and the capture leg now resolves the token against the corpus' cited
+// revisions (kv_plan_resolve_revision_token, against extdeps.vllm.runtime_defaults' roster) — a
+// full sha is the trivial prefix of itself, so this spelling and the real capture's abbreviation
+// land on the same revision. The REAL capture has its own witness section below.
 
 data w_sparse_layers: String = "[\"sparse.00\",\"sparse.01\",\"sparse.02\",\"sparse.03\",\"sparse.04\",\"sparse.05\",\"sparse.06\",\"sparse.07\",\"sparse.08\",\"sparse.09\",\"sparse.10\"]"
 
 data w_kda_layers: String = "[\"kda.00\",\"kda.01\",\"kda.02\",\"kda.03\",\"kda.04\",\"kda.05\",\"kda.06\",\"kda.07\",\"kda.08\",\"kda.09\",\"kda.10\",\"kda.11\",\"kda.12\",\"kda.13\",\"kda.14\",\"kda.15\",\"kda.16\",\"kda.17\",\"kda.18\",\"kda.19\",\"kda.20\",\"kda.21\",\"kda.22\",\"kda.23\",\"kda.24\",\"kda.25\",\"kda.26\",\"kda.27\",\"kda.28\",\"kda.29\",\"kda.30\",\"kda.31\",\"kda.32\",\"kda.33\"]"
 
-data w_emission: String = "{\"allocator_blocks\":28236,\"cache_format\":\"fp8_ds_mla\",\"engine_dp_rank\":0,\"grouping_padding\":\"3 cache groups, one block table per group; 46 layers rostered; page-size padding: 4096->8192B\",\"groups\":[{\"block_size\":64,\"blocks_at_requested_length\":4096,\"identity\":\"group-0:mla_attention\",\"kind\":\"mla_attention\",\"layer_identities\":SPARSE_LAYERS,\"max_memory_usage_bytes\":171966464,\"page_size_bytes\":41984,\"sliding_window\":null,\"tokens_per_state\":1},{\"block_size\":64,\"blocks_at_requested_length\":1,\"identity\":\"group-1:mamba\",\"kind\":\"mamba\",\"layer_identities\":KDA_LAYERS,\"max_memory_usage_bytes\":1048576,\"page_size_bytes\":1048576,\"sliding_window\":null,\"tokens_per_state\":1},{\"block_size\":64,\"blocks_at_requested_length\":1,\"identity\":\"group-2:sliding_window\",\"kind\":\"sliding_window\",\"layer_identities\":[\"kpool.tail\"],\"max_memory_usage_bytes\":8192,\"page_size_bytes\":8192,\"sliding_window\":64,\"tokens_per_state\":1}],\"image_digest\":\"sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333\",\"requested_length\":262144,\"runtime\":{\"package_version\":\"0.1.dev1+g1967a5627bc3710b680bbec24ecb99aaddedf22b\"},\"scheduler_block_size\":64,\"schema\":\"kv-allocation-plan/v1\"}"
+data w_emission: String = "{\"allocator_blocks\":28236,\"cache_format\":\"fp8_ds_mla\",\"engine_dp_rank\":0,\"grouping_padding\":\"3 cache groups, one block table per group; 46 layers rostered; page-size padding: 4096->8192B\",\"groups\":[{\"block_size\":64,\"blocks_at_requested_length\":4096,\"identity\":\"group-0:mla_attention\",\"kind\":\"mla_attention\",\"layer_identities\":SPARSE_LAYERS,\"max_memory_usage_bytes\":171966464,\"page_size_bytes\":41984,\"sliding_window\":null,\"tokens_per_state\":1},{\"block_size\":64,\"blocks_at_requested_length\":1,\"identity\":\"group-1:mamba\",\"kind\":\"mamba\",\"layer_identities\":KDA_LAYERS,\"max_memory_usage_bytes\":1048576,\"page_size_bytes\":1048576,\"sliding_window\":null,\"tokens_per_state\":1},{\"block_size\":64,\"blocks_at_requested_length\":1,\"identity\":\"group-2:sliding_window\",\"kind\":\"sliding_window\",\"layer_identities\":[\"kpool.tail\"],\"max_memory_usage_bytes\":8192,\"page_size_bytes\":8192,\"sliding_window\":64,\"tokens_per_state\":1}],\"image_digest\":\"sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333\",\"requested_length\":262144,\"runtime\":{\"package_version\":\"0.1.dev1+g8d09804c877c48165c6ba69bc9dc02d09bae0b83\"},\"scheduler_block_size\":64,\"schema\":\"kv-allocation-plan/v1\"}"
 
 fn w_emission_line() -> String {
   replace(s: replace(s: w_emission, pattern: "SPARSE_LAYERS", replacement: w_sparse_layers), pattern: "KDA_LAYERS", replacement: w_kda_layers)
 }
 
-data w_runtime_prefix: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g1967a5627bc3710b680bbec24ecb99aaddedf22b\"}"
+data w_runtime_prefix: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g8d09804c877c48165c6ba69bc9dc02d09bae0b83\"}"
 
-data w_runtime_unread: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g8d09804c877c48165c6ba69bc9dc02d09bae0b83\"}"
+data w_runtime_unread: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g1967a5627bc3710b680bbec24ecb99aaddedf22b\"}"
 
 data w_runtime_no_sha: String = "\"runtime\":{\"package_version\":\"0.1.dev1\"}"
 
@@ -205,12 +209,13 @@ test fn an_emission_missing_the_grouping_padding_refuses_naming_it() -> Bool {
   }
 }
 
-// UNREAD REVISION: the patched engine's REAL self-report names 8d09804c8 — a revision this
-// corpus has not modelled — and the mint's revision wall refuses rather than trusting a shape
-// nobody read. This arm is the honest statement of the plan rung's present standing: the
-// emission exists, the capture leg exists, and a real capture still refuses until the modeled
-// revision advances to the patched tree.
-test fn an_emission_from_the_patched_but_unread_revision_refuses_at_the_mint_wall() -> Bool {
+// UNREAD REVISION: a plan-shaped emission from the corpus' PREVIOUS modeled revision — the
+// pre-patch tree, still cited by runtime_defaults but no longer the plan mint's modeled revision
+// since the 2026-09-25 advance to the patched 8d09804 source — refuses at the revision wall
+// rather than being trusted. This arm is the flip the model lane's advance forces: the refusal
+// that used to name the patched revision now names the retired one, and it stands as the
+// regression control for the next foreign revision.
+test fn an_emission_from_the_pre_patch_revision_refuses_at_the_mint_wall() -> Bool {
   match kv_allocation_plan_capture_from_emission(emission_text: replace(s: w_emission_line(), pattern: w_runtime_prefix, replacement: w_runtime_unread)) {
     KvPlanCaptureUnreadable { cause: _ } => false
     KvPlanCaptureParsed { capture: c } =>
@@ -308,7 +313,8 @@ test fn the_log_channel_takes_the_last_marker_line_from_captured_stdout() -> Boo
 
 // THE MINT'S REFUSAL IS NOT THE CONTROL'S: an unread-revision capture never reaches the capacity
 // question (the revision wall refuses first), so a green control can never be cited over a
-// foreign subject — the split the kv_layout header draws between minting and controlling.
+// foreign subject — the split the kv_layout header draws between minting and controlling. The
+// cause names the retired revision literally.
 test fn a_refused_capture_never_reaches_the_capacity_question() -> Bool {
   match kv_allocation_plan_capture_from_emission(emission_text: replace(s: w_emission_line(), pattern: w_runtime_prefix, replacement: w_runtime_unread)) {
     KvPlanCaptureUnreadable { cause: _ } => false
@@ -317,9 +323,63 @@ test fn a_refused_capture_never_reaches_the_capacity_question() -> Bool {
         Absent => false
         Present { value: reported } =>
           match admit_kv_allocation_plan(launch: w_launch(), capture: c, reported: reported, source_capture_digest: w_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555")) {
-            KvAllocationPlanCaptureRefused { launch: _, cause: cause } => string_contains(s: cause as String, pattern: "8d09804c877c48165c6ba69bc9dc02d09bae0b83")
+            KvAllocationPlanCaptureRefused { launch: _, cause: cause } => string_contains(s: cause as String, pattern: "1967a5627bc3710b680bbec24ecb99aaddedf22b")
             _ => false
           }
       }
+  }
+}
+
+// ── RESOLUTION: THE ABBREVIATED SELF-REPORT READS BACK AS THE CITED FULL SHA ────────────────────────
+//
+// THE FLEET BUILD'S SPELLING IS NINE HEX CHARACTERS (setuptools-scm abbreviates v0.1.dev1
+// +g8d09804c8), and the capture's revision is what the rest of the corpus compares — mint walls,
+// launch joins — so the abbreviation must be RESOLVED, not propagated. These claims pin the two
+// acts: the real build's self-report resolves against the corpus' cited revisions to the patched
+// source's full sha (the same revision the full-sha fixture carries above, reached the way the
+// real line reaches it), and the failure arms stay discriminating — an uncited full sha is the
+// engine claiming a tree this corpus has no authority for, and a too-short or non-hex token is
+// not a revision at all. The resolution authority is extdeps.vllm.runtime_defaults' cited roster,
+// read in the same commit that advanced the modeled pin to the resolved revision.
+
+data w_runtime_abbreviated: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g8d09804c8\"}"
+
+data w_runtime_uncited: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g0000000000000000000000000000000000000000\"}"
+
+data w_runtime_short_token: String = "\"runtime\":{\"package_version\":\"0.1.dev1+g8d0980\"}"
+
+// THE ABBREVIATED SELF-REPORT RESOLVES: the fleet build's real spelling parses to a capture whose
+// observed revision IS the patched source's full sha — the resolution act deliverable, executed
+// against the cited roster rather than asserted in prose.
+test fn the_abbreviated_self_report_resolves_to_the_cited_full_sha() -> Bool {
+  match kv_allocation_plan_capture_from_emission(emission_text: replace(s: w_emission_line(), pattern: w_runtime_prefix, replacement: w_runtime_abbreviated)) {
+    KvPlanCaptureUnreadable { cause: _ } => false
+    KvPlanCaptureParsed { capture: c } =>
+      (c.observed_at_revision.full_revision as String) == "8d09804c877c48165c6ba69bc9dc02d09bae0b83"
+        && (c.observed_at_revision.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+  }
+}
+
+// AN UNCITED SELF-REPORT REFUSES NAMING THE CITED SET: a well-formed sha that prefixes nothing
+// the corpus cites is not widened to the modeled revision and not silently stamped — it is the
+// engine claiming a tree this corpus has no authority for, and the parse says exactly that.
+test fn an_uncited_self_report_refuses_naming_the_cited_roster() -> Bool {
+  match kv_allocation_plan_capture_from_emission(emission_text: replace(s: w_emission_line(), pattern: w_runtime_prefix, replacement: w_runtime_uncited)) {
+    KvPlanCaptureUnreadable { cause: c } =>
+      string_contains(s: c as String, pattern: "resolves against no revision cited by this corpus")
+        && string_contains(s: c as String, pattern: "0000000000000000000000000000000000000000")
+    KvPlanCaptureParsed { capture: _ } => false
+  }
+}
+
+// A SHORT OR NON-HEX TOKEN IS NOT AN ABBREVIATION, IT IS DAMAGE: below nine characters the token
+// cannot name the fleet's abbreviation let alone the git object store's forty-hex authority, and
+// the lexical wall refuses naming the token.
+test fn a_short_self_report_token_refuses_at_the_lexical_wall() -> Bool {
+  match kv_allocation_plan_capture_from_emission(emission_text: replace(s: w_emission_line(), pattern: w_runtime_prefix, replacement: w_runtime_short_token)) {
+    KvPlanCaptureUnreadable { cause: c } =>
+      string_contains(s: c as String, pattern: "not nine or more lowercase hex characters")
+        && string_contains(s: c as String, pattern: "8d0980")
+    KvPlanCaptureParsed { capture: _ } => false
   }
 }

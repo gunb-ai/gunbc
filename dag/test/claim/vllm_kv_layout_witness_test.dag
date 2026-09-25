@@ -533,7 +533,7 @@ test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
   ])
   let no_padding = KvAllocationPlanCapture {
     observed_at_revision: vllm_source_revision_read,
-    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
+    image_digest: "sha256:1111" as NonEmptyStr,
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
     requested_length: Present { value: token_count(count: 1048576) },
@@ -560,7 +560,7 @@ test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> 
   )
   match resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture {
     observed_at_revision: foreign,
-    image_digest: Present { value: "sha256:1111" as NonEmptyStr },
+    image_digest: "sha256:1111" as NonEmptyStr,
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
     requested_length: Present { value: token_count(count: 1048576) },
@@ -577,10 +577,13 @@ test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> 
 // contradicts with the PREDICTED figure carried (the plan says 1.00x; a garbled 11.22x print
 // contradicts, predicted 100 hundredths against reported 1122); and a plan from another revision
 // cannot control this revision's printed lines -- the control refuses at the revision wall, and
-// the mint refuses such a capture even earlier, so a revision split has no green path.
-// THE REVISION-SPLIT PLAN IS CONSTRUCTED DIRECTLY because the mint refuses foreign revisions by
-// design: the only way to hold such a plan is to build it, which is the supplied value this claim
-// discriminates against.
+// the mint refuses such a capture even earlier, so a revision split has no green path. THE
+// FOREIGN REVISION IS 1967a5627 — the corpus' previously-modeled revision, still cited by
+// runtime_defaults and now unread at the plan mint since the 2026-09-25 advance to the patched
+// 8d09804 source: a live-plan-shaped record claiming the pre-patch tree is precisely the split
+// this arm exists to refuse. THE REVISION-SPLIT PLAN IS CONSTRUCTED DIRECTLY because the mint
+// refuses foreign revisions by design: the only way to hold such a plan is to build it, which is
+// the supplied value this claim discriminates against.
 test fn the_control_contradicts_a_wrong_printed_line_and_refuses_a_revision_split() -> Bool {
   let capture = wp_capture(groups: [
     wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536),
@@ -601,20 +604,20 @@ test fn the_control_contradicts_a_wrong_printed_line_and_refuses_a_revision_spli
     && (match wp_reported(tokens: 1048576, hundredths: 100) {
       Absent => false
       Present { value: reported } =>
-        match allocation_plan_reproduces_reported_capacity(plan: wp_deployed_revision_plan(), reported: reported) {
+        match allocation_plan_reproduces_reported_capacity(plan: wp_pre_patch_revision_plan(), reported: reported) {
           AllocationPlanControlUnavailable { cause: c } => string_contains(s: c as String, pattern: "not valid across revisions")
           _ => false
         }
     })
 }
 
-fn wp_deployed_revision_plan() -> ResolvedKvAllocationPlan {
-  let deployed = vllm_source_revision(
+fn wp_pre_patch_revision_plan() -> ResolvedKvAllocationPlan {
+  let pre_patch = vllm_source_revision(
     repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-    full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
+    full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr,
   )
   ResolvedKvAllocationPlan {
-    runtime: deployed,
+    runtime: pre_patch,
     image_digest: "sha256:1111" as NonEmptyStr,
     cache_format: "fp8_ds_mla" as NonEmptyStr,
     allocator_blocks: allocator_block_count(count: 65536),

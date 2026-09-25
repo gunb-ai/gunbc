@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 import extdeps.nvidia.management_library {
   DeviceMemoryObservation,
   NvmlDeviceMemoryObserved,
@@ -153,7 +153,7 @@ data spark_gb10_batch_default_resolution: UpstreamBatchDefaultResolution = Upstr
     probe: "nvmlDeviceGetMemoryInfo via current_platform.get_device_total_memory()" as NonEmptyStr,
     absorbed_to: "device_memory = 0 by a bare `except Exception`, which fails the >= 70 GiB test and takes the small-device branch" as NonEmptyStr,
   },
-  established_against: vllm_source_revision_read,
+  established_against: vllm_source_revision_1967a5627,
   note: "re-derived by EXECUTING EngineArgs.get_batch_defaults(world_size=4) inside the serving container on the group A head 2026-09-07, which returned 8192 for the LLM_CLASS context and 2048 for OPENAI_API_SERVER; independently read back from the running engine, whose banner logs compile_ranges_endpoints [2048] and whose _set_compile_ranges sets that endpoint FROM scheduler_config.max_num_batched_tokens" as NonEmptyStr,
 }
 

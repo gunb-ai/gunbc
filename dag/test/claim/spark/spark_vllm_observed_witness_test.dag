@@ -79,6 +79,7 @@ import extdeps.vllm.server {
   VllmCapacitySourceAssessment,
   VllmSourceRevision,
   vllm_source_revision_read,
+  vllm_source_revision_1967a5627,
   CapacitySourceAuthoritative,
   CapacitySourceInsufficient,
   decide_vllm_capacity_source_kind,
@@ -237,12 +238,20 @@ test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
 // ruling did not, so a consumer could hold "cache-config fields are insufficient" with nothing
 // saying which source that was read from -- and the revision row could drift while these witnesses
 // stayed green. This consumes the exact full revision from the returned assessment, so a drift is a
-// red here rather than a silent re-scoping.
+// red here rather than a silent re-scoping. THE LITERAL IS THE DELIBERATE-SEPARATION CANARY: the
+// corpus pin advanced to the patched source 8d09804c877c48165c6ba69bc9dc02d09bae0b83 on
+// 2026-09-25 (the allocation-plan emission read at that revision), and the capacity ruling —
+// read at 1967a5627, NOT re-read at the patched tree — moved off the pin onto
+// vllm_source_revision_1967a5627 in the same commit. Both halves matter: the first catches an
+// advance that forgets this row still rides the pin; the second catches a re-read of the patched
+// source that forgets to move this row forward.
 test fn w_the_capacity_assessment_carries_the_exact_source_revision() -> Bool {
   decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).established_against.full_revision as String
     == "1967a5627bc3710b680bbec24ecb99aaddedf22b"
     && vllm_capacity_from_cache_config_fields().established_against.full_revision as String
-         == vllm_source_revision_read.full_revision as String
+         != vllm_source_revision_read.full_revision as String
+    && vllm_capacity_from_cache_config_fields().established_against.full_revision as String
+         == vllm_source_revision_1967a5627.full_revision as String
 }
 
 // ── THE UPSTREAM FACTS THAT HAD NO WITNESS AT ALL ───────────────────────────────────────────────

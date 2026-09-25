@@ -11,7 +11,7 @@ import v2.std.optional { Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 import extdeps.vllm.kv_layout { KvGroupLayout, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState }
 
 // ── THE ENGINE'S PER-GROUP METADATA EMISSION, READ AT ONE REVISION ───────────────────────────────
@@ -54,8 +54,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   },
 }
 
-// THE REVISION THE EMISSION SHAPE BELOW WAS READ AT (pinned: vllm_source_revision_read).
-data kv_group_metadata_modeled_revision: VllmSourceRevision = vllm_source_revision_read
+// THE REVISION THE EMISSION SHAPE BELOW WAS READ AT. This is deliberately NOT
+// extdeps.vllm.server vllm_source_revision_read: the corpus pin advanced to the patched source
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 on 2026-09-25, but what was read THERE is the
+// patched engine's allocation-plan startup record — this module's subject, the lazy
+// get_kv_cache_group_metadata query, was read at 1967a5627bc3710b680bbec24ecb99aaddedf22b and
+// has not been re-read at the patched tree (the emission patch touches
+// EngineCore._initialize_kv_caches only). The wall law this module states — a capture refuses
+// at a revision whose shape nobody read — cuts both ways: it refuses foreign captures, and it
+// forbids riding the global pin onto a tree where this surface is unread. The day
+// get_kv_cache_group_metadata is read at another revision, THIS row moves with that reading
+// act, and the anchor above moves with it.
+data kv_group_metadata_modeled_revision: VllmSourceRevision = vllm_source_revision_1967a5627
 
 // ── THE KIND VOCABULARY, MIRRORING KVCacheSpecKind AT THE MODELLED REVISION ─────────────────────
 //

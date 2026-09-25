@@ -184,10 +184,15 @@ fn arm_experiment_gib_hundredths_upper(hundredths: Nat) -> ByteSize {
 // ── THE HEAD'S PRINTED CAPACITY, AS OBSERVED ─────────────────────────────────────────────────────
 //
 // The two startup lines exactly as the head EngineCore printed them, bound to the deployed
-// engine's self-reported revision (vllm@8d09804c8) -- NOT the capacity-arithmetic revision
-// kv_layout models (1967a5627): this is a reading of what THAT engine printed, and nothing here
-// upgrades it to evidence about another revision. The pool figure is a full-context-equivalent
-// projection; dividing it by a context length yields only the candidate below.
+// engine's self-reported revision (vllm@8d09804c8, resolved through the cited roster to
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83). Since the 2026-09-25 model-lane advance that full
+// sha IS ALSO the capacity-arithmetic revision kv_layout models (extdeps.vllm.server
+// vllm_source_revision_read); these readings were stamped with the engine's own self-report rather
+// than the then-current corpus pin, and the two spellings now agree — the agreement is quoted
+// here, not assumed, and a future pin move away from the engine that printed these lines moves
+// them apart again, which is exactly what the stamp is for. The pool figure is a
+// full-context-equivalent projection; dividing it by a context length yields only the candidate
+// below.
 fn arm_experiment_2026_09_25_pool_reading() -> VllmStartupReading {
   vllm_startup_reading(
     line: GpuKvCacheSize,

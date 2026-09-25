@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -56,7 +56,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // REVISION-BOUND, like every other reading of this upstream. The roster is what upstream documents
 // at the cited revision; a later revision that adds a field is a different fact, and the binding to
-// vllm_source_revision_read is what makes that decidable instead of a surprise.
+// vllm_source_revision_1967a5627 — the pre-patch reading this roster was documented at, not the
+// live pin the corpus advanced to the patched source on 2026-09-25 — is what makes that decidable
+// instead of a surprise.
 
 // THE TWO CLASSES ARE SEPARATE BECAUSE THEY AUTHORIZE DIFFERENT THINGS. A metadata-only egress can
 // support an admission for a route whose material stays home; an egress carrying any request
@@ -145,7 +147,7 @@ data vllm_usage_stats_reporting: VllmUsageStatsReporting = VllmUsageStatsReporti
     VllmUsageStatsDisableTerm { variable: "DO_NOT_TRACK", disabling_value: "1" },
   ],
   disable_marker_path: "~/.config/vllm/do_not_track",
-  established_against: vllm_source_revision_read,
+  established_against: vllm_source_revision_1967a5627,
 }
 
 // THE THIRD TERM OF UPSTREAM'S DISJUNCTION IS THE MARKER FILE, carried above as

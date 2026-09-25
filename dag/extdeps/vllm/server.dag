@@ -63,8 +63,37 @@ fn vllm_source_revision(repository: NonEmptyStr, full_revision: NonEmptyStr) -> 
   VllmSourceRevision { repository: repository, full_revision: full_revision }
 }
 
-// The revision whose source was read to establish every law below.
-data vllm_source_revision_read: VllmSourceRevision = vllm_source_revision(repository: "github.com/vllm-project/vllm" as NonEmptyStr, full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr)
+// The revision whose source was read to establish the laws below.
+//
+// THE ADVANCE TO 8d09804, 2026-09-25: the emission the corpus reads at the pinned revision is the
+// patched engine's kv-allocation-plan/v1 startup record (the reviewable patch at
+// dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch, whose pinned base this
+// is), and THAT emission was read today: the bounded 262144x6 experiment's captured startup line
+// (gunbc.spark.vllm_allocation_plan_observe, fixture
+// dag/test/fixture/kv_allocation_plan_emission/glm_5_3_flash_262144x6_2026-09-25_kv_plan_line.log)
+// carries runtime self-report 0.1.dev1+g8d09804c8. The abbreviation resolves to this full sha
+// against the cited authorities already in the corpus — extdeps.vllm.runtime_defaults'
+// Vllm8d09804 row (read inside the image on srv9 2026-09-13) and the patch file's pinned base,
+// which agree — per the wall law this module's consumers state: an emission is admitted only at
+// the revision it was read at, and this revision's emission has been read. WHAT THE ADVANCE DOES
+// NOT RE-SCOPE: every law below is still the 1967a5627 read unless its own module says it was
+// re-read — the route population, the health-coverage fact, and the capacity-source ruling below
+// stamp against vllm_source_revision_1967a5627 explicitly, and extdeps.vllm.kv_group_metadata
+// keeps the lazy-query emission shape at 1967a5627, because the patch touches
+// EngineCore._initialize_kv_caches only and nobody re-read get_kv_cache_group_metadata at this
+// tree. A law moves to this revision only with its own re-reading act, never by riding the pin.
+data vllm_source_revision_read: VllmSourceRevision = vllm_source_revision(repository: "github.com/vllm-project/vllm" as NonEmptyStr, full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr)
+
+// THE PRE-PATCH READING REVISION, named once. Every vllm module whose facts were read at
+// 1967a5627bc3710b680bbec24ecb99aaddedf22b — the pin this row replaced — and have not been
+// re-read at the patched source stamps against THIS constant, not the live pin: the stamp is a
+// reading claim ("the source was read here"), and a claim does not move because the corpus' live
+// reading moved. Modules re-read at the patched source follow the live pin instead (the
+// allocation-plan rung does: the emission was read at 8d09804 on 2026-09-25), and each rider's
+// own comment says which it is. THE AUDIT SURFACE this creates is deliberate: a fact that wants
+// the live pin must come with its own re-reading act, and a row stamped here is pinned RED the
+// day someone re-reads the patched tree and forgets to move it.
+data vllm_source_revision_1967a5627: VllmSourceRevision = vllm_source_revision(repository: "github.com/vllm-project/vllm" as NonEmptyStr, full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr)
 
 // THE ROUTE SPLIT IS THE LOAD-BEARING FACT IN THIS MODULE, not the route list.
 //
@@ -88,7 +117,7 @@ type VllmRoute sole_constructor {
 }
 
 fn vllm_route(path: NonEmptyStr, population: VllmRoutePopulation) -> VllmRoute {
-  VllmRoute { path: path, population: population, established_against: vllm_source_revision_read }
+  VllmRoute { path: path, population: population, established_against: vllm_source_revision_1967a5627 }
 }
 
 data vllm_route_models: VllmRoute = vllm_route(path: "/v1/models" as NonEmptyStr, population: OrdinarilyRegistered)
@@ -220,7 +249,7 @@ type VllmHealthCoverageFact sole_constructor {
 data vllm_ray_health_coverage: VllmHealthCoverageFact = VllmHealthCoverageFact {
   backend: RayDistributedExecutor,
   coverage: HealthDoesNotProbeDistributedWorkers,
-  established_against: vllm_source_revision_read,
+  established_against: vllm_source_revision_1967a5627,
 }
 
 // AND THE BACKEND IS ASKED, NOT MERELY RECORDED.
@@ -284,7 +313,7 @@ type VllmCapacitySourceAssessment sole_constructor {
 
 fn decide_vllm_capacity_source_kind(kind: VllmCapacitySourceKind) -> VllmCapacitySourceAssessment {
   VllmCapacitySourceAssessment {
-    established_against: vllm_source_revision_read,
+    established_against: vllm_source_revision_1967a5627,
     decision: vllm_capacity_source_decision(kind: kind),
   }
 }

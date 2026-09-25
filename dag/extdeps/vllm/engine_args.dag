@@ -6,7 +6,7 @@ import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, ByteSiz
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 
 // VLLM'S ENGINE ARGUMENTS AS THE UPSTREAM SHAPE, held apart from extdeps.vllm.server because that
 // module owns the SERVED ROUTES and this one owns what the engine is LAUNCHED with. Both cite the
@@ -257,7 +257,7 @@ type VllmVerifiedNegative {
 data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative {
   subject: "--kv-cache-dtype nvfp4 on an MLA model" as NonEmptyStr,
   error_text: "nvfp4 is not among the accepted kv-cache-dtype values for MLA attention" as NonEmptyStr,
-  observed_at_revision: vllm_source_revision_read
+  observed_at_revision: vllm_source_revision_1967a5627
 }
 
 // Decode context parallelism is refused for a sliding-window backend, which is what this checkpoint
@@ -265,7 +265,7 @@ data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative
 data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedNegative {
   subject: "--decode-context-parallel-size with a sliding-window attention backend" as NonEmptyStr,
   error_text: "DCP not support sliding window" as NonEmptyStr,
-  observed_at_revision: vllm_source_revision_read
+  observed_at_revision: vllm_source_revision_1967a5627
 }
 
 // ── THE DO-NOT-SET ROW FOR --max-num-batched-tokens IS WITHDRAWN, AND FOR A LAYER REASON ──────
