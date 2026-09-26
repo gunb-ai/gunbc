@@ -423,8 +423,12 @@ fn emitted_symbol_bindings_for_item(item: Node, source_indices: Map<String, Newl
   }
 }
 
-// sanitize_service_name is MANY-TO-ONE across kinds: `type GitWorktree` and `service git.Worktree`
-// both render the emitted type `GitWorktree`. DuplicateDeclaration does not fire — the authored
+// sanitize_service_name is MANY-TO-ONE across kinds: a `type GitWorktree` beside a
+// `service git.Worktree` would both render the emitted type `GitWorktree`. That pair was the live
+// specimen in `extdeps.git` and is resolved -- the type had no consumer and was deleted, the cited
+// service stays -- so the example here is now the SHAPE rather than a standing instance; the
+// executing evidence is the isolated fixture in test.claim.emitted_symbol_collision_witness_test.
+// DuplicateDeclaration does not fire — the authored
 // names differ — so rustc reports E0428 after a silent emit. The mapping cannot be made injective
 // without renaming every emitted service, so the residue is refused (DESIGN.md section 5). Every
 // target emitter calls this over the module population before it emits.

@@ -77,17 +77,6 @@ type GitRemote {
   fetch_refspec: String
 }
 
-type GitWorktreeHead
-  = WorktreeOnBranch { branch: GitBranch }
-  | WorktreeDetached { sha: CommitSha }
-
-type GitWorktree {
-  path: FilePath
-  head: GitWorktreeHead
-  is_main: Bool
-  locked: Bool
-}
-
 type DiffStat {
   files_changed: Int
   insertions: Int

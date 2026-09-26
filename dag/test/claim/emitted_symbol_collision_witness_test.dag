@@ -24,9 +24,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reported E0428. The mapping cannot be made injective without renaming every emitted service, so
 // the residue is REFUSED. This file is the executing evidence.
 //
-// THE LIVE SPECIMEN is `extdeps.git`: type GitWorktree and service git.Worktree. The repair is
-// the emitter wall, not a rename of that module. The fixture is isolated so the RED is
-// attributable and does not depend on emitting the live git closure.
+// THE LIVE SPECIMEN WAS `extdeps.git` -- type GitWorktree beside service git.Worktree -- AND IT IS
+// RESOLVED, by deletion rather than by the rename this note previously declined. Reading it found
+// the type had NO CONSUMER anywhere in the corpus: it was declared once, its helper
+// GitWorktreeHead was read only by its own `head` field, and that helper's arms were read nowhere.
+// So the collision was between a faithfully cited upstream service (`git worktree` is a real git
+// subcommand, so `service git.Worktree` is the §3 citation and stays) and ten lines of modeling
+// nothing consumed. Deleting the unconsumed side removes the collision at its root, keeps the
+// citation, and takes a §3c dangling declaration with it -- which is why this is not the rename the
+// note declined: a rename would have preserved dead modeling under a new name.
+// THE WALL IS STILL THE CLASS'S REPAIR AND THIS FILE IS STILL ITS EVIDENCE. The RED below lives in
+// an ISOLATED FIXTURE and never depended on emitting the live git closure, so resolving that
+// specimen removes nothing from this witness. That independence is what made the specimen safe to
+// delete: had the red been sourced from `extdeps.git`, deleting it would have retired the control.
 
 // NO `std.types` IMPORT IN EITHER FIXTURE SOURCE, AND THAT IS LOAD-BEARING RATHER THAN TERSENESS.
 // `compile_fixture` compiles the supplied manifest with NO corpus roots, so `import std.types`
