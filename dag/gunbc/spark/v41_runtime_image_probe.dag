@@ -8,7 +8,7 @@ import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
-  docker_run_ephemeral_command, DockerLabel, docker_image_pull_command, docker_image_inspect_command, DockerPsByAncestor,
+  docker_run_ephemeral_command, DockerLabel, DockerPsByLabel, docker_image_pull_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
 }
@@ -50,7 +50,7 @@ import gunbc.fleet_multi_principal_probe {
 import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class, deepseek_v4_1_flash_index_topk }
-import std.measure { token_count_value }
+import std.measure { token_count_value, ByteSize, byte_size }
 import extdeps.vllm.sparse_indexer_topk {
   vllm_d2d649e6_sm12_indexer_topk_route, vllm_d2d649e6_indexer_topk_class, vllm_d2d649e6_radix_topk_workspace,
 }
@@ -712,13 +712,20 @@ fn v41_unread_capabilities_of(readings: List<V41CapabilityReading>) -> List<NonE
 // probe program crosses as ONE argument to `python3 -c` -- which deletes the staged file, the bind
 // mount, the chmod and the three-step write-readback-rename that carrying it as a file required. The
 // program is the same generated text; what is gone is everything that existed only to get it there.
+// THE LANE'S MARK AND BOUND ON ITS CONTAINER. Residue and quiescence select by this label, not by image
+// ancestry: an image filter also matches a serving or measurement container started from the same
+// image on the same host, which this lane must neither wait on nor read as its own. The cap bounds the
+// container's memory cgroup with no swap, so a runaway is OOM-killed inside it.
+data v41_probe_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "v41-runtime-image-probe" as NonEmptyStr }
+data v41_probe_memory_cap: ByteSize = byte_size(count: 8589934592)
+
 fn v41_probe_privileged_argv(image_reference: NonEmptyStr) -> List<String> {
   argv_words(command: docker_run_ephemeral_command(
     image: image_reference,
     gpus_all: true,
     mounts: [],
-    labels: [] as List<DockerLabel>,
-    memory_limit: Absent,
+    labels: [v41_probe_lane_label],
+    memory_limit: Present { value: v41_probe_memory_cap },
     entrypoint: v41_probe_interpreter,
     argv: ["-c", v41_probe_script()],
   ))
@@ -854,8 +861,10 @@ data v41_probe_host_effect_term: Second = second(count: 3600)
 // WHAT THE PROBE LEAVES IF IT DID NOT FINISH: the pull, the inspect and the run all carry the image
 // reference on their command line, and the run starts an unnamed container FROM that reference,
 // which `docker ps --filter ancestor=` finds while it runs.
-fn v41_probe_host_residue(reference: NonEmptyStr) -> HostEffectResidueSpec {
-  HostEffectResidueSpec { process_pattern: reference, container: Present { value: DockerPsByAncestor { image: reference } } }
+// The process pattern is the label as it appears on the docker client's command line, which only this
+// lane's run carries; the image reference would also match a serving container's long-running client.
+fn v41_probe_host_residue() -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: "gunbc.lane=v41-runtime-image-probe" as NonEmptyStr, container: Present { value: DockerPsByLabel { label: v41_probe_lane_label } } }
 }
 
 // THE ADMINISTRATOR CONTEXT EXISTS BEFORE THE CLAIM, so the claim is released over the same privileged
@@ -910,7 +919,7 @@ fn v41_published_image_probe_ci_wet() -> ProcessExit
                             admin_credential_file: file,
                             executor: HostCli,
                           }
-                          match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose, residue: v41_probe_host_residue(reference: v41_published_arm64_reference())) {
+                          match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose, residue: v41_probe_host_residue()) {
                             SparkHostRefused { cause: why } => exit_failure(reason: why as String)
                             SparkHostAdmitted { host: _, claim: claim } =>
                               release_host_effect_live_over(
