@@ -17,7 +17,7 @@ import v2.compiler.eval {
   inputs_root_only
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_witness_for_node }
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_witness_for_node, infer }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
@@ -641,7 +641,7 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
 test fn ingested_classical_not_real_infer_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
-      match infer_and_discharge(tree: arrow) {
+      match infer(tree: arrow) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -676,7 +676,7 @@ fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
 }
 
 fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: Node) -> Bool {
-  match infer_and_discharge(tree: tree) {
+  match infer(tree: tree) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
