@@ -1648,30 +1648,33 @@ fn infer_application_formals(node: Node) -> InferApplicationFormals {
 // Each declared label selects its one formal by identity. The order edge is a permutation of the
 // domain's binders (v2.std.node arrow_signature_order_conforms), so a label with no formal is
 // malformed and refuses rather than shortening the list.
+type InferDeclaredFormalsWalk {
+  ordered: List<InhabitanceFormal>
+  complete: Bool
+}
+
 fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: List<Symbol>) -> InferApplicationFormals {
-  match fold(labels, init: Present { value: Empty }, f: fn(acc, label) {
-    match acc {
-      Absent => Absent
-      Present { value: ordered } =>
-        match fold(formals, init: Absent, f: fn(found, formal) {
-          match found {
-            Present { value: _ } => found
-            Absent => if formal.parameter_identity == label { optional_present(value: formal) } else { optional_absent() }
-          }
-        }) {
-          Absent => Absent
-          Present { value: formal } => Present { value: list_snoc_item(xs: ordered, item: formal) }
-        }
+  let walk = fold(labels, init: InferDeclaredFormalsWalk { ordered: Empty, complete: true }, f: fn(acc, label) {
+    match infer_formal_named(formals: formals, label: label) {
+      Present { value: formal } =>
+        InferDeclaredFormalsWalk { ordered: list_snoc_item(xs: acc.ordered, item: formal), complete: acc.complete }
+      Absent => InferDeclaredFormalsWalk { ordered: acc.ordered, complete: false }
     }
-  }) {
-    Present { value: ordered } =>
-      if length(xs: ordered) == length(xs: formals) {
-        FormalsInDeclaredOrder { formals: ordered }
-      } else {
-        FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
-      }
-    Absent => FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+  })
+  if walk.complete && (length(xs: walk.ordered) == length(xs: formals)) {
+    FormalsInDeclaredOrder { formals: walk.ordered }
+  } else {
+    FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
   }
+}
+
+fn infer_formal_named(formals: List<InhabitanceFormal>, label: Symbol) -> Optional<InhabitanceFormal> {
+  fold(formals, init: optional_absent(), f: fn(acc, f) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if f.parameter_identity == label { optional_present(value: f) } else { acc }
+    }
+  })
 }
 
 // The callee's declared type parameters; empty when the operator is not an Arrow or declares none.
