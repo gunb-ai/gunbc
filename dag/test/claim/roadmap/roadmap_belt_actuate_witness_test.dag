@@ -32,6 +32,14 @@ import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
+import std.decl_ref { decl_ref }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution, AlignmentReady, AlignmentUnresolved,
+  AlignmentChained, AlignmentChainLink, AlignmentChainForked,
+  alignment_resolve_chain, alignment_base_cadence_state, alignment_chain_fingerprint,
+  AlignmentBinding, alignment_binding_text,
+}
+import gunbc.roadmap.roadmap_attempt_continuation { FreshFromBase, ContinueFromAttempt }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
@@ -60,11 +68,17 @@ import gunbc.roadmap_dispatch_actuator {
   CodexDispatchProvider,
   dispatch_provider_instance_for_kind,
   filter_dispatch_tmux_sessions,
+  dispatch_worker_attempt_identity,
 }
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir }
+import gunbc.roadmap_belt_actuate {
+  BeltAlignmentBinding, BeltAlignmentBindingOk, BeltAlignmentBindingRefused,
+  BeltAlignmentBindingText, BeltAlignmentBindingAbsent, BeltAlignmentBindingRead, BeltAlignmentBindingUnreadable,
+  belt_alignment_binding_check, belt_alignment_binding_gate,
+}
 import gunbc.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
   CommitSubjectUnaddressable, CandidateCaptured, CommitCapturePoisoned,
@@ -2597,6 +2611,165 @@ test fn the_checkpoint_lines_project_the_capture_record_verbatim() -> Bool {
     )
 }
 
+// ------------------------------------------------------------------------------------------------
+// The attempt binding: the chain is bound to the attempt identity at spawn, and a continuation
+// reads the parent attempt's binding back BEFORE any spawn command exists — a changed chain
+// refuses with both fingerprints named, never silently re-briefs (review finding 2026-09-26,
+// attempt binding).
+// ------------------------------------------------------------------------------------------------
+
+fn belt_test_ready_resolution(node_id: String, project_id: String) -> AlignmentResolution {
+  alignment_resolve_chain(
+    chain: AlignmentChained {
+      task: AlignmentChainLink { node_id: node_id, purpose: "Binding purpose", boundary: "Binding boundary" },
+      projects: [AlignmentChainLink {
+        node_id: project_id,
+        purpose: join(["Purpose of ", project_id], ""),
+        boundary: join(["Boundary of ", project_id], ""),
+      }],
+      root: decl_ref(module_path: "gunbc.design_document", decl_name: "design_document"),
+    },
+    turns_elapsed: 2,
+    state: alignment_base_cadence_state(),
+  )
+}
+
+fn belt_test_ready_fingerprint(node_id: String, project_id: String) -> String {
+  match belt_test_ready_resolution(node_id: node_id, project_id: project_id) {
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } => alignment_chain_fingerprint(chain: chain)
+    AlignmentUnresolved { cause: _ } => ""
+  }
+}
+
+fn belt_test_binding_read(identity: String, fingerprint: String) -> BeltAlignmentBindingText {
+  BeltAlignmentBindingRead {
+    content: alignment_binding_text(binding: AlignmentBinding { attempt_identity: identity, fingerprint: fingerprint }),
+  }
+}
+
+// THE BINDING IS MINTED UNDER THE WORKER ATTEMPT IDENTITY the spawn argv carries — one mint for
+// the unit's --arg and the state's binding file, so the two cannot drift apart.
+test fn the_binding_identity_is_the_worker_attempt_identity() -> Bool {
+  dispatch_worker_attempt_identity(node_id: "n1", attempt_key: "deadbeef") == "worker:n1-deadbeef"
+}
+
+// AN UNCHANGED CHAIN BINDS: the parent attempt's fingerprint equals the chain the authority derives
+// now, so the continuation dispatches.
+test fn a_continuation_with_an_unchanged_chain_binds() -> Bool {
+  let fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1")
+  match belt_alignment_binding_check(
+    expected_identity: "worker:n1-deadbeef",
+    bound: belt_test_binding_read(identity: "worker:n1-deadbeef", fingerprint: fingerprint),
+    resolution: belt_test_ready_resolution(node_id: "n1", project_id: "a1"),
+  ) {
+    BeltAlignmentBindingOk => true
+    BeltAlignmentBindingRefused { reason: _ } => false
+  }
+}
+
+// A CHANGED CHAIN REFUSES, NAMING BOTH FINGERPRINTS: any moved link — here a retitled project row —
+// moves the fingerprint, and the refusal names what was bound and what the authority now derives.
+test fn a_continuation_with_a_changed_chain_refuses_naming_both_fingerprints() -> Bool {
+  let bound_fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1")
+  let now_fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1-retitled")
+  match belt_alignment_binding_check(
+    expected_identity: "worker:n1-deadbeef",
+    bound: belt_test_binding_read(identity: "worker:n1-deadbeef", fingerprint: bound_fingerprint),
+    resolution: belt_test_ready_resolution(node_id: "n1", project_id: "a1-retitled"),
+  ) {
+    BeltAlignmentBindingOk => false
+    BeltAlignmentBindingRefused { reason } =>
+      string_contains(s: reason, pattern: "changed")
+        && string_contains(s: reason, pattern: bound_fingerprint)
+        && string_contains(s: reason, pattern: now_fingerprint)
+  }
+}
+
+// AN UNBOUND PARENT REFUSES: an attempt that predates the binding lane carries no chain to compare
+// against, and weaker evidence cannot improve admission — the continuation does not dispatch on an
+// unbound chain.
+test fn a_continuation_over_an_unbound_parent_refuses() -> Bool {
+  match belt_alignment_binding_check(
+    expected_identity: "worker:n1-deadbeef",
+    bound: BeltAlignmentBindingAbsent,
+    resolution: belt_test_ready_resolution(node_id: "n1", project_id: "a1"),
+  ) {
+    BeltAlignmentBindingOk => false
+    BeltAlignmentBindingRefused { reason } => string_contains(s: reason, pattern: "no alignment binding")
+  }
+}
+
+// A BINDING MINTED FOR ANOTHER ATTEMPT REFUSES: the identity beside the payload is checked against
+// the parent the lineage actually continues — a receipt from a different attempt authorizes nothing
+// (conservation law 4: adjacency is not a join).
+test fn a_binding_minted_for_another_attempt_refuses() -> Bool {
+  let fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1")
+  match belt_alignment_binding_check(
+    expected_identity: "worker:n1-deadbeef",
+    bound: belt_test_binding_read(identity: "worker:n1-cafebabe", fingerprint: fingerprint),
+    resolution: belt_test_ready_resolution(node_id: "n1", project_id: "a1"),
+  ) {
+    BeltAlignmentBindingOk => false
+    BeltAlignmentBindingRefused { reason } =>
+      string_contains(s: reason, pattern: "worker:n1-cafebabe")
+        && string_contains(s: reason, pattern: "worker:n1-deadbeef")
+  }
+}
+
+// AN UNREADABLE OR UNDECODABLE BINDING REFUSES rather than guessing the chain.
+test fn an_unreadable_or_undecodable_binding_refuses() -> Bool {
+  (match belt_alignment_binding_check(
+    expected_identity: "worker:n1-deadbeef",
+    bound: BeltAlignmentBindingUnreadable { reason: "the directory listing refused" },
+    resolution: belt_test_ready_resolution(node_id: "n1", project_id: "a1"),
+  ) {
+    BeltAlignmentBindingOk => false
+    BeltAlignmentBindingRefused { reason } => string_contains(s: reason, pattern: "directory listing refused")
+  })
+    && (match belt_alignment_binding_check(
+      expected_identity: "worker:n1-deadbeef",
+      bound: BeltAlignmentBindingRead {
+        content: "{\"schema\": \"roadmap-alignment-binding/v2\", \"attempt_identity\": \"worker:n1-deadbeef\", \"fingerprint\": \"fp\"}",
+      },
+      resolution: belt_test_ready_resolution(node_id: "n1", project_id: "a1"),
+    ) {
+      BeltAlignmentBindingOk => false
+      BeltAlignmentBindingRefused { reason } => string_contains(s: reason, pattern: "does not decode")
+    })
+}
+
+// AN UNRESOLVED CHAIN DEFERS TO THE SPAWN GATE: the binding check passes (its subject is "the
+// chain is unchanged", which presupposes a chain) and the spawn fold's alignment gate refuses with
+// the typed cause and zero commands — one refusal per question, each at its own seam.
+test fn an_unresolved_chain_passes_the_binding_gate_and_the_spawn_gate_names_it() -> Bool {
+  let unresolved = AlignmentUnresolved {
+    cause: AlignmentChainForked { at: "a1", dependents: ["x", "y"], walked: [] },
+  }
+  match belt_alignment_binding_check(
+    expected_identity: "worker:n1-deadbeef",
+    bound: belt_test_binding_read(identity: "worker:n1-deadbeef", fingerprint: "fp"),
+    resolution: unresolved,
+  ) {
+    BeltAlignmentBindingOk => true
+    BeltAlignmentBindingRefused { reason: _ } => false
+  }
+}
+
+// THE FRESH START HAS NOTHING TO CHECK: the gate reads no filesystem on the fresh arm — there is
+// no parent attempt — and answers Ok; this attempt's own chain is bound at its state
+// initialization for the continuation that may one day read it back.
+test fn a_fresh_start_passes_the_binding_gate() -> Bool {
+  match belt_alignment_binding_gate(
+    instance: srv1_live_dashboard_instance(),
+    node_id: roadmap_belt_actuate_nid(s: "n2"),
+    origin: FreshFromBase,
+    resolution: belt_test_ready_resolution(node_id: "n2", project_id: "a2"),
+  ) {
+    BeltAlignmentBindingOk => true
+    BeltAlignmentBindingRefused { reason: _ } => false
+  }
+}
+
 // THE TWO PRODUCTION LINEAGES. A capped lineage of either node evaluates to ContinuationEscalate
 // (never a refusal), the target derives to their declared project from the authority's own edges,
 // and the convene brief names that supervisor with the attempt's identity carried.
@@ -2655,6 +2828,9 @@ test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_su
                     && b2.contains("the supervisor of node shell-typed-invocation")
                     && b1.contains("cd172fe81b806160")
                     && b1.contains(supervisor_verdict_schema as String)
+                    && b1.contains("UNRESOLVED")
+                    && b1.contains("shell-gate-migration")
+                    && !b1.contains("this task serves project shell-residue-zero")
                 }
               }
           }

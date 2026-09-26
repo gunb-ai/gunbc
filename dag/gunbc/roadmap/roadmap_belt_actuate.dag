@@ -25,7 +25,6 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_audit_unit_name, dispatch_audit_unit_argv,
   dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_argv,
   dispatch_supervisor_attempt_identity,
-  dispatch_alignment_project_intent, dispatch_alignment_task_contract,
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
@@ -89,6 +88,13 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution, AlignmentReady, AlignmentUnresolved, AlignmentChainLink,
+  alignment_resolve, alignment_base_cadence_state, alignment_refusal_reason,
+  AlignmentBinding, alignment_binding_text, alignment_binding_decode,
+  AlignmentBindingDecoded, AlignmentBindingNotDecodable,
+  alignment_chain_fingerprint,
+}
 import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
@@ -462,7 +468,12 @@ import gunbc.roadmap.roadmap_submission {
   submission_readiness_key,
 }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename }
+import gunbc.roadmap_dispatch_actuator {
+  host_exec_argv,
+  dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename,
+  dispatch_attempt_alignment_binding_path_for_instance, dispatch_attempt_alignment_binding_basename,
+  dispatch_worker_attempt_identity,
+}
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
@@ -682,7 +693,9 @@ type AttemptStateInitialization
   | AttemptStateInitializationFailed { step: String, detail: String }
 
 // A modeled attempt publishes an immutable evidence prefix before provider launch: after worktree
-// and state-directory creation the serve process writes the attempt key, the exact grounded
+// and state-directory creation the serve process writes the attempt key, the turn, the alignment
+// binding (the resolved chain's fingerprint at this attempt's identity — the continuation gate
+// reads it back before it ever re-briefs against a changed chain), the exact grounded
 // environment-admission JSON receipt and an empty provider-events.jsonl via typed Filesystem.Write,
 // then replaces the node-current symlink. The replace may be briefly unreadable; the observer
 // reports refusal and retries next poll — no atomicity is claimed for `ln -sfnT`. A readable
@@ -696,6 +709,7 @@ fn belt_attempt_state_initialize_for_instance(
   admission_receipt: String,
   launch: LaunchIdentity,
   turn: Int,
+  binding: AlignmentBinding,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -713,6 +727,14 @@ fn belt_attempt_state_initialize_for_instance(
     ),
     content: to_string(value: turn),
   )
+  let binding_write = Filesystem.Write(
+    path: dispatch_attempt_alignment_binding_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: alignment_binding_text(binding: binding),
+  )
   if !key_write.success {
     AttemptStateInitializationFailed {
       step: "attempt-key-write",
@@ -722,6 +744,11 @@ fn belt_attempt_state_initialize_for_instance(
     AttemptStateInitializationFailed {
       step: "attempt-continuation-turn-write",
       detail: turn_write.error,
+    }
+  } else if !binding_write.success {
+    AttemptStateInitializationFailed {
+      step: "attempt-alignment-binding-write",
+      detail: binding_write.error,
     }
   } else {
     let admission_write = Filesystem.Write(
@@ -2175,15 +2202,92 @@ fn belt_supervisor_history_line(instance: HostDashboardInstance, node_id: Roadma
 }
 
 // THE CONVENE BRIEF ASSEMBLY, one join site: the escalation record and the checkpoint from the
-// belt's own records, the intent and contract lines projected by the dispatch actuator's own
-// alignment folds. Nothing about the node is hand-typed here.
+// belt's own records, the intent and contract lines projected from the ONE alignment resolution —
+// the same authority the worker brief consumes, so the supervisor adjudicates against the chain
+// the worker was briefed with, never a second projection. A node whose chain is unresolved names
+// the refusal in those lines: the fork or the missing row IS the supervisor's subject.
 fn belt_supervisor_convene_brief(node: RoadmapNode, escalation: SupervisorEscalation, checkpoint: SupervisorCheckpoint) -> String {
+  let resolution = alignment_resolve(
+    node_id: node.node as String,
+    turns_elapsed: escalation.turn,
+    state: alignment_base_cadence_state(),
+  )
   supervisor_brief_for(
     escalation: escalation,
     checkpoint: checkpoint,
-    intent_line: dispatch_alignment_project_intent(node: node),
-    contract_line: dispatch_alignment_task_contract(node: node),
+    intent_line: belt_alignment_intent_line(resolution: resolution),
+    contract_line: belt_alignment_contract_line(resolution: resolution),
   )
+}
+
+// THE INTENT LINE FROM THE RESOLVED CHAIN: the nearest project level's carried contribution leads;
+// deeper levels follow, semicolon-separated, so the whole derived chain reaches the adjudication —
+// not just the immediate L1 the old projection stopped at. A projectless node names its own row
+// as the intent. Unresolved refuses to guess: the line names the typed cause, which is the
+// authority question the supervisor's route must answer.
+fn belt_alignment_intent_line(resolution: AlignmentResolution) -> String {
+  match resolution {
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
+      if count(chain.projects) == 0 {
+        join([
+          "this node is a project of one, so its own declared row is the intent: ",
+          chain.task.purpose, " -- boundary: ", chain.task.boundary,
+        ], "")
+      } else {
+        join([
+          "this task serves project ",
+          belt_optional_link_id(link: chain.projects.first()),
+          ": ",
+          belt_optional_link_contribution(link: chain.projects.first()),
+          belt_deeper_project_levels(projects: chain.projects),
+        ], "")
+      }
+    AlignmentUnresolved { cause } =>
+      join(["UNRESOLVED — ", alignment_refusal_reason(cause: cause)], "")
+  }
+}
+
+fn belt_optional_link_id(link: AlignmentChainLink?) -> String {
+  match link {
+    Present { value: l } => l.node_id
+    Absent => ""
+  }
+}
+
+fn belt_optional_link_contribution(link: AlignmentChainLink?) -> String {
+  match link {
+    Present { value: l } => join([l.purpose, " -- boundary: ", l.boundary], "")
+    Absent => ""
+  }
+}
+
+fn belt_deeper_project_levels(projects: List<AlignmentChainLink>) -> String {
+  fold(projects, init: { out: "", index: 0 }, f: fn(acc, link) {
+    if acc.index == 0 {
+      { out: acc.out, index: 1 }
+    } else {
+      {
+        out: join([
+          acc.out,
+          "; level ", to_string(value: acc.index + 1), " above the task serves project ",
+          link.node_id, ": ", link.purpose, " -- boundary: ", link.boundary,
+        ], ""),
+        index: acc.index + 1,
+      }
+    }
+  }).out
+}
+
+// THE CONTRACT LINE FROM THE RESOLVED CHAIN: the task level's own carried contribution — the
+// ladder's doctrine is that a check reads against the carried text, and the checkpoint the
+// supervisor stands in carries the full contract for the diff-level reading.
+fn belt_alignment_contract_line(resolution: AlignmentResolution) -> String {
+  match resolution {
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
+      join([chain.task.purpose, " -- boundary: ", chain.task.boundary], "")
+    AlignmentUnresolved { cause } =>
+      join(["UNRESOLVED — ", alignment_refusal_reason(cause: cause)], "")
+  }
 }
 
 // CONVENE THE SUPERVISOR over one escalation record. The liveness gate keeps escalation
@@ -2340,6 +2444,104 @@ fn belt_continuation_turn_read_for_instance(instance: HostDashboardInstance, nod
   }
 }
 
+// THE ATTEMPT BINDING GATE: a continuation proves, BEFORE any spawn command exists, that the chain
+// it is about to brief against is the chain its parent attempt started with. The parent attempt's
+// alignment-binding.json names the attempt identity and the chain fingerprint bound at its spawn;
+// the belt re-derives the chain NOW from the one authority and compares. A changed chain refuses
+// with both fingerprints named — the continuation never silently re-aligns a lineage to an
+// authority edit; an absent or unreadable binding refuses (weaker evidence cannot improve
+// admission); a binding minted for another attempt refuses (a receipt beside a payload is checked,
+// never assumed — conservation law 4). A fresh start has nothing to check and passes; an
+// unresolved resolution passes here so the refusal lands at the spawn fold's alignment gate, which
+// names the cause and also produces zero commands.
+type BeltAlignmentBinding
+  = BeltAlignmentBindingOk
+  | BeltAlignmentBindingRefused { reason: String }
+
+type BeltAlignmentBindingText
+  = BeltAlignmentBindingAbsent
+  | BeltAlignmentBindingRead { content: String }
+  | BeltAlignmentBindingUnreadable { reason: String }
+
+fn belt_alignment_binding_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltAlignmentBindingText {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = dispatch_attempt_alignment_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: dispatch_attempt_alignment_binding_basename,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => BeltAlignmentBindingAbsent
+    FilesystemFileRead { path: _, content } => BeltAlignmentBindingRead { content: content }
+    FilesystemFileIndeterminate { cause } => BeltAlignmentBindingUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => BeltAlignmentBindingUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => BeltAlignmentBindingUnreadable { reason: cause }
+  }
+}
+
+fn belt_alignment_binding_check(expected_identity: String, bound: BeltAlignmentBindingText, resolution: AlignmentResolution) -> BeltAlignmentBinding {
+  match bound {
+    BeltAlignmentBindingAbsent =>
+      BeltAlignmentBindingRefused {
+        reason: "the parent attempt carries no alignment binding (it predates the binding lane), so the chain this lineage started with cannot be established; the continuation does not dispatch on an unbound chain",
+      }
+    BeltAlignmentBindingUnreadable { reason } =>
+      BeltAlignmentBindingRefused {
+        reason: join(["the parent attempt's alignment binding cannot be read: ", reason], ""),
+      }
+    BeltAlignmentBindingRead { content } =>
+      match alignment_binding_decode(text: content) {
+        AlignmentBindingNotDecodable { reason } =>
+          BeltAlignmentBindingRefused {
+            reason: join(["the parent attempt's alignment binding does not decode: ", reason], ""),
+          }
+        AlignmentBindingDecoded { binding } =>
+          if binding.attempt_identity != expected_identity {
+            BeltAlignmentBindingRefused {
+              reason: join([
+                "the parent attempt's alignment binding belongs to ", binding.attempt_identity,
+                ", not ", expected_identity,
+                " -- a binding minted for another attempt cannot authorize this continuation",
+              ], ""),
+            }
+          } else {
+            match resolution {
+              AlignmentUnresolved { cause: _ } =>
+                BeltAlignmentBindingOk
+              AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
+                let now_fingerprint = alignment_chain_fingerprint(chain: chain)
+                if binding.fingerprint == now_fingerprint {
+                  BeltAlignmentBindingOk
+                } else {
+                  BeltAlignmentBindingRefused {
+                    reason: join([
+                      "the alignment chain changed since the parent attempt was dispatched (bound fingerprint ",
+                      binding.fingerprint, ", the authority now derives ", now_fingerprint,
+                      "); the continuation does not silently realign the lineage to a changed chain -- the authority edit must be adjudicated before work continues",
+                    ], ""),
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn belt_alignment_binding_gate(instance: HostDashboardInstance, node_id: RoadmapNodeId, origin: AttemptOrigin, resolution: AlignmentResolution) -> BeltAlignmentBinding {
+  match origin {
+    FreshFromBase => BeltAlignmentBindingOk
+    ContinueFromAttempt { parent_attempt_key, branch: _, turn: _, verdict_detail: _ } =>
+      belt_alignment_binding_check(
+        expected_identity: dispatch_worker_attempt_identity(node_id: node_id as String, attempt_key: parent_attempt_key),
+        bound: belt_alignment_binding_observe(instance: instance, node_id: node_id, attempt_key: parent_attempt_key),
+        resolution: resolution,
+      )
+  }
+}
+
 fn belt_actuate_spawn_with_origin(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -2353,6 +2555,26 @@ fn belt_actuate_spawn_with_origin(
   origin: AttemptOrigin,
   selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
+  let resolution = alignment_resolve(
+    node_id: node.node as String,
+    turns_elapsed: attempt_origin_turn(origin: origin),
+    state: alignment_base_cadence_state(),
+  )
+  match belt_alignment_binding_gate(
+    instance: instance,
+    node_id: node.node as String,
+    origin: origin,
+    resolution: resolution,
+  ) {
+    BeltAlignmentBindingRefused { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "alignment-binding",
+        detail: reason,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    BeltAlignmentBindingOk =>
   match belt_resolved_spawn_plan(
     instance: instance,
     node: node,
@@ -2360,6 +2582,7 @@ fn belt_actuate_spawn_with_origin(
     attempt_key: attempt_key,
     origin: origin,
     selection: selection,
+    resolution: resolution,
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -2370,6 +2593,20 @@ fn belt_actuate_spawn_with_origin(
         launch: launch,
       }
     DispatchSpawnReady { commands: cmds } =>
+      match resolution {
+        AlignmentUnresolved { cause } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "alignment",
+            detail: join(["the spawn plan returned commands for an unresolved chain, which the gate must refuse; fail-closed: ", alignment_refusal_reason(cause: cause)], ""),
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
+          let binding = AlignmentBinding {
+            attempt_identity: dispatch_worker_attempt_identity(node_id: node.node as String, attempt_key: attempt_key),
+            fingerprint: alignment_chain_fingerprint(chain: chain),
+          }
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
@@ -2396,6 +2633,7 @@ fn belt_actuate_spawn_with_origin(
         admission_receipt: admission_receipt,
         launch: launch,
         turn: attempt_origin_turn(origin: origin),
+        binding: binding,
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -2483,7 +2721,9 @@ fn belt_actuate_spawn_with_origin(
           }
       }
   }
-}
+  }
+  }
+  }
 }
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
@@ -2673,6 +2913,7 @@ fn belt_resolved_spawn_plan(
   attempt_key: String,
   origin: AttemptOrigin,
   selection: DispatchActuatorSelection,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
@@ -2690,6 +2931,7 @@ fn belt_resolved_spawn_plan(
         effort: effort,
         model: model,
         origin: origin,
+        resolution: resolution,
       )
   }
 }

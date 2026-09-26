@@ -36,13 +36,12 @@ import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
-  continuation_alignment_l0_pointer, continuation_alignment_ask,
+}
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
+  alignment_resolve, alignment_base_cadence_state,
 }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
-import gunbc.roadmap.roadmap_project {
-  node_project_membership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
-}
-import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -829,6 +828,26 @@ fn dispatch_attempt_continuation_turn_path_for_instance(
 }
 
 data dispatch_attempt_continuation_turn_basename: String = "continuation-turn"
+
+// THE ALIGNMENT BINDING PATH: the resolved chain's fingerprint, written at state initialization
+// beside the attempt key and turn (gunbc.roadmap.roadmap_alignment owns the binding's shape; this
+// module only names its address in the attempt state directory).
+fn dispatch_attempt_alignment_binding_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/alignment-binding.json",
+  ], "")
+}
+
+data dispatch_attempt_alignment_binding_basename: String = "alignment-binding.json"
 
 fn dispatch_attempt_admission_path_for_instance(
   instance: HostDashboardInstance,
@@ -1738,62 +1757,33 @@ fn dispatch_brief_with_centering(node: RoadmapNode, fields: DispatchBriefFields)
 // alignment ladder: the continuation turn is a cadence point, and the answer rides in the
 // submission's explanation). The preamble sits between the verdict prefix and the ordinary brief,
 // exists only on continuation origins -- the initial brief is byte-identical to the pre-preamble
-// assembly -- and every level is PROJECTED from its own authority, never hand-copied: L0 and the
-// ask are the continuation lane's cadence rows, L1 is derived from the authority's edges and rows,
-// L2 is the same slot-field projection the brief template fills from.
-fn dispatch_brief_for_origin(node: RoadmapNode, fields: DispatchBriefFields, origin: AttemptOrigin) -> String {
+// assembly -- and EVERY level of the chain renders, node to root, because the preamble IS the
+// resolution's rendered_prompt: gunbc.roadmap.roadmap_alignment is the one authority over the
+// alignment answer (chain, due levels, render), and this module only concatenates. A continuation
+// whose resolution is Unresolved renders a loud refusal marker here -- and never dispatches,
+// because the spawn fold below gates on the same resolution value before any command exists.
+fn dispatch_brief_for_origin(node: RoadmapNode, fields: DispatchBriefFields, origin: AttemptOrigin, resolution: AlignmentResolution) -> String {
   join([
     continuation_brief_prefix(origin: origin),
     match origin {
       FreshFromBase => ""
       ContinueFromAttempt { parent_attempt_key: _, branch: _, turn: _, verdict_detail: _ } =>
-        dispatch_continuation_alignment_preamble(node: node)
+        dispatch_continuation_alignment_preamble(resolution: resolution)
     },
     dispatch_brief_with_centering(node: node, fields: fields),
   ], "")
 }
 
-fn dispatch_continuation_alignment_preamble(node: RoadmapNode) -> String {
-  join([
-    "\nAlignment (re-checked at every continuation turn):\n",
-    continuation_alignment_l0_pointer, "\n",
-    dispatch_alignment_project_intent(node: node), "\n",
-    dispatch_alignment_task_contract(node: node), "\n",
-    continuation_alignment_ask, "\n\n",
-  ], "")
-}
-
-// L1 IS DERIVED, NOT ROSTERED: the node's project is the arc that depends on it
-// (gunbc.roadmap.roadmap_project), and the arc's row is read from the authority's own declared
-// nodes. A project-of-one node projects its own row. A membership the authority cannot resolve --
-// an edge naming an undeclared arc, or two arcs over one task -- is named as drift to report,
-// never defaulted to a guess.
-fn dispatch_alignment_project_intent(node: RoadmapNode) -> String {
-  match node_project_membership(node_id: node.node as String, edges: declared_roadmap_edges()) {
-    MembershipStandalone =>
-      join(["L1 project intent: this node is a project of one, so its own declared row is the intent: ", dispatch_alignment_row_text(node: node)], "")
-    MembershipMember { arc } =>
-      match (declared_roadmap_nodes() |> filter(n => (n.node as String) == arc)).first() {
-        Present { value: a } =>
-          join(["L1 project intent: this task serves project ", arc, ": ", dispatch_alignment_row_text(node: a)], "")
-        Absent =>
-          join(["L1 project intent: the authority's edges name ", arc, " as this task's project but declare no node with that id -- NAME this as drift in your submission's explanation rather than guessing the intent"], "")
-      }
-    MembershipAmbiguous { arcs } =>
-      join(["L1 project intent: the authority's edges give this task more than one project (", join(arcs, ", "), "); the authority must say which arc owns the delivery before the intent can be read -- NAME this as drift in your submission's explanation"], "")
+fn dispatch_continuation_alignment_preamble(resolution: AlignmentResolution) -> String {
+  match resolution {
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } => rendered_prompt
+    AlignmentUnresolved { cause } =>
+      join([
+        "\nAlignment UNRESOLVED -- this continuation does not dispatch: ",
+        alignment_refusal_reason(cause: cause),
+        "\n\n",
+      ], "")
   }
-}
-
-// A ROW RENDERED FROM ITS OWN DECLARED FIELDS: the headline is the row's title and the boundary is
-// its declared out-of-scope, resolved by the same slot-field fold the brief template fills from,
-// so the preamble and the brief cannot disagree about a row.
-fn dispatch_alignment_row_text(node: RoadmapNode) -> String {
-  join([node_title(item: node.line), " -- boundary: ", dispatch_slot_fields(node: node, repo: "").out_of_scope], "")
-}
-
-fn dispatch_alignment_task_contract(node: RoadmapNode) -> String {
-  let f = dispatch_slot_fields(node: node, repo: "")
-  join(["L2 task contract: boundary: ", f.out_of_scope, "; red control: ", f.red_control, " -- the full contract follows in the brief below"], "")
 }
 
 fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
@@ -1910,12 +1900,19 @@ data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner 
 // edit. So the entry and source roots are absolute paths under the instance's repo_root -- the
 // controller's own checkout, fixed for the process's life -- while the worktree reaches the worker
 // as the argument that sets its tools' working directory. Tool and subject, named separately.
+// THE WORKER ATTEMPT IDENTITY, minted here from the safe pieces the spawner already holds — the
+// spawn argv and the alignment binding (gunbc.roadmap.roadmap_belt_actuate) both name it, so the
+// mint is one function: the unit's --arg and the attempt state's binding file cannot drift apart.
+// node id plus attempt key is the same uniqueness (the key hashes the id and the spawn instant) in
+// a form that is a safe path segment by construction.
+fn dispatch_worker_attempt_identity(node_id: String, attempt_key: String) -> String {
+  join(["worker:", node_id, "-", attempt_key], "")
+}
+
 // attempt_identity IS MINTED HERE FROM THE SAFE PIECES THE SPAWNER ALREADY HOLDS. The worker and
 // auditor used to build it from the worktree, events and verdict paths -- all absolute, all
 // rejected by the fleet ssh context's safe-segment law, so every seat bind on a host needing that
-// context refused before any ssh leg (measured 2026-09-16 on srv2). node id plus attempt key is
-// the same uniqueness (the key hashes the id and the spawn instant) in a form that is a safe path
-// segment by construction.
+// context refused before any ssh leg (measured 2026-09-16 on srv2).
 fn gunbc_harness_spawn_argv(
   gunbc_program: String,
   repo_root: String,
@@ -2061,7 +2058,7 @@ fn dispatch_provider_inner_argv_for_instance(
             node_id: node_id,
             attempt_key: attempt_key,
           ),
-          attempt_identity: join(["worker:", node_id as String, "-", attempt_key], ""),
+          attempt_identity: dispatch_worker_attempt_identity(node_id: node_id as String, attempt_key: attempt_key),
         ),
       }
   }
@@ -2635,6 +2632,7 @@ fn dispatch_spawn_commands_for_provider(
   session_uuid: String,
   attempt_key: String,
   provider: DispatchCliProvider,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   match dispatch_cli_to_provider_kind(provider: provider) {
     DispatchExecutorHasNoVendorKind { executor: e } =>
@@ -2652,6 +2650,7 @@ fn dispatch_spawn_commands_for_provider(
         session_uuid: session_uuid,
         attempt_key: attempt_key,
         request: provider_selection_request_for_kind(kind: vendor_kind),
+        resolution: resolution,
       )
   }
 }
@@ -2663,6 +2662,7 @@ fn dispatch_spawn_commands_for_inventory(
   session_uuid: String,
   attempt_key: String,
   request: ProviderSelectionRequest,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   match resolve_dispatch_selection(
     inventory: inventory,
@@ -2694,6 +2694,7 @@ fn dispatch_spawn_commands_for_inventory(
             effort: effort,
             model: model,
             origin: FreshFromBase,
+            resolution: resolution,
           )
       }
     }
@@ -2706,6 +2707,7 @@ fn dispatch_spawn_commands_for_instance(
   session_uuid: String,
   attempt_key: String,
   request: ProviderSelectionRequest,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_inventory(
     instance: instance,
@@ -2714,6 +2716,7 @@ fn dispatch_spawn_commands_for_instance(
     session_uuid: session_uuid,
     attempt_key: attempt_key,
     request: request,
+    resolution: resolution,
   )
 }
 
@@ -2722,6 +2725,12 @@ fn dispatch_spawn_commands_for_instance(
 // continuation branches from the prior attempt's branch, so the committed work is already in the
 // tree, and puts the verdict ahead of the brief. Nothing else about the spawn changes -- same
 // harness, same confinement, same state layout -- which is what makes the second turn ordinary.
+// THE ALIGNMENT GATE IS THE FIRST GATE, before destination, brief, or any command: the spawn
+// fold consumes the ONE resolution the caller derived from gunbc.roadmap.roadmap_alignment, and an
+// Unresolved chain refuses with zero commands — no worktree, no state, no session. The review
+// finding this closes (2026-09-26): ambiguity and undeclared rows used to render prose telling
+// the worker to "mention the drift" while execution proceeded; now the typed refusal IS the
+// spawn answer, and the refusal reason names the fork or the row.
 fn dispatch_spawn_commands_for_resolved_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -2731,7 +2740,15 @@ fn dispatch_spawn_commands_for_resolved_instance(
   effort: ReasoningEffort,
   model: ProviderModelSelection,
   origin: AttemptOrigin,
+  resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
+  match resolution {
+    AlignmentUnresolved { cause } =>
+      DispatchSpawnRefused {
+        step: "alignment" as NonEmptyStr,
+        detail: alignment_refusal_reason(cause: cause),
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } =>
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
       DispatchSpawnRefused {
@@ -2749,7 +2766,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     node: node,
     environment: instance.execution_environment,
   )
-  let brief = dispatch_brief_for_origin(node: node, fields: fields, origin: origin)
+  let brief = dispatch_brief_for_origin(node: node, fields: fields, origin: origin, resolution: resolution)
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -2862,6 +2879,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
   }
       }
   }
+  }
 }
 
 fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
@@ -2871,6 +2889,7 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
     session_uuid: session_uuid,
     attempt_key: attempt_key,
     request: default_provider_selection_request(),
+    resolution: alignment_resolve(node_id: node.node as String, turns_elapsed: 1, state: alignment_base_cadence_state()),
   )
 }
 
