@@ -25,6 +25,7 @@ import v2.std.integer {
   int_add,
   integer_byte_bit_at,
   integer_int_to_signed_i32_le_bytes,
+  integer_int_type_node,
   integer_signed_i32_le_bytes_to_int
 }
 import v2.std.diagnostic {
@@ -40,7 +41,7 @@ import v2.std.diagnostic {
   Unavailable,
   None
 }
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_node }
 import v2.std.machine { Byte }
 import v2.std.model_core {
   EffectSignature,
@@ -118,6 +119,10 @@ fn v2_eval_unit_type_node() -> Node {
 }
 }
 
+// A Bool runtime value's TYPE is v2.std.logic bool_node, the node infer derives for a Bool literal and
+// for a Bool-returning application; eval's resolved-type acceptance compares the two, so a runtime-only
+// Bool type would refuse every derived Bool result (docs/plans/arrow-elimination-model.md). This pin
+// is no longer that type: it is only an evaluator literal-shaped node that represents `true`.
 data v2_eval_bool_literal_pin: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
@@ -133,7 +138,7 @@ fn v2_eval_bool_true_byte() -> Byte {
 fn v2_eval_bool_true_primitive() -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_bool_literal_pin,
+      primitive_type: bool_node(),
       bytes: [v2_eval_bool_true_byte()]
     }
   }
@@ -188,18 +193,10 @@ fn v2_eval_empty_frame() -> EvaluationFrame {
   }
 }
 
-fn v2_eval_int_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-    children: [],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_int_type_node(),
+      primitive_type: integer_int_type_node(),
       bytes: integer_int_to_signed_i32_le_bytes(value: value)
     }
   }
@@ -208,7 +205,7 @@ fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
 fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: v2_eval_bool_literal_pin,
+      primitive_type: bool_node(),
       bytes: if is_true {
         [Byte { bits: [true, false, false, false, false, false, false, false] }]
       } else {
@@ -277,12 +274,12 @@ fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<R
 fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
-      if p.primitive_type == v2_eval_int_type_node() {
+      if p.primitive_type == integer_int_type_node() {
         integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
       } else {
         outcome_rejected(d: v2_eval_runtime_diagnostic(node: p.primitive_type))
       }
-    _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2_eval_int_type_node()))
+    _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: integer_int_type_node()))
   }
 }
 
@@ -296,7 +293,7 @@ fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
 fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      if p.primitive_type == v2_eval_bool_literal_pin {
+      if p.primitive_type == bool_node() {
         match list_at_optional(xs: p.bytes, index: 0) {
           Present { value: b } => integer_byte_bit_at(b: b, shift: 0) == 1
           Absent => false
@@ -311,7 +308,7 @@ fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
 fn v2_eval_runtime_bool_is_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
+      p.primitive_type == bool_node() && !v2_eval_runtime_bool_is_true(value: value)
     _ => false
   }
 }

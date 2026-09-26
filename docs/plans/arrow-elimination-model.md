@@ -1,6 +1,18 @@
 # Arrow elimination in v2 infer — model for ruling
 
-Status: proposed model, awaiting a v2-foundation ruling before any `04_infer` change.
+Status: RULED by v2 foundation (neat-boar-16), 2026-09-26, and implemented in the PR that
+carries this file. Rulings: Int's value type is owned by `v2.std.integer`
+(`integer_int_type_node`) as Bool's is by `v2.std.logic` (`bool_node`); `dag_binding_denotation`
+stays the one binding→type join and its rows point at those authorities. Elimination reads the
+DECLARED return atom, never the composed evidence. The composed-evidence defect is rostered as
+`gunbc.recurring_failure_mode` `function_type_evidence_carries_its_body`.
+
+Found while building: the evaluator carried the same second representation for Bool
+(`v2.extdeps.runtimes.v2_evaluator` `v2_eval_bool_literal_pin` as every Bool runtime value's
+type), so eval's resolved-type acceptance refused the derived Bool application with
+`eval_rejected_resolved_type_mismatch`. Bool runtime values now carry `bool_node()`; the pin
+remains only as the evaluator's literal-shaped node for `true`. The evaluator's Int copy
+(`v2_eval_int_type_node`) is deleted in favour of `integer_int_type_node`.
 Trigger: work item "v2: infer derives a Bool-returning application", parent `deep-bee-18`,
 consumer `v2.compiler.refinement_discharge`.
 
