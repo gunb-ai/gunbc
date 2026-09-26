@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Kibibyte, kibibyte }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
@@ -27,6 +27,7 @@ import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_directory }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_occupancy_admission { admit_spark_host_unoccupied, spark_ctx_argv_run }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
@@ -212,6 +213,12 @@ fn v41_store_line(r: V41StoreRun) -> String {
   }
 }
 
+// WHAT THE ENCODE IS, FOR ITS OCCUPANCY REFUSAL, AND THE MEMORY IT DECLARES. The need is a DECLARED BET:
+// the encoder streams its shards in bounded chunks, and 16 GiB has no measurement behind it yet.
+// READ OBLIGATION: the peak memory of an executed encode on a GB10.
+data v41_row_store_encode_purpose: NonEmptyStr = "the V4.1 row-store encode, which reads every published shard" as NonEmptyStr
+data v41_row_store_encode_memory_need: Kibibyte = kibibyte(count: 16777216)
+
 type V41EncodeRun
   = V41EncodeRefusedBeforeRun { cause: NonEmptyStr }
   | V41EncodeRan { planned: List<V41StoreEncodeArgs>, stores: List<V41StoreRun> }
@@ -293,14 +300,18 @@ fn v41_row_store_encode_ci_wet() -> ProcessExit
                             identity_file_name: "gunbc-v41-row-store-encode-admin-password" as NonEmptyStr,
                             secret_bytes: administrator as Secret,
                             use: fn(file) {
-                              v41_encode_all(ctx: SparkMaterializeContext {
+                              let ctx = SparkMaterializeContext {
                                 host: target_host,
                                 trust: trust,
                                 path: path,
                                 admin_credential: administrator as Secret,
                                 admin_credential_file: file,
                                 executor: HostCli,
-                              })
+                              }
+                              match admit_spark_host_unoccupied(run: spark_ctx_argv_run(ctx: ctx), host: target_host, purpose: v41_row_store_encode_purpose, need: v41_row_store_encode_memory_need) {
+                                Present { value: why } => V41EncodeRefusedBeforeRun { cause: why as NonEmptyStr }
+                                Absent => v41_encode_all(ctx: ctx)
+                              }
                             },
                           ) {
                             MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)

@@ -24,6 +24,7 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_occupancy_admission { admit_spark_host_unoccupied, spark_ctx_argv_run }
 import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.remote_step_sequence {
@@ -32,7 +33,7 @@ import gunbc.spark.remote_step_sequence {
 import gunbc.spark.vllm_runtime_image_build {
   VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
   SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, SparkBuildHostWork, with_spark_build_host,
-  vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue,
+  vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue, vllm_build_host_memory_need,
   vllm_image_receipt_line,
 }
 import gunbc.spark.v41_source_patch_converge {
@@ -446,10 +447,15 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
                   attempt_raw: v41_production_attempt_raw,
                   identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
                   use: fn(target, context, ctx) {
-                    let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
-                    SparkBuildHostWork {
-                      receipt: v41_production_receipt(p: produced),
-                      converged: v41_production_succeeded(p: produced),
+                    match admit_spark_host_unoccupied(run: spark_ctx_argv_run(ctx: ctx), host: build_host, purpose: vllm_build_host_purpose, need: vllm_build_host_memory_need) {
+                      Present { value: why } => SparkBuildHostWork { receipt: join(["refused-before-run: ", why, "\n"], ""), converged: false }
+                      Absent => {
+                        let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
+                        SparkBuildHostWork {
+                          receipt: v41_production_receipt(p: produced),
+                          converged: v41_production_succeeded(p: produced),
+                        }
+                      }
                     }
                   },
                 ) {

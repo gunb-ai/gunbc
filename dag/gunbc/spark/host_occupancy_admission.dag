@@ -1,0 +1,133 @@
+module gunbc.spark.host_occupancy_admission
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.measure { Kibibyte }
+import product.placement_supply { HostIdentity }
+import gunbc.host_operation_exec { SystemctlStop, SystemctlStart }
+import gunbc.compute.host_occupancy {
+  HostOccupant, ServingUnitActive, GpuComputeProcess,
+  HostOccupancyReading, HostOccupancyRead, HostOccupancyUnread,
+  HostOccupancyAdmission, HostUnoccupied, HostOccupiedBy, HostMemoryShort, HostOccupancyNotRead,
+  HostOperationLeg, HostOperationLegRead, HostOperationLegUnread, host_operation_leg,
+  UnitOccupancy, UnitOccupies, UnitVacant, UnitUnread, read_unit_occupancy,
+  read_host_occupancy, admit_host_occupancy, host_occupancy_refusal, host_occupant_wire,
+}
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.spark.pair_serving_apply { spark_pair_retired_head_unit, spark_pair_retired_worker_unit }
+
+// ── A SPARK EFFECT WITH A MEMORY OR GPU NEED IS ADMITTED BY OCCUPANCY AS WELL AS BY OWNERSHIP ──
+//
+// gunbc.spark.host_commitment `admit_host_held_by_subject` stays the OWNERSHIP relation; this module
+// adds the second, independent one for Spark hosts -- gunbc.compute.host_occupancy read over the serving
+// units a Spark can carry. An effect is admitted only when BOTH hold, so a caller calls both and
+// neither answers for the other.
+//
+// THE UNITS ARE THE REALIZATION'S, NOT RE-SPELLED: the pair head and worker units gunbc.spark
+// pair_serving_realization renders, and the two retired units gunbc.spark.pair_serving_apply still
+// disables on every apply -- a host that never converged could still be running one of those, and a
+// retired unit holding the GPU occupies a host exactly as a current one does. Any other GPU user is
+// caught by the compute-process read without being named here.
+fn spark_serving_units() -> List<NonEmptyStr> {
+  [spark_pair_head_unit_name, spark_pair_worker_unit_name, spark_pair_retired_head_unit, spark_pair_retired_worker_unit]
+}
+
+// THE PRIVILEGED LEG THE V4.1 EFFECTS ALREADY HOLD, as an ArgvRun. A leg that did not reach the host
+// is a leg that did not run -- the reader turns that into Unread, never into vacant.
+fn spark_ctx_argv_run(ctx: SparkMaterializeContext) -> fn(List<String>) -> ArgvRun {
+  fn(argv) {
+    match spark_remote_run(ctx: ctx, argv: argv) {
+      RemoteUnreachable { cause: c } => ArgvLegDidNotRun { cause: c }
+      RemoteRan { exit_code: code, stdout: out, stderr: err } => ArgvRan { exit_code: code, stdout: out, stderr: err }
+    }
+  }
+}
+
+fn spark_host_occupancy_admission(run: fn(List<String>) -> ArgvRun, need: Kibibyte) -> HostOccupancyAdmission {
+  admit_host_occupancy(reading: read_host_occupancy(run: run, units: spark_serving_units()), need: need)
+}
+
+// None admits; otherwise the refusal. The caller has already admitted the host by ownership.
+fn admit_spark_host_unoccupied(run: fn(List<String>) -> ArgvRun, host: HostIdentity, purpose: NonEmptyStr, need: Kibibyte) -> String? {
+  host_occupancy_refusal(host: host as String, purpose: purpose as String, a: spark_host_occupancy_admission(run: run, need: need))
+}
+
+// ── VACATING A GROUP A HOST, AND PUTTING IT BACK ───────────────────────────────────────────────
+//
+// A HAND STOP IS THE THING THIS REPLACES. On 2026-09-26 the srv8 pair worker was stopped by hand (with
+// operator approval) so the host could be used; nothing records what was stopped or owes its restart.
+// The vacate is a BRACKET, so restoration is structural rather than remembered: it stops exactly the
+// serving units the occupancy reading found active (stop, never disable -- the units stay enabled and
+// come back at boot), re-reads, runs the body only when the re-read finds the host vacant, and then
+// starts exactly the units it stopped and reads each back.
+//
+// A VACATE ONLY STOPS WHAT IT CAN NAME. A GPU process no serving unit accounts for -- a stray container --
+// is not this bracket's to kill: the re-read still finds it, the bracket restores what it stopped and
+// refuses, and the refusal names the process.
+//
+// WHAT IT DOES NOT DECIDE. Stopping a Group A worker degrades the pair head on the peer host; whether
+// that is admissible at a given moment is the pair-serving authority's decision (gunbc.spark
+// pair_serving_authority), and that decision is not made here. DECLARED FRONTIER (DESIGN 3c): the
+// first real-host consumer is the V4.1 cutover of the V4 pair on srv5-srv8 and the V4.1
+// capacity-measurement serve, and its door is what binds the bracket to that authority. This change
+// runs the bracket only in claims with a supplied leg, and never against a real host.
+type SparkPairVacateOutcome<T>
+  = PairVacatedAndRestored { stopped: List<NonEmptyStr>, value: T }
+  | PairRestoreIncomplete { stopped: List<NonEmptyStr>, value: T, cause: String }
+  | PairVacateRefused { cause: String, restore: String? }
+
+fn active_serving_units(occupants: List<HostOccupant>) -> List<NonEmptyStr> {
+  flat_map(occupants, o => match o {
+    ServingUnitActive { unit: u, state: _ } => [u]
+    GpuComputeProcess { pid: _, process_name: _, used: _ } => [] as List<NonEmptyStr>
+  })
+}
+
+fn unit_leg_failure(leg: HostOperationLeg) -> List<String> {
+  match leg {
+    HostOperationLegRead { stdout: _ } => [] as List<String>
+    HostOperationLegUnread { cause: c } => [c]
+  }
+}
+
+// RESTORE: start each stopped unit, then read each back. A unit that does not read back as occupying
+// (active or activating) is not restored, and says so.
+fn restore_spark_serving_units(run: fn(List<String>) -> ArgvRun, units: List<NonEmptyStr>) -> String? {
+  let start_failures = flat_map(units, u => unit_leg_failure(leg: host_operation_leg(run: run, operation: SystemctlStart { unit: u }, accepted_exits: [0])))
+  let readback_failures = flat_map(units, u => match read_unit_occupancy(run: run, unit: u) {
+    UnitOccupies { occupant: _ } => [] as List<String>
+    UnitVacant => [join([u as String, " did not come back after start"], "")]
+    UnitUnread { cause: c } => [c]
+  })
+  let failures = concat(start_failures, readback_failures)
+  if length(failures) == 0 { none } else { Present { value: join(failures, "; ") } }
+}
+
+fn with_spark_pair_vacated<T>(run: fn(List<String>) -> ArgvRun, host: HostIdentity, use: fn() -> T) -> SparkPairVacateOutcome<T> {
+  match read_host_occupancy(run: run, units: spark_serving_units()) {
+    HostOccupancyUnread { cause: c } => PairVacateRefused { cause: join([host as String, " could not be read for occupancy, so nothing was stopped: ", c], ""), restore: none }
+    HostOccupancyRead { occupants: before, available: _ } => {
+      let to_stop = active_serving_units(occupants: before)
+      let stop_failures = flat_map(to_stop, u => unit_leg_failure(leg: host_operation_leg(run: run, operation: SystemctlStop { unit: u }, accepted_exits: [0])))
+      if length(stop_failures) != 0 {
+        PairVacateRefused { cause: join([host as String, " could not be vacated: ", join(stop_failures, "; ")], ""), restore: restore_spark_serving_units(run: run, units: to_stop) }
+      } else {
+        match read_host_occupancy(run: run, units: spark_serving_units()) {
+          HostOccupancyUnread { cause: c } =>
+            PairVacateRefused { cause: join([host as String, " could not be re-read after the stop: ", c], ""), restore: restore_spark_serving_units(run: run, units: to_stop) }
+          HostOccupancyRead { occupants: after, available: _ } =>
+            if length(after) != 0 {
+              PairVacateRefused { cause: join([host as String, " is still occupied after its serving units stopped: ", join(map(after, o => host_occupant_wire(o: o)), "; ")], ""), restore: restore_spark_serving_units(run: run, units: to_stop) }
+            } else {
+              let value = use()
+              match restore_spark_serving_units(run: run, units: to_stop) {
+                Absent => PairVacatedAndRestored { stopped: to_stop, value: value }
+                Present { value: why } => PairRestoreIncomplete { stopped: to_stop, value: value, cause: why }
+              }
+            }
+        }
+      }
+    }
+  }
+}

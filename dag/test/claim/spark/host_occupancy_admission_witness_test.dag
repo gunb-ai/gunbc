@@ -1,0 +1,174 @@
+module test.claim.spark.host_occupancy_admission_witness
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, mebibyte_count }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import extdeps.nvidia.system_management_interface {
+  NvidiaComputeAppsRead, ComputeAppsParsed, ComputeAppsUnparsed, parse_compute_apps,
+  UsedMemoryReported, UsedMemoryWithheld,
+}
+import gunbc.compute.host_occupancy {
+  HostOccupant, ServingUnitActive, GpuComputeProcess,
+  HostOccupancyAdmission, HostUnoccupied, HostOccupiedBy, HostMemoryShort, HostOccupancyNotRead,
+  host_occupancy_refusal,
+}
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.pair_serving_realization { spark_pair_worker_unit_name }
+import gunbc.spark.host_occupancy_admission {
+  spark_host_occupancy_admission, admit_spark_host_unoccupied, with_spark_pair_vacated,
+  SparkPairVacateOutcome, PairVacatedAndRestored, PairRestoreIncomplete, PairVacateRefused,
+}
+
+// THE LEG IS SUPPLIED; EVERYTHING ELSE IS THE REAL PATH. Each argv these claims answer is the one
+// gunbc.host_operation_exec derives from its extdeps declaration, and each answer goes through the real
+// parsers (systemctl state words, nvidia-smi rows, /proc/meminfo). A claim whose argv derivation moved
+// would get the leg's refusal below and read Unread -- so an argv drift reddens the admitting claims
+// rather than passing them. The rows are in the documented nvidia-smi csv,noheader,nounits shape; the
+// 99700 MiB figure is the ~99.7 GB the V4 pair worker held on srv8 on 2026-09-26.
+type FakeHost {
+  active_units: List<String>
+  compute_apps: String
+  mem_available_kib: String
+  stop_succeeds: Bool
+}
+
+fn fake_meminfo(available: String) -> String {
+  join(["MemTotal:       127535000 kB\nMemFree:          1000000 kB\nMemAvailable:   ", available, " kB\nBuffers:           10000 kB\nCached:          2000000 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"], "")
+}
+
+fn fake_run(h: FakeHost) -> fn(List<String>) -> ArgvRun {
+  fn(argv) {
+    let line = join(argv, " ")
+    if line == "cat /proc/meminfo" { ArgvRan { exit_code: 0, stdout: fake_meminfo(available: h.mem_available_kib), stderr: "" } }
+    else if line == "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits" { ArgvRan { exit_code: 0, stdout: h.compute_apps, stderr: "" } }
+    else if starts_with(s: line, prefix: "systemctl is-active ") {
+      let unit = substring(s: line, start: 20, end: length(line))
+      if any(h.active_units, u => u == unit) { ArgvRan { exit_code: 0, stdout: "active\n", stderr: "" } }
+      else { ArgvRan { exit_code: 3, stdout: "inactive\n", stderr: "" } }
+    }
+    else if starts_with(s: line, prefix: "systemctl stop ") {
+      if h.stop_succeeds { ArgvRan { exit_code: 0, stdout: "", stderr: "" } } else { ArgvRan { exit_code: 1, stdout: "", stderr: "Job failed" } }
+    }
+    else if starts_with(s: line, prefix: "systemctl start ") { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
+    else { ArgvLegDidNotRun { cause: join(["the fixture has no answer for `", line, "`"], "") } }
+  }
+}
+
+data pair_worker_row: String = "41237, VLLM::Worker_TP1, 99700\n"
+data stray_probe_row: String = "52001, python3, 20480\n"
+data plenty: String = "100000000"
+data need_16_gib: Kibibyte = kibibyte(count: 16777216)
+
+fn srv8_serving() -> FakeHost {
+  FakeHost { active_units: [spark_pair_worker_unit_name as String], compute_apps: pair_worker_row, mem_available_kib: "15728640", stop_succeeds: true }
+}
+
+fn vacated() -> FakeHost {
+  FakeHost { active_units: [] as List<String>, compute_apps: "", mem_available_kib: plenty, stop_succeeds: true }
+}
+
+fn admission(h: FakeHost) -> HostOccupancyAdmission {
+  spark_host_occupancy_admission(run: fake_run(h: h), need: need_16_gib)
+}
+
+// RED: the srv8 morning. The pair worker unit is active and its process holds 99700 MiB; admission
+// refuses, names the unit first, and carries the GPU memory in use.
+test fn a_host_whose_pair_worker_holds_gpu_memory_refuses() -> Bool {
+  match admission(h: srv8_serving()) {
+    HostOccupiedBy { occupant: ServingUnitActive { unit: u, state: s }, others: rest, gpu_used: g } =>
+      (u as String) == (spark_pair_worker_unit_name as String) && (s as String) == "active" && length(rest) == 1 && mebibyte_count(m: g) == 99700
+    _ => false
+  }
+}
+
+// RED: occupancy is not limited to known units. No serving unit is active, but a stray GPU process is:
+// the host is occupied by that process, not vacant.
+test fn an_unattributed_gpu_process_occupies_the_host() -> Bool {
+  match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: stray_probe_row, mem_available_kib: plenty, stop_succeeds: true }) {
+    HostOccupiedBy { occupant: GpuComputeProcess { pid: p, process_name: n, used: UsedMemoryReported { used: m } }, others: rest, gpu_used: _ } =>
+      p == 52001 && n == "python3" && mebibyte_count(m: m) == 20480 && length(rest) == 0
+    _ => false
+  }
+}
+
+// A withheld per-process figure is still an occupant, never a weightless one.
+test fn a_gpu_process_with_withheld_memory_still_occupies() -> Bool {
+  match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: "41237, VLLM::Worker_TP1, [N/A]\n", mem_available_kib: plenty, stop_succeeds: true }) {
+    HostOccupiedBy { occupant: GpuComputeProcess { pid: _, process_name: _, used: UsedMemoryWithheld { marker: k } }, others: _, gpu_used: g } =>
+      (k as String) == "[N/A]" && mebibyte_count(m: g) == 0
+    _ => false
+  }
+}
+
+// GREEN control: a vacated host -- no serving unit active, no compute process, memory to spare -- admits.
+test fn a_vacated_host_admits() -> Bool {
+  match admission(h: vacated()) {
+    HostUnoccupied { available: a } => kibibyte_count(k: a) == 100000000
+    _ => false
+  }
+}
+
+// RED: nothing running, but less available than the effect declares.
+test fn a_host_short_of_the_declared_need_refuses_with_nothing_running() -> Bool {
+  match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: "", mem_available_kib: "15728640", stop_succeeds: true }) {
+    HostMemoryShort { available: a, need: n } => kibibyte_count(k: a) == 15728640 && kibibyte_count(k: n) == 16777216
+    _ => false
+  }
+}
+
+// RED: a read that did not complete is not vacant. A leg that never ran, and an nvidia-smi row that does
+// not parse, each refuse.
+test fn an_unread_host_refuses() -> Bool {
+  let unreachable = match spark_host_occupancy_admission(run: fn(argv) { ArgvLegDidNotRun { cause: "ssh: no route" } }, need: need_16_gib) {
+    HostOccupancyNotRead { cause: c } => contains(c, "ssh: no route")
+    _ => false
+  }
+  let unparsed = match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: "garbage without columns\n", mem_available_kib: plenty, stop_succeeds: true }) {
+    HostOccupancyNotRead { cause: c } => contains(c, "garbage without columns")
+    _ => false
+  }
+  unreachable && unparsed
+}
+
+test fn the_refusal_names_the_unit_the_process_and_the_host() -> Bool {
+  match admit_spark_host_unoccupied(run: fake_run(h: srv8_serving()), host: "srv8" as HostIdentity, purpose: "a probe" as NonEmptyStr, need: need_16_gib) {
+    Absent => false
+    Present { value: why } =>
+      starts_with(s: why, prefix: "srv8 is occupied, so a probe is not admitted: gunbc-spark-pair-worker.service is active; pid 41237 (VLLM::Worker_TP1) holds 99700 MiB")
+  }
+}
+
+// THE nvidia-smi PARSE, directly: empty output is no process; a row of the wrong shape is unparsed.
+test fn compute_apps_parse_empty_rows_and_wrong_shapes() -> Bool {
+  let empty = match parse_compute_apps(text: "") { ComputeAppsParsed { apps: xs } => length(xs) == 0  ComputeAppsUnparsed { line: _ } => false }
+  let two = match parse_compute_apps(text: join([pair_worker_row, stray_probe_row], "")) { ComputeAppsParsed { apps: xs } => length(xs) == 2  ComputeAppsUnparsed { line: _ } => false }
+  let negative = match parse_compute_apps(text: "-1, x, 5\n") { ComputeAppsUnparsed { line: _ } => true  ComputeAppsParsed { apps: _ } => false }
+  empty && two && negative
+}
+
+// THE VACATE BRACKET, with the leg supplied. A host with nothing to stop runs the body and stops nothing.
+test fn the_vacate_bracket_runs_the_body_on_an_already_vacant_host() -> Bool {
+  match with_spark_pair_vacated(run: fake_run(h: vacated()), host: "srv8" as HostIdentity, use: fn() { 7 }) {
+    PairVacatedAndRestored { stopped: s, value: v } => length(s) == 0 && v == 7
+    _ => false
+  }
+}
+
+// A stop that fails refuses without running the body, and says what it restored.
+test fn the_vacate_bracket_refuses_when_the_stop_fails() -> Bool {
+  let h = FakeHost { active_units: [spark_pair_worker_unit_name as String], compute_apps: pair_worker_row, mem_available_kib: plenty, stop_succeeds: false }
+  match with_spark_pair_vacated(run: fake_run(h: h), host: "srv8" as HostIdentity, use: fn() { 7 }) {
+    PairVacateRefused { cause: c, restore: _ } => contains(c, "could not be vacated") && contains(c, "Job failed")
+    _ => false
+  }
+}
+
+// A host still occupied after its units stopped -- here the fixture's unit never goes inactive -- refuses
+// without running the body. The re-read, not the stop's exit, is what the bracket believes.
+test fn the_vacate_bracket_believes_the_re_read_not_the_stop() -> Bool {
+  match with_spark_pair_vacated(run: fake_run(h: srv8_serving()), host: "srv8" as HostIdentity, use: fn() { 7 }) {
+    PairVacateRefused { cause: c, restore: r } => contains(c, "still occupied after its serving units stopped") && (match r { Absent => true  Present { value: _ } => false })
+    _ => false
+  }
+}
