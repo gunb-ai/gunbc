@@ -10,6 +10,7 @@ import extdeps.docker.cli {
   docker_image_digest_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
+  docker_image_inspect_size_from_stdout, DockerImageInspectSize, DockerImageInspectSizeUnreadable,
   docker_container_inspect_env_from_stdout, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
@@ -69,6 +70,31 @@ test fn inspect_stdout_json_yields_the_unique_id() -> Bool {
     DockerImageInspectId { id: id } => id == inspect_id_fixture
     DockerImageInspectIdUnreadable { cause: _ } => false
   }
+}
+
+// THE Size IS READ OFF THE SAME DOCUMENT: an integer reads through as the byte requirement a
+// transport states; a string, a negative and an absent member are each Unreadable, never zero.
+fn inspect_size_json_document(size: String) -> String {
+  join(["[{\"Id\":\"", inspect_id_fixture as String, "\",\"Size\":", size, "}]"], "")
+}
+
+test fn inspect_stdout_json_yields_the_image_size() -> Bool {
+  match docker_image_inspect_size_from_stdout(stdout: inspect_size_json_document(size: "31457280000")) {
+    DockerImageInspectSize { bytes: n } => n == 31457280000
+    DockerImageInspectSizeUnreadable { cause: _ } => false
+  }
+    && match docker_image_inspect_size_from_stdout(stdout: inspect_size_json_document(size: "\"31457280000\"")) {
+      DockerImageInspectSizeUnreadable { cause: why } => string_contains(s: why, pattern: "not a number")
+      DockerImageInspectSize { bytes: _ } => false
+    }
+    && match docker_image_inspect_size_from_stdout(stdout: inspect_size_json_document(size: "-1")) {
+      DockerImageInspectSizeUnreadable { cause: why } => string_contains(s: why, pattern: "negative")
+      DockerImageInspectSize { bytes: _ } => false
+    }
+    && match docker_image_inspect_size_from_stdout(stdout: inspect_id_json_document()) {
+      DockerImageInspectSizeUnreadable { cause: why } => string_contains(s: why, pattern: "names no Size")
+      DockerImageInspectSize { bytes: _ } => false
+    }
 }
 
 test fn inspect_stdout_that_is_not_one_object_is_unreadable() -> Bool {

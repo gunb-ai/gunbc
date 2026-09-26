@@ -472,6 +472,63 @@ fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRe
   }
 }
 
+// THE IMAGE'S SIZE, READ OFF THE SAME INSPECT DOCUMENT AS ITS Id. `Size` is the image's total
+// uncompressed layer bytes (docs.docker.com/reference/api/engine/version/v1.47/#tag/Image/operation/ImageInspect:
+// "Total size of the image including all layers it is composed of"), a JSON integer. It is what a
+// `docker save` tar of the image carries, give or take the tar's own headers and the config and
+// manifest members, and what a `docker load` on a host holding none of its layers writes -- so it is
+// the byte requirement a byte transport between daemons states before moving anything. A member that
+// is absent, duplicated, not an integer or negative is Unreadable, never a zero.
+type DockerImageInspectSizeRead
+  = DockerImageInspectSize { bytes: Int }
+  | DockerImageInspectSizeUnreadable { cause: String }
+
+fn docker_image_inspect_size_from_stdout(stdout: String) -> DockerImageInspectSizeRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerImageInspectSizeUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Size") {
+            JsonMemberAbsent => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON names no Size" }
+            JsonMemberNotAnObject => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerImageInspectSizeUnreadable { cause: join(["docker image inspect JSON names Size ", to_string(n), " times"], "") }
+            JsonMemberFound { value: sv } =>
+              match sv {
+                JsonNumber { lexeme: l } =>
+                  match parse_int(s: l) {
+                    Absent => DockerImageInspectSizeUnreadable { cause: join(["docker image inspect Size is not an integer: ", l], "") }
+                    Present { value: n } =>
+                      if n < 0 {
+                        DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is negative" }
+                      } else {
+                        DockerImageInspectSize { bytes: n }
+                      }
+                  }
+                JsonNull => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonBool { value: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonString { value: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonArray { elements: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonObject { members: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+              }
+          }
+      }
+  }
+}
+
+// THE DAEMON'S DATA ROOT, WHERE `docker load` WRITES LAYERS. dockerd's documented default for
+// --data-root is /var/lib/docker (docs.docker.com/reference/cli/dockerd/: "--data-root string  Root
+// directory of persistent Docker state (default "/var/lib/docker")"). It is the default and not a
+// reading: a host whose daemon.json moves the root makes a free-space read of this path answer for
+// the wrong filesystem. DECLARED FRONTIER: the reading is `docker info`'s DockerRootDir, and the
+// template form that prints it alone carries braces this repository's portable-word allowlist
+// refuses (see docker_image_inspect_command); it lands as its own reader over the untemplated
+// output when a consumer runs on a host whose root moved.
+data docker_default_data_root: NonEmptyStr = "/var/lib/docker" as NonEmptyStr
+
 // THE CONTAINER'S TWO IDENTITY FIELDS, AND NOTHING ELSE OFF THE INSPECT OBJECT. `docker container
 // inspect` returns the whole object extdeps.docker.container_inspect ContainerInspect models,
 // including Config.Env, whose values can carry secrets. This reader takes exactly .Id -- the full
