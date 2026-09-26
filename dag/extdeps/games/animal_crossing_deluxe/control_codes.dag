@@ -7,16 +7,16 @@ import extdeps.uri { Uri, Https }
 import extdeps.games.animal_crossing.message { ControlCode, vanilla_control_codes }
 
 // Animal Crossing Deluxe, Cuyler36's modification of the GameCube game built on ac-decomp, extends
-// the text engine: its `mFont_cont_info_tbl` has 141 entries where the retail game has 123. No
-// source for the extension is published, so the 18 added codes have no upstream names and carry
+// the text engine: its `mFont_cont_info_tbl` has 141 entries where the retail game has 123. The
+// release builds' source is not published, so the 18 added codes have no upstream names and carry
 // only the sizes the build itself runs with, read from that table in the build's foresta.rel
-// (offset 0x2e46e8 of the Yaz0-decompressed module, one {size, attribute} octet pair per code).
-// The reading holds for exactly the build pinned below; another Deluxe release is a different
-// build and must be read again.
+// (offset 0x2cc198 of the Yaz0-decompressed module in 0.43.3, one {size, attribute} octet pair per
+// code). The reading holds for exactly the build pinned below; another Deluxe release is a
+// different build and must be read again.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.belltreeforums.com/threads/animal-crossing-deluxe-mod.638259/"
+    locator: "cuyler36.github.io/acdx/"
   }
 }
 
@@ -32,8 +32,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// SHA-1 of the disc image the sizes below were read from.
-data deluxe_build_image_sha1: String = "8156db485bf5ebfcabeca2bab50548cc22954689"
+// SHA-1 of the disc image the sizes below were read from: the official Animal Crossing Deluxe
+// 0.43.3 US build (cuyler36.github.io/acdx releases.json outputSha1 for ac-us-iso), made by applying
+// that release's xdelta to the retail US disc (sha1 2d2b1fa3883f49af779ce9ca133db3be17be8f32).
+data deluxe_build_image_sha1: String = "44d86c6e94710268e183e667ab7709ffec469c4f"
 
 data deluxe_added_control_codes: List<ControlCode> = [
   ControlCode { code: 123, name: "X7B", size: 4 },
