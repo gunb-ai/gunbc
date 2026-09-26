@@ -1,0 +1,176 @@
+module extdeps.vllm.sparse_prefill_transient
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat, nat_min }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  TokenCount, token_count, token_count_value,
+  Mebibyte, mebibyte, mebibyte_count, mebibyte_to_byte_size,
+}
+import extdeps.vllm.server { vllm_source_revision_read, vllm_gb10_sparse_indexer_max_logits }
+
+// ── THE SPARSE-ATTENTION PREFILL TRANSIENT, DERIVED FROM THE PINNED SOURCE ───────────────────────
+//
+// THE MoA DOCTRINE'S ORDER (docs/plans/moa-memory-modeling.md): derive from the pinned
+// implementation, never discover via OOM. Every quantity below is read off vllm@8d09804c8
+// (extdeps.vllm.server vllm_source_revision_read -- the same revision the fleet image reports,
+// v0.1.dev1+g8d09804c8) at the symbols named beside each formula; the file:line is a convenience
+// beside the symbol (DESIGN section 3 standing rule), recorded at this revision because the
+// obligation asks for it. THE SUBJECT IS THE GLM-5.3-FLASH SHAPE: the sparse-indexer backend the
+// launch reported (FLASHINFER_MLA_SPARSE_SM120) plus the KPool indexer the glm5next model builds.
+//
+// WHAT THE FORMULAS BELOW ESTABLISH, in one sentence: at 262144 tokens and a 2048-token batch
+// ceiling, the ONLY length-dependent prefill transients beyond the profiled batch activations are
+// the sparse-indexer K-gather workspace (an exact 40 x max_model_len x 132 bytes, launch-persistent
+// through the workspace manager), the per-chunk indexer logits (capped EXACTLY at
+// VLLM_SPARSE_INDEXER_MAX_LOGITS_MB, the fleet's 64), and a family of batch-bounded int32/fp16
+// temporaries each bounded by a closed form below; the sparse MLA attention itself is page-table
+// based and allocates NO length-proportional gather buffer.
+
+// ── TERM 1: THE SPARSE-INDEXER K-GATHER WORKSPACE (the owner-cited candidate, pinned) ─────────────
+//
+// THE CANDIDATE FORMULA IS THE PINNED FORMULA. The owner directive (docs/plans/
+// moa-memory-modeling.md) cited "40 entries per model token x 132 bytes" from upstream; the pinned
+// source at 8d09804c8 says it verbatim: vllm/v1/attention/backends/mla/indexer.py
+// get_max_prefill_buffer_size (line 642) returns max_model_len * 40, with the comment (lines
+// 644-651) spelling the entry: 128 fp8 bytes + 4 scale bytes = 132, and noting the flashmla_sparse
+// workspace equivalence the constant is calibrated against. SIZED BY max_model_len, NOT BY THE
+// REQUEST LENGTH: the workspace exists at its full size from the first forward, so a 262144
+// max_model_len launch carries 40 x 262144 x 132 = 1,384,120,320 bytes whether or not a request
+// ever reaches the window. THE 40 IS PER MODEL TOKEN: the N constraint of the chunker
+// (split_indexer_prefill_chunks, indexer.py line 180: total_seq_lens <= workspace_size) is what
+// the count feeds -- each gathered K entry is one compressed-token slot of the request's OWN KV,
+// and 40 slots per model token of headroom is the calibrated constant, not a per-token charge of
+// one request. THE ALLOCATION SITE: vllm/model_executor/layers/sparse_attn_indexer_kpool.py
+// _gather_workspace_shapes (line 218) shapes it as (total_seq_lens, head_dim) fp8 plus
+// (total_seq_lens, 4) uint8 scales -- 132 bytes per entry at head_dim 128 -- and
+// sparse_attn_indexer_kpool requests it from the workspace manager at the full
+// max_total_seq_len on first use (the profiling reservation, lines 297-305, and the real path,
+// lines 452-460). WHICH RANKS: every rank -- the indexer KV is single-head MQA, replicated across
+// the TP group, and each rank gathers the same K for its own query shard, so the workspace is
+// per-rank and identical in size on all four.
+fn sparse_indexer_k_gather_workspace_bytes(max_model_len: TokenCount, head_dim: Nat) -> ByteSize {
+  byte_size(count: 40 * token_count_value(t: max_model_len) * (head_dim + 4))
+}
+
+// THE ENTRY-WIDTH LAW, said once: the +4 is the fp32 scale vector, one 4-byte scale per 128-element
+// fp8 block (quant_block_size 128, glm5next/nvidia/attention.py lines 269-273 "we store value in
+// fp8 and scale in fp32 per self.quant_block_size element"; _gather_workspace_shapes line 234-235
+// makes the two tensors explicit). At the GLM shape (index_head_dim 128, read from the checkpoint
+// config.json and consistent with the engine's own k_cache head_dim arithmetic) the entry is
+// exactly 132 bytes.
+fn sparse_indexer_workspace_entry_bytes(head_dim: Nat) -> Nat {
+  head_dim + 4
+}
+
+// ── TERM 2: THE INDEXER LOGITS, CAPPED BY THE FLEET ENV EXACTLY ────────────────────────────────────
+//
+// VLLM_SPARSE_INDEXER_MAX_LOGITS_MB IS THE CAP, AND IT BINDS TWICE. The metadata builder reads it
+// at indexer.py line 1095 (max_logits_bytes = envs.VLLM_SPARSE_INDEXER_MAX_LOGITS_MB * 1024 * 1024)
+// and the chunker spends it as M * N * 4 <= max_logits_bytes (split_indexer_prefill_chunks lines
+// 199-221: N = sum of compressed seq lens in the chunk, M = query tokens, 4 bytes per fp32 logit;
+// a request too long for one pass is sub-chunked on M, line 221). THE FLEET RUNS IT AT 64
+// (extdeps.vllm.server vllm_gb10_sparse_indexer_max_logits = 64 MiB, cited to upstream issue
+// vllm#55569's mitigation), so ONE chunk's logits never exceed 64 MiB -- at 262144 tokens with
+// index_kpool 4 compression the compressed length is 65,536 and a chunk carries at most
+// 16,777,216 // 65,536 = 256 query tokens. THE PROFILING RESERVATION takes the same ceiling once:
+// sparse_attn_indexer_kpool.py lines 319-328 reserves max(worst_decode_tokens x max_model_len x 4,
+// the 64 MiB cap) as a uint8 sentinel at profile time -- worst_decode_tokens is
+// min(max_num_seqs x (num_spec + 1), max_num_batched_tokens) (lines 315-322), 6 at this arm -- so
+// the measured peak-activation reading at the profile CONTAINS this term's worst case by
+// construction. THIS TERM IS A PER-CHUNK TRANSIENT, not a persistent one: the tensor is allocated
+// and freed per chunk inside the loop, and the cap bounds every allocation.
+fn sparse_indexer_prefill_logits_cap_bytes(max_logits: Mebibyte) -> ByteSize {
+  mebibyte_to_byte_size(m: max_logits)
+}
+
+// THE DECODE-WORST READING of the same reservation, for the record: six decode rows against the
+// full 262144 window is 6 x 262144 x 4 = 6,291,456 bytes, under the 64 MiB cap, so the cap is the
+// binding figure at every phase.
+fn sparse_indexer_decode_logits_worst_bytes(max_num_seqs: Nat, spec_plus_one: Nat, max_num_batched_tokens: Nat, max_model_len: TokenCount) -> ByteSize {
+  byte_size(count: nat_min(a: max_num_seqs * spec_plus_one, b: max_num_batched_tokens) * token_count_value(t: max_model_len) * 4)
+}
+
+// ── TERM 3: THE BATCH-BOUNDED SPARSE-ATTENTION TEMPORARIES ───────────────────────────────────────
+//
+// WHAT THE SPARSE MLA ATTENTION ALLOCATES PER FORWARD, each bounded by the batch ceiling (2048)
+// and the config, NONE by the context length: the top-k index buffer is (max_num_batched_tokens,
+// buffer_width) int32 allocated ONCE at model init (glm5next/nvidia/model.py lines 588-606:
+// buffer_width = round_up(index_topk + index_kpool - 1, 128)), so it rides in the persistent
+// residency, not the transient; the per-forward conversions topk_indices_physical are a second
+// (tokens, buffer_width) int32 of the same class (flashinfer_mla_sparse_sm120.py line 121 and
+// flashinfer_mla_sparse.py line 397); the attention output is (tokens, num_heads, kv_lora_rank) in
+// the activation dtype (flashinfer_mla_sparse_sm120.py line 140, q.new_empty); the prefill
+// top-k selection carries (rows, select_k) int32 plus the pool-expansion buffer (sparse_attn_
+// indexer_kpool.py lines 538 and 801 pool_topk, and the expand_pools_and_append_tail output).
+// THE ENGINE PINS index_topk ITSELF: FLASHINFER_MLA_SPARSE_SM120 requires index_topk=2048
+// (flashinfer_mla_sparse.py lines 216-227), so at this arm's reported backend the width is
+// round_up(2048 + 4 - 1, 128) = 2176 and select_k = 2048 // 4 = 512.
+fn sparse_topk_buffer_width(index_topk: Nat, index_kpool: Nat) -> Nat {
+  let raw = index_topk + (index_kpool - 1)
+  (raw + 127) / 128 * 128
+}
+
+fn sparse_topk_indices_buffer_bytes(max_num_batched_tokens: Nat, index_topk: Nat, index_kpool: Nat) -> ByteSize {
+  byte_size(count: max_num_batched_tokens * sparse_topk_buffer_width(index_topk: index_topk, index_kpool: index_kpool) * 4)
+}
+
+fn sparse_attn_output_upper_bytes(max_num_batched_tokens: Nat, num_heads: Nat, kv_lora_rank: Nat) -> ByteSize {
+  byte_size(count: max_num_batched_tokens * num_heads * kv_lora_rank * 2)
+}
+
+fn sparse_topk_physical_upper_bytes(max_num_batched_tokens: Nat, index_topk: Nat, index_kpool: Nat) -> ByteSize {
+  sparse_topk_indices_buffer_bytes(max_num_batched_tokens: max_num_batched_tokens, index_topk: index_topk, index_kpool: index_kpool)
+}
+
+fn sparse_prefill_chunk_temporaries_upper_bytes(max_num_batched_tokens: Nat, index_topk: Nat, index_kpool: Nat) -> ByteSize {
+  byte_size(count: max_num_batched_tokens * (index_topk + index_topk / index_kpool) * 4)
+}
+
+// ── TERM 4: THE FLASHINFER SPARSE-ATTENTION WORKSPACE (fixed, launch-persistent) ──────────────────
+//
+// ONE FIXED BUFFER PER DEVICE, NOT LENGTH- OR BATCH-PROPORTIONAL: _get_workspace_buffer
+// (flashinfer_mla_sparse.py lines 297-311) lazily creates a tensor of
+// VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE int8 on the first sparse-attention kernel call, and the
+// value's pinned default is 394 MiB (envs.py line 220, VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE:
+// int = 394 * 1024 * 1024). THE FLEET ENV DOES NOT OVERRIDE IT (the launch's env assignments are
+// VLLM_NO_USAGE_STATS, VLLM_HOST_IP, VLLM_ENGINE_READY_TIMEOUT_S, VLLM_SPARSE_INDEXER_MAX_
+// LOGITS_MB, NCCL_DEBUG, NCCL_DEBUG_SUBSYS -- no flashinfer workspace row), so the default
+// governs. TIMING, which is why this term is NOT inside the profiled peak activation: the buffer
+// is created on the first REAL sparse-attention kernel call (the profiling dummy run carries no
+// attention metadata -- vllm/v1/worker/gpu_model_runner.py _dummy_run keeps attn_metadata None
+// unless forced, lines 6089-6094 and 6131-6134), i.e. during warmup after the memory profile; a
+// consumer pricing the prefill phase charges it explicitly.
+data vllm_flashinfer_workspace_buffer_default: Mebibyte = mebibyte(count: 394)
+
+fn flashinfer_sparse_workspace_bytes(configured: Mebibyte) -> ByteSize {
+  mebibyte_to_byte_size(m: configured)
+}
+
+// ── WHAT THE PROFILE'S PEAK-ACTIVATION READING COVERS, NAMED AT THE SOURCE ───────────────────────
+//
+// THE MEASUREMENT'S OWN DEFINITION (vllm/utils/mem_utils.py memory_profiling, lines 234-326):
+// transient_peak_headroom is the increase of torch's allocated-bytes PEAK during the profiling
+// forward; the printed "peak activation" ADDS the CUDA-graph estimate when graph profiling is on
+// (vllm/v1/worker/gpu_worker.py lines 580-611, and VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS
+// defaults true at envs.py line 320). The profiling forward DOES run the indexer reservation
+// branch (sparse_attn_indexer_kpool.py lines 296-328 fires exactly when attn_metadata is not a
+// dict, which is the dummy-run state), so the workspace (term 1) and the logits ceiling
+// reservation (term 2) are INSIDE the measured peak. THE ATTENTION KERNELS DO NOT RUN in that
+// pass, so the flashinfer workspace (term 4) and the per-forward attention temporaries (term 3)
+// are NOT; and non-torch memory -- NCCL's communicator buffers among it -- is accounted in the
+// composite consumed figure, not the activation peak (mem_utils.py's own three-category example,
+// lines 246-275). THE GRAPH ESTIMATE'S PLACE IN THE SUM, pinned for the slack control's
+// mechanism: because the printed peak activation CONTAINS the estimate and the estimate (1.82
+// GiB measured, TP1's line at the v2 launch) EXCEEDS the actual captured pool (0.1 GiB, the
+// engine's own post-capture measurement, gpu_worker.py lines 803-810), the printed figure is an
+// upper bound on true-activation + actual-graph TOGETHER -- a prefill demand that charges the
+// printed figure never needs a second graph charge, and the estimate-minus-actual residue is
+// arena slack, not demand.
+fn sparse_prefill_transient_revision_note() -> NonEmptyStr {
+  let r = vllm_source_revision_read.full_revision
+  join([
+    "all formulas read at vllm@", r as String,
+    " (engine self-report v0.1.dev1+g8d09804c8); symbols cited beside each, file:line at this revision",
+  ], "") as NonEmptyStr
+}
