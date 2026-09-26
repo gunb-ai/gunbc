@@ -19,6 +19,7 @@ import gunbc.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
   gunbc_runner_slice_cap_for_width,
+  host_runner_pool_charge,
 }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,

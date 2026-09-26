@@ -1018,9 +1018,9 @@ fn host_carries_microvm_shakedown_slot(host: HostIdentity) -> Bool {
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
   if host_carries_microvm_shakedown_slot(host: host) && slots > 0 {
-    measure_add(
-      a: gunbc_runner_slice_cap_for_width(slots: slots - 1),
-      b: gunbc_microvm_shakedown_slot_charge()
+    byte_size(
+      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - 1))
+        + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
     )
   } else {
     gunbc_runner_slice_cap_for_width(slots: slots)

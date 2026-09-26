@@ -17,6 +17,9 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_wall_holds,
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
+  host_runner_pool_charge,
+  gunbc_microvm_shakedown_slot_charge,
+  gunbc_runner_slot_memory_max,
   gunbc_runner_cores_per_slot,
   host_cpu_admitted_width,
   CpuQuotaResolved,
@@ -641,4 +644,19 @@ test fn the_slot_row_declares_one_core_and_no_ceiling() -> Bool {
     CpuQuotaResolved { threads: _ } => false
     SlotCpuQuotaUnbounded => hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
   }
+}
+
+// THE SHAKEDOWN HOST'S RUNNER CHARGE CARRIES THE SHAKEDOWN SLOT AT ITS REAL SIZE. Discriminating
+// against the charge it replaces: slots x the fleet row would make the srv1 row equal to 11 fleet
+// slots and fail the first conjunct, and the srv3 row pins that a host without the shakedown slot is
+// charged exactly as before. The subject is host_runner_pool_charge at supplied widths, not a live
+// width, so the row does not move when srv1's width moves.
+test fn the_shakedown_host_runner_charge_carries_the_shakedown_slot_at_its_real_size() -> Bool {
+  byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
+      == 10 * byte_size_count(b: gunbc_runner_slot_memory_max) + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
+      > byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 11))
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv3, slots: 17))
+      == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 17))
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 0)) == 0
 }
