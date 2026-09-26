@@ -39,7 +39,7 @@ import gunbc.spark.v41_capacity_measurement {
   v41_kv_admission_capacity, v41_engram_resident_capacity, v41_sla_capacity, v41_capacity_report,
   V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
   MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
-  v41_capacity_measurement_plan_text, v41_measurement_ranks,
+  v41_capacity_measurement_plan_text, v41_measurement_ranks, v41_measurement_launch_shape,
   v41_engram_resident_bets, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable,
 }
 

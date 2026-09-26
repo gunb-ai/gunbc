@@ -87,6 +87,12 @@ type V41MeasurementLaunchShape sole_constructor {
 data v41_measurement_gpu_memory_utilization: BasisPoint = basis_point(count: 8000)
 data v41_measurement_max_num_batched_tokens: TokenCount = token_count(count: 8192)
 
+// CONSUMER: A DECLARED FRONTIER. The V4.1 TP4 Group A launch realization (zesty-ant-800's lane, the mp
+// arm route across srv5-8) reads its max_model_len, max_num_seqs, max_num_batched_tokens,
+// gpu-memory-utilization and prefix caching from this function; until it lands its dry run refuses
+// with this obligation named.
+data v41_measurement_launch_shape_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the V4.1 TP4 Group A launch realization (the mp arm route across srv5-8) takes max_model_len, max_num_seqs, max_num_batched_tokens, gpu memory utilization and prefix caching from gunbc.spark.v41_capacity_measurement v41_measurement_launch_shape and renders them into the launch. SUFFICIENT FOR: the measurement serve runs at exactly the shape the plan declares, and every rank's startup receipt can be checked against it." as NonEmptyStr)
+
 fn v41_measurement_launch_shape() -> V41MeasurementLaunchShape {
   V41MeasurementLaunchShape {
     max_model_len: v41_measurement_max_model_len,
