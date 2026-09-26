@@ -299,12 +299,21 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
 // therefore holds a corpus declaration reference as a marked spine and never as a bare Atom, and a bare
 // Atom after resolution is a kernel canonical symbol, a literal, or a frame-local binder.
 fn qualified_name_spine_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
-  let spine = fold_list_node(
-    xs: qn,
-    item_node: fn(sym) {
-      node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
-    }
+  qualified_name_spine_of_atoms(
+    atoms: fold_list(xs: qn, empty: Empty, cons: fn(acc, sym) {
+      list_snoc_item(xs: acc, item: node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: []))
+    }),
+    occurrence_id: occurrence_id
   )
+}
+
+// THE ONE SPINE SHAPE, over segment atoms the caller already built. A lowering that read each
+// segment from an authored token hands those atoms in, each lowered from its own token
+// (v2.std.node node_lowered_from), so every segment keeps its minted occurrence; the root keeps
+// the whole mention's. qualified_name_spine_node above is this same shape over synthetic atoms,
+// for a name that has no authored segments (a resolved declaration reference, a fixture).
+fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  let spine = fold_list_node(xs: atoms, item_node: fn(atom) { atom })
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: occurrence_id)
 }
 

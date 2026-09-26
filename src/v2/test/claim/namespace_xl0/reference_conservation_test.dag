@@ -314,6 +314,25 @@ test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
   r.authored == 22 && r.conserved == 11 && r.locus_erased == 11 && length(xs: r.dropped) == 0
 }
 
+// ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
+
+// A dotted value chain (`r.v`) and a qualified type path (`v2.std.integer.Int`) lower to the
+// qualified-name spine. Before the repair every segment atom was built synthetic by
+// v2.std.qualified_name qualified_name_spine_node, because the chain reader had already reduced
+// the segments to symbols; now each segment is the atom lowered from its own token
+// (qualified_name_spine_of_atoms). MEASURED on this fixture: 4 conserved / 14 locus-erased
+// before, 10 / 8 after -- the six spine segments and nothing else moved.
+data dotted_spine_source: String = "module v2.test.reference_conservation_spine\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_dotted(r: RcRow) -> Int { r.v }\n\ndata rc_typed: v2.std.integer.Int = 1\n"
+
+fn dotted_spine_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "spine", source: dotted_spine_source)
+}
+
+test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
+  let r = conservation_report_of(subject: dotted_spine_subject())
+  r.authored == 18 && r.conserved == 10 && r.locus_erased == 8 && length(xs: r.dropped) == 0
+}
+
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------
 
 // Each `_` parameter lowers to its own minted binder (v2.std.anonymous_binder), so the label is
