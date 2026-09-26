@@ -74,15 +74,18 @@ data glm_native_rank_unit_name: NonEmptyStr = "gunbc-glm-native-rank.service" as
 data glm_native_engine_binary: NonEmptyStr = "/usr/local/bin/vllm" as NonEmptyStr
 
 // THE IMAGE THE ARM RUNS, declared FROM THE RUNNING FLEET (operator ruling 2026-09-19; advanced
-// 2026-09-25 for the KV allocation-plan emission): the derived GB10 image built on the group B
-// head 2026-09-17 -- the pinned vllm-openai base plus the three flashinfer 0.7.0.dev20260910
-// wheels (provenance recorded in gunbc.spark.serving_arm, base image Id sha256:c7d63d15...) --
-// now layered with the KV allocation-plan emission patch
-// (dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch, sha256 5b75b784...; the
-// two patched files verified in-image at pins 8a29760b.../239d5093... and the marker probed
-// "patch probe OK" on srv9, docs/runbooks/glm-kv-allocation-plan-image-rebuild.md). The build is
-// a pure file-copy layer over the recorded base content id, built per host from the same patch.
-data glm_native_image_reference: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-kvplan-20260925" as NonEmptyStr
+// 2026-09-25 for the KV allocation-plan emission, and again 2026-09-26 for its v2 shared-pool
+// extension): the derived GB10 image built on the group B head 2026-09-17 -- the pinned vllm-openai
+// base plus the three flashinfer 0.7.0.dev20260910 wheels (provenance recorded in
+// gunbc.spark.serving_arm, base image Id sha256:c7d63d15...) -- now layered with the v2
+// allocation-plan emission patch
+// (dag/extdeps/vllm/patches/kv-allocation-plan-emission-v2-8d09804c8.patch, sha256 8267d86b...,
+// applied INSTEAD of v1, never both; the patched core.py verified in-image at pin 7ffe8efa... on
+// all four ranks, docs/runbooks/glm-kv-allocation-plan-image-rebuild.md). The v2 emission carries
+// physical_pool_bytes_per_block and allocated_pool_bytes beside the per-group logical charges.
+// The build is a pure file-copy layer over the recorded base content id, built per host from the
+// same patch.
+data glm_native_image_reference: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-kvplan-v2-20260926" as NonEmptyStr
 
 // THE RENDEZVOUS PORT, authored rather than inherited: the image would pick 29501 itself (its own
 // ParallelConfig default, read 2026-09-10), and authoring it converts a value the image would have
