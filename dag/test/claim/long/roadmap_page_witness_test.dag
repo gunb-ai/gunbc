@@ -2009,9 +2009,9 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         && string_contains(s: body, pattern: "<form class=\"issue-assign-form\" method=\"post\" enctype=\"text/plain\" action=\"/issue/issue-detail-specimen/assign\">")
         && string_contains(s: body, pattern: "<input class=\"issue-assign-input\" name=\"assignee\" id=\"issue-assign-input\" type=\"text\" list=\"issue-assign-recents\"")
         && string_contains(s: body, pattern: "<datalist id=\"issue-assign-recents\">")
-        && string_contains(s: body, pattern: "<option value=\"principal:google-oidc/accounts/sub-viewer\"></option>")
-        && string_contains(s: body, pattern: "<option value=\"principal:gunbc/workflows/fabric\"></option>")
+        && string_contains(s: body, pattern: "<option value=\"fabric@gunb.ai\"></option>")
         && string_contains(s: body, pattern: "<option value=\"teammate@gunb.ai\"></option>")
+        && !string_contains(s: body, pattern: "<option value=\"principal:")
         && occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3
         && string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"")
         && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span>")
@@ -2342,4 +2342,37 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
       occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>Current plan</summary>") == 1
   }
 }
+
+
+// TEMPORARY PROBE (delete after debugging)
+fn probe_assign_datalist() -> String {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+    EmitOk { html: h } => string_at(parts: split(s: string_at(parts: split(s: h, delimiter: "<datalist"), index: 1), delimiter: "</datalist>"), index: 0)
+  }
+}
+
+// TEMPORARY PROBE (delete after debugging)
+fn probe_assign_conjuncts() -> String {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+    EmitOk { html: h } =>
+      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() {
+        Present { value: b } => b
+        Absent => h
+      }
+      join([
+        if occurrence_count(s: body, pattern: "class=\"issue-action\"") == 0 { "T" } else { "F" },
+        if string_contains(s: body, pattern: "data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"") { "T" } else { "F" },
+        if occurrence_count(s: body, pattern: "Start Work") == 0 { "T" } else { "F" },
+        if occurrence_count(s: body, pattern: "issue-action-bar") == 0 { "T" } else { "F" },
+        if string_contains(s: body, pattern: "<span class=\"issue-field-label\">assignee</span><span class=\"issue-field-value\">") { "T" } else { "F" },
+        if string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span>") { "T" } else { "F" },
+        if string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"") { "T" } else { "F" },
+        if occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3 { "T" } else { "F" },
+      ], "")
+  }
+}
+
+
 

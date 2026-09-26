@@ -540,7 +540,7 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<Ev
       ], []),
       el_attrs("datalist", [
         attr(name: "id", value: "issue-assign-recents" ),
-      ], map(suggestions, p =>
+      ], map(filter(suggestions, p => suggestion_selector_of(p: p) != ""), p =>
         el_attrs("option", [ attr(name: "value", value: suggestion_selector_of(p: p)) ], []))),
       el_attrs("input", [
         attr(name: "name", value: "expected_revision" ),
@@ -562,7 +562,9 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<Ev
 }
 
 // THE SUGGESTIONS FEED (owner ruling: email-centric display, stable PrincipalRef submission):
-// fabric pinned first, the authenticated viewer (self) when the page rendered with one, then the
+// fabric pinned first, the authenticated viewer (self) when the page rendered with one — or the
+// operator's own UNVERIFIED-email principal when the viewer arrives as a bare email (the pre-OIDC
+// tailnet identity: offered as self, marked honestly, never silently authenticated) — then the
 // ledger's recently-used principals newest-first, each exactly once by label — a legacy-email
 // recent and an authenticated principal never collide, and a legacy entry is never auto-matched
 // to an authenticated one (the ruling's migration law).
@@ -570,20 +572,22 @@ fn issue_assign_suggestions(viewer: String, recents: List<EventPrincipal>) -> Li
   let fabric_row = [EventPrincipalAuthenticated { ref: fabric_workflow_principal }]
   let self_row = match principal_ref_parse_label(s: viewer) {
     Present { value: ref } => [EventPrincipalAuthenticated { ref: ref }]
-    Absent => []
+    Absent => if string_contains(s: viewer, pattern: "@") { [LegacyEmailPrincipal { email: viewer as NonEmptyStr, authentication_unestablished: true }] } else { [] }
   }
   let seeds = concat(self_row, fabric_row)
   concat(seeds, filter(recents, r => !any(seeds, s2 => event_principal_label(p: s2) == event_principal_label(p: r))))
 }
 
-// THE SELECTOR a suggestion submits: the stable principal label for authenticated principals —
-// suggestion rows submit the PrincipalRef (the picker's rule); a legacy-email recent offers its
-// email for DISPLAY but the submission path re-resolves through the directory lookup, because a
-// legacy string is display, never identity.
+// THE SELECTOR a suggestion submits is the EMAIL, never the qualified identity (owner 2026-09-26:
+// "in the dropdown, i still see principal:gunbc/..." — the ruling: email is the user-facing
+// selector; the PrincipalRef resolves server-side through the directory/profile lookup). A
+// principal without a known email is NOT offered — it has no user-facing selector until the
+// profile registry resolves one; the qualified label never appears in the picker.
 fn suggestion_selector_of(p: EventPrincipal) -> String {
   match p {
-    EventPrincipalAuthenticated { ref } => principal_ref_label(p: ref)
-    LegacyEmailPrincipal { email, authentication_unestablished: _ } => event_principal_label(p: p)
+    EventPrincipalAuthenticated { ref } =>
+      if principal_ref_eq(a: ref, b: fabric_workflow_principal) { fabric_display_alias as String } else { "" }
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } => email as String
   }
 }
 
@@ -594,7 +598,7 @@ fn issue_assign_suggestion_nodes(p: EventPrincipal) -> Fragment {
   let display = event_principal_display(p: p)
   el_attrs("div", [
     attr(name: "class", value: "issue-assign-suggestion" ),
-    attr(name: "data-principal", value: suggestion_selector_of(p: p) ),
+    attr(name: "data-principal", value: event_principal_label(p: p) ),
     attr(name: "data-kind", value: suggestion_kind_wire(p: p) ),
   ], concat(
     [ issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)) ],
