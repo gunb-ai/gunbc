@@ -39,12 +39,15 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
+  Named,
   node_subtree_nodes,
-  node_synthetic
+  node_synthetic,
+  well_formed
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.runtime { RuntimeValue }
-import v2.std.type_binder { cast_target_edge, cast_target_optional }
+import v2.std.type_binder { cast_target_edge, cast_target_optional, type_binder_labels_conform }
+import v2.test.claim.fold_lowering { lowered_fixture_loop }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -452,4 +455,31 @@ test fn bcn_cast_out_of_a_refinement_admits() -> Bool {
 // Flips with the follow-up that decides refinement crossings in v2.std.coercion.
 test fn bcn_identity_cast_into_a_refinement_refuses_at_infer() -> Bool {
   bcn_refused_with_mismatch(o: bcn_refinement_identity_cast_inferred())
+}
+
+// (17) THE CAST-MARKER LABEL RULE COEXISTS WITH EVERY BEHAVIOR'S OWN NAMED EDGES. v2.std.type_binder
+// checks the cast marker on a Transform only; a Loop's named bound and carrier edges are owned by
+// v2.std.node loop_behavior_edges_conform and are not second-guessed by a blanket label rule. The
+// Loop is the real producer's (v2.test.claim.fold_lowering lowered_fixture_loop: a parsed fold
+// desugared by the real fold lowering), and the predicate is the one v2.compiler.resolve gates the
+// tree on (well_formed && type_binder_labels_conform). RED BEFORE (gunbc#12315 at 4f4b67ed62):
+// the label rule refused every named edge on a behavior carrying no marker, so every Loop failed it
+// (reported by neat-boar-16).
+test fn bcn_a_loop_passes_the_resolver_gate() -> Bool {
+  match lowered_fixture_loop() {
+    Present { value: l } => well_formed(n: l) && type_binder_labels_conform(root: l)
+    Absent => false
+  }
+}
+
+// (18) ... and a Transform carrying a named edge that is not the cast marker still refuses.
+test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
+  !type_binder_labels_conform(root: node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: bcn_coerce_wire() },
+      Edge { label: Positional, target: bcn_int(lexeme: "7") },
+      Edge { label: Named { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+    ]
+  ))
 }

@@ -33,6 +33,8 @@ data as_cast_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_cast_without_its_target_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_eval_realizes_the_operand_value", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_cast_target_order_does_not_move_the_hash", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_a_loop_passes_the_resolver_gate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_a_foreign_label_on_a_transform_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_cast_into_a_refinement_refuses_at_infer", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_cast_out_of_a_refinement_admits", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_identity_cast_into_a_refinement_refuses_at_infer", field: WholeDeclaration },

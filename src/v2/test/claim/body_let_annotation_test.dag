@@ -24,7 +24,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Bind, ComputationNode, Edge, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.type_binder { type_annotation_edge, type_annotation_optional }
+import v2.std.type_binder { cast_target_edge, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -271,4 +271,17 @@ test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
   let annotation = type_annotation_edge(annotation: dag_type_atom_node(identity: ^dag_binding_type_int))
   content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, annotation]))
     == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [annotation, key, value, body]))
+}
+
+// (8) THE LABEL HALF: a Bind admits its own <type-annotation> and nothing else. v2.std.node admits one
+// Named edge on a Bind by shape, so a Bind carrying a cast's <cast-target> passes the shape and must
+// be refused here, by v2.std.type_binder type_binder_labels_conform, which resolve runs on the whole
+// tree. Dropping the Bind arm of that rule greens the mislabelled Bind and reds this row.
+test fn bla_bind_admits_only_its_annotation_label() -> Bool {
+  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
+  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let t = dag_type_atom_node(identity: ^dag_binding_type_int)
+  type_binder_labels_conform(root: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, type_annotation_edge(annotation: t)]))
+    && !type_binder_labels_conform(root: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, cast_target_edge(target_type: t)]))
 }
