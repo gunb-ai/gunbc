@@ -132,11 +132,24 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
 // runs is not a width this module states at all: its committed width is a typed refusal, asserted
 // below on its own terms by srv2_width_resolves_to_a_typed_refusal_naming_its_denominator.
-// srv1 IS 12 BECAUSE THE ENVELOPE NOW SUBTRACTS THE SERVED DEPLOYMENT SLICES (40 + 10 GiB, gunbc.live_deploy.served_slice_charge)
-// that gunbc.fleet_host_budget host_allocation_verdict already charged. Without that term main derived 14
-// (this pin said 15, stale), and 14 slots did not conserve on srv1, so ci_runner_placement refused it.
+// srv1's 11 IS GROUNDED IN ITS INPUTS, NOT COPIED FROM THE FOLD (DESIGN 5). Each input is a cited row
+// with its own provenance, and the literal is what they entail by hand, independently of
+// memory_admitted_width_of_envelope:
+//   usable 539281129472 B = 502.24 GiB (gunbc_ci_srv1_memtotal_measured, /proc/meminfo 2026-08-23)
+//   - 16 GiB overhead allowance (gunbc_ci_legacy_host_fixed_overhead, operator ruling 2026-08-05)
+//   - 52 GiB session allowance (authored_session_reservation_sizing, over the 51.42 GiB measured peak)
+//   - 0 control plane (fabric_control_plane_placement = ControlPlaneUnplaced)
+//   - 87 GiB served slices (served_deployment_slice_allowance: live_deploy_slice_memory_max 53
+//     + approval_broker_slice_memory_max 10 + repository_convergence_slice_memory_max 24)
+//   - 31.39 GiB oomd floor (1/16 of usable)
+//   = 315.85 GiB; less the 52 GiB shakedown charge (28 GiB slot + 16 + 8 GiB controller slice)
+//   = 263.85 GiB, floor(/ 26 GiB fleet row) = 10, plus the shakedown slot = 11.
+// It moves only when one of those rows moves, which is the alarm it exists to raise -- and it did
+// raise it once already: #12328 moved the served slices from 50 to 87 GiB and took this from 12 to
+// 11. It was 15 on main and stale: main derived 14 without the served-slice term, and 14 did not
+// conserve on srv1.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 12
+  host_memory_admitted_width(host: operator_host_srv1) == 11
     && host_memory_admitted_width(host: operator_host_srv3) == 17
     && host_memory_admitted_width(host: operator_host_srv4) == 17
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -217,8 +230,7 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv1, expected: 12)
-    && committed_width_is(host: operator_host_srv3, expected: 17)
+  committed_width_is(host: operator_host_srv3, expected: 17)
     && committed_width_is(host: operator_host_srv4, expected: 17)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
