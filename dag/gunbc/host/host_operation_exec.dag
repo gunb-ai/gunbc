@@ -418,7 +418,7 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       HostOperationObserved { stdout: result.line, success: result.success, stderr: Present { value: result.stderr } }
     }
     NvidiaSmiQueryComputeApps => {
-      let result = nvidia.Smi.QueryComputeApps()
+      let result = nvidia_smi.Smi.QueryComputeApps()
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
   }
@@ -498,7 +498,7 @@ data getconf_operation_service: String = "posix.Getconf"
 data sha256sum_operation_path: String = "dag/extdeps/crypto/hash.dag"
 data sha256sum_operation_service: String = "crypto.Sha256Sum"
 data nvidia_smi_operation_path: String = "dag/extdeps/nvidia/system_management_interface.dag"
-data nvidia_smi_operation_service: String = "nvidia.Smi"
+data nvidia_smi_operation_service: String = "nvidia_smi.Smi"
 
 fn procfs_operation_ref(operation: String) -> OperationRef {
   OperationRef {

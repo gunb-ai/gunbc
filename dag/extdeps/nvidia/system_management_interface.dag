@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List, Unit }
 import std.nat { Nat }
 import std.measure { Mebibyte, mebibyte }
 import std.algebra { trim }
+import v2.std.algebra { filter, skip }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -25,7 +26,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // device-wide memory query on the unified-memory GB10, so the per-process column is modelled as able
 // to refuse the same way. A refusal is its own arm and carries no number: it is not zero, and a
 // consumer must not read the presence of a process as weightless because its figure was withheld.
-service nvidia.Smi {
+service nvidia_smi.Smi {
   operation QueryComputeApps {
     input {}
     output {
@@ -39,7 +40,7 @@ service nvidia.Smi {
       nonzero => String "nvidia-smi --query-compute-apps failed"
     }
     mock_response {
-      0 => { value: "", success: true } "hermetic nvidia.Smi.QueryComputeApps: no process holds a compute context"
+      0 => { value: "", success: true } "hermetic nvidia_smi.Smi.QueryComputeApps: no process holds a compute context"
     }
   }
 }
@@ -77,7 +78,7 @@ fn parse_nat(raw: String) -> Nat? {
 
 fn compute_app_used_memory(raw: String) -> ComputeAppUsedMemory? {
   let t = trim(s: raw)
-  if starts_with(s: t, prefix: "[") && ends_with(s: t, suffix: "]") {
+  if starts_with(s: t, prefix: "[") && length(t) > 1 && substring(s: t, start: length(t) - 1, end: length(t)) == "]" {
     Present { value: UsedMemoryWithheld { marker: t as NonEmptyStr } }
   } else {
     match parse_nat(raw: t) {
