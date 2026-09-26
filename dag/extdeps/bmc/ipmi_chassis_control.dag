@@ -54,6 +54,7 @@ type ChassisPowerLine
   = ChassisPowerLineOn
   | ChassisPowerLineOff
   | ChassisPowerLineUnrecognised { text: String }
+  | ChassisPowerLineMalformed { line: String }
   | ChassisPowerLineRepeated
   | ChassisPowerLineAbsent
 
@@ -74,22 +75,27 @@ fn chassis_power_line_seen(acc: ChassisPowerLine, value: ChassisPowerLine) -> Ch
   }
 }
 
+// EXACTLY ONE KEY AND ONE VALUE (side chat on gunbc#12247, review 5326561042). A line keyed
+// System Power must split into exactly two fields, and the value must be literally on or off. The
+// previous check admitted any line with AT LEAST two fields and read the second, so
+// "System Power : on : trailing" decoded as on. Any other shape -- no colon, extra fields, trailing
+// text -- is malformed and keeps the whole offending line.
 fn chassis_power_line(stdout: String) -> ChassisPowerLine {
   fold(split(s: stdout, delimiter: "\n"), init: ChassisPowerLineAbsent, f: (acc, line) => {
     let fields = split(s: line, delimiter: ":") |> map(f => trim(f))
-    if fields.length() < 2 {
-      acc
-    } else {
-      match fields.first() {
-        Absent => acc
-        Present { value: key } => if trim(key) == "System Power" {
+    match fields.first() {
+      Absent => acc
+      Present { value: key } => if trim(key) == "System Power" {
+        if fields.length() == 2 {
           match fields.skip(n: 1).first() {
-            Absent => acc
+            Absent => chassis_power_line_seen(acc: acc, value: ChassisPowerLineMalformed { line: line })
             Present { value: v } => chassis_power_line_seen(acc: acc, value: chassis_power_line_value(v: v))
           }
         } else {
-          acc
+          chassis_power_line_seen(acc: acc, value: ChassisPowerLineMalformed { line: line })
         }
+      } else {
+        acc
       }
     }
   })
@@ -109,6 +115,8 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
       ChassisPowerLineOff => ChassisPowerRead { power_on: false }
       ChassisPowerLineUnrecognised { text: t } =>
         ChassisStatusUndecodable { cause: join(["the System Power line carried a value this decoder does not recognise: ", t], "") as NonEmptyStr }
+      ChassisPowerLineMalformed { line: l } =>
+        ChassisStatusUndecodable { cause: join(["the System Power line is not exactly one key and one value: ", l], "") as NonEmptyStr }
       ChassisPowerLineRepeated =>
         ChassisStatusUndecodable { cause: "the chassis status read printed more than one System Power line, so no single power state was reported" as NonEmptyStr }
       ChassisPowerLineAbsent =>
