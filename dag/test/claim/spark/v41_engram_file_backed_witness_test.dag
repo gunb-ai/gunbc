@@ -114,16 +114,16 @@ fn w_offsets(xs: List<Nat>) -> List<ByteSize> {
 
 // RED (c): a duplicate offset within a batch counts once. 3-byte records on 8-byte pages.
 test fn a_duplicate_offset_in_a_batch_counts_once() -> Bool {
-  length(v41_touched_pages(offsets: w_offsets(xs: [8, 8, 8]), record: 3, page: 8)) == 1
-    && length(v41_touched_pages(offsets: w_offsets(xs: [8, 11, 8]), record: 3, page: 8)) == 1
+  length(v41_touched_pages(offsets: w_offsets(xs: [8, 8, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
+    && length(v41_touched_pages(offsets: w_offsets(xs: [8, 11, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
 }
 
 // RED (d): a row spanning a page boundary counts both pages; the row just before the boundary
 // counts one, and a record longer than a page counts every page it covers.
 test fn a_row_spanning_a_page_boundary_counts_both_pages() -> Bool {
-  v41_touched_pages(offsets: w_offsets(xs: [6]), record: 3, page: 8) == [0, 1]
-    && v41_touched_pages(offsets: w_offsets(xs: [5]), record: 3, page: 8) == [0]
-    && v41_touched_pages(offsets: w_offsets(xs: [7]), record: 18, page: 8) == [0, 1, 2, 3]
+  v41_touched_pages(offsets: w_offsets(xs: [6]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0, 1]
+    && v41_touched_pages(offsets: w_offsets(xs: [5]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0]
+    && v41_touched_pages(offsets: w_offsets(xs: [7]), record: byte_size(count: 18), page: byte_size(count: 8)) == [0, 1, 2, 3]
 }
 
 // A rank's (file, page) pairs across files are the per-file counts summed, with calls, rows and time.

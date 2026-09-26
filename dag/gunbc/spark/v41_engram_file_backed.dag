@@ -5,7 +5,8 @@ import std.nat { Nat }
 import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size_count, Microsecond, microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { filter, length, skip, contains }
+import v2.std.algebra { filter, length, skip }
+import std.list { distinct_by_key }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, V41CompleteStore,
   v41_row_bytes, v41_row_store_magic_size,
@@ -127,19 +128,22 @@ fn v41_fetch_touch_receipt(page_bytes: ByteSize, page_count: Nat, distinct_pages
   V41FetchTouchReceipt { page_bytes: page_bytes, page_count: page_count, distinct_pages_touched: distinct_pages_touched, fetch_rows_calls: fetch_rows_calls, rows_fetched: rows_fetched, fetch_rows_time: fetch_rows_time }
 }
 
-fn v41_mark_pages(seen: List<Nat>, page: Nat, remaining: Int) -> List<Nat> {
-  if remaining <= 0 { seen } else {
-    v41_mark_pages(seen: if contains(xs: seen, item: page, eq: (a, b) => a == b) { seen } else { seen |> list_push(page) }, page: page + 1, remaining: remaining - 1)
-  }
+fn v41_row_pages(acc: List<Nat>, page: Nat, remaining: Int) -> List<Nat> {
+  if remaining <= 0 { acc } else { v41_row_pages(acc: acc |> list_push(page), page: page + 1, remaining: remaining - 1) }
 }
 
-// The distinct pages a batch of record-aligned offsets touches, record >= 1 and page >= 1.
-fn v41_touched_pages(offsets: List<ByteSize>, record: Nat, page: Nat) -> List<Nat> {
-  fold(offsets, init: [] as List<Nat>, f: (seen, o) => {
-    let first = byte_size_count(b: o) / page
-    let last = (byte_size_count(b: o) + record - 1) / page
-    v41_mark_pages(seen: seen, page: first, remaining: last - first + 1)
+// The distinct pages a batch of offsets touches, in first-touch order: every covered page is
+// collected once per row, then deduplicated in one keyed pass (std.list distinct_by_key), so the
+// fold is linear in the pages covered, never a membership scan per page. record and page are >= 1.
+fn v41_touched_pages(offsets: List<ByteSize>, record: ByteSize, page: ByteSize) -> List<Nat> {
+  let r = byte_size_count(b: record)
+  let p = byte_size_count(b: page)
+  let covered = fold(offsets, init: [] as List<Nat>, f: (acc, o) => {
+    let first = byte_size_count(b: o) / p
+    let last = (byte_size_count(b: o) + r - 1) / p
+    v41_row_pages(acc: acc, page: first, remaining: last - first + 1)
   })
+  distinct_by_key(covered, n => to_string(n))
 }
 
 type V41RankTouches {
