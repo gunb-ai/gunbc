@@ -22,7 +22,8 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_workload_command,
 }
 import gunbc.machine_intake_host_capture_historical_binding {
-  bindings_hold_against_capture,
+  bindings_hold_against_capture_text,
+  census_stages_with_mutated_command,
   census_historical_capture,
 }
 import std.content_hash { Sha256Hash }
@@ -84,14 +85,15 @@ test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
 // THE HISTORICAL MAP IS CHECKED AGAINST THE BYTES, not by eye: every binding row's `original` must be
 // the ARGV line the committed capture actually carries, every Exact row's command must BE that line,
 // and the omitted section must be present in the file and absent from the roster.
+// The capture is READ, not re-bound: binding it is the_attempt_three_capture_binds_and_reads_by_real_execution's
+// subject, and this claim's is the ARGV lines (gunbc.machine_intake_host_capture_historical_binding
+// host_capture_text_section_argv). The RED is live on the same bytes: the roster with nproc's command
+// mutated fails against the file, so the claim still discriminates by execution.
 test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
-  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
-    HostCaptureUnbound { reason: _ } => false
-    HostCaptureOpen { envelope: _ } => false
-    HostCaptureNotBegun => false
-    HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: mtcollins1_census_stages)
-  }
+  read.success
+    && bindings_hold_against_capture_text(capture: read.content, stages: mtcollins1_census_stages)
+    && bindings_hold_against_capture_text(capture: read.content, stages: census_stages_with_mutated_command(name: "nproc", command: "nproc --all")) == false
 }
 
 // THE PRODUCER IS CONSTRAINED BY THE CAPTURE'S COMMITTED IDENTITY, not by its name. The bindings

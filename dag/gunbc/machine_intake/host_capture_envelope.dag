@@ -710,22 +710,6 @@ fn host_capture_bound_section_exit_zero(envelope: BoundHostCaptureEnvelope, name
   }
 }
 
-// The ARGV line a bound section carries, as the command text after its own `----ARGV <name>: `
-// prefix. The historical binding reads this to check what attempt=3 ran against what the new roster
-// says it ran.
-fn host_capture_bound_section_argv(envelope: BoundHostCaptureEnvelope, name: String) -> String? {
-  match host_capture_bound_section(envelope: envelope, name: name) {
-    Absent => none
-    Present { value: s } => {
-      let opener = concat(host_capture_argv_open, name, ": ")
-      match get(xs: split(s: s.body, delimiter: opener), index: 1) {
-        Absent => none
-        Present { value: tail } => get(xs: split(s: tail, delimiter: "\n"), index: 0)
-      }
-    }
-  }
-}
-
 // The count must be the WHOLE output line of the nproc section, immediately before that section's
 // zero exit: a 160 printed anywhere else in the capture, or inside nproc beside other text, is not a
 // reading of nproc.

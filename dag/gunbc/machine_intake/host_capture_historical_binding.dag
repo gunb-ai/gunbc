@@ -5,9 +5,8 @@ import std.content_hash { ContentHash }
 import std.measure { ByteSize }
 import v2.std.optional { Present }
 import gunbc.machine_intake_host_capture_envelope {
-  BoundHostCaptureEnvelope,
   HostCaptureStage,
-  host_capture_bound_section_argv,
+  host_capture_argv_open,
 }
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages }
 import gunbc.machine_intake_mtcollins1_memory_census_observation {
@@ -257,8 +256,7 @@ fn census_roster_is_fully_bound() -> Bool {
 // stage anyone added would have gone green on the dry claim and permanently red on the wet one.
 // The row still has to EARN the disposition: if the capture does carry the section, the row is
 // wrong about history and this fails.
-fn binding_holds_against_capture(envelope: BoundHostCaptureEnvelope, stages: List<HostCaptureStage>, b: HistoricalStageBinding) -> Bool {
-  let historical = host_capture_bound_section_argv(envelope: envelope, name: b.name as String)
+fn binding_holds_against_argv(historical: String?, stages: List<HostCaptureStage>, b: HistoricalStageBinding) -> Bool {
   let carried = stage_named(stages: stages, name: b.name as String)
   match b.disposition {
     HistoricalStageNewlyIntroduced { reason: _ } =>
@@ -307,11 +305,28 @@ fn binding_holds_against_present_section(historical: String?, carried: HostCaptu
   }
 }
 
-fn bindings_hold_against_capture(envelope: BoundHostCaptureEnvelope, stages: List<HostCaptureStage>) -> Bool {
+// THE SAME MAP, READ AGAINST THE CAPTURE'S BYTES WITHOUT RE-BINDING THEM (DESIGN §3, a witness
+// discriminates at one interface). This map's subject is the ARGV line each section of attempt=3
+// carries against the roster; binding the capture -- one begin, the matching end, one run -- is a
+// different fact, established on the real file by test.claim.mtcollins1_census_image_local_wet
+// the_attempt_three_capture_binds_and_reads_by_real_execution (the inhabitance claim this reader
+// pairs with), and re-executing that bind was ~98% of this claim's cost. The line is read as the
+// text after `----ARGV <name>: ` up to its newline; a name that appears twice or not at all is not
+// one reading and refuses (Absent), so a capture this reader cannot read unambiguously fails closed.
+fn host_capture_text_section_argv(capture: String, name: String) -> String? {
+  let parts = split(s: capture, delimiter: concat("\n", host_capture_argv_open, name, ": "))
+  if count(parts) != 2 {
+    none
+  } else {
+    get(xs: split(s: join(parts.skip(n: 1), ""), delimiter: "\n"), index: 0)
+  }
+}
+
+fn bindings_hold_against_capture_text(capture: String, stages: List<HostCaptureStage>) -> Bool {
   fold(
     census_historical_stage_bindings,
     init: true,
-    f: (acc, b) => acc && binding_holds_against_capture(envelope: envelope, stages: stages, b: b),
+    f: (acc, b) => acc && binding_holds_against_argv(historical: host_capture_text_section_argv(capture: capture, name: b.name as String), stages: stages, b: b),
   )
 }
 
