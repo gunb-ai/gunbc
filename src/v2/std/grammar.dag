@@ -1290,6 +1290,31 @@ type EmittedProductionResolution {
   slots: List<EmittedProductionResolution>
 }
 
+// The nonterminal arm of formal_production_rhs_matches_emitted_conj_step, shared by the plain and
+// the nested occurrence (nesting does not change what matches).
+fn formal_production_rhs_matches_nonterminal_step(
+  index: Int,
+  resolution: EmittedProductionResolution,
+  nonterminal: FormalNonterminal
+) -> EmittedRhsMatchState {
+          match list_nth(
+            xs: resolution.slots,
+            wanted: index,
+            absent: Diagnostic {
+              reason: ^grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: resolution.emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: slot } =>
+              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
+                Holds { value: _ } => EmittedRhsMatchOk { index: index + 1 }
+                Violates { diagnostic: _ } => EmittedRhsMatchFail
+              }
+            Violates { diagnostic: _ } => EmittedRhsMatchFail
+          }
+}
+
 fn formal_production_rhs_matches_emitted_conj_step(
   state: EmittedRhsMatchState,
   resolution: EmittedProductionResolution,
@@ -1301,12 +1326,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
     EmittedRhsMatchOk { index: index } =>
       match symbol {
         FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
-          formal_production_rhs_matches_emitted_conj_step(
-            state: state,
-            resolution: resolution,
-            children: children,
-            symbol: FormalNonterminalOccurrence { nonterminal: nonterminal }
-          )
+          formal_production_rhs_matches_nonterminal_step(index: index, resolution: resolution, nonterminal: nonterminal)
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
@@ -1342,22 +1362,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
             Absent => EmittedRhsMatchOk { index: index }
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
-          match list_nth(
-            xs: resolution.slots,
-            wanted: index,
-            absent: Diagnostic {
-              reason: ^grammar_relation_emitted_conj_slot_missing,
-              at: node_locus(node: resolution.emitted),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          ) {
-            Holds { value: slot } =>
-              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
-                Holds { value: _ } => EmittedRhsMatchOk { index: index + 1 }
-                Violates { diagnostic: _ } => EmittedRhsMatchFail
-              }
-            Violates { diagnostic: _ } => EmittedRhsMatchFail
-          }
+          formal_production_rhs_matches_nonterminal_step(index: index, resolution: resolution, nonterminal: nonterminal)
       }
   }
 }
@@ -1791,6 +1796,48 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
   }
 }
 
+// The nonterminal arm of derive_grammar_relation_token_edges_recursive_step: the child's token edges
+// spliced after `edges`. A nested occurrence calls it with no prior edges and wraps the result.
+fn derive_grammar_relation_nonterminal_step(
+  edges: List<Edge>,
+  conj_index: Int,
+  conj_children: List<Node>,
+  resolution: EmittedProductionResolution,
+  emitted: Node,
+  nonterminal: FormalNonterminal
+) -> Witness<DeriveGrammarRelationTokensProgress> {
+          match list_nth(
+            xs: resolution.slots,
+            wanted: conj_index,
+            absent: Diagnostic {
+              reason: ^grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: slot } =>
+              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
+                Holds { value: nested } =>
+                  match derive_grammar_relation_token_edges_resolved(
+                    production: nested,
+                    resolution: slot
+                  ) {
+                    Holds { value: nested_edges } =>
+                      Holds {
+                        value: DeriveGrammarRelationTokensProgress {
+                          edges: list_append(left: edges, right: nested_edges),
+                          conj_index: conj_index + 1,
+                          conj_children: conj_children
+                        }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+}
+
 fn derive_grammar_relation_token_edges_recursive_step(
   progress: Witness<DeriveGrammarRelationTokensProgress>,
   resolution: EmittedProductionResolution,
@@ -1802,14 +1849,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
     Holds { value: DeriveGrammarRelationTokensProgress { edges: edges, conj_index: conj_index, conj_children: conj_children } } =>
       match symbol {
         FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: unit } =>
-          match derive_grammar_relation_token_edges_recursive_step(
-            progress: Holds {
-              value: DeriveGrammarRelationTokensProgress { edges: Empty, conj_index: conj_index, conj_children: conj_children }
-            },
-            resolution: resolution,
-            emitted: emitted,
-            symbol: FormalNonterminalOccurrence { nonterminal: nonterminal }
-          ) {
+          match derive_grammar_relation_nonterminal_step(edges: Empty, conj_index: conj_index, conj_children: conj_children, resolution: resolution, emitted: emitted, nonterminal: nonterminal) {
             Holds { value: inner } =>
               Holds {
                 value: DeriveGrammarRelationTokensProgress {
@@ -1883,36 +1923,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
               }
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
-          match list_nth(
-            xs: resolution.slots,
-            wanted: conj_index,
-            absent: Diagnostic {
-              reason: ^grammar_relation_emitted_conj_slot_missing,
-              at: node_locus(node: emitted),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          ) {
-            Holds { value: slot } =>
-              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
-                Holds { value: nested } =>
-                  match derive_grammar_relation_token_edges_resolved(
-                    production: nested,
-                    resolution: slot
-                  ) {
-                    Holds { value: nested_edges } =>
-                      Holds {
-                        value: DeriveGrammarRelationTokensProgress {
-                          edges: list_append(left: edges, right: nested_edges),
-                          conj_index: conj_index + 1,
-                          conj_children: conj_children
-                        }
-                      }
-                    Violates { diagnostic: d } => Violates { diagnostic: d }
-                  }
-                Violates { diagnostic: d } => Violates { diagnostic: d }
-              }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
-          }
+          derive_grammar_relation_nonterminal_step(edges: edges, conj_index: conj_index, conj_children: conj_children, resolution: resolution, emitted: emitted, nonterminal: nonterminal)
       }
   }
 }
@@ -2271,6 +2282,30 @@ fn concrete_syntax_fixed_token_matches_terminal(
   }
 }
 
+// The nonterminal arm of rebuild_emitted_rhs_walk_step, shared by the plain and the nested
+// occurrence (nesting is layout; the token spine carries none).
+fn rebuild_emitted_rhs_nonterminal_step(
+  children: List<Node>,
+  token_index: Int,
+  productions: List<FormalProduction>,
+  tokens: List<ConcreteSyntaxToken>,
+  nonterminal: FormalNonterminal
+) -> RebuildRhsWalkState {
+          match grammar_relation_emitted_rebuild_for_lhs(
+            productions: productions,
+            lhs: nonterminal.identity,
+            tokens: tokens,
+            token_index: token_index
+          ) {
+            Holds { value: RebuildEmittedOk { emitted: child, token_index: next_index } } =>
+              RebuildRhsWalkOk {
+                children: list_snoc_item(xs: children, item: child),
+                token_index: next_index
+              }
+            Violates { diagnostic: _ } => RebuildRhsWalkFail
+          }
+}
+
 fn rebuild_emitted_rhs_walk_step(
   state: RebuildRhsWalkState,
   productions: List<FormalProduction>,
@@ -2282,12 +2317,7 @@ fn rebuild_emitted_rhs_walk_step(
     RebuildRhsWalkOk { children: children, token_index: token_index } =>
       match symbol {
         FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
-          rebuild_emitted_rhs_walk_step(
-            state: state,
-            productions: productions,
-            tokens: tokens,
-            symbol: FormalNonterminalOccurrence { nonterminal: nonterminal }
-          )
+          rebuild_emitted_rhs_nonterminal_step(children: children, token_index: token_index, productions: productions, tokens: tokens, nonterminal: nonterminal)
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Absent =>
@@ -2345,19 +2375,7 @@ fn rebuild_emitted_rhs_walk_step(
               }
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
-          match grammar_relation_emitted_rebuild_for_lhs(
-            productions: productions,
-            lhs: nonterminal.identity,
-            tokens: tokens,
-            token_index: token_index
-          ) {
-            Holds { value: RebuildEmittedOk { emitted: child, token_index: next_index } } =>
-              RebuildRhsWalkOk {
-                children: list_snoc_item(xs: children, item: child),
-                token_index: next_index
-              }
-            Violates { diagnostic: _ } => RebuildRhsWalkFail
-          }
+          rebuild_emitted_rhs_nonterminal_step(children: children, token_index: token_index, productions: productions, tokens: tokens, nonterminal: nonterminal)
       }
   }
 }
