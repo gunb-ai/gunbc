@@ -16,6 +16,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.cli.compile_cli {
   CliEmitClosure,
+  CliCensusRefused,
   CliEmitted,
   CliPlanParsed,
   CliRunRefused,
@@ -280,6 +281,7 @@ fn door_probe_cli_detail() -> String {
   ) {
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => ""
     CliRunRefused { reason: _, detail: detail } => detail
+    CliCensusRefused { reason: _, detail: detail, text: _ } => detail
     CliUsageRefused { reason: _, detail: detail } => detail
   }
 }
