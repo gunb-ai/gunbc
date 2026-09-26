@@ -6,6 +6,8 @@ import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.compiler.fold_lowering {
   FoldCallLowered,
   FunctionValueBinder,
+  FunctionValueKind,
+  function_value_kind_of,
   FunctionLiteralBlockBody,
   FunctionLiteralBody,
   FunctionLiteralExprBody,
@@ -3757,11 +3759,11 @@ fn body_lower_node_is_lowered_atom(node: Node) -> Bool {
 //   seq(`(`, seq(ident, seq(`,`, seq(ident, seq(repeat(seq(`,`, ident)), seq(`)`, seq(`=>`, expr)))))))
 // A shape outside those, or a body the value reader cannot lower, is a located refusal: the lambda is
 // never narrowed to its parameter and never carried as an unlowered shell. A lambda inside a
-// fold-family call is still fold_lowering's (body_lower_try_fold_loop runs before any argument is
-// read as a value), so this is the lambda's only other lowering, not a second one.
+// fold-family call is still fold_lowering's (body_lower_fold_family_call_first takes the call on its
+// raw node before any argument is lowered), so this is the lambda's only other lowering, not a second one.
 // The function-value production a value is, with its captured child: `p => body` or `fn(..) { .. }`.
 type FunctionValueCapture {
-  emitted: Symbol
+  kind: FunctionValueKind
   captured: Node
 }
 
@@ -3769,13 +3771,13 @@ fn body_lower_function_value_captured_optional(node: Node) -> Optional<FunctionV
   let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: id } =>
-      if (id == ^dag_surface_arrow_lambda) || (id == ^dag_surface_fn_literal) {
-        match parse_production_captured_child_optional(node: stripped) {
-          Present { value: captured } => optional_present(value: FunctionValueCapture { emitted: id, captured: captured })
-          Absent => optional_absent()
-        }
-      } else {
-        optional_absent()
+      match function_value_kind_of(emitted: id) {
+        Absent => optional_absent()
+        Present { value: kind } =>
+          match parse_production_captured_child_optional(node: stripped) {
+            Present { value: captured } => optional_present(value: FunctionValueCapture { kind: kind, captured: captured })
+            Absent => optional_absent()
+          }
       }
     Absent => optional_absent()
   }
@@ -3877,7 +3879,7 @@ fn body_lower_function_value(shell: Node, capture: FunctionValueCapture) -> Outc
   let unread: Outcome<Optional<Node>> = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: shell)
   )
-  match function_value_parts_optional(captured: capture.captured, emitted: capture.emitted) {
+  match function_value_parts_optional(captured: capture.captured, kind: capture.kind) {
     Absent => unread
     Present { value: parts } =>
       match body_lower_function_value_codomain_optional(ret: parts.return_clause) {
@@ -3910,23 +3912,25 @@ fn body_lower_function_value(shell: Node, capture: FunctionValueCapture) -> Outc
 // `fn(a, b) -> R { .. }` -- builds its Arrow through this, from its authored binders, its codomain
 // and its ALREADY LOWERED body, so there is one Arrow shape.
 //
-// AN UNWRITTEN TYPE IS A FRESH TYPE PARAMETER OF THIS ARROW (gunbc#12217's binder model): the
-// i-th parameter `p` is typed by the type parameter spelled `'p` followed by i primes, and an
-// unwritten return type by `'` followed by one prime per parameter. `'` is not an identifier
-// character of the dag lexer (IdentStartChar / IdentContinueChar), so no authored name can spell one:
-// the binder never shadows a visible name (resolve refuses one that does), never collides with a
-// declaration, and the primes keep repeated parameter names (`fn(_, _)`) distinct as
-// v2.std.node type_binder_conj_conforms requires. Each function value's Arrow carries its own type
+// AN UNWRITTEN TYPE IS A FRESH TYPE PARAMETER OF THIS ARROW (gunbc#12217's binder model). A parameter
+// labelled `p` in the domain is typed by the type parameter spelled `'p`, and an unwritten return
+// type by the bare `'`. `'` is not an identifier character of the dag lexer (IdentStartChar /
+// IdentContinueChar), so no authored name can spell one: the binder never shadows a visible name
+// (resolve refuses one that does) and never collides with a declaration. The labels come from the
+// domain AFTER the one anonymous-slot mint, so they are distinct whenever the domain is well-formed,
+// and the type parameters are distinct with them. Each function value's Arrow carries its own type
 // parameters in its own frame, so no two lambdas share one.
-fn body_lower_function_value_type_var(base: String, primes: String) -> Symbol {
-  symbol_intern_lexeme(lexeme: "'" + base + primes)
+fn body_lower_function_value_type_var(label: Symbol) -> Symbol {
+  symbol_intern_lexeme(lexeme: "'" + symbol_lexeme(sym: label))
+}
+
+fn body_lower_function_value_return_type_var() -> Symbol {
+  symbol_intern_lexeme(lexeme: "'")
 }
 
 type FunctionValueSignature {
   domain: List<Edge>
   type_params: List<Edge>
-  primes: String
-  wildcard_primes: String
 }
 
 // A fresh type variable is minted by the compiler, not authored, so it is a SYNTHETIC atom: it must
@@ -3937,42 +3941,34 @@ fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: tv } }, children: [])
 }
 
-// A `_` parameter binds nothing, and a domain is a record (v2.std.node edges_conform: every edge
-// Named, every name distinct), so `fn(_, _)` cannot carry two fields named `_`. The FIRST wildcard
-// keeps the name `_` it was written with; each later one takes `_` followed by one prime per earlier
-// wildcard -- `_'`, `_''`, .. -- which no authored name can spell, so it stays distinct and no body
-// can refer to it. (The reference-conservation census matches an erased binder to its label by
-// spelling, so a second `_` has no label to match; occurrence projection, XL-2, dissolves that.)
-fn body_lower_function_value_binder_name(b: FunctionValueBinder, wildcard_primes: String) -> Symbol {
-  if b.name == ^_ {
-    symbol_intern_lexeme(lexeme: "_" + wildcard_primes)
-  } else {
-    b.name
-  }
-}
-
-fn body_lower_function_value_next_wildcard_primes(b: FunctionValueBinder, wildcard_primes: String) -> String {
-  if b.name == ^_ { wildcard_primes + "'" } else { wildcard_primes }
-}
-
+// THE DOMAIN GOES THROUGH THE ONE ANONYMOUS-SLOT MINT (v2.std.anonymous_binder
+// anonymous_binder_mint_domain), exactly as a named fn's domain does: every binder the author
+// spelled `_` is relabelled `<anonymous-parameter-N>` by its slot, every other binder keeps its name.
+// The authored binders enter as Named edges carrying their own node; the minted labels then key
+// both the domain edge and its fresh type parameter. The mint relabels Named edges and passes any
+// other edge through unchanged, so every edge here is Named; one that were not would be kept in the
+// domain as is, where v2.std.node edges_conform refuses a Positional edge in a record -- loudly.
 fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> FunctionValueSignature {
   let no_edges: List<Edge> = []
-  fold(binders, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, primes: "", wildcard_primes: "" }, f: fn(acc, b) {
-    let tv = body_lower_function_value_type_var(base: symbol_lexeme(sym: b.name), primes: acc.primes)
-    FunctionValueSignature {
-      domain: list_append(
-        left: acc.domain,
-        right: [Edge {
-          label: Named { name: body_lower_function_value_binder_name(b: b, wildcard_primes: acc.wildcard_primes) },
-          target: body_lower_function_value_type_var_atom(tv: tv)
-        }]
-      ),
-      type_params: list_append(
-        left: acc.type_params,
-        right: [Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }]
-      ),
-      primes: acc.primes + "'",
-      wildcard_primes: body_lower_function_value_next_wildcard_primes(b: b, wildcard_primes: acc.wildcard_primes)
+  let authored = fold(binders, init: no_edges, f: fn(acc, b) {
+    list_append(left: acc, right: [Edge { label: Named { name: b.name }, target: b.at }])
+  })
+  fold(anonymous_binder_mint_domain(edges: authored), init: FunctionValueSignature { domain: no_edges, type_params: no_edges }, f: fn(acc, e) {
+    match e.label {
+      Named { name: label } =>
+        let tv = body_lower_function_value_type_var(label: label)
+        FunctionValueSignature {
+          domain: list_append(
+            left: acc.domain,
+            right: [Edge { label: Named { name: label }, target: body_lower_function_value_type_var_atom(tv: tv) }]
+          ),
+          type_params: list_append(
+            left: acc.type_params,
+            right: [Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }]
+          )
+        }
+      Positional =>
+        FunctionValueSignature { domain: list_append(left: acc.domain, right: [e]), type_params: acc.type_params }
     }
   })
 }
@@ -3987,7 +3983,7 @@ fn body_lower_function_value_arrow(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: reified, diagnostics: bd } =>
       let sig = body_lower_function_value_signature(binders: binders)
-      let return_tv = body_lower_function_value_type_var(base: "", primes: sig.primes)
+      let return_tv = body_lower_function_value_return_type_var()
       let codomain_node = match codomain {
         CodomainAuthored { type_node: t } => t
         CodomainElided => body_lower_function_value_type_var_atom(tv: return_tv)
