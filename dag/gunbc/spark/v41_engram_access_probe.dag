@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
-import std.measure { Nanosecond, nanosecond, nanosecond_count, Second, second, second_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
@@ -502,13 +502,20 @@ fn v41_access_per_row(t: V41AccessTiming) -> Nanosecond {
 // of a copy), and the reading refuses rather than being ranked. Run 36227645107 is why: its program
 // printed microseconds that the receipt labelled nanoseconds, and every cell looked impossible.
 // These ceilings only catch the impossible; they are not performance expectations.
-//   memory: 273 GB/s (273000 B/us), the DGX Spark's published LPDDR5x bandwidth (NVIDIA DGX Spark specifications).
-//   drive: 15.75 GB/s (15750 B/us), the PCIe 5.0 x4 link rate, which bounds any NVMe drive on such a link.
-data v41_access_memory_ceiling_bytes_per_microsecond: Nat = 273000
-data v41_access_drive_ceiling_bytes_per_microsecond: Nat = 15750
-data v41_access_record_bytes: Nat = 264
+//   memory: 273 GB/s, the DGX Spark's published LPDDR5x bandwidth (NVIDIA DGX Spark specifications).
+//   drive: 15.75 GB/s, the PCIe 5.0 x4 link rate, which bounds any NVMe drive on such a link.
+// A CEILING IS A BYTE COUNT OVER A TIME, BOTH TYPED, rather than a number whose unit lives in its
+// name; the comparison then cross-multiplies the two typed quantities and changes no scale.
+// std.measure Bandwidth is not used: its scale does not pin bits versus bytes, and its existing
+// consumers read it as bits per second at a network scale, so a byte-rate ceiling in it would be the
+// unit ambiguity this gate exists to catch.
+type V41ThroughputCeiling sole_constructor { bytes: ByteSize, per: Nanosecond }
 
-type V41BatchPages sole_constructor { batch: V41AccessBatch, rows: Nat, distinct_pages: Nat, page_bytes: Nat }
+data v41_access_memory_ceiling: V41ThroughputCeiling = V41ThroughputCeiling { bytes: byte_size(count: 273000), per: nanosecond(count: 1000) }
+data v41_access_drive_ceiling: V41ThroughputCeiling = V41ThroughputCeiling { bytes: byte_size(count: 15750), per: nanosecond(count: 1000) }
+data v41_access_record_bytes: ByteSize = byte_size(count: 264)
+
+type V41BatchPages sole_constructor { batch: V41AccessBatch, rows: Nat, distinct_pages: Nat, page_bytes: ByteSize }
 
 fn v41_batch_pages_of(stdout: String, batch: V41AccessBatch) -> V41BatchPages? {
   match list_at_optional(xs: filter(v41_lines_with(stdout: stdout, keyword: "PAGES"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: b } => b == v41_batch_token(b: batch)  Absent => false }), index: 0) {
@@ -519,31 +526,30 @@ fn v41_batch_pages_of(stdout: String, batch: V41AccessBatch) -> V41BatchPages? {
         Absent => none
         Present { value: pages } => match v41_nat_word(ws: ws, index: 4) {
           Absent => none
-          Present { value: page } => Present { value: V41BatchPages { batch: batch, rows: rows, distinct_pages: pages, page_bytes: page } }
+          Present { value: page } => Present { value: V41BatchPages { batch: batch, rows: rows, distinct_pages: pages, page_bytes: byte_size(count: page) } }
         }
       }
     }
   }
 }
 
-// bytes / ns > ceiling, compared as bytes x 1000 > ceiling-per-microsecond x ns: no division, so a
-// small time cannot round to zero, and in bytes per microsecond so neither product overflows 64 bits
-// for any store or run this probe makes (the substrate refuses an overflow rather than wrapping).
-fn v41_exceeds(bytes: Nat, ns: Nat, ceiling_bytes_per_microsecond: Nat) -> Bool {
-  bytes * 1000 > ceiling_bytes_per_microsecond * ns
+// moved / took > ceiling.bytes / ceiling.per, cross-multiplied: no division, so a small time cannot
+// round to zero, and at these magnitudes neither product leaves 64 bits (the substrate refuses an
+// overflow rather than wrapping).
+fn v41_exceeds(moved: ByteSize, took: Nanosecond, ceiling: V41ThroughputCeiling) -> Bool {
+  byte_size_count(b: moved) * nanosecond_count(n: ceiling.per) > byte_size_count(b: ceiling.bytes) * nanosecond_count(n: took)
 }
 
 fn v41_implausibility(t: V41AccessTiming, pages: V41BatchPages) -> String? {
-  let ns = nanosecond_count(n: t.median)
-  if ns == 0 {
+  if nanosecond_count(n: t.median) == 0 {
     Present { value: join(["cell ", v41_timing_key_wire(t: t), " reports zero time"], "") }
-  } else if v41_exceeds(bytes: t.rows * v41_access_record_bytes, ns: ns, ceiling_bytes_per_microsecond: v41_access_memory_ceiling_bytes_per_microsecond) {
+  } else if v41_exceeds(moved: byte_size(count: t.rows * byte_size_count(b: v41_access_record_bytes)), took: t.median, ceiling: v41_access_memory_ceiling) {
     Present { value: join(["cell ", v41_timing_key_wire(t: t), " implies more than the 273 GB/s memory ceiling"], "") }
   } else {
     match t.temperature {
       AccessWarm => none
       AccessCold =>
-        if v41_exceeds(bytes: pages.distinct_pages * pages.page_bytes, ns: ns, ceiling_bytes_per_microsecond: v41_access_drive_ceiling_bytes_per_microsecond) {
+        if v41_exceeds(moved: byte_size(count: pages.distinct_pages * byte_size_count(b: pages.page_bytes)), took: t.median, ceiling: v41_access_drive_ceiling) {
           Present { value: join(["cold cell ", v41_timing_key_wire(t: t), " implies more than the 15.75 GB/s drive link for its distinct pages"], "") }
         } else { none }
     }
@@ -734,7 +740,7 @@ fn v41_access_probe_body(o: V41EngramAccessProbeOutcome) -> String {
     V41AccessProbeRefused { step: s, cause: c } => join(["REFUSED step=", s as String, " cause=", c as String, "\n"], "")
     V41AccessProbeRead { image_config: i, attributes: a, timings: ts, pages: ps, mmap_not_attempted: skipped } =>
       join([
-        join(map(ps, p => join(["distinct_pages ", v41_batch_token(b: p.batch), " rows=", to_string(p.rows), " pages=", to_string(p.distinct_pages), " page_bytes=", to_string(p.page_bytes), "\n"], "")), ""),
+        join(map(ps, p => join(["distinct_pages ", v41_batch_token(b: p.batch), " rows=", to_string(p.rows), " pages=", to_string(p.distinct_pages), " page_bytes=", to_string(byte_size_count(b: p.page_bytes)), "\n"], "")), ""),
         join(["image_config=", i as String, "\n"], ""),
         join(["pageable_memory_access=", to_string(a.pageable_memory_access), " uses_host_page_tables=", to_string(a.pageable_memory_access_uses_host_page_tables), " concurrent_managed_access=", to_string(a.concurrent_managed_access), "\n"], ""),
         if skipped { "design A (mmap_unregistered): NOT ATTEMPTED, the GPU reports no pageable-memory access\n" } else { "" },
