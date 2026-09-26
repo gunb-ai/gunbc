@@ -5,14 +5,15 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.octet_read { be_u32_at, be_u32_octets, hex_octets, octet_hex, octets_hex }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.games.animal_crossing.charset { ac_glyph_octet, ac_octet_glyph }
 
 // Animal Crossing (GameCube, GAFE01) dialogue as the game stores and draws it. Messages live in
 // forest_2nd.arc as `data/message_data.bin` (every message concatenated) and
 // `data/message_data_table.bin` (one big-endian u32 per message: the END offset of that message).
 // A message id is an index into that table and is referenced from game code, so the number of
 // messages is fixed. Inside a message, 0x7F starts a control code whose total size -- 0x7F, the
-// code byte and its argument bytes -- is the game's `mFont_cont_info_tbl` entry; 0xCD is a line
-// break; every other byte is one glyph. Names and sizes below are ac-decomp's
+// code byte and its argument bytes -- is the game's `mFont_cont_info_tbl` entry; every other byte
+// is one glyph of extdeps.games.animal_crossing.charset (0xCD is the line break). Names and sizes below are ac-decomp's
 // (include/m_font.h `mFont_CONT_CODE_*`, src/game/m_font_main.c_inc `mFont_cont_info_tbl`).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -38,7 +39,6 @@ data message_data_path: String = "data/message_data.bin"
 data message_table_path: String = "data/message_data_table.bin"
 
 data control_prefix: Int = 127
-data line_break: Int = 205
 // `mMsg_data` is 0x660 bytes in ac-decomp's GAFE01 foresta symbols
 // (config/GAFE01_00/foresta/symbols.txt). The object may hold more than the text, so a real limit
 // can only be lower: this bounds what could possibly load, and long messages still need a look in
@@ -326,11 +326,10 @@ fn token_text(token: MessageToken) -> String {
       if count(a) == 0 { join(["{", c.name, "}"], "") }
       else { join(["{", c.name, ":", a |> map(o => octet_hex(octet: o)) |> join(separator: " "), "}"], "") }
     Glyph { octet: o } =>
-      if o == line_break { "\n" }
-      else if o == 123 { "{{" }
-      else if o == 125 { "}}" }
-      else if o >= 32 && o <= 126 { from_code_point(o) }
-      else { join(["{#", octet_hex(octet: o), "}"], "") }
+      match ac_octet_glyph(octet: o) {
+        Present { value: g } => g
+        Absent => join(["{#", octet_hex(octet: o), "}"], "")
+      }
   }
 }
 
@@ -338,7 +337,7 @@ fn message_text(tokens: List<MessageToken>) -> String {
   tokens |> map(t => token_text(token: t)) |> join(separator: "")
 }
 
-// `mode`: 0 plain text; 1 after '{'; 2 inside a placeholder; 3 after '}'.
+// `mode`: 0 plain text; 2 inside a {placeholder}.
 type TextFold {
   octets: List<Int>
   mode: Int
@@ -383,32 +382,29 @@ fn placeholder_octets(codes: List<ControlCode>, placeholder: String) -> MessageO
 
 fn text_step(codes: List<ControlCode>, acc: TextFold, cp: Int) -> TextFold {
   if acc.refusal != "" { acc }
-  else if acc.mode == 1 {
-    if cp == 123 { TextFold { octets: list_push(acc.octets, 123), mode: 0, placeholder: [], refusal: "" } }
-    else { TextFold { octets: acc.octets, mode: 2, placeholder: [cp], refusal: "" } }
-  } else if acc.mode == 2 {
+  else if acc.mode == 2 {
     if cp == 125 {
       match placeholder_octets(codes: codes, placeholder: acc.placeholder |> map(c => from_code_point(c)) |> join(separator: "")) {
         MessageAccepted { value: o } => TextFold { octets: concat(acc.octets, o), mode: 0, placeholder: [], refusal: "" }
         MessageRefused { reason: r } => text_refused(acc: acc, reason: r)
       }
     } else { TextFold { octets: acc.octets, mode: 2, placeholder: list_push(acc.placeholder, cp), refusal: "" } }
-  } else if acc.mode == 3 {
-    if cp == 125 { TextFold { octets: list_push(acc.octets, 125), mode: 0, placeholder: [], refusal: "" } }
-    else { text_refused(acc: acc, reason: "unescaped '}' (write '}}' for a literal brace)") }
-  } else if cp == 123 { TextFold { octets: acc.octets, mode: 1, placeholder: [], refusal: "" } }
-  else if cp == 125 { TextFold { octets: acc.octets, mode: 3, placeholder: [], refusal: "" } }
-  else if cp == 10 { TextFold { octets: list_push(acc.octets, line_break), mode: 0, placeholder: [], refusal: "" } }
-  else if cp >= 32 && cp <= 126 { TextFold { octets: list_push(acc.octets, cp), mode: 0, placeholder: [], refusal: "" } }
-  else { text_refused(acc: acc, reason: join(["character U+", to_string(cp), " has no single-octet glyph; write a {#HH} escape"], "")) }
+  } else if cp == 123 { TextFold { octets: acc.octets, mode: 2, placeholder: [], refusal: "" } }
+  else if cp == 125 { text_refused(acc: acc, reason: "'}' outside a control code") }
+  else {
+    match ac_glyph_octet(glyph: from_code_point(cp)) {
+      Present { value: o } => TextFold { octets: list_push(acc.octets, o), mode: 0, placeholder: [], refusal: "" }
+      Absent => text_refused(acc: acc, reason: join(["'", from_code_point(cp), "' is not in the game's font; write a {#hh} escape for a specific glyph"], ""))
+    }
+  }
 }
 
 // The octets a readable text denotes, refused on any placeholder that is not a known code with
-// exactly its argument count, or any character with no one-octet glyph.
+// exactly its argument count, or any character the font does not draw. Braces never occur as text:
+// the font has no brace glyphs, so '{' always opens a placeholder.
 fn text_message(codes: List<ControlCode>, text: String) -> MessageOutcome<List<Int>> {
   let r = fold(chars(text), init: TextFold { octets: [], mode: 0, placeholder: [], refusal: "" }, f: (acc, cp) => text_step(codes: codes, acc: acc, cp: cp))
   if r.refusal != "" { MessageRefused { reason: r.refusal } }
-  else if r.mode == 1 || r.mode == 2 { MessageRefused { reason: "unterminated '{' placeholder" } }
-  else if r.mode == 3 { MessageRefused { reason: "unescaped '}' (write '}}' for a literal brace)" } }
+  else if r.mode == 2 { MessageRefused { reason: "unterminated '{' placeholder" } }
   else { MessageAccepted { value: r.octets } }
 }

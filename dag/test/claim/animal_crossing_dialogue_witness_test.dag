@@ -14,9 +14,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Messages are supplied as literal octets. The inhabitance run over a real disc image is
 // examples.animal_crossing.dialogue `show`/`build`; the repository does not carry the image.
 
-// "Hi \{PUT_STRING_TAIL}", a line break, a pause of 0x0a, then a literal "{x}".
-data sample_octets: List<Int> = [72, 105, 32, 127, 28, 205, 127, 3, 10, 123, 120, 125, 127, 0]
-data sample_text: String = "Hi \{PUT_STRING_TAIL}\n\{CURSOR_SET_TIME:0a}\{\{x}}\{LAST}"
+// "Hi", the catchphrase, a line break, a pause of 0x0a, then octet 0x5B -- "ã" in the game's font,
+// where ASCII would say "[".
+data sample_octets: List<Int> = [72, 105, 32, 127, 28, 205, 127, 3, 10, 91, 127, 0]
+data sample_text: String = "Hi \{PUT_STRING_TAIL}\n\{CURSOR_SET_TIME:0a}ã\{LAST}"
 
 fn text_of(octets: List<Int>) -> String {
   match message_tokens(codes: vanilla_control_codes, message: octets) {
@@ -38,20 +39,30 @@ test fn control_code_table_is_indexed_by_code() -> Bool {
     && fold(deluxe_control_codes(), init: 0, f: (next, c) => if c.code == next { next + 1 } else { -1000 }) == 141
 }
 
-test fn message_text_round_trips_codes_breaks_and_braces() -> Bool {
+test fn message_text_round_trips_codes_breaks_and_font_glyphs() -> Bool {
   return text_of(octets: sample_octets) == sample_text && octets_of(text: sample_text) == Present { value: sample_octets }
 }
 
 test fn unprintable_octets_round_trip_as_escapes() -> Bool {
-  return text_of(octets: [144, 127, 0]) == "{#90}\{LAST}" && octets_of(text: "{#90}\{LAST}") == Present { value: [144, 127, 0] }
+  return text_of(octets: [210, 127, 0]) == "{#d2}\{LAST}" && octets_of(text: "{#d2}\{LAST}") == Present { value: [210, 127, 0] }
 }
 
-test fn text_refuses_unknown_codes_wrong_arity_and_bare_braces() -> Bool {
+test fn text_refuses_unknown_codes_wrong_arity_and_characters_the_font_lacks() -> Bool {
   return octets_of(text: "\{NOPE}") == none
     && octets_of(text: "\{CURSOR_SET_TIME}") == none
     && octets_of(text: "\{CURSOR_SET_TIME:01 02}") == none
     && octets_of(text: "a } b") == none
     && octets_of(text: "a { b") == none
+    && octets_of(text: "[AI]") == none
+}
+
+fn all_glyph_octets(from: Int, acc: List<Int>) -> List<Int> {
+  if from > 255 { acc } else if from == 127 { all_glyph_octets(from: from + 1, acc: acc) } else { all_glyph_octets(from: from + 1, acc: list_push(acc, from)) }
+}
+
+test fn every_non_control_octet_round_trips_through_the_font() -> Bool {
+  let octets = all_glyph_octets(from: 0, acc: [])
+  return octets_of(text: text_of(octets: octets)) == Present { value: octets }
 }
 
 test fn a_deluxe_code_tokenizes_only_with_the_deluxe_table() -> Bool {

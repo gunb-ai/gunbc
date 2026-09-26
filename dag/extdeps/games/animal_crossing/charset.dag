@@ -1,0 +1,85 @@
+module extdeps.games.animal_crossing.charset
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// The glyph each octet draws in the English GameCube Animal Crossing font, as ACSE (Cuyler36's save
+// editor) transcribes it in CharacterSets.AcCharacterDictionary. It is not ASCII: fifteen printable
+// ASCII octets draw other glyphs -- 0x5B is "ã", not "[" -- which an in-game render of 0x5B confirms.
+// An empty entry, or ACSE's "�", is an octet with no transcribed glyph.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/Cuyler36/ACSE/blob/23563b168f4afd705aa3b48da807978644c715df/ACSE.Core/Utilities/StringUtility.cs"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.games.animal_crossing.charset",
+      decl_name: "ac_glyphs",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ac_glyphs: List<String> = [
+  "¡", "¿", "Ä", "À", "Á", "Â", "Ã", "Å", "Ç", "È", "É", "Ê", "Ë", "Ì", "Í", "Î",
+  "Ï", "Ð", "Ñ", "Ò", "Ó", "Ô", "Õ", "Ö", "Ø", "Ù", "Ú", "Û", "Ü", "ß", "Þ", "à",
+  " ", "!", "\"", "á", "â", "%", "&", "'", "(", ")", "~", "♥", ",", "-", ".", "♪",
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", "🌢", "<", "=", ">", "?",
+  "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
+  "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "ã", "💢", "ä", "å", "_",
+  "ç", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
+  "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "è", "é", "ê", "ë", "□",
+  "�", "ì", "í", "î", "ï", "•", "ð", "ñ", "ò", "ó", "ô", "õ", "ö", "⁰", "ù", "ú",
+  "–", "û", "ü", "ý", "ÿ", "þ", "Ý", "¦", "§", "a̱", "o̱", "‖", "µ", "³", "²", "¹",
+  "¯", "¬", "Æ", "æ", "„", "»", "«", "☀", "☁", "☂", "🌬", "☃", "∋", "∈", "/", "∞",
+  "○", "🗙", "□", "△", "+", "⚡", "♂", "♀", "🍀", "★", "💀", "😮", "😄", "😣", "😠", "😃",
+  "×", "÷", "🔨", "🎀", "✉", "💰", "🐾", "🐶", "🐱", "🐰", "🐦", "🐮", "🐷", "\n", "🐟", "🐞",
+  ";", "#", "", "", "⚷", "", "", "", "", "", "", "", "", "", "", "",
+  "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+  "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
+]
+
+// 0x7F never draws: it opens a control code (extdeps.games.animal_crossing.message), so its table
+// entry is not a glyph of any text.
+data ac_control_prefix_octet: Int = 127
+data ac_untranscribed_glyph: String = "�"
+
+fn ac_glyph_is_single_code_point(glyph: String) -> Bool {
+  count(chars(glyph)) == 1
+}
+
+type GlyphSearch {
+  octet: Int
+  found: Int
+}
+
+// The octet that draws `glyph`: the first one whose entry it is, never the control prefix. Absent
+// for a glyph the font does not have, and for the two entries spelled with a combining mark, which
+// are not one character of text.
+fn ac_glyph_octet(glyph: String) -> Int? {
+  if ac_glyph_is_single_code_point(glyph: glyph) == false || glyph == ac_untranscribed_glyph { none }
+  else {
+    let r = fold(ac_glyphs, init: GlyphSearch { octet: 0, found: -1 }, f: (acc, g) =>
+      GlyphSearch { octet: acc.octet + 1, found: if acc.found < 0 && g == glyph && acc.octet != ac_control_prefix_octet { acc.octet } else { acc.found } })
+    if r.found < 0 { none } else { Present { value: r.found } }
+  }
+}
+
+// The text an octet reads as, when that text reads back as the same octet; absent otherwise (no
+// transcribed glyph, a two-code-point entry, or a glyph another octet already owns), and such an
+// octet is written as an escape instead.
+fn ac_octet_glyph(octet: Int) -> String? {
+  match get(ac_glyphs, octet) {
+    null => none
+    other =>
+      if ac_glyph_octet(glyph: other) == Present { value: octet } { Present { value: other } } else { none }
+  }
+}
