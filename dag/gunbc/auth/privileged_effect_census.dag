@@ -21,6 +21,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
+  WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
   OperatorOwnSession, PastedOperatorToken,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -150,11 +151,7 @@ fn site_conformance(row: PrivilegedEffectSite, selection: AuthorizationPatternSe
       if realized_matches(selected: p, realized: row.realized) { Conforms } else { divergence(row: row) }
     ManualStepRequired { step: s, receipt: _ } =>
       if realized_matches(selected: HumanOnlyStep { step: s }, realized: row.realized) { Conforms } else { divergence(row: row) }
-    NoAdmissiblePattern { causes: _, scope: _ } =>
-      match row.divergence_reason {
-        Present { value: r } => DivergesWithReason { reason: r }
-        Absent => SiteNotDecidable { standing: selection }
-      }
+    NoAdmissiblePattern { causes: _, scope: _ } => SiteNotDecidable { standing: selection }
     PatternSelectionNeedsEvidence { needs: _ } => SiteNotDecidable { standing: selection }
     PatternSelectionNeedsPolicy { survivors: _ } => SiteNotDecidable { standing: selection }
     PatternSelectionRefused { defects: _ } => SiteNotDecidable { standing: selection }
@@ -199,6 +196,7 @@ fn recurring_credential_read(subject: NonEmptyStr) -> PrivilegedEffect {
     workload_identity: convergence_principal(),
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -212,39 +210,51 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
     workload_identity: grant_administrator_unbindable,
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
-// THE MT. COLLINS DESTRUCTIVE CONTROLLER EFFECT, stated as it is, by both roots that perform it.
+// THE MT. COLLINS BOOT (operator ruling 2026-09-23), with its parameters stated as they are.
 // RECURRING: dispatched every time the unit is re-censused, with nobody at the end of it --
 // EveryProvision, which the selection reads as "must run unattended".
 // IRREVERSIBLE, AND SAID SO: a power cycle destroys the unit's RAM and whatever session it held, and
-// no reapply restores that. An earlier revision declared ReversibleByReapply, and its own mutation
-// claim showed that label was what selected federation (side-chat review 5286225278).
-// SO THE SELECTION REFUSES IT, AND THIS CENSUS SAYS SO RATHER THAN EDITING AN INPUT: irreversible owes
-// a witness, recurring must run unattended, and no candidate is both (NoAdmissiblePattern). The
-// operator has ruled twice that no approval is wanted (2026-09-23; 2026-09-25, which also withdrew the
-// standing-ruling approval gate #12101 had put in its place), so each root realizes the federated
-// pattern -- the fleet-converge run on main under its workload identity -- and carries that ruling as
-// a stated divergence (mtcollins1_operator_waived_witness). The physical-safety fact the old per-run
-// tap used to carry is kept: both roots take the unit's durable maintenance hold before any BMC write
-// (privileged_effect_interlocks below).
+// no reapply restores that. An earlier revision of this row declared ReversibleByReapply, and its own
+// mutation claim showed that label was what selected federation -- a relabel standing where a
+// decision belonged (side-chat review 5286225278).
+// THE DECISION IS THE OPERATOR'S, AND IT IS STATED HERE WITH NO RUN-TIME APPROVAL (operator rulings
+// 2026-09-23 and 2026-09-25). #12101 had every run read a stored approval of the ruling's words before
+// the unit hold; the operator declined to file one and asked for the check to be removed, so the
+// ruling is this one value: its words, the effect, the roots it covers and the interlock it is
+// conditional on. It discharges the per-instance witness for irreversibility and nothing else; the
+// interlock is rostered in privileged_effect_interlocks below, and a ruling whose interlock is not
+// rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
+// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation for the boot;
+// the fleet-converge run's principal for host reset-return.
+data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
+  effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
+  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+}
+
+data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+  decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+]
+
+// ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
+// recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
 fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity: WorkloadIdentityStanding) -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: join(["mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture -- by ", root_subject as String], "") as NonEmptyStr,
+    subject: join([mtcollins1_operator_ruling.effect_subject as String, " -- by ", root_subject as String], "") as NonEmptyStr,
     frequency: EveryProvision,
     reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
     surface: ApiSurface,
     workload_identity: identity,
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_operator_ruling },
   }
-}
-
-data mtcollins1_operator_waived_witness: DivergenceReason = DivergenceReason {
-  statement: "the selection refuses a recurring irreversible effect (it owes a witness and must run unattended); the operator ruled on 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and again on 2026-09-25 ('no I don't want that - can you just remove that check asap', withdrawing the standing-ruling approval gate) that these Mt. Collins BMC effects run as the fleet-converge workload identity on main with no per-run or standing approval; the unit's durable maintenance hold remains the interlock" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the effect stops being irreversible (the unit holds no session state a power cycle can destroy, modeled on the effect rather than relabelled), or the selection admits an operator-waived witness for a recurring effect as a modeled input it decides; or the operator rescinds the ruling. NOT satisfied by relabelling the effect ReversibleByReapply or by adding an approval step" as NonEmptyStr),
 }
 
 fn mtcollins1_boot_effect() -> PrivilegedEffect {
@@ -317,24 +327,55 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
   },
 ]
 
-data mtcollins1_unit_hold_interlock: DeclarationRef = site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key")
-
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: mtcollins1_unit_hold_interlock,
+    hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: mtcollins1_unit_hold_interlock,
+    hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
 ]
+
+// A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK: for every census row whose effect carries
+// one, the ruling's interlock must be the hold of an interlock rostered against that same site.
+fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
+  any(privileged_effect_interlocks, i => declaration_ref_eq(a: i.site, b: site_ref) && declaration_ref_eq(a: i.hold, b: interlock))
+}
+
+fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
+  flat_map(privileged_effect_census, row =>
+    match row.effect.witness_discharge {
+      NoWitnessDischarge => []
+      StandingRulingUnderInterlock { ruling: r } =>
+        if ruling_interlock_is_rostered(site_ref: row.site, interlock: r.interlock) { [] } else { [row.site] }
+    })
+}
+
+// THE RULING AND THE CENSUS CANNOT DISAGREE ON THE ROOT POPULATION: the census sites that carry this ruling's
+// discharge, and the ruling's own roots, are the same set (identity join, both directions).
+fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
+  match v.effect.witness_discharge {
+    NoWitnessDischarge => false
+    StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_operator_ruling.ruling_text as String)
+  }
+}
+
+fn ruling_roots_missing_from_census() -> List<DeclarationRef> {
+  let sites = map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site)
+  filter(mtcollins1_operator_ruling_roots, r => !declaration_ref_in_list(target: r, refs: sites))
+}
+
+fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
+  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_operator_ruling_roots))
+}
 
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
   let rostered = map(privileged_effect_census, row => row.site)
@@ -411,6 +452,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched dark-install run's host principal (gunbc.ci_deploy_access ci_deploy_srv1_local_access)" as NonEmptyStr },
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -437,6 +479,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -451,6 +494,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsAccountWideCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedApprovalCapability,
     divergence_reason: none,
@@ -483,6 +527,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedRunSelected,
     divergence_reason: none,
@@ -491,13 +536,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     effect: mtcollins1_boot_effect(),
     realized: RealizedFederatedGrant,
-    divergence_reason: Present { value: mtcollins1_operator_waived_witness },
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
     effect: mtcollins1_host_reset_effect(),
     realized: RealizedFederatedGrant,
-    divergence_reason: Present { value: mtcollins1_operator_waived_witness },
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.mtcollins1_boot_federation_provision", decl_name: "mtcollins1_boot_federation_provision_with_supplied_token"),
@@ -509,6 +554,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
@@ -529,6 +575,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedRunSelected,
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
@@ -567,6 +614,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
@@ -581,6 +629,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: approval_bootstrap_circularity },
@@ -595,6 +644,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
@@ -609,6 +659,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: none,
@@ -635,6 +686,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -661,6 +713,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -687,6 +740,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityUnbindable { cause: "no fleet service account holds organization-wide read; the operator's identity is the only reader" as NonEmptyStr },
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -701,6 +755,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityUnbindable { cause: "GitHub exposes no API that creates an App; the manifest form is submitted by the account or organization owner under a browser session, so no federated principal can be bound to it" as NonEmptyStr },
       minted_reach: MintsProjectWideCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedHumanStep,
     divergence_reason: none,
@@ -715,6 +770,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityUnbindable { cause: "no API creates an account-owned token without an existing one" as NonEmptyStr },
       minted_reach: MintsAccountWideCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedHumanStep,
     divergence_reason: none,

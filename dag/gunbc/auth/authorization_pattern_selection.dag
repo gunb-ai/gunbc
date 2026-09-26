@@ -91,6 +91,35 @@ type BillingConsequence
   = BillsExternally
   | NoBillingConsequence
 
+// A STANDING AUTHORIZATION FOR A RECURRING DESTRUCTIVE EFFECT (operator ruling 2026-09-23, the Mt.
+// Collins boot; side-chat review 5286225278 on gunbc#12101). An irreversible effect owes a human
+// witness; a RECURRING one must run unattended; the two together select nothing (NoAdmissiblePattern),
+// and relabelling the effect reversible to escape that is the fabricated input the review refused.
+// The honest third reading is that the operator has witnessed the CLASS once, ahead of every
+// instance, and made that consent conditional on a durable physical-safety interlock the run must
+// observe released. That is what this carries: who ruled, when, over which effect, and the interlock
+// the consent is conditional on. It discharges ONLY the irreversibility ground of the witness
+// obligation -- a wide credential, a third-party bill or a break-glass effect is still witnessed per
+// instance.
+//
+// NO RUN-TIME CONFIRMATION READ (operator ruling 2026-09-25). #12101 added a confirmation_read that
+// every run had to satisfy with the operator's stored approval of the ruling's exact words; the
+// operator declined to file one ("no I don't want that - can you just remove that check asap"), so
+// the read and its field are deleted. What remains is the ruling as the selection's modeled input:
+// its words, the effect it covers and the interlock it is conditional on. The census checks
+// statically that the interlock is rostered against the site
+// (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
+// realization must take that hold before any write.
+type StandingDestructiveAuthorization {
+  ruling_text: NonEmptyStr
+  effect_subject: NonEmptyStr
+  interlock: DeclarationRef
+}
+
+type WitnessDischarge
+  = NoWitnessDischarge
+  | StandingRulingUnderInterlock { ruling: StandingDestructiveAuthorization }
+
 type PrivilegedEffect {
   subject: NonEmptyStr
   frequency: HumanInterventionFrequency
@@ -99,6 +128,7 @@ type PrivilegedEffect {
   workload_identity: WorkloadIdentityStanding
   minted_reach: MintedCredentialReach
   billing: BillingConsequence
+  witness_discharge: WitnessDischarge
 }
 
 // ── Two obligations DERIVED from the characteristics, never accepted as input ─────────────────
@@ -109,8 +139,12 @@ type PrivilegedEffect {
 // file, and §5 says a check that can be satisfied by editing the declaration while the realization
 // still lies was validation standing where construction was available.
 fn witness_required(e: PrivilegedEffect) -> Bool {
-  let irreversible = match e.reversibility {
-    IrreversibleEffect { what_is_lost: _ } => true
+  let irreversible_undischarged = match e.reversibility {
+    IrreversibleEffect { what_is_lost: _ } =>
+      match e.witness_discharge {
+        NoWitnessDischarge => true
+        StandingRulingUnderInterlock { ruling: _ } => false
+      }
     ReversibleByReapply => false
   }
   let wide = match e.minted_reach {
@@ -129,7 +163,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
     DeviceOnce => false
     EveryProvision => false
   }
-  irreversible || wide || bills || break_glass
+  irreversible_undischarged || wide || bills || break_glass
 }
 
 // AN EFFECT PAID ON EVERY PROVISION MUST RUN UNATTENDED. There is no human at the end of a cron, and
@@ -438,6 +472,7 @@ data id_param_surface: DeclarationRef = decl_ref(module_path: "gunbc.auth.author
 data id_param_workload_identity: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_workload_identity")
 data id_param_minted_reach: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_minted_reach")
 data id_param_billing: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_billing")
+data id_param_witness_discharge: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_witness_discharge")
 
 data var_authorization_pattern: DecisionVariable = DecisionVariable { identity: id_var_pattern }
 
@@ -467,9 +502,10 @@ data param_surface: ContextParameter = ContextParameter { identity: id_param_sur
 data param_workload_identity: ContextParameter = ContextParameter { identity: id_param_workload_identity }
 data param_minted_reach: ContextParameter = ContextParameter { identity: id_param_minted_reach }
 data param_billing: ContextParameter = ContextParameter { identity: id_param_billing }
+data param_witness_discharge: ContextParameter = ContextParameter { identity: id_param_witness_discharge }
 
 fn context_parameters() -> List<ContextParameter> {
-  [param_frequency, param_reversibility, param_surface, param_workload_identity, param_minted_reach, param_billing]
+  [param_frequency, param_reversibility, param_surface, param_workload_identity, param_minted_reach, param_billing, param_witness_discharge]
 }
 
 fn frequency_text(f: HumanInterventionFrequency) -> String {
@@ -511,6 +547,16 @@ fn minted_reach_text(m: MintedCredentialReach) -> String {
   }
 }
 
+// THE RULING IS QUOTED WITH ITS AUTHOR, DATE AND INTERLOCK, so a receipt minted under a standing
+// authorization is a different decision scope from one minted without it.
+fn witness_discharge_text(d: WitnessDischarge) -> String {
+  match d {
+    NoWitnessDischarge => "NoWitnessDischarge"
+    StandingRulingUnderInterlock { ruling: r } =>
+      join(["StandingRulingUnderInterlock: under ", declaration_ref_display_key(ref: r.interlock), "; ruling ", r.ruling_text as String], "")
+  }
+}
+
 fn billing_text(b: BillingConsequence) -> String {
   match b {
     BillsExternally => "BillsExternally"
@@ -528,6 +574,7 @@ fn parameter_dispositions(e: PrivilegedEffect) -> List<ParameterDisposition> {
     ParameterBound { parameter: id_param_workload_identity, evidence: workload_identity_text(w: e.workload_identity) as NonEmptyStr },
     ParameterBound { parameter: id_param_minted_reach, evidence: minted_reach_text(m: e.minted_reach) as NonEmptyStr },
     ParameterBound { parameter: id_param_billing, evidence: billing_text(b: e.billing) as NonEmptyStr },
+    ParameterBound { parameter: id_param_witness_discharge, evidence: witness_discharge_text(d: e.witness_discharge) as NonEmptyStr },
   ]
 }
 
