@@ -12,7 +12,7 @@ import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli {
-  docker_run_ephemeral_command, docker_image_inspect_command, DockerPsByAncestor, docker_ps_running_command, docker_remove_force_command,
+  docker_run_ephemeral_command, docker_image_inspect_command, DockerPsByLabel, DockerLabel, docker_ps_running_command, docker_remove_force_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
 }
@@ -401,25 +401,32 @@ data v41_access_probe_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c
 // leaves nothing on the host: the container is removed with it.
 data v41_access_probe_bootstrap: String = "import sys, runpy; path = '/var/tmp/gunbc_engram_access_probe.py'; open(path, 'w').write(sys.argv[1]); runpy.run_path(path, run_name='__main__')"
 
-fn v41_access_probe_argv(image: NonEmptyStr) -> List<String> {
+// THE LANE'S MARK ON ITS CONTAINER. Residue, removal and recovery select by this label and nothing
+// else, so a measurement or serving container started from the same image on the same host is never
+// read as this lane's residue and never removed by it. The claim id rides as a second label, naming
+// which claim a container belongs to.
+data v41_access_probe_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "engram-access-probe" as NonEmptyStr }
+
+fn v41_access_probe_argv(image: NonEmptyStr, claim: NonEmptyStr) -> List<String> {
   concat(
     ["timeout", "-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_client_bound))],
     argv_words(command: docker_run_ephemeral_command(
       image: image,
       gpus_all: true,
       mounts: [],
+      labels: [v41_access_probe_lane_label, DockerLabel { key: "gunbc.claim" as NonEmptyStr, value: claim }],
       entrypoint: "timeout" as NonEmptyStr,
       argv: ["-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_time_bound)), "python3", "-u", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
     )),
   )
 }
 
-// EVERY CONTAINER OF THIS IMAGE IS REMOVED AFTER A RUN AND BEFORE A RECOVERY, by the ids `docker ps
-// --quiet` lists for the image. A killed client leaves its container running; the release and the
-// recovery observe quiescence, and this is what makes it reachable instead of a claim that stays
-// live behind an orphan. The arm A image runs nothing else on these hosts.
-fn v41_access_probe_remove_containers(ctx: SparkMaterializeContext, image: NonEmptyStr) -> String? {
-  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_ps_running_command(filter: DockerPsByAncestor { image: image }))) {
+// EVERY CONTAINER CARRYING THIS LANE'S LABEL IS REMOVED AFTER A RUN AND BEFORE A RECOVERY, by the ids
+// `docker ps --quiet` lists for the label. A killed client leaves its container running; the release
+// and the recovery observe quiescence, and this is what makes it reachable instead of a claim that
+// stays live behind an orphan. Only containers this lane started carry the label.
+fn v41_access_probe_remove_containers(ctx: SparkMaterializeContext) -> String? {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_ps_running_command(filter: DockerPsByLabel { label: v41_access_probe_lane_label }))) {
     RemoteUnreachable { cause: why } => Present { value: join(["docker ps did not run: ", why as String], "") }
     RemoteRan { exit_code: c, stdout: out, stderr: e } =>
       if c != 0 {
@@ -659,7 +666,7 @@ fn v41_access_probe_body(o: V41EngramAccessProbeOutcome) -> String {
 //
 // READ THE IMAGE'S CONFIG ID BACK, THEN RUN INSIDE IT: the reading names the bytes the daemon holds,
 // and a daemon that holds no such image refuses here rather than being asked to pull.
-fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr) -> V41EngramAccessProbeOutcome {
+fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr, claim: NonEmptyStr) -> V41EngramAccessProbeOutcome {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: image))) {
     RemoteUnreachable { cause: why } => V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
     RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
@@ -674,7 +681,7 @@ fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr) -> V41E
           DockerImageInspectIdUnreadable { cause: why } => V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
           DockerImageInspectId { id: config_id } =>
             {
-              let run = spark_remote_run(ctx: ctx, argv: v41_access_probe_argv(image: config_id))
+              let run = spark_remote_run(ctx: ctx, argv: v41_access_probe_argv(image: config_id, claim: claim))
               let outcome = match run {
                 RemoteUnreachable { cause: why } => V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: why }
                 RemoteRan { exit_code: c, stdout: out, stderr: e } =>
@@ -686,7 +693,7 @@ fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr) -> V41E
                     V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["exit=", to_string(c), " during phase ", v41_last_phase(stdout: out), " stderr=", trim(s: e)], "") as NonEmptyStr }
                   }
               }
-              match v41_access_probe_remove_containers(ctx: ctx, image: config_id) {
+              match v41_access_probe_remove_containers(ctx: ctx) {
                 Absent => outcome
                 Present { value: why } => V41AccessProbeRefused { step: "container-removal" as NonEmptyStr, cause: join(["the probe's container could not be removed, so the release will find residue: ", why], "") as NonEmptyStr }
               }
@@ -708,8 +715,13 @@ data v41_access_probe_receipt_path: String = "target/v41-engram-access-probe-rec
 data v41_access_probe_host_purpose: NonEmptyStr = "an Engram access probe, which starts one GPU container that writes and reads a synthetic 17 GB row store inside itself" as NonEmptyStr
 data v41_access_probe_host_effect_term: Second = second(count: 3600)
 
-fn v41_access_probe_host_residue(image: NonEmptyStr) -> HostEffectResidueSpec {
-  HostEffectResidueSpec { process_pattern: image, container: Present { value: DockerPsByAncestor { image: image } } }
+// THE RESIDUE IS THE LANE'S OWN: the bootstrap's file name, which appears on the docker client's and
+// the program's command lines, and the lane label on the container. Neither matches another lane's
+// container started from the same image.
+data v41_access_probe_process_pattern: NonEmptyStr = "gunbc_engram_access_probe" as NonEmptyStr
+
+fn v41_access_probe_host_residue() -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: v41_access_probe_process_pattern, container: Present { value: DockerPsByLabel { label: v41_access_probe_lane_label } } }
 }
 
 // A CLAIM THIS LANE LEFT LIVE, NAMED EXACTLY, with the claimant's typed standing and the receipt that
@@ -731,7 +743,7 @@ fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) ->
   if length(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String))) == 0 {
     ExitSuccess
   } else {
-    match v41_access_probe_remove_containers(ctx: ctx, image: v41_access_probe_image) {
+    match v41_access_probe_remove_containers(ctx: ctx) {
       Present { value: why } => exit_failure(reason: join(["the terminated run's container could not be removed before the recovery: ", why], ""))
       Absent => v41_access_probe_recover_rows(ctx: ctx, host: host)
     }
@@ -806,7 +818,7 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
                               match v41_access_probe_recover(ctx: ctx, host: target_host) {
                                 std.process.ExitFailure { code: _, reason: why } => exit_failure(reason: join(["a declared recovery of this lane's claim on ", target_host as String, " did not complete, so nothing was claimed or run: ", why], ""))
                                 ExitSuccess =>
-                                  match claim_host_effect_live(host: target_host, purpose: v41_access_probe_host_purpose, term: v41_access_probe_host_effect_term, residue: v41_access_probe_host_residue(image: v41_access_probe_image)) {
+                                  match claim_host_effect_live(host: target_host, purpose: v41_access_probe_host_purpose, term: v41_access_probe_host_effect_term, residue: v41_access_probe_host_residue()) {
                                     HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
                                     HostEffectClaimLanded { handle: handle } =>
                                       release_host_effect_live_over(
@@ -817,7 +829,7 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
                                           host: target_host,
                                           executor: executor,
                                           anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
-                                          outcome: v41_access_probe_on(ctx: ctx, image: v41_access_probe_image),
+                                          outcome: v41_access_probe_on(ctx: ctx, image: v41_access_probe_image, claim: handle.claim as NonEmptyStr),
                                         ),
                                       )
                                   }

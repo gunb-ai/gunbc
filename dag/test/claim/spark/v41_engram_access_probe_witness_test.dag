@@ -4,10 +4,14 @@ import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.algebra { filter }
 import std.measure { nanosecond_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import extdeps.docker.cli { DockerPsByLabel, DockerPsByAncestor, DockerPsByName, DockerLabel }
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, residue_spec_members, residue_spec_decode }
 import gunbc.spark.v41_engram_access_probe {
   V41EngramAccessProbeOutcome, V41AccessProbeRead, V41AccessProbeRefused, v41_admit_access_reading,
   v41_access_per_row, v41_last_phase, v41_access_probe_argv, v41_access_probe_image, v41_access_probe_script,
-  AccessMmapUnregistered, AccessPrefill262k, AccessCold,
+  AccessMmapUnregistered, AccessPrefill262k, AccessCold, v41_access_probe_host_residue,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -78,11 +82,12 @@ test fn a_failed_byte_check_or_no_done_refuses() -> Bool {
 // reads kernel source from it), reading the three device attributes and establishing cold by dropping
 // and reading back the page cache.
 test fn the_probe_runs_the_bounded_program_in_the_arm_a_image() -> Bool {
-  let argv = v41_access_probe_argv(image: v41_access_probe_image)
+  let argv = v41_access_probe_argv(image: v41_access_probe_image, claim: "c1" as NonEmptyStr)
   let script = v41_access_probe_script()
   contains(join(argv, " "), "timeout -k 30 1620 ")
     && contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 -k 30 1500 python3 -u -c import sys, runpy;")
     && contains(join(argv, " "), "runpy.run_path(path, run_name='__main__')")
+    && contains(join(argv, " "), "--label gunbc.lane=engram-access-probe --label gunbc.claim=c1 --entrypoint timeout")
     && contains(script, "cudaDeviceGetAttribute")
     && contains(script, "POSIX_FADV_DONTNEED")
     && contains(script, "values = {}")
@@ -93,4 +98,25 @@ test fn the_probe_runs_the_bounded_program_in_the_arm_a_image() -> Bool {
 test fn a_cut_short_run_is_located_by_its_last_phase() -> Bool {
   v41_last_phase(stdout: "PHASE attributes\nATTR pageable_memory_access 1\nPHASE write-store\nPHASE pinned\nTIME pinned warm decode 96 1 1\n") == "pinned"
     && contains(v41_last_phase(stdout: ""), "killed before the first phase")
+}
+
+// THE LANE-LABEL RESIDUE SURVIVES THE EVENT LOG'S WIRE, and a document naming two filters (an image
+// and a label) is incoherent and decodes to nothing rather than to either one.
+test fn the_label_residue_round_trips_and_two_filters_refuse() -> Bool {
+  let spec = v41_access_probe_host_residue()
+  let round = match residue_spec_decode(doc: json_object(members: residue_spec_members(prefix: "residue_", s: spec)), prefix: "residue_") {
+    Present { value: back } => match back.container {
+      Present { value: DockerPsByLabel { label: l } } => (l.key as String) == "gunbc.lane" && (l.value as String) == "engram-access-probe" && (back.process_pattern as String) == "gunbc_engram_access_probe"
+      Present { value: DockerPsByAncestor { image: _ } } => false
+      Present { value: DockerPsByName { name: _ } } => false
+      Absent => false
+    }
+    Absent => false
+  }
+  let two = concat(residue_spec_members(prefix: "residue_", s: spec), [json_kv(key: "residue_container_image", value: json_string(s: "sha256:ea39"))])
+  let incoherent = match residue_spec_decode(doc: json_object(members: two), prefix: "residue_") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  round && incoherent
 }
