@@ -1,0 +1,651 @@
+module gunbc.native_frontier_ratchet
+
+import v2.std.algebra { any, filter, fold_list, is_empty, length, list_append, list_flat_map, list_map }
+import v2.std.collection { List, Map, map_lookup }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.logic { Bool }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import v2.std.compilers.lexing { symbol_lexeme }
+import extdeps.bazel.target_pattern { TargetPattern, target_pattern_within }
+import v2.compiler.native_test_vocabulary {
+  NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
+  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
+}
+import gunbc.witness_v2_native_route {
+  NativeRouteReceipt, NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified,
+  NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
+  NativeRouteAdmissionRefusalCause,
+  JobNameMismatch, TestedTreeUnrecorded, PreparationSeedUnrecorded, EmittedClosureUnrecorded,
+  RouteIdentityUnrecorded, UniverseUnderived, UniverseDuplicatesPresent, UniversePrefixViolationsPresent,
+  PopulationDuplicatesPresent, PopulationForeignRowsPresent, PopulationOmissionsPresent,
+  PositivePopulationEmpty, RequiredNativePassRegressed, DivergencesPresent, UnattributedExclusionsPresent,
+  UnattributedFileRefusalsPresent, UnattributedHeadAdvisoriesPresent, ContextRefusalsUnbacked, FrontierRetirementCausesUnowned,
+  FalseControlNotObserved, TrueControlNotObserved, LivePairObservedWhileEnrolledRed,
+  MalformedControlAcceptedByRoute, OldRouteControlNeverInstalled, EmittedBuildRustcUnrecorded,
+  EmittedBuildCompilerUnbound, EmittedBuildWarningsNotDenied, EmittedBuildNotClean,
+  native_route_admission_refusal_cause_name,
+  native_route_default_pattern, native_route_reference_for, native_route_disposition,
+  NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,
+  NativeRouteDivergenceCause, NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap
+}
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import gunbc.native_route_progress_guard {
+  NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed, AttainUnreached,
+  NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
+  NativeProgressBaselineRow, NativeProgressObservedReading, NativeProgressObservedRow,
+  NativeProgressFinding, NativeProgressDispositionRow, NativeCauseTransitionRow,
+  NativeProgressDisposition, SubjectDeleted, SubjectLeftTheUniverse, SubjectRenamed,
+  ReachExecutableStarted,
+  native_progress_read_observed, native_progress_observed_rows, native_progress_reading_findings,
+  native_progress_observed_index, native_progress_disposition_index, native_progress_baseline_index,
+  native_cause_transition_index, native_accept_to_refuse_index,
+  native_progress_row_findings, native_progress_disposition_row_findings, native_cause_transition_row_findings,
+  native_attainment_rank, native_baseline_rank, native_divergence_cause_tag,
+  native_progress_finding_text
+}
+import gunbc.native_frontier_debt {
+  NativeFrontierDebt, DebtRefused, DebtDiverged, NativeFrontierDebtRow,
+  NativeFrontierRosterStanding, RosterUnminted, RosterMinted
+}
+import gunbc.native_frontier_roster { native_frontier_roster }
+
+// THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the v2.test.* universe
+// kept, lost or advanced the debt `gunbc.native_frontier_roster` records.
+//
+// WHERE IT RUNS, AND WHY THERE. It is evaluated by the emitted-native compiler inside its own
+// `adjudicate` mode, beside `native_route_admission`, over the same receipt value. The per-identity
+// verdicts are typed values there, so the ratchet reads them as values. Anywhere else they would
+// first be written out as JSON and read back by a second decoder. The consumer that turns its
+// verdict into an exit status is the `//gunbc/instruments:v2-native-frontier` instrument, and the
+// nightly `native-frontier` workflow (gunbc.native_frontier_workflow) runs that instrument.
+//
+// WHAT IT REUSES AND WHAT IT ADDS. The per-row comparison is gunbc#12049's guard, called row by
+// row: stage and cause regressions, subjects that left without a disposition, rename targets,
+// dispositions the run contradicts, cause changes at a fixed rank. This module adds two things.
+// First, THE OTHER HALF OF THE EQUALITY: an identity the run observed owing debt that the roster
+// does not carry is `NewDebt`, which the guard cannot see because it walks baseline rows only.
+// Second, THE ADVANCE: a roster row the run observed at a strictly better attainment has become a
+// false claim of debt, so the run proposes a roster without it. That proposal is how the roster
+// shrinks for refusals cleared anywhere.
+//
+// WHAT IT DELIBERATELY DOES NOT REUSE: the guard's whole-baseline adjudication clause
+// (`BaselineMintedUnderADifferentAdjudication`). That clause compares a baseline's closure
+// identity with the run's. This roster is compiled into the binary that judges it, so every roster
+// edit changes that closure. A closure comparison would therefore refuse every roster edit, and
+// with it every advance. Drift in the definition of green reaches this ratchet at identity grain
+// instead: a classification change moves a rostered identity's cause, and a cause change at a
+// fixed rank without a `NativeCauseTransitionRow` is refused by the guard's own clause.
+//
+// THE GREEN CONDITION IS COMPLETE MEASUREMENT, NOT ALL-PASS. Every planned identity must reach a
+// terminal verdict, and each honest failure must be rostered debt. So admission's population-
+// quality clauses (divergences present, unattributed exclusions, an empty positive population, a
+// regressed required pass) are debt facts this ratchet answers per identity, and they do not
+// block it. Every integrity clause (receipt identities, the universe join, controls, the emitted
+// build) still does, because a receipt that fails one of them is not a measurement.
+//
+// WHAT THE ROSTER CANNOT SEE, STATED BECAUSE A LOWER BOUND IS ONLY HONEST WHEN NAMED. A row is ONE
+// identity's FIRST terminal refusal: a test refused at `prepare` records the fatal chain that
+// stopped it, and says nothing about what `entry` or `eval` would have refused next. XL-2 P4
+// (gunbc#12116) made the RESOLVER occurrence-complete: `census-resolve` now reports one row per
+// independent failure chain. It did not make this route occurrence-complete per identity, and
+// three populations stay invisible to it: (i) a module whose FILE the front end refused, which
+// hides every refusal inside it; (ii) sites under a refused binder, which resolve marks
+// `ObservationIncomplete` and never visits; (iii) call arguments, which do not reach resolve at all
+// (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering). A shrinking roster
+// therefore bounds the frontier from below. It does not measure the frontier exactly.
+
+// ═══ reading the run ═══════════════════════════════════════════════════════════════════════
+
+// ONE MEMBER ROW, AS THE GUARD'S READING. The disposition is admission's own
+// (`native_route_disposition` against the floor's references, the same derivation admission's
+// census performs), so the ratchet and admission cannot classify one verdict two ways.
+fn native_frontier_reading(
+  row: NativeRouteMemberRow,
+  expected_red: List<String>,
+  route_gap: List<String>
+) -> NativeProgressObservedReading {
+  let reference = native_route_reference_for(
+    qualified: native_route_identity_qualified(identity: row.identity),
+    expected_red: expected_red,
+    route_gap: route_gap
+  )
+  let refused_at =
+    match row.verdict {
+      NativeTestRefused { stage: s, diagnostics: _ } => optional_present(value: s)
+      NativeTestPassed => optional_absent()
+      NativeTestReturnedFalse => optional_absent()
+      NativeTestReturnedOther => optional_absent()
+    }
+  native_progress_read_observed(
+    identity: row.identity,
+    disposition: native_route_disposition(verdict: row.verdict, reference: reference),
+    refused_at: refused_at
+  )
+}
+
+fn native_frontier_readings(receipt: NativeRouteReceipt) -> List<NativeProgressObservedReading> {
+  let expected_red = floor_expected_red_roster()
+  let route_gap = floor_route_gap_roster()
+  list_map(xs: receipt.population, f: fn(r) {
+    native_frontier_reading(row: r, expected_red: expected_red, route_gap: route_gap)
+  })
+}
+
+// ═══ debt, both directions ══════════════════════════════════════════════════════════════════
+
+fn native_frontier_debt_as_baseline(debt: NativeFrontierDebt) -> NativeBaselineAttainment {
+  match debt {
+    DebtRefused { stage: s, cause: c } => BaselineRefused { stage: s, cause: c }
+    DebtDiverged { cause: c } => BaselineDiverged { cause: c }
+  }
+}
+
+fn native_frontier_row_as_baseline(row: NativeFrontierDebtRow) -> NativeProgressBaselineRow {
+  NativeProgressBaselineRow { identity: row.identity, attained: native_frontier_debt_as_baseline(debt: row.debt) }
+}
+
+// THE DEBT AN OBSERVATION OWES, or none. An agreement owes nothing. An unreached reading has no
+// constructor on this route, because the ratchet runs only inside a binary that started. It is
+// still answered, as no debt with a finding beside it (`native_frontier_unreached_findings`), and
+// never silently.
+fn native_frontier_observed_debt(attained: NativeRouteAttainment) -> Optional<NativeFrontierDebt> {
+  match attained {
+    AttainAgreed => optional_absent()
+    AttainRefused { stage: s, cause: c } => optional_present(value: DebtRefused { stage: s, cause: c })
+    AttainDiverged { cause: c } => optional_present(value: DebtDiverged { cause: c })
+    AttainUnreached { blocked_at: _ } => optional_absent()
+  }
+}
+
+fn native_frontier_observed_debt_rows(observed: List<NativeProgressObservedRow>) -> List<NativeFrontierDebtRow> {
+  list_flat_map(xs: observed, f: fn(o) {
+    match native_frontier_observed_debt(attained: o.attained) {
+      Present { value: d } => [NativeFrontierDebtRow { identity: o.identity, debt: d }]
+      Absent => []
+    }
+  })
+}
+
+// A NEW IDENTITY OWING DEBT. The roster asserts agreement for every identity it does not carry, so
+// an observed debt with no row is either a regression from agreement or a new subject that landed
+// refusing. Both are additions to a contract that is closed to growth, and neither has a
+// disposition that admits it.
+type NativeFrontierNewDebt {
+  identity: NativeRouteTestIdentity
+  debt: NativeFrontierDebt
+}
+
+fn native_frontier_new_debt(
+  observed_debt: List<NativeFrontierDebtRow>,
+  baseline_index: Map<String, NativeBaselineAttainment>
+) -> List<NativeFrontierNewDebt> {
+  list_flat_map(xs: observed_debt, f: fn(row) {
+    match map_lookup(m: baseline_index, key: native_route_identity_qualified(identity: row.identity)) {
+      Present { value: _ } => []
+      Absent => [NativeFrontierNewDebt { identity: row.identity, debt: row.debt }]
+    }
+  })
+}
+
+// A ROSTER ROW THE RUN OBSERVED STRICTLY ABOVE ITS BAR. The row now over-states the debt, and the
+// run's proposal is the roster without it (or with its later stage). Equal-rank rows are not
+// advances. Their cause changes are the guard's to judge.
+fn native_frontier_row_advanced(
+  row: NativeFrontierDebtRow,
+  observed: Map<String, NativeRouteAttainment>
+) -> Bool {
+  match map_lookup(m: observed, key: native_route_identity_qualified(identity: row.identity)) {
+    Absent => false
+    Present { value: seen } =>
+      match native_attainment_rank(a: seen) {
+        Absent => false
+        Present { value: r } => r > native_baseline_rank(b: native_frontier_debt_as_baseline(debt: row.debt))
+      }
+  }
+}
+
+// ═══ integrity versus debt ═════════════════════════════════════════════════════════════════
+
+// EXHAUSTIVE, NO WILDCARD: a clause added to admission must be classified here before this module
+// compiles again. True means the clause is about whether the receipt IS a measurement, which the
+// ratchet cannot overrule. False means it is a per-identity debt fact the roster already answers.
+fn native_frontier_clause_is_integrity(cause: NativeRouteAdmissionRefusalCause) -> Bool {
+  match cause {
+    JobNameMismatch => true
+    TestedTreeUnrecorded => true
+    PreparationSeedUnrecorded => true
+    EmittedClosureUnrecorded => true
+    RouteIdentityUnrecorded => true
+    UniverseUnderived => true
+    UniverseDuplicatesPresent => true
+    UniversePrefixViolationsPresent => true
+    PopulationDuplicatesPresent => true
+    PopulationForeignRowsPresent => true
+    PopulationOmissionsPresent => true
+    PositivePopulationEmpty => false
+    RequiredNativePassRegressed => false
+    DivergencesPresent => false
+    UnattributedExclusionsPresent => false
+    UnattributedFileRefusalsPresent => true
+    UnattributedHeadAdvisoriesPresent => true
+    ContextRefusalsUnbacked => true
+    FrontierRetirementCausesUnowned => true
+    FalseControlNotObserved => true
+    TrueControlNotObserved => true
+    LivePairObservedWhileEnrolledRed => true
+    MalformedControlAcceptedByRoute => true
+    OldRouteControlNeverInstalled => true
+    EmittedBuildRustcUnrecorded => true
+    EmittedBuildCompilerUnbound => true
+    EmittedBuildWarningsNotDenied => true
+    EmittedBuildNotClean => true
+  }
+}
+
+fn native_frontier_integrity_refusals(admission: NativeRouteAdmission) -> List<String> {
+  match admission {
+    NativeRouteAdmitted => []
+    NativeRouteRefused { causes: cs } =>
+      list_map(
+        xs: filter(xs: cs, predicate: fn(c) { native_frontier_clause_is_integrity(cause: c) }),
+        f: fn(c) { native_route_admission_refusal_cause_name(cause: c) }
+      )
+  }
+}
+
+// ═══ the verdict ═══════════════════════════════════════════════════════════════════════════
+
+// FIVE ARMS, EACH WITH ITS OWN REMEDY. `Held` is equality: every observed debt is rostered at its
+// bar and no row over-states one. `Advanced` is equality after dropping or later-staging the rows
+// the run beat. It is green, and its `proposal` is the shrink pull request's content. `Lost`
+// carries every finding at once. `Unminted` is a complete run with nothing to hold it to, so it
+// only proposes. `NotAMeasurement` is a receipt that failed an integrity clause, or a pattern
+// narrower than the universe: that run cannot speak for the frontier at all.
+// A LOST RUN PROPOSES NOTHING (review, 2026-09-25). Its observed state is the regression, so a
+// roster rendered from it would make the regression the new baseline if applied: a backward
+// ratchet dressed as a proposal. So `FrontierLost` carries findings only. It has no field a
+// proposal could be read from, and `native_frontier_proposal` answers Absent for it by
+// construction. The findings name every identity, stage and cause the reader needs. Proposals
+// exist for the initial mint, a strictly monotone advance, and an admitted identity
+// reconciliation (a rename or a disposed removal), and for nothing else.
+//
+// A PROPOSED ROSTER: the universe the run discovered and the debt it observed, both of which the
+// committed roster must equal. Either one alone would reopen the hole the persisted universe
+// closes.
+type NativeFrontierProposal {
+  universe: List<NativeRouteTestIdentity>
+  rows: List<NativeFrontierDebtRow>
+}
+
+type NativeFrontierVerdict
+  = FrontierHeld
+  | FrontierAdvanced { advanced: List<String>, proposal: NativeFrontierProposal }
+  | FrontierLost { findings: List<String> }
+  | FrontierUnminted { proposal: NativeFrontierProposal }
+  | FrontierNotAMeasurement { reasons: List<String> }
+
+fn native_frontier_proposal_of(observed: List<NativeProgressObservedRow>) -> NativeFrontierProposal {
+  NativeFrontierProposal {
+    universe: list_map(xs: observed, f: fn(o) { o.identity }),
+    rows: native_frontier_observed_debt_rows(observed: observed)
+  }
+}
+
+fn native_frontier_new_debt_text(n: NativeFrontierNewDebt) -> String {
+  join([
+    "NEW DEBT (the roster asserts this identity agrees; the run observed ",
+    native_frontier_debt_text(debt: n.debt), ") ",
+    native_route_identity_qualified(identity: n.identity)
+  ], "")
+}
+
+fn native_frontier_debt_text(debt: NativeFrontierDebt) -> String {
+  match debt {
+    DebtRefused { stage: s, cause: c } =>
+      join(["refused at ", native_frontier_stage_constructor(stage: s), " with ", native_frontier_cause_constructor(cause: c)], "")
+    DebtDiverged { cause: c } =>
+      join(["diverged ", native_divergence_cause_tag(c: c)], "")
+  }
+}
+
+// THE BASELINE IS THE WHOLE MINTED UNIVERSE (review, 2026-09-25). Every universe identity with no
+// debt row is BaselineAgreed, so the guard's own folds hold it to its bar: vanished without a
+// disposition is `MISSING WITHOUT A DISPOSITION`, and refused now is accept-to-refuse (there are no
+// accept-to-refuse rows, so that is always a finding). An agreed subject can no longer leave
+// silently.
+fn native_frontier_baseline_rows(
+  universe: List<NativeRouteTestIdentity>,
+  rows: List<NativeFrontierDebtRow>
+) -> List<NativeProgressBaselineRow> {
+  let debt_index = native_progress_baseline_index(rows: list_map(xs: rows, f: native_frontier_row_as_baseline))
+  list_append(
+    left: list_map(xs: rows, f: native_frontier_row_as_baseline),
+    right: list_flat_map(xs: universe, f: fn(i) {
+      match map_lookup(m: debt_index, key: native_route_identity_qualified(identity: i)) {
+        Present { value: _ } => []
+        Absent => [NativeProgressBaselineRow { identity: i, attained: BaselineAgreed }]
+      }
+    })
+  )
+}
+
+// THE IDENTITIES A RENAME DISPOSITION POINTS AT. The guard admits a rename whose target attains at
+// least the original's bar, so the target's own debt is the original's debt under a new name, not
+// new debt. Without this join the target was reported as NEW DEBT for exactly the rename the guard
+// had just admitted.
+fn native_frontier_rename_targets(dispositions: List<NativeProgressDispositionRow>) -> List<String> {
+  list_flat_map(xs: dispositions, f: fn(d) {
+    match d.disposition {
+      SubjectRenamed { to: t, authority: _ } => [native_route_identity_qualified(identity: t)]
+      SubjectDeleted { authority: _ } => []
+      SubjectLeftTheUniverse { moved_to_module: _ } => []
+    }
+  })
+}
+
+// WHAT MAKES THE COMMITTED ROSTER STALE WITHOUT ANY LOSS: a debt row the run beat, an identity the
+// run enrolled that the roster's universe lacks, and an identity a disposition removed. Each is a
+// difference between the roster and the run, so the run is not `Held` (equality). Each is an
+// advance, and the proposal is the roster the run supports. The dispositions themselves are not
+// carried into the proposal: once the removed identity is out of the universe, its disposition
+// describes nothing (`DisposedSubjectHasNoBaselineRow`).
+fn native_frontier_stale(
+  rows: List<NativeFrontierDebtRow>,
+  dispositions: List<NativeProgressDispositionRow>,
+  observed_rows: List<NativeProgressObservedRow>,
+  observed: Map<String, NativeRouteAttainment>,
+  baseline_index: Map<String, NativeBaselineAttainment>,
+  rename_targets: List<String>
+) -> List<String> {
+  list_flat_map(
+    xs: [
+      list_map(
+        xs: filter(xs: rows, predicate: fn(r) { native_frontier_row_advanced(row: r, observed: observed) }),
+        f: fn(r) { join(["ADVANCED (roster row over-states the debt) ", native_route_identity_qualified(identity: r.identity)], "") }
+      ),
+      list_flat_map(xs: observed_rows, f: fn(o) {
+        let key = native_route_identity_qualified(identity: o.identity)
+        match map_lookup(m: baseline_index, key: key) {
+          Present { value: _ } => []
+          Absent =>
+            if any(xs: rename_targets, predicate: fn(t) { t == key }) {
+              [join(["RENAMED IN (disposed rename target, admitted by the guard) ", key], "")]
+            } else {
+              match native_frontier_observed_debt(attained: o.attained) {
+                Present { value: _ } => []
+                Absent => [join(["ENROLLED (a new subject that agrees; the roster's universe lacks it) ", key], "")]
+              }
+            }
+        }
+      }),
+      list_map(xs: dispositions, f: fn(d) {
+        join(["REMOVED WITH A DISPOSITION ", native_route_identity_qualified(identity: d.identity)], "")
+      })
+    ],
+    f: fn(ls) { ls }
+  )
+}
+
+// THE COMPARISON, OVER A MINTED ROSTER. Findings come from the guard (per baseline row, per
+// disposition, per cause transition), from the reading step (malformed readings), and from this
+// module (new debt, net of admitted rename targets).
+fn native_frontier_judge_minted(
+  universe: List<NativeRouteTestIdentity>,
+  rows: List<NativeFrontierDebtRow>,
+  dispositions: List<NativeProgressDispositionRow>,
+  cause_transitions: List<NativeCauseTransitionRow>,
+  readings: List<NativeProgressObservedReading>
+) -> NativeFrontierVerdict {
+  let baseline_rows = native_frontier_baseline_rows(universe: universe, rows: rows)
+  let observed_rows = native_progress_observed_rows(readings: readings)
+  let observed = native_progress_observed_index(observed: observed_rows)
+  let baseline_index = native_progress_baseline_index(rows: baseline_rows)
+  let disposition_index = native_progress_disposition_index(dispositions: dispositions)
+  let transition_index = native_cause_transition_index(rows: cause_transitions)
+  let no_accept_to_refuse = native_accept_to_refuse_index(rows: [])
+  let rename_targets = native_frontier_rename_targets(dispositions: dispositions)
+  let guard_findings: List<NativeProgressFinding> = list_flat_map(
+    xs: [
+      native_progress_reading_findings(readings: readings),
+      list_flat_map(xs: baseline_rows, f: fn(row) {
+        native_progress_row_findings(
+          row: row, observed: observed, dispositions: disposition_index,
+          accept_to_refuse: no_accept_to_refuse, cause_transitions: transition_index,
+          reach: ReachExecutableStarted
+        )
+      }),
+      list_flat_map(xs: dispositions, f: fn(d) {
+        native_progress_disposition_row_findings(row: d, baseline_index: baseline_index, observed: observed)
+      }),
+      list_flat_map(xs: cause_transitions, f: fn(t) {
+        native_cause_transition_row_findings(row: t, baseline_index: baseline_index, observed: observed)
+      })
+    ],
+    f: fn(fs) { fs }
+  )
+  let observed_debt = native_frontier_observed_debt_rows(observed: observed_rows)
+  let new_debt = filter(
+    xs: native_frontier_new_debt(observed_debt: observed_debt, baseline_index: baseline_index),
+    predicate: fn(n) {
+      any(xs: rename_targets, predicate: fn(t) { t == native_route_identity_qualified(identity: n.identity) }) == false
+    }
+  )
+  let findings = list_append(
+    left: list_map(xs: guard_findings, f: fn(f) { native_progress_finding_text(f: f) }),
+    right: list_map(xs: new_debt, f: native_frontier_new_debt_text)
+  )
+  let stale = native_frontier_stale(
+    rows: rows, dispositions: dispositions, observed_rows: observed_rows, observed: observed,
+    baseline_index: baseline_index, rename_targets: rename_targets
+  )
+  let proposal = native_frontier_proposal_of(observed: observed_rows)
+  if is_empty(xs: findings) == false {
+    FrontierLost { findings: findings }
+  } else if is_empty(xs: stale) {
+    FrontierHeld
+  } else {
+    FrontierAdvanced { advanced: stale, proposal: proposal }
+  }
+}
+
+// THE ENTRY. `pattern` is the pattern the run adjudicated, and the ratchet speaks only for a run
+// whose pattern covers the whole planned universe. Over a narrower selection, every rostered
+// identity outside it would read as a subject that left, which is false.
+fn native_frontier_pattern_is_whole(pattern: TargetPattern) -> Bool {
+  target_pattern_within(inner: native_route_default_pattern(), outer: pattern)
+}
+
+fn native_frontier_verdict(
+  receipt: NativeRouteReceipt,
+  admission: NativeRouteAdmission,
+  pattern: TargetPattern
+) -> NativeFrontierVerdict {
+  native_frontier_verdict_over(
+    standing: native_frontier_roster,
+    readings: native_frontier_readings(receipt: receipt),
+    admission: admission,
+    pattern: pattern
+  )
+}
+
+// THE SAME DECISION OVER SUPPLIED VALUES, which is the interface the witness discriminates at.
+// `native_frontier_verdict` above is its one production caller, and it supplies the committed
+// standing and the receipt's own readings.
+fn native_frontier_verdict_over(
+  standing: NativeFrontierRosterStanding,
+  readings: List<NativeProgressObservedReading>,
+  admission: NativeRouteAdmission,
+  pattern: TargetPattern
+) -> NativeFrontierVerdict {
+  let integrity = native_frontier_integrity_refusals(admission: admission)
+  if native_frontier_pattern_is_whole(pattern: pattern) == false {
+    FrontierNotAMeasurement { reasons: ["the adjudicated pattern does not cover the whole v2.test.* universe"] }
+  } else if is_empty(xs: integrity) == false {
+    FrontierNotAMeasurement { reasons: integrity }
+  } else {
+    match standing {
+      RosterUnminted =>
+        FrontierUnminted { proposal: native_frontier_proposal_of(observed: native_progress_observed_rows(readings: readings)) }
+      RosterMinted { receipt: _, universe: u, rows: rows, dispositions: ds, cause_transitions: ts } =>
+        native_frontier_judge_minted(universe: u, rows: rows, dispositions: ds, cause_transitions: ts, readings: readings)
+    }
+  }
+}
+
+// ═══ what the binary reports ══════════════════════════════════════════════════════════════
+
+// THE TERMINAL MARKER'S WORD. The instrument reads it, and only `held` and `advanced` pass.
+fn native_frontier_verdict_word(v: NativeFrontierVerdict) -> String {
+  match v {
+    FrontierHeld => "held"
+    FrontierAdvanced { advanced: _, proposal: _ } => "advanced"
+    FrontierLost { findings: _ } => "lost"
+    FrontierUnminted { proposal: _ } => "unminted"
+    FrontierNotAMeasurement { reasons: _ } => "not-a-measurement"
+  }
+}
+
+// THE OPERATOR'S LINES: one per finding, each naming its subject.
+fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
+  match v {
+    FrontierHeld => ["held: the run's debt equals the roster"]
+    FrontierAdvanced { advanced: a, proposal: _ } =>
+      list_append(
+        left: [join([
+          integer_int_to_decimal_string(value: length(xs: a)),
+          " roster change(s) the run supports, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
+        ], "")],
+        right: a
+      )
+    FrontierLost { findings: fs } => fs
+    FrontierUnminted { proposal: p } =>
+      [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", integer_int_to_decimal_string(value: length(xs: p.universe)), " identities and ", integer_int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
+    FrontierNotAMeasurement { reasons: rs } =>
+      list_map(xs: rs, f: fn(r) { join(["NOT A MEASUREMENT ", r], "") })
+  }
+}
+
+// THE PROPOSED ROSTER, AS THE `.dag` MODULE IT WOULD BE. Present for every arm except `Held` and
+// `NotAMeasurement`. The nightly writes it over `dag/gunbc/native_frontier_roster.dag` and opens a
+// pull request. Dispositions and cause transitions are NOT carried forward, because each describes
+// a transition relative to the rows it was written against: once the roster is re-minted from the
+// run, a disposition for a subject with no row and a transition whose cause no longer moves are
+// both findings in their own right (`DisposedSubjectHasNoBaselineRow`,
+// `CauseTransitionDispositionContradicted`). The pull request that added them is where they live
+// afterwards.
+fn native_frontier_proposal(v: NativeFrontierVerdict) -> Optional<NativeFrontierProposal> {
+  match v {
+    FrontierHeld => optional_absent()
+    FrontierAdvanced { advanced: _, proposal: p } => optional_present(value: p)
+    FrontierLost { findings: _ } => optional_absent()
+    FrontierUnminted { proposal: p } => optional_present(value: p)
+    FrontierNotAMeasurement { reasons: _ } => optional_absent()
+  }
+}
+
+fn native_frontier_stage_constructor(stage: NativeTestStage) -> String {
+  match stage {
+    NativeTestStageContext => "NativeTestStageContext"
+    NativeTestStagePrepare => "NativeTestStagePrepare"
+    NativeTestStageEntry => "NativeTestStageEntry"
+    NativeTestStageEval => "NativeTestStageEval"
+  }
+}
+
+fn native_frontier_cause_constructor(cause: NativeRouteExclusionCause) -> String {
+  match cause {
+    CompilerFrontierAttributed { reason: r } => join(["CompilerFrontierAttributed { reason: ^", symbol_lexeme(sym: r), " }"], "")
+    NativeEntryResolutionLimit { reason: r } => join(["NativeEntryResolutionLimit { reason: ^", symbol_lexeme(sym: r), " }"], "")
+    NativeEvalBoundary { reason: r } => join(["NativeEvalBoundary { reason: ^", symbol_lexeme(sym: r), " }"], "")
+    UnattributedRefusal { reason: r } => join(["UnattributedRefusal { reason: ^", symbol_lexeme(sym: r), " }"], "")
+  }
+}
+
+fn native_frontier_divergence_constructor(cause: NativeRouteDivergenceCause) -> String {
+  match cause {
+    NativePassedExpectedRed => "NativePassedExpectedRed"
+    NativeFalseExpectedPass => "NativeFalseExpectedPass"
+    NativeReturnedOtherVerdict => "NativeReturnedOtherVerdict"
+    NativeReachedRouteGap => "NativeReachedRouteGap"
+  }
+}
+
+fn native_frontier_debt_constructor(debt: NativeFrontierDebt) -> String {
+  match debt {
+    DebtRefused { stage: s, cause: c } =>
+      join(["DebtRefused { stage: ", native_frontier_stage_constructor(stage: s), ", cause: ", native_frontier_cause_constructor(cause: c), " }"], "")
+    DebtDiverged { cause: c } =>
+      join(["DebtDiverged { cause: ", native_frontier_divergence_constructor(cause: c), " }"], "")
+  }
+}
+
+fn native_frontier_identity_line(i: NativeRouteTestIdentity) -> String {
+  join(["    NativeRouteTestIdentity { module: \"", i.module, "\", declaration: \"", i.declaration, "\" },"], "")
+}
+
+fn native_frontier_row_line(row: NativeFrontierDebtRow) -> String {
+  join([
+    "    NativeFrontierDebtRow { identity: NativeRouteTestIdentity { module: \"", row.identity.module,
+    "\", declaration: \"", row.identity.declaration, "\" }, debt: ",
+    native_frontier_debt_constructor(debt: row.debt), " },"
+  ], "")
+}
+
+// THE WHOLE ROSTER FILE. It carries only imports and the one data row, so the proposal restates no
+// declaration: the vocabulary lives in gunbc.native_frontier_debt, and the header below names only
+// what a minted row spells.
+fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, proposal: NativeFrontierProposal) -> List<String> {
+  list_flat_map(
+    xs: [
+      [
+        "module gunbc.native_frontier_roster",
+        "",
+        "import v2.compiler.native_test_vocabulary { NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval }",
+        "import gunbc.witness_v2_native_route {",
+        "  NativeRouteTestIdentity,",
+        "  CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,",
+        "  NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap",
+        "}",
+        "import gunbc.native_frontier_debt {",
+        "  NativeFrontierRosterStanding, RosterMinted, NativeFrontierMintReceipt, NativeFrontierDebtRow, DebtRefused, DebtDiverged",
+        "}",
+        "",
+        "// Minted by gunbc.native_frontier_ratchet native_frontier_proposal_lines from one complete native",
+        "// run. The run receipt is below, and the host and command are in the minting pull request. The",
+        "// contract this file is, and what it cannot see, are stated on gunbc.native_frontier_debt and",
+        "// gunbc.native_frontier_ratchet. Never hand-edited: it is rewritten from a run.",
+        "data native_frontier_roster: NativeFrontierRosterStanding = RosterMinted {",
+        "  receipt: NativeFrontierMintReceipt {",
+        join(["    tested_tree: \"", receipt.tested_tree, "\","], ""),
+        join(["    preparation_seed_identity: \"", receipt.preparation_seed_identity, "\","], ""),
+        join(["    emitted_closure_identity: \"", receipt.emitted_closure_identity, "\","], ""),
+        join(["    executable_identity: \"", receipt.executable_identity, "\""], ""),
+        "  },",
+        "  universe: ["
+      ],
+      list_map(xs: proposal.universe, f: native_frontier_identity_line),
+      [
+        "  ],",
+        "  rows: ["
+      ],
+      list_map(xs: proposal.rows, f: native_frontier_row_line),
+      [
+        "  ],",
+        "  dispositions: [],",
+        "  cause_transitions: []",
+        "}"
+      ]
+    ],
+    f: fn(ls) { ls }
+  )
+}
+
+// WHAT THE RENDERED MAIN PRINTS AFTER THE VERDICT: the roster file this run proposes, or nothing.
+// It is one call, so the driver makes no choice about when a proposal exists.
+fn native_frontier_proposal_file_lines(receipt: NativeRouteReceipt, v: NativeFrontierVerdict) -> List<String> {
+  match native_frontier_proposal(v: v) {
+    Absent => []
+    Present { value: p } => native_frontier_proposal_lines(receipt: receipt, proposal: p)
+  }
+}
