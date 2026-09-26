@@ -516,8 +516,20 @@ fn v41_judge_probe(p: V41ProbeReading) -> V41ProbeVerdict {
 // is only a selection axis, and the load probe measures TTFT and TPOT without bounds. So the policy
 // row is carried with its standing. While it is Proposed, the staircase refuses; it does not run
 // against a proposal (ruling, proud-deer-538, 2026-09-25).
+//
+// TTFT IS A STOP ONLY WHERE A PREFILL IS SHORT ENOUGH FOR IT TO MEAN SERVICE. A ceiling that holds at
+// 32k would stop a 262k staircase at x1 on prefill time alone and hide the KV and Engram limits the
+// staircase exists to find. So the gate names the largest context it applies to: at or below it, a
+// TTFT above the ceiling stops the step; above it, TTFT is recorded in the step's latency reading and
+// the stop is decided by preemption, refault growth, PSI, NVMe latency and TPOT.
+type V41TtftGate { context: TokenCount, ceiling: Millisecond }
+
+fn v41_ttft_gates_staircase(g: V41TtftGate) -> Bool {
+  token_count_value(t: v41_measurement_max_model_len) <= token_count_value(t: g.context)
+}
+
 type V41CapacityPolicy {
-  ttft_ceiling: Millisecond
+  ttft_gate: V41TtftGate
   tpot_ceiling: Millisecond
   psi_full_ceiling: BasisPoint
   psi_window: Microsecond
@@ -530,9 +542,9 @@ type V41PolicyStanding
   = PolicyProposed { proposal: V41CapacityPolicy, reasons: NonEmptyStr }
   | PolicyOperatorSigned { policy: V41CapacityPolicy, ruling: NonEmptyStr }
 
-data v41_capacity_policy: V41PolicyStanding = PolicyProposed {
-  proposal: V41CapacityPolicy {
-    ttft_ceiling: millisecond(count: 30000),
+data v41_capacity_policy: V41PolicyStanding = PolicyOperatorSigned {
+  policy: V41CapacityPolicy {
+    ttft_gate: V41TtftGate { context: token_count(count: 32768), ceiling: millisecond(count: 30000) },
     tpot_ceiling: millisecond(count: 100),
     psi_full_ceiling: basis_point(count: 1000),
     psi_window: microsecond(count: 60000000),
@@ -540,7 +552,7 @@ data v41_capacity_policy: V41PolicyStanding = PolicyProposed {
     refault_growth_ceiling: basis_point(count: 15000),
     production_pool_margin: basis_point(count: 1000),
   },
-  reasons: "PROPOSED by clever-gull-48, awaiting operator sign-off; not policy. ttft 30 s: a cold 262k prefill is a few tens of seconds on one TP4 Spark replica. tpot 100 ms: 10 tok/s per stream is the floor of interactive use. PSI full 10% over a 60 s window: a tenth of wall time with every task stalled on memory is thrash, not a transient. NVMe read await 5 ms: NVMe reads are sub-millisecond when healthy, so 5 ms is queueing. Refault growth 1.5x per concurrency unit between adjacent steps: this is the superlinear test, since linear growth keeps the per-request ratio near 1.0. Production pool margin 10%: this takes x16 at 262k from 4,194,304 to ~4.6M tokens, which matches the brief's production figure." as NonEmptyStr,
+  ruling: "operator, 2026-09-26, direct reply to proud-deer-538: 'you can take your recs - staircase thresholds are fine'. Values as proposed by clever-gull-48 (TPOT 100 ms; PSI memory full above 10% over 60 s; NVMe read await 5 ms; refault growth above 1.5x per concurrency unit between adjacent steps; 10% production pool margin), with TTFT scaled by context per proud-deer-538's recommendation: the 30 s ceiling gates contexts up to 32k, and at 262k TTFT is recorded and does not stop the staircase." as NonEmptyStr,
 }
 
 type V41StaircaseStepReading {
@@ -616,7 +628,7 @@ fn v41_slo_stop(policy: V41CapacityPolicy, c: Nat, latency: ClientBenchLatency) 
   match latency {
     ClientBenchLatencyUnread { cause: why } => Present { value: StopReadingMissing { concurrency: c, cause: why } }
     ClientBenchLatencyReported { output_throughput: _, tpot_milli: tpot, itl_milli: _, ttft_milli: ttft, window: _ } =>
-      if millisecond_count(m: ttft) > millisecond_count(m: policy.ttft_ceiling) {
+      if v41_ttft_gates_staircase(g: policy.ttft_gate) && millisecond_count(m: ttft) > millisecond_count(m: policy.ttft_gate.ceiling) {
         Present { value: StopSloBreach { concurrency: c, which: "ttft" as NonEmptyStr, observed: ttft } }
       } else if millisecond_count(m: tpot) > millisecond_count(m: policy.tpot_ceiling) {
         Present { value: StopSloBreach { concurrency: c, which: "tpot" as NonEmptyStr, observed: tpot } }
