@@ -17,6 +17,9 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_wall_holds,
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
+  host_runner_pool_charge,
+  gunbc_microvm_shakedown_slot_charge,
+  gunbc_runner_slot_memory_max,
   gunbc_runner_cores_per_slot,
   host_cpu_admitted_width,
   CpuQuotaResolved,
@@ -48,6 +51,8 @@ import gunbc.runner_slot_allocation {
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import gunbc.floor_demand {
   gunbc_floor_measured_peak_observation,
@@ -132,8 +137,24 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
 // runs is not a width this module states at all: its committed width is a typed refusal, asserted
 // below on its own terms by srv2_width_resolves_to_a_typed_refusal_naming_its_denominator.
+// srv1's 11 IS GROUNDED IN ITS INPUTS, NOT COPIED FROM THE FOLD (DESIGN 5). Each input is a cited row
+// with its own provenance, and the literal is what they entail by hand, independently of
+// memory_admitted_width_of_envelope:
+//   usable 539281129472 B = 502.24 GiB (gunbc_ci_srv1_memtotal_measured, /proc/meminfo 2026-08-23)
+//   - 16 GiB overhead allowance (gunbc_ci_legacy_host_fixed_overhead, operator ruling 2026-08-05)
+//   - 52 GiB session allowance (authored_session_reservation_sizing, over the 51.42 GiB measured peak)
+//   - 0 control plane (fabric_control_plane_placement = ControlPlaneUnplaced)
+//   - 87 GiB served slices (served_deployment_slice_allowance: live_deploy_slice_memory_max 53
+//     + approval_broker_slice_memory_max 10 + repository_convergence_slice_memory_max 24)
+//   - 31.39 GiB oomd floor (1/16 of usable)
+//   = 315.85 GiB; less the 52 GiB shakedown charge (28 GiB slot + 16 + 8 GiB controller slice)
+//   = 263.85 GiB, floor(/ 26 GiB fleet row) = 10, plus the shakedown slot = 11.
+// It moves only when one of those rows moves, which is the alarm it exists to raise -- and it did
+// raise it once already: #12328 moved the served slices from 50 to 87 GiB and took this from 12 to
+// 11. It was 15 on main and stale: main derived 14 without the served-slice term, and 14 did not
+// conserve on srv1.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 15
+  host_memory_admitted_width(host: operator_host_srv1) == 11
     && host_memory_admitted_width(host: operator_host_srv3) == 17
     && host_memory_admitted_width(host: operator_host_srv4) == 17
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -214,8 +235,7 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv1, expected: 15)
-    && committed_width_is(host: operator_host_srv3, expected: 17)
+  committed_width_is(host: operator_host_srv3, expected: 17)
     && committed_width_is(host: operator_host_srv4, expected: 17)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
@@ -625,5 +645,55 @@ test fn the_slot_row_declares_one_core_and_no_ceiling() -> Bool {
   match gunbc_runner_slot_desired().cpu_quota {
     CpuQuotaResolved { threads: _ } => false
     SlotCpuQuotaUnbounded => hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
+  }
+}
+
+// THE SHAKEDOWN HOST'S RUNNER CHARGE CARRIES THE SHAKEDOWN SLOT AT ITS REAL SIZE. Discriminating
+// against the charge it replaces: slots x the fleet row would make the srv1 row equal to 11 fleet
+// slots and fail the first conjunct, and the srv3 row pins that a host without the shakedown slot is
+// charged exactly as before. The subject is host_runner_pool_charge at supplied widths, not a live
+// width, so the row does not move when srv1's width moves.
+test fn the_shakedown_host_runner_charge_carries_the_shakedown_slot_at_its_real_size() -> Bool {
+  byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
+      == 10 * byte_size_count(b: gunbc_runner_slot_memory_max) + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
+      > byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 11))
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv3, slots: 17))
+      == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 17))
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 0)) == 0
+}
+
+// srv1's SHAKEDOWN SLOT STAYS A COMMITTED MEMBER BY ITS AUTHORED IDENTITY WHEN THE WIDTH FALLS BELOW
+// ITS INDEX. The width charges srv1-13 first, so the population is the fleet range 1..(width - 1)
+// plus srv1-13 -- never 1..width. Discriminating in both directions: enumerating 1..width would
+// make srv1-13 an outsider (first conjunct red) and would admit a fleet slot the width never
+// charged for (the width-index conjunct red). Indices are read from the live width, not typed in,
+// so the row does not move when the width moves.
+fn srv1_membership_is(slot_index: Int, expect_member: Bool, expect_fabric: Bool) -> Bool {
+  match checked_int_to_nat(n: slot_index) {
+    Absent => false
+    Present { value: n } => srv1_membership_at(slot_index: n, expect_member: expect_member, expect_fabric: expect_fabric)
+  }
+}
+
+fn srv1_membership_at(slot_index: Nat, expect_member: Bool, expect_fabric: Bool) -> Bool {
+  match runner_slot_membership(host: operator_host_srv1, slot_index: slot_index) {
+    SlotMembershipWidthUnresolved { identity: _, cause: _ } => false
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => !expect_member
+    CommittedSlotMember { identity: _, purpose: p } =>
+      expect_member && match p {
+        SlotServesFabricExecution => expect_fabric
+        SlotServesGitHubActions => !expect_fabric
+      }
+  }
+}
+
+test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> Bool {
+  match gunbc_runner_committed_width(host: operator_host_srv1) {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: w } =>
+      srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
+        && srv1_membership_is(slot_index: w - 1, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: w, expect_member: false, expect_fabric: false)
   }
 }

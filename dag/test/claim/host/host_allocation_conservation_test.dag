@@ -41,6 +41,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
   gunbc_admitted_runner_slot_allocations,
   gunbc_runner_slice_cap_for_width,
+  host_runner_pool_charge,
   host_memory_admitted_width,
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
@@ -212,10 +213,7 @@ fn live_verdict_with_session_charge(
     host: usable_ram_of(host: host),
     overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
     headroom: oomd_actuation_floor(host: usable_ram_of(host: host)),
-    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
-      slots: slots,
-      per_slot: gunbc_runner_slot_desired().memory_max
-    ),
+    runner_pool: host_runner_pool_charge(host: host, slots: slots),
     session_pool: session_pool,
     compile_pool: byte_size(0),
     control_plane: control_plane,
@@ -704,10 +702,7 @@ test fn the_live_session_charge_is_decisive_on_a_derived_boundary() -> Bool {
           host: usable_ram_of(host: h),
           overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: h)),
           headroom: oomd_actuation_floor(host: usable_ram_of(host: h)),
-          runner_pool: gunbc_runner_slot_demand_sum_memory_max(
-            slots: w,
-            per_slot: gunbc_runner_slot_desired().memory_max
-          ),
+          runner_pool: host_runner_pool_charge(host: h, slots: w),
           session_pool: byte_size(0),
           compile_pool: byte_size(0),
           control_plane: host_fabric_control_plane_claim(host: h),
@@ -905,6 +900,14 @@ fn admitted_width_search(host: HostIdentity, control_plane: ByteSize) -> WidthSe
 // THE DISCRIMINATING RED. srv3 admits 29, so a search bounded at 3 is exactly the state the old fold
 // silently reported as a width -- and this row is the executed proof that it now refuses instead.
 // The positive control beside it is what stops the refusal from being satisfied by refusing always.
+// THE ROOMY ARM ASKS THE SEARCH TO REPRODUCE THE PRODUCTION WIDTH, not to match a number typed in
+// beside it. Two independent routes to the same width -- a linear search against the conservation
+// wall, and gunbc.runner_slot_allocation host_memory_admitted_width -- agree or this reds, which is
+// exactly the property "width and verdict charge a host the same". It compared against
+// derived_width_with_charge until that stopped being a complete derivation: it subtracts neither
+// the served-deployment slices nor the shakedown slot's charge, so on srv1 it answered 15 while the
+// wall admitted fewer, and this row was red on main for that reason. A literal here would have been
+// a measurement copied from the tree it is asserted against, which DESIGN 5 rules out as an oracle.
 test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
   let short = match admitted_width_search_within(
     host: operator_host_srv3, control_plane: byte_size(0), range: [1, 2, 3], bound: 3
@@ -916,25 +919,12 @@ test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
   let roomy = match admitted_width_search_within(
     host: operator_host_srv1, control_plane: byte_size(0), range: width_search_range(), bound: width_search_bound
   ) {
-    WidthSearchFound { slots: n } => n == derived_width_with_charge(host: operator_host_srv1, session: srv1_established_session_charge())
+    WidthSearchFound { slots: n } => n == host_memory_admitted_width(host: operator_host_srv1)
     WidthSearchSaturated { host: _, bound: _ } => false
     WidthSearchUnestablished { host: _, cause: _ } => false
   }
   let unsized = admitted_width_is_unestablished(host: operator_host_srv2, control_plane: byte_size(0))
   short && roomy && unsized
-}
-
-// THE ROOMY ARM ASKS THE SEARCH TO REPRODUCE THE CLOSED-FORM DERIVATION, not to match a number
-// typed in beside it. Two independent routes to the same width -- a linear search against the
-// conservation wall, and the closed-form subtraction in derived_width_with_charge -- agree or this
-// reds. A literal here would have been a measurement copied from the tree it is asserted against,
-// which DESIGN 5 rules out as an oracle; a second derivation is not.
-fn srv1_established_session_charge() -> ByteSize {
-  match host_session_slice_resolution(host: operator_host_srv1) {
-    SessionSliceCharged { bytes: b } => b
-    SessionSliceNotApplicable => byte_size(0)
-    SessionSliceUnsized { reason: _ } => byte_size(0)
-  }
 }
 
 // AND THE FLEET DOES NOT SATURATE THE REAL BOUND TODAY. This is the quiet guard: mechanism exists,
@@ -1136,4 +1126,27 @@ test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool 
     && host_cpu_admitted_width(host: operator_host_srv1) == altra_max_m12830_catalog.cores
     && committed_equals_memory_admission(host: operator_host_srv1)
     && committed_equals_memory_admission(host: operator_host_srv3)
+}
+
+// THE SHAKEDOWN CHARGE IS WHAT SEPARATES THE TWO VERDICTS, WITH EVERY OTHER TERM SUPPLIED. A 485 GiB
+// host with srv1's other charges (16 GiB overhead, 31 GiB headroom, 52 GiB sessions, 87 GiB served,
+// no compile pool, no control plane) sits between the two runner charges at width 11: 11 fleet slots
+// (286 GiB) conserve, and the real charge (10 fleet slots + the 52 GiB shakedown slot = 312 GiB)
+// does not. So a verdict fed the old charge answers Conserves where the host cannot hold it.
+fn witness_srv1_shaped_conserves(runner_pool: ByteSize) -> Bool {
+  witness_allocation_conserves(
+    host: byte_size(485 * 1073741824),
+    overhead: byte_size(16 * 1073741824),
+    headroom: byte_size(31 * 1073741824),
+    runner_pool: runner_pool,
+    session_pool: byte_size(52 * 1073741824),
+    compile_pool: byte_size(0),
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentClaimResolved { memory: byte_size(87 * 1073741824) }
+  )
+}
+
+test fn the_shakedown_charge_separates_conserves_from_oversubscribed() -> Bool {
+  witness_srv1_shaped_conserves(runner_pool: gunbc_runner_slice_cap_for_width(slots: 11))
+    && !witness_srv1_shaped_conserves(runner_pool: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
 }
