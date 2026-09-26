@@ -4,7 +4,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.compiler.eval { ReadyToInterpret, eval_edge_is_runtime_argument }
+import v2.compiler.eval { AwaitingChildren, eval_edge_is_runtime_argument }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -194,21 +194,35 @@ test fn nab_eval_evaluates_every_actual_in_authored_order() -> Bool {
   let apps = nab_named_applications(o: nab_reordered())
   (count(apps) == 1)
     && fold(apps, init: true, f: fn(acc, ap) {
-      acc && (nab_runtime_argument_labels(app: ap) == [^b, ^a])
+      acc && (nab_named_only(labels: nab_runtime_argument_labels(app: ap)) == [^b, ^a])
     })
 }
 
+fn nab_named_only(labels: List<Symbol>) -> List<Symbol> {
+  fold(labels, init: [], f: fn(acc, l) { if l == ^positional { acc } else { concat(acc, [l]) } })
+}
+
+// The actuals eval's fold keeps as runtime arguments, read as the fold reads them: edge i is judged at
+// AwaitingChildren { processed: i } (v2.compiler.eval eval_fold_step).
+type NabRuntimeWalk {
+  index: Int
+  labels: List<Symbol>
+}
+
 fn nab_runtime_argument_labels(app: Node) -> List<Symbol> {
-  fold(app.children, init: [], f: fn(acc, e) {
-    if eval_edge_is_runtime_argument(parent: app, progress: ReadyToInterpret, edge: e) {
-      match e.label {
-        Named { name: sym } => concat(acc, [sym])
-        Positional => concat(acc, [^positional])
+  fold(app.children, init: NabRuntimeWalk { index: 0, labels: [] }, f: fn(acc, e) {
+    NabRuntimeWalk {
+      index: acc.index + 1,
+      labels: if eval_edge_is_runtime_argument(parent: app, progress: AwaitingChildren { processed: acc.index }, edge: e) {
+        match e.label {
+          Named { name: sym } => concat(acc.labels, [sym])
+          Positional => concat(acc.labels, [^positional])
+        }
+      } else {
+        acc.labels
       }
-    } else {
-      acc
     }
-  })
+  }).labels
 }
 
 // (5) EVERY BINDING CONFLICT REFUSES, TYPED. Over the Arrow of `f`: an unknown label, a slot a
