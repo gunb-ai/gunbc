@@ -1,0 +1,419 @@
+module gunbc.spark.v41_engram_differential_run
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
+import std.nat { Nat }
+import std.checked_arithmetic { nat_magnitude }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import extdeps.docker { BindMount }
+import extdeps.docker.cli {
+  docker_run_ephemeral_command, docker_image_inspect_command, DockerPsByLabel, DockerLabel,
+  docker_ps_running_command, docker_remove_force_command,
+  docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
+  docker_image_inspect_names_no_such_image,
+}
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_openssh_trust_policy_of,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run, spark_remote_argv_run, HostCli,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live_over }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.v41_engram_row_store { v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings }
+import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
+import product.placement_supply { HostIdentity }
+
+// ══ THE DESIGN-B RED: A BYTE-IDENTICAL DIFFERENTIAL ON THE REAL ROW STORES ════════════════════════
+//
+// The design-B cutover (patches/d2d649e6: FileBackedParallelEngramEmbedding and FileBackedLookup,
+// decision evidence fleet-converge run 36247421840) replaces upstream's pinned-table lookup with a CPU
+// gather from each rank's row store. Its RED is equality with upstream: for every (layer, rank) store
+// the launch manifest names, sampled real records are placed in a compact upstream-layout table, and
+// upstream _engram_lookup_kernel and FileBackedLookup run over the same hash ids -- owned, below the
+// rank's range, above it, and on absent heads -- and must agree in every bit (torch.equal over the
+// bf16 bit patterns). The overlay program is the COMMITTED patch's own new file, extracted here at run
+// time, so what runs is what the image build applies; its `--differential` entry does the comparing.
+//
+// WHERE AND UNDER WHAT BOUNDS. srv5 holds the stores; the run mounts their directory read-only at its
+// own path so the manifest's paths resolve, labels its container for this lane, caps it at 16 GiB with
+// no swap, and bounds the program in the container and the client on the host. Before claiming, it
+// reads occupancy over the privileged leg and refuses, typed, if any GPU compute process is running
+// or the host reports under 32 GiB available -- srv8 was once held by an unseen V4 pair worker, and a
+// run that thrashes a host is worse than one that refuses. Occupancy admission moves to the fabric's
+// own reading when that lands (still-seal-656). The mode never writes a store or the served model.
+
+data v41_differential_overlay_patch_path: String = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch"
+
+// THE OVERLAY PROGRAM IS THE PATCH'S NEW FILE: every added line of a new-file diff, with its `+`
+// removed. A patch that is not a single new-file hunk is not the overlay, and refuses.
+type V41OverlayProgram
+  = V41OverlayProgramRead { text: String }
+  | V41OverlayProgramRefused { cause: NonEmptyStr }
+
+fn v41_overlay_program_of(patch: String) -> V41OverlayProgram {
+  let lines = split(s: patch, delimiter: "\n")
+  if length(filter(lines, l => l == "--- /dev/null")) != 1 || length(filter(lines, l => starts_with(s: l, prefix: "@@ "))) != 1 {
+    V41OverlayProgramRefused { cause: "the overlay patch is not one new-file hunk" as NonEmptyStr }
+  } else {
+    let added = flat_map(lines, l => if starts_with(s: l, prefix: "+") && !starts_with(s: l, prefix: "+++ ") { [substring(s: l, start: 1, end: string_length(s: l))] } else { [] as List<String> })
+    if length(added) == 0 {
+      V41OverlayProgramRefused { cause: "the overlay patch adds no lines" as NonEmptyStr }
+    } else {
+      V41OverlayProgramRead { text: concat(join(added, "\n"), "\n") }
+    }
+  }
+}
+
+// THE IMAGE: the arm A runtime image by config digest (fleet-converge run 36207135528), which carries
+// upstream vLLM at d2d649e6 and so upstream's kernel at the revision the overlay patches. The run
+// refuses if the target's daemon does not hold it.
+data v41_differential_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as NonEmptyStr
+
+data v41_differential_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "engram-differential" as NonEmptyStr }
+data v41_differential_process_pattern: NonEmptyStr = "gunbc_engram_file_backed" as NonEmptyStr
+data v41_differential_memory_cap: ByteSize = byte_size(count: 17179869184)
+data v41_differential_min_available_kib: Nat = 33554432
+data v41_differential_time_bound: Second = second(count: 1500)
+data v41_differential_client_bound: Second = second(count: 1620)
+data v41_differential_kill_grace: Second = second(count: 30)
+data v41_differential_rows: Nat = 4096
+data v41_differential_tokens: Nat = 2048
+
+// The bootstrap writes the program and the manifest inside the container and runs the program's
+// `--differential` entry from its file (Triton reads kernel source from the file).
+data v41_differential_bootstrap: String = "import sys, runpy; p = '/var/tmp/gunbc_engram_file_backed.py'; mpath = '/var/tmp/gunbc_engram_manifest.json'; open(p, 'w').write(sys.argv[1]); open(mpath, 'w').write(sys.argv[2]); sys.argv = [p, '--differential', mpath] + sys.argv[3:]; runpy.run_path(p, run_name='__main__')"
+
+fn v41_differential_argv(image: NonEmptyStr, claim: NonEmptyStr, program: String, manifest: String) -> List<String> {
+  concat(
+    ["timeout", "-k", to_string(second_count(s: v41_differential_kill_grace)), to_string(second_count(s: v41_differential_client_bound))],
+    argv_words(command: docker_run_ephemeral_command(
+      image: image,
+      gpus_all: true,
+      mounts: [BindMount { host_path: v41_row_store_output_directory(), container_path: v41_row_store_output_directory(), readonly: true }],
+      labels: [v41_differential_lane_label, DockerLabel { key: "gunbc.claim" as NonEmptyStr, value: claim }],
+      memory_limit: Present { value: v41_differential_memory_cap },
+      entrypoint: "timeout" as NonEmptyStr,
+      argv: ["-k", to_string(second_count(s: v41_differential_kill_grace)), to_string(second_count(s: v41_differential_time_bound)), "python3", "-u", "-c", v41_differential_bootstrap, program, manifest, "--rows", to_string(v41_differential_rows), "--tokens", to_string(v41_differential_tokens)],
+    )),
+  )
+}
+
+// ── THE READING ─────────────────────────────────────────────────────────────────────────────────
+
+type V41DifferentialStore sole_constructor {
+  layer: Nat
+  rank: Nat
+  rows_sampled: Nat
+  owned: Nat
+  unowned_below: Nat
+  out_of_range: Nat
+  absent_heads: Nat
+  equal: Bool
+}
+
+type V41DifferentialOutcome
+  = V41DifferentialRead { image_config: NonEmptyStr, stores: List<V41DifferentialStore> }
+  | V41DifferentialRefused { step: NonEmptyStr, cause: NonEmptyStr }
+
+fn v41_words(line: String) -> List<String> {
+  filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+}
+
+fn v41_nat_at(ws: List<String>, index: Nat) -> Nat? {
+  match list_at_optional(xs: ws, index: index) {
+    Absent => none
+    Present { value: w } => match parse_int(s: w) {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else { Present { value: nat_magnitude(a: n) } }
+    }
+  }
+}
+
+// DIFFERENTIAL <layer> <rank> rows_sampled <n> owned <n> unowned_below <n> out_of_range <n> absent_heads <n> equal|DIFFERS
+fn v41_differential_store_of(line: String) -> V41DifferentialStore? {
+  let ws = v41_words(line: line)
+  match list_at_optional(xs: ws, index: 0) {
+    Absent => none
+    Present { value: k } => if k != "DIFFERENTIAL" { none } else {
+      match v41_nat_at(ws: ws, index: 1) { Absent => none  Present { value: layer } =>
+      match v41_nat_at(ws: ws, index: 2) { Absent => none  Present { value: rank } =>
+      match v41_nat_at(ws: ws, index: 4) { Absent => none  Present { value: rows } =>
+      match v41_nat_at(ws: ws, index: 6) { Absent => none  Present { value: owned } =>
+      match v41_nat_at(ws: ws, index: 8) { Absent => none  Present { value: below } =>
+      match v41_nat_at(ws: ws, index: 10) { Absent => none  Present { value: out } =>
+      match v41_nat_at(ws: ws, index: 12) { Absent => none  Present { value: absent } =>
+      match list_at_optional(xs: ws, index: 13) { Absent => none  Present { value: verdict } =>
+        if verdict == "equal" || verdict == "DIFFERS" {
+          Present { value: V41DifferentialStore { layer: layer, rank: rank, rows_sampled: rows, owned: owned, unowned_below: below, out_of_range: out, absent_heads: absent, equal: verdict == "equal" } }
+        } else { none }
+      } } } } } } } }
+    }
+  }
+}
+
+type V41StoreKey { layer: Nat, rank: Nat }
+
+// ADMITTED ONLY WHOLE: exactly one reading per owed store, every reading equal, each exercising owned
+// and unowned rows, and the program's own DONE line reporting zero failures. A store that differs is
+// the RED firing, and refuses naming it.
+fn v41_admit_differential(image_config: NonEmptyStr, owed: List<V41StoreKey>, stdout: String) -> V41DifferentialOutcome {
+  let stores = flat_map(split(s: stdout, delimiter: "\n"), l => match v41_differential_store_of(line: l) { Present { value: d } => [d]  Absent => [] as List<V41DifferentialStore> })
+  let join_causes = flat_map(owed, k => {
+    let n = length(filter(stores, d => d.layer == k.layer && d.rank == k.rank))
+    if n == 1 { [] as List<String> } else { [join(["layer ", to_string(k.layer), " rank ", to_string(k.rank), " has ", to_string(n), " differential readings"], "")] }
+  })
+  let differs = flat_map(stores, d => if d.equal { [] as List<String> } else { [join(["layer ", to_string(d.layer), " rank ", to_string(d.rank), " DIFFERS from upstream"], "")] })
+  let thin = flat_map(stores, d => if d.owned == 0 || d.unowned_below + d.out_of_range == 0 { [join(["layer ", to_string(d.layer), " rank ", to_string(d.rank), " did not exercise both owned and unowned rows"], "")] } else { [] as List<String> })
+  let done = length(filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) == "DIFFERENTIAL_DONE failures 0")) == 1
+  let causes = concat(concat(concat(join_causes, differs), thin), if done { [] as List<String> } else { ["the program did not report DIFFERENTIAL_DONE failures 0"] })
+  if length(causes) != 0 {
+    V41DifferentialRefused { step: "differential-admission" as NonEmptyStr, cause: join(causes, "; ") as NonEmptyStr }
+  } else {
+    V41DifferentialRead { image_config: image_config, stores: stores }
+  }
+}
+
+fn v41_differential_body(o: V41DifferentialOutcome) -> String {
+  match o {
+    V41DifferentialRefused { step: s, cause: c } => join(["REFUSED step=", s as String, " cause=", c as String, "\n"], "")
+    V41DifferentialRead { image_config: i, stores: ds } =>
+      join([
+        join(["image_config=", i as String, "\n"], ""),
+        join(map(ds, d => join(["  layer ", to_string(d.layer), " rank ", to_string(d.rank), " rows_sampled=", to_string(d.rows_sampled), " owned=", to_string(d.owned), " unowned_below=", to_string(d.unowned_below), " out_of_range=", to_string(d.out_of_range), " absent_heads=", to_string(d.absent_heads), " ", if d.equal { "equal" } else { "DIFFERS" }, "\n"], "")), ""),
+      ], "")
+  }
+}
+
+// ── OCCUPANCY: REFUSE BEFORE CLAIMING A HOST SOMETHING ELSE IS USING ────────────────────────────
+type V41HostOccupancy
+  = V41HostFree { available_kib: Nat }
+  | V41HostOccupied { cause: NonEmptyStr }
+
+fn v41_meminfo_available_kib(meminfo: String) -> Nat? {
+  match list_at_optional(xs: filter(split(s: meminfo, delimiter: "\n"), l => starts_with(s: l, prefix: "MemAvailable:")), index: 0) {
+    Absent => none
+    Present { value: l } => v41_nat_at(ws: v41_words(line: l), index: 1)
+  }
+}
+
+// nvidia-smi --query-compute-apps prints a csv header and one line per compute process.
+fn v41_compute_apps(csv: String) -> List<String> {
+  filter(filter(split(s: csv, delimiter: "\n"), l => trim(s: l) != ""), l => !starts_with(s: trim(s: l), prefix: "pid"))
+}
+
+fn v41_judge_occupancy(meminfo: String, compute_csv: String) -> V41HostOccupancy {
+  let apps = v41_compute_apps(csv: compute_csv)
+  if length(apps) != 0 {
+    V41HostOccupied { cause: join(["GPU compute processes are running: ", join(apps, "; ")], "") as NonEmptyStr }
+  } else {
+    match v41_meminfo_available_kib(meminfo: meminfo) {
+      Absent => V41HostOccupied { cause: "MemAvailable could not be read, so occupancy is not established" as NonEmptyStr }
+      Present { value: kib } =>
+        if kib < v41_differential_min_available_kib {
+          V41HostOccupied { cause: join(["the host reports ", to_string(kib), " KiB available, under the ", to_string(v41_differential_min_available_kib), " KiB this run requires"], "") as NonEmptyStr }
+        } else { V41HostFree { available_kib: kib } }
+    }
+  }
+}
+
+fn v41_read_occupancy(ctx: SparkMaterializeContext) -> V41HostOccupancy {
+  match spark_remote_run(ctx: ctx, argv: ["cat", "/proc/meminfo"]) {
+    RemoteUnreachable { cause: why } => V41HostOccupied { cause: join(["/proc/meminfo could not be read: ", why as String], "") as NonEmptyStr }
+    RemoteRan { exit_code: c, stdout: mem, stderr: e } =>
+      if c != 0 { V41HostOccupied { cause: join(["/proc/meminfo exited ", to_string(c), ": ", trim(s: e)], "") as NonEmptyStr } } else {
+        match spark_remote_run(ctx: ctx, argv: ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv"]) {
+          RemoteUnreachable { cause: why } => V41HostOccupied { cause: join(["nvidia-smi could not run: ", why as String], "") as NonEmptyStr }
+          RemoteRan { exit_code: c2, stdout: apps, stderr: e2 } =>
+            if c2 != 0 { V41HostOccupied { cause: join(["nvidia-smi exited ", to_string(c2), ": ", trim(s: e2)], "") as NonEmptyStr } } else { v41_judge_occupancy(meminfo: mem, compute_csv: apps) }
+        }
+      }
+  }
+}
+
+// ── ASKING IT ───────────────────────────────────────────────────────────────────────────────────
+fn v41_differential_remove_containers(ctx: SparkMaterializeContext) -> String? {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_ps_running_command(filter: DockerPsByLabel { label: v41_differential_lane_label }))) {
+    RemoteUnreachable { cause: why } => Present { value: join(["docker ps did not run: ", why as String], "") }
+    RemoteRan { exit_code: c, stdout: out, stderr: e } =>
+      if c != 0 { Present { value: join(["docker ps exited ", to_string(c), ": ", trim(s: e)], "") } } else {
+        let failures = flat_map(filter(split(s: out, delimiter: "\n"), w => trim(s: w) != ""), id =>
+          match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_remove_force_command(name: trim(s: id) as NonEmptyStr))) {
+            RemoteUnreachable { cause: why } => [join(["docker rm -f ", trim(s: id), " did not run: ", why as String], "")]
+            RemoteRan { exit_code: rc, stdout: _, stderr: re } => if rc == 0 { [] as List<String> } else { [join(["docker rm -f ", trim(s: id), " exited ", to_string(rc), ": ", trim(s: re)], "")] }
+          })
+        if length(failures) != 0 { Present { value: join(failures, "; ") } } else { none }
+      }
+  }
+}
+
+fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, program: String, manifest: String, owed: List<V41StoreKey>) -> V41DifferentialOutcome {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: v41_differential_image))) {
+    RemoteUnreachable { cause: why } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+    RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
+      if code != 0 {
+        if docker_image_inspect_names_no_such_image(stderr: err) {
+          V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: "the target's docker daemon does not hold the differential image" as NonEmptyStr }
+        } else {
+          V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr }
+        }
+      } else {
+        match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
+          DockerImageInspectIdUnreadable { cause: why } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+          DockerImageInspectId { id: config_id } => {
+            let outcome = match spark_remote_run(ctx: ctx, argv: v41_differential_argv(image: config_id, claim: claim, program: program, manifest: manifest)) {
+              RemoteUnreachable { cause: why } => V41DifferentialRefused { step: "differential-run" as NonEmptyStr, cause: why }
+              RemoteRan { exit_code: c, stdout: out, stderr: e } =>
+                if c == 0 || c == 1 {
+                  v41_admit_differential(image_config: config_id, owed: owed, stdout: out)
+                } else {
+                  V41DifferentialRefused { step: "differential-run" as NonEmptyStr, cause: join(["exit=", to_string(c), " stderr=", trim(s: e)], "") as NonEmptyStr }
+                }
+            }
+            match v41_differential_remove_containers(ctx: ctx) {
+              Absent => outcome
+              Present { value: why } => V41DifferentialRefused { step: "container-removal" as NonEmptyStr, cause: join(["the differential's container could not be removed, so the release will find residue: ", why], "") as NonEmptyStr }
+            }
+          }
+        }
+      }
+  }
+}
+
+// ── THE FLEET-CONVERGE ENTRY ────────────────────────────────────────────────────────────────────
+data v41_differential_attempt_raw: String = "v41-engram-differential-ci"
+data v41_differential_receipt_path: String = "target/v41-engram-differential-receipt.txt"
+data v41_differential_host_purpose: NonEmptyStr = "the design-B Engram differential, which starts one GPU container that reads sampled rows of the row stores read-only" as NonEmptyStr
+data v41_differential_host_effect_term: Second = second(count: 3600)
+
+fn v41_differential_residue() -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: v41_differential_process_pattern, container: Present { value: DockerPsByLabel { label: v41_differential_lane_label } } }
+}
+
+fn v41_differential_receipt_exit(at: String, host: HostIdentity, executor: String, anchor_receipt: String, outcome: V41DifferentialOutcome) -> ProcessExit {
+  let body = join([
+    join(["v41 engram differential probed_at=", at, " host=", host as String, "\n"], ""),
+    v41_differential_body(o: outcome),
+    join(["executor=", executor, "\n"], ""),
+    anchor_receipt,
+  ], "")
+  let w = Filesystem.Write(path: v41_differential_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["v41 engram differential receipt write failed: ", w.error], ""))
+  } else {
+    match outcome {
+      V41DifferentialRead { image_config: _, stores: _ } => ExitSuccess
+      V41DifferentialRefused { step: _, cause: _ } => exit_failure(reason: join(["the engram differential refused:\n", body], ""))
+    }
+  }
+}
+
+// THE INPUTS ARE DERIVED BEFORE ANY HOST IS TOUCHED: the program from the committed patch, the
+// manifest from the row-store model; either refusing stops the run with nothing claimed.
+fn v41_engram_differential_ci_wet() -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  let patch = Filesystem.Read(path: v41_differential_overlay_patch_path)
+  if !patch.success {
+    exit_failure(reason: join(["the overlay patch could not be read: ", patch.error], ""))
+  } else {
+    match v41_overlay_program_of(patch: patch.content) {
+      V41OverlayProgramRefused { cause: why } => exit_failure(reason: why as String)
+      V41OverlayProgramRead { text: program } =>
+        match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+          V41RowStoreSpecRefused { defects: d } => exit_failure(reason: join(["the row-store spec refused: ", join(map(d, x => x as String), "; ")], ""))
+          V41RowStoreSpecAdmitted { spec: spec } =>
+            match v41_engram_store_manifest(spec: spec, readings: v41_published_store_readings) {
+              V41StoreManifestRefused { causes: cs } => exit_failure(reason: join(["the store manifest refused: ", join(cs, "; ")], ""))
+              V41StoreManifestDerived { text: manifest, stores: _ } => {
+                let owed = flat_map(spec.layers, t => map(t.ranks, r => V41StoreKey { layer: t.layer, rank: r.rank }))
+                v41_differential_on_target(now_word: probed_at_word(reading: now) as String, program: program, manifest: manifest, owed: owed)
+              }
+            }
+        }
+    }
+  }
+}
+
+fn v41_differential_on_target(now_word: String, program: String, manifest: String, owed: List<V41StoreKey>) -> ProcessExit {
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode starts a GPU container on ONE host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_engram_differential_ci: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: path } =>
+              match read_bootstrap_credential() {
+                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                BootstrapCredentialReady { secret: administrator } =>
+                  match fleet_ssh_attempt_identity(raw: v41_differential_attempt_raw) {
+                    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                    Present { value: attempt } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_openssh_trust_policy_of(outcome: materialization) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: trust } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-v41-engram-differential-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              let ctx = SparkMaterializeContext { host: target_host, trust: trust, path: path, admin_credential: administrator as Secret, admin_credential_file: file, executor: HostCli }
+                              match v41_read_occupancy(ctx: ctx) {
+                                V41HostOccupied { cause: why } => exit_failure(reason: join([target_host as String, " is occupied, so nothing was claimed or run: ", why as String], ""))
+                                V41HostFree { available_kib: _ } =>
+                                  match claim_host_effect_live(host: target_host, purpose: v41_differential_host_purpose, term: v41_differential_host_effect_term, residue: v41_differential_residue()) {
+                                    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+                                    HostEffectClaimLanded { handle: handle } =>
+                                      release_host_effect_live_over(
+                                        handle: Present { value: handle },
+                                        run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) },
+                                        exit: v41_differential_receipt_exit(
+                                          at: now_word,
+                                          host: target_host,
+                                          executor: executor,
+                                          anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
+                                          outcome: v41_differential_on(ctx: ctx, claim: handle.claim as NonEmptyStr, program: program, manifest: manifest, owed: owed),
+                                        ),
+                                      )
+                                  }
+                              }
+                            },
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: exit } => exit
+                          }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

@@ -1,0 +1,95 @@
+module test.claim.spark.v41_engram_differential_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.spark.v41_engram_differential_run {
+  V41OverlayProgram, V41OverlayProgramRead, V41OverlayProgramRefused, v41_overlay_program_of,
+  V41DifferentialOutcome, V41DifferentialRead, V41DifferentialRefused, v41_admit_differential, V41StoreKey,
+  V41HostOccupancy, V41HostFree, V41HostOccupied, v41_judge_occupancy, v41_differential_argv,
+}
+import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
+import gunbc.spark.v41_engram_row_store {
+  V41PublishedStoresRead, V41PublishedStoresUnread, V41ObservedRankStore, v41_rank_store_identity,
+  v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings,
+}
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OVERLAY PROGRAM IS THE PATCH'S NEW FILE, and a patch that modifies a file refuses.
+test fn the_overlay_program_is_the_new_files_added_lines() -> Bool {
+  let patch = "diff --git a/x.py b/x.py\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/x.py\n@@ -0,0 +1,2 @@\n+import os\n+print(1)\n"
+  let modifying = "--- a/x.py\n+++ b/x.py\n@@ -1,1 +1,1 @@\n-a\n+b\n"
+  let read = match v41_overlay_program_of(patch: patch) { V41OverlayProgramRead { text: t } => t == "import os\nprint(1)\n"  V41OverlayProgramRefused { cause: _ } => false }
+  let refused = match v41_overlay_program_of(patch: modifying) { V41OverlayProgramRefused { cause: _ } => true  V41OverlayProgramRead { text: _ } => false }
+  read && refused
+}
+
+data w_owed: List<V41StoreKey> = [V41StoreKey { layer: 1, rank: 0 }, V41StoreKey { layer: 1, rank: 1 }]
+data w_equal: String = "DIFFERENTIAL 1 0 rows_sampled 4096 owned 8600 unowned_below 1200 out_of_range 2400 absent_heads 4096 equal\nDIFFERENTIAL 1 1 rows_sampled 4096 owned 8580 unowned_below 1230 out_of_range 2390 absent_heads 4096 equal\nDIFFERENTIAL_DONE failures 0\n"
+
+test fn an_all_equal_differential_over_every_owed_store_is_admitted() -> Bool {
+  match v41_admit_differential(image_config: "sha256:ea39" as NonEmptyStr, owed: w_owed, stdout: w_equal) {
+    V41DifferentialRead { image_config: _, stores: ds } => length(ds) == 2 && length(filter(ds, d => d.equal)) == 2
+    V41DifferentialRefused { step: _, cause: _ } => false
+  }
+}
+
+// THE RED: a store whose output differs from upstream in any bit refuses naming it; a missing store
+// and a run that did not report zero failures refuse too.
+fn w_refused_with(o: V41DifferentialOutcome, needle: String) -> Bool {
+  match o {
+    V41DifferentialRefused { step: _, cause: c } => contains(c as String, needle)
+    V41DifferentialRead { image_config: _, stores: _ } => false
+  }
+}
+
+test fn a_differing_or_missing_store_refuses() -> Bool {
+  let differs = "DIFFERENTIAL 1 0 rows_sampled 4096 owned 8600 unowned_below 1200 out_of_range 2400 absent_heads 4096 equal\nDIFFERENTIAL 1 1 rows_sampled 4096 owned 8580 unowned_below 1230 out_of_range 2390 absent_heads 4096 DIFFERS\nDIFFERENTIAL_DONE failures 1\n"
+  let missing = "DIFFERENTIAL 1 0 rows_sampled 4096 owned 8600 unowned_below 1200 out_of_range 2400 absent_heads 4096 equal\nDIFFERENTIAL_DONE failures 0\n"
+  w_refused_with(o: v41_admit_differential(image_config: "sha256:ea39" as NonEmptyStr, owed: w_owed, stdout: differs), needle: "layer 1 rank 1 DIFFERS from upstream")
+    && w_refused_with(o: v41_admit_differential(image_config: "sha256:ea39" as NonEmptyStr, owed: w_owed, stdout: missing), needle: "layer 1 rank 1 has 0 differential readings")
+}
+
+// OCCUPANCY REFUSES BEFORE ANYTHING IS CLAIMED: a GPU compute process, or too little available memory.
+test fn an_occupied_host_refuses_and_a_free_one_is_admitted() -> Bool {
+  let free_mem = "MemTotal: 127000000 kB\nMemAvailable: 120000000 kB\n"
+  let low_mem = "MemTotal: 127000000 kB\nMemAvailable: 16000000 kB\n"
+  let no_apps = "pid, process_name, used_gpu_memory [MiB]\n"
+  let pair = "pid, process_name, used_gpu_memory [MiB]\n4242, ray::RayWorkerWrapper, 99700 MiB\n"
+  let free = match v41_judge_occupancy(meminfo: free_mem, compute_csv: no_apps) { V41HostFree { available_kib: k } => k == 120000000  V41HostOccupied { cause: _ } => false }
+  let gpu = match v41_judge_occupancy(meminfo: free_mem, compute_csv: pair) { V41HostOccupied { cause: c } => contains(c as String, "RayWorkerWrapper")  V41HostFree { available_kib: _ } => false }
+  let mem = match v41_judge_occupancy(meminfo: low_mem, compute_csv: no_apps) { V41HostOccupied { cause: c } => contains(c as String, "16000000 KiB available")  V41HostFree { available_kib: _ } => false }
+  free && gpu && mem
+}
+
+// THE LIVE MANIFEST: the real spec and the published store readings derive a manifest naming all
+// eight stores with their digests and the encode's paths; unread readings refuse.
+test fn the_live_manifest_names_every_published_store() -> Bool {
+  match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+    V41RowStoreSpecRefused { defects: _ } => false
+    V41RowStoreSpecAdmitted { spec: spec } => {
+      let live = match v41_engram_store_manifest(spec: spec, readings: v41_published_store_readings) {
+        V41StoreManifestDerived { text: t, stores: n } => n == 8 && contains(t, "\"sha256\": \"408fc45afaab71f7ae79af76636e031ca453f8d3a26c416a18baee6c0275de23\"") && contains(t, "/engram-row-stores/") && contains(t, "\"record_bytes\": 264")
+        V41StoreManifestRefused { causes: _ } => false
+      }
+      let unread = match v41_engram_store_manifest(spec: spec, readings: V41PublishedStoresUnread { obligation: "fixture" as NonEmptyStr }) {
+        V41StoreManifestRefused { causes: _ } => true
+        V41StoreManifestDerived { text: _, stores: _ } => false
+      }
+      live && unread
+    }
+  }
+}
+
+// THE COMMAND: bounded twice, labelled for this lane, memory-capped, the stores mounted read-only.
+test fn the_differential_runs_bounded_labelled_capped_with_read_only_stores() -> Bool {
+  let argv = join(v41_differential_argv(image: "sha256:ea39" as NonEmptyStr, claim: "c1" as NonEmptyStr, program: "print(1)", manifest: "{}"), " ")
+  contains(argv, "timeout -k 30 1620 ")
+    && contains(argv, "/engram-row-stores:ro --label gunbc.lane=engram-differential --label gunbc.claim=c1 --memory 17179869184 --memory-swap 17179869184 --entrypoint timeout sha256:ea39 -k 30 1500 python3 -u -c")
+    && contains(argv, " --rows 4096 --tokens 2048")
+}
+

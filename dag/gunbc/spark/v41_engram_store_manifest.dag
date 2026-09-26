@@ -1,0 +1,72 @@
+module gunbc.spark.v41_engram_store_manifest
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { byte_size_count }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, V41PublishedStoreReadings, V41PublishedStoresRead, V41PublishedStoresUnread,
+  V41ObservedRankStore, v41_row_bytes, weight_bytes, v41_published_store_readings,
+}
+import gunbc.spark.v41_row_store_encode { v41_magic_hex, v41_store_out_path }
+
+// ══ THE LAUNCH'S ENGRAM ROW-STORE MANIFEST ═══════════════════════════════════════════════════════
+//
+// The file-backed Engram overlay (patches/d2d649e6, engram_file_backed.py load_manifest) serves every
+// Engram layer from the row stores a launch names in GUNBC_ENGRAM_ROW_STORE_MANIFEST, and refuses at
+// model init if a (layer, rank) it needs is not named, if a store is missing, or if its bytes are not
+// the digest named here. This module DERIVES that document; nothing in it is authored beside the
+// row-store model:
+//   magic and record geometry  -- the encoding spec the stores were written from (v41_row_bytes,
+//                                 weight_bytes, gunbc.spark.v41_row_store_encode v41_magic_hex);
+//   each store's path          -- v41_store_out_path, the path the encode wrote it to;
+//   each store's sha256        -- the published store readings (the encode run's receipt).
+// A manifest is derived only when every (layer, rank) the spec owes has exactly one read store; any
+// gap refuses, because a manifest that omits a store is a launch that refuses on that rank anyway,
+// later and on a Spark.
+//
+// CONSUMERS: gunbc.spark.v41_engram_differential_run (the byte-identical differential, which runs the
+// overlay against upstream's kernel on these stores), and the V4.1 capacity measurement serve's
+// launch, which lands with the wet runner (gunbc.spark.v41_capacity_measurement v41_wet_runner_frontier).
+
+type V41EngramStoreManifest
+  = V41StoreManifestDerived { text: String, stores: Nat }
+  | V41StoreManifestRefused { causes: List<String> }
+
+fn v41_manifest_store_json(o: V41ObservedRankStore) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "layer", value: json_int(n: o.identity.layer)),
+    json_kv(key: "rank", value: json_int(n: o.identity.rank)),
+    json_kv(key: "path", value: json_string(s: v41_store_out_path(layer: o.identity.layer, rank: o.identity.rank) as String)),
+    json_kv(key: "sha256", value: json_string(s: o.identity.digest.hex as String)),
+  ])
+}
+
+fn v41_engram_store_manifest(spec: V41RowStoreEncodingSpec, readings: V41PublishedStoreReadings) -> V41EngramStoreManifest {
+  match readings {
+    V41PublishedStoresUnread { obligation: why } => V41StoreManifestRefused { causes: [join(["the published stores are unread: ", why as String], "")] }
+    V41PublishedStoresRead { host: _, observed_at: _, stores: stores } => {
+      let gaps = flat_map(spec.layers, t => flat_map(t.ranks, r => {
+        let n = length(filter(stores, o => o.identity.layer == t.layer && o.identity.rank == r.rank))
+        if n == 1 { [] as List<String> } else { [join(["layer ", to_string(t.layer), " rank ", to_string(r.rank), " has ", to_string(n), " read stores"], "")] }
+      }))
+      let extra = filter(stores, o => length(filter(spec.layers, t => t.layer == o.identity.layer && length(filter(t.ranks, r => r.rank == o.identity.rank)) == 1)) == 0)
+      let causes = concat(gaps, map(extra, o => join(["a read store for layer ", to_string(o.identity.layer), " rank ", to_string(o.identity.rank), " is not owed by the spec"], "")))
+      if length(causes) != 0 {
+        V41StoreManifestRefused { causes: causes }
+      } else {
+        V41StoreManifestDerived {
+          text: serialize_json(v: json_object(members: [
+            json_kv(key: "magic_hex", value: json_string(s: v41_magic_hex())),
+            json_kv(key: "record_bytes", value: json_int(n: byte_size_count(b: v41_row_bytes(g: spec.geometry)))),
+            json_kv(key: "weight_bytes", value: json_int(n: byte_size_count(b: weight_bytes(g: spec.geometry)))),
+            json_kv(key: "stores", value: json_array(elements: map(stores, o => v41_manifest_store_json(o: o)))),
+          ])),
+          stores: length(stores),
+        }
+      }
+    }
+  }
+}
