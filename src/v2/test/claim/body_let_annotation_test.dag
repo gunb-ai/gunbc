@@ -165,8 +165,16 @@ fn bla_infers(o: Outcome<Node>) -> Outcome<Bool> {
 // ascribed Int is admitted; the same literal ascribed Bool resolves and then refuses with coercion's
 // typed mismatch as the cause, and a fatal of its own located at the annotation `Bool`, not at the
 // literal. RED BEFORE the infer rule: the Bool ascription was admitted.
+fn bla_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_literal_as_int())
+}
+
+fn bla_literal_as_bool_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_literal_as_bool())
+}
+
 test fn bla_infer_admits_int_literal_ascribed_int() -> Bool {
-  match bla_infers(o: bla_literal_as_int()) {
+  match bla_literal_as_int_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -174,7 +182,7 @@ test fn bla_infer_admits_int_literal_ascribed_int() -> Bool {
 
 test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
   tpb_accepts(o: bla_literal_as_bool())
-    && match bla_infers(o: bla_literal_as_bool()) {
+    && match bla_literal_as_bool_inferred() {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: d } =>
         bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
@@ -226,8 +234,12 @@ fn bla_refused_for_annotation(o: Outcome<String>) -> Bool {
 
 // (6) TRANSLATE REFUSES AN ANNOTATED BIND until a target models the annotation, rather than
 // projecting it as a plain let and dropping the type ...
+fn bla_annotated_bind_emitted() -> Outcome<String> {
+  bla_emit_rust(body: bla_bind(annotated: true))
+}
+
 test fn bla_translate_refuses_an_annotated_bind() -> Bool {
-  bla_refused_for_annotation(o: bla_emit_rust(body: bla_bind(annotated: true)))
+  bla_refused_for_annotation(o: bla_annotated_bind_emitted())
 }
 
 // ... and the refusal is the annotation's: the gate that fires it answers false for the same Bind
