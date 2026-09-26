@@ -20,7 +20,7 @@ import gunbc.runner_host_deploy {
   admit_runner_host,
   runner_enable_command_argv,
 }
-import gunbc.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations }
+import gunbc.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations, fabric_cell_host_slots }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
@@ -350,14 +350,22 @@ test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() ->
 // count is compared against the roster's own length rather than against a number, because a literal
 // here would be a measurement of the current tree standing in for an oracle -- and this roster moved
 // from 5 to 21 within the month.
+//
+// THE HOST'S START POPULATION ALSO CARRIES ONE SLICE START PER FABRIC CELL ON THE HOST, and that is
+// gunbc.runner_host_grants fabric_cell_slice_property_operations, not an activation grant: it
+// re-applies a cgroup boundary's directives and enables nothing. This row compared the host's
+// starts to the desired slots alone, which held only while srv4 carried no fabric slot; #11625 gave
+// it two, so the row was red from that landing. The enable count, which the slices do not touch,
+// still equals the desired slots exactly -- that is the conjunct that pins activation.
 test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
   let d = wt_srv4_deploy()
   let desired = list_length(items: desired_runner_slot_members(deploy: d))
+  let slices = list_length(items: fabric_cell_host_slots(deploy: d))
   let acts = runner_slot_activation_operations(deploy: d)
   let all_ops = runner_host_privileged_operations(deploy: d)
   list_length(items: acts) == desired * 2
     && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdEnableUnit { unit: _ } => acc + 1  _ => acc }) == desired
-    && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdStartUnit { unit: _ } => acc + 1  _ => acc }) == desired
+    && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdStartUnit { unit: _ } => acc + 1  _ => acc }) == desired + slices
 }
 
 // THE FABRIC CELL TAKES NO ACTIVATION GRANT, and this is asserted from the two hosts that differ

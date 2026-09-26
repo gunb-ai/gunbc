@@ -2,6 +2,7 @@ module test.claim.fleet_converge_launch_environment_scope_witness
 
 import std.types { String, Bool, NonEmptyStr, List, Int, list_length }
 import product.placement_supply { HostIdentity }
+import gunbc.fabric_cell_converge { fabric_cell_expected_slots }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved, FabricCellObservationDecision }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
@@ -520,16 +521,28 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
 // THE INCIDENT, REPRODUCED AND THEN SPLIT. Same host, same timers, same everything the launch scope
 // can see; the only difference is that one request type has runner-slot, activation, cap and fabric
 // positions and the other has none.
+//
+// THE FABRIC TERM IS DERIVED FROM THE ROSTER, NOT TRANSCRIBED. This row read `fabric-cell=0` and
+// n == 33 while srv1 carried no fabric slot. #12011 made srv1-13 a fabric execution member, so the
+// fixture's unobserved fabric position is now a denial (one observer-unavailable refusal per host
+// that expects cells, gunbc.fabric_cell_observation_admission fabric_cell_observation_unobserved)
+// and the row went red with the fold behaving as declared. The fixture's own terms -- 31 surplus
+// slot names, 2 activation transitions -- stay spelled out, because they ARE the incident.
+fn srv1_fabric_refusals() -> Int {
+  if list_length(items: fabric_cell_expected_slots(host: witness_host_srv1 as HostIdentity)) > 0 { 1 } else { 0 }
+}
+
 test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bool {
+  let fabric = srv1_fabric_refusals()
   match fleet_converge_apply_terminal(request: srv1_full_host_request()) {
     FullyApplied => false
     PartiallyApplied { refused_axis_count: n, detail: d } =>
-      n == 33
+      n == 33 + fabric
         && string_contains(s: d, pattern: "slot=31")
         && string_contains(s: d, pattern: "activation=2")
         && string_contains(s: d, pattern: "cap=0")
         && string_contains(s: d, pattern: "timer=0")
-        && string_contains(s: d, pattern: "fabric-cell=0")
+        && string_contains(s: d, pattern: join(["fabric-cell=", to_string(fabric)], ""))
     AwaitingCapability { capability: _ } => false
   }
     && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
