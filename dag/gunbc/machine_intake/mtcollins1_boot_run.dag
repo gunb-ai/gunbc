@@ -33,7 +33,10 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.machine_intake_mtcollins1_boot_milestone {
+  MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
+  MtCollins1PlacementReading, PlacementHeld, PlacementNoNodeLines, PlacementMismatch, mtcollins1_boot_placement_reading,
+}
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
@@ -417,6 +420,8 @@ type MtCollins1BootTerminalCause
   | TerminalSectionFailed { name: String, exit_code: String }
   | TerminalSectionMalformed { name: String, reason: String }
   | HardwareThreadCountMismatch { expected: HardwareThreadCount, observed: String }
+  | SocketPlacementMismatch { expected: MtCollins1BootTopologyExpectation, observed: String }
+  | SocketPlacementUnread
   | BootMediaLabelAbsent { label: NonEmptyStr }
   | EdacCountersNotClean { name: String }
   | WorkloadWriteFailed { rc: String }
@@ -454,6 +459,26 @@ fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: HardwareThr
     SectionPending { output: _ } => QualificationPending
     SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "nproc", reason: r } }
     SectionComplete { exit_code: code, output: out } => qualification_judged(name: "nproc", exit_code: code, cause: nproc_judge(expected: expected, out: out))
+  }
+}
+
+// THE COUNT IS NOT THE MILESTONE: nproc 80 is also what a boot with both sockets half-enumerated
+// prints. The placement is read from the numa section against the same expectation, so 80 on
+// socket 0 holds and 80 split across sockets refuses (gunbc.machine_intake_mtcollins1_boot_milestone).
+fn placement_qualification(envelope: BoundHostCaptureEnvelope, expected: MtCollins1BootTopologyExpectation) -> TerminalQualification {
+  match host_capture_section_reading(envelope: envelope, name: "numa") {
+    SectionAbsent => QualificationPending
+    SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "numa", reason: r } }
+    SectionComplete { exit_code: code, output: out } => qualification_judged(name: "numa", exit_code: code, cause: placement_judge(expected: expected, out: out))
+  }
+}
+
+fn placement_judge(expected: MtCollins1BootTopologyExpectation, out: List<String>) -> MtCollins1BootTerminalCause? {
+  match mtcollins1_boot_placement_reading(expected: expected, out: out) {
+    PlacementHeld => none
+    PlacementNoNodeLines => Present { value: SocketPlacementUnread }
+    PlacementMismatch { observed: o } => Present { value: SocketPlacementMismatch { expected: expected, observed: o } }
   }
 }
 
@@ -551,9 +576,10 @@ fn terminal_fold_step(acc: TerminalFold, q: TerminalQualification) -> TerminalFo
   }
 }
 
-fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> List<NamedQualification> {
+fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, topology: MtCollins1BootTopologyExpectation, label: NonEmptyStr) -> List<NamedQualification> {
   [
-    NamedQualification { name: "nproc", qualification: nproc_qualification(envelope: envelope, expected: threads) },
+    NamedQualification { name: "nproc", qualification: nproc_qualification(envelope: envelope, expected: topology.threads) },
+    NamedQualification { name: "numa", qualification: placement_qualification(envelope: envelope, expected: topology) },
     NamedQualification { name: "boot-media", qualification: boot_media_qualification(envelope: envelope, label: label) },
     NamedQualification { name: "edac-before", qualification: edac_qualification(envelope: envelope, name: "edac-before") },
     NamedQualification { name: "workload", qualification: workload_qualification(envelope: envelope) },
@@ -578,17 +604,17 @@ fn closed_qualification(envelope: BoundHostCaptureEnvelope, q: NamedQualificatio
   }
 }
 
-fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, topology: MtCollins1BootTopologyExpectation, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
   let f = fold(
-    map(mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label), q => closed_qualification(envelope: envelope, q: q)),
+    map(mtcollins1_boot_qualifications(envelope: envelope, topology: topology, label: label), q => closed_qualification(envelope: envelope, q: q)),
     init: TerminalFold { causes: [], pending: false },
     f: (acc, q) => terminal_fold_step(acc: acc, q: q),
   )
-  if count(f.causes) == 0 { TerminalAccepted { run: envelope.run, threads: threads } } else { TerminalRefused { causes: f.causes } }
+  if count(f.causes) == 0 { TerminalAccepted { run: envelope.run, threads: topology.threads } } else { TerminalRefused { causes: f.causes } }
 }
 
-fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
-  let qs = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
+fn terminal_over_open(envelope: BoundHostCaptureEnvelope, topology: MtCollins1BootTopologyExpectation, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let qs = mtcollins1_boot_qualifications(envelope: envelope, topology: topology, label: label)
   let f = fold(
     map(qs, q => q.qualification),
     init: TerminalFold { causes: [], pending: false },
@@ -661,7 +687,7 @@ fn mtcollins1_boot_loader_verdict(lines: List<String>) -> MtCollins1BootTerminal
 }
 
 fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> MtCollins1BootTerminalVerdict {
-  let threads = mtcollins1_nproc
+  let topology = mtcollins1_boot_topology_expectation
   let medium_image = mtcollins1_boot_medium_image_name(medium: medium)
   let medium_sha256 = mtcollins1_boot_medium_image_sha256(medium: medium)
   let joined = (subject.image_name as String) == (medium_image as String)
@@ -672,8 +698,8 @@ fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubj
       match host_capture_bind(capture: capture, machine: subject.machine) {
         HostCaptureNotBegun => mtcollins1_boot_pre_os_verdict(capture: capture)
         HostCaptureUnbound { reason: r } => TerminalRefused { causes: [TerminalCaptureUnbound { reason: r }] }
-        HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, threads: threads, label: label)
-        HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, threads: threads, label: label)
+        HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, topology: topology, label: label)
+        HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, topology: topology, label: label)
       }
   }
 }
@@ -694,6 +720,8 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
     TerminalSectionMalformed { name: _, reason: r } => r
     HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", hardware_thread_count_value(t: e) as String)
+    SocketPlacementMismatch { expected: e, observed: o } => concat("numa placement ", o, ", milestone expects ", hardware_thread_count_value(t: e.threads) as String, " CPUs on socket ", to_string(e.socket as Int), " and none elsewhere")
+    SocketPlacementUnread => "numa section carries no node cpus line; socket placement is not read"
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
