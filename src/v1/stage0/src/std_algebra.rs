@@ -242,6 +242,21 @@ pub struct FinitePowerSet<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
+pub fn freemonoid_empty<T: Clone>() -> Rc<FreeMonoid<T>> {
+    Rc::new(vec![])
+}
+
+pub fn list_append<T: Clone>(
+    left: Rc<FreeMonoid<T>>,
+    right: Rc<FreeMonoid<T>>,
+) -> Rc<FreeMonoid<T>> {
+    v1_rt::concat(left.clone(), right.clone())
+}
+
+pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
+    v1_rt::rc_list_push(xs.clone(), item.clone())
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound(
     serialize = "T: Clone + serde::Serialize",

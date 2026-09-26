@@ -2,7 +2,7 @@ module extdeps.git
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.string_type { String }
@@ -889,6 +889,32 @@ fn git_apply_command(repository_dir: String, patch_path: String) -> ArgvCommand 
   argv_command(program: git_binary_name, arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
+// git-reset(1) --hard <commit>: resets index AND working tree to <commit>; paths that were only in the
+// index (a create-file patch applied with --index) are removed. Untracked paths are NOT touched --
+// a caller that must not destroy files it did not create relies on exactly that.
+fn git_reset_hard_args(repository_dir: String, revision: String) -> List<String> {
+  ["-C", repository_dir, "reset", "--hard", revision]
+}
+
+fn git_reset_hard_command(repository_dir: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_reset_hard_args(repository_dir: repository_dir, revision: revision))
+}
+
+// git-worktree(1): a second, disposable checkout of the same repository at <revision>, so a tree
+// can be derived without touching the primary working tree. remove --force discards it; prune
+// forgets an entry whose directory is already gone.
+fn git_worktree_add_detached_command(repository_dir: String, path: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "add", "--detach", path, revision])
+}
+
+fn git_worktree_remove_force_command(repository_dir: String, path: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "remove", "--force", path])
+}
+
+fn git_worktree_prune_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "prune"])
+}
+
 fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
   ["-C", repository_dir, "diff", "--binary", "HEAD"]
 }
@@ -951,6 +977,24 @@ fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
 // checkout; a bare source would refuse loudly with the same typed cause, never pass silently.
 fn git_local_fetch_source_grant(source: NonEmptyStr) -> SafeDirectoryGrant {
   SafeDirectoryGrant { path: git_non_bare_git_dir(worktree: source) }
+}
+
+// THE SOURCE TRUST RIDES INSIDE --upload-pack, BECAUSE A `-c` ON THE FETCH NEVER REACHES UPLOAD-PACK.
+// For a local-path remote git connect.c git_connect() (PROTO_LOCAL) spawns the upload-pack command
+// with `local_repo_env` (environment.c) pushed as variables to UNSET, and that list carries
+// GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT -- the channel through which `git -c` reaches child
+// processes. So `git -c safe.directory=<S>/.git fetch <S>` configures the fetch and not the process
+// that checks ownership. Measured on srv1 (git 1:2.43.0-1ubuntu7.3, service user fetching from the
+// runner-owned srv1-12 checkout into a scratch repository, 2026-09-25, proud-deer-538):
+// (A) `git -c safe.directory=<S>/.git -C <T> fetch <S> HEAD` REFUSED with dubious ownership;
+// (B) `git -C <T> fetch --upload-pack="git -c safe.directory=<S>/.git upload-pack" <S> HEAD`
+// SUCCEEDED and fetched c107839e. The `-c` inside the command is parsed BY the upload-pack process
+// itself, after the scrub. The same connect.c branch sets use_shell, so git hands this string to
+// `sh -c` (appending the quoted repository path): the grant path is therefore QUOTED, never
+// spliced -- the whole `safe.directory=<path>` word goes through extdeps.exec.command shell_quote
+// (POSIX single quoting), which is total, so no path is refused and no metacharacter is live.
+fn git_local_fetch_upload_pack_command(grant: SafeDirectoryGrant) -> String {
+  join(["git", "-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"], " ")
 }
 
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
@@ -1036,6 +1080,9 @@ fn git_observe_meta_shell_fragment() -> String {
 // They are two operations rather than one with a flag because they model two different upstream
 // behaviours -- git's rename-detecting diff and its path-literal diff -- and a caller must choose
 // which question it is asking. `DiffNameOnly` remains correct for the destination-only view.
+// git.Core LogPathCommits is git-log(1) --format=%H -- <path>: every commit reachable from HEAD
+// that changed <path>, newest first. It needs history: on a shallow clone it answers only the
+// commits present.
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -1245,6 +1292,17 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation LogPathCommits {
+    input { path: FilePath }
+    output { commits: List<CommitSha> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "log", "--format=%H", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid path or not a git repository"
     }
   }
 
@@ -1514,14 +1572,14 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
   }
 
-  operation FetchForcedRefInRepoTrustingDirectory {
-    input { repo: FilePath, remote: String, refspec: String, trusted_directory: String }
+  operation FetchForcedRefInRepoTrustingSource {
+    input { repo: FilePath, remote: String, refspec: String, upload_pack: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "-c", "safe.directory={trusted_directory}", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
+    transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "--upload-pack={upload_pack}", "{remote}", "{refspec}"] }
   }
 
   operation PushForcedRefInRepo {

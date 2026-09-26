@@ -41,7 +41,8 @@ import std.realization_schedule {
   schedule_witness_entry_eq,
   string_list_eq
 }
-import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
+import v2.std.algebra { any, contains, fold_list, length, Empty }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import gunbc.commit_workflow {

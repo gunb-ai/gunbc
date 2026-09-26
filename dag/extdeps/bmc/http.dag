@@ -198,19 +198,6 @@ service redfish.Http {
     }
   }
 
-  operation GetManager {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/bmc"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish manager GET failed"
-    }
-  }
-
   operation GetChassisThermal {
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }

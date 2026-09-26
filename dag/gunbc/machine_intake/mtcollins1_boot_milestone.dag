@@ -1,0 +1,101 @@
+module gunbc.machine_intake_mtcollins1_boot_milestone
+
+import std.types { Bool, Int, List, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import v2.std.optional { Present }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+
+// THE MACHINE'S FIGURE AND THE BOOT'S MILESTONE ARE TWO FACTS, NOT ONE ROW. mtcollins1_nproc stays
+// 160: that is what the machine IS, read on it with both sockets populated (the census capture
+// shows numactl 2 nodes of 80). The boot qualification today is held against a MILESTONE -- socket
+// 0 alone, socket 1 being a separate bring-up (operator ruling, option A, 2026-09-25) -- and the gap
+// between the two is declared as gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent, which is
+// retired only when both sockets enumerate at boot. Editing 160 to 80 would have made the machine
+// lie about itself to make a gate green, and nothing would ever have asked for socket 1 back.
+data mtcollins1_socket_count: Nat = 2
+
+// One socket's share of the machine's figure, DERIVED rather than written as a second literal 80:
+// the Altra Max's cores are uniform across its sockets, so a per-socket count that disagreed with
+// nproc / sockets would be a second authority for the same reading.
+fn mtcollins1_threads_per_socket() -> HardwareThreadCount {
+  hardware_thread_count(count: hardware_thread_count_value(t: mtcollins1_nproc) / mtcollins1_socket_count)
+}
+
+// WHAT A MILESTONE BOOT MUST SHOW: exactly `threads` hardware threads, ALL of them on `socket`, and
+// no CPU on any other socket. The count alone is not the milestone -- 80 CPUs split 40/40 across
+// two sockets is a different machine state (both sockets up, each half-enumerated) that nproc
+// cannot tell apart from socket 0 whole.
+type MtCollins1BootTopologyExpectation {
+  socket: Nat
+  threads: HardwareThreadCount
+}
+
+data mtcollins1_one_socket_milestone: MtCollins1BootTopologyExpectation = MtCollins1BootTopologyExpectation {
+  socket: 0,
+  threads: mtcollins1_threads_per_socket(),
+}
+
+// THE EXPECTATION THE BOOT QUALIFICATION CHECKS TODAY. One binding, so the day socket 1 enumerates
+// the retirement is this row (and the drop), not a hunt through the verdict.
+data mtcollins1_boot_topology_expectation: MtCollins1BootTopologyExpectation = mtcollins1_one_socket_milestone
+
+// ── reading the placement ──────────────────────────────────────────────────────────────────────
+//
+// THE SOCKET IS READ AS THE NUMA NODE, and that identification is a stated premise, not a general
+// fact: Altra firmware can present a socket as 1, 2 or 4 nodes (monolithic, hemisphere, quadrant).
+// mtcollins1's census capture observed 2 nodes of 80 for 2 sockets, i.e. monolithic, so node N is
+// socket N on this machine. If the firmware mode changes, a single-socket boot shows node 1 (or
+// more) carrying CPUs and this reading REFUSES -- the premise failing is loud, never absorbed.
+//
+// The source is the capture's `numa` section (`cat /sys/devices/system/node/online; numactl -H`),
+// whose `node N cpus: a b c ...` lines are numactl's own per-node CPU lists.
+type NumaNodeCpus {
+  node: Int
+  cpus: Int
+}
+
+type MtCollins1PlacementReading
+  = PlacementHeld
+  | PlacementNoNodeLines
+  | PlacementMismatch { observed: String }
+
+fn numa_node_cpus_line(line: String) -> NumaNodeCpus? {
+  if !starts_with(s: line, prefix: "node ") || !string_contains(s: line, pattern: " cpus:") {
+    none
+  } else {
+    let halves = split(s: line, delimiter: " cpus:")
+    let head = filter(split(s: trim(join(halves.take(n: 1), "")), delimiter: " "), t => t != "")
+    let tail = filter(split(s: trim(join(halves.skip(n: 1), " cpus:")), delimiter: " "), t => t != "")
+    if count(head) != 2 { none } else {
+      match parse_int(s: join(head.skip(n: 1), "")) {
+        Present { value: n } => Present { value: NumaNodeCpus { node: n, cpus: count(tail) } }
+        _ => none
+      }
+    }
+  }
+}
+
+fn numa_nodes(out: List<String>) -> List<NumaNodeCpus> {
+  flat_map(out, l => match numa_node_cpus_line(line: l) { Present { value: n } => [n]  _ => [] })
+}
+
+fn numa_nodes_text(nodes: List<NumaNodeCpus>) -> String {
+  join(map(nodes, n => concat("node ", to_string(n.node), "=", to_string(n.cpus))), ", ")
+}
+
+// HELD only when the socket's node carries exactly the expected count AND every other node carries
+// none. A section with no node lines is not a reading of placement at all and refuses as such.
+fn mtcollins1_boot_placement_reading(expected: MtCollins1BootTopologyExpectation, out: List<String>) -> MtCollins1PlacementReading {
+  let nodes = numa_nodes(out: out)
+  if count(nodes) == 0 {
+    PlacementNoNodeLines
+  } else {
+    let want = hardware_thread_count_value(t: expected.threads) as Int
+    let on_socket = filter(nodes, n => n.node == (expected.socket as Int))
+    let elsewhere = filter(nodes, n => n.node != (expected.socket as Int) && n.cpus != 0)
+    let held = count(on_socket) == 1 && all(on_socket, n => n.cpus == want) && count(elsewhere) == 0
+    if held { PlacementHeld } else { PlacementMismatch { observed: numa_nodes_text(nodes: nodes) } }
+  }
+}

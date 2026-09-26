@@ -1,7 +1,8 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_snoc_item, list_tail, zip_map }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_tail, zip_map }
+import std.algebra { Cons, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -9,7 +10,7 @@ import v2.std.bounded_lattice_completeness {
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_wire_matches_operation,
-  target_model_canonical_operations_roster_root
+  target_model_canonical_operation_member_declared_type
 }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.inferred_tree {
@@ -26,7 +27,7 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
-  dag_grammar_productions_roster_root
+  dag_grammar_production_member_declared_type
 }
 import v2.extdeps.languages.python { python_declared_inhabitants_root }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root }
@@ -44,7 +45,9 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
+import v2.std.compilers.body_lowering { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -111,6 +114,7 @@ import v2.std.node {
   TypeNode,
   Value,
   all_edges_positional,
+  canonicalize_node_strip_provenance,
   fold_node,
   loop_edge_contributes_to_iteration_fold,
   match_arm_body,
@@ -127,7 +131,7 @@ type AlgebraRef {
   witness: Node
 }
 
-// TWO POSITION-SCOPED DERIVATIONS SIT BESIDE THE KIND RULES THIS ROW LISTS. An accepted int
+// TWO POSITION-SCOPED DERIVATIONS SIT BESIDE THE KIND RULES. An accepted int
 // literal's magnitude payload derives against the integer authority's own types
 // (infer_literal_payload_entries), and a childless Conj in an Arrow's domain position derives as
 // the empty product (infer_arrow_empty_domain_edge). A node's KIND does not decide whether it
@@ -135,7 +139,6 @@ type AlgebraRef {
 // door probe (fixture.native_cli_door.door_probe) met this frontier only through Atom and Conj
 // nodes, because body lowering handed infer a data declaration's surface tokens (fixed at
 // v2.compiler.body_lowering_fold body_lower_data_decl_to_member).
-data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for six of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only, and Conj and Arrow by product introduction — 6 connectives + 6 behaviors = 12); the other six kinds, and every other Transform shape, have no derivation rule yet. The Conj and Arrow rules are compositional: a non-roster Conj or Arrow whose every child carries DerivedGrounding derives with the same shape re-formed over the children's grounding evidence as its evidence, and one with any frontier or absent child stays frontier — the derivation discharges only on a fully-evidenced child spine. Above the kind rules sit five specimen-scope derivations, all lookups into declared authorities rather than inventions: a node declared in any ingested language authority's declared-inhabitants roster derives with that roster root as its grounding evidence (infer_node_declared_in_language_inhabitants) — deep subtree membership over the closed ingest set (dag, python, typescript), so a declared inhabitant's leaf fact atoms derive exactly as the inhabitant node itself does; an Atom whose identity is a canonical dag binding with a declared denotation derives with that denotation as its evidence (dag_binding_denotation) — the resolver already bound the surface spelling to the canonical binding, and the authority fixes what the binding denotes; a node that is a member of the target-model authority's canonical-operations roster derives with that roster root as its evidence (infer_node_declared_in_canonical_operations) — the resolver canonicalizes surface operators to those declared operations; a node that is a member of the dag grammar authority's productions roster derives with that roster root as its evidence (infer_node_declared_in_dag_grammar_productions) — the bridge projects a production's parse into (identity atom, captured content) pairs; and an Atom whose binding an enclosing arrow's domain declares derives with the declared domain type as its evidence (infer_find_arrow_domain_type_in_tree) — the declaration-site annotation, itself derived. The binding-reference lookup is scope-naive (whole-tree, first match), the same interim the branch-operand path already uses. All five delete in favor of consuming resolution output when the resolver hands infer declaration-resolved identities directly (the namespace migration's completed state); specimens no authority declares stay on the frontier unchanged. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
 
 fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -356,6 +359,15 @@ fn infer_transform_operand_type_mismatch_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+// An element of a list literal whose type differs from the first element's, located AT that element.
+fn infer_list_element_type_mismatch_diagnostic(element: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_list_element_type_mismatch,
+    at: node_locus(node: element),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn infer_transform_operator_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_transform_operator_unsupported,
@@ -572,45 +584,26 @@ fn infer_node_declared_in_language_inhabitants_bool(n: Node) -> Bool {
 // child spine is evidenced, so a partially-derived product can never masquerade as grounded
 // (DESIGN section 5). Roster members keep their roster evidence (the authority's declaration
 // outranks composition for what the language itself declares), and a childless Conj or Arrow has
-// no evidence to compose and stays frontier. This is the frontier note's dissolve-on for these
+// no evidence to compose and stays frontier. This discharges the frontier for these
 // two kinds: the kind-level rule the specimen-scope roster lookups stood in for.
 
 fn infer_type_node_awaits_product_row(n: Node) -> Bool {
   (length(xs: n.children) > 0) && !infer_node_declared_in_language_inhabitants_bool(n: n)
 }
 
-// THE CANONICAL-OPERATION ROSTER MEMBERSHIP DERIVATION. The resolver canonicalizes a dag surface
-// operator (e.g. `+`) to the target-model authority's declared canonical operation, and the
-// transform rule already validates operators by matching against that authority's wire nodes
-// (canonical_operation_wire_matches_operation). The wire atoms -- the operation discriminant and
-// its field references -- are declared components of those same wire nodes, gathered under the
-// authority's declared roster root (target_model_canonical_operations_roster_root). So a node
-// that IS a roster member derives by lookup with the roster root as evidence, never by invention
-// -- the same frame as the dag declared-inhabitants roster, and general over every declared
-// operation rather than add-narrow. The end-state deletes this lookup with the other
-// specimen-scope rules, when the resolver hands infer declaration-resolved identities directly.
+// THE CANONICAL-OPERATION AND GRAMMAR-PRODUCTION MEMBER DERIVATIONS. The resolver canonicalizes a
+// dag surface operator to a target-model CanonicalOperation wire node, and the bridge projects a
+// grammar production's identity atom (e.g. dag_surface_module) into the tree. Each such node is a
+// member of its authority's roster, and derives with the type that authority DECLARES for the
+// member (v2.std.compilers.target_model target_model_canonical_operation_member_declared_type,
+// v2.extdeps.languages.dag dag_grammar_production_member_declared_type) -- never the roster root,
+// which would make derived_type carry provenance where every reader expects a type (DESIGN §3).
 
-fn infer_node_declared_in_canonical_operations(n: Node) -> Bool {
-  any(
-    xs: node_subtree_nodes(root: target_model_canonical_operations_roster_root()),
-    predicate: fn(member) { member == n }
-  )
-}
-
-// THE GRAMMAR-PRODUCTION ROSTER MEMBERSHIP DERIVATION. The bridge projects a grammar production's
-// parse into the tree as (identity atom, captured content) pairs; the identity atom (e.g.
-// dag_surface_module) is the emitted surface atom the dag grammar authority declares for that
-// production, gathered under the authority's roster root (dag_grammar_productions_roster_root).
-// So a node that IS a roster member derives by lookup with the roster root as evidence, never by
-// invention -- the same frame as the declared-inhabitants roster, general over every declared
-// production. The end-state deletes this lookup with the other specimen-scope rules, when the
-// resolver hands infer declaration-resolved identities directly.
-
-fn infer_node_declared_in_dag_grammar_productions(n: Node) -> Bool {
-  any(
-    xs: node_subtree_nodes(root: dag_grammar_productions_roster_root()),
-    predicate: fn(member) { member == n }
-  )
+fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
+  match target_model_canonical_operation_member_declared_type(n: n) {
+    Present { value: member_type } => optional_present(value: member_type)
+    Absent => dag_grammar_production_member_declared_type(n: n)
+  }
 }
 
 fn infer_product_child_evidence_edges(
@@ -722,20 +715,14 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                           descent: Holds { value: descent_proof }
                         )
                       Absent =>
-                        if infer_node_declared_in_canonical_operations(n: n) {
-                          inferred_facts_from_derived_type(
-                            node: n,
-                            derived_type: target_model_canonical_operations_roster_root(),
-                            descent: Holds { value: descent_proof }
-                          )
-                        } else {
-                          if infer_node_declared_in_dag_grammar_productions(n: n) {
+                        match infer_roster_member_declared_type(n: n) {
+                          Present { value: member_type } =>
                             inferred_facts_from_derived_type(
                               node: n,
-                              derived_type: dag_grammar_productions_roster_root(),
+                              derived_type: member_type,
                               descent: Holds { value: descent_proof }
                             )
-                          } else {
+                          Absent =>
                             match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
                               Present { value: domain_ty } =>
                                 inferred_facts_from_derived_type(
@@ -749,7 +736,6 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                                   descent: Holds { value: descent_proof }
                                 )
                             }
-                          }
                         }
                     }
                   Absent =>
@@ -820,7 +806,7 @@ fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<In
 
 // A DEMAND FOR A CANONICAL GROUNDING THE FRONTIER LEFT UNDERIVED IS A REFUSAL, AND IT HAS ITS OWN
 // NAME. `infer_grounding_not_derived` is the frontier ADVISORY infer carries on its Accepted path
-// (node_grounding_frontier_note); until 2026-09-21 this arm REFUSED with that same symbol, so a
+// (v2.compiler.inferred_tree NodeGrounding); until 2026-09-21 this arm REFUSED with that same symbol, so a
 // consumer that demanded the grounding -- coercion, translate's fold, eval's constraints -- produced
 // a rejection chain whose fatal was spelled exactly like the advisories riding in front of it, and no
 // reader of the flat chain could tell which link refused (DESIGN section 3: one name, two contracts).
@@ -2168,7 +2154,158 @@ fn infer_gather_transform_frontier_on_entries(
   }
 }
 
+// THE FREE-MONOID INTRODUCTION: A LIST LITERAL'S ONE INFER CASE. v2 body lowering writes
+// `[e1, .., en]` as ONE flat Transform whose head is the reference to std.algebra FreeMonoid's
+// declaration and whose remaining positional children are the elements in order
+// (v2.std.compilers.body_lowering lower_list_introduction, read back by
+// list_introduction_elements_optional) -- the flat canonical introduction
+// std.literal_elaboration UnicodeScalarSequenceUnfold names, never a cons^n nesting. It is not an
+// application: the head is a type, so application-argument inhabitance is not asked of it. Every
+// element's type must be one T, compared STRUCTURALLY with provenance stripped (two equal types minted
+// at two occurrences are one type, and a list of lists compares its element types whole); the first element that differs refuses located AT that element. The
+// literal's type is then FreeMonoid<T>: the Instantiation of the FreeMonoid reference at T. `[]`
+// carries no element to derive T from; its type is its boundary's, so it joins the counted
+// GroundingNotDerived frontier like every Transform this fold does not derive -- never a guessed T.
+// Two element types are one type when they are STRUCTURALLY equal with provenance removed at every
+// level -- the same authority the inhabitance judgment decides declared-versus-produced types with
+// (v2.std.exact_structural_equality_zip_fold_predicate exact_structural_equality_zip_fold), so a
+// list of lists compares its FreeMonoid<T> element types whole rather than as atoms.
+fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
+  exact_structural_equality_zip_fold(source_facts: a, candidate: b)
+}
+
+fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Node> {
+  match lookup_inferred_facts_in_entries(entries: entries, key: element) {
+    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
+    Present { value: facts } =>
+      match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, tree: tree) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: t } => outcome_accepted(value: t)
+      }
+  }
+}
+
+// Absent: `[]`, whose T is not derivable here. Present: the elements' one type, or the located
+// refusal of the first element that differs.
+fn infer_list_elements_unified_type(
+  elements: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Optional<Outcome<Node>> {
+  match elements {
+    Empty => Absent
+    Cons { head: first, tail: rest } =>
+      Present {
+        value: bind_outcome(o: infer_list_element_type(element: first, entries: entries, tree: tree), f: fn(t) {
+          fold(rest, init: outcome_accepted(value: t), f: fn(acc, element) {
+            bind_outcome(o: acc, f: fn(unified) {
+              bind_outcome(o: infer_list_element_type(element: element, entries: entries, tree: tree), f: fn(et) {
+                if infer_type_equal_ignoring_provenance(a: unified, b: et) {
+                  outcome_accepted(value: unified)
+                } else {
+                  outcome_rejected(infer_list_element_type_mismatch_diagnostic(element: element))
+                }
+              })
+            })
+          })
+        })
+      }
+  }
+}
+
+fn infer_freemonoid_type_of(element_type: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: canonicalize_node_strip_provenance(n: element_type) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// Absent: `[]` (frontier). Present: the literal's facts, or a located refusal.
+fn infer_transform_freemonoid_introduction(
+  node: Node,
+  elements: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Optional<Outcome<InferredFacts>> {
+  match infer_list_elements_unified_type(elements: elements, entries: entries, tree: tree) {
+    Absent => Absent
+    Present { value: unified } =>
+      Present {
+        value: bind_outcome(o: unified, f: fn(element_type) {
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+            Holds { value: descent_proof } =>
+              inferred_facts_from_derived_type(
+                node: node,
+                derived_type: infer_freemonoid_type_of(element_type: element_type),
+                descent: Holds { value: descent_proof }
+              )
+          }
+        })
+      }
+  }
+}
+
 fn infer_gather_transform_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match list_introduction_elements_optional(node: node) {
+    Absent =>
+      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree)
+    Present { value: elements } =>
+    match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, tree: tree) {
+      Absent =>
+        infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree)
+      Present { value: introduced } =>
+        match introduced {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: node,
+              pending: rejected_with_pending(pending: pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: node, facts: facts) {
+              Rejected { diagnostics: r } =>
+                infer_gather_fold_acc_failed(
+                  node: node,
+                  pending: rejected_with_pending(pending: pending, rejected: r),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+              Accepted { value: entry, diagnostics: ed } =>
+                infer_gather_fold_acc_ok(
+                  node: node,
+                  entries: list_snoc_item(xs: entries, item: entry),
+                  pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: ed),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+            }
+        }
+    }
+  }
+}
+
+fn infer_gather_application_row_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,

@@ -27,7 +27,8 @@ module gunbc.compiler_gate_workflow
 
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { list_map, filter, list_append, length }
+import v2.std.algebra { list_map, filter, length }
+import std.algebra { list_append }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }

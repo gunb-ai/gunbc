@@ -149,8 +149,15 @@ const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived
 /// `exit_failure`, which is `ExitFailure { code: exit_code_general_error }` -- and
 /// `extdeps.process.posix_exit` declares that as `1`. So a refusal this harness pins takes exactly
 /// 1. Accepting any non-zero admitted `101` (a Rust panic's status) beside plausible stderr, which
-/// is a crash wearing a refusal's clothes. Both door arms compare against this.
+/// is a crash wearing a refusal's clothes. The emit arm compares against this; the no-entry
+/// control is a parse refusal and compares against `CLI_DOOR_USAGE_REFUSAL_EXIT`.
 const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
+
+/// THE STATUS A PARSE REFUSAL TAKES, WHICH IS NOT THE EMIT REFUSAL'S. `v2_cli_exit` maps a
+/// `CliUsageRefused` -- a command line that was not usable, decided before any walk -- to
+/// `extdeps.process.gnu_bash_exit` `exit_code_misuse`, which is `2`, the same split
+/// `v2.compiler.compile` `native_driver_plan_exit` makes. The no-entry control is such a refusal.
+const CLI_DOOR_USAGE_REFUSAL_EXIT: i32 = 2;
 
 /// THE THREE MARKERS OF THE CLI'S REFUSAL RECORD, named so each is required rather than sought.
 /// The rendered main prints `REFUSED: <reason>`; for an emit refusal that reason is
@@ -162,7 +169,7 @@ const CLI_REFUSAL_PREFIX: &str = "REFUSED: ";
 /// detail, a ` -- ` boundary, and the module's DECLARED usage line -- not the detail alone.
 const CLI_DETAIL_USAGE_BOUNDARY: &str = " -- ";
 const CLI_DOOR_DECLARED_USAGE: &str =
-    "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]...";
+    "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]";
 const CLI_EMIT_REFUSAL_HEAD: &str = "the closure did not emit; diagnostic chain: ";
 const CLI_FATAL_AT_MARKER: &str = " | FATAL AT ";
 
@@ -614,6 +621,9 @@ struct NativeTerminalMarker {
     file_refusals: u64,
     admitted: bool,
     summary: String,
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
+    /// census marker, which carries no population to judge; nothing reads it there.
+    frontier: String,
 }
 
 /// `v2.compiler.native_test_vocabulary` `NativeTestVerdict`, mirrored at the discriminant only.
@@ -764,8 +774,10 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                     file_refusals,
                     admitted: false,
                     summary: String::new(),
+                    frontier: String::new(),
                 },
                 "adjudicate" => NativeTerminalMarker {
+                    frontier: need_str("frontier")?,
                     rows: need_u64("rows")?,
                     universe: need_u64("universe")?,
                     admitted: value
@@ -1830,16 +1842,16 @@ fn walk_cli_door(
             root_arg.clone(),
         ],
     )?;
-    // THE SAME EXIT RULE AS THE EMIT ARM. `cli_no_entry` is a `CliRunRefused` like any other, so it
-    // exits `exit_code_general_error`; accepting any non-zero here would admit a panic or a spawn
-    // convention as the located refusal this arm exists to observe.
+    // THE PARSE-REFUSAL EXIT RULE. `cli_no_entry` is a `CliUsageRefused`, so it exits
+    // `exit_code_misuse`; accepting any non-zero here would admit a panic or a spawn convention as
+    // the located refusal this arm exists to observe.
     match refused.status {
-        Some(CLI_DOOR_REFUSAL_EXIT) => {}
+        Some(CLI_DOOR_USAGE_REFUSAL_EXIT) => {}
         other => {
             return Err(format!(
                 "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotDiscriminating — the built CLI \
-                 exited {other:?} on an argv naming no --entry, and this door's refusals exit \
-                 {CLI_DOOR_REFUSAL_EXIT}. A zero accepts the argv its own `cli_no_entry` arm exists \
+                 exited {other:?} on an argv naming no --entry, and this door's parse refusals \
+                 exit {CLI_DOOR_USAGE_REFUSAL_EXIT}. A zero accepts the argv its own `cli_no_entry` arm exists \
                  to refuse; a signal or any other status is not a refusal at all."
             ))
         }
@@ -1962,6 +1974,52 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
+/// ONE RUN OF A `std.compiler_entry` `NativeClaimDriver` PROGRAM, as the observation the reader
+/// needs and nothing it decides. `gunbc.native_claim_program` `native_claim_program_standing` reads
+/// `stdout` and `status` and answers held / not held / no observation; this struct carries them
+/// there unjudged. `status` is `None` when the process ended on a signal, which the reader receives
+/// as a negative status and treats as no observation.
+pub struct NativeClaimProgramRun {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub warning_count: i64,
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// EMIT, BUILD AND RUN ONE `NativeClaimDriver` ENTRY. The emission and build are the preparation
+/// every native route already uses (`prepare_emitted_compiler_for_entry`), so there is one answer to
+/// what "the emitted program" is; the one thing added is spawning it and keeping what it wrote.
+/// A refusal here -- emission refused, build failed, spawn failed -- is the subject never having
+/// been reached, and the caller reports it as such rather than as a case that did not hold.
+pub fn run_native_claim_program(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<NativeClaimProgramRun, String> {
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
+    eprintln!(
+        "native-claim: {entry} built (closure {}) -- running {}",
+        prepared.closure_identity,
+        prepared.binary_path.display()
+    );
+    let output = std::process::Command::new(&prepared.binary_path)
+        .output()
+        .map_err(|cause| {
+            format!("NATIVE-CLAIM REFUSAL cause=SpawnFailed entry={entry} — {cause}")
+        })?;
+    Ok(NativeClaimProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        status: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
 /// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
 ///
 /// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
@@ -2021,11 +2079,34 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
     }
 }
 
+/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `gunbc.native_frontier_ratchet`
+/// `native_frontier_verdict_word` rendered it inside the emitted binary. The host decides nothing
+/// here: it carries the word, and the lane's own qualification summary beside it for the reader.
+/// Which words pass is the instrument's single match, `target_invocation_host`
+/// `run_v2_native_frontier`.
+pub struct NativeFrontierRun {
+    pub frontier: String,
+    pub admission_summary: String,
+}
+
+/// The same adjudicating run the lane and `gunbc test` spawn. The caller passes the default pattern
+/// (the whole planned universe); over a narrower one the ratchet answers `not-a-measurement`.
+pub fn run_v2_native_frontier(
+    source_roots: &[String],
+    pattern: &str,
+) -> Result<NativeFrontierRun, String> {
+    run_required_v2_native_inner(source_roots, pattern).map(|admission| NativeFrontierRun {
+        frontier: admission.frontier,
+        admission_summary: admission.summary,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
     summary: String,
     members: NativeMemberTermination,
+    frontier: String,
 }
 
 fn run_required_v2_native_inner(
@@ -2180,6 +2261,7 @@ fn run_required_v2_native_inner(
     // THE MEMBER FOLD IS APPLIED HERE, ON THE POPULATION THIS RUN ACTUALLY EMITTED, so the value
     // that leaves this function already answers both questions and no consumer re-derives either.
     Ok(NativeRunAdmission {
+        frontier: run.terminal.frontier.clone(),
         admitted: run.terminal.admitted,
         summary: run.terminal.summary,
         members: native_member_termination(

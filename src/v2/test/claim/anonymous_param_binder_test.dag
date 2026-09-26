@@ -1,0 +1,197 @@
+module v2.test.claim.anonymous_param_binder
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.collection { List }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Hash, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, well_formed }
+import v2.std.node_query { pattern_wildcard_name }
+import v2.std.optional { Absent, Present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: anonymous parameter slots (`_`) as minted, unwritable binders -- v2.std.anonymous_binder
+// anonymous_binder_mint_domain, reached through v2.compiler.body_lowering_fold
+// body_lower_domain_from_param_list, and the refusal v2.compiler.resolve raises for a `_` in value
+// position. BOUNDARY: source text in, assembled (normalized + resolved) program out through
+// assemble_program_from_ingest -- the production route, so the lowering, the mint and the resolve
+// frame are all executed by every row. Each specimen is nullary and pure over an inline source and
+// is enrolled in v2.workflow.floor_pure_producer_share, the v2.test.claim.type_param_binder_frame
+// precedent.
+//
+// RED BEFORE THE MINT, MEASURED: (1) refused -- the domain carried two Named `_` edges, which
+// v2.std.node all_names_distinct rejects -- and (3) was ACCEPTED, the body's `_` binding to the slot.
+// MUTATION RECEIPT: anonymous_param_label ignoring its slot (every slot one label) reds (1) and (2).
+
+data apb_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^anonymous_param_binder_artifact,
+  file_path: "src/v2/pilot/anonymous_param_binder_pilot.dag"
+}
+
+fn apb_assemble(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: apb_artifact,
+        compilation_unit: ^anonymous_param_binder_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn apb_two_anonymous() -> Outcome<Node> {
+  apb_assemble(src: "module p\n\nfn f(_: Int, _: Bool) -> Int { 1 }\n")
+}
+
+fn apb_body_reference() -> Outcome<Node> {
+  apb_assemble(src: "module p\n\nfn f(_: Int, _: Int) -> Int { _ }\n")
+}
+
+fn apb_two_sites() -> Outcome<Node> {
+  apb_assemble(src: "module p\n\nfn f(_: Int, _: Int) -> Int { 1 }\n\nfn g(_: Int, _: Int) -> Int { 2 }\n")
+}
+
+fn apb_mixed() -> Outcome<Node> {
+  apb_assemble(src: "module p\n\nfn h(x: Int, _: Int) -> Int { x }\n")
+}
+
+// The domain labels of every Arrow in the resolved tree, in walk order.
+fn apb_domain_label_lists(o: Outcome<Node>) -> List<List<Symbol>> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } => concat(acc, [apb_domain_labels(arrow: m)])
+          _ => acc
+        }
+      })
+  }
+}
+
+fn apb_arrow_domain(arrow: Node) -> List<Node> {
+  fold(arrow.children, init: [], f: fn(acc, e) {
+    if count(acc) == 0 {
+      match e.target.kind {
+        TypeNode { connective: Conj } => [e.target]
+        _ => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn apb_domain_labels(arrow: Node) -> List<Symbol> {
+  fold(apb_arrow_domain(arrow: arrow), init: [], f: fn(acc, d) {
+    fold(d.children, init: acc, f: fn(inner, e) {
+      match e.label {
+        Named { name: sym } => concat(inner, [sym])
+        Positional => inner
+      }
+    })
+  })
+}
+
+fn apb_domain_hashes(o: Outcome<Node>) -> List<Hash> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } =>
+            fold(apb_arrow_domain(arrow: m), init: acc, f: fn(inner, d) { concat(inner, [content_hash(n: d)]) })
+          _ => acc
+        }
+      })
+  }
+}
+
+// (1) TWO ANONYMOUS SLOTS ARE ACCEPTED, each under its own minted binder, in slot order, and the
+// program is well formed. RED BEFORE: refused, two `_` labels in one name-keyed Conj.
+test fn apb_two_anonymous_slots_are_accepted_as_distinct_binders() -> Bool {
+  match apb_two_anonymous() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      well_formed(n: n)
+        && apb_domain_label_lists(o: apb_two_anonymous())
+          == [[anonymous_param_label(slot: 1), anonymous_param_label(slot: 2)]]
+  }
+}
+
+// (2) N IS THE POSITION WITHIN THE SLOT'S OWN BINDER LIST: the same signature at two sites carries
+// the same labels and its domain has the same content hash, and a named neighbour keeps its name
+// while the `_` beside it is slot 2, not slot 1 -- no walk-order or module-wide counter.
+test fn apb_slot_label_is_the_position_in_its_own_binder_list() -> Bool {
+  let hashes = apb_domain_hashes(o: apb_two_sites())
+  count(hashes) == 2
+    && first(hashes) == last(hashes)
+    && apb_domain_label_lists(o: apb_two_sites())
+      == [
+        [anonymous_param_label(slot: 1), anonymous_param_label(slot: 2)],
+        [anonymous_param_label(slot: 1), anonymous_param_label(slot: 2)]
+      ]
+    && apb_domain_label_lists(o: apb_mixed()) == [[^x, anonymous_param_label(slot: 2)]]
+}
+
+// (3) AN ANONYMOUS SLOT IS NEVER REFERENCEABLE: a `_` in the body refuses
+// resolve_reason_anonymous_parameter_referenced, located at the mention's own authored occurrence
+// (an atom spelled `_` whose occurrence is not synthetic), never at the slot's label.
+// RED BEFORE: accepted, the `_` bound to the slot.
+test fn apb_body_reference_to_an_anonymous_slot_refuses_located() -> Bool {
+  match apb_body_reference() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^resolve_reason_anonymous_parameter_referenced)
+        && apb_located_at_an_authored_wildcard(d: d)
+  }
+}
+
+fn apb_located_at_an_authored_wildcard(d: NonEmptyDiagnostics) -> Bool {
+  fold(d.tail, init: apb_diag_at_authored_wildcard(d: d.head), f: fn(acc, x) {
+    acc || apb_diag_at_authored_wildcard(d: x)
+  })
+}
+
+fn apb_diag_at_authored_wildcard(d: Diagnostic) -> Bool {
+  (d.reason == ^resolve_reason_anonymous_parameter_referenced)
+    && match d.at {
+      NodeLocus { anchor: a } =>
+        (match node_atom_identity_optional(node: a.at) {
+          Present { value: id } => id == pattern_wildcard_name()
+          Absent => false
+        })
+          && (match a.at.occurrence_id {
+            OccurrenceSynthetic => false
+            _ => true
+          })
+      _ => false
+    }
+}
+
+// (4) THE MARKER IS NOT AUTHORED SPELLING: the recogniser admits every minted label and refuses the
+// authored `_` and an ordinary name, so no reader keyed on it can mistake one for the other.
+test fn apb_recogniser_separates_minted_from_authored() -> Bool {
+  is_anonymous_param_label(sym: anonymous_param_label(slot: 1))
+    && is_anonymous_param_label(sym: anonymous_param_label(slot: 12))
+    && !is_anonymous_param_label(sym: pattern_wildcard_name())
+    && !is_anonymous_param_label(sym: ^x)
+}

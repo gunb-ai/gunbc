@@ -1,7 +1,7 @@
 module test.claim.repository_convergence_placement_witness_test
 
-import std.types { String, Bool }
-import gunbc.live_deploy.repository_convergence { convergence_fetch_trusted_directory }
+import std.types { String, Bool, NonEmptyStr }
+import gunbc.live_deploy.repository_convergence { convergence_fetch_upload_pack }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead,
@@ -10,6 +10,11 @@ import extdeps.access.posix_effective_principal {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  deployment_slice_unit_name,
+  gunbc_approval_broker_slice_unit_name,
+  gunbc_repository_convergence_slice_unit_name,
+}
 import gunbc.fleet_workflow_steps { gunbc_ci_live_deploy_step_timeout_minutes }
 import std.measure { second_count }
 import gunbc.live_deploy.repository_convergence_placement {
@@ -39,6 +44,10 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_readback_of_text,
   convergence_receipt_path,
   convergence_unit_doc,
+  convergence_unit_rendering,
+  ConvergenceUnitRendering,
+  ConvergenceUnitRendered,
+  ConvergenceUnitPlacementRefused,
   decode_placement_receipt,
   placement_converged,
   placement_receipt_of_convergence,
@@ -243,11 +252,43 @@ test fn the_unit_start_is_bounded_inside_the_deploy_step() -> Bool {
     && bound < gunbc_ci_live_deploy_step_timeout_minutes * 60
 }
 
-// THE ONESHOT JOINS THE DEPLOYMENT'S SLICE. The admitted binary refuses to plan without a cgroup
-// memory bound on the process (HostBudgetUnreadable, measured on srv1 from this unit under
-// system.slice), so every unit that runs it names the slice the deployment owns.
-test fn the_unit_joins_the_deployment_slice() -> Bool {
-  string_contains(s: srv1_unit_text(), pattern: "Slice=gunbc-roadmap.slice")
+// THE ONESHOT RUNS IN ITS OWN SLICE, NOT THE DEPLOYMENT'S SERVING ONE. The admitted binary refuses to
+// plan without a cgroup memory bound on the process (HostBudgetUnreadable, measured on srv1 from this
+// unit under system.slice), so the unit must name a bounded slice; it used to name gunbc-roadmap.slice
+// and was reclaim-throttled there by the serving members' growth (fleet-converge run 36204703858). The
+// discriminating half is the absence: a unit naming both would pass the presence check alone.
+test fn the_unit_joins_the_repository_convergence_slice() -> Bool {
+  let unit = srv1_unit_text()
+  string_contains(s: unit, pattern: concat("Slice=", gunbc_repository_convergence_slice_unit_name as String))
+    && !string_contains(s: unit, pattern: "Slice=gunbc-roadmap.slice")
+}
+
+fn rendering_refused(slice: String) -> Bool {
+  match convergence_unit_rendering(
+    spec: deployment_spec_srv1(),
+    slice: slice as NonEmptyStr,
+    candidate: fixture_candidate,
+    receipt_path: convergence_receipt_path(instance_root: "/opt/gunbc"),
+    working_directory: fixture_object_source,
+  ) {
+    ConvergenceUnitRendered { text: _ } => false
+    ConvergenceUnitPlacementRefused { reason: r } => string_contains(s: r, pattern: slice)
+  }
+}
+
+// THE RED THE BRIEF NAMES: placing the oneshot in a serving slice REFUSES AT THE MODEL, before any
+// unit text exists. Three cases, each a different way to be inside one: the roadmap deployment slice
+// itself (the placement that failed), the approval broker's slice, and a CHILD of the roadmap slice --
+// systemd reads the dash in gunbc-roadmap-convergence.slice as a parent edge, so that name is charged
+// against the roadmap bound and an equality-only admission would pass it. The positive control is the
+// declared convergence slice, and a sibling name under the gunbc prefix that is inside no serving
+// slice, so a wall that refused every slice fails this claim too.
+test fn a_serving_slice_placement_refuses_and_the_convergence_slice_is_admitted() -> Bool {
+  rendering_refused(slice: deployment_slice_unit_name(names: deployment_spec_srv1().names) as String)
+    && rendering_refused(slice: gunbc_approval_broker_slice_unit_name as String)
+    && rendering_refused(slice: "gunbc-roadmap-convergence.slice")
+    && !rendering_refused(slice: gunbc_repository_convergence_slice_unit_name as String)
+    && !rendering_refused(slice: "gunbc-roadmapx.slice")
 }
 
 // THE CORPUS COMES FROM THE RUNNER CHECKOUT AND THE BINARY FROM THE INSTALL, AND THIS IS THE WITNESS
@@ -412,8 +453,19 @@ test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool
 // ignores GIT_TEST_ASSUME_DIFFERENT_OWNER. Its trigger is the next srv1 dashboard_deploy, whose
 // ConvergenceObjectImportRefused arm reds on this exact cause.
 test fn the_fetch_source_is_trusted_at_its_git_dir_not_its_worktree() -> Bool {
-  convergence_fetch_trusted_directory(remote: fixture_object_source) == "/home/ghrunner/work/gunbc/gunbc/.git"
-    && convergence_fetch_trusted_directory(remote: fixture_object_source) != fixture_object_source
-    && convergence_fetch_trusted_directory(remote: "/srv/another-checkout") == "/srv/another-checkout/.git"
-    && convergence_fetch_trusted_directory(remote: fixture_object_source) != "*"
+  convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c 'safe.directory=/home/ghrunner/work/gunbc/gunbc' upload-pack"
+    && convergence_fetch_upload_pack(remote: "/srv/another-checkout") == "git -c 'safe.directory=/srv/another-checkout/.git' upload-pack"
+    && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c 'safe.directory=*' upload-pack"
+}
+
+// THE SOURCE TRUST IS CARRIED INSIDE --upload-pack (srv1 dashboard_deploy run 36100865330). The
+// oracle is srv1's A/B (extdeps.git git_local_fetch_upload_pack_command): `-c` on the fetch REFUSED,
+// `--upload-pack="git -c safe.directory=<S>/.git upload-pack"` fetched. Expected strings are
+// written out. RED: the bare `git-upload-pack` default (no carriage) and an unquoted splice both
+// differ; a path carrying an apostrophe and a space stays ONE shell word.
+test fn the_fetch_source_trust_rides_inside_upload_pack_quoted() -> Bool {
+  convergence_fetch_upload_pack(remote: fixture_object_source) == "git -c 'safe.directory=/home/ghrunner/work/gunbc/gunbc/.git' upload-pack"
+    && convergence_fetch_upload_pack(remote: fixture_object_source) != "git-upload-pack"
+    && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c safe.directory=/home/ghrunner/work/gunbc/gunbc/.git upload-pack"
+    && convergence_fetch_upload_pack(remote: "/srv/it's here") == "git -c 'safe.directory=/srv/it'\\''s here/.git' upload-pack"
 }

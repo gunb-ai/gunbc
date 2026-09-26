@@ -2,7 +2,7 @@ module gunbc.runner_unit_file
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.measure { hardware_thread_count_value }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpoint }
@@ -69,7 +69,7 @@ import gunbc.build_cache_unit {
   sccache_cache_dir_env_assignment,
 }
 
-data gunbc_runner_unit_file_scope_disposition: Disposition = SingleAuthority
+data gunbc_runner_unit_file_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE RUNNER UNIT, MODELLED RATHER THAN COPIED.
 //

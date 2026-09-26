@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -89,6 +89,20 @@ fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocati
     bin_path: sudo_binary_path as String,
     args: list_append(left: [sudo_non_interactive_flag as String, sudo_run_as_user_flag as String, user as String], right: command),
   }
+}
+
+// THE SAME -n -u ELEVATION AS AN ArgvCommand, for a caller that runs it through the command
+// transport (gunbc.command_runner) rather than the host-effect surface. One row beside
+// sudo_elevate_as, not a second spelling of it: the argv is sudo_elevate_as's own.
+fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
+  let elevated = sudo_elevate_as(user: user, command: command)
+  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+}
+
+// sudo_elevate as a command: root, non-interactive.
+fn sudo_elevate_command(command: List<String>) -> ArgvCommand {
+  let elevated = sudo_elevate(command: command)
+  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
 }
 
 // THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the

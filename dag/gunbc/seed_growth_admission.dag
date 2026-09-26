@@ -46,6 +46,7 @@ import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_grow
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
+import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
@@ -114,7 +115,8 @@ import std.roster_frontier {
   declaration_ref_in_list
 }
 import std.types { Bool, Int, List, String }
-import v2.std.algebra { any, filter, fold_list, length, list_append }
+import v2.std.algebra { any, filter, fold_list, length }
+import std.algebra { list_append }
 
 data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). TARGET: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference (gunbc.seed_growth.seed_growth_note completeness join). PATH-GRAIN census answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust. NOT IN SCOPE: netting deletions against additions -- and that is now EXECUTED rather than merely stated: no arm of seed_growth_admit_change reads deleted_hand_items, and seed_growth_deletions_offset_nothing runs one unjustified addition through two observations whose deleted populations differ and requires one verdict. It is a WITNESSED property and not a structural one -- the observation record still carries the deleted population, so a future arm could read it -- and the honest rung is the witness, not the shape. THE G0 HOST EXISTS AGAIN. scripts/rust_item_census.py was deleted by gunbc#9132 and the capability went to zero with it, undeclared, because the census's consumers were lanes rather than modules and no dependent could refuse. gunbc.rust_item_host_observation replaces it: two populations from two functions, item extraction through gunbc.rust_item_scan whose item-keyword population is READ FROM the extdeps.languages.rust grammar authority rather than re-coined as the deleted script's regex ITEM_PATTERNS were. ENROLLED: seed_growth_roster_well_formed_gate_holds (roster well-formedness) and seed_growth_admit_change (the completeness join against a real changed-item population). WHAT IS NOT CLAIMED: no required CI phase invokes the join yet, so the rung is the ROUTE existing and its wall executing under witnesses -- not a gate armed on every push. Arming it is a claim_executor phase, which is itself hand-Rust growth this very join would have to admit, and it lands separately."
 
@@ -272,6 +274,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     shared_fill_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
+    native_claim_program_seed_growth_justification,
     census_memo_seed_growth_justification,
     kind_reflection_seed_growth_justification,
     typed_module_store_seed_growth_justification,

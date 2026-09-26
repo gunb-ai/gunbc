@@ -226,7 +226,7 @@ service gcp.IamAdmin {
 
   operation GetWorkloadIdentityPool {
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
-    output { pool_name: String from "name", display_name: String?, disabled: Bool?, state: String?, outcome: RestOutcome }
+    output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String?, outcome: RestOutcome }
     readonly
     transport rest {
       method: GET,

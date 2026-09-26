@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.orchestration { EnvBinding }
-import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_binary_path, env_ignore_environment_flag }
 import gunbc.remote_shell_command {
   RemoteExecCommandInterpretation,
   RemoteExecCommandOutcome,
@@ -71,6 +71,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
   admit_callers: [
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_create_command"),
@@ -105,6 +106,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.iproute2.ip_show", decl_name: "ip_route_show_command"),
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_release_command"),
     decl_ref(module_path: "extdeps.tools.make", decl_name: "make_command"),
+    decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_user_scope_command"),
     decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_install_pinned_command"),
     decl_ref(module_path: "extdeps.package_managers.conda_forge", decl_name: "micromamba_create_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
@@ -114,6 +116,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_span_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),
@@ -139,6 +142,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.mosquitto_pub", decl_name: "mosquitto_publish_command"),
     decl_ref(module_path: "extdeps.tools.gnu_time", decl_name: "gnu_time_max_rss_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_version_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_manager_probe_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),
@@ -171,10 +175,28 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.git", decl_name: "git_apply_reverse_check_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_apply_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_diff_binary_head_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_reset_hard_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_worktree_add_detached_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_worktree_remove_force_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_worktree_prune_command"),
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_file_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_as_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mtime_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_ctime_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_birth_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_identity_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_properties_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_environment_command"),
+    decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_clock_ticks_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_of_command"),
+    decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
+    decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
+    decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_dereferenced_inode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_uid_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_size_bytes_command"),
@@ -314,6 +336,13 @@ data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PRO
 // read -- a runner image and a machine reached over ssh. Writing /usr/bin/env for them would trade a
 // vague spelling for a confident false host fact (DESIGN section 5). A caller whose target IS
 // observed wants the absolute row, and that is a different builder when one is needed, not a flag.
+// THE COMMAND UNDER AN EMPTY ENVIRONMENT, by the ABSOLUTE env: its callers run it on a host whose
+// layout this repository declares (the approval host's /usr/bin), and the point of the wrapper is
+// that nothing ambient reaches the command -- so its program is not left to PATH either.
+fn env_cleared_command(command: ArgvCommand) -> ArgvCommand {
+  argv_command(program: env_binary_path, arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
+}
+
 fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
   argv_command(
     program: env_path_resolved_program,

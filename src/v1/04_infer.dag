@@ -1416,6 +1416,38 @@ fn declared_type_kernel_inhabitance_mismatch_at_element(
   }
 }
 
+// A FUNCTION TYPE AT THE ELEMENT POSITION IS JUDGED BY THE ARROW AUTHORITY, one peel deep like the
+// kernel check above. `List<fn() -> Int>` returned where `List<fn() -> String>` is declared was
+// refused only BY ACCIDENT while v1.compiler.infer_types child_type_node erased an Arrow type
+// argument to its codomain -- the pair read as List<Int> against List<String>, both ground. With the
+// arrow kept, neither side is ground and the pair fell to the unjudged arm. The judgment is
+// callable_signature_mismatch, the same relation the top-level arrow arm consults, so a parameter
+// or arity difference now refuses too, where before it was accepted under the erasure.
+fn callable_element_signature_mismatch(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let both_element_collections = node_is_element_collection(n: declared, source_indices: source_indices)
+    && node_is_element_collection(n: produced, source_indices: source_indices)
+    && node_is_keyed_collection(n: declared, source_indices: source_indices) == false
+    && node_is_keyed_collection(n: produced, source_indices: source_indices) == false
+    && declared.return_cardinality == Required
+    && produced.return_cardinality == Required
+  if both_element_collections == false {
+    false
+  } else {
+    match declared.children |> first {
+      Absent => false
+      Present { value: dl } =>
+        match produced.children |> first {
+          Absent => false
+          Present { value: pr } =>
+            let declared_element = child_type_node(ch: dl)
+            let produced_element = child_type_node(ch: pr)
+            type_node_is_arrow(n: declared_element) && type_node_is_arrow(n: produced_element)
+              && callable_signature_mismatch(formal: declared_element, actual: produced_element, source_indices: source_indices)
+        }
+    }
+  }
+}
+
 fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
   declared: Node,
   produced: Node,
@@ -1426,6 +1458,16 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope)
 }
 
+// A FOREIGN VARIANT WHERE A DECLARED COPRODUCT IS REQUIRED. `data v: B = X` with `X` an arm of
+// `type A = X | Y` produces `A` (variant_reference_inferred_node keeps the owner the binder chose
+// when the expected coproduct does not own the arm), and this seam judged coproduct pairs by
+// nothing, so the value was accepted and evaluated as an `A`. The relation is the one the
+// record-literal field seam already owns (coproduct_payload_where_parent_required): it excludes
+// optionality, the Optional carrier, generic and kernel coproducts, transparent aliases, a
+// produced type that is a variant or payload of the declared one, and two spellings of one arm
+// set -- so this is consumption of the existing authority at a second declared-type position,
+// not a new relation (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel,
+// specimen four).
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -1448,8 +1490,25 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
       module_name: scope.module_name
     )]
   }
+  else if coproduct_payload_where_parent_required(
+      formal: declared, actual: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
       && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),

@@ -1,7 +1,7 @@
 module gunbc.runner_connectivity_recovery
 
 import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
-import std.disposition { Disposition, SingleAuthority, Scaffold }
+import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
@@ -55,7 +55,7 @@ import gunbc.runner_broker_progress_watchdog {
   runner_broker_progress_silence_bound_seconds,
 }
 
-data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
+data runner_connectivity_recovery_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is
 // the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived

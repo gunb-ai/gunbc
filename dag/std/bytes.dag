@@ -5,8 +5,19 @@ import std.integer { QualifiedOctetsResult, uint8_octets_of_ints }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+// THE DIVERGENT SEAM IS A DECLARED HOST SEAM, NOT A DIVISION. Its job is to be bottom: a value an
+// arm the author proved unreachable can hold, which diverges if the proof was wrong. It was spelled
+// `1 / 0`, and that spelling carried a meaning to each realization that it did not declare: the
+// interpreter refused with DivisionByZero only if reached, while rustc's deny-by-default
+// unconditional_panic lint refused every emitted crate whose closure contained the module, reached
+// or not (native App Attest, gunbc#12251). Relaxing that lint for generated code would have removed
+// a real check to admit one placeholder (review 71098 of gunbc#12261). As a rostered
+// HostRealizedSeam each realization states the divergence itself: the interpreter's
+// free_call.pure_dag_seam_unreachable arm refuses with a typed error naming the seam, and
+// v1_rt::pure_dag_seam_unreachable panics with the same name -- an intentional divergence, which is
+// what `!` is for, rather than a constant expression the target's own checker must reject.
 fn pure_dag_seam_unreachable() -> Int {
-  1 / 0
+  pure_dag_seam_unreachable()
 }
 
 fn pure_dag_seam_unreachable_float() -> Float {
@@ -47,8 +58,21 @@ fn pure_dag_seam_unreachable_string() -> String {
   if pure_dag_seam_unreachable() == 0 { "" } else { "" }
 }
 
+// A HOST SEAM, AND ITS BODY SAYS SO. The octets of a Bytes value are the host's (the interpreter's
+// free_call.bytes_octets arm; on the Rust target v1_rt::bytes_octets over the Vec<u8> the carrier
+// realizes as), rostered in std.primitive_projection as a HostRealizedSeam so resolution routes a
+// call to the realization and never to this body. The body is the self-call that shape requires.
+// It was `[pure_dag_seam_unreachable()]`, which is not a seam at all to an emitter: it emitted as
+// ordinary code, a one-element list holding `1 / 0` -- a fabricated value in emitted code (DESIGN
+// section 5), where the interpreter answered the real octets.
+//
+// THE RESULT IS List<Int>, NOT List<UInt8>, for the reason gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int rules every such site: a value is typed as
+// what it holds, and nothing in the corpus establishes this value's range -- bytes_qualified_octets
+// below is the one boundary that observes it. The brand also had no emitted realization that
+// could hold an octet (UInt8 renders as a phantom Compose), so the typed value was unemittable.
 fn bytes_octets(b: Bytes) -> List<Int> {
-  [pure_dag_seam_unreachable()]
+  bytes_octets(b: b)
 }
 
 // THE ONE PLACE A HOST-PRODUCED BYTE LIST IS QUALIFIED, AND IT OBSERVES RATHER THAN ASSERTS.
@@ -104,8 +128,14 @@ fn octets_bytes(o: List<Int>) -> Bytes {
   o as Bytes
 }
 
+// A HOST SEAM for the same reason bytes_octets is one, and rostered beside it: the interpreter's
+// free_call.utf8_encode_bytes arm intercepts every call, so the former body `s as Bytes` was never
+// what ran -- and on the Rust target no cast row realizes String -> Vec<u8> (a cast template is
+// `{expr} as {type}`, which cannot spell an encoding), so it emitted as a runtime panic. The
+// realization is the host's UTF-8 encoding (v1_rt::utf8_encode_bytes, String::into_bytes), the
+// inverse of the utf8_decode_bytes realization already in that runtime.
 fn utf8_encode_bytes(s: String) -> Bytes {
-  s as Bytes
+  utf8_encode_bytes(s: s)
 }
 
 data bytes_seam_host_realization_marker: Disposition = Scaffold {

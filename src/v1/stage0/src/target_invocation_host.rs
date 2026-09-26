@@ -249,6 +249,7 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
+    V2NativeFrontier,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -263,6 +264,11 @@ pub enum TargetProducer {
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
+    /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
+    /// shape is a registry row naming its entry, never another variant.
+    NativeClaimProgram {
+        entry: &'static str,
+    },
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -323,8 +329,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::V2NativeCli,
         ),
         (
+            instrument_label("v2-native-frontier"),
+            TargetProducer::V2NativeFrontier,
+        ),
+        (
             instrument_label("emitted-crate-workspace"),
             TargetProducer::EmittedCrateWorkspace,
+        ),
+        (
+            instrument_label("native-crypto-vectors"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
+            },
         ),
         (
             instrument_label("evaluation-store-address-exact-head"),
@@ -721,6 +737,8 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
+        TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -1003,6 +1021,51 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
+/// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
+/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
+/// an unknown word is a harness defect, never a pass.
+///
+/// `held` and `advanced` are the observation holding: every planned identity reached a terminal
+/// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
+/// roster, which the nightly turns into a pull request. `lost` and `unminted` are the observation
+/// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
+/// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
+/// clause or the pattern was narrower than the universe, so the subject was not reached.
+fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
+    let pattern = native_route_default_pattern_text();
+    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+        Ok(run) => {
+            let termination = match run.frontier.as_str() {
+                "held" | "advanced" => Termination::ObservationHeld,
+                "lost" | "unminted" => Termination::ObservationDidNotHold,
+                "not-a-measurement" => Termination::SubjectUnreached,
+                other => {
+                    return InvocationOutcome {
+                        termination: Termination::SubjectUnreached,
+                        message: format!(
+                            "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
+                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                        ),
+                    }
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!(
+                    "v2-native-frontier: frontier={} (lane qualification: {}); findings and any proposed \
+                     roster are the [native-frontier] and [native-frontier-roster] lines above",
+                    run.frontier, run.admission_summary
+                ),
+            }
+        }
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
 /// THE V2-NATIVE CLI PRODUCER: does the v2-exclusive front door compile.
 ///
 /// The three terminations are the same partition its sibling makes and for the same reason. A
@@ -1085,6 +1148,100 @@ fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
+    }
+}
+
+/// THE NATIVE CLAIM PROGRAM PRODUCER: emit, build and run a `NativeClaimDriver` entry, then let the
+/// `.dag` reader decide what the run established. The host decides nothing about the cases -- it
+/// hands the program's stdout and status to `gunbc.native_claim_program`
+/// `native_claim_program_standing` and maps that fold's `ProcessExit` through the one classifier
+/// (`cli_run::classify_exit`): success is held, code 1 is an observation that did not hold, and code
+/// 2 -- a roster/row join that breaks, a status the rows do not support, a signal -- is no
+/// observation. The source roots are the instrument's own fact, as for every sibling here.
+fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
+    let label_name = "native-claim";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let run = match cli_run::run_native_claim_program(&v2_native_cli_source_roots(), entry) {
+        Ok(run) => run,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    const READER: &str = "dag/gunbc/native_claim_program.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let status = i64::from(run.status.unwrap_or(-1));
+    let args = [
+        (
+            Some("stdout".to_string()),
+            crate::v1_interpreter::Value::Str(run.stdout.clone().into()),
+        ),
+        (
+            Some("status".to_string()),
+            crate::v1_interpreter::Value::Int(status),
+        ),
+    ];
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_claim_program_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the report reader failed: {cause}"),
+            }
+        }
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the report reader returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} -- {verdict}\n{}",
+            run.stdout,
+            run.closure_identity,
+            run.binary_identity,
+            run.seed_identity,
+            run.warning_count,
+            run.stderr.trim_end(),
+        ),
     }
 }
 

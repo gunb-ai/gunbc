@@ -45,6 +45,7 @@ data ls_program: NonEmptyStr = "ls"
 data install_program: NonEmptyStr = "install"
 data sort_program: NonEmptyStr = "sort"
 data cut_program: NonEmptyStr = "cut"
+data od_program: NonEmptyStr = "od"
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -59,6 +60,15 @@ fn ls_one_per_line_command(path: String) -> ArgvCommand {
 
 fn cat_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program, arguments: [path])
+}
+
+// od(1) OVER ONE BYTE SPAN, AS HEX: -j skips `offset` bytes and -N reads at most `length`, both byte
+// counts (coreutils "od invocation"); -An drops the address column, -tx1 prints one two-digit lowercase
+// hex byte per unit, and -v prints every line rather than folding repeats into `*` -- without it a run
+// of equal lines is not its bytes. The output is whitespace-separated hex; a span past the end prints
+// fewer bytes than asked, which the caller's length check reads, never a padded answer.
+fn od_hex_span_command(path: String, offset: Int, length: Int) -> ArgvCommand {
+  argv_command(program: od_program, arguments: ["-An", "-v", "-tx1", "-j", to_string(offset), "-N", to_string(length), "--", path])
 }
 
 fn cp_command(source: String, destination: String) -> ArgvCommand {

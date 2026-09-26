@@ -39,7 +39,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection { Absent, List, Map, Optional, PointwisePower, Present, empty_map, map_insert }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_snoc_item }
 import std.integer {
   Signedness,
   IntegerOverflowSemantics,
@@ -51,7 +51,7 @@ import std.integer {
   ReturnSaturating
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, Empty, fold_list, list_map, list_snoc_item }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, Empty, fold_list, list_map }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -470,7 +470,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_bool
 ]
 
-data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data lean_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: Symbol) -> Node {
   Node {

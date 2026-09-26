@@ -53,6 +53,7 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_emission_bundle_node
 }
 import v2.std.logic { bool_boolean_algebra }
+import v2.std.compilers.target_model { TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
 // resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated
@@ -65,7 +66,7 @@ import v2.std.logic { bool_boolean_algebra }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data rust_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn rust_grammar_production_fn_bind_literal() -> GrammarProduction {
   GrammarProduction {
@@ -4153,22 +4154,21 @@ fn rust_emit_directive_message_spellings(d: EmitDirective) -> Map<Symbol, String
   map_insert(empty_map(), ^emit_directive_message, d.message)
 }
 
+fn rust_string_literal_escapes() -> List<EmitSpellingEscape> {
+  [
+    EmitSpellingEscape { from: chars(s: "\\"), to: chars(s: "\\\\") },
+    EmitSpellingEscape { from: chars(s: "\""), to: chars(s: "\\\"") }
+  ]
+}
+
 fn rust_string_literal_transform() -> TokenClassEmitTransform {
-  EmitSpellingQuote {
-    prefix: "",
-    open: "\"",
-    close: "\"",
-    escapes: [
-      EmitSpellingEscape { from: chars(s: "\\"), to: chars(s: "\\\\") },
-      EmitSpellingEscape { from: chars(s: "\""), to: chars(s: "\\\"") }
-    ]
-  }
+  EmitSpellingQuote { prefix: "", open: "\"", close: "\"", escapes: rust_string_literal_escapes() }
 }
 
 // Derived from the same transform row the emit map carries, so the directive text builder and the
 // token-class rendering cannot disagree on the escape encoding.
 fn rust_string_literal_spelling(spelling: String) -> String {
-  apply_emit_spelling_transform(transform: rust_string_literal_transform(), spelling: spelling)
+  apply_emit_spelling_quote(prefix: "", open: "\"", close: "\"", escapes: rust_string_literal_escapes(), spelling: spelling)
 }
 
 fn rust_emit_directive_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {

@@ -1,0 +1,47 @@
+module extdeps.apple.property_list
+
+import std.types { String, Bool, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// Apple's property list value model: the value kinds a .plist (Info.plist, .entitlements) holds.
+// Only the kinds a consumer in this tree writes are modeled; Integer, Real, Date and Data land with
+// their first consumer.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/foundation/propertylistserialization"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.apple.property_list",
+      decl_name: "PlistValue",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type PlistEntry {
+  key: String
+  value: PlistValue
+}
+
+type PlistValue
+  = PlistString { value: String }
+  | PlistBoolean { value: Bool }
+  | PlistArray { elements: List<PlistValue> }
+  | PlistDictionary { entries: List<PlistEntry> }
+
+fn plist_entry(key: String, value: PlistValue) -> PlistEntry {
+  PlistEntry { key: key, value: value }
+}
+
+fn plist_string(s: String) -> PlistValue {
+  PlistString { value: s }
+}

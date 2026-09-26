@@ -3,6 +3,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.extdeps.languages.swift_decl { swift_semantic_decl_emission_bundle_node }
 import v2.std.grammar {
   VoidGrammar,
   StampClass,
@@ -98,8 +99,8 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_append, list_flat_map, list_map, ordered_ring_type_node }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_flat_map, list_map, ordered_ring_type_node }
 import v2.std.text { String }
 
 type SwiftIntWidth
@@ -349,7 +350,7 @@ data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
   swift_facts_void
 ]
 
-data swift_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data swift_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn swift_atom(id: Symbol) -> Node {
   Node {
@@ -680,6 +681,10 @@ fn swift_target_model_node() -> Node {
       swift_named_edge(
         name: ^target_model_edge_serialize_source,
         target: swift_serialize_source_node()
+      ),
+      swift_named_edge(
+        name: ^target_model_edge_semantic_decl_emission,
+        target: swift_semantic_decl_emission_bundle_node()
       )
     ],
     occurrence_id: OccurrenceSynthetic
