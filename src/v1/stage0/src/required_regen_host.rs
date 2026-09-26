@@ -1096,6 +1096,29 @@ fn compile_stage0(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
 ) -> Result<HashMap<String, String>, String> {
+    // This is the one emission whose population IS the stage0 seed, so the host shell's module
+    // roster is read from its lib.rs and the package graph from the emitted tree's own partition.
+    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
+        &workspace_root().join("src/v1/stage0/src/lib.rs"),
+    )?;
+    compile_stage0_admitted(
+        sources,
+        selection,
+        Rc::new(host_shell_modules.into_iter().collect()),
+        emitted_tree_packages(&workspace_root())?,
+    )
+}
+
+/// THE EMISSION AND ITS EDGE ADMISSION, OVER A SUPPLIED PACKAGE GRAPH. `compile_stage0` supplies
+/// the seed tree's host shell and partition; a witness over a fixture population supplies the rows
+/// that population is built under, rather than being judged against the seed's (DESIGN §3, a
+/// witness supplies its inputs). The admission itself is not relaxed for either.
+fn compile_stage0_admitted(
+    sources: &[(String, String)],
+    selection: &Rc<RustModuleRenderSelection>,
+    host_shell_modules: Rc<im::Vector<String>>,
+    packages: Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages>,
+) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
         .iter()
         .map(|(path, content)| {
@@ -1117,17 +1140,13 @@ fn compile_stage0(
     }
     // EVERY EDGE THE EMITTER WROTE MUST RESOLVE IN THE CRATE ITS MODULE LANDS IN. The emitter
     // returns its use-line and prelude edges beside the text (`gunbc.rust_emitted_edge`), and
-    // `gunbc.stage0_emitted_edge_admission` maps both ends through the partition rows and the
-    // package graph. This is the one emission whose population IS the stage0 seed, so the host
-    // shell's module roster is read from its lib.rs and supplied; a module in neither the rows
-    // nor the shell refuses as not covered rather than passing.
-    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
-        &workspace_root().join("src/v1/stage0/src/lib.rs"),
-    )?;
+    // `gunbc.stage0_emitted_edge_admission` maps both ends through the supplied partition rows
+    // and package graph; a module in neither the rows nor the shell refuses as not covered rather
+    // than passing.
     let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
         result.emitted_edges.clone(),
-        Rc::new(host_shell_modules.into_iter().collect()),
-        emitted_tree_packages(&workspace_root())?,
+        host_shell_modules,
+        packages,
     );
     if let crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
         edge_count,
@@ -2711,6 +2730,55 @@ mod tests {
             .collect()
     }
 
+    /// THE PACKAGE GRAPH THE FIXTURE POPULATION IS BUILT UNDER, supplied rather than read from the
+    /// seed tree, whose rows name none of the fixture modules and so would refuse every edge as not
+    /// covered. It has the seed's shape at the scale of the fixture: the runtime prelude module
+    /// (`gunbc.rust_emitted_edge` `rust_runtime_prelude_module`) in a foundation crate, and the
+    /// three fixture modules in a layered core crate that re-exports it, so each prelude edge is
+    /// admitted by the partition's own layering rule rather than by a hand-written edge.
+    fn selection_fixture_packages(
+    ) -> Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages> {
+        use crate::gunbc_stage0_crate_partition_generated::{
+            GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+        };
+        let row = |package: &str,
+                   kind: GeneratedPartitionCrateKind,
+                   modules: im::Vector<String>,
+                   reexports: im::Vector<String>| {
+            Rc::new(GeneratedPartitionCrateRow {
+                package_name: package.to_string(),
+                crate_dir: package.replace('-', "_"),
+                kind,
+                modules: Rc::new(modules),
+                reexport_packages: Rc::new(reexports),
+                carries_non_empty_wrappers: false,
+            })
+        };
+        Rc::new(
+            crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
+                rows: Rc::new(im::vector![
+                    row(
+                        "fx-runtime",
+                        GeneratedPartitionCrateKind::GeneratedFoundationCrate,
+                        im::vector![crate::gunbc_rust_emitted_edge::rust_runtime_prelude_module()],
+                        im::Vector::new(),
+                    ),
+                    row(
+                        "fx-core",
+                        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
+                        selection_fixture()
+                            .iter()
+                            .map(|(path, _)| path.trim_end_matches(".dag").to_string())
+                            .collect(),
+                        im::vector!["fx-runtime".to_string()],
+                    ),
+                ]),
+                host_shell_package_name: "fx-host".to_string(),
+                host_shell_dependencies: Rc::new(im::vector!["fx-core".to_string()]),
+            },
+        )
+    }
+
     /// `selected_basenames` is `None` for the whole-closure arm and `Some(list)` for a selection.
     /// The `RustModuleRenderSelection` itself is built INSIDE the worker thread: the emitter's
     /// values are `Rc`-shaped and therefore not `Send`, so the selection cannot cross the thread
@@ -2726,11 +2794,48 @@ mod tests {
                         basenames: Rc::new(names.into_iter().collect()),
                     },
                 });
-                compile_stage0(&selection_fixture(), &selection).expect("fixture emits clean")
+                compile_stage0_admitted(
+                    &selection_fixture(),
+                    &selection,
+                    Rc::new(im::Vector::new()),
+                    selection_fixture_packages(),
+                )
+                .expect("fixture emits clean")
             })
             .expect("spawn emit thread")
             .join()
             .expect("emit thread panicked")
+    }
+
+    /// THE ADMISSION IS NOT RELAXED FOR THE FIXTURE. The same population, judged against a package
+    /// graph whose rows omit its modules, still refuses as not covered: the supplied rows are what
+    /// admit it, and removing them reds.
+    #[test]
+    fn the_fixture_refuses_as_not_covered_without_its_partition_rows() {
+        let refusal = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let bare = Rc::new(
+                    crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
+                        rows: Rc::new(im::Vector::new()),
+                        ..(*selection_fixture_packages()).clone()
+                    },
+                );
+                compile_stage0_admitted(
+                    &selection_fixture(),
+                    &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                    Rc::new(im::Vector::new()),
+                    bare,
+                )
+                .expect_err("a population no partition row covers must refuse")
+            })
+            .expect("spawn emit thread")
+            .join()
+            .expect("emit thread panicked");
+        assert!(
+            refusal.contains("Stage0EmittedEdgesNotCovered") && refusal.contains("fx_beta"),
+            "the refusal must be the not-covered arm naming a fixture module: {refusal}"
+        );
     }
 
     fn beta_only() -> Option<Vec<String>> {
