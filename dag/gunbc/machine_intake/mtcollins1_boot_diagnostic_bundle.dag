@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -968,13 +969,14 @@ data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
-// The two SEL snapshots, the one SDR dump, the one sensor read, the two boot parameter 5 reads, the
-// one chassis status read and every SMpro probe the post-attempt pass can send
+// The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the post-attempt
+// pass can send
 // (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run under
-// the same coreutils bound. The two in-run SMpro passes are paid inside the actuation, and their
+// the same coreutils bound. The reads taken under the unit hold -- the two in-run SMpro passes, the
+// two boot parameter 5 reads and the final-power poll -- are paid inside the actuation, and their
 // allowance is gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_in_run_smpro_allowance.
 fn mtcollins1_boot_ipmi_read_count() -> Int {
-  7 + mtcollins1_smpro_probe_count()
+  4 + mtcollins1_smpro_probe_count()
 }
 
 data mtcollins1_boot_redfish_read_budget: Int = 48
@@ -1045,6 +1047,9 @@ fn mtcollins1_boot_sensors(username: NonEmptyStr, password_file: NonEmptyStr, sd
 }
 
 fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> BootParam5Reading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_under_hold"),
+  ]
 {
   let at = clock_now_probed_at_or_unknown()
   let r = diagnostic.ipmi.Tool.ChassisBootParamGet(
@@ -1063,6 +1068,9 @@ fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> 
 }
 
 fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
+  ]
 {
   let r = diagnostic.ipmi.Tool.ChassisStatus(
     bmc_host: mtcollins1_endpoint.host,

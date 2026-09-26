@@ -263,7 +263,7 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 // 2 SEL snapshots, 1 SDR dump, 1 sensor read and 10 SMpro probes (2 sockets x 5 registers) x (20 s
 // + 5 s kill-after) + 48 Redfish reads x 15 s + 60 s publish.
 test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
-  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == 17 * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
+  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == 14 * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
 }
 
 test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool {

@@ -71,7 +71,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   SmproReading, BootParam5Reading, BootParam5NotTaken, MtCollins1BootRunRecord, run_record_not_taken, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
-  PowerAfterAttempt, PoweredOffAfterCensusEnd, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
+  PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -820,10 +820,18 @@ fn mtcollins1_boot_smpro_pass(password_file: String) -> SmproReading {
   }
 }
 
-// THE TWO IN-RUN PASSES ARE PAID INSIDE THE ACTUATION, beside the terminal ticks rather than out of
-// them, so the step timeout carries them explicitly: each probe runs under the coreutils bound.
+// THE READS PAID INSIDE THE ACTUATION, beside the terminal ticks rather than out of them, so the step
+// timeout carries them explicitly. Every one runs under the coreutils bound: the two in-run SMpro
+// passes, the two boot parameter 5 reads, and the final-power poll (its samples plus the waits
+// between them).
+data mtcollins1_boot_power_after_samples: Int = 6
+
+data mtcollins1_boot_power_after_interval: Second = second(count: 5)
+
 fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
-  second(count: 2 * mtcollins1_smpro_probe_count() * ((second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)))
+  let read = (second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)
+  second(count: (2 * mtcollins1_smpro_probe_count() + 2 + mtcollins1_boot_power_after_samples) * read
+    + mtcollins1_boot_power_after_samples * (second_count(s: mtcollins1_boot_power_after_interval) as Int))
 }
 
 // HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
@@ -841,11 +849,22 @@ type MtCollins1BootActuationStage
 // this attempt's window. They are read inside mtcollins1_boot_actuate -- after the SOL acquire and
 // before any override write, and after the terminal watch and before the SOL and hold release -- and
 // an attempt that never reached the hold carries both as not taken, with its reason.
+//
+// THE FINAL POWER READING IS FROZEN HERE TOO (side chat on gunbc#12263, review 5326689644). It was
+// read in the conclusion, after unit_hold_release, so another transaction could change the unit's
+// power in between and have its effect recorded as this attempt's -- and that reading also decides
+// whether the post-attempt SMpro pass is sent. It is now observed inside the actuation under the same
+// UnitHoldProof, as a bounded poll after the census END marker (the image's poweroff -f takes a
+// moment), and frozen into this record before any release; the bundle consumes the frozen value and
+// never re-reads. ORDER IS STRUCTURAL, NOT CONVENTIONAL: the three reads (parameter 5 before and
+// after, final power) are admit_callers-sealed to this actuation, which returns before the proof's
+// release, and the unit-hold forged probe enrolls each outside call as a refusal.
 type MtCollins1BootActuation {
   outcome: ProcessExit
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
+  power_after: PowerAfterAttempt
 }
 
 fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtCollins1BootActuation {
@@ -854,6 +873,7 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
     stage: ActuationNotPoweredOn { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
+    power_after: PowerAfterNotTaken { reason: reason },
   }
 }
 
@@ -863,10 +883,42 @@ type ActuationWatch {
   stage: MtCollins1BootActuationStage
 }
 
-fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading {
+fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
   match mtcollins1_bmc_username {
     Absent => BootParam5NotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
     Present { value: user } => mtcollins1_boot_param5(username: user, password_file: password_file as NonEmptyStr)
+  }
+}
+
+// THE FINAL POWER, POLLED BOUNDEDLY UNDER THE HOLD. After the census END marker the image powers the
+// unit off, so an ON read then is re-read up to the sample bound before it is taken as the answer;
+// without the END marker one read is the observation. Unreadable or undecodable reads are recorded as
+// such, never as a power state.
+fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> PowerAfterAttempt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
+  ]
+{
+  match mtcollins1_bmc_username {
+    Absent => PowerAfterNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
+    Present { value: user } => {
+      let observed = power_after_attempt(observation: mtcollins1_boot_chassis_power(username: user, password_file: password_file as NonEmptyStr), census_ended: census_ended)
+      match observed {
+        PoweredOnAfterAttempt =>
+          if census_ended && remaining > 1 {
+            let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_power_after_interval)
+            mtcollins1_boot_power_after_poll(password_file: password_file, census_ended: census_ended, remaining: remaining - 1)
+          } else {
+            observed
+          }
+        _ => observed
+      }
+    }
   }
 }
 
@@ -941,10 +993,16 @@ fn mtcollins1_boot_actuate(
         other => ActuationWatch { outcome: other, stage: ActuationNotPoweredOn { reason: "the attach or the handoff refused, so power on was never observed" } }
       }
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
+      let power_after = mtcollins1_boot_power_after_poll(
+        password_file: password_file,
+        census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
+        remaining: mtcollins1_boot_power_after_samples,
+      )
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
       MtCollins1BootActuation {
         override_before: p5_before,
         override_after: p5_after,
+        power_after: power_after,
         outcome: match observed.outcome {
           ExitSuccess =>
             match teardown {
@@ -989,7 +1047,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         sol_pid_path: sol_pid_path,
         sol_capture_path: sol_capture_path,
       )
-      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), stage: act.stage, override_before: act.override_before, override_after: act.override_after }
+      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after }
     }
   }
 }
@@ -1015,6 +1073,7 @@ type MtCollins1BootAttempt {
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
+  power_after: PowerAfterAttempt
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -1031,6 +1090,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
     override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
     override_after: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
+    power_after: PowerAfterNotTaken { reason: "the attempt ended before the unit hold" },
   }
 }
 
@@ -1052,10 +1112,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
       }
     BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before } => {
       let sel_after = mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr)
-      let power_after = power_after_attempt(
-        observation: mtcollins1_boot_chassis_power(username: user, password_file: pf),
-        census_ended: match attempt.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
-      )
+      let power_after = attempt.power_after
       MtCollins1BootDiagnosticBundle {
         attempt: run,
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
@@ -1214,6 +1271,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
         stage: act.stage,
         override_before: act.override_before,
         override_after: act.override_after,
+        power_after: act.power_after,
       }
     }
     Present { value: user } => {
@@ -1226,6 +1284,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
         stage: act.stage,
         override_before: act.override_before,
         override_after: act.override_after,
+        power_after: act.power_after,
       }
     }
   }
