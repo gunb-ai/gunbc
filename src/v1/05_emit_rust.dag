@@ -210,6 +210,7 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
+  is_lambda_expr,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -11533,7 +11534,56 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       } else {
         emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
       }
+    ExprListLit =>
+      if rust_list_lit_holds_callables(texpr: texpr) {
+        let element_type = rust_list_lit_callable_element_type(texpr: texpr, shared_types: shared_types, scope: scope, emit_info: emit_info)
+        emit_list_lit_expr(element_strs: texpr.children |> map(el => rust_callable_list_element(el: el, element_type: element_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1)), target: Rust)
+      } else {
+        emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
+      }
     _ => emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
+  }
+}
+
+// A LAMBDA LITERAL IN A LIST IS A CALLABLE VALUE, and an arrow in value position realizes as
+// Rc<dyn Fn(..) -> ..> (callable_type_template), exactly as at an arrow-typed record field
+// (rust_callable_field_value_wrap) or fn return (rust_callable_return_wrap). Each lambda element is
+// therefore wrapped by the same callable row with its capture preamble; a bare closure there is
+// E0308 (every closure is its own type, and none is the Rc<dyn Fn> a List<fn..> renders to). The
+// decision is the element's own expression kind, not the list's recorded type: a lambda is a
+// callable whatever list holds it. A non-lambda element keeps its own rendering -- a call result or
+// a parameter already carries the arrow carrier its producer chose.
+fn rust_list_lit_holds_callables(texpr: Node) -> Bool {
+  texpr.children |> any(el => is_lambda_expr(e: el))
+}
+
+// vec! takes its element type from its first element, so each wrapped lambda is also BOUND at the
+// rendered arrow the list's element type names: without it the Vec is of one closure's Rc and the
+// others are E0308. A typed let and not an `as` cast, because a cast cuts the expectation that
+// types the closure's body -- `Some(7)` under `as Rc<dyn Fn() -> Option<i64>>` is Option<i32>,
+// E0271; the let is the same coercion site an arrow-typed record field already is.
+fn rust_list_lit_callable_element_type(texpr: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> String? {
+  match resolved_type(n: texpr).children |> first {
+    Present { value: el } =>
+      let et = child_type_node(ch: el)
+      if et.connective == Arrow {
+        Present { value: render_rust_type(n: et, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info) }
+      } else { none }
+    Absent => none
+  }
+}
+
+fn rust_callable_list_element(el: Node, element_type: String?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, fuel: Int) -> String {
+  match el.expr_data {
+    ExprLambda =>
+      let wrapped = rust_callable_field_value_wrap(
+        raw: emit_typed_collection_lambda(lambda_expr: el, elem_type_str: "_", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
+        value_node: Present { value: el }, scope: scope)
+      match element_type {
+        Present { value: ty } => concat(concat(concat("{ let __callable: ", ty), concat(" = ", wrapped)), "; __callable }")
+        Absent => wrapped
+      }
+    _ => emit_typed_expr(texpr: el, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
   }
 }
 
@@ -13713,8 +13763,16 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
     recurse: (node, d) => emit_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
 }
 
+// A LET-BOUND LAMBDA is emitted with its parameters TYPED, through the same renderer a collection
+// method's lambda uses (emit_typed_collection_lambda). The shared lambda rendering writes `|x|`, and
+// a closure bound to a local has no call site to infer x from before its body is checked, so any
+// method on x (the `.clone()` every operand carries) is E0282. The binding stays a bare closure --
+// the impl Fn slot a function-typed parameter takes it into -- and is called as one.
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let val_str = match value.expr_data {
+    ExprLambda => emit_typed_collection_lambda(lambda_expr: value, elem_type_str: "_", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    _ => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
   emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Rust,
     recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
     scope: scope, value_node: value)
