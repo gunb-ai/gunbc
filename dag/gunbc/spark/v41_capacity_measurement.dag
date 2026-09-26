@@ -3,7 +3,7 @@ module gunbc.spark.v41_capacity_measurement
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat, nat_min }
+import std.nat { Nat, nat_min, nat_max }
 import std.measure {
   ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value,
   Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count,
@@ -83,7 +83,7 @@ data v41_measurement_max_num_batched_tokens: TokenCount = token_count(count: 819
 fn v41_measurement_launch_shape() -> V41MeasurementLaunchShape {
   V41MeasurementLaunchShape {
     max_model_len: v41_measurement_max_model_len,
-    max_num_seqs: fold(v41_staircase_concurrencies, init: 0, f: (acc, c) => if c > acc { c } else { acc }),
+    max_num_seqs: fold(v41_staircase_concurrencies, init: nat_min(a: 0, b: 0), f: (acc, c) => nat_max(a: acc, b: c)),
     max_num_batched_tokens: v41_measurement_max_num_batched_tokens,
     gpu_memory_utilization: v41_measurement_gpu_memory_utilization,
   }
