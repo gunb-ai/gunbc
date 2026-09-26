@@ -6,9 +6,13 @@ import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance }
 import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Ensured }
-import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal }
+import gunbc.managed_directory {
+  ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal,
+  EntriesUnmanaged, EntriesReadableByDependents, managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
+}
 import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
+import extdeps.access.posix { FileMode, file_mode_bits }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
 // POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
@@ -88,7 +92,23 @@ fn fabric_storage_placement() -> FabricStoragePlacement {
 // generation is a staged sibling hard-linked into its name (gunbc.durable_cas_file_store
 // DefaultAccessCreateOnly). So each writer needs Write and Execute on objects/ and heads/ and Read to
 // list and fetch, and only Execute on the root to reach them; no file is ever rewritten, so no file
-// needs group write, and the umask's 0644 already lets each writer read the other's entries.
+// needs group write.
+//
+// THE ENTRIES' MODE WAS LEFT TO THE UMASK, AND THE UMASK WAS NOT 022. The first cut of this row
+// assumed each writer's umask would publish 0644. The CI job publishes from fleet-converge steps whose
+// credential preludes run `umask 077` in the same shell as gunbc, so every object and head it wrote
+// was 0600 and the service principal could not read them (observed on srv1 2026-09-26). The entry
+// mode is therefore derived here from the same dependents (gunbc.managed_directory
+// managed_directory_entry_mode) and handed to the store as a declared publication mode.
+//
+// IT DERIVES OTHER-READ, AND THAT IS CORRECT RATHER THAN LOOSE. An entry the CI principal creates is
+// ghrunner:ghrunner (setgid), and the service principal is neither its owner nor a member of
+// ghrunner's group (srv1 2026-09-26: briansrls's groups do not include ghrunner) -- so it reads that
+// entry through OTHER or not at all. Adding the service principal to ghrunner's group would widen it
+// to everything that group owns on the host, a privilege change for a store-local need. Other-read
+// is instead admitted because both areas deny other-execute: no account outside owner and group can
+// traverse to an entry, so o+r reaches exactly the one declared reader that needs it. The derivation
+// refuses if an area ever granted o+x. Nothing is writable after publication: 0444.
 //
 // THE GROUP IS THE CI JOB PRINCIPAL'S OWN PRIMARY GROUP, not a new shared group, and that is derived
 // rather than preferred: with one owner and exactly one other writer, the smallest group that admits
@@ -110,6 +130,50 @@ fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool
       DirectoryDependent { who: fleet_posix_ci_runner_user, needs: needs },
     ],
     ownership: Ensured,
+    entries: if writes { EntriesReadableByDependents { repaired_by: fleet_posix_ci_runner_user } } else { EntriesUnmanaged },
+  }
+}
+
+// ONE ENTRY MODE FOR THE STORE, OR A REFUSAL. Both writable areas derive it from their own
+// dependents; they must agree, because the store publishes objects and heads under one declared
+// mode, and a disagreement means the two areas' readers differ -- a modeling change this function
+// refuses to paper over by picking one.
+type FabricStorageEntryMode
+  = FabricStorageEntryModeDerived { mode: FileMode }
+  | FabricStorageEntryModeRefused { detail: NonEmptyStr }
+
+fn fabric_storage_entry_mode_of(objects: ManagedDirectory, heads: ManagedDirectory) -> FabricStorageEntryMode {
+  match managed_directory_entry_mode(d: objects) {
+    ManagedEntryModeRefused { member, path: _, reason } => FabricStorageEntryModeRefused { detail: join([member as String, ": ", reason as String], "") as NonEmptyStr }
+    ManagedEntryModeDerived { mode: o } =>
+      match managed_directory_entry_mode(d: heads) {
+        ManagedEntryModeRefused { member, path: _, reason } => FabricStorageEntryModeRefused { detail: join([member as String, ": ", reason as String], "") as NonEmptyStr }
+        ManagedEntryModeDerived { mode: h } =>
+          if file_mode_bits(mode: o) == file_mode_bits(mode: h) { FabricStorageEntryModeDerived { mode: o } }
+          else { FabricStorageEntryModeRefused { detail: "the objects and heads areas derive different entry modes" as NonEmptyStr } }
+      }
+  }
+}
+
+fn fabric_storage_entry_mode() -> FabricStorageEntryMode {
+  let areas = fabric_storage_file_root(root: fabric_storage_store_root())
+  fabric_storage_entry_mode_of(
+    objects: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true),
+    heads: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true),
+  )
+}
+
+// THE PLACED STORE'S FILES, WITH THE DERIVED ENTRY MODE, which is what every production writer on the
+// placed host binds -- the served handler and the in-process client alike -- so an entry either
+// writer publishes is readable by the other.
+type FabricStoragePlacedRoot
+  = FabricStoragePlacedRootReady { root: FabricStorageFileRoot }
+  | FabricStoragePlacedRootRefused { detail: NonEmptyStr }
+
+fn fabric_storage_placed_file_root(store_root: NonEmptyStr) -> FabricStoragePlacedRoot {
+  match fabric_storage_entry_mode() {
+    FabricStorageEntryModeRefused { detail } => FabricStoragePlacedRootRefused { detail: detail }
+    FabricStorageEntryModeDerived { mode } => FabricStoragePlacedRootReady { root: fabric_storage_file_root_with(root: store_root, entry_mode: Present { value: mode }) }
   }
 }
 

@@ -127,7 +127,19 @@ type ManagedDirectory {
   group_principal: PosixUser
   dependents: List<DirectoryDependent>
   ownership: Ownership
+  entries: ManagedDirectoryEntries
 }
+
+// WHETHER THE DIRECTORY'S ENTRIES ARE PART OF WHAT IS MANAGED. Most managed directories are a mode on
+// a path and nothing more, and for them the entries are the writer's business. A directory whose
+// dependents READ EACH OTHER'S ENTRIES is different: an entry at a mode its declared readers cannot
+// open is the directory failing its dependents exactly as a wrong directory mode would, so the entry
+// mode is derived from the same dependents (managed_directory_entry_mode) and the ensure repairs the
+// entries it can. `repaired_by` is the principal the ensure runs as; it can chmod only the entries it
+// owns, so the repair touches exactly those and needs no elevation.
+type ManagedDirectoryEntries
+  = EntriesUnmanaged
+  | EntriesReadableByDependents { repaired_by: PosixUser }
 
 type DependentClass = OwnerClass | GroupClass | OtherClass
 
@@ -204,6 +216,70 @@ fn managed_directory_permissions(d: ManagedDirectory) -> FilePermissions {
       sticky: false,
     },
   }
+}
+
+// ── THE ENTRIES' MODE, DERIVED FROM THE SAME DEPENDENTS ──────────────────────────────────────────
+//
+// An entry is owned by the dependent that CREATED it, not by the directory's owner, and its group is
+// the directory's group when setgid is set (managed_directory_permissions) and the creator's own
+// group otherwise. So a reader's class is decided per (writer, reader) pair: the entry's owner when
+// it is the writer, its group when its gid is the entry's group, and OTHER otherwise -- which is
+// where a directory OWNER lands when another writer created the entry and the owner is not in that
+// writer's group. Each class gets Read exactly when some such pair puts a declared reader in it.
+// Nothing gets Write or Execute: these entries are create-only, never rewritten or run.
+//
+// OTHER-READ IS ADMITTED ONLY BEHIND A DIRECTORY THAT DENIES OTHER TRAVERSAL. A derived o+r reaches
+// every account on the host that can reach the entry, and the entry's own directory is on every
+// path to it, so when that directory grants no other-execute the o+r reaches exactly the declared
+// reader that needed it (the directory's owner) and nobody else. If the directory ever granted o+x
+// the same bit would publish the entries to every account; the derivation REFUSES rather than
+// either widening or quietly tightening away a declared reader's access.
+type ManagedEntryMode
+  = ManagedEntryModeDerived { mode: FileMode }
+  | ManagedEntryModeRefused { member: NonEmptyStr, path: FilePath, reason: NonEmptyStr }
+
+fn entry_class_of(d: ManagedDirectory, writer: PosixUser, reader: PosixUser) -> DependentClass {
+  let g = if d.group_principal.gid != d.owner.gid { d.group_principal.gid } else { writer.gid }
+  dependent_class_of(owner: writer, group_gid: g, who: reader)
+}
+
+fn entry_class_reads(d: ManagedDirectory, cls: DependentClass) -> Bool {
+  let writers = filter(xs: d.dependents, predicate: dep => needs_verb(needs: dep.needs, v: Write))
+  let readers = filter(xs: d.dependents, predicate: dep => needs_verb(needs: dep.needs, v: Read))
+  any(writers, w => any(readers, r => dependent_class_eq(a: entry_class_of(d: d, writer: w.who, reader: r.who), b: cls)))
+}
+
+fn entry_read_bits(d: ManagedDirectory, cls: DependentClass) -> PermissionBits {
+  PermissionBits { read: entry_class_reads(d: d, cls: cls), write: false, execute: false }
+}
+
+fn managed_directory_entry_mode(d: ManagedDirectory) -> ManagedEntryMode {
+  let mode = FileMode {
+    owner: entry_read_bits(d: d, cls: OwnerClass),
+    group: entry_read_bits(d: d, cls: GroupClass),
+    other: entry_read_bits(d: d, cls: OtherClass),
+    setuid: false,
+    setgid: false,
+    sticky: false,
+  }
+  if mode.other.read && managed_directory_permissions(d: d).mode.other.execute {
+    ManagedEntryModeRefused {
+      member: d.member,
+      path: d.path,
+      reason: "a declared reader reaches these entries only through other-read, and the directory grants other-execute, so the same bit would publish every entry to every account" as NonEmptyStr,
+    }
+  } else {
+    ManagedEntryModeDerived { mode: mode }
+  }
+}
+
+// chmod(1)'s additive symbolic spelling of the read bits: `u+r,g+r,o+r` for the classes that read.
+// Additive, so a repair never removes a bit anyone set, and idempotent.
+fn entry_mode_add_read_symbolic(mode: FileMode) -> String {
+  join(concat(concat(
+    if mode.owner.read { ["u+r"] } else { [] },
+    if mode.group.read { ["g+r"] } else { [] }),
+    if mode.other.read { ["o+r"] } else { [] }), ",")
 }
 
 // ── ADMISSION: A WRITER THE OWNER AND GROUP DO NOT COVER REFUSES ─────────────────────────────────
@@ -288,6 +364,7 @@ fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
       DirectoryDependent { who: service, needs: [Read, Write, Execute] },
     ],
     ownership: Owned,
+    entries: EntriesUnmanaged,
   }
 }
 

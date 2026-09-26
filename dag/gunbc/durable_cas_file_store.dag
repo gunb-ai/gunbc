@@ -7,6 +7,7 @@ import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
+import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
@@ -563,9 +564,16 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // coproduct collapses to the single admitted publication operation. It is retired by that and by
 // nothing else; in particular it is NOT retired by a failure-atomic mode-carrying write, which would
 // be a different and larger capability than this population needs.
+// DeclaredModeCreateOnly is DefaultAccessCreateOnly's publication -- staged, synced, hard-linked,
+// so equally failure-atomic -- with the published mode declared by the store's own model rather than
+// left to whatever umask the writing process runs under. A store with more than one declared reader
+// needs it: under a `umask 077` step every generation publishes 0600 and the other reader is locked
+// out (gunbc.fabric_storage_placement). It is not a confidentiality binding; that remains
+// OwnerOnlyCreateOnly's, with its declared limitation above.
 type CasGenerationPublication
   = DefaultAccessCreateOnly
   | OwnerOnlyCreateOnly
+  | DeclaredModeCreateOnly { mode: FileMode }
 
 // THE ACTUATOR TAKES AN ADMITTED PUBLICATION, NOT A PATH AND SOME BYTES.
 //
@@ -608,6 +616,15 @@ fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
   match admitted.publication {
     DefaultAccessCreateOnly => {
       let write = Filesystem.WriteCreateNew(path: path, content: content)
+      cas_outcome_from_create(
+        attempt: attempt,
+        target: target,
+        created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
+        post: observe_cas_slot_state(root: root, key: attempt.key),
+      )
+    }
+    DeclaredModeCreateOnly { mode } => {
+      let write = Filesystem.WriteCreateNewWithMode(path: path, content: content, mode: file_mode_bits(mode: mode))
       cas_outcome_from_create(
         attempt: attempt,
         target: target,

@@ -65,6 +65,15 @@ fn find_symlink_target_glob_command(
   )
 }
 
+// RUN ONE COMMAND OVER THE REGULAR FILES DIRECTLY IN A DIRECTORY THAT ONE USER OWNS. -maxdepth 1
+// keeps it to that directory, -type f excludes symlinks (find does not follow them by default), and
+// -user narrows it to entries the invoking principal can act on, so an entry another principal owns
+// is never handed to a command that would refuse it. `-exec ... {} +` batches the paths into as few
+// invocations as ARG_MAX admits; find exits nonzero when any invocation does.
+fn find_owned_regular_files_exec_argv(dir: String, owner: String, command: List<String>) -> List<String> {
+  concat(concat([find_program as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
+}
+
 // THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
 // size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
 // status is the one the caller reads.

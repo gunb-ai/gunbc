@@ -145,7 +145,8 @@ use crate::v1_compiler_emit::FileResultChannel::{
     FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
-    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
+    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteCreateNewWithMode,
+    FileWriteOwnerOnly,
 };
 use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
 use crate::v1_compiler_emit::ShellResultChannel::{
@@ -37508,6 +37509,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
         FileVerb::FileWrite => file_write_expr(),
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
         FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
+        FileVerb::FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr(),
         FileVerb::FileDelete => file_delete_match_expr(),
         FileVerb::FileList => file_list_match_expr(),
     }
@@ -37703,7 +37705,16 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), None) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_create_new_with_mode_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
