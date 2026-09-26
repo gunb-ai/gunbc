@@ -92,6 +92,18 @@ test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
   unread && unknown
 }
 
+// A REPEATED System Power LINE IS NOT A POWER STATE (side chat on gunbc#12247): two lines, even
+// agreeing ones, select no action, so a write is never chosen from ambiguous output.
+test fn two_system_power_lines_select_nothing() -> Bool {
+  (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on\nSystem Power         : on\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  }) && (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on\nSystem Power         : off\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  })
+}
+
 // THE INCIDENT ITSELF: a cycle at an off host, exit 0, the chassis never moves. Every sample reads
 // off, so the off-then-on transition is never completed and the read-back refuses.
 test fn an_off_host_cycled_with_no_transition_is_not_observed() -> Bool {

@@ -4,6 +4,7 @@ import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerObservation,
   ChassisPowerRead,
@@ -333,8 +334,10 @@ type PowerReadback
   = PowerReadbackObserved
   | PowerReadbackExhausted { progress: PowerTransitionProgress, last_observed: ChassisPowerObservation }
 
-// THE BOUND, AND WHAT IT DOES NOT GUARANTEE. Samples are one second apart plus a ChassisStatus call
-// budgeted at up to two seconds, so the gap between two samples can reach about three seconds. A
+// THE BOUND, AND WHAT IT DOES NOT GUARANTEE. Every IPMI read this handoff makes runs under coreutils
+// `timeout` (oob_ipmi_read_deadline, then oob_ipmi_kill_after), so one read costs at most their sum,
+// oob_ipmi_read_ceiling. Samples are one second apart plus a ChassisStatus call of up to that
+// ceiling, so the gap between two samples can reach the interval plus the ceiling. A
 // conforming §28.3 cycle whose off interval is shorter than that gap can therefore be missed, and
 // the read-back then refuses with PowerNeverLeftOn although the cycle happened. That false refusal
 // is loud, located and accepted; it is not coverage of every off window the spec admits. Sixty
@@ -344,12 +347,18 @@ data oob_power_readback_samples: Int = 60
 
 data oob_power_readback_interval: Second = second(count: 1)
 
-data oob_power_readback_read_ceiling: Second = second(count: 2)
+data oob_ipmi_read_deadline: Second = second(count: 5)
+
+data oob_ipmi_kill_after: Second = second(count: 1)
+
+fn oob_ipmi_read_ceiling() -> Second {
+  second(count: (second_count(s: oob_ipmi_read_deadline) + second_count(s: oob_ipmi_kill_after)) as Int)
+}
 
 fn oob_power_readback_allowance() -> Second {
   second(count: oob_power_readback_samples
-    * ((second_count(s: oob_power_readback_interval) + second_count(s: oob_power_readback_read_ceiling)) as Int)
-    + (second_count(s: oob_power_readback_read_ceiling) as Int))
+    * ((second_count(s: oob_power_readback_interval) + second_count(s: oob_ipmi_read_ceiling())) as Int)
+    + (second_count(s: oob_ipmi_read_ceiling()) as Int))
 }
 
 fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation {
@@ -357,6 +366,8 @@ fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_fil
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
+    deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
   )
   return chassis_observation(success: status.success, stdout: status.stdout)
 }
@@ -508,6 +519,8 @@ fn oob_boot_handoff(
     username: username,
     password_file: password_file,
     parameter: "5",
+    deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
   )
   if readback.success == false {
     return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
