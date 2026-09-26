@@ -257,9 +257,9 @@ fn application_binding_plan_over(labels: List<Symbol>, actuals: List<Edge>) -> A
       }
     }
   })
-  match walk.refused {
-    Cons { head: r, tail: _ } => ApplicationBindingRefused { reason: r.reason, at: r.at }
-    Empty =>
+  match list_at_optional(xs: walk.refused, index: 0) {
+    Present { value: r } => ApplicationBindingRefused { reason: r.reason, at: r.at }
+    Absent =>
       fold(labels, init: ApplicationBound { slots: [] }, f: fn(acc, label) {
         match acc {
           ApplicationBindingRefused { reason: _, at: _ } => acc
@@ -570,9 +570,9 @@ fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
   if !positional_prefix_then_labeled_conform(children: site.children) {
     view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
   } else {
-    match site.children {
-      Empty => outcome_accepted(value: Empty)
-      Cons { head: first, tail: _ } =>
+    match list_at_optional(xs: site.children, index: 0) {
+      Absent => outcome_accepted(value: Empty)
+      Present { value: first } =>
         match first.label {
           Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
           Positional =>
