@@ -17,7 +17,7 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -106,7 +106,7 @@ import v1.compiler.infer_types {
   is_declared_container_alias_spelling, structural_carrier_template_name,
   node_type_deps,
   method_receiver_element_node,
-  infer_literal_node, infer_binop_type_node,
+  infer_literal_node, infer_binop_type_node, subtraction_refinement_of,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has,
@@ -8460,12 +8460,23 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_result = operands.right
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
+      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
+      let refinement_diags = match op {
+        Sub =>
+          match subtraction_refinement_of(left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env) {
+            SubtractionRefinementAmbiguous { from_types: fts } =>
+              [inference_error(
+                message: concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ", to_string(fts |> count), " rows for this operand's declaration (source types ", join(fts, ", "), "); the difference's type would depend on row order"),
+                span: span, module_name: scope.module_name)]
+            _ => []
+          }
+        _ => []
+      }
       let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
-        diagnostics: concat(concat(left_diags, right_diags), eq_wall_diags)
+        diagnostics: concat(concat(concat(left_diags, right_diags), eq_wall_diags), refinement_diags)
       }
 
     ExprUnaryOp { op: op } =>
