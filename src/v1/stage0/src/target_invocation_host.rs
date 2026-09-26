@@ -343,6 +343,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-app-attest"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_app_attest.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),

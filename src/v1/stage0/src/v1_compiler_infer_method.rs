@@ -16,6 +16,7 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_types::{
     make_container_type, make_kernel_record_field, make_kernel_record_type, make_map_type,
+    nominal_type_ref,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -27,7 +28,8 @@ use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
+    bool_type, error_type, hash_type, int_type, no_span, string_type, unit_type,
+    with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData, InferredNode, Node,
@@ -136,6 +138,53 @@ pub fn pair_declared_names(
         }
         __result
     })
+}
+
+pub fn algebra_named_return(method: String) -> Rc<Node> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in crate::std_algebra::all_algebra_profiles().iter().cloned() {
+            __result.extend(
+                (*Rc::new({
+                    let mut __result = Vec::new();
+                    for t in crate::std_algebra::algebra_templates_for_profile(p.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if (t.name.clone() == method.clone()) {
+                            __result.push(t);
+                        }
+                    }
+                    __result
+                }))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(t) => match (*t.return_type.clone()).clone() {
+            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => {
+                crate::v1_compiler_infer_types::nominal_type_ref(n.clone())
+            }
+            _ => error_type(),
+        },
+        std::option::Option::None => error_type(),
+    }
+}
+
+pub fn derived_signature_and_return(
+    names: Rc<Vec<String>>,
+    method: String,
+) -> Rc<BuiltinSignature> {
+    derived_signature(
+        names.clone(),
+        method.clone(),
+        algebra_named_return(method.clone()),
+    )
 }
 
 pub fn derived_signature(
@@ -255,7 +304,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<BuiltinSignature>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("count".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "count".to_string(), int_type()));
+                __m.insert("count".to_string(), derived_signature_and_return(Rc::new(vec!["xs".to_string()]), "count".to_string()));
                 __m.insert("hmac_sha256_verify_hex".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "key_hex".to_string(),
@@ -722,7 +771,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: bool_type(),
     }));
-                __m.insert("length".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "length".to_string(), int_type()));
+                __m.insert("length".to_string(), derived_signature_and_return(Rc::new(vec!["xs".to_string()]), "length".to_string()));
                 __m.insert("starts_with".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "prefix".to_string()]), "starts_with".to_string(), bool_type()));
                 __m.insert("replace".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "from".to_string(), "to".to_string()]), "replace".to_string(), string_type()));
                 __m.insert("filesystem_read".to_string(), Rc::new(BuiltinSignature {

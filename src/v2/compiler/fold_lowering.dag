@@ -476,14 +476,31 @@ fn fn_literal_parts_optional(fn_literal: Node) -> Optional<FunctionValueParts> {
   }
 }
 
-// The captured child of a function-value production, by its emitted identity.
-fn function_value_parts_optional(captured: Node, emitted: Symbol) -> Optional<FunctionValueParts> {
+// THE TWO FUNCTION-VALUE PRODUCTIONS, AS A CLOSED SUM. v2.extdeps.languages.dag declares exactly two
+// productions reachable in value position -- ^dag_production_arrow_lambda (emitted
+// ^dag_surface_arrow_lambda) and ^dag_production_fn_literal (emitted ^dag_surface_fn_literal) -- so
+// which one a capture is has two answers, not a symbol with a fallthrough: a reader of the parts
+// matches the kind exhaustively, and "some other production" has no constructor. The emitted
+// identity is read into a kind in exactly one place, function_value_kind_of.
+type FunctionValueKind
+  = ArrowLambdaValue
+  | FnLiteralValue
+
+fn function_value_kind_of(emitted: Symbol) -> Optional<FunctionValueKind> {
   if emitted == ^dag_surface_arrow_lambda {
-    arrow_lambda_parts_optional(lambda: captured)
+    optional_present(value: ArrowLambdaValue)
   } else if emitted == ^dag_surface_fn_literal {
-    fn_literal_parts_optional(fn_literal: captured)
+    optional_present(value: FnLiteralValue)
   } else {
-    Absent
+    optional_absent()
+  }
+}
+
+// The captured child of a function-value production, by its kind.
+fn function_value_parts_optional(captured: Node, kind: FunctionValueKind) -> Optional<FunctionValueParts> {
+  match kind {
+    ArrowLambdaValue => arrow_lambda_parts_optional(lambda: captured)
+    FnLiteralValue => fn_literal_parts_optional(fn_literal: captured)
   }
 }
 

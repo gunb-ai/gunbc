@@ -48,6 +48,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
+import gunbc.spark.v41_runtime_image_converge { v41_image_distribution_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {
@@ -478,6 +479,13 @@ data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 // A different term is a different budget, automatically, and neither number can drift from the other.
 fn gunbc_ci_spark_runtime_image_build_step_timeout_minutes() -> Int {
   second_count(s: vllm_build_host_effect_term) / 60
+}
+
+// THE SAME DERIVATION FOR THE PRODUCED IMAGE'S DISTRIBUTION: its step budget is the term both of
+// its host-effect claims are admitted for (gunbc.spark.v41_runtime_image_converge
+// v41_image_distribution_host_effect_term).
+fn gunbc_ci_spark_runtime_image_distribute_step_timeout_minutes() -> Int {
+  second_count(s: v41_image_distribution_host_effect_term) / 60
 }
 
 data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.

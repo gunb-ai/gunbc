@@ -2,11 +2,13 @@ module test.claim.self_host_program_partition_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt probe for Wave 2 parallel flip (program_partition): compares
-// gunbc-emitted vs seed partition_structural_value_carriers_dissolution_trigger
-// (program_partition.dag module authority constant); --inject-fault perturbs emitted comparison
-// (not driver flag). Full partition-tree walk deferred until emit surface greens (#6775). Live host
-// effects — enroll when frontier flips SelfEmitted with binding.
+// Wet self-host behavioral receipt (program_partition): the driver (the roster's driver_rel) checks
+// the .dag contract on the EMITTED module with no seed oracle -- emitted
+// partition_user_semantic_types_from_root collects named type declarations and skips value
+// declarations and positional edges; --inject-fault feeds the refused input where the accepted one
+// is expected, so the fault run is red only if the emitted module really refuses it. It used to
+// compare a prose module constant against a hand copy in v1_compiler, which established nothing
+// about behavior (gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module).
 
 test fn self_host_program_partition_behavioral_receipt_holds() -> Bool {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/program_partition.dag")

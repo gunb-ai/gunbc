@@ -449,7 +449,7 @@ fn scm_env_count_named_array(members: List<JsonKeyValue>, key: String) -> Int {
 fn scm_env_array_len_if_key(acc: Int, m: JsonKeyValue, key: String) -> Int {
   if m.key == key {
     match m.value {
-      JsonArray { elements: es } => count(es)
+      JsonArray { elements: es } => count(es) as Int
       _ => acc
     }
   } else {
