@@ -210,6 +210,7 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
+  is_lambda_expr,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -11553,10 +11554,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 // callable whatever list holds it. A non-lambda element keeps its own rendering -- a call result or
 // a parameter already carries the arrow carrier its producer chose.
 fn rust_list_lit_holds_callables(texpr: Node) -> Bool {
-  texpr.children |> any(el => match el.expr_data {
-    ExprLambda => true
-    _ => false
-  })
+  texpr.children |> any(el => is_lambda_expr(e: el))
 }
 
 // vec! takes its element type from its first element, so each wrapped lambda is also BOUND at the

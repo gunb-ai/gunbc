@@ -187,8 +187,8 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_emit_graph_info, build_params_scope, call_args_by_name, caller_resource_requirements,
     declared_return_type_node, established_resource_binding, expand_type_for_field_access,
-    expr_span, extend_scope, is_where_refinement_type, match_unguarded_absent_arm_index,
-    optional_scrutinee_binding_is_present, resolved_type_name,
+    expr_span, extend_scope, is_lambda_expr, is_where_refinement_type,
+    match_unguarded_absent_arm_index, optional_scrutinee_binding_is_present, resolved_type_name,
 };
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
@@ -24456,10 +24456,7 @@ pub fn rust_list_lit_holds_callables(texpr: Rc<Node>) -> bool {
     {
         let mut __found = false;
         for el in texpr.children.clone().iter().cloned() {
-            if match (*el.expr_data.clone()).clone() {
-                ExprData::ExprLambda => true,
-                _ => false,
-            } {
+            if crate::v1_compiler_infer::is_lambda_expr(el.clone()) {
                 __found = true;
                 break;
             }

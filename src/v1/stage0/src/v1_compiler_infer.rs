@@ -2649,10 +2649,7 @@ pub fn declared_callable_list_element(
             if ((de.connective.clone() == Connective::Arrow) && {
                 let mut __all = true;
                 for e in elements.iter().cloned() {
-                    if !(match (*e.expr_data.clone()).clone() {
-                        ExprData::ExprLambda => true,
-                        _ => false,
-                    }) {
+                    if !(is_lambda_expr(e.clone())) {
                         __all = false;
                         break;
                     }
