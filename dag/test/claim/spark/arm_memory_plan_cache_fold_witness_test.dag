@@ -27,6 +27,7 @@ import gunbc.spark.arm_memory_fit {
   CacheCapacityCandidate, cache_capacity_candidate,
   CacheFrontierRung, CacheFrontierRungProved, CacheFrontierRungRefused, CacheFrontier, CacheFrontierUnestablished, cache_frontier_from_plan,
   ArmMemoryFitUnestablished, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
+  PrefillTransientFitUnestablished,
   pool_construction_per_rank,
   PoolConstructionSlackProved, PoolConstructionSlackUnestablished, PoolConstructionSlackRefused,
   pool_construction_slack_standing, CacheFitWithPoolConstruction, cache_fit_with_pool_construction,
@@ -868,7 +869,11 @@ test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool {
         supplies: supplies,
         rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve)
       let arm = ArmMemoryFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] }
-      let standing = arm_memory_fit_whole_standing(cache: cache, arm: arm, subject_length: token_count(count: 262144))
+      let standing = arm_memory_fit_whole_standing(
+        cache: cache,
+        prefill: PrefillTransientFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] },
+        arm: arm,
+        subject_length: token_count(count: 262144))
       frontier_proves_eight
         && (match cache {
           CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>

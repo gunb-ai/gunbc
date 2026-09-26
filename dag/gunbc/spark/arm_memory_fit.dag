@@ -17,7 +17,13 @@ import std.interval {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read, vllm_gb10_sparse_indexer_max_logits }
+import extdeps.vllm.sparse_prefill_transient {
+  sparse_indexer_k_gather_workspace_bytes, sparse_indexer_prefill_logits_cap_bytes,
+  sparse_attn_output_upper_bytes, sparse_topk_physical_upper_bytes,
+  sparse_prefill_chunk_temporaries_upper_bytes,
+  flashinfer_sparse_workspace_bytes, vllm_flashinfer_workspace_buffer_default,
+}
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, KvGroupLayout, cold_admission_blocks,
   AdmissionCostBlocks, AdmissionCostUnestablished,
@@ -2916,43 +2922,264 @@ fn arm_verdict_obligations(v: ArmMemoryFitVerdict) -> List<NonEmptyStr> {
 
 // THE SPARSE-INDEXER PREFILL BUFFER, as a CANDIDATE: the owner directive cites the upstream formula
 // (40 index entries per model token, 132 bytes per entry -- the 128-dim FP8 vector plus its scale,
-// ~1.29 GiB per applicable rank at 262144 tokens). THE CITATION IS NOT YET THE PINNED SOURCE: the
-// formula awaits being read in the deployed engine revision (vllm@8d09804c8) before it discharges
-// anything, and until then the prefill transient term is open with this candidate carried beside
-// the obligation. WHICH RANKS the buffer lands on (the sparse layers' TP shard) is part of what
-// the pinned-source read owes.
+// ~1.29 GiB per applicable rank at 262144 tokens). THE CITATION HAS LANDED (extdeps.vllm.
+// sparse_prefill_transient): the formula IS the pinned get_max_prefill_buffer_size at vllm@8d09804c8
+// -- max_model_len x 40 entries x 132 bytes, an exact match at this length -- with the buffer's real
+// lifecycle named there (sized by max_model_len not request length, launch-persistent through the
+// workspace manager, identical on every rank). The candidate stays as the owner-directive carrier;
+// the DERIVED terms and the subproof fold below are the authority that discharges the obligation.
 fn sparse_indexer_prefill_buffer_candidate(length: TokenCount) -> ByteSize {
   byte_size(count: 40 * 132 * token_count_value(t: length))
 }
 
+// ── THE PREFILL TRANSIENT SUBPROOF ───────────────────────────────────────────────────────────────
+//
+// THE OBLIGATION THIS CLOSES (docs/plans/shared-pool-byte-correction.md, operational sequence step
+// 4): the whole-arm verdict for 262144x6 stood Unestablished on the prefill transient. THE DEMAND
+// RECORD IS COMPLETE, one entry per mechanism, and every entry is either the engine's own reported
+// peak at THIS subject or an exact derivation for a mechanism the profiling pass demonstrably does
+// not run (extdeps.vllm.sparse_prefill_transient's coverage fact). NO DOUBLE CHARGE, said where the
+// sum is built: the printed peak activation CONTAINS the CUDA-graph estimate and the estimate
+// exceeds the actual captured pool (1.82 vs 0.1 GiB at the v2 launch, the engine's own two lines),
+// so the activation print upper-bounds true-activation-plus-actual-graph together and the graph term
+// is absorbed, never charged a second time; and the indexer workspace plus the logits-ceiling
+// reservation are inside the profiled pass by construction, so they VALIDATE the measurement's
+// coverage instead of adding to the sum.
+type PrefillTransientShape {
+  length: TokenCount
+  seats: Nat
+  max_num_batched_tokens: Nat
+  indexer_head_dim: Nat
+  index_topk: Nat
+  index_kpool: Nat
+  attention_heads_per_rank: Nat
+  kv_lora_rank: Nat
+}
+
+// THE DERIVED TERMS at one shape: exact formulas, no measured content. The logits cap imports the
+// fleet env row (extdeps.vllm.server vllm_gb10_sparse_indexer_max_logits = 64 MiB), the flashinfer
+// workspace imports the pinned default (the fleet launch carries no override).
+type PrefillTransientDemandTerms {
+  indexer_k_gather_workspace: ByteSize
+  indexer_prefill_logits_cap: ByteSize
+  flashinfer_sparse_workspace: ByteSize
+  sparse_attn_output_upper: ByteSize
+  sparse_topk_physical_upper: ByteSize
+  sparse_chunk_temporaries_upper: ByteSize
+}
+
+fn prefill_transient_demand_terms(shape: PrefillTransientShape) -> PrefillTransientDemandTerms {
+  PrefillTransientDemandTerms {
+    indexer_k_gather_workspace: sparse_indexer_k_gather_workspace_bytes(max_model_len: shape.length, head_dim: shape.indexer_head_dim),
+    indexer_prefill_logits_cap: sparse_indexer_prefill_logits_cap_bytes(max_logits: vllm_gb10_sparse_indexer_max_logits),
+    flashinfer_sparse_workspace: flashinfer_sparse_workspace_bytes(configured: vllm_flashinfer_workspace_buffer_default),
+    sparse_attn_output_upper: sparse_attn_output_upper_bytes(max_num_batched_tokens: shape.max_num_batched_tokens, num_heads: shape.attention_heads_per_rank, kv_lora_rank: shape.kv_lora_rank),
+    sparse_topk_physical_upper: sparse_topk_physical_upper_bytes(max_num_batched_tokens: shape.max_num_batched_tokens, index_topk: shape.index_topk, index_kpool: shape.index_kpool),
+    sparse_chunk_temporaries_upper: sparse_prefill_chunk_temporaries_upper_bytes(max_num_batched_tokens: shape.max_num_batched_tokens, index_topk: shape.index_topk, index_kpool: shape.index_kpool),
+  }
+}
+
+// WHAT THE MEASURED PEAK MUST COVER for the demand sum to be honest: the two terms the profiling
+// forward reserves (the workspace and the logits ceiling) must fit under the measured peak's LOWER
+// endpoint -- the reservation happens inside the profiled pass, so a measured peak below the
+// derived reservation says the reading and the derivation describe different launches.
+fn prefill_reservation_within_measurement(terms: PrefillTransientDemandTerms, activation_lower: ByteSize) -> Bool {
+  measure_le(
+    a: measure_add(a: terms.indexer_k_gather_workspace, b: terms.indexer_prefill_logits_cap),
+    b: activation_lower)
+}
+
+// THE EXTRAS SUM, the demand beyond the measured peak: the four mechanisms the profiling pass does
+// not run (flashinfer workspace, attention output, per-forward top-k conversion, per-chunk
+// temporaries). Each is exact or an upper construction at the batch ceiling; none is length-
+// proportional (extdeps.vllm.sparse_prefill_transient terms 3 and 4).
+fn prefill_transient_extras_upper(terms: PrefillTransientDemandTerms) -> ByteSize {
+  measure_add(
+    a: terms.flashinfer_sparse_workspace,
+    b: measure_add(
+      a: terms.sparse_attn_output_upper,
+      b: measure_add(a: terms.sparse_topk_physical_upper, b: terms.sparse_chunk_temporaries_upper)))
+}
+
+// ONE RANK'S SUPPLY EVIDENCE, all at conservative endpoints: the envelope and the composite at
+// their floors, the measured peak at its interval upper (the reporter's rounding unit). Zero
+// readings bound nothing -- the same law the cache supply side carries.
+type PrefillTransientRankInput {
+  rank: Nat
+  envelope_floor: ByteSize
+  composite_floor: ByteSize
+  activation_upper: ByteSize
+  activation_lower: ByteSize
+}
+
+type PrefillTransientFitVerdict
+  = PrefillTransientFitProved {
+      limiting_rank: Nat
+      length: TokenCount
+      seats: Nat
+      demand_upper_bytes: ByteSize
+      supply_floor_bytes: ByteSize
+      headroom_bytes: ByteSize
+      terms: PrefillTransientDemandTerms
+    }
+  | PrefillTransientFitRefused {
+      rank: Nat
+      length: TokenCount
+      seats: Nat
+      demand_upper_bytes: ByteSize
+      supply_floor_bytes: ByteSize
+      cause: NonEmptyStr
+    }
+  | PrefillTransientFitUnestablished { obligations: List<NonEmptyStr> }
+
+// THE FOLD. Order: input obligations (zero readings, missing pool), the coverage validation on
+// every rank, then the per-rank decision -- supply = envelope floor - composite floor - the pool
+// carve (saturating), demand = measured peak upper + the extras upper; first rank whose demand
+// exceeds supply refuses with both numbers, otherwise Proved at the least headroom. THE POOL CARVE
+// IS THE LAUNCH-LEVEL 13,766,049,792-BYTE v2 FIGURE or whatever carve the caller prices: it is
+// persistent residency inside the envelope, deducted from supply like the composite.
+fn prefill_transient_fit_verdict(
+  shape: PrefillTransientShape,
+  ranks: List<PrefillTransientRankInput>,
+  pool_carve_bytes: ByteSize,
+) -> PrefillTransientFitVerdict {
+  let terms = prefill_transient_demand_terms(shape: shape)
+  let extras = prefill_transient_extras_upper(terms: terms)
+  let obligations = concat(
+    map(filter(ranks, r =>
+        byte_size_count(b: r.envelope_floor) == 0
+          || byte_size_count(b: r.composite_floor) == 0
+          || byte_size_count(b: r.activation_upper) == 0), r =>
+      join(["rank ", to_string(r.rank), " carries a zero envelope, composite or activation reading: a zero reading bounds nothing and the prefill supply side stays open on that rank"], "") as NonEmptyStr),
+    concat(
+      match byte_size_count(b: pool_carve_bytes) == 0 {
+        true => ["the pool carve is zero or unpriced: persistent residency inside the envelope is a mandatory supply deduction and an unpriced carve prices no prefill headroom" as NonEmptyStr]
+        false => [] as List<NonEmptyStr>
+      },
+      map(filter(ranks, r => !prefill_reservation_within_measurement(terms: terms, activation_lower: r.activation_lower)), r =>
+        join(["rank ", to_string(r.rank), " coverage validation failed: the derived indexer workspace plus logits ceiling (", to_string(byte_size_count(b: measure_add(a: terms.indexer_k_gather_workspace, b: terms.indexer_prefill_logits_cap))), " bytes) exceeds the measured peak's lower endpoint, so the profile reading does not cover the pinned reservation terms -- the reading and the derivation describe different launches"], "") as NonEmptyStr)))
+  match length(obligations) > 0 {
+    true => PrefillTransientFitUnestablished { obligations: obligations }
+    false =>
+      match prefill_transient_rank_refusal(shape: shape, terms: terms, extras: extras, ranks: ranks, pool_carve_bytes: pool_carve_bytes) {
+        Present { value: refused } => refused
+        Absent => prefill_transient_proved_corner(shape: shape, terms: terms, extras: extras, ranks: ranks, pool_carve_bytes: pool_carve_bytes)
+      }
+  }
+}
+
+fn prefill_transient_rank_supply(r: PrefillTransientRankInput, pool_carve_bytes: ByteSize) -> ByteSize {
+  subtract_saturating(
+    minuend: subtract_saturating(minuend: r.envelope_floor, subtrahend: r.composite_floor),
+    subtrahend: pool_carve_bytes)
+}
+
+fn prefill_transient_rank_demand(r: PrefillTransientRankInput, extras: ByteSize) -> ByteSize {
+  measure_add(a: r.activation_upper, b: extras)
+}
+
+fn prefill_transient_rank_refusal(shape: PrefillTransientShape, terms: PrefillTransientDemandTerms, extras: ByteSize, ranks: List<PrefillTransientRankInput>, pool_carve_bytes: ByteSize) -> PrefillTransientFitVerdict? {
+  first(map(filter(ranks, r =>
+      byte_size_count(b: prefill_transient_rank_demand(r: r, extras: extras)) > byte_size_count(b: prefill_transient_rank_supply(r: r, pool_carve_bytes: pool_carve_bytes))), r =>
+    PrefillTransientFitRefused {
+      rank: r.rank,
+      length: shape.length,
+      seats: shape.seats,
+      demand_upper_bytes: prefill_transient_rank_demand(r: r, extras: extras),
+      supply_floor_bytes: prefill_transient_rank_supply(r: r, pool_carve_bytes: pool_carve_bytes),
+      cause: join([
+        "prefill transient fit REFUSED at rank ", to_string(r.rank), ": the derived worst-case prefill demand of ",
+        to_string(byte_size_count(b: prefill_transient_rank_demand(r: r, extras: extras))),
+        " bytes (measured peak activation upper + the derived post-profile extras of ",
+        to_string(byte_size_count(b: extras)),
+        " bytes: flashinfer sparse workspace, attention output, top-k conversion, chunk temporaries) exceeds the rank's transient supply floor of ",
+        to_string(byte_size_count(b: prefill_transient_rank_supply(r: r, pool_carve_bytes: pool_carve_bytes))),
+        " bytes (envelope floor - composite floor - the pool carve)",
+      ], "") as NonEmptyStr,
+    }))
+}
+
+// THE PROVED CORNER, reached only when no rank refused: the least headroom across the ranks names
+// the limiting rank, and the verdict reports that rank's own demand and supply figures beside the
+// derived terms.
+type PrefillTransientCorner {
+  rank: Nat
+  demand_upper: ByteSize
+  supply_floor: ByteSize
+  headroom: ByteSize
+}
+
+fn prefill_transient_proved_corner(shape: PrefillTransientShape, terms: PrefillTransientDemandTerms, extras: ByteSize, ranks: List<PrefillTransientRankInput>, pool_carve_bytes: ByteSize) -> PrefillTransientFitVerdict {
+  let corners = map(ranks, r => PrefillTransientCorner {
+    rank: r.rank,
+    demand_upper: prefill_transient_rank_demand(r: r, extras: extras),
+    supply_floor: prefill_transient_rank_supply(r: r, pool_carve_bytes: pool_carve_bytes),
+    headroom: subtract_saturating(minuend: prefill_transient_rank_supply(r: r, pool_carve_bytes: pool_carve_bytes), subtrahend: prefill_transient_rank_demand(r: r, extras: extras)),
+  })
+  let worst = fold(corners, init: first(corners), f: (acc, s) => match acc {
+    Absent => Present { value: s }
+    Present { value: a } =>
+      match byte_size_count(b: s.headroom) < byte_size_count(b: a.headroom) {
+        true => Present { value: s }
+        false => acc
+      }
+  })
+  match worst {
+    Absent => PrefillTransientFitUnestablished { obligations: ["unreachable: a rank roster that passed the zero-reading wall has a first rank" as NonEmptyStr] }
+    Present { value: w } => PrefillTransientFitProved {
+      limiting_rank: w.rank,
+      length: shape.length,
+      seats: shape.seats,
+      demand_upper_bytes: w.demand_upper,
+      supply_floor_bytes: w.supply_floor,
+      headroom_bytes: w.headroom,
+      terms: terms,
+    }
+  }
+}
+
+// THE STAND-IN OBLIGATION, for callers assembling a standing before the subproof has been priced
+// (the cache-fold witness is one): the citation has landed, so what is open is never the formula
+// but the fold -- the derived terms exist and await pricing against a subject's own evidence.
 fn arm_prefill_transient_obligation(length: TokenCount) -> NonEmptyStr {
   join([
     "prefill-transient-fit is unestablished at ", to_string(token_count_value(t: length)),
-    " tokens: the sparse-indexer prefill buffer (owner-directive formula 40 entries per model token x 132 bytes = ",
+    " tokens: the sparse-indexer prefill terms are derived at the pinned runtime source (vllm@8d09804c8: K-gather workspace 40 x max_model_len x 132 = ",
     to_string(byte_size_count(b: sparse_indexer_prefill_buffer_candidate(length: length))),
-    " bytes per applicable rank) is cited from docs/plans/moa-memory-modeling.md and awaits citation against the pinned runtime source (vllm@8d09804c8) before it bounds anything; the applicable-rank population is open with it",
+    " bytes per rank at this length, logits ceiling the fleet's 64 MiB env cap), and this subject's own envelope/composite/activation evidence has not been priced through prefill_transient_fit_verdict",
   ], "") as NonEmptyStr
+}
+
+fn prefill_transient_obligations(v: PrefillTransientFitVerdict) -> List<NonEmptyStr> {
+  match v {
+    PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => [] as List<NonEmptyStr>
+    PrefillTransientFitRefused { rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, cause: c } => [c]
+    PrefillTransientFitUnestablished { obligations: os } => os
+  }
 }
 
 type ArmMemoryWholeStanding {
   cache_verdict: CacheFitVerdict
+  prefill_verdict: PrefillTransientFitVerdict
   arm_verdict: ArmMemoryFitVerdict
   open_obligations: List<NonEmptyStr>
 }
 
-// THE STANDING ASSEMBLY: both verdicts, and the open obligations named with their subproof --
-// cache obligations as they stand, arm obligations as they stand, and the prefill transient
-// obligation the arm verdict does not yet price (it names the subproof the directive adds to the
-// conjunction).
-fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, arm: ArmMemoryFitVerdict, subject_length: TokenCount) -> ArmMemoryWholeStanding {
+// THE STANDING ASSEMBLY: the three subproof verdicts side by side, and the open obligations named
+// with their subproof -- cache obligations as they stand, prefill obligations as the fold mints
+// them, arm obligations as they stand. A proved cache beside a proved prefill transient beside an
+// arm verdict still carrying open terms is exactly that: the conjunction reports each subproof's
+// own state, and the whole-arm fit waits for every arm obligation to close, never promoted early.
+fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, prefill: PrefillTransientFitVerdict, arm: ArmMemoryFitVerdict, subject_length: TokenCount) -> ArmMemoryWholeStanding {
   ArmMemoryWholeStanding {
     cache_verdict: cache,
+    prefill_verdict: prefill,
     arm_verdict: arm,
     open_obligations: concat(
       map(cache_verdict_obligations(v: cache), o => join(["cache-capacity-fit: ", o as String], "") as NonEmptyStr),
       concat(
-        map(arm_verdict_obligations(v: arm), o => join(["arm-memory-fit: ", o as String], "") as NonEmptyStr),
-        [arm_prefill_transient_obligation(length: subject_length)])),
+        map(prefill_transient_obligations(v: prefill), o => join(["prefill-transient-fit: ", o as String], "") as NonEmptyStr),
+        map(arm_verdict_obligations(v: arm), o => join(["arm-memory-fit: ", o as String], "") as NonEmptyStr))),
   }
 }
 

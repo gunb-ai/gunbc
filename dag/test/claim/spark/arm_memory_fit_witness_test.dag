@@ -8,7 +8,7 @@ import std.measure {
   gibibyte, gibibyte_to_byte_size, gibibyte_scale_factor_bytes, basis_point,
   token_count, token_count_value,
   allocator_block_count, attention_layer_count,
-  concurrent_request_hundredths_count,
+  concurrent_request_hundredths_count, mebibyte,
 }
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.server { vllm_source_revision_read }
@@ -71,6 +71,10 @@ import gunbc.spark.arm_memory_fit {
   CacheFitProved, CacheFitRefused, CacheFitUnestablished,
   ArmRankCacheSupply, cache_fit_verdict, CacheCapacityCandidate, cache_capacity_candidate,
   sparse_indexer_prefill_buffer_candidate, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
+  ArmMemoryWholeStanding,
+  PrefillTransientShape, PrefillTransientRankInput, PrefillTransientDemandTerms,
+  prefill_transient_demand_terms, prefill_transient_extras_upper, prefill_transient_fit_verdict,
+  PrefillTransientFitProved, PrefillTransientFitRefused, PrefillTransientFitUnestablished,
 }
 
 import gunbc.spark.arm_memory_experiment_observed {
@@ -78,9 +82,14 @@ import gunbc.spark.arm_memory_experiment_observed {
   arm_experiment_2026_09_25_admit, arm_experiment_2026_09_25_pool_readings,
   arm_experiment_2026_09_25_envelope_readings, arm_experiment_2026_09_25_reported_capacity,
   arm_experiment_2026_09_25_six_seat_candidate, arm_experiment_2026_09_25_limiting_rank,
+  arm_experiment_kvplan_v2_2026_09_26_arena_readings,
+  arm_experiment_gib_hundredths_floor, arm_experiment_gib_hundredths_lower, arm_experiment_gib_hundredths_upper,
 }
 import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape }
 import extdeps.vllm.kv_layout { MambaState, KPoolIndex }
+import extdeps.vllm.sparse_prefill_transient {
+  sparse_indexer_prefill_logits_cap_bytes, flashinfer_sparse_workspace_bytes,
+}
 
 // THE RESTORATION PROFILE, unwrapped through the plain carrier the resolver seam can type (the
 // sole-constructor payload's produced identity is erased at the cross-module Present seam).
@@ -2048,7 +2057,11 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
     })
     && (match arm {
       Present { value: arm_verdict } =>
-        let standing = arm_memory_fit_whole_standing(cache: cache, arm: arm_verdict, subject_length: token_count(count: 262144))
+        let standing = arm_memory_fit_whole_standing(
+          cache: cache,
+          prefill: PrefillTransientFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] },
+          arm: arm_verdict,
+          subject_length: token_count(count: 262144))
         (match standing.cache_verdict {
           CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
           _ => false
@@ -2095,6 +2108,227 @@ test fn w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its
     && byte_size_count(b: sparse_indexer_prefill_buffer_candidate(length: token_count(count: 262144))) == 1384120320
     && string_contains(s: arm_prefill_transient_obligation(length: token_count(count: 262144)) as String, pattern: "prefill-transient-fit")
     && string_contains(s: arm_prefill_transient_obligation(length: token_count(count: 262144)) as String, pattern: "8d09804")
+}
+
+// ── WITNESS 26: THE DERIVED TERMS ARE EXACT AT THE GLM SHAPE ───────────────────────────────────────
+//
+// THE PINNED FORMULAS COMPUTE (extdeps.vllm.sparse_prefill_transient, every figure cited there to
+// vllm@8d09804c8): the workspace is the owner-cited 1,384,120,320 bytes -- the candidate formula
+// and the pinned get_max_prefill_buffer_size AGREE at 262144, which is the citation the obligation
+// owed, no looser and no tighter -- the logits ceiling is the fleet's 64 MiB env cap exactly, the
+// flashinfer workspace is the pinned 394 MiB default (the fleet launch overrides it nowhere), and
+// the batch-bounded temporaries are closed forms of the config the engine itself pins (index_topk
+// = 2048 at the reported FLASHINFER_MLA_SPARSE_SM120 backend, attention heads per rank 16 = 64
+// divided across TP4).
+fn fx_prefill_shape() -> PrefillTransientShape {
+  PrefillTransientShape {
+    length: token_count(count: 262144),
+    seats: 6,
+    max_num_batched_tokens: 2048,
+    indexer_head_dim: 128,
+    index_topk: 2048,
+    index_kpool: 4,
+    attention_heads_per_rank: 16,
+    kv_lora_rank: 512,
+  }
+}
+
+data fx_prefill_v2_pool_carve_bytes: ByteSize = byte_size(count: 13766049792)
+
+test fn w_the_prefill_terms_derive_exact_from_the_pinned_source() -> Bool {
+  let terms = prefill_transient_demand_terms(shape: fx_prefill_shape())
+  byte_size_count(b: terms.indexer_k_gather_workspace) == 1384120320
+    && byte_size_count(b: terms.indexer_prefill_logits_cap) == 67108864
+    && byte_size_count(b: terms.flashinfer_sparse_workspace) == 413138944
+    && byte_size_count(b: terms.sparse_attn_output_upper) == 33554432
+    && byte_size_count(b: terms.sparse_topk_physical_upper) == 17825792
+    && byte_size_count(b: terms.sparse_chunk_temporaries_upper) == 20971520
+    && byte_size_count(b: prefill_transient_extras_upper(terms: terms)) == 485490688
+    && byte_size_count(b: sparse_indexer_prefill_buffer_candidate(length: token_count(count: 262144))) == byte_size_count(b: terms.indexer_k_gather_workspace)
+}
+
+// ── WITNESS 27: THE SUBPROOF PROVES AT THE V2 BUNDLE ───────────────────────────────────────────────
+//
+// THE REAL SUBJECT'S OWN EVIDENCE, no fixture numbers: the v2-plan launch's four envelope-derived
+// readings (envelope, weights+nontorch composite, activation per rank at the reporter's hundredths
+// unit, gunbc.spark.arm_memory_experiment_observed) priced through prefill_transient_fit_verdict
+// against the v2 pool carve (13,766,049,792 bytes, the plan the same launch printed). THE VERDICT:
+// PrefillTransientFitProved at the worst corner -- limiting rank 3 (srv11, the smallest envelope
+// minus composite minus carve), demand 4,410,017,055 bytes against a 7,837,635,706-byte supply
+// floor, headroom 3,427,618,651 bytes. The measured-peak-plus-derived-extras charge fits every
+// rank; the ~1.71 GiB estimate-over-actual graph residue rides inside the supply side's slack,
+// never charged.
+fn fx_prefill_v2_ranks() -> List<PrefillTransientRankInput> {
+  map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => PrefillTransientRankInput {
+    rank: r.rank,
+    envelope_floor: arm_experiment_gib_hundredths_floor(hundredths: r.envelope_hundredths_gib),
+    composite_floor: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    activation_upper: arm_experiment_gib_hundredths_upper(hundredths: r.activation_hundredths_gib),
+    activation_lower: arm_experiment_gib_hundredths_lower(hundredths: r.activation_hundredths_gib),
+  })
+}
+
+test fn w_the_prefill_subproof_proves_at_the_v2_bundle() -> Bool {
+  match prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+    PrefillTransientFitProved { limiting_rank: lr, length: l, seats: s, demand_upper_bytes: d, supply_floor_bytes: sup, headroom_bytes: h, terms: terms } =>
+      lr == 3
+        && token_count_value(t: l) == 262144
+        && s == 6
+        && byte_size_count(b: d) == 4410017055
+        && byte_size_count(b: sup) == 7837635706
+        && byte_size_count(b: h) == 3427618651
+        && byte_size_count(b: terms.indexer_k_gather_workspace) == 1384120320
+    _ => false
+  }
+}
+
+// ── WITNESS 28: THE VERDICT DISCRIMINATES ────────────────────────────────────────────────────────
+//
+// THREE REDS, each a different wall. (1) SHRINK THE LIMITING RANK'S ENVELOPE below
+// composite + carve + demand and the same evidence refuses at rank 3 with both numbers -- the
+// verdict is evidence-priced, not a standing constant. (2) A ZERO ACTIVATION READING bounds
+// nothing: Unestablished at the zero wall, never a generous zero. (3) A MEASURED PEAK whose lower
+// endpoint sits UNDER the derived workspace-plus-ceiling reservation breaks the coverage
+// validation -- the reading and the pinned derivation then describe different launches, and the
+// fold says so rather than pricing a lying receipt.
+test fn w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold() -> Bool {
+  let ranks = fx_prefill_v2_ranks()
+  let shrunk = map(ranks, r =>
+    if r.rank == 3 {
+      PrefillTransientRankInput {
+        rank: r.rank,
+        envelope_floor: byte_size(count: 106673867980),
+        composite_floor: r.composite_floor,
+        activation_upper: r.activation_upper,
+        activation_lower: r.activation_lower,
+      }
+    } else {
+      r
+    })
+  match prefill_transient_fit_verdict(shape: fx_prefill_shape(), ranks: shrunk, pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+    PrefillTransientFitRefused { rank: r, length: _, seats: _, demand_upper_bytes: d, supply_floor_bytes: sup, cause: c } =>
+      r == 3
+        && byte_size_count(b: d) == 4410017055
+        && byte_size_count(b: sup) == 4410017054
+        && string_contains(s: c as String, pattern: "prefill transient fit REFUSED at rank 3")
+    _ => false
+  }
+}
+
+test fn w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage() -> Bool {
+  let zeroed = map(fx_prefill_v2_ranks(), r =>
+    if r.rank == 1 {
+      PrefillTransientRankInput {
+        rank: r.rank,
+        envelope_floor: r.envelope_floor,
+        composite_floor: r.composite_floor,
+        activation_upper: byte_size(count: 0),
+        activation_lower: r.activation_lower,
+      }
+    } else {
+      r
+    })
+  let broken = map(fx_prefill_v2_ranks(), r =>
+    PrefillTransientRankInput {
+      rank: r.rank,
+      envelope_floor: r.envelope_floor,
+      composite_floor: r.composite_floor,
+      activation_upper: r.activation_upper,
+      activation_lower: byte_size(count: 1),
+    })
+  (match prefill_transient_fit_verdict(shape: fx_prefill_shape(), ranks: zeroed, pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+    PrefillTransientFitUnestablished { obligations: os } =>
+      any(os, o => string_contains(s: o as String, pattern: "zero envelope, composite or activation reading"))
+    _ => false
+  })
+    && (match prefill_transient_fit_verdict(shape: fx_prefill_shape(), ranks: broken, pool_carve_bytes: fx_prefill_v2_pool_carve_bytes) {
+      PrefillTransientFitUnestablished { obligations: os } =>
+        any(os, o => string_contains(s: o as String, pattern: "coverage validation failed"))
+      _ => false
+    })
+}
+
+// ── WITNESS 29: THE DERIVED FIGURES MOVE WITH THE SHAPE ────────────────────────────────────────────
+//
+// THE RED THE OBLIGATION ASKED FOR: a different batch ceiling or a different length changes the
+// derived figures -- the demand record is a function of the priced shape, not a constant wearing
+// its units. Length 524288 doubles the workspace to 2,768,240,640; batch 4096 moves every
+// batch-bounded temporary (attention output 67,108,864, top-k conversion 35,651,584, chunk
+// temporaries 41,943,040 -- extras 557,842,432 against 485,490,688 at 2048); and the two
+// env-configured terms move with their configuration (logits ceiling 134,217,728 at a 128 MiB
+// setting against the fleet's 67,108,864 at 64; flashinfer workspace 134,217,728 at 128 MiB
+// against the pinned 394 MiB default's 413,138,944).
+test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool {
+  let longer = PrefillTransientShape {
+    length: token_count(count: 524288),
+    seats: 6,
+    max_num_batched_tokens: 2048,
+    indexer_head_dim: 128,
+    index_topk: 2048,
+    index_kpool: 4,
+    attention_heads_per_rank: 16,
+    kv_lora_rank: 512,
+  }
+  let wider = PrefillTransientShape {
+    length: token_count(count: 262144),
+    seats: 6,
+    max_num_batched_tokens: 4096,
+    indexer_head_dim: 128,
+    index_topk: 2048,
+    index_kpool: 4,
+    attention_heads_per_rank: 16,
+    kv_lora_rank: 512,
+  }
+  let longer_terms = prefill_transient_demand_terms(shape: longer)
+  let wider_terms = prefill_transient_demand_terms(shape: wider)
+  byte_size_count(b: longer_terms.indexer_k_gather_workspace) == 2768240640
+    && byte_size_count(b: longer_terms.indexer_prefill_logits_cap) == 67108864
+    && byte_size_count(b: wider_terms.sparse_attn_output_upper) == 67108864
+    && byte_size_count(b: wider_terms.sparse_topk_physical_upper) == 35651584
+    && byte_size_count(b: wider_terms.sparse_chunk_temporaries_upper) == 41943040
+    && byte_size_count(b: prefill_transient_extras_upper(terms: wider_terms)) == 557842432
+    && byte_size_count(b: prefill_transient_extras_upper(terms: wider_terms)) != byte_size_count(b: prefill_transient_extras_upper(terms: prefill_transient_demand_terms(shape: fx_prefill_shape())))
+    && byte_size_count(b: sparse_indexer_prefill_logits_cap_bytes(max_logits: mebibyte(count: 128))) == 134217728
+    && byte_size_count(b: flashinfer_sparse_workspace_bytes(configured: mebibyte(count: 128))) == 134217728
+}
+
+// ── WITNESS 30: A PROVED PREFILL RIDES IN THE STANDING BESIDE THE ARM'S OPEN TERMS ────────────────
+//
+// THE CONJUNCTION THE DOCTRINE REQUIRES, at the closed subproof: a standing assembled with the
+// v2 bundle's proved prefill verdict carries NO prefill-transient obligation -- and STILL names
+// the arm verdict's own open terms, because a closed prefill transient promotes nothing it does
+// not own. THE WHOLE-ARM QUESTION the restoration sequence asks is answered by the standing's
+// full obligation list, never by one green subproof.
+test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() -> Bool {
+  let prefill = prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
+  let arm = ArmMemoryFitUnestablished { obligations: ["rank 3 fragmentation-allowance has no defensible bound: fixture arm obligation standing in for the launch wall's own" as NonEmptyStr] }
+  let cache = cache_fit_verdict(
+    layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
+  (match prefill {
+    PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => true
+    _ => false
+  })
+    && (match cache {
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
+      _ => false
+    })
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: arm, subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: p, arm_verdict: _, open_obligations: os } =>
+        (match p {
+          PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => true
+          _ => false
+        })
+          && !any(os, o => string_contains(s: o as String, pattern: "prefill-transient-fit"))
+          && any(os, o => string_contains(s: o as String, pattern: "fragmentation-allowance"))
+    })
 }
 
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
@@ -2146,4 +2380,10 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_negative_observation_cannot_improve_headroom()
     && w_cache_proved_plus_prefill_open_is_proved_beside_unestablished()
     && w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its_citation()
+    && w_the_prefill_terms_derive_exact_from_the_pinned_source()
+    && w_the_prefill_subproof_proves_at_the_v2_bundle()
+    && w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold()
+    && w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage()
+    && w_the_prefill_derived_terms_move_with_batch_and_length()
+    && w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains()
 }
