@@ -6,9 +6,16 @@ import std.measure { second_count, minute_count, hardware_thread_count, hardware
 import v2.std.optional { Present }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
+  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
+}
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+  BootParam5Read, SmproNotTaken, SmproProbed, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
+}
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
+import gunbc.machine_intake_mtcollins1_boot_run {
   SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
   SolAcquireStart, sol_acquire_plan,
-  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
+  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
   mtcollins1_boot_sol_is_held,
   mtcollins1_boot_sol_held_from_observations,
@@ -46,6 +53,7 @@ test fn the_step_timeout_covers_the_boot_phases() -> Bool {
   let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)
+    + (second_count(s: mtcollins1_boot_in_run_smpro_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
     + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
@@ -671,4 +679,24 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
     && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
     && fleet_converge_mtcollins1_boot_concurrency_group == "gunbc-host-mutation-srv1"
     && filter(ids, i => i == "mtcollins1_boot_admit" || i == "wif_auth") == ["mtcollins1_boot_admit", "wif_auth"]
+}
+
+// THE RUN RECORD FOLLOWS HOW FAR THE ACTUATION GOT. An attempt that never observed power on hands
+// off nothing, so no consumption is minted and no in-run SMpro pass exists; one whose census ended
+// carries both passes and decides consumption from the two boot parameter 5 reads.
+test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
+  let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
+  let never = mtcollins1_boot_run_record(stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd)
+  let ended = mtcollins1_boot_run_record(
+    stage: ActuationCensusEnded { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproProbed { outcomes: [] } },
+    before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
+  )
+  (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
+    && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
+    && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
+    && (match mtcollins1_boot_run_record(
+      stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproNotTaken { reason: "x" } },
+      before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
+    ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
+    && (match ended.smpro_census { SmproProbed { outcomes: _ } => true _ => false })
 }
