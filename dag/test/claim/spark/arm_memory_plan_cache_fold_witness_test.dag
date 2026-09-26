@@ -39,7 +39,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   arm_experiment_2026_09_26_arena_readings, arm_experiment_2026_09_26_generation,
   arm_experiment_kvplan_v2_2026_09_26_cache_supplies, arm_experiment_kvplan_v2_2026_09_26_limiting_rank,
   arm_experiment_kvplan_v2_2026_09_26_arena_readings, arm_experiment_kvplan_v2_2026_09_26_arena_derivation_holds,
-  arm_experiment_kvplan_v2_2026_09_26_generation,
+  arm_experiment_kvplan_v2_2026_09_26_generation, arm_experiment_kvplan_v2_2026_09_26_tp1_graph_pool_estimate,
 }
 import gunbc.spark.vllm_allocation_plan_observe {
   kv_allocation_plan_capture_from_startup_log,
@@ -1127,30 +1127,97 @@ test fn the_v2_run_to_run_variance_is_named_never_folded() -> Bool {
     && length(arm_experiment_kvplan_v2_2026_09_26_arena_readings) == 4
 }
 
-// ── THE POOL-CONSTRUCTION STANDING BESIDE THE V2 VERDICT: FIT PROVED, TIGHT UNESTABLISHED ────────
+// ── THE POOL-CONSTRUCTION STANDING BESIDE THE V2 VERDICT: THE SLACK MECHANISM, PINNED, NAMED ─────
 //
-// THE CONSERVATION FINDING THIS SECTION MODELS HONESTLY: the v2 emission's allocated pool
+// THE CONSERVATION FINDING THIS SECTION MODELS: the v2 emission's allocated pool
 // (13,766,049,792 bytes over 1012 blocks of 13,602,816 — the engine's own figures, conserving
 // exactly) is admitted at EVERY rank's arena — the <= half of the doctrine's construction
-// sentence PASSES on all four ranks — but the limiting rank's arena exceeds the allocated pool by
-// 3,811,103,866 bytes at the hundredths floor (~3.55 GiB, 280 physical pool blocks), where the
-// v1-image launch's construction was tight (slack 346 bytes). The difference is UNEXPLAINED by
-// the current controls, and the CUDA-graph-pool estimation line on TP1's own log (0.1 GiB actual,
-// 1.82 GiB estimated, 1.71 GiB difference) is a candidate mechanism, NOT an established one. The
-// slack standing reports exactly that: Proved at the fit half, Unestablished at the tight half,
-// carrying the slack figure and the candidate as an open obligation — never papered over, and the
-// existing per-rank control is pinned beside it STILL REFUSING the same evidence, not weakened.
+// sentence PASSES on all four ranks — while the limiting rank's arena exceeds the allocated pool
+// by 3,811,103,866 bytes at the hundredths floor (~3.55 GiB, 280 physical pool blocks), where the
+// v1-image launch's construction was tight (slack 346 bytes).
+//
+// THE SLACK MECHANISM IS PINNED, by the prefill lane's coverage fact (extdeps.vllm.
+// sparse_prefill_transient, read off vllm@8d09804c8: gpu_worker.py:580-611 builds the printed
+// peak activation as the profiled transient peak PLUS the CUDA-graph estimate, and gpu_worker.py:
+// 803-810 measures the actual captured pool; the bundle carries TP1's own estimation line, 0.1 GiB
+// actual against 1.82 GiB estimated). The engine's carve basis at this launch sat exactly one
+// printed peak-activation below the post-capture free line: the profile line's own figures give
+// post-capture free of 16.47 GiB ("Current kv cache memory in use", srv11) minus the printed peak
+// activation of 3.65 GiB = 12.82 GiB, which is the engine's own 1012-block carve (1012 x
+// 13,602,816 = 13,766,049,792 bytes = 12.82 GiB) up to the block floor. The slack between the
+// envelope-derived arena and the constructed pool is therefore the printed peak-activation figure
+// itself — profiled transient plus the over-reserved graph estimate — which the pinned fact
+// establishes as arena slack, not demand: NONE of it is persistent residency. The candidate
+// mechanism text stays on the record beside the allowance; the open obligation closes.
+//
+// THE ALLOWANCE, per the doctrine's named-allowance construction (an explicit byte figure with its
+// reason, never an unnamed fudge): the limiting rank's own printed peak-activation column at this
+// launch (srv11, 3.65 GiB at the reporter's hundredths floor = 3,919,157,657 bytes), derived from
+// the observation bundle's own row below — not a new constant. THE DISCRIMINATING RED beside it:
+// the bare estimate-over-actual residue (1.71 GiB) does NOT close the standing — the allowance
+// covers the slack because the whole printed peak-activation rides, not just its graph component.
+// THE EXISTING PER-RANK CONTROL still refuses the same evidence with no allowance, unweakened.
 
 fn w_v2_slack_candidate_mechanism() -> NonEmptyStr {
-  "TP1/srv10's own profile line at this launch: 'CUDA graph pool memory: 0.1 GiB (actual), 1.82 GiB (estimated), difference: 1.71 GiB (1649.1%)' -- the CUDA graph pool's estimated reservation over-counts its actual footprint by ~1.71 GiB, the largest uncertain term in the envelope-minus-usage arena derivation; a candidate for the allocator's available-memory deduction that would leave the constructed pool smaller than the derived arena, NOT an established mechanism" as NonEmptyStr
+  "TP1/srv10's own profile line at this launch: 'CUDA graph pool memory: 0.1 GiB (actual), 1.82 GiB (estimated), difference: 1.71 GiB (1649.1%)' -- the CUDA graph pool's estimated reservation over-counts its actual footprint by ~1.71 GiB, the largest uncertain term in the envelope-minus-usage arena derivation; the pinned coverage fact (extdeps.vllm.sparse_prefill_transient) establishes the estimate-over-actual residue as arena slack, not demand" as NonEmptyStr
 }
 
-// THE V2 SLACK STANDING AT THE REAL FOUR ARENAS: the fit half proves (13,766,049,792 bytes is
-// admitted at every rank's arena floor) and the tight half is Unestablished at the limiting rank
-// -- srv11's 17,577,153,658-byte floor exceeds the pool by 3,811,103,866 bytes, 280 physical pool
-// blocks -- with the candidate mechanism and the open obligation riding in the standing's own
-// fields, and the obligation naming the slack figure verbatim.
-test fn the_v2_pool_fits_every_arena_but_the_tight_construction_is_unestablished() -> Bool {
+// THE NAMED ALLOWANCE, DERIVED FROM THE BUNDLE'S OWN ROW: the limiting rank's printed
+// peak-activation column at the v2 launch (srv11: 3.65 GiB), at the hundredths floor --
+// 3,919,157,657 bytes. The observation layer owns the figure; this caller only projects it.
+fn w_v2_slack_named_allowance_bytes() -> ByteSize {
+  match first(filter(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => r.rank == arm_experiment_kvplan_v2_2026_09_26_limiting_rank)) {
+    Present { value: r } => arm_experiment_gib_hundredths_floor(hundredths: r.activation_hundredths_gib)
+    Absent => byte_size(count: 0)
+  }
+}
+
+fn w_v2_slack_named_allowance_reason() -> NonEmptyStr {
+  "the limiting rank's own printed peak-activation figure at this launch (gpu_worker.py:867 profile line, srv11: 3.65 GiB): the engine's carve basis sat one printed peak-activation below the post-capture free line -- post-capture free 16.47 GiB (the line's own 'Current kv cache memory in use' figure) minus the printed peak 3.65 GiB = 12.82 GiB, the engine's own 1012-block carve of 13,602,816-byte blocks -- and the pinned coverage fact (extdeps.vllm.sparse_prefill_transient, gpu_worker.py:580-611 and 803-810 at vllm@8d09804c8) establishes that the printed peak's CUDA-graph estimate component (1.82 GiB, TP1's own estimation line) over-reserves the actual captured pool (0.1 GiB): the estimate-over-actual residue is arena slack, not demand, and the profiled transient peak is no persistent residency either, so the whole printed peak-activation names the slack between the envelope-derived arena and the constructed pool" as NonEmptyStr
+}
+
+// THE V2 SLACK STANDING AT THE REAL FOUR ARENAS, UNDER THE NAMED ALLOWANCE: the fit half proves
+// (13,766,049,792 bytes is admitted at every rank's arena floor) and the tight half now proves
+// too -- srv11's 17,577,153,658-byte floor exceeds the pool by 3,811,103,866 bytes, under one
+// physical block (13,602,816) plus the named allowance of 3,919,157,657 bytes (3.65 GiB, the
+// limiting rank's own printed peak-activation figure) -- and the Proved arm carries the slack
+// figure beside the construction facts, said rather than hidden.
+test fn the_v2_pool_fits_every_arena_and_the_tight_construction_proves_under_the_named_allowance() -> Bool {
+  match w_minted_v2_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match kv_allocator_carve_from_plan(plan: p) {
+        Absent => false
+        Present { value: carve } =>
+          byte_size_count(b: w_v2_slack_named_allowance_bytes()) == 3919157657
+            && (match pool_construction_slack_standing(
+              carve: carve,
+              supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
+              allowance_bytes: w_v2_slack_named_allowance_bytes(),
+              allowance_reason: w_v2_slack_named_allowance_reason(),
+              candidate_mechanism: w_v2_slack_candidate_mechanism()) {
+              PoolConstructionSlackProved { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a, limiting_rank: lr, limiting_rank_arena_bytes: ab, slack_bytes: sb } =>
+                byte_size_count(b: b) == 13602816
+                  && allocator_block_count_value(c: bl) == 1012
+                  && byte_size_count(b: a) == 13766049792
+                  && lr == 3
+                  && byte_size_count(b: ab) == 17577153658
+                  && byte_size_count(b: sb) == 3811103866
+              _ => false
+            })
+      }
+  }
+}
+
+// THE DISCRIMINATING RED: THE BARE ESTIMATE-OVER-ACTUAL RESIDUE DOES NOT CLOSE THE STANDING.
+// Allowing only TP1's printed estimation-line difference (1.71 GiB at the hundredths floor,
+// 1,836,098,519 bytes) leaves the tight half open -- 3,811,103,866 bytes of slack against one
+// block plus 1.71 GiB is still 280 blocks over -- and the standing must keep minting
+// Unestablished with the candidate text and the open obligation. The allowance above closes the
+// standing because the WHOLE printed peak-activation rides, not because its 1.71 GiB graph
+// component does: this row pins that difference so a future edit cannot silently shrink the
+// allowance to the residue and claim the same proof.
+test fn the_estimate_over_actual_residue_alone_still_leaves_the_slack_open() -> Bool {
   match w_minted_v2_real_plan() {
     Absent => false
     Present { value: p } =>
@@ -1160,22 +1227,14 @@ test fn the_v2_pool_fits_every_arena_but_the_tight_construction_is_unestablished
           match pool_construction_slack_standing(
             carve: carve,
             supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
-            allowance_bytes: byte_size(count: 0),
-            allowance_reason: "none named" as NonEmptyStr,
+            allowance_bytes: arm_experiment_gib_hundredths_floor(hundredths: arm_experiment_kvplan_v2_2026_09_26_tp1_graph_pool_estimate.difference_hundredths_gib),
+            allowance_reason: "TP1's CUDA-graph estimate-over-actual residue alone (the printed 1.71 GiB difference)" as NonEmptyStr,
             candidate_mechanism: w_v2_slack_candidate_mechanism()) {
-            PoolConstructionSlackUnestablished { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a, limiting_rank: lr, limiting_rank_arena_bytes: ab, slack_bytes: sb, slack_physical_pool_blocks: spb, candidate_mechanism: cm, obligation: o } =>
-              byte_size_count(b: b) == 13602816
-                && allocator_block_count_value(c: bl) == 1012
-                && byte_size_count(b: a) == 13766049792
-                && lr == 3
-                && byte_size_count(b: ab) == 17577153658
-                && byte_size_count(b: sb) == 3811103866
-                && spb == 280
+            PoolConstructionSlackUnestablished { slack_bytes: sb, candidate_mechanism: cm, obligation: o } =>
+              byte_size_count(b: sb) == 3811103866
                 && string_contains(s: cm as String, pattern: "CUDA graph pool")
                 && string_contains(s: o as String, pattern: "3811103866")
-                && string_contains(s: o as String, pattern: "280")
                 && string_contains(s: o as String, pattern: "candidate, NOT established")
-                && string_contains(s: o as String, pattern: "PROVED -- the allocated pool")
             _ => false
           }
       }
@@ -1284,10 +1343,10 @@ test fn the_slack_standing_refuses_zero_and_under_arena_readings() -> Bool {
 // THE VERDICT CARRIES THE CONSTRUCTION STANDING BESIDE IT: one join over the v2 plan and the v2
 // bundle's arenas returns CacheFitProved { rank 3, seats 6, blocks_per_seat 123, blocks_used 738,
 // blocks_reserved 123 under ReserveFullLengthSeats{1}, hard_ceiling 8, block_equivalent_bytes
-// 10,038,878,208 } BESIDE PoolConstructionSlackUnestablished { limiting rank 3, slack
-// 3,811,103,866 bytes, 280 physical blocks, the candidate mechanism and the open obligation } --
-// six seats proven at the block wall while the pool's tight construction stays an open obligation,
-// the two facts traveling together so neither can be cited without the other.
+// 10,038,878,208 } BESIDE PoolConstructionSlackProved { limiting rank 3, slack 3,811,103,866
+// bytes } -- six seats proven at the block wall and the pool's tight construction proven under
+// the named peak-activation allowance, the two facts traveling together so neither can be cited
+// without the other.
 test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool {
   match w_minted_v2_real_plan() {
     Absent => false
@@ -1301,8 +1360,8 @@ test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool {
             supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
             rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 },
             carve: carve,
-            allowance_bytes: byte_size(count: 0),
-            allowance_reason: "none named" as NonEmptyStr,
+            allowance_bytes: w_v2_slack_named_allowance_bytes(),
+            allowance_reason: w_v2_slack_named_allowance_reason(),
             candidate_mechanism: w_v2_slack_candidate_mechanism()) {
             CacheFitWithPoolConstruction { cache_verdict: cache, pool_construction: construction } =>
               (match cache {
@@ -1321,11 +1380,9 @@ test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool {
                 _ => false
               })
                 && (match construction {
-                  PoolConstructionSlackUnestablished { limiting_rank: lr2, slack_bytes: sb2, slack_physical_pool_blocks: spb2, candidate_mechanism: cm2, obligation: _ } =>
+                  PoolConstructionSlackProved { limiting_rank: lr2, slack_bytes: sb2 } =>
                     lr2 == 3
                       && byte_size_count(b: sb2) == 3811103866
-                      && spb2 == 280
-                      && string_contains(s: cm2 as String, pattern: "CUDA graph pool")
                   _ => false
                 })
             _ => false
