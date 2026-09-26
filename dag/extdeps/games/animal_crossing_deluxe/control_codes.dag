@@ -1,0 +1,61 @@
+module extdeps.games.animal_crossing_deluxe.control_codes
+
+import std.types { Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.games.animal_crossing.message { ControlCode, vanilla_control_codes }
+
+// Animal Crossing Deluxe, Cuyler36's modification of the GameCube game built on ac-decomp, extends
+// the text engine: its `mFont_cont_info_tbl` has 141 entries where the retail game has 123. No
+// source for the extension is published, so the 18 added codes have no upstream names and carry
+// only the sizes the build itself runs with, read from that table in the build's foresta.rel
+// (offset 0x2e46e8 of the Yaz0-decompressed module, one {size, attribute} octet pair per code).
+// The reading holds for exactly the build pinned below; another Deluxe release is a different
+// build and must be read again.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.belltreeforums.com/threads/animal-crossing-deluxe-mod.638259/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.games.animal_crossing_deluxe.control_codes",
+      decl_name: "deluxe_added_control_codes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// SHA-1 of the disc image the sizes below were read from.
+data deluxe_build_image_sha1: String = "8156db485bf5ebfcabeca2bab50548cc22954689"
+
+data deluxe_added_control_codes: List<ControlCode> = [
+  ControlCode { code: 123, name: "X7B", size: 4 },
+  ControlCode { code: 124, name: "X7C", size: 3 },
+  ControlCode { code: 125, name: "X7D", size: 2 },
+  ControlCode { code: 126, name: "X7E", size: 2 },
+  ControlCode { code: 127, name: "X7F", size: 5 },
+  ControlCode { code: 128, name: "X80", size: 5 },
+  ControlCode { code: 129, name: "X81", size: 8 },
+  ControlCode { code: 130, name: "X82", size: 6 },
+  ControlCode { code: 131, name: "X83", size: 5 },
+  ControlCode { code: 132, name: "X84", size: 2 },
+  ControlCode { code: 133, name: "X85", size: 6 },
+  ControlCode { code: 134, name: "X86", size: 5 },
+  ControlCode { code: 135, name: "X87", size: 5 },
+  ControlCode { code: 136, name: "X88", size: 5 },
+  ControlCode { code: 137, name: "X89", size: 5 },
+  ControlCode { code: 138, name: "X8A", size: 6 },
+  ControlCode { code: 139, name: "X8B", size: 10 },
+  ControlCode { code: 140, name: "X8C", size: 10 }
+]
+
+fn deluxe_control_codes() -> List<ControlCode> {
+  concat(vanilla_control_codes, deluxe_added_control_codes)
+}

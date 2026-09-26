@@ -1,0 +1,130 @@
+module test.claim.animal_crossing_dialogue_witness
+
+import std.types { Bool, Int, List, String }
+import extdeps.games.animal_crossing.message {
+  MessageAccepted, MessageRefused, message_table_ends, message_table_octets, message_tokens, message_text,
+  steering_tokens, text_message, vanilla_control_codes,
+}
+import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
+import examples.animal_crossing.dialogue { AcmsgEdit, LoadedOk, LoadRefused, parse_acmsg }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Messages are supplied as literal octets. The inhabitance run over a real disc image is
+// examples.animal_crossing.dialogue `show`/`build`; the repository does not carry the image.
+
+// "Hi \{PUT_STRING_TAIL}", a line break, a pause of 0x0a, then a literal "{x}".
+data sample_octets: List<Int> = [72, 105, 32, 127, 28, 205, 127, 3, 10, 123, 120, 125, 127, 0]
+data sample_text: String = "Hi \{PUT_STRING_TAIL}\n\{CURSOR_SET_TIME:0a}\{\{x}}\{LAST}"
+
+fn text_of(octets: List<Int>) -> String {
+  match message_tokens(codes: vanilla_control_codes, message: octets) {
+    MessageAccepted { value: t } => message_text(tokens: t)
+    MessageRefused { reason: r } => concat("refused: ", r)
+  }
+}
+
+fn octets_of(text: String) -> List<Int>? {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageAccepted { value: o } => Present { value: o }
+    MessageRefused { reason: _ } => none
+  }
+}
+
+test fn control_code_table_is_indexed_by_code() -> Bool {
+  return count(vanilla_control_codes) == 123
+    && count(deluxe_control_codes()) == 141
+    && fold(deluxe_control_codes(), init: 0, f: (next, c) => if c.code == next { next + 1 } else { -1000 }) == 141
+}
+
+test fn message_text_round_trips_codes_breaks_and_braces() -> Bool {
+  return text_of(octets: sample_octets) == sample_text && octets_of(text: sample_text) == Present { value: sample_octets }
+}
+
+test fn unprintable_octets_round_trip_as_escapes() -> Bool {
+  return text_of(octets: [144, 127, 0]) == "{#90}\{LAST}" && octets_of(text: "{#90}\{LAST}") == Present { value: [144, 127, 0] }
+}
+
+test fn text_refuses_unknown_codes_wrong_arity_and_bare_braces() -> Bool {
+  return octets_of(text: "\{NOPE}") == none
+    && octets_of(text: "\{CURSOR_SET_TIME}") == none
+    && octets_of(text: "\{CURSOR_SET_TIME:01 02}") == none
+    && octets_of(text: "a } b") == none
+    && octets_of(text: "a { b") == none
+}
+
+test fn a_deluxe_code_tokenizes_only_with_the_deluxe_table() -> Bool {
+  let octets = [127, 124, 42, 65]
+  let vanilla = match message_tokens(codes: vanilla_control_codes, message: octets) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+  let deluxe = match message_tokens(codes: deluxe_control_codes(), message: octets) {
+    MessageAccepted { value: t } => message_text(tokens: t) == "\{X7C:2a}A"
+    MessageRefused { reason: _ } => false
+  }
+  return vanilla && deluxe
+}
+
+test fn a_code_running_past_the_message_end_is_refused() -> Bool {
+  return match message_tokens(codes: vanilla_control_codes, message: [65, 127, 3]) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+}
+
+fn steering_of(text: String) -> List<List<Int>> {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageRefused { reason: _ } => [[-1]]
+    MessageAccepted { value: o } =>
+      match message_tokens(codes: vanilla_control_codes, message: o) {
+        MessageAccepted { value: t } => steering_tokens(tokens: t)
+        MessageRefused { reason: _ } => [[-1]]
+      }
+  }
+}
+
+data branching: String = "Done?\{SET_SELECT_STRING_2:01 ae 01 af}\{BUTTON}\{SET_SELECT_WINDOW}\{SET_NEXT_MESSAGE_0:31 1e}\{SET_NEXT_MESSAGE_1:31 1f}\{SET_FORCE_NEXT}\{CONTINUE}"
+
+test fn rewording_and_repacing_keep_the_steering_codes() -> Bool {
+  return steering_of(text: "Hmph.\{CURSOR_SET_TIME:08} Finished?\{SET_SELECT_STRING_2:01 ae 01 af}\{SET_SELECT_WINDOW}\{SET_NEXT_MESSAGE_0:31 1e}\{SET_NEXT_MESSAGE_1:31 1f}\{SET_FORCE_NEXT}\{CONTINUE}") == steering_of(text: branching)
+}
+
+test fn dropping_a_branch_target_changes_the_steering_codes() -> Bool {
+  return steering_of(text: "Done?\{SET_SELECT_STRING_2:01 ae 01 af}\{BUTTON}\{SET_SELECT_WINDOW}\{SET_NEXT_MESSAGE_0:31 1e}\{SET_FORCE_NEXT}\{CONTINUE}") != steering_of(text: branching)
+}
+
+test fn message_table_reads_end_offsets_and_writes_them_back() -> Bool {
+  let table = [0, 0, 0, 3, 0, 0, 1, 0]
+  return match message_table_ends(table: table) {
+    MessageAccepted { value: ends } => ends == [3, 256] && message_table_octets(ends: ends) == table
+    MessageRefused { reason: _ } => false
+  }
+}
+
+test fn a_ragged_message_table_is_refused() -> Bool {
+  return match message_table_ends(table: [0, 0, 3]) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+}
+
+test fn acmsg_blocks_parse_with_labels_and_keep_a_trailing_break() -> Bool {
+  let content = "# comment\n\n=== 12573 cranky: done ===\nline one\nline two\n=== 0x10 ===\nends with a break\n\n"
+  return match parse_acmsg(source: "f.acmsg", content: content) {
+    LoadedOk { value: edits } =>
+      edits == [
+        AcmsgEdit { id: 12573, label: "cranky: done", text: "line one\nline two", source: "f.acmsg:3" },
+        AcmsgEdit { id: 16, label: "", text: "ends with a break\n", source: "f.acmsg:6" },
+      ]
+    LoadRefused { reason: _ } => false
+  }
+}
+
+test fn acmsg_refuses_text_before_the_first_header() -> Bool {
+  return match parse_acmsg(source: "f.acmsg", content: "stray\n=== 1 ===\nx\n") {
+    LoadedOk { value: _ } => false
+    LoadRefused { reason: r } => r == "f.acmsg:1: text before the first '=== id ===' header"
+  }
+}

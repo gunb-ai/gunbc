@@ -1,0 +1,69 @@
+module extdeps.tools.shasum
+
+import std.types { Bool, Int, String, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.algebra { trim }
+
+// shasum(1), the Perl digest tool shipped with macOS and most Unix systems: `shasum -a 1 FILE`
+// prints `<40 lowercase hex digits>  FILE`.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "perldoc.perl.org/shasum"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.shasum",
+      decl_name: "Sha1Hex",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+service shasum.Shasum {
+  operation Sha1File {
+    input { path: String }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["shasum", "-a", "1", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "shasum could not digest the file"
+    }
+  }
+}
+
+// A SHA-1 digest as 40 lowercase hex digits.
+type Sha1Hex {
+  hex: String
+}
+
+fn is_lower_hex_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+}
+
+fn sha1_hex(text: String) -> Sha1Hex? {
+  let t = trim(s: text)
+  if t.length() == 40 && (chars(t) |> all(c => is_lower_hex_code_point(cp: c))) { Present { value: Sha1Hex { hex: t } } } else { none }
+}
+
+// The digest field of a `shasum` output line.
+fn shasum_line_sha1(line: String) -> Sha1Hex? {
+  sha1_hex(text: substring(s: trim(s: line), start: 0, end: 40))
+}
+
+fn sha1_file(path: String) -> Sha1Hex? {
+  let r = shasum.Shasum.Sha1File(path: path)
+  if r.success { shasum_line_sha1(line: r.line) } else { none }
+}

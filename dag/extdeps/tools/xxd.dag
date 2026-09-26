@@ -1,0 +1,107 @@
+module extdeps.tools.xxd
+
+import std.types { Bool, Int, List, String, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.octet_read { hex_digits, hex_octets, octets_hex }
+
+// xxd(1), the hex dump tool distributed with Vim. Two modes are modeled: the plain (-p) dump of a
+// byte range, and reverse (-r) mode, which reads `offset: hexpairs` lines and writes those bytes at
+// those offsets into an existing file without truncating it. Together they are the whole binary
+// boundary of a caller whose Filesystem surface carries only text: bytes come in as a plain hex
+// string and go out as a reverse-mode patch.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vim/vim/blob/master/runtime/doc/xxd.1"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.xxd",
+      decl_name: "XxdRevertLine",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// `-c` caps the octets reverse mode reads from one line; 256 is xxd's maximum.
+data xxd_revert_columns: Int = 256
+
+service xxd.Xxd {
+  operation PlainRange {
+    input { path: String, offset: Int, length: Int }
+    output {
+      hex: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["xxd", "-p", "-s", "{offset}", "-l", "{length}", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "xxd could not dump the requested range"
+    }
+  }
+  operation RevertInto {
+    input { patch: String, target: String }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["xxd", "-r", "-c", "256", "{patch}", "{target}"] }
+    exit {
+      0 => Unit
+      nonzero => String "xxd could not apply the reverse-mode patch"
+    }
+  }
+}
+
+// One reverse-mode line: `offset` is where the first octet lands in the target file.
+type XxdRevertLine {
+  offset: Int
+  octets: List<Int>
+}
+
+fn offset_hex_digits(value: Int, digits: Int) -> String {
+  if digits == 0 { "" }
+  else { concat(offset_hex_digits(value: value / 16, digits: digits - 1), char_at(hex_digits, value % 16)) }
+}
+
+type RevertLineFold {
+  lines: List<XxdRevertLine>
+  start: Int
+  pending: List<Int>
+}
+
+fn revert_line_step(acc: RevertLineFold, octet: Int) -> RevertLineFold {
+  if count(acc.pending) == xxd_revert_columns {
+    RevertLineFold {
+      lines: list_push(acc.lines, XxdRevertLine { offset: acc.start, octets: acc.pending }),
+      start: acc.start + xxd_revert_columns,
+      pending: [octet],
+    }
+  } else {
+    RevertLineFold { lines: acc.lines, start: acc.start, pending: list_push(acc.pending, octet) }
+  }
+}
+
+// Octets split into lines of at most `xxd_revert_columns`, each addressed at its own offset.
+fn xxd_revert_lines(offset: Int, octets: List<Int>) -> List<XxdRevertLine> {
+  let r = fold(octets, init: RevertLineFold { lines: [], start: offset, pending: [] }, f: (acc, o) => revert_line_step(acc: acc, octet: o))
+  if count(r.pending) == 0 { r.lines } else { list_push(r.lines, XxdRevertLine { offset: r.start, octets: r.pending }) }
+}
+
+fn xxd_revert_line_text(line: XxdRevertLine) -> String {
+  join([offset_hex_digits(value: line.offset, digits: 8), ": ", octets_hex(octets: line.octets), "\n"], "")
+}
+
+fn xxd_revert_patch_text(lines: List<XxdRevertLine>) -> String {
+  lines |> map(l => xxd_revert_line_text(line: l)) |> join(separator: "")
+}
+

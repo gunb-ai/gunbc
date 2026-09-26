@@ -1,0 +1,655 @@
+module examples.animal_crossing.dialogue
+
+import std.types { Bool, Int, List, String, FilePath, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import std.octet_read { OctetPatch, hex_octets }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.shell
+import extdeps.tools.xxd
+import extdeps.tools.xxd { XxdRevertLine, xxd_revert_lines, xxd_revert_patch_text }
+import extdeps.tools.dd { DdRangeCopy, dd_copy_range }
+import extdeps.tools.shasum { sha1_file }
+import extdeps.tools.wc { FileByteCountObserved, FileByteCountUnavailable, file_byte_count_via_wc }
+import extdeps.formats.gamecube.disc {
+  GcmDecoded, GcmRejected, GcmFile, GcmHeader, gcm_header, gcm_files, gcm_find, gcm_header_read_length,
+  gcm_placement, gcm_fst_entry_location_offset, gcm_fst_entry_location_octets,
+}
+import extdeps.formats.jsystem.rarc {
+  RarcDecoded, RarcRejected, RarcFile, RarcHeader, RarcPlacement, RarcRepack, RarcResize,
+  rarc_header, rarc_files, rarc_find, rarc_repack, rarc_prefix_length,
+}
+import extdeps.games.animal_crossing.message {
+  ControlCode, MessageAccepted, MessageRefused,
+  message_archive_path, message_data_path, message_table_path, message_octets_ceiling,
+  message_table_ends, message_table_octets, message_start, message_end, message_tokens, message_text,
+  steering_tokens, text_message,
+}
+import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_build_image_sha1, deluxe_control_codes }
+
+// Dialogue patching for Animal Crossing on the GameCube. A patch set is a directory holding BASE
+// (the SHA-1 of the disc image it was written against) and .acmsg files of message replacements.
+// Everything that interprets bytes is modeled here and in the extdeps format modules; the only work
+// done outside .dag is literal byte I/O -- xxd reads ranges and writes octets, dd copies ranges, cp
+// copies the image. The interpreter never holds the image or the 2.8 MB of message text: only
+// headers, the message table and the messages being edited.
+
+// ---- reading the base ----
+
+type AcBase {
+  path: String
+  sha1: String
+  codes: List<ControlCode>
+  image_size: Int
+  disc: GcmHeader
+  disc_files: List<GcmFile>
+  archive: GcmFile
+  archive_head: List<Int>
+  archive_header: RarcHeader
+  archive_files: List<RarcFile>
+  data_file: RarcFile
+  table_file: RarcFile
+  ends: List<Int>
+}
+
+type Loaded<T>
+  = LoadedOk { value: T }
+  | LoadRefused { reason: String }
+
+fn read_range(path: String, offset: Int, length: Int) -> List<Int>? {
+  if length == 0 { Present { value: [] } }
+  else {
+    let r = xxd.Xxd.PlainRange(path: path, offset: offset, length: length)
+    if r.success { hex_octets(hex: r.hex) } else { none }
+  }
+}
+
+// The control-code table is a fact of the build, so a base is admitted only when its table is
+// pinned. Adding a build is one arm here and one pinned table in extdeps.
+fn codes_for_base(sha1: String) -> List<ControlCode>? {
+  if sha1 == deluxe_build_image_sha1 { Present { value: deluxe_control_codes() } } else { none }
+}
+
+fn archive_messages(path: String, sha1: String, codes: List<ControlCode>, disc: GcmHeader, files: List<GcmFile>, size: Int, archive: GcmFile, h: RarcHeader, head: List<Int>) -> Loaded<AcBase> {
+  let members = rarc_files(head: head, header: h)
+  match rarc_find(files: members, path: message_data_path) {
+    Absent => LoadRefused { reason: "no message data in forest_2nd.arc" }
+    Present { value: data_member } =>
+      match rarc_find(files: members, path: message_table_path) {
+        Absent => LoadRefused { reason: "no message table in forest_2nd.arc" }
+        Present { value: table } =>
+          match read_range(path: path, offset: archive.offset + h.data_start + table.data_offset, length: table.size) {
+            Absent => LoadRefused { reason: "could not read the message table" }
+            Present { value: table_octets } =>
+              match message_table_ends(table: table_octets) {
+                MessageRefused { reason: r } => LoadRefused { reason: r }
+                MessageAccepted { value: ends } =>
+                  if (get(ends, count(ends) - 1) ?? -1) != data_member.size { LoadRefused { reason: "message table does not end at the end of the message data" } }
+                  else {
+                    LoadedOk {
+                      value: AcBase {
+                        path: path, sha1: sha1, codes: codes, image_size: size, disc: disc, disc_files: files,
+                        archive: archive, archive_head: head, archive_header: h, archive_files: members,
+                        data_file: data_member, table_file: table, ends: ends,
+                      },
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn load_archive(path: String, sha1: String, codes: List<ControlCode>, disc: GcmHeader, files: List<GcmFile>, size: Int) -> Loaded<AcBase> {
+  match gcm_find(files: files, path: message_archive_path) {
+    Absent => LoadRefused { reason: "no forest_2nd.arc on the disc" }
+    Present { value: archive } =>
+      match read_range(path: path, offset: archive.offset, length: rarc_prefix_length) {
+        Absent => LoadRefused { reason: "could not read the archive header" }
+        Present { value: prefix } =>
+          match rarc_header(head: prefix) {
+            RarcRejected { reason: r } => LoadRefused { reason: r }
+            RarcDecoded { value: h } =>
+              match read_range(path: path, offset: archive.offset, length: h.data_start) {
+                Absent => LoadRefused { reason: "could not read the archive's header region" }
+                Present { value: head } => archive_messages(path: path, sha1: sha1, codes: codes, disc: disc, files: files, size: size, archive: archive, h: h, head: head)
+              }
+          }
+      }
+  }
+}
+
+fn load_image(path: String, sha1: String, codes: List<ControlCode>) -> Loaded<AcBase> {
+  match file_byte_count_via_wc(path: path as FilePath) {
+    FileByteCountUnavailable { reason: r } => LoadRefused { reason: join(["could not size ", path, ": ", r as String], "") }
+    FileByteCountObserved { count: size } =>
+      match read_range(path: path, offset: 0, length: gcm_header_read_length) {
+        Absent => LoadRefused { reason: "could not read the disc header" }
+        Present { value: header_octets } =>
+          match gcm_header(header: header_octets) {
+            GcmRejected { reason: r } => LoadRefused { reason: r }
+            GcmDecoded { value: disc } =>
+              match read_range(path: path, offset: disc.fst_offset, length: disc.fst_size) {
+                Absent => LoadRefused { reason: "could not read the file system table" }
+                Present { value: fst } =>
+                  match gcm_files(fst: fst) {
+                    GcmRejected { reason: r } => LoadRefused { reason: r }
+                    GcmDecoded { value: files } => load_archive(path: path, sha1: sha1, codes: codes, disc: disc, files: files, size: size)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn load_base(path: String) -> Loaded<AcBase> {
+  match sha1_file(path: path) {
+    Absent => LoadRefused { reason: join(["could not digest ", path], "") }
+    Present { value: digest } =>
+      match codes_for_base(sha1: digest.hex) {
+        Absent => LoadRefused { reason: join(["no control-code table is pinned for base image ", digest.hex], "") }
+        Present { value: codes } => load_image(path: path, sha1: digest.hex, codes: codes)
+      }
+  }
+}
+
+fn message_data_offset(base: AcBase) -> Int {
+  base.archive.offset + base.archive_header.data_start + base.data_file.data_offset
+}
+
+fn read_message(base: AcBase, id: Int) -> List<Int>? {
+  let s = message_start(ends: base.ends, id: id)
+  read_range(path: base.path, offset: message_data_offset(base: base) + s, length: message_end(ends: base.ends, id: id) - s)
+}
+
+fn read_message_text(base: AcBase, id: Int) -> String? {
+  match read_message(base: base, id: id) {
+    Absent => none
+    Present { value: m } =>
+      match message_tokens(codes: base.codes, message: m) {
+        MessageAccepted { value: t } => Present { value: message_text(tokens: t) }
+        MessageRefused { reason: _ } => none
+      }
+  }
+}
+
+// ---- the patch set ----
+
+type AcmsgEdit {
+  id: Int
+  label: String
+  text: String
+  source: String
+}
+
+type PatchSet {
+  base_sha1: String
+  edits: List<AcmsgEdit>
+}
+
+fn hex_int(digits: String) -> Int? {
+  match hex_octets(hex: if digits.length() % 2 == 1 { concat("0", digits) } else { digits }) {
+    Absent => none
+    Present { value: o } => Present { value: fold(o, init: 0, f: (acc, x) => acc * 256 + x) }
+  }
+}
+
+fn message_id_of(token: String) -> Int? {
+  if token.starts_with(prefix: "0x") { hex_int(digits: substring(s: token, start: 2, end: token.length())) } else { parse_int(token) }
+}
+
+fn is_header_line(line: String) -> Bool {
+  line.starts_with(prefix: "=== ") && line.ends_with(suffix: " ===") && line.length() > 8
+}
+
+type AcmsgFold {
+  edits: List<AcmsgEdit>
+  open: Bool
+  id: Int
+  label: String
+  header_line: Int
+  body: List<String>
+  line: Int
+  refusal: String
+}
+
+fn acmsg_close(acc: AcmsgFold, source: String) -> List<AcmsgEdit> {
+  if acc.open {
+    list_push(acc.edits, AcmsgEdit { id: acc.id, label: acc.label, text: acc.body |> join(separator: "\n"), source: join([source, ":", to_string(acc.header_line)], "") })
+  } else { acc.edits }
+}
+
+fn acmsg_refused(acc: AcmsgFold, source: String, line: Int, reason: String) -> AcmsgFold {
+  AcmsgFold { edits: acc.edits, open: false, id: 0, label: "", header_line: 0, body: [], line: line, refusal: join([source, ":", to_string(line), ": ", reason], "") }
+}
+
+fn acmsg_header(acc: AcmsgFold, source: String, line: Int, text: String) -> AcmsgFold {
+  let inner = substring(s: text, start: 4, end: text.length() - 4)
+  let id_token = get(split(s: inner, delimiter: " "), 0) ?? ""
+  match message_id_of(token: id_token) {
+    Absent => acmsg_refused(acc: acc, source: source, line: line, reason: "header does not start with a message id")
+    Present { value: id } => AcmsgFold {
+      edits: acmsg_close(acc: acc, source: source), open: true, id: id,
+      label: trim(s: substring(s: inner, start: id_token.length(), end: inner.length())),
+      header_line: line, body: [], line: line, refusal: "",
+    }
+  }
+}
+
+fn acmsg_step(source: String, acc: AcmsgFold, text: String) -> AcmsgFold {
+  let n = acc.line + 1
+  if acc.refusal != "" { acc }
+  else if is_header_line(line: text) { acmsg_header(acc: acc, source: source, line: n, text: text) }
+  else if acc.open {
+    AcmsgFold { edits: acc.edits, open: true, id: acc.id, label: acc.label, header_line: acc.header_line, body: list_push(acc.body, text), line: n, refusal: "" }
+  } else if trim(s: text) == "" || text.starts_with(prefix: "#") {
+    AcmsgFold { edits: acc.edits, open: false, id: 0, label: "", header_line: 0, body: [], line: n, refusal: "" }
+  } else { acmsg_refused(acc: acc, source: source, line: n, reason: "text before the first '=== id ===' header") }
+}
+
+// Blocks of `=== <id> [label] ===` followed by the message text. The newline that separates a body
+// from the next header, or ends the file, is not part of the message.
+fn parse_acmsg(source: String, content: String) -> Loaded<List<AcmsgEdit>> {
+  let body = if content.ends_with(suffix: "\n") { substring(s: content, start: 0, end: content.length() - 1) } else { content }
+  let r = fold(split(s: body, delimiter: "\n"), init: AcmsgFold { edits: [], open: false, id: 0, label: "", header_line: 0, body: [], line: 0, refusal: "" }, f: (acc, l) => acmsg_step(source: source, acc: acc, text: l))
+  if r.refusal != "" { LoadRefused { reason: r.refusal } } else { LoadedOk { value: acmsg_close(acc: r, source: source) } }
+}
+
+fn read_text(path: String) -> Loaded<String> {
+  let r = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
+    FilesystemReadSucceeded { content: c } => LoadedOk { value: c }
+    FilesystemReadRefused { error: e } => LoadRefused { reason: join(["could not read ", path, ": ", e], "") }
+  }
+}
+
+type EditsFold {
+  edits: List<AcmsgEdit>
+  refusal: String
+}
+
+fn add_edit(acc: EditsFold, edit: AcmsgEdit) -> EditsFold {
+  if acc.refusal != "" { acc }
+  else {
+    match acc.edits |> filter(e => e.id == edit.id) |> first {
+      null => EditsFold { edits: list_push(acc.edits, edit), refusal: "" }
+      other => EditsFold { edits: acc.edits, refusal: join(["message ", to_string(edit.id), " is patched twice: ", other.source, " and ", edit.source], "") }
+    }
+  }
+}
+
+fn add_file_edits(root: String, acc: EditsFold, path: String) -> EditsFold {
+  if acc.refusal != "" { acc }
+  else {
+    let source = if path.starts_with(prefix: concat(root, "/")) { substring(s: path, start: root.length() + 1, end: path.length()) } else { path }
+    match read_text(path: path) {
+      LoadRefused { reason: r } => EditsFold { edits: acc.edits, refusal: r }
+      LoadedOk { value: content } =>
+        match parse_acmsg(source: source, content: content) {
+          LoadRefused { reason: r } => EditsFold { edits: acc.edits, refusal: r }
+          LoadedOk { value: edits } => fold(edits, init: acc, f: (a, e) => add_edit(acc: a, edit: e))
+        }
+    }
+  }
+}
+
+fn load_patch_set(root: String) -> Loaded<PatchSet> {
+  match read_text(path: concat(root, "/BASE")) {
+    LoadRefused { reason: _ } => LoadRefused { reason: join([root, " has no BASE file pinning the base image sha1"], "") }
+    LoadedOk { value: base_text } => {
+      let listing = shell.Find.FilesByNameSorted(root: root as FilePath, name_glob: "*.acmsg" as NonEmptyStr)
+      if listing.success == false { LoadRefused { reason: join(["could not list ", root, ": ", listing.stderr], "") } }
+      else {
+        let paths = split(s: listing.stdout, delimiter: "\n") |> filter(p => trim(s: p) != "")
+        let r = fold(paths, init: EditsFold { edits: [], refusal: "" }, f: (acc, p) => add_file_edits(root: root, acc: acc, path: p))
+        if r.refusal != "" { LoadRefused { reason: r.refusal } }
+        else { LoadedOk { value: PatchSet { base_sha1: get(split(s: trim(s: base_text), delimiter: " "), 0) ?? "", edits: r.edits } } }
+      }
+    }
+  }
+}
+
+// ---- validating edits ----
+
+type ValidEdit {
+  edit: AcmsgEdit
+  old_size: Int
+  octets: List<Int>
+}
+
+type ValidateFold {
+  valid: List<ValidEdit>
+  refusals: List<String>
+}
+
+fn refuse_edit(acc: ValidateFold, edit: AcmsgEdit, reason: String) -> ValidateFold {
+  ValidateFold { valid: acc.valid, refusals: list_push(acc.refusals, join([edit.source, " (message ", to_string(edit.id), "): ", reason], "")) }
+}
+
+fn steering_text(codes: List<ControlCode>, steering: List<List<Int>>) -> String {
+  let flat = fold(steering, init: [], f: (acc, t) => concat(acc, t))
+  match message_tokens(codes: codes, message: flat) {
+    MessageAccepted { value: t } => if count(t) == 0 { "(none)" } else { message_text(tokens: t) }
+    MessageRefused { reason: r } => r
+  }
+}
+
+fn validate_tokens(base: AcBase, acc: ValidateFold, edit: AcmsgEdit, old_octets: List<Int>, new_octets: List<Int>) -> ValidateFold {
+  match message_tokens(codes: base.codes, message: old_octets) {
+    MessageRefused { reason: r } => refuse_edit(acc: acc, edit: edit, reason: join(["the original does not tokenize: ", r], ""))
+    MessageAccepted { value: old_tokens } =>
+      match message_tokens(codes: base.codes, message: new_octets) {
+        MessageRefused { reason: r } => refuse_edit(acc: acc, edit: edit, reason: r)
+        MessageAccepted { value: new_tokens } => {
+          let want = steering_tokens(tokens: old_tokens)
+          let got = steering_tokens(tokens: new_tokens)
+          if want != got {
+            refuse_edit(acc: acc, edit: edit, reason: join(["conversation-steering codes changed; they must stay exactly ", steering_text(codes: base.codes, steering: want), " in order, got ", steering_text(codes: base.codes, steering: got)], ""))
+          } else if count(new_octets) > message_octets_ceiling {
+            refuse_edit(acc: acc, edit: edit, reason: join([to_string(count(new_octets)), " octets exceeds the ", to_string(message_octets_ceiling), "-octet message buffer"], ""))
+          } else {
+            ValidateFold { valid: list_push(acc.valid, ValidEdit { edit: edit, old_size: count(old_octets), octets: new_octets }), refusals: acc.refusals }
+          }
+        }
+      }
+  }
+}
+
+fn validate_edit(base: AcBase, acc: ValidateFold, edit: AcmsgEdit) -> ValidateFold {
+  if edit.id < 0 || edit.id >= count(base.ends) { refuse_edit(acc: acc, edit: edit, reason: join(["no such message; the table has ", to_string(count(base.ends))], "")) }
+  else {
+    match text_message(codes: base.codes, text: edit.text) {
+      MessageRefused { reason: r } => refuse_edit(acc: acc, edit: edit, reason: r)
+      MessageAccepted { value: new_octets } =>
+        match read_message(base: base, id: edit.id) {
+          Absent => refuse_edit(acc: acc, edit: edit, reason: "could not read the original message")
+          Present { value: old_octets } => validate_tokens(base: base, acc: acc, edit: edit, old_octets: old_octets, new_octets: new_octets)
+        }
+    }
+  }
+}
+
+fn validate(base: AcBase, patches: PatchSet) -> Loaded<List<ValidEdit>> {
+  if patches.base_sha1 != base.sha1 { LoadRefused { reason: join(["patch set is pinned to base ", patches.base_sha1, ", but the image is ", base.sha1], "") } }
+  else {
+    let r = fold(patches.edits, init: ValidateFold { valid: [], refusals: [] }, f: (acc, e) => validate_edit(base: base, acc: acc, edit: e))
+    if count(r.refusals) > 0 { LoadRefused { reason: r.refusals |> join(separator: "\n") } }
+    else { LoadedOk { value: sort_by(r.valid, fn(v) { v.edit.id }) } }
+  }
+}
+
+// ---- the plan ----
+
+// Everything the output image needs beyond a copy of the base: byte ranges copied from the base,
+// and literal octets written. Copies read only the base, so their order does not matter; literal
+// writes never overlap them.
+type BuildPlan {
+  copies: List<DdRangeCopy>
+  writes: List<OctetPatch>
+  archive_offset: Int
+  archive_size: Int
+}
+
+type EndsFold {
+  ends: List<Int>
+  delta: Int
+  next: Int
+  id: Int
+}
+
+fn ends_step(edits: List<ValidEdit>, acc: EndsFold, end: Int) -> EndsFold {
+  match get(edits, acc.next) {
+    null => EndsFold { ends: list_push(acc.ends, end + acc.delta), delta: acc.delta, next: acc.next, id: acc.id + 1 }
+    other =>
+      if other.edit.id == acc.id {
+        let delta = acc.delta + count(other.octets) - other.old_size
+        EndsFold { ends: list_push(acc.ends, end + delta), delta: delta, next: acc.next + 1, id: acc.id + 1 }
+      } else {
+        EndsFold { ends: list_push(acc.ends, end + acc.delta), delta: acc.delta, next: acc.next, id: acc.id + 1 }
+      }
+  }
+}
+
+// Edits are sorted by id, so one pass shifts every later end by the growth so far.
+fn new_ends(base: AcBase, edits: List<ValidEdit>) -> List<Int> {
+  fold(base.ends, init: EndsFold { ends: [], delta: 0, next: 0, id: 0 }, f: (acc, e) => ends_step(edits: edits, acc: acc, end: e)).ends
+}
+
+type SpliceFold {
+  copies: List<DdRangeCopy>
+  writes: List<OctetPatch>
+  source: Int
+  target: Int
+}
+
+fn splice_step(base: AcBase, acc: SpliceFold, edit: ValidEdit) -> SpliceFold {
+  let start = message_start(ends: base.ends, id: edit.edit.id)
+  let gap = start - acc.source
+  let copies = if gap > 0 { list_push(acc.copies, DdRangeCopy { source_offset: message_data_offset(base: base) + acc.source, target_offset: acc.target, length: gap }) } else { acc.copies }
+  SpliceFold {
+    copies: copies,
+    writes: list_push(acc.writes, OctetPatch { offset: acc.target + gap, octets: edit.octets }),
+    source: message_end(ends: base.ends, id: edit.edit.id),
+    target: acc.target + gap + count(edit.octets),
+  }
+}
+
+// The new message data at `target`: the base's own bytes between edits, copied, and each edited
+// message written.
+fn splice_message_data(base: AcBase, edits: List<ValidEdit>, target: Int) -> SpliceFold {
+  let r = fold(edits, init: SpliceFold { copies: [], writes: [], source: 0, target: target }, f: (acc, e) => splice_step(base: base, acc: acc, edit: e))
+  let rest = base.data_file.size - r.source
+  if rest > 0 {
+    SpliceFold { copies: list_push(r.copies, DdRangeCopy { source_offset: message_data_offset(base: base) + r.source, target_offset: r.target, length: rest }), writes: r.writes, source: base.data_file.size, target: r.target + rest }
+  } else { r }
+}
+
+fn zeros_from(n: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { zeros_from(n: n, acc: list_push(acc, 0)) }
+}
+
+fn zeros(n: Int) -> List<Int> {
+  zeros_from(n: n, acc: [])
+}
+
+fn overwrite(bytes: List<Int>, patch: OctetPatch) -> List<Int> {
+  concat(concat(bytes.take(n: patch.offset), patch.octets), bytes.skip(n: patch.offset + count(patch.octets)))
+}
+
+fn header_region(base: AcBase, repack: RarcRepack) -> List<Int> {
+  fold(repack.header_patches, init: base.archive_head, f: (acc, p) => overwrite(bytes: acc, patch: p))
+}
+
+type MemberFold {
+  copies: List<DdRangeCopy>
+  writes: List<OctetPatch>
+  cursor: Int
+}
+
+fn member_step(base: AcBase, edits: List<ValidEdit>, table: List<Int>, data_at: Int, in_place: Bool, acc: MemberFold, p: RarcPlacement) -> MemberFold {
+  let target = data_at + p.new_offset
+  let gap = p.new_offset - acc.cursor
+  let writes = if gap > 0 { list_push(acc.writes, OctetPatch { offset: data_at + acc.cursor, octets: zeros(n: gap) }) } else { acc.writes }
+  let end = p.new_offset + p.new_size
+  if p.file.path == message_table_path {
+    MemberFold { copies: acc.copies, writes: list_push(writes, OctetPatch { offset: target, octets: table }), cursor: end }
+  } else if p.file.path == message_data_path {
+    let s = splice_message_data(base: base, edits: edits, target: target)
+    MemberFold { copies: concat(acc.copies, s.copies), writes: concat(writes, s.writes), cursor: end }
+  } else if in_place && p.new_offset == p.file.data_offset {
+    MemberFold { copies: acc.copies, writes: writes, cursor: end }
+  } else {
+    let source = base.archive.offset + base.archive_header.data_start + p.file.data_offset
+    MemberFold { copies: list_push(acc.copies, DdRangeCopy { source_offset: source, target_offset: target, length: p.file.size }), writes: writes, cursor: end }
+  }
+}
+
+fn build_plan(base: AcBase, edits: List<ValidEdit>) -> Loaded<BuildPlan> {
+  let ends = new_ends(base: base, edits: edits)
+  let table = message_table_octets(ends: ends)
+  let data_size = get(ends, count(ends) - 1) ?? 0
+  let repack = rarc_repack(header: base.archive_header, files: base.archive_files, resizes: [
+    RarcResize { path: message_data_path, size: data_size },
+    RarcResize { path: message_table_path, size: count(table) },
+  ])
+  let at = gcm_placement(header: base.disc, files: base.disc_files, target: base.archive, new_size: repack.archive_size, image_size: base.image_size)
+  let in_place = at == base.archive.offset
+  let members = fold(repack.placements, init: MemberFold { copies: [], writes: [], cursor: 0 }, f: (acc, p) => member_step(base: base, edits: edits, table: table, data_at: at + base.archive_header.data_start, in_place: in_place, acc: acc, p: p))
+  let old_end = base.archive.offset + base.archive.size
+  let new_end = at + repack.archive_size
+  let tail = if in_place && new_end < old_end { [OctetPatch { offset: new_end, octets: zeros(n: old_end - new_end) }] } else { [] }
+  match gcm_fst_entry_location_octets(offset: at, size: repack.archive_size) {
+    Absent => LoadRefused { reason: "archive placement does not fit the file system table's 32-bit fields" }
+    Present { value: fst_octets } => {
+      let head = OctetPatch { offset: at, octets: header_region(base: base, repack: repack) }
+      let fst = OctetPatch { offset: gcm_fst_entry_location_offset(header: base.disc, target: base.archive), octets: fst_octets }
+      LoadedOk { value: BuildPlan { copies: members.copies, writes: concat(concat([head, fst], members.writes), tail), archive_offset: at, archive_size: repack.archive_size } }
+    }
+  }
+}
+
+// ---- executing and confirming ----
+
+fn revert_lines(writes: List<OctetPatch>) -> List<XxdRevertLine> {
+  fold(writes, init: [], f: (acc, w) => concat(acc, xxd_revert_lines(offset: w.offset, octets: w.octets)))
+}
+
+fn execute(base: AcBase, plan: BuildPlan, out: String) -> Loaded<Bool> {
+  let copied = shell.Copy.File(source: base.path as FilePath, destination: out as FilePath)
+  if copied.success == false { LoadRefused { reason: join(["could not copy the base image to ", out], "") } }
+  else {
+    let failed = plan.copies |> filter(c => dd_copy_range(source: base.path, target: out, copy: c) == false)
+    if count(failed) > 0 { LoadRefused { reason: join([to_string(count(failed)), " byte-range copies into ", out, " failed"], "") } }
+    else {
+      let patch_path = concat(out, ".xxd")
+      let w = Filesystem.Write(path: patch_path, content: xxd_revert_patch_text(lines: revert_lines(writes: plan.writes)))
+      if w.success == false { LoadRefused { reason: join(["could not write ", patch_path, ": ", w.error], "") } }
+      else {
+        let r = xxd.Xxd.RevertInto(patch: patch_path, target: out)
+        let removed = Filesystem.Delete(path: patch_path)
+        if r.success == false { LoadRefused { reason: join(["xxd could not write the patch into ", out, ": ", r.stderr], "") } }
+        else if removed.success == false { LoadRefused { reason: join(["the patch was applied but ", patch_path, " could not be removed: ", removed.error], "") } }
+        else { LoadedOk { value: true } }
+      }
+    }
+  }
+}
+
+fn edit_landed(patched: AcBase, edit: ValidEdit) -> Bool {
+  read_message(base: patched, id: edit.edit.id) == Present { value: edit.octets }
+}
+
+// The output is read back through the same decoders, decoded with the base's code table (its
+// digest is new, so it is not admitted by pin), and every edited message must be exactly what was
+// written.
+fn confirm(base: AcBase, out: String, edits: List<ValidEdit>) -> Loaded<Bool> {
+  match load_image(path: out, sha1: "", codes: base.codes) {
+    LoadRefused { reason: r } => LoadRefused { reason: join(["the patched image does not decode: ", r], "") }
+    LoadedOk { value: patched } =>
+      if count(patched.ends) != count(base.ends) { LoadRefused { reason: "the patched image has a different number of messages" } }
+      else {
+        match edits |> filter(e => edit_landed(patched: patched, edit: e) == false) |> first {
+          null => LoadedOk { value: true }
+          other => LoadRefused { reason: join(["message ", to_string(other.edit.id), " did not land in the patched image"], "") }
+        }
+      }
+  }
+}
+
+fn manifest_row(e: ValidEdit) -> String {
+  join(["  ", to_string(e.edit.id), "  ", e.edit.source, "  ", to_string(e.old_size), " -> ", to_string(count(e.octets)), " octets  ", e.edit.label, "\n"], "")
+}
+
+fn manifest(base: AcBase, edits: List<ValidEdit>, plan: BuildPlan, out_sha1: String) -> String {
+  let where = if plan.archive_offset == base.archive.offset { "in place" } else { "relocated" }
+  join([
+    "base    ", base.sha1, "\n",
+    "output  ", out_sha1, "\n",
+    "archive ", message_archive_path, " at ", to_string(plan.archive_offset), ", ", to_string(plan.archive_size), " octets, ", where, "\n",
+    "edits   ", to_string(count(edits)), "\n",
+    edits |> map(e => manifest_row(e: e)) |> join(separator: ""),
+  ], "")
+}
+
+fn say(text: String) -> ProcessExit {
+  let w = Filesystem.Write(path: "/dev/stdout", content: text)
+  if w.success { ExitSuccess } else { exit_failure(reason: w.error) }
+}
+
+// ---- entry points ----
+
+fn checked_edits(base: AcBase, patches: String) -> Loaded<List<ValidEdit>> {
+  match load_patch_set(root: patches) {
+    LoadRefused { reason: r } => LoadRefused { reason: r }
+    LoadedOk { value: set } =>
+      match validate(base: base, patches: set) {
+        LoadRefused { reason: r } => LoadRefused { reason: join(["REFUSED\n", r], "") }
+        LoadedOk { value: edits } => LoadedOk { value: edits }
+      }
+  }
+}
+
+fn check(base: String, patches: String) -> ProcessExit {
+  match load_base(path: base) {
+    LoadRefused { reason: r } => exit_failure(reason: r)
+    LoadedOk { value: b } =>
+      match checked_edits(base: b, patches: patches) {
+        LoadRefused { reason: r } => exit_failure(reason: r)
+        LoadedOk { value: edits } => say(text: join(["ok: ", to_string(count(edits)), " message edits apply cleanly\n"], ""))
+      }
+  }
+}
+
+fn build_into(b: AcBase, edits: List<ValidEdit>, out: String) -> ProcessExit {
+  match build_plan(base: b, edits: edits) {
+    LoadRefused { reason: r } => exit_failure(reason: r)
+    LoadedOk { value: plan } =>
+      match execute(base: b, plan: plan, out: out) {
+        LoadRefused { reason: r } => exit_failure(reason: r)
+        LoadedOk { value: _ } =>
+          match confirm(base: b, out: out, edits: edits) {
+            LoadRefused { reason: r } => exit_failure(reason: r)
+            LoadedOk { value: _ } =>
+              match sha1_file(path: out) {
+                Absent => exit_failure(reason: join(["could not digest ", out], ""))
+                Present { value: d } => {
+                  let text = manifest(base: b, edits: edits, plan: plan, out_sha1: d.hex)
+                  let w = Filesystem.Write(path: concat(out, ".manifest"), content: text)
+                  if w.success { say(text: text) } else { exit_failure(reason: join(["built ", out, " but could not write its manifest: ", w.error], "")) }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn build(base: String, patches: String, out: String) -> ProcessExit {
+  match load_base(path: base) {
+    LoadRefused { reason: r } => exit_failure(reason: r)
+    LoadedOk { value: b } =>
+      match checked_edits(base: b, patches: patches) {
+        LoadRefused { reason: r } => exit_failure(reason: r)
+        LoadedOk { value: edits } => build_into(b: b, edits: edits, out: out)
+      }
+  }
+}
+
+fn show_block(base: AcBase, token: String) -> String {
+  match message_id_of(token: trim(s: token)) {
+    Absent => join(["# not a message id: ", token, "\n"], "")
+    Present { value: id } =>
+      match read_message_text(base: base, id: id) {
+        Absent => join(["# message ", to_string(id), " could not be read\n"], "")
+        Present { value: text } => join(["=== ", to_string(id), " ===\n", text, "\n"], "")
+      }
+  }
+}
+
+// Message ids separated by commas, decimal or 0x-hex, printed as .acmsg blocks ready to copy into a
+// patch set.
+fn show(base: String, ids: String) -> ProcessExit {
+  match load_base(path: base) {
+    LoadRefused { reason: r } => exit_failure(reason: r)
+    LoadedOk { value: b } => say(text: split(s: ids, delimiter: ",") |> map(t => show_block(base: b, token: t)) |> join(separator: ""))
+  }
+}

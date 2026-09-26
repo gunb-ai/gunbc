@@ -1,0 +1,77 @@
+module extdeps.tools.dd
+
+import std.types { Bool, Int, String, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// dd(1) as POSIX specifies it: `skip` and `count` are in input blocks, `seek` in output blocks,
+// all of `bs` bytes, and `conv=notrunc` leaves the output file's other bytes in place. A byte
+// range copy is therefore exact for any block size dividing all three byte quantities.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9799919799/utilities/dd.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.dd",
+      decl_name: "DdRangeCopy",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+service dd.Dd {
+  operation CopyBlocks {
+    input { source: String, target: String, block_size: Int, skip: Int, seek: Int, count: Int }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["dd", "if={source}", "of={target}", "bs={block_size}", "skip={skip}", "seek={seek}", "count={count}", "conv=notrunc"] }
+    exit {
+      0 => Unit
+      nonzero => String "dd could not copy the requested range"
+    }
+  }
+}
+
+// `length` bytes at `source_offset` of one file, written at `target_offset` of another.
+type DdRangeCopy {
+  source_offset: Int
+  target_offset: Int
+  length: Int
+}
+
+// Largest block size cost can buy: every block is one read and one write system call.
+data dd_block_size_ceiling: Int = 1048576
+
+// The largest power of two, up to the ceiling, dividing all three byte quantities.
+fn dd_block_size_from(size: Int, copy: DdRangeCopy) -> Int {
+  if size == 1 { 1 }
+  else if copy.source_offset % size == 0 && copy.target_offset % size == 0 && copy.length % size == 0 { size }
+  else { dd_block_size_from(size: size / 2, copy: copy) }
+}
+
+fn dd_block_size(copy: DdRangeCopy) -> Int {
+  dd_block_size_from(size: dd_block_size_ceiling, copy: copy)
+}
+
+fn dd_copy_range(source: String, target: String, copy: DdRangeCopy) -> Bool {
+  let bs = dd_block_size(copy: copy)
+  let r = dd.Dd.CopyBlocks(
+    source: source,
+    target: target,
+    block_size: bs,
+    skip: copy.source_offset / bs,
+    seek: copy.target_offset / bs,
+    count: copy.length / bs,
+  )
+  r.success
+}

@@ -1,0 +1,202 @@
+module extdeps.formats.gamecube.disc
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.octet_read { be_u32_at, be_u32_octets }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// The GameCube optical disc image (GCM): the disc header at 0x000, whose fields at 0x420/0x424/0x428
+// place the main executable and the file system table (FST); the FST is a flat array of 12-byte
+// entries (word0 = directory flag << 24 | name offset, word1 = file offset or parent index,
+// word2 = file length or index one past the directory's last entry) followed by the name table.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gc-forever.com/yagcd/chap13.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.formats.gamecube.disc",
+      decl_name: "GcmFile",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data gcm_game_code_length: Int = 6
+data gcm_dol_offset_field: Int = 1056
+data gcm_fst_offset_field: Int = 1060
+data gcm_fst_size_field: Int = 1064
+// Bytes of the header a reader needs to reach every field above.
+data gcm_header_read_length: Int = 1068
+data gcm_fst_entry_size: Int = 12
+
+type GcmHeader {
+  game_code: List<Int>
+  dol_offset: Int
+  fst_offset: Int
+  fst_size: Int
+}
+
+type GcmFile {
+  path: String
+  fst_index: Int
+  offset: Int
+  size: Int
+}
+
+type GcmDecode<T>
+  = GcmDecoded { value: T }
+  | GcmRejected { reason: String }
+
+fn gcm_header(header: List<Int>) -> GcmDecode<GcmHeader> {
+  match be_u32_at(bytes: header, offset: gcm_dol_offset_field) {
+    Absent => GcmRejected { reason: "disc header shorter than its FST fields" }
+    Present { value: dol } =>
+      match be_u32_at(bytes: header, offset: gcm_fst_offset_field) {
+        Absent => GcmRejected { reason: "disc header shorter than its FST fields" }
+        Present { value: fst } =>
+          match be_u32_at(bytes: header, offset: gcm_fst_size_field) {
+            Absent => GcmRejected { reason: "disc header shorter than its FST fields" }
+            Present { value: size } => GcmDecoded {
+              value: GcmHeader { game_code: header |> take(n: gcm_game_code_length), dol_offset: dol, fst_offset: fst, fst_size: size },
+            }
+          }
+      }
+  }
+}
+
+fn latin1_string(octets: List<Int>) -> String {
+  octets |> map(o => from_code_point(o)) |> join(separator: "")
+}
+
+// The NUL-terminated name at `offset` of the name table that begins at `table`.
+fn fst_name(fst: List<Int>, at: Int, acc: List<Int>) -> String? {
+  match get(fst, at) {
+    null => none
+    other => if other == 0 { Present { value: latin1_string(octets: acc) } } else { fst_name(fst: fst, at: at + 1, acc: list_push(acc, other)) }
+  }
+}
+
+type FstDirectory {
+  end_index: Int
+  prefix: String
+}
+
+type FstWalk {
+  open: List<FstDirectory>
+  files: List<GcmFile>
+  rejected: String
+}
+
+fn fst_open_directories(open: List<FstDirectory>, index: Int) -> List<FstDirectory> {
+  open |> filter(d => index < d.end_index)
+}
+
+fn fst_prefix(open: List<FstDirectory>) -> String {
+  match get(open, count(open) - 1) {
+    null => ""
+    other => other.prefix
+  }
+}
+
+// FST words are unsigned, so -1 is out of band and marks a word that ran past the table.
+fn present_or_negative(value: Int?) -> Int {
+  match value {
+    Present { value: v } => v
+    Absent => -1
+  }
+}
+
+fn fst_walk_step(fst: List<Int>, names: Int, acc: FstWalk, index: Int) -> FstWalk {
+  if acc.rejected != "" { acc }
+  else {
+    let at = index * gcm_fst_entry_size
+    let open = fst_open_directories(open: acc.open, index: index)
+    let word0 = present_or_negative(value: be_u32_at(bytes: fst, offset: at))
+    let word1 = present_or_negative(value: be_u32_at(bytes: fst, offset: at + 4))
+    let word2 = present_or_negative(value: be_u32_at(bytes: fst, offset: at + 8))
+    if word0 < 0 || word1 < 0 || word2 < 0 {
+      FstWalk { open: open, files: acc.files, rejected: "FST entry runs past the table" }
+    } else {
+      match fst_name(fst: fst, at: names + word0 % 16777216, acc: []) {
+        Absent => FstWalk { open: open, files: acc.files, rejected: "FST name runs past the table" }
+        Present { value: name } => {
+          let path = concat(fst_prefix(open: open), name)
+          if word0 / 16777216 != 0 {
+            FstWalk { open: list_push(open, FstDirectory { end_index: word2, prefix: concat(path, "/") }), files: acc.files, rejected: "" }
+          } else {
+            FstWalk { open: open, files: list_push(acc.files, GcmFile { path: path, fst_index: index, offset: word1, size: word2 }), rejected: "" }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn gcm_entry_indices(from: Int, to: Int, acc: List<Int>) -> List<Int> {
+  if from >= to { acc } else { gcm_entry_indices(from: from + 1, to: to, acc: list_push(acc, from)) }
+}
+
+// Every file on the disc, in FST order, with its full path.
+fn gcm_files(fst: List<Int>) -> GcmDecode<List<GcmFile>> {
+  match be_u32_at(bytes: fst, offset: 8) {
+    Absent => GcmRejected { reason: "FST shorter than its root entry" }
+    Present { value: entry_count } => {
+      let names = entry_count * gcm_fst_entry_size
+      let walk = fold(gcm_entry_indices(from: 1, to: entry_count, acc: []), init: FstWalk { open: [], files: [], rejected: "" }, f: (acc, i) => fst_walk_step(fst: fst, names: names, acc: acc, index: i))
+      if walk.rejected != "" { GcmRejected { reason: walk.rejected } } else { GcmDecoded { value: walk.files } }
+    }
+  }
+}
+
+fn gcm_find(files: List<GcmFile>, path: String) -> GcmFile? {
+  match files |> filter(f => f.path == path) |> first {
+    null => none
+    other => Present { value: other }
+  }
+}
+
+// Where a file's bytes may extend to before they would overwrite the next thing on the disc: the
+// nearest later file, the FST, or the executable, else the end of the image.
+fn gcm_slot_end(header: GcmHeader, files: List<GcmFile>, target: GcmFile, image_size: Int) -> Int {
+  let starts = concat(files |> map(f => f.offset), [header.fst_offset, header.dol_offset]) |> filter(s => s > target.offset)
+  fold(starts, init: image_size, f: (acc, s) => if s < acc { s } else { acc })
+}
+
+// Relocated files are appended on this boundary; 32 KiB is the ECC block of the physical disc.
+data gcm_append_alignment: Int = 32768
+
+fn gcm_align_up(value: Int, alignment: Int) -> Int {
+  ((value + alignment - 1) / alignment) * alignment
+}
+
+// Where a replacement of `new_size` bytes for `target` goes: in place when it fits the slot,
+// otherwise appended to the end of the image.
+fn gcm_placement(header: GcmHeader, files: List<GcmFile>, target: GcmFile, new_size: Int, image_size: Int) -> Int {
+  if target.offset + new_size <= gcm_slot_end(header: header, files: files, target: target, image_size: image_size) { target.offset }
+  else { gcm_align_up(value: image_size, alignment: gcm_append_alignment) }
+}
+
+// The absolute image offset of `target`'s FST entry words 1 and 2 (offset, length), and their new
+// octets.
+fn gcm_fst_entry_location_offset(header: GcmHeader, target: GcmFile) -> Int {
+  header.fst_offset + target.fst_index * gcm_fst_entry_size + 4
+}
+
+fn gcm_fst_entry_location_octets(offset: Int, size: Int) -> List<Int>? {
+  match be_u32_octets(value: offset) {
+    Absent => none
+    Present { value: o } =>
+      match be_u32_octets(value: size) {
+        Absent => none
+        Present { value: s } => Present { value: concat(o, s) }
+      }
+  }
+}

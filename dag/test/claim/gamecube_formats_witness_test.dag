@@ -1,0 +1,113 @@
+module test.claim.gamecube_formats_witness
+
+import std.types { Bool, Int, List, String }
+import std.octet_read { OctetPatch, be_u16_at, be_u32_at, be_u32_octets, hex_octets, octets_hex }
+import extdeps.tools.xxd { xxd_revert_lines, xxd_revert_patch_text }
+import extdeps.tools.dd { DdRangeCopy, dd_block_size }
+import extdeps.formats.gamecube.disc { GcmDecoded, GcmRejected, GcmFile, GcmHeader, gcm_files, gcm_placement }
+import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader, RarcResize, rarc_repack }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Each claim supplies its octets as literals at one interface. The inhabitance run -- these
+// decoders over a real disc image -- is examples.animal_crossing.dialogue `show`/`build`, which
+// needs an image the repository does not carry.
+
+test fn octet_read_decodes_big_endian_fields() -> Bool {
+  let b = [1, 2, 3, 4, 5]
+  return be_u32_at(bytes: b, offset: 1) == Present { value: 33752069 } && be_u16_at(bytes: b, offset: 0) == Present { value: 258 }
+}
+
+test fn octet_read_refuses_a_field_past_the_end() -> Bool {
+  return be_u32_at(bytes: [1, 2, 3, 4], offset: 1) == none
+}
+
+test fn octet_read_encodes_and_refuses_overflow() -> Bool {
+  return be_u32_octets(value: 3289632) == Present { value: [0, 50, 50, 32] } && be_u32_octets(value: 4294967296) == none
+}
+
+test fn hex_round_trips_and_refuses_odd_or_foreign_digits() -> Bool {
+  return hex_octets(hex: "00ff7f\n cd") == none
+    && hex_octets(hex: "00ff7f\ncd") == Present { value: [0, 255, 127, 205] }
+    && octets_hex(octets: [0, 255, 127, 205]) == "00ff7fcd"
+    && hex_octets(hex: "abc") == none
+}
+
+test fn xxd_revert_lines_split_at_256_octets_with_their_own_offsets() -> Bool {
+  let lines = xxd_revert_lines(offset: 16, octets: [1, 2])
+  return xxd_revert_patch_text(lines: lines) == "00000010: 0102\n"
+    && count(xxd_revert_lines(offset: 0, octets: zeros(n: 257))) == 2
+    && (get(xxd_revert_lines(offset: 0, octets: zeros(n: 257)), 1) ?? get(lines, 0)).offset == 256
+}
+
+fn zeros(n: Int) -> List<Int> {
+  if n <= 0 { [] } else { list_push(zeros(n: n - 1), 0) }
+}
+
+test fn dd_block_size_is_the_largest_shared_power_of_two() -> Bool {
+  return dd_block_size(copy: DdRangeCopy { source_offset: 4096, target_offset: 8192, length: 1024 }) == 1024
+    && dd_block_size(copy: DdRangeCopy { source_offset: 3, target_offset: 8192, length: 1024 }) == 1
+    && dd_block_size(copy: DdRangeCopy { source_offset: 0, target_offset: 0, length: 4194304 }) == 1048576
+}
+
+// root, directory "d" holding file "a", then top-level file "b"; names "d\0a\0b\0".
+data synthetic_fst: List<Int> = [
+  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
+  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3,
+  0, 0, 0, 2, 0, 0, 0, 100, 0, 0, 0, 5,
+  0, 0, 0, 4, 0, 0, 0, 200, 0, 0, 0, 7,
+  100, 0, 97, 0, 98, 0,
+]
+
+test fn gcm_files_walks_directories_into_paths() -> Bool {
+  return match gcm_files(fst: synthetic_fst) {
+    GcmDecoded { value: files } =>
+      files == [
+        GcmFile { path: "d/a", fst_index: 2, offset: 100, size: 5 },
+        GcmFile { path: "b", fst_index: 3, offset: 200, size: 7 },
+      ]
+    GcmRejected { reason: _ } => false
+  }
+}
+
+test fn gcm_files_refuses_a_truncated_table() -> Bool {
+  return match gcm_files(fst: synthetic_fst |> take(n: 40)) {
+    GcmDecoded { value: _ } => false
+    GcmRejected { reason: _ } => true
+  }
+}
+
+data synthetic_header: GcmHeader = GcmHeader { game_code: [], dol_offset: 2000, fst_offset: 1000, fst_size: 54 }
+data synthetic_files: List<GcmFile> = [
+  GcmFile { path: "d/a", fst_index: 2, offset: 100, size: 5 },
+  GcmFile { path: "b", fst_index: 3, offset: 200, size: 7 },
+]
+
+test fn gcm_placement_keeps_a_fitting_file_in_place_and_appends_one_that_does_not() -> Bool {
+  let target = GcmFile { path: "d/a", fst_index: 2, offset: 100, size: 5 }
+  return gcm_placement(header: synthetic_header, files: synthetic_files, target: target, new_size: 100, image_size: 3000) == 100
+    && gcm_placement(header: synthetic_header, files: synthetic_files, target: target, new_size: 101, image_size: 3000) == 32768
+}
+
+data synthetic_rarc_header: RarcHeader = RarcHeader {
+  archive_size: 160, data_start: 64, data_length: 96, mram_length: 0, aram_length: 96,
+  node_offset: 32, entry_offset: 48, string_offset: 56,
+}
+data synthetic_rarc_files: List<RarcFile> = [
+  RarcFile { path: "y", entry_offset: 20, data_offset: 32, size: 40 },
+  RarcFile { path: "x", entry_offset: 0, data_offset: 0, size: 10 },
+]
+
+test fn rarc_repack_without_resizes_is_the_original_layout() -> Bool {
+  let r = rarc_repack(header: synthetic_rarc_header, files: synthetic_rarc_files, resizes: [])
+  return r.data_length == 96 && r.archive_size == 160 && (r.placements |> map(p => p.new_offset)) == [0, 32]
+}
+
+test fn rarc_repack_shifts_later_members_to_the_next_boundary_and_grows_aram() -> Bool {
+  let r = rarc_repack(header: synthetic_rarc_header, files: synthetic_rarc_files, resizes: [RarcResize { path: "x", size: 40 }])
+  return (r.placements |> map(p => p.new_offset)) == [0, 64]
+    && r.data_length == 128
+    && r.archive_size == 192
+    && (get(r.header_patches, 1) ?? OctetPatch { offset: -1, octets: [] }) == OctetPatch { offset: 16, octets: [0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 128] }
+}
