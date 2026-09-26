@@ -1458,6 +1458,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_ntfy_access_readback_wet_witness_test", function: "the_helper_output_decodes_as_an_outcome_by_real_execution" },
+      entry: "dag/test/claim/approval_ntfy_access_readback_wet_witness_test.dag",
+      function: "the_helper_output_decodes_as_an_outcome_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
       function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution",

@@ -65,7 +65,7 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
   let joined = join(argv, " ")
   string_contains(s: joined, pattern: "/usr/bin/sudo -n -u " + (fleet_posix_operator_user.name as String) + " ")
     && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
-    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code")
+    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
 }
 
 // The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH

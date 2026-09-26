@@ -192,6 +192,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_dereferenced_inode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_uid_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_size_bytes_command"),
