@@ -79,7 +79,7 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
 // and the target's Info.plist from it (gunbc.approve_ios_project); neither output is committed.
 // SwiftCompiler: swiftc, driven by xcodebuild on the operator's Mac, compiles the file into the app
 // or its test bundle (gunbc.approve_ios_swift_protocol and its siblings, printed by
-// v2.extdeps.languages.swift.print).
+// the Swift grammar rows v2.extdeps.languages.swift.rows).
 type RepoConsumer
   = GitProtocol
   | CargoToolchain

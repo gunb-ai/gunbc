@@ -21,17 +21,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the struct and union-style enum declarations of the same grammar through the shared semantic-decl
 // fold; this tree is what a whole source file is when it is authored rather than derived.
 //
-// ONE PRINTER projects the tree to Swift text: v2.extdeps.languages.swift.print. Layout is the
-// printer's canonical policy and is not carried on the nodes -- there is no layout-hint field, so
-// two authors cannot spell one tree two ways.
+// THE SWIFT GRAMMAR ROWS (v2.extdeps.languages.swift.rows) spell the tree: it is lowered to the
+// emitted form the rows read and serialized by the generic row serializer (DESIGN §4). Layout is not
+// carried on the nodes -- there is no layout-hint field, so two authors cannot spell one tree two ways.
 //
 // CONSUMER (DESIGN §3c): gunbc.approve_ios_swift_protocol, gunbc.approve_ios_swift_wire and
-// gunbc.approve_ios_swift_protocol_vector_tests, whose trees the printer renders into the
+// gunbc.approve_ios_swift_protocol_vector_tests, whose trees the rows emit into the
 // drift-gated apps/approve-ios sources (gunbc.generated_artifact).
 //
 // The emit direction only. §4 asks for one grammar read in both directions; the ingest direction
 // is the declared frontier below, not a second model.
-data swift_syntax_ingest_frontier: DissolutionCondition = unbound_dissolution(description: "v2.extdeps.languages.swift.syntax is printed (v2.extdeps.languages.swift.print) and never read: Swift source is authored as syntax-tree constructors rather than ingested. DISSOLVES WHEN the Swift grammar rows are read in both directions (DESIGN §4) so that ingest of a Swift source file produces this model, SUFFICIENT FOR the apps/approve-ios trees to be obtained by ingesting Swift rather than transcribed as constructors, and for print(ingest(s)) to be checked against s on the whole app")
+data swift_syntax_ingest_frontier: DissolutionCondition = unbound_dissolution(description: "v2.extdeps.languages.swift.syntax is emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) and never read: Swift source is authored as syntax-tree constructors rather than ingested. DISSOLVES WHEN the Swift grammar rows are read in both directions (DESIGN §4) so that ingest of a Swift source file produces this model, SUFFICIENT FOR the apps/approve-ios trees to be obtained by ingesting Swift rather than transcribed as constructors, and for print(ingest(s)) to be checked against s on the whole app")
 
 // ── Comments (the lexical `comment` production; carried beside a declaration or statement) ──
 type SwiftComment

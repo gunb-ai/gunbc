@@ -22,10 +22,10 @@ import v2.extdeps.languages.swift.syntax {
   sw_let_decl, sw_static_let, sw_static_let_typed, sw_stored, sw_field, sw_computed, sw_param, sw_p, sw_p_, sw_func,
   sw_struct, sw_enum, sw_cases, sw_case_payload, sw_doc, sw_cmt, sw_import
 }
-import v2.extdeps.languages.swift.print { print_swift_source_file }
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 
 // apps/approve-ios/Approve/Wire.swift AS A SWIFT SYNTAX TREE (v2.extdeps.languages.swift.syntax),
-// printed by v2.extdeps.languages.swift.print into the committed file (gunbc.generated_artifact
+// emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
 // ApproveIosWireSwiftArtifact). Transcribed from the hand-written file it replaces; deriving the
 // member names, arms and routes from gunbc.auth.approval_device_wire is the later step named by
 // gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier.
@@ -768,7 +768,7 @@ data approve_ios_wire_header: List<String> = [
   "the envelope fixtures can be matched as bytes. Decoding mirrors wire_object / wire_string: an",
   "unknown member, a missing member, an empty string or an unadmitted kind is refused at its path.",
   "Nothing outside this file spells a path, a header or a JSON key.",
-  "GENERATED from gunbc.approve_ios_swift_wire by v2.extdeps.languages.swift.print; do not edit.",
+  "GENERATED from gunbc.approve_ios_swift_wire from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
 ]
 
 fn approve_ios_wire_swift_file() -> SwiftSourceFile {
@@ -777,6 +777,6 @@ fn approve_ios_wire_swift_file() -> SwiftSourceFile {
   }
 }
 
-fn expected_approve_ios_wire_swift() -> String {
-  print_swift_source_file(f: approve_ios_wire_swift_file())
+fn expected_approve_ios_wire_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_wire_swift_file())
 }

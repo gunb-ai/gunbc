@@ -25,8 +25,8 @@ import extdeps.apple.xcode { XcodeRelease }
 // standings (operator direction 2026-09-25: hand-concatenated text, then a modeled form that is
 // emitted, then derived -- the shell-to-argv path). Protocol.swift, Wire.swift and
 // ProtocolVectorTests.swift are the MODELED stage: symbolic syntax trees
-// (v2.extdeps.languages.swift.syntax) transcribed from the files they replaced, printed by one
-// printer (v2.extdeps.languages.swift.print) and drift-gated, so a hand edit is refused. Their
+// (v2.extdeps.languages.swift.syntax) transcribed from the files they replaced, emitted through the Swift
+// grammar rows (v2.extdeps.languages.swift.rows) and drift-gated, so a hand edit is refused. Their
 // constants and shapes are still transcribed rather than derived from gunbc.auth.approval_device_wire
 // (approve_ios_transcribed_swift_frontier), except the tests' surface-name set, which is generated
 // from the fixture's own rows. The other five files are still hand-authored text

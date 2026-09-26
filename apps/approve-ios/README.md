@@ -2,7 +2,7 @@
 
 SwiftUI (iOS 17+) realizing `gunbc.auth.approval_device_wire` (the byte contract) and `gunbc.auth.approval_device_redemption` (the server's admission) with
 `extdeps.apple.{secure_enclave, app_attest, apns}`. `Protocol.swift`, `Wire.swift` and
-`ProtocolVectorTests.swift` are GENERATED: printed by `v2.extdeps.languages.swift.print` from Swift syntax
+`ProtocolVectorTests.swift` are GENERATED: emitted through the Swift grammar rows (`v2.extdeps.languages.swift.rows`) from Swift syntax
 trees (`gunbc.approve_ios_swift_protocol`, `gunbc.approve_ios_swift_wire`,
 `gunbc.approve_ios_swift_protocol_vector_tests`) and drift-gated, so edit the tree, never the file; the rest
 is still hand-authored. Both standings are recorded in `gunbc.approve_ios_app`

@@ -4,6 +4,7 @@ module gunbc.generated_artifact_emit
 import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_json }
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, ApproveIosProjectGenerated, ApproveIosProjectRefused }
 import gunbc.approve_ios_swift_protocol { expected_approve_ios_protocol_swift }
+import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefused }
 import gunbc.approve_ios_swift_wire { expected_approve_ios_wire_swift }
 import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
@@ -153,9 +154,18 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     WholeCorpusCompileMeasuredRootDemandsArtifact => artifact_generated(content: expected_whole_corpus_compile_measured_root_demands_json())
     ApprovalDeviceVectorsArtifact => artifact_generated(content: approval_device_vectors_json())
-    ApproveIosProtocolSwiftArtifact => artifact_generated(content: expected_approve_ios_protocol_swift())
-    ApproveIosWireSwiftArtifact => artifact_generated(content: expected_approve_ios_wire_swift())
-    ApproveIosProtocolVectorTestsSwiftArtifact => artifact_generated(content: expected_approve_ios_protocol_vector_tests_swift())
+    ApproveIosProtocolSwiftArtifact => match expected_approve_ios_protocol_swift() {
+      SwiftRowEmitted { source } => artifact_generated(content: source)
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+    ApproveIosWireSwiftArtifact => match expected_approve_ios_wire_swift() {
+      SwiftRowEmitted { source } => artifact_generated(content: source)
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+    ApproveIosProtocolVectorTestsSwiftArtifact => match expected_approve_ios_protocol_vector_tests_swift() {
+      SwiftRowEmitted { source } => artifact_generated(content: source)
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
     ApproveIosProjectYmlArtifact => match expected_approve_ios_project_yml() {
       ApproveIosProjectGenerated { content } => artifact_generated(content: content)
       ApproveIosProjectRefused { reason } => ArtifactGenerationRefused { reason: reason }

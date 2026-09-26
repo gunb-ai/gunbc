@@ -17,10 +17,10 @@ import v2.extdeps.languages.swift.syntax {
   sw_expr, sw_ret, sw_let, sw_var, sw_let_typed, sw_for, sw_assign, sw_cmt_stmt,
   sw_field, sw_p_, sw_func, sw_struct, sw_doc, sw_cmt, sw_import
 }
-import v2.extdeps.languages.swift.print { print_swift_source_file }
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 
 // apps/approve-ios/ApproveTests/ProtocolVectorTests.swift AS A SWIFT SYNTAX TREE
-// (v2.extdeps.languages.swift.syntax), printed by v2.extdeps.languages.swift.print into the
+// (v2.extdeps.languages.swift.syntax), emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the
 // committed file (gunbc.generated_artifact ApproveIosProtocolVectorTestsSwiftArtifact).
 //
 // THE ONE DERIVED PART, and the defect it retires: testSurfaceMatchesTheFixture joins the fixture's
@@ -402,7 +402,7 @@ data approve_ios_tests_header: List<String> = [
   "The Swift byte builders against the vectors the .dag witness EMITS from device_redemption_signing_input",
   "and enrolment_transcript (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte",
   "is written here: a hand-copied expectation would be a second authority for the join.",
-  "GENERATED from gunbc.approve_ios_swift_protocol_vector_tests by v2.extdeps.languages.swift.print; do not edit.",
+  "GENERATED from gunbc.approve_ios_swift_protocol_vector_tests from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
 ]
 
 fn approve_ios_protocol_vector_tests_swift_file() -> SwiftSourceFile {
@@ -416,6 +416,6 @@ fn approve_ios_protocol_vector_tests_swift_file() -> SwiftSourceFile {
   }
 }
 
-fn expected_approve_ios_protocol_vector_tests_swift() -> String {
-  print_swift_source_file(f: approve_ios_protocol_vector_tests_swift_file())
+fn expected_approve_ios_protocol_vector_tests_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file())
 }

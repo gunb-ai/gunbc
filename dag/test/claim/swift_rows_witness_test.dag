@@ -1,4 +1,4 @@
-module test.claim.swift_print_witness
+module test.claim.swift_rows_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, List }
@@ -9,14 +9,14 @@ import v2.extdeps.languages.swift.syntax {
   sw_expr, sw_ret, sw_throw, sw_let, sw_guard, sw_cond, sw_bind, sw_switch, sw_case, sw_default, sw_pexpr, sw_int,
   sw_p_, sw_func, sw_struct, sw_enum, sw_field, sw_static_let, sw_doc, sw_import, sw_asq
 }
-import v2.extdeps.languages.swift.print { print_swift_source_file }
+import v2.extdeps.languages.swift.rows { swift_rows_emit_source_file, SwiftRowEmitted, SwiftRowEmissionRefused }
 import gunbc.auth.approval_device_redemption_fixtures { surface_vectors }
 import gunbc.approve_ios_swift_protocol_vector_tests { approve_ios_surface_spelled_decl }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE PRINTER'S CANONICAL LAYOUT, AT ITS OWN INTERFACE (DESIGN §3: a witness discriminates at one
-// interface). A supplied tree exercises every layout rule v2.extdeps.languages.swift.print states --
+// THE SWIFT ROWS' CANONICAL LAYOUT, AT THEIR OWN INTERFACE (DESIGN §3: a witness discriminates at one
+// interface). A supplied tree exercises every layout choice v2.extdeps.languages.swift.rows makes (a production choice in its lowering) --
 // adjacent imports, the blank line around a member with a body, an inline guard and an inline
 // closure, an inline and a multi-line switch case, the static-literal escapes and the verbatim
 // extended literal -- and the whole text is compared, so a rule that drifts reds here by name.
@@ -42,15 +42,22 @@ fn witness_tree() -> SwiftSourceFile {
 
 data witness_tree_text: String = "import Foundation\nimport XCTest\n\nenum E \{\n    static let a = \"q\\\"b\\\\s\\n\\u\{E9\}\\u\{1F\}\"\n    static let r = #\"\{\"k\": \"\\n\"\}\"#\n\n    /// Doc.\n    static func f(_ x: Int) throws -> String \{\n        guard let s = x as? String, !s.isEmpty else \{ throw failure \}\n        let ys = xs.filter \{ $0 == x \}\n        switch x \{\n        case 1: return \"one\"\n        default:\n            log(x)\n            return \"many\"\n        \}\n    \}\n\}\n\nstruct S: Equatable \{\n    var a: String\n    var b: Int\n\}\n"
 
-test fn the_printer_realizes_every_canonical_layout_rule() -> Bool {
-  print_swift_source_file(f: witness_tree()) == witness_tree_text
+fn emit(f: SwiftSourceFile) -> String {
+  match swift_rows_emit_source_file(f: f) {
+    SwiftRowEmitted { source: s } => s
+    SwiftRowEmissionRefused { reason: r } => concat("REFUSED: ", r as String)
+  }
+}
+
+test fn the_rows_realize_every_canonical_layout_choice() -> Bool {
+  emit(f: witness_tree()) == witness_tree_text
 }
 
 // A discriminating control on the same interface: one node changed (the struct's second field) moves
-// the text, so the equality above is not satisfied by a printer that ignores its input.
+// the text, so the equality above is not satisfied by an emission that ignores its input.
 test fn a_changed_node_changes_the_text() -> Bool {
   let changed = SwiftSourceFile { declarations: [sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String"))])] }
-  print_swift_source_file(f: changed) != print_swift_source_file(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String")), sw_field(n: "b", t: sw_t(n: "Int"))])] })
+  emit(f: changed) != emit(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String")), sw_field(n: "b", t: sw_t(n: "Int"))])] })
 }
 
 // THE SURFACE SET IS THE FIXTURE'S. The declaration testSurfaceMatchesTheFixture uses
@@ -61,5 +68,5 @@ test fn a_changed_node_changes_the_text() -> Bool {
 test fn the_spelled_surface_set_is_the_fixtures_names() -> Bool {
   let names = map(surface_vectors, v => concat(concat("\"", v.name as String), "\""))
   let expected = concat(concat("let spelled: Set<String> = [", join(names, ", ")), "]\n")
-  print_swift_source_file(f: SwiftSourceFile { declarations: [approve_ios_surface_spelled_decl()] }) == expected
+  emit(f: SwiftSourceFile { declarations: [approve_ios_surface_spelled_decl()] }) == expected
 }
