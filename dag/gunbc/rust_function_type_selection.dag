@@ -1,0 +1,259 @@
+module gunbc.rust_function_type_selection
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  ChoiceDomain,
+  ConstraintSatisfied,
+  CausalModelEstablished,
+  DecisionAssessment,
+  DecisionConstraint,
+  DecisionRegion,
+  DecisionSubject,
+  DecisionVariable,
+  ContextParameter,
+  HardConstraint,
+  ObjectiveMeasure,
+  ObjectiveTerm,
+  ParameterBound,
+  PhysicalModelEstablished,
+  PreferSurvivor,
+  RealizationSelectionResult,
+  RelationOtherwiseEstablished,
+  SelectionPolicy,
+  UniqueSurvivorRequired,
+  VariesAlong,
+  VendorDocumentedCoupling,
+  select_realization,
+}
+import extdeps.external_authority { CitedToAuthority }
+import extdeps.languages.rust.function_type_forms {
+  RustBoxDynFnForm,
+  RustFnBoundReturn,
+  RustFnItemReturn,
+  RustFunctionTypeForm,
+  RustFunctionTypeFormFacts,
+  RustFunctionTypePosition,
+  RustImplFnForm,
+  rust_function_type_form_admitted,
+  rust_function_type_form_facts,
+  rust_reference_closure_types,
+  rust_reference_trait_object,
+  rustc_error_e0562,
+}
+
+// WHICH RUST FORM REALIZES A RETURNED CLOSURE AT EACH POSITION, AS A SELECTION (DESIGN section 3d).
+// The candidate field is Rust's two forms (extdeps.languages.rust.function_type_forms); this module
+// projects their facts onto funded axes and runs std.decision select_realization per position. It
+// owns the question, the axes, the hard constraint and the policy -- never the facts.
+//
+// The target model's rows (v2.extdeps.languages.rust rust_function_type_realization_rows) carry the
+// winner of each position; test.claim.rust_function_type_selection_witness executes these selections
+// and pins every row's realization to its SelectedWithin receipt. DIVERGENCE, STATED: the
+// selection runs here, offline, and the row carries its answer, rather than the emitter selecting
+// per signature. TRIGGER (the capability): the self-emitted target_model can consume
+// std.decision, at which point the emitter calls this selection and the rows reduce to the field.
+data rust_fn_type_selection_module: String = "gunbc.rust_function_type_selection"
+
+// Candidate identities. Their decl names ARE the target-model row's `realization` symbols, so the
+// pin compares one spelling rather than maintaining a second mapping.
+data rust_fn_type_impl_trait: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "rust_fn_type_impl_trait")
+data rust_fn_type_boxed_trait_object: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "rust_fn_type_boxed_trait_object")
+
+// THE FUNDED AXES. Admissibility is an axis only so the hard constraint can bind it (std.decision
+// constrains funded axes); the other three are what distinguishes the forms where both are admitted.
+// Allocation and dispatch favour impl; nameability favours Box -- a caller that must STORE the value
+// in a named type (a struct field, a collection of heterogeneous closures) needs a nameable one.
+data ax_admitted_at_position: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "ax_admitted_at_position")
+data ax_heap_allocations_per_value: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "ax_heap_allocations_per_value")
+data ax_dynamic_dispatch_per_call: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "ax_dynamic_dispatch_per_call")
+data ax_type_nameable: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "ax_type_nameable")
+
+data rust_fn_type_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: ax_admitted_at_position, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_heap_allocations_per_value, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_dynamic_dispatch_per_call, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_type_nameable, goal: HigherIsBetter },
+]
+
+// E0562 AS A HARD CONSTRAINT: a form the position does not admit reads 0 on the admissibility axis
+// and is excluded BEFORE Pareto; it is never ranked.
+data rust_fn_type_e0562: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "rust_fn_type_e0562")
+data rust_fn_type_constraints_authority: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "rust_fn_type_constraints")
+
+data rust_fn_type_constraints: List<HardConstraint> = [
+  HardConstraint { identity: rust_fn_type_e0562, axis: ax_admitted_at_position, bound_micro: 1000000 },
+]
+
+data rust_fn_type_evidence_snapshot: DeclarationRef = decl_ref(module_path: "extdeps.languages.rust.function_type_forms", decl_name: "rust_function_type_form_facts")
+
+fn bool_micro(b: Bool) -> Int {
+  if b { 1000000 } else { 0 }
+}
+
+fn form_identity(form: RustFunctionTypeForm) -> DeclarationRef {
+  match form {
+    RustImplFnForm => rust_fn_type_impl_trait
+    RustBoxDynFnForm => rust_fn_type_boxed_trait_object
+  }
+}
+
+fn form_label(form: RustFunctionTypeForm) -> NonEmptyStr {
+  match form {
+    RustImplFnForm => "impl Fn(..) -> R" as NonEmptyStr
+    RustBoxDynFnForm => "Box<dyn Fn(..) -> R>" as NonEmptyStr
+  }
+}
+
+// The facts are exact statements of the language, so every reading is a degenerate interval and no
+// gap is declared; a fact the Reference did not settle would enter as an AxisGap here instead.
+fn form_entry(facts: RustFunctionTypeFormFacts, position: RustFunctionTypePosition) -> ParetoEntry {
+  let no_gaps: List<AxisGap> = []
+  ParetoEntry {
+    identity: form_identity(form: facts.form),
+    display_label: form_label(form: facts.form),
+    readings: [
+      AxisReading { axis: ax_admitted_at_position, interval_micro: degenerate_interval(point: bool_micro(b: rust_function_type_form_admitted(facts: facts, position: position))) },
+      AxisReading { axis: ax_heap_allocations_per_value, interval_micro: degenerate_interval(point: facts.heap_allocations_per_value * 1000000) },
+      AxisReading { axis: ax_dynamic_dispatch_per_call, interval_micro: degenerate_interval(point: facts.dynamic_dispatch_per_call * 1000000) },
+      AxisReading { axis: ax_type_nameable, interval_micro: degenerate_interval(point: bool_micro(b: facts.type_is_nameable)) },
+    ],
+    missing_inputs: no_gaps,
+  }
+}
+
+fn rust_fn_type_field(position: RustFunctionTypePosition) -> List<ParetoEntry> {
+  map(rust_function_type_form_facts, f => form_entry(facts: f, position: position))
+}
+
+fn position_key(position: RustFunctionTypePosition) -> String {
+  match position {
+    RustFnItemReturn => "item_return"
+    RustFnBoundReturn => "fn_bound_return"
+  }
+}
+
+fn position_ref(position: RustFunctionTypePosition, prefix: String) -> DeclarationRef {
+  decl_ref(module_path: rust_fn_type_selection_module, decl_name: prefix + "_" + position_key(position: position))
+}
+
+fn rust_fn_type_subject_identity(position: RustFunctionTypePosition) -> DeclarationRef {
+  position_ref(position: position, prefix: "rust_fn_type_subject")
+}
+
+fn rust_fn_type_field_identity(position: RustFunctionTypePosition) -> DeclarationRef {
+  position_ref(position: position, prefix: "rust_fn_type_field")
+}
+
+// THE POLICY PER POSITION, and why. At an Fn-bound return E0562 leaves one feasible form, so the
+// policy demands a unique survivor and states nothing else. At a function item's return both forms
+// are admitted and neither dominates (impl wins allocation and dispatch, Box wins nameability), so
+// the front is two and a policy must choose: the consumer of a returned closure in emitted code is
+// its CALL SITE, which applies it and never names its type -- a consumer that must name it is a
+// field or collection position, a different subject with its own row -- so nameability buys the
+// item-return consumer nothing and impl is preferred.
+fn rust_fn_type_policy(position: RustFunctionTypePosition) -> SelectionPolicy {
+  match position {
+    RustFnItemReturn =>
+      PreferSurvivor { identity: position_ref(position: position, prefix: "rust_fn_type_policy"), preferred: rust_fn_type_impl_trait }
+    RustFnBoundReturn =>
+      UniqueSurvivorRequired { identity: position_ref(position: position, prefix: "rust_fn_type_policy") }
+  }
+}
+
+fn rust_fn_type_policy_identity(position: RustFunctionTypePosition) -> DeclarationRef {
+  position_ref(position: position, prefix: "rust_fn_type_policy")
+}
+
+// THE CLOSED SUBJECT. One variable (which form), one objective term (the cost of producing and
+// calling the returned value, grounded in the Reference's statement of trait-object dispatch), one
+// context parameter (the position) and one constraint (E0562). The coupling of cost to form is
+// vendor-documented: the Reference states that a trait object is a pointer to a vtable.
+fn rust_fn_type_assessment(position: RustFunctionTypePosition) -> DecisionAssessment {
+  let subject_id = rust_fn_type_subject_identity(position: position)
+  let var_id = position_ref(position: position, prefix: "rust_fn_type_variable")
+  let term_id = position_ref(position: position, prefix: "rust_fn_type_call_cost_term")
+  let param_id = position_ref(position: position, prefix: "rust_fn_type_position_parameter")
+  DecisionAssessment {
+    subject: DecisionSubject {
+      identity: subject_id,
+      question: "which Rust form realizes a returned closure at this position" as NonEmptyStr,
+      parameters: [ContextParameter { identity: param_id }],
+      constraints: [DecisionConstraint { identity: rust_fn_type_e0562 }],
+      objective: ObjectiveMeasure {
+        identity: position_ref(position: position, prefix: "rust_fn_type_objective"),
+        goal: LowerIsBetter,
+        terms: [ObjectiveTerm { identity: term_id, ground: CitedToAuthority { authority: rust_reference_trait_object } }],
+      },
+      choice_domain: ChoiceDomain {
+        identity: position_ref(position: position, prefix: "rust_fn_type_choice_domain"),
+        variables: [DecisionVariable { identity: var_id }],
+      },
+    },
+    sensitivities: [
+      VariesAlong {
+        term: term_id,
+        variable: var_id,
+        region: DecisionRegion { identity: position_ref(position: position, prefix: "rust_fn_type_region") },
+        relation: RelationOtherwiseEstablished { note: "a trait object adds one allocation and a vtable call; an opaque impl type adds neither" as NonEmptyStr },
+        coupling: CitedToAuthority { authority: rust_reference_trait_object },
+      },
+    ],
+    constraints: [
+      ConstraintSatisfied { constraint: rust_fn_type_e0562, evidence: "E0562 applied to the field as the admissibility hard constraint" as NonEmptyStr },
+    ],
+    parameters: [
+      ParameterBound { parameter: param_id, evidence: ("position " + position_key(position: position)) as NonEmptyStr },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [term_id] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        VendorDocumentedCoupling { authority: rust_reference_closure_types, term: term_id, variable: var_id, subject: subject_id },
+      ],
+    },
+  }
+}
+
+fn select_rust_function_type(position: RustFunctionTypePosition) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: rust_fn_type_assessment(position: position),
+    candidate_field_identity: rust_fn_type_field_identity(position: position),
+    field: rust_fn_type_field(position: position),
+    axes: rust_fn_type_axes,
+    constraints: rust_fn_type_constraints,
+    constraint_authority: rust_fn_type_constraints_authority,
+    policy: rust_fn_type_policy(position: position),
+    evidence_snapshot: rust_fn_type_evidence_snapshot,
+  )
+}
+
+// THE SAME SELECTION OVER A FIELD MISSING ONE FACT, for the claim that a gap answers
+// SelectionNeedsEvidence rather than a guess: impl's nameability is withheld and declared as a gap.
+fn select_rust_function_type_with_withheld_nameability(position: RustFunctionTypePosition) -> RealizationSelectionResult<ParetoEntry> {
+  let field = map(rust_fn_type_field(position: position), e =>
+    if declaration_ref_eq(a: e.identity, b: rust_fn_type_impl_trait) {
+      ParetoEntry {
+        identity: e.identity,
+        display_label: e.display_label,
+        readings: filter(e.readings, r => !declaration_ref_eq(a: r.axis, b: ax_type_nameable)),
+        missing_inputs: [AxisGap { axis: ax_type_nameable, cause: "nameability withheld by the claim" as NonEmptyStr }],
+      }
+    } else {
+      e
+    }
+  )
+  select_realization(
+    assessment: rust_fn_type_assessment(position: position),
+    candidate_field_identity: rust_fn_type_field_identity(position: position),
+    field: field,
+    axes: rust_fn_type_axes,
+    constraints: rust_fn_type_constraints,
+    constraint_authority: rust_fn_type_constraints_authority,
+    policy: rust_fn_type_policy(position: position),
+    evidence_snapshot: rust_fn_type_evidence_snapshot,
+  )
+}

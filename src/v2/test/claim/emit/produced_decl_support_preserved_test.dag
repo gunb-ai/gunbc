@@ -52,7 +52,8 @@ data pdp_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRows {
   param_separator: [],
   type_ref_token_class: ^pdp_type_ident,
   block_close: [],
-  block_evaluation_mode: ValueProducing
+  block_evaluation_mode: ValueProducing,
+  function_type_realizations: []
 }
 
 fn pdp_wired_support() -> ProducedDeclSupport {
