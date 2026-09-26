@@ -13,7 +13,7 @@ import gunbc.runner_microvm_slot_start {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data u: NonEmptyStr = "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr
+data u: NonEmptyStr = "gunbc-microvm-slot@srv1-11.service" as NonEmptyStr
 data inv: NonEmptyStr = "0123abcd" as NonEmptyStr
 
 // THE START SUCCEEDS ONLY WHEN THIS INVOCATION'S CONTROLLER RECEIPT WAS READ, whatever it says. The

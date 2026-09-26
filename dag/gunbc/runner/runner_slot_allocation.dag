@@ -4,6 +4,7 @@ import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureSubtraction, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { byte_size_saturating_sub }
+import std.checked_arithmetic { nat_magnitude }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
@@ -237,15 +238,40 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // (memory.peak of a fresh per-attempt cgroup) and never a larger request: no arm here or downstream
 // raises the ceiling on a failed fit.
 //
-// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
-// an index at the width moves when the width moves. 13 sits above the twelve GitHub slots srv1
-// runs and below its memory-admitted width.
+// THE INDEX IS THE TOP OF THE COMMITTED WIDTH, DERIVED, AND THE AUTHORED 13 IT REPLACES IS THE
+// RECEIPT FOR WHY (parent ruling 2026-09-26). The index was authored 13 with the note that it sat
+// "above the twelve GitHub slots srv1 runs and below its memory-admitted width" -- a claim about a
+// DIFFERENT authority that nothing checked. When the width started subtracting the served
+// deployment's slice charge srv1 went 14 -> 11, the note went false without any edit to it, and the
+// shakedown cell landed inside the open runner-slot-26-25-gib retiree range. An authored index is a
+// second answer to "is this slot a member", so it is derived from the one that already decides it:
+// the last index under gunbc_runner_committed_width. That does move when the width moves -- which is
+// the property wanted, since a slot outside the width is not a slot -- and
+// test.claim.runner.runner_microvm_slot_controller_witness_test
+// the_shakedown_index_is_the_top_of_srv1s_committed_width holds it there.
+//
+// THE HOST IS A SEPARATE ROW BECAUSE THE WIDTH READS IT. host_memory_admitted_width asks whether a
+// host carries the shakedown slot before dividing, so asking that through this identity would make
+// the width depend on the index that depends on the width.
+//
+// AN UNRESOLVED WIDTH YIELDS INDEX 0, which is outside every committed range (indices start at 1),
+// so gunbc.runner_lifecycle runner_slot_membership refuses it rather than treating it as a slot.
+// That is the same Int-shim rung host_runner_memory_envelope_bytes declares above -- mechanically
+// preventable at membership, not structurally impossible at the type -- and its next-rung trigger is
+// the same: a typed width standing no caller can read as an Int.
 data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
 
-data gunbc_microvm_shakedown_slot_index: Nat = 13
+data gunbc_microvm_shakedown_host: HostIdentity = operator_host_srv1
+
+fn gunbc_microvm_shakedown_slot_index() -> Nat {
+  match gunbc_runner_committed_width(host: gunbc_microvm_shakedown_host) {
+    RunnerWidthDerived { slots: n } => nat_magnitude(a: n)
+    RunnerWidthUnresolved { cause: _ } => nat_magnitude(a: 0)
+  }
+}
 
 fn srv1_microvm_shakedown_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv1, slot_index: gunbc_microvm_shakedown_slot_index }
+  RunnerSlotIdentity { host: gunbc_microvm_shakedown_host, slot_index: gunbc_microvm_shakedown_slot_index() }
 }
 
 fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
@@ -578,7 +604,7 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
   memory_admitted_width_of_envelope(
     envelope: host_runner_memory_envelope(host: host),
-    carries_shakedown_slot: (host as String) == (srv1_microvm_shakedown_slot().host as String),
+    carries_shakedown_slot: (host as String) == (gunbc_microvm_shakedown_host as String),
   )
 }
 
@@ -1012,7 +1038,7 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
 // one_more_slot_than_memory_admits_refuses_on_every_host. So the verdict reads this, which charges
 // the shakedown slot what the width charged it.
 fn gunbc_runner_pool_for_host_at_width(host: HostIdentity, slots: Int) -> ByteSize {
-  if slots > 0 && (host as String) == (srv1_microvm_shakedown_slot().host as String) {
+  if slots > 0 && (host as String) == (gunbc_microvm_shakedown_host as String) {
     byte_size(
       byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - 1))
         + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())

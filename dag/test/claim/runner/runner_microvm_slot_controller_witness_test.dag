@@ -22,6 +22,7 @@ import gunbc.runner_slot_allocation {
   srv1_microvm_shakedown_slot, gunbc_runner_slot_desired, gunbc_runner_slot_desired_for,
   gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_memory_max_bytes,
   memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge,
+  gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved,
 }
 import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
 import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
@@ -266,12 +267,27 @@ test fn the_shakedown_demand_and_offer_are_derived_from_the_slot_and_name_the_sh
 
 // --- the slot is selected out of the roster, never parsed ---
 
+// THE SHAKEDOWN INDEX IS INSIDE THE COMMITTED WIDTH, AND AT ITS TOP (parent ruling 2026-09-26). The
+// index was authored 13 beside a note that it sat below srv1's memory-admitted width; the width fell
+// to 11 when it began subtracting the served deployment's slice charge, and the note went false
+// with nobody editing it. The index is now derived from the width, so this claim asks the derived
+// answer the question the note only asserted: is the slot a member (1 <= index <= width), and is it
+// the last one. An unresolved width must not mint a member at all.
+test fn the_shakedown_index_is_the_top_of_srv1s_committed_width() -> Bool {
+  let slot = srv1_microvm_shakedown_slot()
+  (slot.host as String) == (operator_host_srv1 as String)
+    && match gunbc_runner_committed_width(host: operator_host_srv1) {
+      RunnerWidthDerived { slots: n } => n >= 1 && slot.slot_index == n
+      RunnerWidthUnresolved { cause: _ } => false
+    }
+}
+
 // EVERY ROSTER MEMBER SELECTS ITSELF BY ITS OWN INSTANCE NAME, as an identity join over the roster
 // rather than a count of it (review 69823, DESIGN 5: a live-population count is not an oracle) --
 // a member the selection cannot reach is the defect, however many members there are.
 test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -> Bool {
-  let shakedown = match slot_of_instance(instance: "srv1-13") {
-    Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == 13
+  let shakedown = match slot_of_instance(instance: "srv1-11") {
+    Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == 11
     Absent => false
   }
   let github_slot = match slot_of_instance(instance: "srv1-01") { Present { value: _ } => false  Absent => true }
@@ -336,8 +352,8 @@ test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool 
     MicroVmAttemptRefused { refusal: _ } => false
     MicroVmAttemptAccepted { attempt: a } =>
       attempt_launch_property_words(attempt: a) == [
-        "--property=Slice=fabric-cell-srv1-13.slice",
-        "--property=PartOf=gunbc-microvm-slot@srv1-13.service",
+        "--property=Slice=fabric-cell-srv1-11.slice",
+        "--property=PartOf=gunbc-microvm-slot@srv1-11.service",
       ]
   }
 }
