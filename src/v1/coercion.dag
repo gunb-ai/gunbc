@@ -240,8 +240,14 @@ fn provenance_realizes_natively(p: TypeDeclarationProvenance) -> Bool {
   }
 }
 
+// "std.nat.Nat" is the DECLARER-QUALIFIED spelling of the same natively-realizing Nat: std.algebra
+// names count / length's return that way so a src/v2 call site cannot resolve it to the Peano
+// v2.std.nat.Nat. It is an exact identity, not a last-segment match -- the Peano homonym is
+// corpus-declared under src/v2 and fails provenance_realizes_natively regardless. Without this arm
+// the qualified spelling realized to no host alias, and the emitter's refusing-int test answered
+// false, so `count(xs) - 1` lowered to an unchecked `-` instead of v1_rt::int_sub.
 fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> String? {
-  if (name == "Nat" || name == "Int") && provenance_realizes_natively(p: p) {
+  if (name == "Nat" || name == "Int" || name == "std.nat.Nat") && provenance_realizes_natively(p: p) {
     Present { value: "i64" }
   } else {
     none
