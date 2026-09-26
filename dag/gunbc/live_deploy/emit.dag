@@ -50,6 +50,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_shell_command,
   executor_privileged_operation_converge_command,
   executor_privileged_operation_elevated_argv,
+  executor_privileged_operation_elevated_command,
   executor_privileged_operation_sudoers_line,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
@@ -85,7 +86,7 @@ import extdeps.virtualization.firecracker {
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.exec.command { argv_words }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
@@ -2274,6 +2275,12 @@ fn approval_broker_ntfy_runtime_observe_operation(revision: ReleaseRevisionBindi
 // pin it.
 fn approval_ntfy_runtime_observe_helper_argv(revision: ReleaseRevisionBinding) -> List<String> {
   executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
+}
+
+// The same invocation as the command the verb runs (gunbc.auth.approval_ntfy_access_readback
+// approval_ntfy_runtime_reading), from the same operation.
+fn approval_ntfy_runtime_observe_helper_command(revision: ReleaseRevisionBinding) -> ArgvCommand {
+  executor_privileged_operation_elevated_command(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
 }
 
 // THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
