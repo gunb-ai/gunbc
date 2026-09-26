@@ -11537,7 +11537,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     ExprListLit =>
       if rust_list_lit_holds_callables(texpr: texpr) {
         let element_type = rust_list_lit_callable_element_type(texpr: texpr, shared_types: shared_types, scope: scope, emit_info: emit_info)
-        emit_list_lit_expr(element_strs: texpr.children |> map(el => rust_callable_list_element(el: el, element_type: element_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)), target: Rust)
+        emit_list_lit_expr(element_strs: texpr.children |> map(el => rust_callable_list_element(el: el, element_type: element_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1)), target: Rust)
       } else {
         emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
       }
@@ -11573,7 +11573,7 @@ fn rust_list_lit_callable_element_type(texpr: Node, shared_types: Set<String>, s
   }
 }
 
-fn rust_callable_list_element(el: Node, element_type: String?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn rust_callable_list_element(el: Node, element_type: String?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, fuel: Int) -> String {
   match el.expr_data {
     ExprLambda =>
       let wrapped = rust_callable_field_value_wrap(
@@ -11583,7 +11583,7 @@ fn rust_callable_list_element(el: Node, element_type: String?, registry: Map<Str
         Present { value: ty } => concat(concat(concat("{ let __callable: ", ty), concat(" = ", wrapped)), "; __callable }")
         Absent => wrapped
       }
-    _ => emit_typed_expr(texpr: el, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    _ => emit_typed_expr(texpr: el, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
   }
 }
 

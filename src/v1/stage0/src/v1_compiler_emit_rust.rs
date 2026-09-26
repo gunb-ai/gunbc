@@ -24420,6 +24420,7 @@ pub fn emit_typed_expr(
                                         depth.clone(),
                                         shared_types.clone(),
                                         emit_info.clone(),
+                                        v1_rt::int_sub(fuel.clone(), 1),
                                     ));
                                 }
                                 __result
@@ -24502,6 +24503,7 @@ pub fn rust_callable_list_element(
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
+    fuel: i64,
 ) -> String {
     match (*el.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -24536,7 +24538,7 @@ pub fn rust_callable_list_element(
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
-            1024,
+            fuel.clone(),
         ),
     }
 }
