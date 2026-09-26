@@ -164,6 +164,8 @@ import v2.std.compilers.target_model {
   target_model_emit_transforms_empty,
   CanonicalOperation,
   InfixToken,
+  OperandUnchanged,
+  canonical_operation_op_coerce,
   canonical_operation_op_add,
   canonical_operation_op_sub,
   canonical_operation_op_mul,
@@ -1309,6 +1311,17 @@ fn rust_binop_operator_lex_rules() -> List<LexRule> {
   ]
 }
 
+// A CAST'S CROSSING IS SPELLED AS ITS OPERAND. v2.compiler.infer admits only an Identity or Exact
+// crossing (v2.std.coercion coercion_cast_crossing), so source and target share one representation
+// and Rust needs no conversion; its own `as` would claim a numeric conversion the model did not
+// make.
+fn rust_coerce_operator_realization_row() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_coerce(),
+    shape: OperandUnchanged
+  )
+}
+
 fn rust_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [
     rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror),
@@ -1322,7 +1335,8 @@ fn rust_operator_realizations_catalog_node() -> Node {
     rust_add_operator_realization_row(),
     rust_operator_realization_row(operation: canonical_operation_op_sub(), token: ^rust_token_minus),
     rust_operator_realization_row(operation: canonical_operation_op_mul(), token: ^rust_token_star),
-    rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash)
+    rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash),
+    rust_coerce_operator_realization_row()
   ])
 }
 

@@ -42,6 +42,24 @@ pub fn nat_min(a: Nat, b: Nat) -> Nat {
     }
 }
 
+pub fn nat_ceil_div(a: Nat, b: Nat) -> Option<Nat> {
+    if (b.clone() == 0) {
+        std::option::Option::None
+    } else {
+        {
+            let carry = if (v1_rt::int_rem(a.clone(), b.clone()) == 0) {
+                0
+            } else {
+                1
+            };
+            Some(v1_rt::int_add(
+                v1_rt::int_div(a.clone(), b.clone()),
+                carry.clone(),
+            ))
+        }
+    }
+}
+
 pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<i64>> {
     nat_range_accumulate(lo.clone(), hi.clone(), Rc::new(vec![]))
 }

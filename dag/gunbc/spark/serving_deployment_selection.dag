@@ -2,6 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_add, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
@@ -1529,7 +1530,11 @@ type FleetFit
   | FleetFitDegenerate { because: NonEmptyStr }
 
 fn rank_slots_left_after(required: Nat, members: List<HostIdentity>) -> Nat {
-  fold(members, init: required, f: (left, _h) => if left == 0 { left } else { left - 1 })
+  fold(members, init: required, f: (left, _h) =>
+    match checked_int_to_nat(n: left - 1) {
+      Present { value: fewer } => fewer
+      Absent => left
+    })
 }
 
 fn fleet_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot) -> FleetFit {

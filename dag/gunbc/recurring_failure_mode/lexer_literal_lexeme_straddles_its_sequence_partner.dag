@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.lexer_literal_lexeme_straddles_its_sequence_partner
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data lexer_literal_lexeme_straddles_its_sequence_partner: RecurringFailureMode = RecurringFailureMode {
+  identity: "lexer_literal_lexeme_straddles_its_sequence_partner" as NonEmptyStr,
+
+  receipts: [
+    "**every token after a line comment carried a ByteRange past its true offset, on pure-ASCII sources, because the comment's lexeme was fabricated text** (INVALID STATE: the `.dag` line comment `// ab` lexed to the lexeme `//[32, 97, 98]`, and a bare `//` lexed to `//Empty`. `v2.compiler.tokenize` `lex_walk_step` advances `pos` by the lexeme's length, so every later token start and end was shifted by the difference: +39 after a 13-character comment, and past the end of the file in `extdeps.bazel.build_event_stream`. The captured annotation text was the rendering too.) Every locus consumer after a comment read the wrong bytes: refusal carets, the XL-2 reference-conservation census, and XL-5's exact loci.",
+    "MECHANISM, re-derived (DESIGN section 6b). `lex_match_prefix` answered the pattern LITERAL as its lexeme, while every other matcher answers the codepoints it consumed from the source. On the seed those are different carriers: a native String, and a codepoint `Value::List`. The sequence arm of `lex_rule_thunk` joins its two lexemes with `list_append`, which is `concat`. The line-comment rule is `Sequence(Literal \"//\", Repeat(LineCommentTextChar))`, so that join met a native String receiver and a codepoint list. The seed's `concat` on a String renders any other argument: that is its modelled behaviour (`(a, b) -> String`), and programs rely on it for Int, as in `dag/gunbc/instruments/generated_artifact_gate.dag`. The list therefore rendered as its display text. The seed cannot tell a codepoint list from a data `List<Int>` at the Value level; that is the named open thread of `v1_compiler.v1_interpreter` `string_realization_straddle_detail`. So the earliest link that could be justified away is the one that CREATED the straddle, the literal matcher, not the concat that met it. A first attempt refused non-string arguments in the seed's concat. It was withdrawn after it broke that legitimate Int stringification in the required floor on gunbc#12313.",
+    "REPAIR. `lex_match_prefix` consumes its prefix from the source (`lex_consume_prefix`), so every lexeme the lexer builds is one carrier and a sequence's join is a list append. The lexeme's value is unchanged. `lex_strip_prefix`, now unused, is deleted. DISTINGUISHING FACTS: not gunbc#12285, where the lexer counts scalars into a field named bytes. That shifts extents by the octet excess of non-ASCII scalars. This row's shift is in the length of the wrong TEXT and occurs on ASCII; the two compose. Why no claim saw it: `v2.test.tokenize.annotation_channel` checks annotation counts and token identities, never offsets or annotation text.",
+    "RUNG after the repair: mechanically preventable. The claims below execute the production rule set and red on the old matcher; nothing in the lexer's types stops a future matcher from answering a pattern literal again. CEILING: structurally impossible, once a String and a codepoint sequence are one carrier in the realization, so that no join of two lexemes can straddle. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the Char/String realization grounding named by `string_realization_straddle_detail`'s open thread.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "a_token_after_a_line_comment_starts_at_its_offset", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "a_token_after_a_bare_line_comment_starts_at_its_offset", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "a_line_comment_captures_its_own_text_and_extent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.tokenize.line_comment_extent", decl_name: "tokens_without_a_comment_start_at_their_offsets", field: WholeDeclaration },
+  ],
+}
