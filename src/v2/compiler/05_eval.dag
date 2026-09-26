@@ -80,6 +80,7 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.node {
+  positional_edges,
   ArrowBodyForm,
   Behavior,
   Bind,
@@ -1162,9 +1163,22 @@ fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
   )
 }
 
+// A BIND'S SLOTS ARE ITS POSITIONAL EDGES. A let's <type-annotation> edge (v2.std.type_binder) is a
+// static ascription that evaluation does not read, and it may stand anywhere among the children a
+// producer wrote, so binder, value and body are indexed among the positionals only.
+fn eval_nth_positional_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: positional_edges(children: node.children),
+      wanted: wanted,
+      absent: eval_diagnostic(reason: absent_reason, node: node)
+    )
+  )
+}
+
 fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
   bind_outcome(
-    o: eval_nth_child(
+    o: eval_nth_positional_child(
       node: node,
       wanted: 0,
       absent_reason: ^eval_rejected_bind_key_absent
@@ -1176,7 +1190,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
 }
 
 fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
-  eval_nth_child(
+  eval_nth_positional_child(
     node: node,
     wanted: 1,
     absent_reason: ^eval_rejected_bind_value_absent
@@ -1185,7 +1199,7 @@ fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
 
 fn eval_bind_body(node: Node) -> Outcome<Node> {
   bind_outcome(
-    o: eval_nth_child(
+    o: eval_nth_positional_child(
       node: node,
       wanted: 2,
       absent_reason: ^eval_rejected_bind_body_absent
