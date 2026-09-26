@@ -1,0 +1,4 @@
+module v2.zzp_arg_imp_green
+import v2.compiler.inferred_tree { InferredTree, InferredFacts }
+fn needs(tree: InferredTree) -> Int { 0 }
+fn b(t: InferredTree) -> Int { needs(tree: t) }

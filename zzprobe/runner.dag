@@ -1,0 +1,11 @@
+module zzp_census_runner
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.types { String }
+fn v2_zzp_arg_imp_green() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_arg_imp_green\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn needs(tree: InferredTree) -> Int { 0 }\nfn b(t: InferredTree) -> Int { needs(tree: t) }\n") }
+fn v2_zzp_arg_imp_red() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_arg_imp_red\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn needs(tree: InferredTree) -> Int { 0 }\nfn b(t: InferredFacts) -> Int { needs(tree: t) }\n") }
+fn v2_zzp_arg_loc_green() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_arg_loc_green\ntype A { x: Int }\ntype B { y: Int }\nfn needs(b: B) -> Int { 0 }\nfn c(t: B) -> Int { needs(b: t) }\n") }
+fn v2_zzp_arg_loc_red() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_arg_loc_red\ntype A { x: Int }\ntype B { y: Int }\nfn needs(b: B) -> Int { 0 }\nfn c(t: A) -> Int { needs(b: t) }\n") }
+fn v2_zzp_ret_imp_green() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_ret_imp_green\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn h(t: InferredTree) -> InferredTree { t }\n\n") }
+fn v2_zzp_ret_imp_red() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_ret_imp_red\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn h(t: InferredFacts) -> InferredTree { t }\n\n") }
+fn v2_zzp_ret_loc_green() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_ret_loc_green\ntype A { x: Int }\ntype B { y: Int }\nfn h(t: B) -> B { t }\n\n") }
+fn v2_zzp_ret_loc_red() -> CompileDiagnosticCensus { compile_dag_diagnostic_census("module v2.zzp_ret_loc_red\ntype A { x: Int }\ntype B { y: Int }\nfn h(t: A) -> B { t }\n\n") }

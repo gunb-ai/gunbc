@@ -1,0 +1,5 @@
+module v2.zzp_arg_loc_red
+type A { x: Int }
+type B { y: Int }
+fn needs(b: B) -> Int { 0 }
+fn c(t: A) -> Int { needs(b: t) }
