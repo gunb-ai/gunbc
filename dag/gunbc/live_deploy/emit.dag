@@ -100,6 +100,8 @@ import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, 
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
+  repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
+  repository_convergence_slice_memory_swap_max,
 }
 import gunbc.fabric_storage_placement { fabric_storage_listen_port }
 import gunbc.live_deploy.spec {
@@ -108,6 +110,7 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
+  gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
@@ -1152,6 +1155,45 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
 // Starting convergence before ServeBinary would execute the target's stale binary/corpus; leaving
 // the rsync document installed would make the next deploy's first phase run convergence before its
 // candidate binary exists. The two writes therefore bracket the binary install deliberately.
+// ── THE REPOSITORY CONVERGENCE ONESHOT'S SLICE ──────────────────────────────────────────────
+// The bounds and their derivation are gunbc.live_deploy.slice_bounds'; the admission that keeps the
+// oneshot out of every serving slice is gunbc.live_deploy.repository_convergence_placement's. This is
+// only the unit file, installed immediately before the convergence unit in both arms that install
+// that unit and ahead of the daemon-reload those arms already run, so the slice the oneshot names
+// exists with its bound before systemd starts it. A Slice= naming a missing slice file does not fail:
+// systemd creates the slice with NO bound, which is the outcome this change must not produce silently.
+fn repository_convergence_slice_unit_file() -> SystemdUnitFile {
+  SliceUnitFile {
+    unit: [
+      Description { text: "gunbc repository convergence cgroup bound (separate from every serving slice)" as NonEmptyStr },
+    ],
+    slice: [
+      slice_memory_max(bytes: repository_convergence_slice_memory_max),
+      slice_memory_high(bytes: repository_convergence_slice_memory_high),
+      slice_memory_swap_max(bytes: repository_convergence_slice_memory_swap_max),
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn emit_repository_convergence_slice_unit_doc() -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: repository_convergence_slice_unit_file()))
+}
+
+fn apply_repository_convergence_slice_install_steps() -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: gunbc_repository_convergence_slice_unit_name as String,
+      content: render(doc: emit_repository_convergence_slice_unit_doc(), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: gunbc_repository_convergence_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_repository_convergence_slice_unit_path() as String,
+    )),
+  ]
+}
+
 fn apply_repository_convergence_unit_write_step(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
@@ -2555,7 +2597,7 @@ fn approval_broker_unit_write_steps_on(
 fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec) -> List<PipelineStep> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match member {
-    TreePublication => if !plan_publishes_tree(plan: plan) { [] } else { [
+    TreePublication => if !plan_publishes_tree(plan: plan) { [] } else { concat([
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
       deploy_raw(command: install_d_owned_command(spec: spec, path: spec.service.repo_root as String)),
       deploy_raw(command: deploy_stage_write_expansion_command(
@@ -2581,6 +2623,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
+    ], concat(apply_repository_convergence_slice_install_steps(), [
       apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.names.tree_sync_unit_name as String,
@@ -2590,7 +2633,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
-    ] }
+    ])) }
     Executable => if !plan_installs_executable(plan: plan) { [] } else { [
       deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: release_executable_install_source as NonEmptyStr)),
       deploy_raw(command: install_directory_command(
@@ -2665,7 +2708,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
     ]
-    ServeBinary => [
+    ServeBinary => concat([
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
         path: path_parent_dir(path: art.path as String),
@@ -2682,6 +2725,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
+    ], concat(apply_repository_convergence_slice_install_steps(), [
       apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.names.tree_sync_unit_name as String,
@@ -2691,7 +2735,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
-    ]
+    ]))
     DispatchWorktreeRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
