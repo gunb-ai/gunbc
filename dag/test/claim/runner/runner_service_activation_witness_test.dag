@@ -243,13 +243,29 @@ test fn emitted_apply_carries_enable_and_start_for_every_desired_unit() -> Bool 
 // simply never match anything, so the second conjunct executes the surviving fused builder and
 // asserts the pattern DOES match there -- the same words, one authoring away, rendered by the
 // readiness-blind path this lane exists to stop being the only one.
+//
+// THE PROHIBITION IS ON ENABLE FUSED WITH --now, NOT ON THE FLAG. This row refused any `--now` in the
+// apply text, which is broader than its subject (DESIGN §4d, over-prohibition): #11204 (1d5c804fe6)
+// added retirement inhibition, `systemctl mask --now` on an authorized surplus unit, and the runner
+// family header names it, so the row went red on text that contains no activation at all. Masking
+// a unit that must stop serving is exactly the case where stopping it now is the point. The pattern
+// is the enable verb followed by --now, in both renderings the apply text uses, and the positive pole
+// asserts the same pattern DOES match the fused builder, so it is not a pattern that matches nothing.
+fn enable_now_quoted() -> String {
+  join(["'", systemctl_enable_verb as String, "' '--now'"], "")
+}
+
+fn enable_now_bare() -> String {
+  join([systemctl_enable_verb as String, " --now"], "")
+}
+
 test fn emitted_activation_is_never_the_fused_enable_now() -> Bool {
   let d = wt_srv4_deploy()
   let text = witness_apply_text(deploy: d, readiness: witness_ready_readiness(deploy: d))
   let fused = shell_command_render(command: runner_enable_command_argv(deploy: d))
-  !string_contains(s: text, pattern: "'--now'")
-    && !string_contains(s: text, pattern: "--now")
-    && string_contains(s: fused, pattern: "'--now'")
+  !string_contains(s: text, pattern: enable_now_quoted())
+    && !string_contains(s: text, pattern: enable_now_bare())
+    && string_contains(s: fused, pattern: enable_now_quoted())
 }
 
 // ENABLE PRECEDES START IN THE EMITTED ORDER. A unit started before it is enabled serves until the
