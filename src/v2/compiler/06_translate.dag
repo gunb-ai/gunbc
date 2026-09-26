@@ -53,6 +53,7 @@ import v2.std.coercion {
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  non_empty_diagnostics_append,
   ExternalContractUnknown,
   Diagnostics,
   NonEmptyDiagnostics,
@@ -4028,6 +4029,34 @@ fn translate_first_module_body_optional(node: Node) -> Optional<Node> {
     })
   }
 }
+// A MISSING GRAMMAR ROW IS NOT A SHAPE ERROR, AND THIS ARM USED TO REPORT IT AS ONE. The row match
+// below produces a precise `translate_grammar_relation_row_not_found` when the target's grammar has
+// no row rendering this relation; the fallback discarded that diagnostic and then refused from
+// `translate_type_expression_project`, so a target missing a row for a MODULE MEMBER surfaced as
+// `translate_arrow_body_not_a_type_expression` -- a cause about the node's shape rather than about
+// the target's coverage. DESIGN section 5 requires a failure arm to refuse with a located typed
+// cause, not to substitute a different one, and the substitution mis-located real work: the gen-one
+// door's frontier was read as a shape problem for as long as this arm reported one.
+// THE FATAL IS DELIBERATELY UNCHANGED, AND THAT IS THE WHOLE CARE IN THIS REPAIR.
+// `translate_arrow_body_not_a_type_expression` is not a mislabel to be replaced: it is PINNED BY NAME
+// outside this module, so moving it would break assertions this file cannot see. On this base the
+// surfaces that name it are `//gunbc/instruments:v2-native-cli` (the door's pinned refusal arm in
+// `gunbc.instrument_targets`), the host constant `CLI_DOOR_EMIT_BODY_REFUSAL` in
+// `v1_compiler.cli_run.native_lane_runner`, and the rostered class
+// `closure_emit_renders_an_arrow_without_its_body`. Promoting the row cause to fatal would have
+// retired that evidence while looking like a diagnostic improvement.
+// THE CITATION WAS CORRECTED WHEN THIS LANDED, and the correction is worth keeping because it is this
+// document's own rule applied to itself: an earlier draft cited
+// `v2.test.claim.emit.closure_emit_arrow_body_refusal_test` as asserting the reason. That test has
+// since moved on to positive claims -- a function body IS rendered with its declaration, and a module
+// the rows cannot render whole refuses -- and no longer names this reason at all. Citing it would have
+// been a stale positional claim about a file that had advanced past it. So `diagnostics_fatal` still selects the
+// arrow-body cause, every existing assertion still holds, and the ONLY change is that the row cause
+// is no longer DROPPED: it is carried ahead of the arrow-body cause as context, so a reader sees that
+// the target also renders no row for this relation. Both facts are true and each was previously
+// available only by reading this arm.
+// THE FALLBACK IS KEPT, because a node with no row may still be a genuine type expression and the
+// projection is the right answer for it -- only the DOUBLE failure changes.
 fn translate_type_expression_tree(
   node: Node,
   tree: InferredTree,
@@ -4060,8 +4089,19 @@ fn translate_type_expression_tree(
 
             match translate_grammar_relation_row_match(target: target, emitted: n) {
               Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
-              Rejected { diagnostics: _ } =>
-                translate_type_expression_project(node: n, target: target, projection: projection)
+              Rejected { diagnostics: row_cause } =>
+                match translate_type_expression_project(
+                  node: n,
+                  target: target,
+                  projection: projection
+                ) {
+                  Accepted { value: projected, diagnostics: d } =>
+                    Accepted { value: projected, diagnostics: d }
+                  Rejected { diagnostics: shape_cause } =>
+                    Rejected {
+                      diagnostics: non_empty_diagnostics_append(a: row_cause, b: shape_cause)
+                    }
+                }
             }
           }
         )
