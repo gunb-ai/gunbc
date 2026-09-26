@@ -20,8 +20,10 @@ import extdeps.vllm.kv_layout {
   FullAttention, SlidingWindowAttention, MambaState,
   resolved_kv_allocation_plan_from_capture,
   KvAllocationPlanAdmitted, KvAllocationPlanRefused,
+  PoolConstructionProved, pool_construction_verdict,
 }
 import test.fixture.kv_allocation_plan_emission.real_262144x6_line { real_262144x6_kv_plan_line }
+import test.fixture.kv_allocation_plan_emission.real_262144x6_v2_line { real_262144x6_v2_kv_plan_line }
 import gunbc.spark.vllm_allocation_plan_observe {
   kv_allocation_plan_log_marker,
   kv_allocation_plan_capture_from_emission, kv_allocation_plan_capture_from_startup_log,
@@ -606,5 +608,178 @@ test fn a_garbled_printed_line_contradicts_the_real_capture() -> Bool {
             _ => false
           }
       }
+  }
+}
+
+// ── THE REAL V2 CAPTURE: 2026-09-26, THE 262144x6 EXPERIMENT UNDER THE V2 EMISSION IMAGE ──────────
+//
+// THESE CLAIMS RUN ON THE ACTUAL BYTES the v2-patched engine printed at the bounded 262144x6
+// experiment's 2026-09-26 launch (image gunbc-vllm-glm53-gb10:derived-kvplan-v2-20260926, engine
+// self-report 0.1.dev1+g8d09804c8, converged ~05:42 UTC; the fleet captured the head EngineCore's
+// startup stdout and this line is the KV_ALLOCATION_PLAN_JSON record off it). The durable artifact
+// is committed verbatim at
+// dag/test/fixture/kv_allocation_plan_emission/glm_5_3_flash_262144x6_2026-09-26_kv_plan_v2_line.log
+// — 5134 bytes on disk including its trailing newline, sha256
+// 0914ddf22cf19b8c4b6ce3c00161f4af528bb2e42262ddd75921769dc38c0d58; the value the claims evaluate
+// is real_262144x6_v2_kv_plan_line, imported from
+// test.fixture.kv_allocation_plan_emission.real_262144x6_v2_line so it has one home, and the length
+// pin below keeps it and the artifact identical.
+//
+// WHAT THE V2 BYTES VOUCH, beside everything the v1 line vouched: schema kv-allocation-plan/v2 and
+// the two physical pool figures the shared-pool byte correction asked the engine to emit
+// (docs/plans/shared-pool-byte-correction.md) — physical_pool_bytes_per_block 13,602,816 and
+// allocated_pool_bytes 13,766,049,792, which is 1012 x 13,602,816 EXACTLY, the mint's conservation
+// wall's exact spelling. allocator_blocks reads 1012 where the v1 launch's line read 1035: the same
+// experiment at a different launch inventories differently (run-to-run variance the observation
+// layer names, never folds), and each launch's plan is the authority for its own fold. The six
+// group rows are the v1 line's roster unchanged — 114 + 1 + 2 + 2 + 2 + 2 = 123 blocks per
+// full-context seat. image_digest is null again (the launch did not set
+// VLLM_KV_ALLOCATION_PLAN_IMAGE_DIGEST).
+//
+// THE PRINTED SIDE OF THIS LAUNCH IS AN OPEN OBLIGATION, stated rather than papered over: the
+// head's "GPU KV cache size" / "Maximum concurrency" lines were NOT captured for this launch (the
+// fleet's record carries the plan line without them), so the printed-capacity control cannot run
+// against a real printed figure here — the emission would predict floor(1012 x 100 / 123) = 822
+// hundredths (8.22x) against a line nobody read, and a fabricated line would make the control
+// compare the model with itself. THE PLAN IS THE FOLD'S AUTHORITY for this launch until the fleet
+// captures the printed lines; the control's two-sides rule (extdeps.vllm.kv_layout) is exactly what
+// forbids inventing the missing side.
+
+// THE V2 REAL LINE PARSES WHOLE through the log channel, resolves to the patched source, and
+// carries both physical pool figures with the engine's own values: allocator_blocks 1012,
+// physical_pool_bytes_per_block 13,602,816, allocated_pool_bytes 13,766,049,792 — the v2 vintage
+// is the v1 spelling plus the one fact the byte correction asked for, and the length pin keeps the
+// imported value byte-identical to the committed artifact.
+test fn the_v2_real_capture_parses_resolves_and_carries_the_pool_fields() -> Bool {
+  string_length(s: real_262144x6_v2_kv_plan_line) == 5133
+    && (match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_v2_kv_plan_line) {
+      KvPlanCaptureUnreadable { cause: _ } => false
+      KvPlanCaptureParsed { capture: c } =>
+        (c.observed_at_revision.full_revision as String) == "8d09804c877c48165c6ba69bc9dc02d09bae0b83"
+          && (match c.allocator_blocks {
+            Present { value: b } => allocator_block_count_value(c: b) == 1012
+            Absent => false
+          })
+          && (match c.physical_pool_bytes_per_block {
+            Present { value: b } => byte_size_count(b: b) == 13602816
+            Absent => false
+          })
+          && (match c.allocated_pool_bytes {
+            Present { value: b } => byte_size_count(b: b) == 13766049792
+            Absent => false
+          })
+          && (match c.requested_length {
+            Present { value: l } => token_count_value(t: l) == 262144
+            Absent => false
+          })
+          && (match c.scheduler_block_size {
+            Present { value: b } => token_count_value(t: b) == 2304
+            Absent => false
+          })
+          && (match c.cache_format {
+            Present { value: f } => (f as String) == "fp8"
+            Absent => false
+          })
+          && (match c.groups {
+            Present { value: gs } => length(gs) == 6
+            Absent => false
+          })
+    })
+}
+
+// THE V2 REAL BYTES MINT, AND THE CONSTRUCTION PROVES AT THE MINT: every field vouched, both pool
+// figures present and conserving (13,766,049,792 = 1012 x 13,602,816 exactly), the group roster the
+// v1 line's (group-0 at 114 blocks, the tail at 1, the four mamba groups at 2 each — 123 per
+// full-context seat) — and pool_construction_verdict, the byte correction's construction verdict,
+// mints Proved carrying the engine's own figures: the first time the corpus holds a POOL
+// CONSTRUCTION the engine itself vouched for, where the v1 vintage could only stand blocks-only.
+test fn the_v2_real_capture_mints_and_the_pool_construction_proves() -> Bool {
+  match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_v2_kv_plan_line) {
+    KvPlanCaptureUnreadable { cause: _ } => false
+    KvPlanCaptureParsed { capture: c } =>
+      match resolved_kv_allocation_plan_from_capture(capture: c) {
+        KvAllocationPlanRefused { cause: _ } => false
+        KvAllocationPlanAdmitted { plan: p } =>
+          (match p.physical_pool_bytes_per_block {
+            Present { value: b } => byte_size_count(b: b) == 13602816
+            Absent => false
+          })
+            && (match p.allocated_pool_bytes {
+              Present { value: b } => byte_size_count(b: b) == 13766049792
+              Absent => false
+            })
+            && length(p.groups) == 6
+            && (match p.groups.first() {
+              Absent => false
+              Present { value: g } => allocator_block_count_value(c: g.blocks_at_requested_length) == 114
+            })
+            && (match p.groups |> skip(1) |> first {
+              Absent => false
+              Present { value: g } => allocator_block_count_value(c: g.blocks_at_requested_length) == 1
+            })
+            && (match p.groups |> skip(2) |> first {
+              Absent => false
+              Present { value: g } => allocator_block_count_value(c: g.blocks_at_requested_length) == 2
+            })
+            && (match pool_construction_verdict(plan: p) {
+              PoolConstructionProved { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a } =>
+                byte_size_count(b: b) == 13602816
+                  && allocator_block_count_value(c: bl) == 1012
+                  && byte_size_count(b: a) == 13766049792
+              _ => false
+            })
+      }
+  }
+}
+
+// THE CONSERVATION WALL BITES ON GARBLED V2 BYTES: allocated_pool_bytes one physical block too
+// high (13,779,652,608 = 13,766,049,792 + 13,602,816) refuses at the mint naming the exact
+// figures — the wall is active on the v2 vintage exactly because the pair rides, and a garbled
+// pool construction is located evidence about the emission, not something any fold prices.
+test fn a_garbled_v2_pool_figure_refuses_at_the_conservation_wall() -> Bool {
+  match kv_allocation_plan_capture_from_startup_log(
+    captured_stdout: replace(s: real_262144x6_v2_kv_plan_line, pattern: "\"allocated_pool_bytes\":13766049792", replacement: "\"allocated_pool_bytes\":13779652608")) {
+    KvPlanCaptureUnreadable { cause: _ } => false
+    KvPlanCaptureParsed { capture: c } =>
+      match resolved_kv_allocation_plan_from_capture(capture: c) {
+        KvAllocationPlanRefused { cause: cause } =>
+          string_contains(s: cause as String, pattern: "do not conserve")
+            && string_contains(s: cause as String, pattern: "13779652608")
+            && string_contains(s: cause as String, pattern: "13766049792")
+        KvAllocationPlanAdmitted { plan: _ } => false
+      }
+  }
+}
+
+// A HALF-EMITTED V2 PAIR REFUSES AS A PARTIAL VINTAGE: drop allocated_pool_bytes and the capture
+// carries physical_pool_bytes_per_block alone — the two are one fact about the engine's pool
+// construction, and the vintage wall refuses rather than letting one pool byte figure be read
+// beside a guessed other. (The mirror arm — allocated without physical — is pinned on the
+// designed fixture above and is the same wall.)
+test fn a_half_emitted_v2_pair_refuses_as_a_partial_vintage() -> Bool {
+  match kv_allocation_plan_capture_from_startup_log(
+    captured_stdout: replace(s: real_262144x6_v2_kv_plan_line, pattern: "\"allocated_pool_bytes\":13766049792,", replacement: "")) {
+    KvPlanCaptureUnreadable { cause: _ } => false
+    KvPlanCaptureParsed { capture: c } =>
+      (match c.allocated_pool_bytes {
+        Absent => true
+        Present { value: _ } => false
+      })
+        && (match resolved_kv_allocation_plan_from_capture(capture: c) {
+          KvAllocationPlanRefused { cause: cause } => string_contains(s: cause as String, pattern: "one fact")
+          KvAllocationPlanAdmitted { plan: _ } => false
+        })
+  }
+}
+
+// WRONG SHAPE IS NOT ABSENT ON THE V2 FIELDS EITHER: physical_pool_bytes_per_block carrying a
+// string refuses the parse naming the member — the document spoke in a voice the reader does not
+// understand, which is a different fact from it saying nothing, exactly the discipline every other
+// member rides.
+test fn a_v2_pool_field_of_the_wrong_shape_is_unreadable_not_absent() -> Bool {
+  match kv_allocation_plan_capture_from_startup_log(
+    captured_stdout: replace(s: real_262144x6_v2_kv_plan_line, pattern: "\"physical_pool_bytes_per_block\":13602816", replacement: "\"physical_pool_bytes_per_block\":\"13602816\"")) {
+    KvPlanCaptureUnreadable { cause: cause } => string_contains(s: cause as String, pattern: "physical_pool_bytes_per_block")
+    KvPlanCaptureParsed { capture: _ } => false
   }
 }

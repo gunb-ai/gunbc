@@ -593,3 +593,218 @@ fn arm_experiment_2026_09_26_cache_supplies(allocator_blocks: AllocatorBlockCoun
     admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: r.kv_arena_hundredths_gib),
   })
 }
+
+// ── THE WET RECEIPT BUNDLE OF THE V2-PLAN LAUNCH (2026-09-26, ~05:42 UTC) ────────────────────────
+//
+// THE THIRD BOUNDED LAUNCH AT THE 262144x6 SUBJECT, and the one whose head printed the
+// kv-allocation-plan/v2 line the shared fixture carries (test.fixture.kv_allocation_plan_emission
+// .real_262144x6_v2_line). The experiment: the group B bounded run — six 262144-token seats, 2048
+// batched tokens, fp8 KV, decided utilization 8567 basis points, image derived-kvplan-v2-20260926,
+// engine self-report v0.1.dev1+g8d09804c8 — across four Sparks, TP0 srv9, TP1 srv10, TP2 srv12,
+// TP3 srv11; the per-rank profile lines (gpu_worker.py:867, 2026-09-26T05:42:33Z) stand in the
+// fleet's capture. TP3 (srv11) is the limiting rank of this launch too: the smallest pool (119.69
+// against 121.69 GiB), the smallest envelope (102.54 against 104.25), and the smallest arena.
+//
+// WHAT THIS BUNDLE BINDS is the four KV arena readings — the rank-supply evidence the v2 plan's
+// cache fold prices — admitted as per-rank OBSERVED INTERVALS at the reporter's two-decimal GiB
+// rounding unit, the 2026-09-26 bundle's standing unchanged (an observation bounds nothing until a
+// bounding protocol promotes it). WHAT IS DIFFERENT THIS LAUNCH, named in the data shape: the
+// arena is NOT a printed column of the profile line — it is DERIVED, envelope minus usage
+// (weights+nontorch, activation, graph), and the derivation inputs ride beside the derived figure
+// so the arithmetic is checkable in the suite rather than trusted. THE ARENA DERIVATION ITSELF is
+// a property of the observation: two-decimal GiB readings subtracted at two decimals, and the
+// bundle checks envelope − weights+nontorch − activation − graph == arena on every rank.
+//
+// THE RUN-TO-RUN VARIANCE against the 2026-09-26 bundle (the completing v1-image launch at this
+// same subject) is named, never silently folded: TP0/srv9 read 23.45 GiB there and 22.79 here
+// (−0.66), TP1/srv10 18.62 and 20.26 (+1.64), TP2/srv12 18.90 and 18.75 (−0.15), TP3/srv11 17.29
+// and 16.37 (−0.92) — four ranks, four different launches' allocator decisions (the plans
+// inventory 1035 and 1012 blocks respectively), and neither bundle amends, replaces, or demotes
+// the other. The v2 plan's fold prices THIS launch's arenas against THIS launch's plan; the
+// cross-launch comparison is the fleet's allocator-stability question, named here so it is never
+// read as one experiment.
+//
+// TP1's LOG ALSO CARRIES the CUDA-graph pool estimation line — "CUDA graph pool memory: 0.1 GiB
+// (actual), 1.82 GiB (estimated), difference: 1.71 GiB (1649.1%)" — an observation about the
+// envelope-minus-usage derivation's largest uncertain term, carried below as named data. It is the
+// candidate mechanism for the pool-construction slack the per-rank control reports at this launch
+// (gunbc.spark.arm_memory_fit's slack standing names it as a candidate, NOT an established
+// mechanism); the printed figures are carried verbatim (the engine's difference 1.71 does not
+// recompute from the rounded 1.82 − 0.10 = 1.72 — it was computed before rounding, which the
+// comment beside the data says rather than reconciles).
+data arm_experiment_kvplan_v2_2026_09_26_engine_self_report: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+// THE FOUR DERIVED ARENA READINGS, one record per rank, hundredths of GiB exactly as reported for
+// the inputs and derived for the arena. The host names are part of the observation: TP3's identity
+// as srv11 is what makes the limiting rank locatable, and a rank reading is meaningless without
+// the unit it was read from.
+type ArmExperimentEnvelopeDerivedArenaReading {
+  rank: Nat
+  host: NonEmptyStr
+  envelope_hundredths_gib: Nat
+  weights_nontorch_hundredths_gib: Nat
+  activation_hundredths_gib: Nat
+  graph_hundredths_gib: Nat
+  kv_arena_hundredths_gib: Nat
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_arena_readings: List<ArmExperimentEnvelopeDerivedArenaReading> = [
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 0, host: "srv9" as NonEmptyStr,
+    envelope_hundredths_gib: 10425, weights_nontorch_hundredths_gib: 7762,
+    activation_hundredths_gib: 379, graph_hundredths_gib: 5,
+    kv_arena_hundredths_gib: 2279,
+  },
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 1, host: "srv10" as NonEmptyStr,
+    envelope_hundredths_gib: 10425, weights_nontorch_hundredths_gib: 8057,
+    activation_hundredths_gib: 332, graph_hundredths_gib: 10,
+    kv_arena_hundredths_gib: 2026,
+  },
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 2, host: "srv12" as NonEmptyStr,
+    envelope_hundredths_gib: 10425, weights_nontorch_hundredths_gib: 8163,
+    activation_hundredths_gib: 377, graph_hundredths_gib: 10,
+    kv_arena_hundredths_gib: 1875,
+  },
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 3, host: "srv11" as NonEmptyStr,
+    envelope_hundredths_gib: 10254, weights_nontorch_hundredths_gib: 8242,
+    activation_hundredths_gib: 365, graph_hundredths_gib: 10,
+    kv_arena_hundredths_gib: 1637,
+  },
+]
+
+data arm_experiment_kvplan_v2_2026_09_26_limiting_rank: Nat = 3
+
+data arm_experiment_kvplan_v2_2026_09_26_generation: NonEmptyStr = "group-b/bounded-experiment-kvplan-v2-2026-09-26" as NonEmptyStr
+
+// THE DERIVATION, CHECKED NOT TRUSTED: envelope − weights+nontorch − activation − graph == the
+// derived arena, on every rank, in the hundredths arithmetic the readings were reported at. A
+// bundle whose derived figure does not recompute from its own inputs is a fixture wearing a
+// receipt's name, so the check lives beside the data it checks.
+fn arm_experiment_kvplan_v2_2026_09_26_arena_derivation_holds() -> Bool {
+  all(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r =>
+    r.envelope_hundredths_gib - r.weights_nontorch_hundredths_gib - r.activation_hundredths_gib - r.graph_hundredths_gib == r.kv_arena_hundredths_gib)
+}
+
+// TP1's CUDA-GRAPH POOL ESTIMATION LINE, the slack control's candidate mechanism, carried verbatim
+// at the reporter's rounding unit: the printed difference (171) does not recompute from the
+// rounded endpoints (182 − 10 = 172) — the engine subtracted before rounding, and the bundle
+// preserves the print rather than reconciling it. 1649.1% is the printed over-estimate percentage,
+// quoted in the provenance of every consumer that names this candidate.
+type ArmExperimentGraphPoolEstimateReading {
+  actual_hundredths_gib: Nat
+  estimated_hundredths_gib: Nat
+  difference_hundredths_gib: Nat
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_tp1_graph_pool_estimate: ArmExperimentGraphPoolEstimateReading = ArmExperimentGraphPoolEstimateReading {
+  actual_hundredths_gib: 10,
+  estimated_hundredths_gib: 182,
+  difference_hundredths_gib: 171,
+}
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE V2-PLAN LAUNCH'S OWN SUBJECT, minted from the workload the launch RAN — six cold seats at
+// 262144 tokens, a 2048 batch ceiling — spelled exactly as the 2026-09-26 bundle spells it (this
+// module mints its subjects from its own runs, and the two 262144x6 bundles quote the same policy
+// values rather than sharing an import the observation layer has no business in). Absent means the
+// workload refused to derive — a state the bindings below cannot be claimed in.
+fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } =>
+      MemoryProofSubjectRefused { cause: "the v2-plan launch's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: experiment_intent } =>
+      memory_proof_subject_for_launch(
+        checkpoint: Glm53NativeFp8,
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_intent(
+          intent: experiment_intent,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true }),
+        launch_generation: arm_experiment_kvplan_v2_2026_09_26_generation,
+      )
+  }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_subject() -> MemoryProofSubject? {
+  match arm_experiment_kvplan_v2_2026_09_26_subject_mint() {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// ── THE ARENA BINDINGS: THE FOUR DERIVED READINGS BESIDE THEIR DOCTRINE STANDING ──────────────────
+//
+// FOUR BINDINGS, one per rank: the derived KV arena against the ArmKvCache term, admitted as an
+// OBSERVED INTERVAL at the reporter's rounding unit — the 2026-09-26 bundle's standing unchanged,
+// with the derivation named in the provenance so a derived reading is never read as a printed one.
+// The term BOUND stays open in every binding: a wet observation is not a bound, and the standing
+// carries what the reading establishes until a bounding protocol or a derivation discharges the
+// obligation.
+fn arm_experiment_kvplan_v2_2026_09_26_provenance(host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "2026-09-26 v2-plan bounded experiment (6x262144, 2048 batched, fp8 KV, 8567 basis points, engine ",
+    arm_experiment_kvplan_v2_2026_09_26_engine_self_report as String, ") on ", host as String,
+    ", per-rank memory-profile line at gpu_worker.py:867 (2026-09-26T05:42:33Z); the arena is DERIVED as envelope minus weights+nontorch minus activation minus graph at two-decimal GiB, not read as a printed column",
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_open_bound(obligation: NonEmptyStr) -> ArmComponentBound {
+  ComponentBoundOpen { obligation: obligation }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_arena_binding(reading: ArmExperimentEnvelopeDerivedArenaReading, measured_on: MemoryProofSubject) -> ArmWetReceiptBinding {
+  let provenance = arm_experiment_kvplan_v2_2026_09_26_provenance(host: reading.host)
+  ArmWetReceiptBinding {
+    term: MemoryTerm {
+      component: ArmKvCache,
+      placement_law: MemoryPlacementAllocatorCarve,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseIdleServing,
+      lifetime: MemoryLifetimeLaunch,
+      bound: arm_experiment_kvplan_v2_2026_09_26_open_bound(obligation: "the observed carve bounds no demand term; the arena is supply evidence for the cache fold once a roster exists, and the cache subproof decides by the direct fold alone" as NonEmptyStr),
+      derivation: "admitted KV arena carve derived at the experiment's allocator decision (8567 basis points on the rank's pool): envelope minus the profile line's weights+nontorch, activation and graph figures, the residue the engine's profiling left for the cache, derived on this rank from the v2-plan launch's profile line" as NonEmptyStr,
+    },
+    rank: reading.rank,
+    standing: ArmWetObservedInterval {
+      lower: arm_experiment_gib_hundredths_lower(hundredths: reading.kv_arena_hundredths_gib),
+      upper: arm_experiment_gib_hundredths_upper(hundredths: reading.kv_arena_hundredths_gib),
+      receipt: provenance,
+    },
+    measured_on: measured_on,
+    provenance: provenance,
+  }
+}
+
+// ALL FOUR BINDINGS, or none while the subject refuses.
+fn arm_experiment_kvplan_v2_2026_09_26_bindings() -> List<ArmWetReceiptBinding> {
+  match arm_experiment_kvplan_v2_2026_09_26_subject() {
+    Absent => [] as List<ArmWetReceiptBinding>
+    Present { value: measured_on } =>
+      map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => arm_experiment_kvplan_v2_2026_09_26_arena_binding(reading: r, measured_on: measured_on))
+  }
+}
+
+// ── THE RANK-SUPPLY PROJECTION: THE FORM THE CACHE FOLD CONSUMES ─────────────────────────────────
+//
+// THE FOLD'S SUPPLY VOCABULARY, projected from the derived readings: the arena at the hundredths
+// FLOOR — the conservative point of the observed interval, the same spelling both 262144x6
+// bundles carry. The rounding unit (0.01 GiB, about 10.7 MB) sits orders of magnitude below the
+// slack the pool-construction control reports at this launch (~3.81 GB at the limiting rank's
+// floor), so floor-versus-interval cannot move that standing either. THE ALLOCATOR INVENTORY IS
+// THE CALLER'S: the v2 plan's 1012-block figure is launch-level and arrives from the demand side,
+// never from this observation layer.
+fn arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: AllocatorBlockCount) -> List<ArmRankCacheSupply> {
+  map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => ArmRankCacheSupply {
+    rank: r.rank,
+    allocator_blocks: allocator_blocks,
+    admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: r.kv_arena_hundredths_gib),
+  })
+}
