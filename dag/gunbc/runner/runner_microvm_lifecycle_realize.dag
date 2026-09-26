@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.resources { Filesystem }
 import std.measure { Second, second, second_count, ByteSize, byte_size }
 import std.algebra { trim }
 import extdeps.exec.command { ArgvCommand, LocalExec, argv_words }
@@ -86,6 +85,7 @@ import gunbc.runner_microvm_lifecycle {
   UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   attempt_teardown_readback, settle_teardown, TeardownSettlement,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = SingleAuthority
 

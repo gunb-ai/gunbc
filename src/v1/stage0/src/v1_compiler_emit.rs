@@ -53,6 +53,8 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
+pub use crate::v1_compiler_infer::ServiceOwnerConflict;
+use crate::v1_compiler_infer::ServiceOwnerConflict::*;
 pub use crate::v1_compiler_infer::{
     build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
 };
@@ -618,6 +620,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        service_owner_conflicts: v1_rt::rc_empty_map::<String, Rc<ServiceOwnerConflict>>(),
         item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
@@ -638,6 +641,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
             typed_module.module.clone(),
         ),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        service_owner_conflicts: v1_rt::rc_empty_map::<String, Rc<ServiceOwnerConflict>>(),
         item_registry: typed_module.item_registry.clone(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
