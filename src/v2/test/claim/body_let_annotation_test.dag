@@ -56,14 +56,16 @@ fn bla_value_param_as_type() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  let y: Q = Q\n  y\n}\n")
 }
 
-// The bound value is an Int literal: a derived grounding that reaches the check without paying for
-// an operator rule the claims are not about.
-fn bla_literal_as_int() -> Outcome<Node> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  y\n}\n")
+// The bound value is an Int sum, whose grounding infer DERIVES, so the check is judged rather than
+// left on the frontier. A let-bound literal is not derived there, so it would leave the check
+// unjudged and admit both rows without discriminating anything. The infer outcomes below are
+// enrolled share points, so a claim reads the result and pays for none of the sum's derivation.
+fn bla_int_sum_as_int() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n")
 }
 
-fn bla_literal_as_bool() -> Outcome<Node> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = 1\n  x\n}\n")
+fn bla_int_sum_as_bool() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n")
 }
 
 fn bla_annotations(n: Node) -> List<Node> {
@@ -104,6 +106,17 @@ fn bla_atom_in(n: Node, id: Symbol) -> Bool {
   })
 }
 
+
+// The annotation is a type expression; the bound value `x + x` is a Transform and the binder is `y`,
+// so a locus holding no computation and no `y` is the annotation's.
+fn bla_has_computation(n: Node) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, x) {
+    acc || match x.kind {
+      ComputationNode { behavior: _ } => true
+      _ => false
+    }
+  })
+}
 
 fn bla_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
@@ -161,35 +174,35 @@ fn bla_infers(o: Outcome<Node>) -> Outcome<Bool> {
   }
 }
 
-// (5) INFER CHECKS THE BOUND VALUE AGAINST THE ANNOTATION through v2.std.coercion: an Int literal
-// ascribed Int is admitted; the same literal ascribed Bool resolves and then refuses with coercion's
+// (5) INFER CHECKS THE BOUND VALUE AGAINST THE ANNOTATION through v2.std.coercion: an Int sum
+// ascribed Int is admitted; the same sum ascribed Bool resolves and then refuses with coercion's
 // typed mismatch as the cause, and a fatal of its own located at the annotation `Bool`, not at the
-// literal. RED BEFORE the infer rule: the Bool ascription was admitted.
-fn bla_literal_as_int_inferred() -> Outcome<Bool> {
-  bla_infers(o: bla_literal_as_int())
+// sum. RED BEFORE the infer rule: the Bool ascription was admitted.
+fn bla_int_sum_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_sum_as_int())
 }
 
-fn bla_literal_as_bool_inferred() -> Outcome<Bool> {
-  bla_infers(o: bla_literal_as_bool())
+fn bla_int_sum_as_bool_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_sum_as_bool())
 }
 
-test fn bla_infer_admits_int_literal_ascribed_int() -> Bool {
-  match bla_literal_as_int_inferred() {
+test fn bla_infer_admits_int_sum_ascribed_int() -> Bool {
+  match bla_int_sum_as_int_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
-  tpb_accepts(o: bla_literal_as_bool())
-    && match bla_literal_as_bool_inferred() {
+test fn bla_infer_refuses_int_sum_ascribed_bool() -> Bool {
+  tpb_accepts(o: bla_int_sum_as_bool())
+    && match bla_int_sum_as_bool_inferred() {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: d } =>
         bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
           && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
           && match diagnostics_fatal(d: d).at {
             NodeLocus { anchor: a } =>
-              !bla_atom_in(n: a.at, id: ^dag_token_int_literal) && !bla_atom_in(n: a.at, id: ^y)
+              !bla_has_computation(n: a.at) && !bla_atom_in(n: a.at, id: ^y)
             _ => false
           }
     }
