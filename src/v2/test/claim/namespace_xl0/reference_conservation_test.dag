@@ -2,7 +2,6 @@ module v2.test.claim.namespace_xl0.reference_conservation
 
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.reference_conservation {
-  RefusalNotAtOrAbove,
   ReferenceConservationReport,
   ReferenceConservationSubject,
   dag_declared_token_classes,
@@ -196,16 +195,18 @@ test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
   report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
 }
 
-// ---- a module-wide refusal: a list-literal call argument (main after #12145) -------------------
+// ---- a list-literal call argument: conserved (was a module-wide refusal) ---------------------
 
-// Measured on main 1b2f64fd49: a call argument whose value is a list literal (or a call) is not
-// read by v2.compiler.body_lowering_fold body_lower_operand_ref_optional, so
-// body_lower_call_arg_value refuses with body_lowering_reason_call_argument_unread and the WHOLE
-// module fails normalize. The refusal is located at the argument, so the atoms under it are
-// `refused`; every other atom of the module is lost with no refusal at or above it, and is a
-// RefusalNotAtOrAbove row. Stated as today's measurement: when the argument reader learns list
-// literals and calls, this reds and is restated as a conserved control.
-data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\nfn rc_list_caller() -> Int { rc_list_callee(xs: [rc_elsewhere]) }\n"
+// Measured on main 1b2f64fd49: a call argument whose value was a list literal refused the WHOLE
+// module at normalize, so every atom of the module was lost with no refusal at or above it
+// (RefusalNotAtOrAbove rows). v2.compiler.body_lowering_fold body_lower_list_literal now lowers the
+// literal as its free-monoid construction with every element whole, so this is restated as a
+// conserved control (DESIGN section 4b(4)): both elements, and the callee, reach the lowered tree.
+// A producer that kept only the first element drops `rc_list_second` and reds this. The argument
+// is POSITIONAL on purpose: a named argument's label is a separate, already-rostered drop
+// (a_named_argument_label_is_reported_dropped_holds below), and carrying it here would make this
+// control red for a reason that is not the list.
+data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\ndata rc_list_second: Int = 4\n\nfn rc_list_caller() -> Int { rc_list_callee([rc_elsewhere, rc_list_second]) }\n"
 
 fn list_literal_argument_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "list_literal_argument", source: list_literal_argument_source)
@@ -215,22 +216,13 @@ fn list_literal_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: list_literal_argument_subject())
 }
 
-fn report_every_drop_is_an_unlocated_refusal(report: ReferenceConservationReport) -> Bool {
-  fold_list(
-    xs: report.dropped,
-    empty: true,
-    cons: fn(acc, row) {
-      acc && match row.cause {
-        RefusalNotAtOrAbove => true
-        _ => false
-      }
-    }
-  )
-}
-
-test fn a_list_literal_call_argument_refuses_its_whole_module_holds() -> Bool {
+test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
   let r = list_literal_argument_report()
-  r.refused > 0 && length(xs: r.dropped) > 0 && report_every_drop_is_an_unlocated_refusal(report: r)
+  reference_conservation_holds(report: r)
+    && r.refused == 0
+    && report_drop_count(report: r, wanted: ^rc_elsewhere) == 0
+    && report_drop_count(report: r, wanted: ^rc_list_second) == 0
+    && report_drop_count(report: r, wanted: ^rc_list_callee) == 0
 }
 
 // ---- the multiset control: a repeated spelling, one copy dropped -------------------------------

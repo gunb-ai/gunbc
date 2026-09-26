@@ -5,7 +5,8 @@ import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_display_key }
 import std.types { Bool, List, String }
-import v2.std.algebra { HeadAbsent, HeadFound, filter, fold_list, list_append, list_head, list_map }
+import v2.std.algebra { HeadAbsent, HeadFound, filter, fold_list, list_head, list_map }
+import std.algebra { list_append }
 
 // WHERE THE SEMANTICS CAME FROM IS A DIFFERENT QUESTION FROM WHETHER RUST OWNS A DECISION.
 //

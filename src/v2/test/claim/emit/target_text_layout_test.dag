@@ -1,0 +1,103 @@
+module v2.test.emit.target_text_layout
+
+import std.layout { DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest, doc_nest_by }
+import v2.std.node { Node, Symbol }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { Holds, Violates }
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetText,
+  target_text_line_breaks,
+  text_atom,
+  target_text_seq,
+  target_text_empty,
+  target_text_nested,
+  target_text_is_empty,
+  render_target_text,
+  fixed_token_spelling_from_model
+}
+import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.extdeps.languages.verilog {
+  verilog_interlock_emitted,
+  verilog_relation_row_for,
+  verilog_target_model_with_single_row,
+  verilog_slot_spellings
+}
+
+// THE CARRIER'S LAYOUT, at its interface (supplied values): a nest indents exactly its own lines by
+// its own unit, nests stack, and a carrier with no layout parts is the concatenation of its atoms.
+test fn a_nest_indents_its_own_lines_by_its_unit() -> Bool {
+  let head = target_text_seq(acc: text_atom(lexeme: "begin"), next: layout_line())
+  let a = target_text_seq(acc: text_atom(lexeme: "a;"), next: layout_line())
+  let b = target_text_seq(acc: text_atom(lexeme: "b;"), next: layout_line())
+  render_target_text(t: target_text_seq(acc: target_text_seq(acc: head, next: target_text_nested(unit: "  ", body: target_text_seq(acc: a, next: b))), next: text_atom(lexeme: "end")))
+    == "begin\n  a;\n  b;\nend"
+}
+
+fn layout_line() -> TargetText {
+  target_text_line_breaks(before: 0, lexeme: "", after: 1)
+}
+
+test fn nests_stack_their_units_in_std_layout() -> Bool {
+  render(doc: DocConcat { parts: [DocText { text: "a" }, doc_nest_by(unit: "  ", body: DocConcat { parts: [DocLine, DocText { text: "b" }, doc_nest_by(unit: "    ", body: DocConcat { parts: [DocLine, DocText { text: "c" }] })] }), DocLine, DocText { text: "d" }] }, proto: LayoutProtocol { indent_unit: "" })
+    == "a\n  b\n      c\nd"
+}
+
+// The one nest takes its unit from either source, and they compose: a protocol level inside a
+// spelled unit indents by the spelled unit, then the protocol's.
+test fn protocol_and_spelled_indents_are_one_nest() -> Bool {
+  render(doc: doc_nest_by(unit: "> ", body: DocConcat { parts: [DocText { text: "a" }, doc_nest(levels: 2, body: DocConcat { parts: [DocLine, DocText { text: "b" }] })] }), proto: LayoutProtocol { indent_unit: "-" })
+    == "> a\n> --b"
+}
+
+test fn without_layout_parts_the_carrier_is_concatenation() -> Bool {
+  render_target_text(t: target_text_seq(acc: text_atom(lexeme: "fn "), next: target_text_seq(acc: text_atom(lexeme: "add"), next: text_atom(lexeme: "(x)\n  y")))) == "fn add(x)\n  y"
+}
+
+test fn emptiness_is_the_rendered_text_being_empty() -> Bool {
+  target_text_is_empty(t: target_text_seq(acc: target_text_empty, next: text_atom(lexeme: "")))
+    && target_text_is_empty(t: target_text_nested(unit: "  ", body: text_atom(lexeme: "")))
+    && !target_text_is_empty(t: target_text_nested(unit: "  ", body: text_atom(lexeme: "x")))
+}
+
+// THE REFUSALS, on the real route with the consuming target (v2.extdeps.languages.verilog).
+// A line-break token class asked for as a flat String refuses rather than dropping its break.
+test fn a_layout_token_class_refuses_the_flat_spelling() -> Bool {
+  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted()) {
+    Holds { value: row } =>
+      match fixed_token_spelling_from_model(target: verilog_target_model_with_single_row(row: row), token_class: ^verilog_token_semicolon) {
+        Rejected { diagnostics: r } => r.head.reason == ^target_layout_token_spelled_flat
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// A nested occurrence whose unit the target does not spell refuses rather than indenting by the
+// symbol's own name; the same module with the unit spelled emits.
+test fn an_unspelled_nest_unit_refuses_and_a_spelled_one_emits() -> Bool {
+  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted()) {
+    Holds { value: row } => {
+      let t = verilog_target_model_with_single_row(row: row)
+      let unspelled = TargetModel {
+        bundle: t.bundle,
+        lex: t.lex,
+        binding_spellings: verilog_slot_spellings(),
+        token_class_emit_transforms: t.token_class_emit_transforms,
+        authority_source_text: t.authority_source_text,
+        runtime_row: t.runtime_row,
+        produced_decl_support: t.produced_decl_support
+      }
+      let refused = match target_serialize_relation_row_from_model_bounded(4096, unspelled, verilog_interlock_emitted()) {
+        Rejected { diagnostics: r } => r.head.reason == ^translate_layout_unit_unspelled
+        Accepted { value: _, diagnostics: _ } => false
+      }
+      let emitted = match target_serialize_relation_row_from_model_bounded(4096, t, verilog_interlock_emitted()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+      refused && emitted
+    }
+    Violates { diagnostic: _ } => false
+  }
+}

@@ -1,7 +1,8 @@
 module v2.workflow.floor_expected_red_coherence
 
 import std.types { Bool, List, String }
-import v2.std.algebra { Cons, Empty, contains, length, list_append, list_reverse }
+import v2.std.algebra { Cons, Empty, contains, length, list_reverse }
+import std.algebra { list_append }
 import v2.std.decl_facts_skeleton {
   DeclFactQualifiedNameResolution,
   DeclFactResolvedAmbiguous,
