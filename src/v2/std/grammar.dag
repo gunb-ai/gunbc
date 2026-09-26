@@ -694,7 +694,7 @@ fn formal_nested_occurrence_from_node(node: Node, nonterminal_node: Node) -> Wit
         Rejected { diagnostics: _ } =>
           Violates {
             diagnostic: Diagnostic {
-              reason: ^grammar_relation_production_not_found,
+              reason: ^grammar_nested_occurrence_unit_missing,
               at: node_locus(node: node),
               correction: Unavailable { reason: ExternalContractUnknown }
             }

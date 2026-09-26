@@ -946,26 +946,28 @@ data target_text_carrier_scaffold_note: String = "TargetText emit-seam carrier (
 // puts DocLines around its lexeme, and a grammar_formal_nested_occurrence wraps exactly its child's
 // text in one std.layout nest by the target's spelled unit (target_text_nested). A document with neither renders to the concatenation of
 // its atoms, byte for byte what the String carrier produced.
-type TargetText { parts: List<Doc> }
+// `empty` is whether the text renders to nothing, set where each part is made and joined by `and`, so
+// the emptiness the serializer's folds ask at every step is O(1) rather than a render or a walk.
+type TargetText { parts: List<Doc>, empty: Bool }
 
-data target_text_empty: TargetText = TargetText { parts: [] }
+data target_text_empty: TargetText = TargetText { parts: [], empty: true }
 
 data target_text_render_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 fn text_atom(lexeme: String) -> TargetText {
-  TargetText { parts: [DocText { text: lexeme }] }
+  TargetText { parts: [DocText { text: lexeme }], empty: lexeme == "" }
 }
 
 fn target_text_seq(acc: TargetText, next: TargetText) -> TargetText {
-  TargetText { parts: list_snoc_item(xs: acc.parts, item: DocConcat { parts: next.parts }) }
+  TargetText { parts: list_snoc_item(xs: acc.parts, item: DocConcat { parts: next.parts }), empty: acc.empty && next.empty }
 }
 
 fn target_text_nested(unit: String, body: TargetText) -> TargetText {
-  TargetText { parts: [doc_nest_by(unit: unit, body: DocConcat { parts: body.parts })] }
+  TargetText { parts: [doc_nest_by(unit: unit, body: DocConcat { parts: body.parts })], empty: body.empty }
 }
 
 fn target_text_line_breaks(before: Int, lexeme: String, after: Int) -> TargetText {
-  TargetText { parts: list_append(left: list_append(left: repeat_line(n: before), right: [DocText { text: lexeme }]), right: repeat_line(n: after)) }
+  TargetText { parts: list_append(left: list_append(left: repeat_line(n: before), right: [DocText { text: lexeme }]), right: repeat_line(n: after)), empty: before <= 0 && after <= 0 && lexeme == "" }
 }
 
 fn repeat_line(n: Int) -> List<Doc> {
@@ -977,7 +979,7 @@ fn render_target_text(t: TargetText) -> String {
 }
 
 fn target_text_is_empty(t: TargetText) -> Bool {
-  render_target_text(t: t) == ""
+  t.empty
 }
 
 fn bound_tokens_source_text(
