@@ -625,6 +625,8 @@ fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
   }
 }
 
+// AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE: the ^arrow_signature_order_edge's atoms are labels,
+// not values, so the derived type carries that edge unchanged (see infer_arrow_signature_order_edge).
 fn infer_product_child_evidence_edges(
   children: List<Edge>,
   entries: List<InferredFactsEntry>,
@@ -636,8 +638,6 @@ fn infer_product_child_evidence_edges(
       match acc {
         Absent => acc
         Present { value: evidence_edges } =>
-          // (AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE: its atoms are labels, not values; the
-          // derived type carries the edge unchanged. See infer_arrow_signature_order_edge.)
           if edge_is_signature_order(e: edge) {
             optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
           } else {
