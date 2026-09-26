@@ -14,6 +14,10 @@ import gunbc.host_operation_exec {
   HostOperation, SystemctlIsActive, ProcfsReadMeminfo, NvidiaSmiQueryComputeApps,
   host_operation_materialize_argv, host_operation_label,
 }
+import extdeps.systemd {
+  SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed,
+  parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
+}
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 
 // ── WHO IS ALREADY USING THIS HOST: A READING, TAKEN ON THE HOST, BEFORE AN EFFECT IS ADMITTED ─
@@ -42,7 +46,7 @@ import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 // nvidia-smi row it cannot parse: each is HostOccupancyUnread and admission refuses on it. Reading any
 // of them as vacant is the absorbing fallback DESIGN section 5 forbids, and here its cost is a host.
 type HostOccupant
-  = ServingUnitActive { unit: NonEmptyStr, state: NonEmptyStr }
+  = ServingUnitActive { unit: NonEmptyStr, state: SystemdUnitActiveState }
   | GpuComputeProcess { pid: Nat, process_name: String, used: ComputeAppUsedMemory }
 
 type HostOccupancyReading
@@ -57,12 +61,18 @@ type HostOccupancyAdmission
   | HostMemoryShort { available: Kibibyte, need: Kibibyte }
   | HostOccupancyNotRead { cause: String }
 
-// systemctl(1) is-active prints one of these state words. `inactive` and `failed` hold nothing; every
-// other known state is a unit that is running, starting, or stopping -- occupying, for admission.
-fn unit_state_occupies(state: String) -> Bool? {
-  if state == "inactive" || state == "failed" { Present { value: false } }
-  else if state == "active" || state == "activating" || state == "deactivating" || state == "reloading" || state == "refreshing" { Present { value: true } }
-  else { none }
+// WHICH STATES HOLD THE HOST, over the unit-state model extdeps.systemd owns. `inactive` and `failed`
+// hold nothing; a unit that is running, starting, stopping or reloading occupies it. A state word that
+// model does not parse is refused as unread by the reader, never guessed.
+fn unit_state_occupies(state: SystemdUnitActiveState) -> Bool {
+  match state {
+    Inactive => false
+    Failed => false
+    Active => true
+    Activating => true
+    Deactivating => true
+    Reloading => true
+  }
 }
 
 type HostOperationLeg
@@ -93,11 +103,11 @@ fn read_unit_activity(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> Un
   match host_operation_leg(run: run, operation: SystemctlIsActive { unit: unit }, accepted_exits: [0, 3]) {
     HostOperationLegUnread { cause: c } => UnitUnread { cause: c }
     HostOperationLegRead { stdout: out } => {
-      let state = trim(s: out)
-      match unit_state_occupies(state: state) {
-        Absent => UnitUnread { cause: join(["systemctl is-active ", unit as String, " answered a state this reader does not know: `", state, "`"], "") }
-        Present { value: occupies } =>
-          if occupies { UnitOccupies { occupant: ServingUnitActive { unit: unit, state: state as NonEmptyStr } } } else { UnitVacant }
+      let word = trim(s: out)
+      match parse_systemd_unit_active_state(raw: word) {
+        Absent => UnitUnread { cause: join(["systemctl is-active ", unit as String, " answered a state extdeps.systemd does not model: `", word, "`"], "") }
+        Present { value: state } =>
+          if unit_state_occupies(state: state) { UnitOccupies { occupant: ServingUnitActive { unit: unit, state: state } } } else { UnitVacant }
       }
     }
   }
@@ -160,7 +170,7 @@ fn admit_host_occupancy(reading: HostOccupancyReading, need: Kibibyte) -> HostOc
 
 fn host_occupant_wire(o: HostOccupant) -> String {
   match o {
-    ServingUnitActive { unit: u, state: s } => join([u as String, " is ", s as String], "")
+    ServingUnitActive { unit: u, state: s } => join([u as String, " is ", systemd_unit_active_state_wire_label(s: s)], "")
     GpuComputeProcess { pid: p, process_name: n, used: UsedMemoryReported { used: m } } => join(["pid ", to_string(p), " (", n, ") holds ", to_string(mebibyte_count(m: m)), " MiB of GPU memory"], "")
     GpuComputeProcess { pid: p, process_name: n, used: UsedMemoryWithheld { marker: k } } => join(["pid ", to_string(p), " (", n, ") holds a GPU context whose memory nvidia-smi withheld as ", k as String], "")
   }

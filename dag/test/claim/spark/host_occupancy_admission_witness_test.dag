@@ -13,6 +13,7 @@ import gunbc.compute.host_occupancy {
   HostOccupancyAdmission, HostUnoccupied, HostOccupiedBy, HostMemoryShort, HostOccupancyNotRead,
   host_occupancy_refusal,
 }
+import extdeps.systemd { systemd_unit_active_state_wire_label }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.spark.pair_serving_realization { spark_pair_worker_unit_name }
 import gunbc.spark.host_occupancy_admission {
@@ -77,7 +78,7 @@ fn occupancy_admission_of(h: FakeHost) -> HostOccupancyAdmission {
 test fn a_host_whose_pair_worker_holds_gpu_memory_refuses() -> Bool {
   match occupancy_admission_of(h: srv8_serving()) {
     HostOccupiedBy { occupant: ServingUnitActive { unit: u, state: s }, others: rest, gpu_used: g } =>
-      (u as String) == (spark_pair_worker_unit_name as String) && (s as String) == "active" && length(rest) == 1 && mebibyte_count(m: g) == 99700
+      (u as String) == (spark_pair_worker_unit_name as String) && systemd_unit_active_state_wire_label(s: s) == "active" && length(rest) == 1 && mebibyte_count(m: g) == 99700
     _ => false
   }
 }
@@ -169,6 +170,22 @@ test fn the_vacate_bracket_refuses_when_the_stop_fails() -> Bool {
 test fn the_vacate_bracket_believes_the_re_read_not_the_stop() -> Bool {
   match with_spark_pair_vacated(run: fake_run(h: srv8_serving()), host: "srv8" as HostIdentity, use: fn() { 7 }) {
     PairVacateRefused { cause: c, restore: r } => contains(c, "still occupied after its serving units stopped") && (match r { Absent => true  Present { value: _ } => false })
+    _ => false
+  }
+}
+
+fn unmodeled_state_run() -> fn(List<String>) -> ArgvRun {
+  let otherwise = fake_run(h: vacated())
+  fn(argv) {
+    if starts_with(s: join(argv, " "), prefix: "systemctl is-active ") { ArgvRan { exit_code: 3, stdout: "maintenance\n", stderr: "" } }
+    else { otherwise(argv) }
+  }
+}
+
+// RED: a state word extdeps.systemd does not model is unread, never vacant or occupied by guess.
+test fn an_unmodeled_unit_state_refuses_as_unread() -> Bool {
+  match spark_host_occupancy_admission(run: unmodeled_state_run(), need: need_16_gib) {
+    HostOccupancyNotRead { cause: c } => contains(c, "does not model: `maintenance`")
     _ => false
   }
 }
