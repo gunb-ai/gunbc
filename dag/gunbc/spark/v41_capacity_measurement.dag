@@ -53,6 +53,42 @@ data v41_measurement_max_model_len: TokenCount = token_count(count: 262144)
 // The staircase concurrencies, in order. A capacity is always one of these, never a value between two.
 data v41_staircase_concurrencies: List<Nat> = [1, 2, 4, 6, 8, 12, 16]
 
+// ── THE MEASUREMENT SERVE'S LAUNCH SHAPE ─────────────────────────────────────────────────────────
+//
+// ONE SERVE FOR THE WHOLE STAIRCASE. The load generator raises concurrency; the serve is not relaunched
+// per step, because a relaunch resets the page cache, the refault and fault baselines and the KV pool
+// the stop rules and the Engram-resident capacity read across steps, and every step shares one run id
+// and one startup receipt. The launch (the V4.1 Group A realization) takes its shape from here.
+//
+// max_num_seqs is the largest staircase concurrency, derived from the plan. The other two are AXES OF
+// THE MEASUREMENT, not production policy and not measured facts: no V4.1 figure exists to ground them
+// (V4's were measured on V4 and are not borrowed), so they are declared here, recorded in every rank's
+// startup receipt as resolved, and every capacity this plan reports is a capacity AT them -- the same
+// rule extdeps.vllm.kv_cache applies to cap and pool (measured pairs at a stated utilization, no curve).
+//   gpu memory utilization 8000 bp: vLLM's pool is a fraction of the ~121 GiB unified memory; the
+//     remaining ~20% is left for the OS and the file-backed Engram page cache, whose residency is one of
+//     the three capacities measured. A different utilization is a different measurement.
+//   max_num_batched_tokens 8192: the prefill chunk per scheduler step; it also sizes the file-backed
+//     lookup's pinned staging (max_num_batched_tokens x local heads x record).
+type V41MeasurementLaunchShape sole_constructor {
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  max_num_batched_tokens: TokenCount
+  gpu_memory_utilization: BasisPoint
+}
+
+data v41_measurement_gpu_memory_utilization: BasisPoint = basis_point(count: 8000)
+data v41_measurement_max_num_batched_tokens: TokenCount = token_count(count: 8192)
+
+fn v41_measurement_launch_shape() -> V41MeasurementLaunchShape {
+  V41MeasurementLaunchShape {
+    max_model_len: v41_measurement_max_model_len,
+    max_num_seqs: fold(v41_staircase_concurrencies, init: 0, f: (acc, c) => if c > acc { c } else { acc }),
+    max_num_batched_tokens: v41_measurement_max_num_batched_tokens,
+    gpu_memory_utilization: v41_measurement_gpu_memory_utilization,
+  }
+}
+
 type V41ProbeCell { context: TokenCount, concurrency: Nat }
 
 data v41_probe_cells: List<V41ProbeCell> = [
