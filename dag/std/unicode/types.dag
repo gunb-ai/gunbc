@@ -16,6 +16,24 @@ fn unicode_scalar(code_point: Int) -> Bool {
     && !(code_point >= unicode_surrogate_first_code_point && code_point <= unicode_surrogate_last_code_point)
 }
 
+// The UTF-8 encoding form's octet count for one scalar value: Unicode Standard 17.0 Core
+// Specification section 3.9, definition D92 and Table 3-6 (UTF-8 bit distribution), identical to
+// RFC 3629 section 3. It is the ONE table of the three range boundaries; std.encoding's decoder
+// admits a completed scalar by asking this function whether its sequence length is the shortest
+// form, and v2.compiler.tokenize advances a source ByteRange by it, so a byte offset and the decoder
+// cannot disagree about where a scalar ends. Total over Int: callers pass scalar values.
+fn unicode_scalar_utf8_octet_count(code_point: Int) -> Int {
+  if code_point < 128 {
+    1
+  } else {
+    if code_point < 2048 {
+      2
+    } else {
+      if code_point < 65536 { 3 } else { 4 }
+    }
+  }
+}
+
 type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 
 type DisplayWidth = ZeroWidth | Narrow | Wide
