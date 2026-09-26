@@ -1,0 +1,353 @@
+module v2.test.claim.declared_parameter_order
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.infer { FormalsInDeclaredOrder, FormalsOrderRefused, FormalsUnresolved, infer_application_formals }
+import v2.compiler.eval { eval_param_edges_in_declared_order }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.anonymous_binder { anonymous_param_label }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.body_lowering {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order,
+  lower_list_introduction
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Edge,
+  Hash,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  arrow_signature_edges_conform,
+  content_hash,
+  node_subtree_nodes,
+  well_formed
+}
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the declared parameter order an Arrow carries on its ^arrow_signature_order_edge -- minted
+// with the domain by v2.std.anonymous_binder anonymous_binder_mint_parameter_list, built by
+// v2.compiler.body_lowering_fold body_lower_signature_order_edge, walled by v2.std.node
+// arrow_signature_order_conforms, read by v2.std.compilers.body_lowering
+// arrow_declared_parameter_order, and consumed by positional binding in v2.compiler.infer
+// infer_application_formals and v2.compiler.eval eval_param_edges_in_declared_order.
+//
+// ROUTE: every specimen is source text assembled through assemble_program_from_ingest, so the
+// lowering, the mint and resolve run for real; the claims then read one interface each over the
+// Arrow the production route emitted. The specimens are nullary and pure, enrolled in
+// v2.workflow.floor_pure_producer_share (the v2.test.claim.anonymous_param_binder precedent).
+//
+// WHY ORDER NEEDS A CARRIER: the domain is a Conj, which is sorted by label for identity, so its
+// stored sequence is alphabetical rather than declared (gunbc#12054). The specimens are chosen so the
+// wrong fold disagrees: `b` is declared before `a`, and eleven anonymous slots put
+// `<anonymous-parameter-10>` before `<anonymous-parameter-2>` in label order.
+//
+// MUTATION RECEIPT: infer_application_formals returning the domain's stored formals (the pre-change
+// fold) reds (3) and (4); eval_param_edges_in_declared_order returning domain.children reds (6).
+
+data dpo_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^declared_parameter_order_artifact,
+  file_path: "src/v2/pilot/declared_parameter_order_pilot.dag"
+}
+
+fn dpo_assemble(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: dpo_artifact,
+        compilation_unit: ^declared_parameter_order_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn dpo_b_then_a() -> Outcome<Node> {
+  dpo_assemble(src: "module p\n\nfn f(b: Int, a: Bool) -> Int { 1 }\n")
+}
+
+fn dpo_a_then_b() -> Outcome<Node> {
+  dpo_assemble(src: "module p\n\nfn f(a: Bool, b: Int) -> Int { 1 }\n")
+}
+
+fn dpo_eleven_anonymous() -> Outcome<Node> {
+  dpo_assemble(
+    src: "module p\n\nfn f(_: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int) -> Int { 1 }\n"
+  )
+}
+
+fn dpo_label_shadows_a_declaration() -> Outcome<Node> {
+  dpo_assemble(src: "module p\n\nfn y() -> Int { 1 }\n\nfn f(y: Int) -> Int { 2 }\n")
+}
+
+// The Arrows of an assembled program, in walk order; empty when it refused.
+fn dpo_arrows(o: Outcome<Node>) -> List<Node> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } => concat(acc, [m])
+          _ => acc
+        }
+      })
+  }
+}
+
+// The one Arrow whose domain has exactly `arity` binders -- the specimen's declared fn.
+fn dpo_arrow_of_arity(o: Outcome<Node>, arity: Int) -> List<Node> {
+  fold(dpo_arrows(o: o), init: [], f: fn(acc, a) {
+    match arrow_declared_parameter_order(arrow: a) {
+      ArrowParameterOrderDeclared { labels: ls } => if count(ls) == arity { concat(acc, [a]) } else { acc }
+      ArrowParameterOrderAbsent => acc
+      ArrowParameterOrderMalformed => acc
+    }
+  })
+}
+
+fn dpo_order(arrow: Node) -> List<Symbol> {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderDeclared { labels: ls } => ls
+    ArrowParameterOrderAbsent => []
+    ArrowParameterOrderMalformed => []
+  }
+}
+
+fn dpo_eleven_labels() -> List<Symbol> {
+  [
+    anonymous_param_label(slot: 1), anonymous_param_label(slot: 2), anonymous_param_label(slot: 3),
+    anonymous_param_label(slot: 4), anonymous_param_label(slot: 5), anonymous_param_label(slot: 6),
+    anonymous_param_label(slot: 7), anonymous_param_label(slot: 8), anonymous_param_label(slot: 9),
+    anonymous_param_label(slot: 10), anonymous_param_label(slot: 11)
+  ]
+}
+
+// The Arrow with its order edge replaced by an introduction of `labels` (or removed when Absent is
+// asked for by an empty `keep`), everything else unchanged.
+fn dpo_with_order(arrow: Node, labels: List<Symbol>, keep: Bool) -> Node {
+  Node {
+    kind: arrow.kind,
+    children: fold(arrow.children, init: [], f: fn(acc, e) {
+      match e.label {
+        Named { name: sym } =>
+          if sym == ^arrow_signature_order_edge {
+            if keep {
+              concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels) }])
+            } else {
+              acc
+            }
+          } else {
+            concat(acc, [e])
+          }
+        Positional => concat(acc, [e])
+      }
+    }),
+    occurrence_id: arrow.occurrence_id
+  }
+}
+
+fn dpo_order_list(labels: List<Symbol>) -> Node {
+  lower_list_introduction(
+    elements: fold(labels, init: [], f: fn(acc, sym) {
+      concat(acc, [Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }])
+    }),
+    source: Node { kind: TypeNode { connective: Atom { identity: ^p } }, children: [], occurrence_id: OccurrenceSynthetic }
+  )
+}
+
+// An application of `arrow` to nothing: infer_application_formals reads only the callee.
+fn dpo_application(arrow: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Positional, target: arrow }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn dpo_formal_labels(arrow: Node) -> List<Symbol> {
+  match infer_application_formals(node: dpo_application(arrow: arrow)) {
+    FormalsInDeclaredOrder { formals: fs } => fold(fs, init: [], f: fn(acc, f) { concat(acc, [f.parameter_identity]) })
+    FormalsUnresolved => []
+    FormalsOrderRefused { reason: _ } => []
+  }
+}
+
+fn dpo_refusal_reason(arrow: Node) -> List<Symbol> {
+  match infer_application_formals(node: dpo_application(arrow: arrow)) {
+    FormalsOrderRefused { reason: r } => [r]
+    FormalsInDeclaredOrder { formals: _ } => []
+    FormalsUnresolved => []
+  }
+}
+
+// (1) A DECLARED FN'S ARROW CARRIES ITS PARAMETERS IN DECLARED ORDER, and is well formed. `b` is
+// written before `a`, so label order would answer [a, b].
+test fn dpo_the_arrow_carries_declared_order() -> Bool {
+  let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, a) { acc && (dpo_order(arrow: a) == [^b, ^a]) && well_formed(n: a) })
+}
+
+// (2) DECLARED ORDER IS PART OF THE TYPE. fn(a: Bool, b: Int) and fn(b: Int, a: Bool) have one domain
+// Conj (sorted by label) and differ only in declared order; their Arrows hash differently. Without
+// the order edge the two Arrows are one node.
+test fn dpo_parameter_order_distinguishes_function_types() -> Bool {
+  let ab = dpo_arrow_of_arity(o: dpo_a_then_b(), arity: 2)
+  let ba = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
+  (count(ab) == 1) && (count(ba) == 1)
+    && fold(ab, init: true, f: fn(acc, x) {
+      fold(ba, init: acc, f: fn(inner, y) {
+        inner
+          && (content_hash(n: x) != content_hash(n: y))
+          && (content_hash(n: dpo_with_order(arrow: x, labels: [], keep: false)) == content_hash(n: dpo_with_order(arrow: y, labels: [], keep: false)))
+      })
+    })
+}
+
+// (3) INFER BINDS POSITIONALLY IN DECLARED ORDER. The formals come out [b, a]; the domain's stored
+// fold answers [a, b].
+test fn dpo_infer_formals_follow_declared_order() -> Bool {
+  let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
+  (count(arrows) == 1) && fold(arrows, init: true, f: fn(acc, a) { acc && (dpo_formal_labels(arrow: a) == [^b, ^a]) })
+}
+
+// (4) TEN OR MORE ANONYMOUS SLOTS BIND IN SLOT ORDER. Minted labels sort as text, so label order puts
+// slot 10 and 11 before slot 2; the order edge, and the formals infer reads from it, do not.
+test fn dpo_eleven_anonymous_slots_bind_in_declared_order() -> Bool {
+  let arrows = dpo_arrow_of_arity(o: dpo_eleven_anonymous(), arity: 11)
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, a) {
+      acc && (dpo_order(arrow: a) == dpo_eleven_labels()) && (dpo_formal_labels(arrow: a) == dpo_eleven_labels())
+    })
+}
+
+// (5) THE WALL: an order that is not exactly a permutation of the domain's binders is ill formed --
+// a missing label, an extra label, a repeated label -- and positional binding refuses it located at
+// the application. The unmutated Arrow is the positive control.
+test fn dpo_an_order_that_is_not_a_permutation_is_refused() -> Bool {
+  let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, a) {
+      let missing = dpo_with_order(arrow: a, labels: [^b], keep: true)
+      let extra = dpo_with_order(arrow: a, labels: [^b, ^a, ^c], keep: true)
+      let repeated = dpo_with_order(arrow: a, labels: [^b, ^b], keep: true)
+      acc
+        && arrow_signature_edges_conform(children: a.children)
+        && !arrow_signature_edges_conform(children: missing.children)
+        && !arrow_signature_edges_conform(children: extra.children)
+        && !arrow_signature_edges_conform(children: repeated.children)
+        && (dpo_refusal_reason(arrow: missing) == [^application_parameter_order_malformed])
+        && (dpo_refusal_reason(arrow: extra) == [^application_parameter_order_malformed])
+        && (dpo_refusal_reason(arrow: repeated) == [^application_parameter_order_malformed])
+    })
+}
+
+// (6) NO ORDER, NO POSITIONAL BINDING -- never label order. The same Arrow with its order edge removed
+// is still well formed, and both binders refuse it: infer with application_parameter_order_absent,
+// eval with the same reason. With the edge, eval's parameters come out in declared order.
+test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
+  let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, a) {
+      let bare = dpo_with_order(arrow: a, labels: [], keep: false)
+      acc
+        && arrow_signature_edges_conform(children: bare.children)
+        && (dpo_refusal_reason(arrow: bare) == [^application_parameter_order_absent])
+        && dpo_eval_refuses_with(arrow: bare, reason: ^application_parameter_order_absent)
+        && (dpo_eval_param_labels(arrow: a) == [^b, ^a])
+    })
+}
+
+fn dpo_domain(arrow: Node) -> Node {
+  match node_positional_child_targets(node: arrow) {
+    Cons { head: domain, tail: _ } => domain
+    Empty => arrow
+  }
+}
+
+fn dpo_eval_param_labels(arrow: Node) -> List<Symbol> {
+  match eval_param_edges_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
+    Accepted { value: edges, diagnostics: _ } =>
+      fold(edges, init: [], f: fn(acc, e) {
+        match e.label {
+          Named { name: sym } => concat(acc, [sym])
+          Positional => acc
+        }
+      })
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+fn dpo_eval_refuses_with(arrow: Node, reason: Symbol) -> Bool {
+  match eval_param_edges_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// (7) THE ORDER'S ATOMS ARE LABELS, NOT REFERENCES. `f(y: Int)` sits beside a declaration `y`; resolve
+// does not walk the order edge, so its atom stays the bare label `y` rather than binding to the
+// declaration. RED if resolve walks the edge: the atom becomes a resolved reference.
+test fn dpo_an_order_label_does_not_bind_to_a_name_in_scope() -> Bool {
+  let arrows = dpo_arrow_of_arity(o: dpo_label_shadows_a_declaration(), arity: 1)
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, a) {
+      acc && (dpo_order(arrow: a) == [^y]) && dpo_order_atoms_are_bare(arrow: a)
+    })
+}
+
+fn dpo_order_atoms_are_bare(arrow: Node) -> Bool {
+  fold(arrow.children, init: false, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == ^arrow_signature_order_edge {
+          dpo_list_elements_bare(list: e.target)
+        } else {
+          acc
+        }
+      Positional => acc
+    }
+  })
+}
+
+fn dpo_list_elements_bare(list: Node) -> Bool {
+  match list.children {
+    Empty => false
+    Cons { head: _, tail: elements } =>
+      fold(elements, init: true, f: fn(acc, e) {
+        acc && (count(e.target.children) == 0) && (dpo_edge_is_atom(e: e))
+      })
+  }
+}
+
+fn dpo_edge_is_atom(e: Edge) -> Bool {
+  match e.target.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}

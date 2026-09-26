@@ -1656,7 +1656,7 @@ fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: Lis
         match fold(formals, init: Absent, f: fn(found, formal) {
           match found {
             Present { value: _ } => found
-            Absent => if formal.parameter_identity == label { Present { value: formal } } else { Absent }
+            Absent => if formal.parameter_identity == label { optional_present(value: formal) } else { optional_absent() }
           }
         }) {
           Absent => Absent
