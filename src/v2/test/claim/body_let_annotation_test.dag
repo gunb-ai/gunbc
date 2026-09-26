@@ -24,7 +24,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.type_binder { bind_is_annotated, cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
+import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
@@ -260,11 +260,12 @@ test fn bla_translate_refuses_an_annotated_bind() -> Bool {
   bla_refused_for_annotation(o: bla_annotated_bind_emitted())
 }
 
-// ... and the refusal is the annotation's: the gate that fires it answers false for the same Bind
-// without the edge. Read at the gate, not through a second full emit.
+// ... and the refusal is the annotation's: the accessor translate branches on answers the annotation
+// for the annotated Bind and Absent for the same Bind without the edge. Read at the accessor, not
+// through a second full emit.
 test fn bla_translate_gate_is_the_annotations() -> Bool {
-  bind_is_annotated(n: bla_bind(annotated: true))
-    && !bind_is_annotated(n: bla_bind(annotated: false))
+  (type_annotation_optional(n: bla_bind(annotated: true)) == optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)))
+    && (type_annotation_optional(n: bla_bind(annotated: false)) == Absent)
 }
 
 // (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node

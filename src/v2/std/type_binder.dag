@@ -259,6 +259,12 @@ fn type_annotation_edge(annotation: Node) -> Edge {
   Edge { label: Named { name: type_annotation_marker() }, target: annotation }
 }
 
+// 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the
+// trigger of gunbc.recurring_failure_mode behavior_named_edge_label_validated_not_constructed (owner:
+// the v2 type-binders lane under neat-boar-16, coordinated with the named-arguments edge-discipline
+// coproduct). Until then an edge's marker is a Named Symbol and this compare is the one place a
+// <type-annotation> edge is recognized, the same shape as edge_is_type_params and edge_is_cast_target;
+// with typed labels it dissolves into a match on the label arm.
 fn edge_is_type_annotation(e: Edge) -> Bool {
   match e.label {
     Named { name: sym } => sym == type_annotation_marker()
@@ -276,13 +282,6 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
         if edge_is_type_annotation(e: e) { optional_present(value: e.target) } else { acc }
       })
     _ => optional_absent()
-  }
-}
-
-fn bind_is_annotated(n: Node) -> Bool {
-  match type_annotation_optional(n: n) {
-    Present { value: _ } => true
-    Absent => false
   }
 }
 
