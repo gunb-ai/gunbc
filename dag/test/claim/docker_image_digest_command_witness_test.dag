@@ -11,6 +11,7 @@ import extdeps.docker.cli {
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
   docker_image_inspect_size_from_stdout, DockerImageInspectSize, DockerImageInspectSizeUnreadable,
+  docker_info_root_dir_from_stdout, DockerRootDir, DockerRootDirUnreadable,
   docker_container_inspect_env_from_stdout, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
@@ -94,6 +95,24 @@ test fn inspect_stdout_json_yields_the_image_size() -> Bool {
     && match docker_image_inspect_size_from_stdout(stdout: inspect_id_json_document()) {
       DockerImageInspectSizeUnreadable { cause: why } => string_contains(s: why, pattern: "names no Size")
       DockerImageInspectSize { bytes: _ } => false
+    }
+}
+
+// THE DATA ROOT IS THE DAEMON'S ANSWER: the one ` Docker Root Dir:` line of untemplated `docker info`
+// reads through, including a relocated root; a document naming none, or naming it twice, is
+// Unreadable -- never the /var/lib/docker default.
+test fn docker_info_names_the_data_root_or_is_unreadable() -> Bool {
+  match docker_info_root_dir_from_stdout(stdout: "Client:\n Version: 29.2.1\nServer:\n Storage Driver: overlay2\n Docker Root Dir: /data/docker\n Debug Mode: false\n") {
+    DockerRootDir { path: p } => (p as String) == "/data/docker"
+    DockerRootDirUnreadable { cause: _ } => false
+  }
+    && match docker_info_root_dir_from_stdout(stdout: "Server:\n Storage Driver: overlay2\n") {
+      DockerRootDirUnreadable { cause: why } => string_contains(s: why, pattern: "0 times")
+      DockerRootDir { path: _ } => false
+    }
+    && match docker_info_root_dir_from_stdout(stdout: " Docker Root Dir: /a\n Docker Root Dir: /b\n") {
+      DockerRootDirUnreadable { cause: why } => string_contains(s: why, pattern: "2 times")
+      DockerRootDir { path: _ } => false
     }
 }
 

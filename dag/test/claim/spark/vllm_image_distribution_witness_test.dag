@@ -2,7 +2,7 @@ module test.claim.spark.vllm_image_distribution_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
-import std.measure { byte_size }
+import std.measure { byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.container.oci.digest { OciSha256Digest, render_oci_content_digest_wire }
 import gunbc.host_disk_observation { DiskObserved, DiskUnobserved }
@@ -39,7 +39,7 @@ fn id_of(hex: String) -> NonEmptyStr {
 
 // THE NOOP: a target already holding the subject's digest under the tag moves nothing.
 test fn a_target_holding_the_digest_is_the_noop() -> Bool {
-  match vllm_image_target_state(held: VllmImageHeldAs { id: id_of(hex: subject_hex), size: 10 }, image: subject()) {
+  match vllm_image_target_state(held: VllmImageHeldAs { id: id_of(hex: subject_hex), size: byte_size(count: 10) }, image: subject()) {
     VllmImageTargetHolds => true
     VllmImageTargetNeeds => false
     VllmImageTargetRefused { step: _, cause: _ } => false
@@ -57,7 +57,7 @@ test fn a_target_holding_nothing_under_the_tag_needs_the_image() -> Bool {
 // THE RED THE TAG CANNOT CATCH: a different image under the same tag refuses rather than having the
 // tag moved off it by a load -- two images under one tag is exactly why the tag is not the identity.
 test fn a_different_image_under_the_tag_refuses() -> Bool {
-  match vllm_image_target_state(held: VllmImageHeldAs { id: id_of(hex: other_hex), size: 10 }, image: subject()) {
+  match vllm_image_target_state(held: VllmImageHeldAs { id: id_of(hex: other_hex), size: byte_size(count: 10) }, image: subject()) {
     VllmImageTargetRefused { step: _, cause: why } => string_contains(s: why, pattern: other_hex) && string_contains(s: why, pattern: subject_hex)
     VllmImageTargetHolds => false
     VllmImageTargetNeeds => false
@@ -76,7 +76,7 @@ test fn an_unread_target_refuses_rather_than_reading_as_empty() -> Bool {
 test fn an_inspect_document_reads_as_id_and_size() -> Bool {
   let doc = join(["[{\"Id\":\"sha256:", subject_hex, "\",\"Size\":31457280000}]"], "")
   match vllm_image_held_of_inspect(step: "s" as NonEmptyStr, stdout: doc) {
-    VllmImageHeldAs { id: id, size: n } => (id as String) == join(["sha256:", subject_hex], "") && n == 31457280000
+    VllmImageHeldAs { id: id, size: n } => (id as String) == join(["sha256:", subject_hex], "") && byte_size_count(b: n) == 31457280000
     VllmImageNotHeld => false
     VllmImageHeldUnread { step: _, cause: _ } => false
   }
@@ -90,15 +90,15 @@ test fn an_inspect_document_reads_as_id_and_size() -> Bool {
 // THE DISK SHARE REFUSES SHORT OF ITS REQUIREMENT WITH BOTH FIGURES, ADMITS AT IT, AND AN
 // UNOBSERVED FILESYSTEM IS A REFUSAL -- never room assumed.
 test fn a_filesystem_short_of_its_share_refuses_with_the_figures() -> Bool {
-  match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: 200, reading: DiskObserved { free_bytes: byte_size(count: 199), observed_on: "srv5" as NonEmptyStr }) {
+  match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: byte_size(count: 200), reading: DiskObserved { free_bytes: byte_size(count: 199), observed_on: "srv5" as NonEmptyStr }) {
     Present { value: why } => string_contains(s: why, pattern: "199") && string_contains(s: why, pattern: "200")
     Absent => false
   }
-    && match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: 200, reading: DiskObserved { free_bytes: byte_size(count: 200), observed_on: "srv5" as NonEmptyStr }) {
+    && match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: byte_size(count: 200), reading: DiskObserved { free_bytes: byte_size(count: 200), observed_on: "srv5" as NonEmptyStr }) {
       Present { value: _ } => false
       Absent => true
     }
-    && match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: 200, reading: DiskUnobserved { reason: "df did not run" }) {
+    && match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: byte_size(count: 200), reading: DiskUnobserved { reason: "df did not run" }) {
       Present { value: why } => string_contains(s: why, pattern: "df did not run")
       Absent => false
     }

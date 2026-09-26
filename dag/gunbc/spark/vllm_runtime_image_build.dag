@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.nat { Nat }
-import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Second, second, byte_size_count }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Second, second, ByteSize, byte_size, byte_size_count }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -21,7 +21,7 @@ import extdeps.docker.cli {
   docker_image_inspect_command, docker_image_inspect_names_no_such_image,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_size_from_stdout, DockerImageInspectSize, DockerImageInspectSizeUnreadable,
-  docker_default_data_root,
+  docker_info_command, docker_info_root_dir_from_stdout, DockerRootDir, DockerRootDirUnreadable,
 }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire, oci_content_digest_encoded_hex, parse_oci_content_digest_wire }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
@@ -1239,11 +1239,14 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 // THE BYTES ARE STATED BEFORE THEY MOVE. The image's Size (extdeps.docker.cli
 // docker_image_inspect_size_from_stdout) is the requirement at every place a copy lands: the
 // source's staging directory (the saved tar), the executor's (the relayed tar), and on each target
-// both the staging directory and the daemon's data root (the tar, then the loaded layers, which
-// coexist until the tar is removed). The two target paths' filesystem identity is not read, and
-// on the Sparks both sit on the root filesystem, so each is required to hold BOTH copies -- an
-// upper bound, exact where they share a filesystem, which is the case measured. A filesystem that
-// cannot hold its share refuses before the save, with the figures.
+// both the staging directory and the daemon's data root as the daemon itself reports it (the tar,
+// then the loaded layers, which coexist until the tar is removed). The two target paths'
+// filesystem identity is not read, and on the Sparks both sit on the root filesystem, so each is
+// required to hold BOTH copies -- an upper bound, exact where they share a filesystem, which is the
+// case measured. A filesystem that cannot hold its share refuses before the save, with the
+// figures; a data root the daemon does not name refuses too, rather than reading a default path.
+// Every figure is a ByteSize from the inspect reader onward, so a requirement and a free-space
+// reading are one quantity compared as one type.
 data vllm_image_transfer_tar_stem: NonEmptyStr = "/tmp/gunbc-vllm-image" as NonEmptyStr
 data vllm_image_transfer_staging_directory: NonEmptyStr = "/tmp" as NonEmptyStr
 
@@ -1278,7 +1281,7 @@ fn vllm_image_distribution_targets(source: HostIdentity) -> List<HostIdentity> {
 // is Unread -- never absence, because reading an unreachable daemon as "not held" is what would
 // move 30GB onto a host that already had it, or report a host empty that was never asked.
 type VllmImageHeld
-  = VllmImageHeldAs { id: NonEmptyStr, size: Nat }
+  = VllmImageHeldAs { id: NonEmptyStr, size: ByteSize }
   | VllmImageNotHeld
   | VllmImageHeldUnread { step: NonEmptyStr, cause: String }
 
@@ -1291,7 +1294,7 @@ fn vllm_image_held_of_inspect(step: NonEmptyStr, stdout: String) -> VllmImageHel
         DockerImageInspectSize { bytes: n } =>
           match checked_int_magnitude(a: n) {
             CheckedNatOverflow { cause: _ } => VllmImageHeldUnread { step: step, cause: "the image Size does not fit a Nat" }
-            CheckedNatReady { value: v } => VllmImageHeldAs { id: id, size: v }
+            CheckedNatReady { value: v } => VllmImageHeldAs { id: id, size: byte_size(count: v) }
           }
       }
   }
@@ -1312,20 +1315,25 @@ fn vllm_image_read_held(ctx: SparkMaterializeContext, step: NonEmptyStr, tag: No
 }
 
 // ONE FILESYSTEM'S SHARE OF THE REQUIREMENT. None admits; otherwise the refusal, with both figures.
-fn vllm_image_disk_refusal(step: NonEmptyStr, place: String, required: Nat, reading: HostDiskObservation) -> String? {
+// A COPY'S SHARE OF A FILESYSTEM THAT MUST HOLD `copies` OF THE IMAGE.
+fn vllm_image_copies(size: ByteSize, copies: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(b: size) * copies)
+}
+
+fn vllm_image_disk_refusal(step: NonEmptyStr, place: String, required: ByteSize, reading: HostDiskObservation) -> String? {
   match reading {
     DiskObservationRefused { detail: d } => Present { value: join([step as String, ": the free-space read at ", place, " refused: ", d as String], "") }
     DiskUnobserved { reason: r } => Present { value: join([step as String, ": the free-space read at ", place, " did not run: ", r], "") }
     DiskObserved { free_bytes: free, observed_on: _ } =>
-      if byte_size_count(b: free) < required {
-        Present { value: join([step as String, ": ", place, " has ", to_string(byte_size_count(b: free)), " bytes available and the image needs ", to_string(required), " there, so nothing was moved"], "") }
+      if byte_size_count(b: free) < byte_size_count(b: required) {
+        Present { value: join([step as String, ": ", place, " has ", to_string(byte_size_count(b: free)), " bytes available and the image needs ", to_string(byte_size_count(b: required)), " there, so nothing was moved"], "") }
       } else {
         none
       }
   }
 }
 
-fn vllm_image_remote_disk_refusal(ctx: SparkMaterializeContext, step: NonEmptyStr, path: NonEmptyStr, required: Nat) -> String? {
+fn vllm_image_remote_disk_refusal(ctx: SparkMaterializeContext, step: NonEmptyStr, path: NonEmptyStr, required: ByteSize) -> String? {
   let place = join([ctx.host as String, ":", path as String], "")
   match spark_remote_run(ctx: ctx, argv: host_disk_free_space_argv(path: path as String)) {
     RemoteUnreachable { cause: why } => Present { value: join([step as String, ": the free-space read at ", place, " did not run: ", why], "") }
@@ -1335,7 +1343,7 @@ fn vllm_image_remote_disk_refusal(ctx: SparkMaterializeContext, step: NonEmptySt
   }
 }
 
-fn vllm_image_local_disk_refusal(step: NonEmptyStr, path: NonEmptyStr, required: Nat) -> String? {
+fn vllm_image_local_disk_refusal(step: NonEmptyStr, path: NonEmptyStr, required: ByteSize) -> String? {
   let place = join(["executor:", path as String], "")
   let argv = host_disk_free_space_argv(path: path as String)
   let r = gunbc.WitnessBin.Run(
@@ -1346,6 +1354,25 @@ fn vllm_image_local_disk_refusal(step: NonEmptyStr, path: NonEmptyStr, required:
   )
   vllm_image_disk_refusal(step: step, place: place, required: required,
     reading: host_disk_observation_of_df(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr, observed_on: "executor" as NonEmptyStr))
+}
+
+// THE TARGET'S TWO SHARES: the staging directory, and the data root the daemon names. The root is
+// read from `docker info` on the target itself, so the free-space read is of the filesystem the
+// load writes to, and a daemon that names no root refuses.
+fn vllm_image_target_disk_refusal(ctx: SparkMaterializeContext, size: ByteSize) -> String? {
+  let both = vllm_image_copies(size: size, copies: 2)
+  match vllm_docker_leg(ctx: ctx, step: "deliver-data-root" as NonEmptyStr, command: docker_info_command()) {
+    ImageLegFailed { step: st, cause: why } => Present { value: join([st as String, ": docker info did not run, so the data root is unknown: ", why], "") }
+    ImageLegRan { stdout: out } =>
+      match docker_info_root_dir_from_stdout(stdout: out) {
+        DockerRootDirUnreadable { cause: why } => Present { value: join(["deliver-data-root: ", why], "") }
+        DockerRootDir { path: root } =>
+          vllm_image_first_refusal(refusals: [
+            vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-staging" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: both),
+            vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-data-root" as NonEmptyStr, path: root, required: both),
+          ])
+      }
+  }
 }
 
 fn vllm_image_first_refusal(refusals: List<String?>) -> String? {
@@ -1428,7 +1455,7 @@ fn vllm_image_deliver_to_host(
   trust_words: List<String>,
   tar: NonEmptyStr,
   image: VllmImageDistributionSubject,
-  size: Nat,
+  size: ByteSize,
 ) -> VllmImageHostDelivery
 {
   let ctx = vllm_image_target_ctx(source_ctx: source_ctx, host: host)
@@ -1436,10 +1463,7 @@ fn vllm_image_deliver_to_host(
   match spark_reach_endpoint(host: host, path: ReachManagementLan) {
     Absent => VllmImageHostDeliveryRefused { host: host, step: "deliver-reach" as NonEmptyStr, cause: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", host as String], "") }
     Present { value: endpoint } =>
-      match vllm_image_first_refusal(refusals: [
-        vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-staging" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: size + size),
-        vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-data-root" as NonEmptyStr, path: docker_default_data_root, required: size + size),
-      ]) {
+      match vllm_image_target_disk_refusal(ctx: ctx, size: size) {
         Present { value: why } => VllmImageHostDeliveryRefused { host: host, step: "deliver-disk" as NonEmptyStr, cause: why }
         Absent =>
           match vllm_image_local_scp_leg(step: "deliver-upload" as NonEmptyStr, command: scp_upload_command(trust_words: trust_words, principal: spark_managed_executor_login, endpoint: endpoint as NonEmptyStr, local_path: tar, remote_path: tar)) {
@@ -1558,15 +1582,15 @@ fn vllm_image_move(
   source_ctx: SparkMaterializeContext,
   source_endpoint: NonEmptyStr,
   image: VllmImageDistributionSubject,
-  size: Nat,
+  size: ByteSize,
   needing: List<HostIdentity>,
 ) -> VllmImageDistribution
 {
   let tar = vllm_image_transfer_tar_path(config: image.config)
   let trust_words = serialize_ssh_client_options(options: fleet_openssh_trust_options(policy: source_ctx.trust))
   match vllm_image_first_refusal(refusals: [
-    vllm_image_remote_disk_refusal(ctx: source_ctx, step: "distribute-disk-source" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: size),
-    vllm_image_local_disk_refusal(step: "distribute-disk-executor" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: size),
+    vllm_image_remote_disk_refusal(ctx: source_ctx, step: "distribute-disk-source" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: vllm_image_copies(size: size, copies: 1)),
+    vllm_image_local_disk_refusal(step: "distribute-disk-executor" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: vllm_image_copies(size: size, copies: 1)),
   ]) {
     Present { value: why } => VllmImageDistributionRefused { step: "distribute-disk" as NonEmptyStr, cause: why }
     Absent =>

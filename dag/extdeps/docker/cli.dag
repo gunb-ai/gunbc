@@ -519,15 +519,47 @@ fn docker_image_inspect_size_from_stdout(stdout: String) -> DockerImageInspectSi
   }
 }
 
-// THE DAEMON'S DATA ROOT, WHERE `docker load` WRITES LAYERS. dockerd's documented default for
-// --data-root is /var/lib/docker (docs.docker.com/reference/cli/dockerd/: "--data-root string  Root
-// directory of persistent Docker state (default "/var/lib/docker")"). It is the default and not a
-// reading: a host whose daemon.json moves the root makes a free-space read of this path answer for
-// the wrong filesystem. DECLARED FRONTIER: the reading is `docker info`'s DockerRootDir, and the
-// template form that prints it alone carries braces this repository's portable-word allowlist
-// refuses (see docker_image_inspect_command); it lands as its own reader over the untemplated
-// output when a consumer runs on a host whose root moved.
-data docker_default_data_root: NonEmptyStr = "/var/lib/docker" as NonEmptyStr
+// THE DAEMON'S DATA ROOT, WHERE `docker load` WRITES LAYERS, READ FROM THE DAEMON. dockerd's
+// --data-root defaults to /var/lib/docker (docs.docker.com/reference/cli/dockerd/) and daemon.json can
+// move it, so the default is not a reading: a free-space read of the default path on a host whose
+// root moved answers for the wrong filesystem. `docker info` with no template prints the server's
+// state as text, one ` Docker Root Dir: <path>` line among them
+// (docs.docker.com/reference/cli/docker/system/info/); no --format, for the portable-word reason
+// docker_image_inspect_command states. A document with no such line, two of them, or a value that is
+// not an absolute path is Unreadable -- never the default.
+fn docker_info_command() -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["info"])
+}
+
+data docker_info_root_dir_label: String = "Docker Root Dir:"
+
+type DockerRootDirRead
+  = DockerRootDir { path: NonEmptyStr }
+  | DockerRootDirUnreadable { cause: String }
+
+fn docker_info_root_dir_from_stdout(stdout: String) -> DockerRootDirRead {
+  let values = flat_map(split(s: stdout, delimiter: "\n"), l => {
+    let t = trim(s: l)
+    if starts_with(s: t, prefix: docker_info_root_dir_label) {
+      [trim(s: substring(s: t, start: docker_info_root_dir_label.length(), end: t.length()))]
+    } else {
+      [] as List<String>
+    }
+  })
+  if count(values) != 1 {
+    DockerRootDirUnreadable { cause: join(["docker info names the Docker Root Dir ", to_string(count(values)), " times"], "") }
+  } else {
+    match first(values) {
+      Absent => DockerRootDirUnreadable { cause: "docker info names no Docker Root Dir" }
+      Present { value: v } =>
+        if starts_with(s: v, prefix: "/") {
+          DockerRootDir { path: v as NonEmptyStr }
+        } else {
+          DockerRootDirUnreadable { cause: join(["docker info's Docker Root Dir is not an absolute path: ", v], "") }
+        }
+    }
+  }
+}
 
 // THE CONTAINER'S TWO IDENTITY FIELDS, AND NOTHING ELSE OFF THE INSPECT OBJECT. `docker container
 // inspect` returns the whole object extdeps.docker.container_inspect ContainerInspect models,
