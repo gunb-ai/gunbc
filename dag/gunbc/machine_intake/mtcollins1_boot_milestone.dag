@@ -78,7 +78,7 @@ fn numa_node_cpus_line(line: String) -> NumaNodeCpus? {
 }
 
 fn numa_nodes(out: List<String>) -> List<NumaNodeCpus> {
-  fold(out, init: [], f: (acc, l) => match numa_node_cpus_line(line: l) { Present { value: n } => append(acc, items: [n])  _ => acc })
+  flat_map(out, l => match numa_node_cpus_line(line: l) { Present { value: n } => [n]  _ => [] })
 }
 
 fn numa_nodes_text(nodes: List<NumaNodeCpus>) -> String {
