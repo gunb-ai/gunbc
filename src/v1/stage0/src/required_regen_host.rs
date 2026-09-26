@@ -6470,11 +6470,22 @@ mod regen_convergence_host_instrument_tests {
     static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
     fn fixture_workspace() -> (PathBuf, PathBuf, PathBuf, RegenConvergenceCheckpointSubject) {
+        // THE FIXTURE OWNS A FRESH ROOT. Process id and counter alone repeat across runs (a test
+        // that panics never reaches its `remove_dir_all`, and a later process can draw the same
+        // id), so the name also carries the wall-clock nanos, and the root is created with
+        // `create_dir`: a root that already exists refuses here, located, rather than being
+        // written into with a previous run's files and permissions still in it.
         let root = std::env::temp_dir().join(format!(
-            "gunbc-regen-convergence-host-{}-{}",
+            "gunbc-regen-convergence-host-{}-{}-{}",
             std::process::id(),
-            FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
+            FIXTURE_ID.fetch_add(1, Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
         ));
+        fs::create_dir(&root)
+            .unwrap_or_else(|e| panic!("fixture root {} must be fresh: {e}", root.display()));
         let stage0 = root.join("src/v1/stage0/src");
         let candidate = root.join("candidate/src");
         fs::create_dir_all(&stage0).unwrap();
