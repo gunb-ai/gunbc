@@ -29,6 +29,10 @@ import gunbc.fabric_control_plane_charge {
   HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured,
   host_fabric_control_plane_claim,
 }
+import gunbc.live_deploy.served_slice_charge {
+  HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured,
+  host_served_deployment_claim,
+}
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand {
@@ -419,16 +423,17 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // produced the same Int, so every consumer downstream read "this machine has no capacity" for what
 // was actually "nobody answered". srv2 was the live instance of that second reading.
 //
-// FIVE TERMS, EACH FROM ITS OWN AUTHORITY, AND NONE OF THEM AUTHORED HERE. Usable RAM and fixed
+// SIX TERMS, EACH FROM ITS OWN AUTHORITY, AND NONE OF THEM AUTHORED HERE. Usable RAM and fixed
 // overhead come from gunbc.host_memory_observation -- per-host /proc/meminfo reads and the operator
 // allowance -- the session slice from gunbc.session_reservation_policy, the oomd actuation headroom
 // from oomd_actuation_floor as a fraction of THIS host's RAM, and the control-plane charge from
-// gunbc.fabric_control_plane_charge. The first two were unreachable from this module until the
+// gunbc.fabric_control_plane_charge, and the served deployment slices from
+// gunbc.live_deploy.served_slice_charge. The first two were unreachable from this module until the
 // extraction that accompanies this change; that cycle is what forced the literals, and its removal
 // is what retires them.
 //
 // EVERY ARM THAT CANNOT ANSWER REFUSES BY NAME, WHICH IS WHY THIS IS A CHAIN AND NOT A SUM. None of
-// the five inputs has a total projection to bytes, and that is deliberate at each authority --
+// the six inputs has a total projection to bytes, and that is deliberate at each authority --
 // gunbc.fabric_control_plane_charge says so outright, that a total function from its claim to
 // ByteSize cannot exist honestly because one arm has no bytes to return. So the derivation matches
 // each in turn and carries the refusing input's own cause outward; there is no spelling of "derive
@@ -483,21 +488,45 @@ fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSi
         cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
       }
     ControlPlaneNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
     ControlPlaneClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: m)
+      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: m)
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+// THE SERVED DEPLOYMENT IS THE SIXTH TERM, AND ITS ABSENCE WAS A LIVE REFUSAL. gunbc.fleet_host_budget
+// host_allocation_verdict charges the served slices (gunbc.live_deploy.served_slice_charge) against
+// the same host RAM this envelope divides, so an envelope that did not subtract them sized the
+// runner pool into memory the verdict had already given away. While the CPU axis bound the width
+// the gap was invisible; once cores_per_slot fell to 1 (#11716) memory bound, and when the served
+// slices grew to 40 + 10 GiB (#12015) srv1's derived width no longer conserved and
+// gunbc.ci_runner_placement refused it as over-committed. Width and verdict now subtract one set of
+// residents, so a width this module derives is one the verdict can admit.
+fn envelope_after_control_plane(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentClaimUnmeasured { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("served deployment is placed on this host with an unmeasured allowance: ", why)
+      }
+    ServedDeploymentNotPlaced =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0))
+    ServedDeploymentClaimResolved { memory: m } =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m)
+  }
+}
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
-          total: byte_size_saturating_sub(total: usable, reserved: overhead),
-          reserved: session
+          total: byte_size_saturating_sub(
+            total: byte_size_saturating_sub(total: usable, reserved: overhead),
+            reserved: session
+          ),
+          reserved: control_plane
         ),
-        reserved: control_plane
+        reserved: served_deployment
       ),
       reserved: oomd_actuation_floor(host: usable)
     )
