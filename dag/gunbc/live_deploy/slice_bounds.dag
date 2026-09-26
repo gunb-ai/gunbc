@@ -80,20 +80,31 @@ import std.measure { ByteSize, byte_size }
 // re-derive there. Four members at the observed resolve footprint plus the convergence oneshot is
 // the demand; why one resolve costs ~7.5 GB stays the demand question named above. The runner slot
 // no longer equals this row, which is the decoupling the passage above argued for.
-// THE CONVERGENCE ONESHOT LEFT THIS SLICE ON 2026-09-26, AND THE BOUND BELOW IS NOW THE SERVING
-// MEMBERS' ALONE. The two passages above size it for "serve peak + convergence peak" and "four members
-// plus the convergence oneshot"; gunbc.live_deploy.repository_convergence_placement now places the
-// oneshot in its own slice (repository_convergence_slice_memory_max below), so the convergence term has
-// left the demand these rows answer. RE-DERIVED, NOT RE-SIZED: fleet-converge run 36204703858 read this
-// slice's MemoryPeak at 42,797,977,600 B WITH the convergence running inside it; subtracting the
-// convergence's own 10-16 GiB reading leaves the serving members at roughly 25.6-32.0 GB, below the
-// 38,654,705,664 B MemoryHigh. So the serving bound holds once the co-tenant leaves and is not raised
-// here. The instrument is the same one named above (systemd-cgtop over this slice, the unit journal's
-// "memory peak" per member); if the serving members alone approach MemoryHigh after this change, that
-// reading re-opens this row -- and why one resolve costs ~7.5 GB stays the open demand question.
-data live_deploy_slice_memory_max: ByteSize = byte_size(42949672960)
+// RE-SIZED 2026-09-26 FROM THE SERVING MEMBERS ALONE, BECAUSE THEY HAD OUTGROWN MemoryHigh WITHOUT
+// THE CONVERGENCE ONESHOT. gunbc.live_deploy.repository_convergence_placement moved that oneshot to
+// its own slice in the same change, so the demand this row answers is the four serving members only.
+// Observed on srv1 2026-09-26 with tree-sync NOT running (`systemctl show -p MemoryCurrent` per unit
+// in gunbc-roadmap.slice; each unit's memory.peak read about equal): gunbc-roadmap.service 12.06 GB,
+// gunbc-roadmap-belt 10.37 GB, gunbc-roadmap-fabric-storage 9.30 GB, gunbc-roadmap-publication
+// 8.17 GB -- 39.90 GB together, ABOVE the 38,654,705,664 B MemoryHigh then in force. So the serving
+// slice was reclaim-throttled on its own; removing the convergence from it was necessary and not
+// sufficient. (An earlier draft of this change inferred the members at 25.6-32 GB by subtracting the
+// convergence from a slice peak; the measurement falsified that inference and replaces it.)
+//
+// THE HEADROOM IS DERIVED AS ONE MORE MEMBER OF THE LARGEST OBSERVED SIZE (N+1). Every member is the
+// same binary doing the same boot resolve, and the growth that broke the last two bounds was members
+// growing and a member being added (fabric-storage, 2026-09-21), each by about one member's
+// footprint -- so the unit of growth the slice must absorb before throttling is one member:
+//   MemoryHigh >= 39.90 GB observed + 12.06 GB largest member = 51.96 GB -> 49 GiB (52.61 GB),
+//   the smallest whole GiB at or above it.
+// MemoryMax keeps the 4 GiB gap above High that every revision of this row has carried, so High
+// throttles before Max kills: 53 GiB. When the members move by more than one member's footprint, or
+// a fifth resolving member joins, this row is re-derived from the same instrument -- and the reason
+// one resolve costs ~8-12 GB, times four members, is the demand question filed separately rather than
+// absorbed here (DESIGN section 2: a larger bound is not an answer to why the demand exists).
+data live_deploy_slice_memory_max: ByteSize = byte_size(56908316672)
 
-data live_deploy_slice_memory_high: ByteSize = byte_size(38654705664)
+data live_deploy_slice_memory_high: ByteSize = byte_size(52613349376)
 
 // THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
 // swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
