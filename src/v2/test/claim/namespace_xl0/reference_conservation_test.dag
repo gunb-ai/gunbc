@@ -276,13 +276,17 @@ test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
 // ---- measured drops found by admission: a later match arm, a statement-let binder -------------
 
 // Found when v2.test.claim.body_lowering.single_arm_match was routed through the admitted
-// normalize (MQ-6): normalize ACCEPTS a three-arm match and the THIRD arm -- its pattern and its
-// body -- reaches no node of the normalized tree. A two-arm match keeps both arms. The arm's body
-// spelling is used nowhere else in the declaration, so the red names it.
+// normalize (MQ-6): normalize ACCEPTED a three-arm match and the THIRD arm -- its pattern and its
+// body -- reached no node of the normalized tree, because the arm collector took the repeat's whole
+// spine as one arm. Match arms are now read through v2.compiler.body_lowering_fold
+// body_lower_match_arms_from_list (the one comma-list reader), the MatchLaterArm drop shape is
+// retired, and this claim flips from reporting the drop to asserting its absence: it stays enrolled
+// as the regression control (DESIGN section 4b(4)). The arm's body spelling is used nowhere else in
+// the declaration, so a returning drop reds at it.
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
 
-test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
-  report_drops_identity(report: conservation_report_of(subject: match_later_arm_subject()), wanted: ^rc_third)
+test fn the_third_match_arm_is_conserved_holds() -> Bool {
+  report_drops_identity(report: conservation_report_of(subject: match_later_arm_subject()), wanted: ^rc_third) == false
 }
 
 // Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's

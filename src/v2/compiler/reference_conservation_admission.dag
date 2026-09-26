@@ -73,7 +73,6 @@ import extdeps.communication.medium { Lossless, Medium }
 type KnownDropShape
   = NamedArgumentLabel
   | WhereRefinementPredicate
-  | MatchLaterArm
   | StatementLetBinder
 
 // EACH SHAPE IS A DECLARED, BOUNDED DROP, NOT A STANDING ALLOWANCE. The match is exhaustive, so a
@@ -103,10 +102,6 @@ fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestoratio
     WhereRefinementPredicate => DropRestorationTrigger {
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_where_predicate_atom", field: WholeDeclaration },
       pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_where_refinement_predicate_is_reported_dropped_holds", field: WholeDeclaration }
-    }
-    MatchLaterArm => DropRestorationTrigger {
-      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_match_arms_optional", field: WholeDeclaration },
-      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_third_match_arm_is_reported_dropped_holds", field: WholeDeclaration }
     }
     StatementLetBinder => DropRestorationTrigger {
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
@@ -195,13 +190,9 @@ fn dropped_reference_shape(row: DroppedReference) -> Optional<KnownDropShape> {
   match context_contains(context: c, production: ^dag_surface_where_refinement_clause) {
     true => optional_present(value: WhereRefinementPredicate)
     false =>
-      match context_contains(context: c, production: ^dag_surface_match_arm) {
-        true => optional_present(value: MatchLaterArm)
-        false =>
-          match context_contains(context: c, production: ^dag_surface_let_expr) {
-            true => optional_present(value: StatementLetBinder)
-            false => shape_of_innermost(context: c)
-          }
+      match context_contains(context: c, production: ^dag_surface_let_expr) {
+        true => optional_present(value: StatementLetBinder)
+        false => shape_of_innermost(context: c)
       }
   }
 }
@@ -216,11 +207,6 @@ fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
     WhereRefinementPredicate =>
       match b {
         WhereRefinementPredicate => true
-        _ => false
-      }
-    MatchLaterArm =>
-      match b {
-        MatchLaterArm => true
         _ => false
       }
     StatementLetBinder =>
