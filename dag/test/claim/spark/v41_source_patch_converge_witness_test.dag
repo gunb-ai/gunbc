@@ -17,6 +17,7 @@ import gunbc.spark.v41_source_patch_converge {
   v41_source_patch_decision, v41_source_patch_reconcile, v41_sha256_of_bytes,
   v41_patch_member_read, v41_source_tree_read, v41_source_patch_plan,
   v41_observed_source_identity_of, v41_patched_source_receipt_line, v41_patched_source_converged,
+  v41_needs_content_ownership, v41_known_patch_set_at, v41_known_patch_set_revisions,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -37,7 +38,7 @@ fn w_member(path: String, c: String, reverse_applicable: Bool, forward_applicabl
 }
 
 fn w_read(head: String, porcelain: String, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
-  v41_source_tree_read(head: head as NonEmptyStr, porcelain: porcelain, worktree_diff_sha256: w_sha(c: "d"), members: members, recorded_converged_diff_sha256: none)
+  v41_source_tree_read(head: head as NonEmptyStr, porcelain: porcelain, worktree_diff_sha256: w_sha(c: "d"), members: members, recorded_converged_diff_sha256: none, known_set_diff_sha256s: [] as List<Sha256Digest>)
 }
 
 fn w_read_recorded(porcelain: String, diff: String, recorded: String, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
@@ -47,6 +48,18 @@ fn w_read_recorded(porcelain: String, diff: String, recorded: String, members: L
     worktree_diff_sha256: w_sha(c: diff),
     members: members,
     recorded_converged_diff_sha256: Present { value: w_sha(c: recorded) },
+    known_set_diff_sha256s: [] as List<Sha256Digest>,
+  )
+}
+
+fn w_read_known(porcelain: String, diff: String, known: List<String>, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
+  v41_source_tree_read(
+    head: vllm_d2d649e6_revision.full_revision as NonEmptyStr,
+    porcelain: porcelain,
+    worktree_diff_sha256: w_sha(c: diff),
+    members: members,
+    recorded_converged_diff_sha256: none,
+    known_set_diff_sha256s: map(known, k => w_sha(c: k)),
   )
 }
 
@@ -126,6 +139,40 @@ test fn red3_the_same_set_twice_is_a_noop_even_though_the_record_matches() -> Bo
     Noop => true
     Apply { plan: _ } => false
     Refuse { reason: _ } => false
+  }
+}
+
+// The srv8 case: arm A converged set A before the record existed. With no record, the tree's diff
+// digest ("a") equals the derived digest of pin + a declared historical set, so it is ours: reset,
+// then apply the current set. The same tree without that derivation still refuses, and a foreign
+// diff ("f") matches no known set and refuses.
+test fn red4_bootstrap_a_tree_carrying_an_older_declared_set_with_no_record_converges_by_content() -> Bool {
+  let members = [w_member(path: "b1.patch", c: "1", reverse_applicable: false, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: false, forward_applicable: false)]
+  let on_a = w_read_known(porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py", diff: "a", known: ["0", "a", "b"], members: members)
+  let underived = w_read_known(porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py", diff: "a", known: [] as List<String>, members: members)
+  let foreign = w_read_known(porcelain: " M vllm/engine/llm_engine.py", diff: "f", known: ["0", "a", "b"], members: members)
+  match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: on_a) {
+    Apply { plan: p } => p.reset_to_revision_first
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+    && v41_needs_content_ownership(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: underived)
+    && match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: foreign) {
+      Refuse { reason: r } => (r as String).contains("not ours to reset")
+      Noop => false
+      Apply { plan: _ } => false
+    }
+}
+
+test fn the_arm_a_revision_declares_a_known_set_over_the_current_members() -> Bool {
+  let ps = concat(
+    w_patch(path: "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch", c: "1"),
+    w_patch(path: "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch", c: "2"),
+  )
+  match v41_known_patch_set_at(revision: "034aef01ad1768c977bfef9d4e6848cb9ae05177", patches: ps) {
+    Absent => false
+    Present { value: k } => length(k.members) == 2
+      && any(v41_known_patch_set_revisions(patches: ps), c => c == "034aef01ad1768c977bfef9d4e6848cb9ae05177")
   }
 }
 

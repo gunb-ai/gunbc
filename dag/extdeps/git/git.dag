@@ -900,6 +900,21 @@ fn git_reset_hard_command(repository_dir: String, revision: String) -> ArgvComma
   argv_command(program: git_binary_name, arguments: git_reset_hard_args(repository_dir: repository_dir, revision: revision))
 }
 
+// git-worktree(1): a second, disposable checkout of the same repository at <revision>, so a tree
+// can be derived without touching the primary working tree. remove --force discards it; prune
+// forgets an entry whose directory is already gone.
+fn git_worktree_add_detached_command(repository_dir: String, path: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "add", "--detach", path, revision])
+}
+
+fn git_worktree_remove_force_command(repository_dir: String, path: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "remove", "--force", path])
+}
+
+fn git_worktree_prune_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "prune"])
+}
+
 fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
   ["-C", repository_dir, "diff", "--binary", "HEAD"]
 }
@@ -1065,6 +1080,9 @@ fn git_observe_meta_shell_fragment() -> String {
 // They are two operations rather than one with a flag because they model two different upstream
 // behaviours -- git's rename-detecting diff and its path-literal diff -- and a caller must choose
 // which question it is asking. `DiffNameOnly` remains correct for the destination-only view.
+// git.Core LogPathCommits is git-log(1) --format=%H -- <path>: every commit reachable from HEAD
+// that changed <path>, newest first. It needs history: on a shallow clone it answers only the
+// commits present.
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -1274,6 +1292,17 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation LogPathCommits {
+    input { path: FilePath }
+    output { commits: List<CommitSha> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "log", "--format=%H", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid path or not a git repository"
     }
   }
 

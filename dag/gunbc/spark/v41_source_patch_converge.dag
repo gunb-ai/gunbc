@@ -1,7 +1,7 @@
 module gunbc.spark.v41_source_patch_converge
 
 import std.algebra { trim }
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath, GitRef }
 import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput }
 import v2.std.optional { Present, Absent }
@@ -19,7 +19,9 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import extdeps.git {
   git_apply_check_command, git_apply_reverse_check_command, git_apply_command, git_diff_binary_head_command,
   git_status_porcelain_command, git_reset_hard_command,
+  git_worktree_add_detached_command, git_worktree_remove_force_command, git_worktree_prune_command,
 }
+import extdeps.git
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import gunbc.file_access { FileTreeScope }
@@ -80,27 +82,41 @@ fn v41_patch_member_read(path: NonEmptyStr, observed_sha256: Sha256Digest, rever
   V41PatchMemberRead { path: path, observed_sha256: observed_sha256, reverse_applicable: reverse_applicable, forward_applicable: forward_applicable }
 }
 
-// recorded_converged_diff_sha256: the worktree_diff_sha256 this fold recorded (outside the source
-// tree, under the build root it owns) at its last successful converge; Absent when no record
-// exists. It is the ownership evidence for a dirty tree: equal to the observed diff digest means
-// every tracked change on the tree is one this fold made.
+// OWNERSHIP OF A DIRTY TREE IS PROVEN BY CONTENT. A dirty tree is this fold's to reset only when
+// its diff digest equals the diff digest of a tree this fold can derive:
+// - recorded_converged_diff_sha256: the digest recorded at the last successful converge (a fast
+//   path; Absent when no record exists, e.g. a tree converged before the record existed);
+// - known_set_diff_sha256s: the digests of pin + P' for every patch set P' this repository has
+//   declared (each revision in the history of the declared patch files), each derived by applying
+//   P' in a disposable worktree at the pin. Empty when not derived.
+// Anything else -- a foreign edit, an unknown set -- matches neither and refuses.
 type V41SourceTreeRead sole_constructor {
   head: NonEmptyStr
   porcelain: String
   worktree_diff_sha256: Sha256Digest
   members: List<V41PatchMemberRead>
   recorded_converged_diff_sha256: Sha256Digest?
+  known_set_diff_sha256s: List<Sha256Digest>
 }
 
-fn v41_source_tree_read(head: NonEmptyStr, porcelain: String, worktree_diff_sha256: Sha256Digest, members: List<V41PatchMemberRead>, recorded_converged_diff_sha256: Sha256Digest?) -> V41SourceTreeRead {
-  V41SourceTreeRead { head: head, porcelain: porcelain, worktree_diff_sha256: worktree_diff_sha256, members: members, recorded_converged_diff_sha256: recorded_converged_diff_sha256 }
+fn v41_source_tree_read(head: NonEmptyStr, porcelain: String, worktree_diff_sha256: Sha256Digest, members: List<V41PatchMemberRead>, recorded_converged_diff_sha256: Sha256Digest?, known_set_diff_sha256s: List<Sha256Digest>) -> V41SourceTreeRead {
+  V41SourceTreeRead { head: head, porcelain: porcelain, worktree_diff_sha256: worktree_diff_sha256, members: members, recorded_converged_diff_sha256: recorded_converged_diff_sha256, known_set_diff_sha256s: known_set_diff_sha256s }
 }
 
-fn v41_tree_is_last_converged(read: V41SourceTreeRead) -> Bool {
+fn v41_tree_matches_record(read: V41SourceTreeRead) -> Bool {
   match read.recorded_converged_diff_sha256 {
     Absent => false
     Present { value: rec } => v41_sha256_hex_eq(a: rec, b: read.worktree_diff_sha256)
   }
+}
+
+fn v41_tree_is_ours(read: V41SourceTreeRead) -> Bool {
+  v41_tree_matches_record(read: read)
+    || any(read.known_set_diff_sha256s, d => v41_sha256_hex_eq(a: d, b: read.worktree_diff_sha256))
+}
+
+fn v41_with_known_set_digests(read: V41SourceTreeRead, digests: List<Sha256Digest>) -> V41SourceTreeRead {
+  V41SourceTreeRead { head: read.head, porcelain: read.porcelain, worktree_diff_sha256: read.worktree_diff_sha256, members: read.members, recorded_converged_diff_sha256: read.recorded_converged_diff_sha256, known_set_diff_sha256s: digests }
 }
 
 fn v41_sha256_hex_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
@@ -162,7 +178,7 @@ fn v41_source_patch_decision(
         } else if length(desired_patches) == 0 {
           if vllm_source_is_clean(stdout: read.porcelain) {
             Noop
-          } else if v41_tree_is_last_converged(read: read) {
+          } else if v41_tree_is_ours(read: read) {
             Apply { plan: V41SourcePatchPlan { patches: desired_patches, reset_to_revision_first: true } }
           } else {
             Refuse { reason: "vanilla desired state requires a clean tree at the revision; a dirty tree is not an unpatched checkout" as NonEmptyStr }
@@ -185,12 +201,12 @@ fn v41_source_patch_decision(
             }
           } else if length(forward_ok) == n && vllm_source_is_clean(stdout: read.porcelain) {
             Apply { plan: V41SourcePatchPlan { patches: desired_patches, reset_to_revision_first: false } }
-          } else if v41_tree_is_last_converged(read: read) {
+          } else if v41_tree_is_ours(read: read) {
             Apply { plan: V41SourcePatchPlan { patches: desired_patches, reset_to_revision_first: true } }
           } else if length(reverse_ok) != 0 || length(forward_ok) != 0 {
-            Refuse { reason: "partial application: some patches in P are present and some are not, and the tree is not the one this converge last recorded, so it is not ours to reset" as NonEmptyStr }
+            Refuse { reason: "partial application: some patches in P are present and some are not, and the tree's diff digest matches neither the converge record nor any declared patch set at the pin, so it is not ours to reset" as NonEmptyStr }
           } else {
-            Refuse { reason: "patches are neither applicable to a clean tree nor already present in reverse order, and the tree is not the one this converge last recorded, so it is not ours to reset" as NonEmptyStr }
+            Refuse { reason: "patches are neither applicable to a clean tree nor already present in reverse order, and the tree's diff digest matches neither the converge record nor any declared patch set at the pin, so it is not ours to reset" as NonEmptyStr }
           }
         }
       }
@@ -237,32 +253,35 @@ fn v41_remote_declared_patch_path(path: NonEmptyStr) -> NonEmptyStr {
   join([vllm_build_root() as String, "/declared-patches/", v41_patch_basename(path: path)], "") as NonEmptyStr
 }
 
+fn v41_place_bytes(target: SshTarget, context: FleetSshExecutionContext, remote_path: NonEmptyStr, bytes: String) -> String?
+{
+  let admission = typed_remote_file_write_seal(
+    path: remote_path as FilePath,
+    content: bytes,
+    allowed_scope: FileTreeScope { root_path: vllm_build_root() },
+  )
+  match admission {
+    TypedRemoteFileWriteAdmissionRefused { cause: why } => Present { value: why as String }
+    TypedRemoteFileWriteAdmitted { write: _ } =>
+      match converge_typed_remote_file(
+        target: target,
+        context: context,
+        admission: admission,
+        mode: RemoteFileModeOwnerReadWrite,
+        privilege: RemoteFileAsSessionPrincipal,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: st, reason: why } => Present { value: join(["placing ", remote_path as String, " failed at ", st, ": ", why], "") }
+        TypedRemoteFileConverged { converged: _ } => none
+      }
+  }
+}
+
 fn v41_place_declared_patch(target: SshTarget, context: FleetSshExecutionContext, patch: V41EnginePatch) -> String?
 {
   let local = Filesystem.Read(path: patch.path as String)
   match filesystem_read_outcome(content: local.content, success: local.success, error: local.error) {
     FilesystemReadRefused { error: why } => Present { value: join(["could not read declared patch ", patch.path as String, ": ", why], "") }
-    FilesystemReadSucceeded { content: bytes } => {
-      let admission = typed_remote_file_write_seal(
-        path: v41_remote_declared_patch_path(path: patch.path) as FilePath,
-        content: bytes,
-        allowed_scope: FileTreeScope { root_path: vllm_build_root() },
-      )
-      match admission {
-        TypedRemoteFileWriteAdmissionRefused { cause: why } => Present { value: why as String }
-        TypedRemoteFileWriteAdmitted { write: _ } =>
-          match converge_typed_remote_file(
-            target: target,
-            context: context,
-            admission: admission,
-            mode: RemoteFileModeOwnerReadWrite,
-            privilege: RemoteFileAsSessionPrincipal,
-          ) {
-            TypedRemoteFileConvergenceRefused { step: st, reason: why } => Present { value: join(["placing ", patch.path as String, " failed at ", st, ": ", why], "") }
-            TypedRemoteFileConverged { converged: _ } => none
-          }
-      }
-    }
+    FilesystemReadSucceeded { content: bytes } => v41_place_bytes(target: target, context: context, remote_path: v41_remote_declared_patch_path(path: patch.path), bytes: bytes)
   }
 }
 
@@ -366,24 +385,117 @@ fn v41_read_converge_record(target: SshTarget, context: FleetSshExecutionContext
 
 fn v41_write_converge_record(target: SshTarget, context: FleetSshExecutionContext, observed: V41ObservedSourceIdentity) -> String?
 {
-  let admission = typed_remote_file_write_seal(
-    path: v41_converge_record_path() as FilePath,
-    content: join([observed.worktree_diff_sha256.hex as String, "\n"], ""),
-    allowed_scope: FileTreeScope { root_path: vllm_build_root() },
-  )
-  match admission {
-    TypedRemoteFileWriteAdmissionRefused { cause: why } => Present { value: why as String }
-    TypedRemoteFileWriteAdmitted { write: _ } =>
-      match converge_typed_remote_file(
-        target: target,
-        context: context,
-        admission: admission,
-        mode: RemoteFileModeOwnerReadWrite,
-        privilege: RemoteFileAsSessionPrincipal,
-      ) {
-        TypedRemoteFileConvergenceRefused { step: st, reason: why } => Present { value: join(["recording converged tree failed at ", st, ": ", why], "") }
-        TypedRemoteFileConverged { converged: _ } => none
+  v41_place_bytes(target: target, context: context, remote_path: v41_converge_record_path(), bytes: join([observed.worktree_diff_sha256.hex as String, "\n"], ""))
+}
+
+// THE DECLARED PATCH SETS, FROM THIS REPOSITORY'S HISTORY. P' at revision C is the desired
+// population's member paths, in the desired order, at their bytes in C. A revision where some
+// member path is absent declares no set over these members and contributes none. Enumerating
+// needs history (fleet-converge checks out with fetch-depth 0); a shallow clone answers fewer
+// sets, which can only refuse more, never reset more.
+type V41KnownPatchSet sole_constructor {
+  revision: String
+  members: List<V41KnownPatchMember>
+}
+
+type V41KnownPatchMember sole_constructor {
+  basename: String
+  bytes: String
+}
+
+fn v41_known_patch_set_revisions(patches: List<V41EnginePatch>) -> List<String> {
+  fold(flat_map(patches, p => map(git.Core.LogPathCommits(path: p.path as FilePath).commits, c => c as String)), init: [] as List<String>, f: (acc, c) =>
+    if any(acc, a => a == c) { acc } else { concat(acc, [c]) })
+}
+
+fn v41_known_patch_set_at(revision: String, patches: List<V41EnginePatch>) -> V41KnownPatchSet? {
+  let shown = map(patches, p => {
+    let r = git.Core.Show(ref: revision as GitRef, path: p.path as FilePath)
+    if r.success {
+      Present { value: V41KnownPatchMember {
+        basename: v41_patch_basename(path: p.path),
+        bytes: if r.content.ends_with(suffix: "\n") { r.content } else { join([r.content, "\n"], "") },
+      } }
+    } else {
+      none
+    }
+  })
+  if length(patches) == 0 || any(shown, m => match m { Absent => true Present { value: _ } => false }) {
+    none
+  } else {
+    Present { value: V41KnownPatchSet {
+      revision: revision,
+      members: flat_map(shown, m => match m { Absent => [] as List<V41KnownPatchMember> Present { value: v } => [v] }),
+    } }
+  }
+}
+
+fn v41_known_patch_sets(patches: List<V41EnginePatch>) -> List<V41KnownPatchSet> {
+  flat_map(v41_known_patch_set_revisions(patches: patches), c => match v41_known_patch_set_at(revision: c, patches: patches) {
+    Absent => [] as List<V41KnownPatchSet>
+    Present { value: k } => [k]
+  })
+}
+
+fn v41_known_set_scratch_dir() -> String {
+  join([vllm_build_root() as String, "/known-set-scratch"], "")
+}
+
+fn v41_known_set_patch_path(k: V41KnownPatchSet, m: V41KnownPatchMember) -> NonEmptyStr {
+  join([vllm_build_root() as String, "/known-patches/", k.revision, "/", m.basename], "") as NonEmptyStr
+}
+
+// pin + P' IN A DISPOSABLE WORKTREE, hashed exactly as the primary tree is (git diff --binary
+// HEAD after git apply --index), so the two digests are the same function of the same content.
+// The primary tree is never touched. A set that cannot be derived is not evidence: none.
+fn v41_known_set_diff_digest(target: SshTarget, context: FleetSshExecutionContext, desired_revision: VllmSourceRevision, k: V41KnownPatchSet) -> Sha256Digest?
+{
+  let placed = map(k.members, m => v41_place_bytes(target: target, context: context, remote_path: v41_known_set_patch_path(k: k, m: m), bytes: m.bytes))
+  if any(placed, e => match e { Absent => false Present { value: _ } => true }) {
+    none
+  } else {
+    let repo = vllm_source_dir() as String
+    let scratch = v41_known_set_scratch_dir()
+    let _cleared = vllm_image_leg_unchecked(target: target, context: context, step: "known-set-scratch-clear" as NonEmptyStr, command: git_worktree_remove_force_command(repository_dir: repo, path: scratch))
+    let _pruned = vllm_image_leg_unchecked(target: target, context: context, step: "known-set-scratch-prune" as NonEmptyStr, command: git_worktree_prune_command(repository_dir: repo))
+    let digest = match vllm_image_leg(target: target, context: context, step: "known-set-scratch-add" as NonEmptyStr, command: git_worktree_add_detached_command(repository_dir: repo, path: scratch, revision: desired_revision.full_revision as String)) {
+      ImageLegFailed { step: _, cause: _ } => none
+      ImageLegRan { stdout: _ } => {
+        let applied = fold(k.members, init: true, f: (ok, m) =>
+          ok && match vllm_image_leg(target: target, context: context, step: "known-set-apply" as NonEmptyStr, command: git_apply_command(repository_dir: scratch, patch_path: v41_known_set_patch_path(k: k, m: m) as String)) {
+            ImageLegRan { stdout: _ } => true
+            ImageLegFailed { step: _, cause: _ } => false
+          })
+        if !applied {
+          none
+        } else {
+          match vllm_image_leg(target: target, context: context, step: "known-set-diff" as NonEmptyStr, command: git_diff_binary_head_command(repository_dir: scratch)) {
+            ImageLegFailed { step: _, cause: _ } => none
+            ImageLegRan { stdout: diff } => v41_sha256_of_bytes(content: diff)
+          }
+        }
       }
+    }
+    let _removed = vllm_image_leg_unchecked(target: target, context: context, step: "known-set-scratch-remove" as NonEmptyStr, command: git_worktree_remove_force_command(repository_dir: repo, path: scratch))
+    digest
+  }
+}
+
+fn v41_known_set_diff_digests(target: SshTarget, context: FleetSshExecutionContext, desired_revision: VllmSourceRevision, patches: List<V41EnginePatch>) -> List<Sha256Digest>
+{
+  flat_map(v41_known_patch_sets(patches: patches), k => match v41_known_set_diff_digest(target: target, context: context, desired_revision: desired_revision, k: k) {
+    Absent => [] as List<Sha256Digest>
+    Present { value: d } => [d]
+  })
+}
+
+// Derive the known-set digests only where they can change the decision: a dirty tree at the pin,
+// no record match, and P not already present. Everywhere else the read stands as observed.
+fn v41_needs_content_ownership(desired_revision: VllmSourceRevision, desired_patches: List<V41EnginePatch>, read: V41SourceTreeRead) -> Bool {
+  match v41_source_patch_decision(desired_revision: desired_revision, desired_patches: desired_patches, read: read) {
+    Refuse { reason: r } => (r as String).contains("not ours to reset")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }
 
@@ -412,6 +524,7 @@ fn v41_observe_tree(target: SshTarget, context: FleetSshExecutionContext, desire
                           worktree_diff_sha256: diff_sha,
                           members: members,
                           recorded_converged_diff_sha256: rec,
+                          known_set_diff_sha256s: [] as List<Sha256Digest>,
                         } }
                       }
                   }
@@ -478,7 +591,14 @@ fn converge_vllm_source_with_patches(
         ImageLegRan { stdout: _ } =>
           match v41_observe_tree(target: target, context: context, desired_patches: patches) {
             Absent => V41PatchedSourceRefused { step: "patch-observe" as NonEmptyStr, cause: "the tree or declared patch files could not be read back" }
-            Present { value: before } => v41_converge_from_read(target: target, context: context, r: r, patches: patches, before: before)
+            Present { value: observed } => {
+              let before = if v41_needs_content_ownership(desired_revision: r.source, desired_patches: patches, read: observed) {
+                v41_with_known_set_digests(read: observed, digests: v41_known_set_diff_digests(target: target, context: context, desired_revision: r.source, patches: patches))
+              } else {
+                observed
+              }
+              v41_converge_from_read(target: target, context: context, r: r, patches: patches, before: before)
+            }
           }
       }
   }
