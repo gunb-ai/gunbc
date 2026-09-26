@@ -1,6 +1,7 @@
 module test.claim.stage0_emitted_edge_admission_witness
 
 import std.types { Bool, List, String }
+import v2.std.algebra { any }
 import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, semantic_source_reference_edge }
 import gunbc.stage0_crate_partition_generated {
   GeneratedLayeredCoreCrate,
