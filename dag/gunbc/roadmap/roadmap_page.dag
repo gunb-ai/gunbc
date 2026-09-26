@@ -1459,14 +1459,14 @@ fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
 // the placeholder (issue_assignee_unassigned_display, "--" per the capture) — the Buganizer
 // results row never leaves the cell blank. Changing the assignee is the follow-on intake slice;
 // this is the decided identity read as a field.
-// THE HOLDER, the identity the assignee surfaces render: the latest attempt's session identity
-// when one holds the work, else the standing's holder principal — an IDENTITY, never a bare
-// string, so the chip and the rail render through the display projection. Absent names no holder.
+// THE HOLDER, the identity the assignee surfaces render: when a live attempt holds the work, the
+// WORKFLOW principal — a session or attempt key is not an identity and never surfaces as one
+// (owner 2026-09-26: "get off the legacy session thing"; the identity ruling's PrincipalRef law;
+// the attempt evidence itself lives in the Work tab) — else the standing's holder principal. An
+// IDENTITY, never a bare string, so the chip and the rail render through the display projection.
+// Absent names no holder.
 fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> EventPrincipal? {
   match attempts.first() {
-    // A live attempt's holder is the WORKFLOW principal, never the attempt key — a session or
-    // attempt string is not an identity (owner 2026-09-26: "get off the legacy session thing";
-    // the identity ruling's PrincipalRef law). The attempt evidence itself lives in the Work tab.
     Present { value: _ } => Present { value: EventPrincipalAuthenticated { ref: fabric_workflow_principal } }
     Absent =>
       match view.standing {
