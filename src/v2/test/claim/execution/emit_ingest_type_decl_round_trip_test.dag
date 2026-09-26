@@ -17,8 +17,8 @@ import v2.extdeps.languages.dag {
   dag_type_decl_structural_formal_productions,
   dag_type_decl_structural_target_model
 }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_append }
+import std.algebra { Empty, list_append }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { Token, symbol_intern_lexeme, token_stream_all }
 import v2.std.compilers.target_model {

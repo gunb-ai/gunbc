@@ -15,7 +15,6 @@ import gunbc.spark.bootstrap_provision {
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
-import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRuling, mtcollins1_boot_standing_ruling }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -222,39 +221,39 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 // no reapply restores that. An earlier revision of this row declared ReversibleByReapply, and its own
 // mutation claim showed that label was what selected federation -- a relabel standing where a
 // decision belonged (side-chat review 5286225278).
-// THE DECISION IS THE OPERATOR'S, AND IT IS ATTESTED BY THE OPERATOR, NOT BY THIS ROW (review 70369):
-// the ruling's words are filed once through the approval loop and every boot reads the stored
-// approval of those exact words before the unit hold (gunbc.machine_intake_mtcollins1_standing_ruling),
-// refusing if it is absent, denied or for other words. It is conditional on the unit's durable
-// maintenance hold being released before any BMC write. It discharges the per-instance witness for irreversibility and nothing else; the
-// interlock it names is rostered in privileged_effect_interlocks below, and a ruling whose interlock
-// is not rostered against its site is red (rulings_without_a_rostered_interlock).
+// THE DECISION IS THE OPERATOR'S, AND IT IS STATED HERE WITH NO RUN-TIME APPROVAL (operator rulings
+// 2026-09-23 and 2026-09-25). #12101 had every run read a stored approval of the ruling's words before
+// the unit hold; the operator declined to file one and asked for the check to be removed, so the
+// ruling is this one value: its words, the effect, the roots it covers and the interlock it is
+// conditional on. It discharges the per-instance witness for irreversibility and nothing else; the
+// interlock is rostered in privileged_effect_interlocks below, and a ruling whose interlock is not
+// rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
-// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation.
-// DERIVED FROM THE ONE RULING VALUE (side-chat review 5288466573): the census does not re-author the
-// words, the effect or the interlock -- it reads them off gunbc.machine_intake_mtcollins1_standing_ruling
-// mtcollins1_boot_standing_ruling, the same value the runtime digests and files.
-fn standing_authorization_of(r: StandingRuling) -> StandingDestructiveAuthorization {
-  StandingDestructiveAuthorization {
-    ruling_text: r.text,
-    effect_subject: r.effect_subject,
-    interlock: r.interlock,
-    confirmation_read: site(module_path: "gunbc.machine_intake_mtcollins1_standing_ruling", decl_name: "mtcollins1_boot_standing_ruling_read"),
-  }
+// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation for the boot;
+// the fleet-converge run's principal for host reset-return.
+data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
+  effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
+  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
 }
+
+data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+  decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+]
 
 // ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
 // recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
 fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity: WorkloadIdentityStanding) -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: join([mtcollins1_boot_standing_ruling.effect_subject as String, " -- by ", root_subject as String], "") as NonEmptyStr,
+    subject: join([mtcollins1_operator_ruling.effect_subject as String, " -- by ", root_subject as String], "") as NonEmptyStr,
     frequency: EveryProvision,
     reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
     surface: ApiSurface,
     workload_identity: identity,
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
-    witness_discharge: StandingRulingUnderInterlock { ruling: standing_authorization_of(r: mtcollins1_boot_standing_ruling) },
+    witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_operator_ruling },
   }
 }
 
@@ -331,16 +330,16 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: mtcollins1_boot_standing_ruling.interlock,
+    hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: mtcollins1_boot_standing_ruling.interlock,
+    hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
-    premise: "host reset-return reads the same standing ruling and takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
+    premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
 ]
@@ -360,22 +359,22 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
     })
 }
 
-// RUNTIME AND CENSUS CANNOT DISAGREE ON THE ROOT POPULATION: the census sites that carry this ruling's
+// THE RULING AND THE CENSUS CANNOT DISAGREE ON THE ROOT POPULATION: the census sites that carry this ruling's
 // discharge, and the ruling's own roots, are the same set (identity join, both directions).
 fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
   match v.effect.witness_discharge {
     NoWitnessDischarge => false
-    StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_boot_standing_ruling.text as String)
+    StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_operator_ruling.ruling_text as String)
   }
 }
 
 fn ruling_roots_missing_from_census() -> List<DeclarationRef> {
   let sites = map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site)
-  filter(mtcollins1_boot_standing_ruling.roots, r => !declaration_ref_in_list(target: r, refs: sites))
+  filter(mtcollins1_operator_ruling_roots, r => !declaration_ref_in_list(target: r, refs: sites))
 }
 
 fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
-  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_boot_standing_ruling.roots))
+  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_operator_ruling_roots))
 }
 
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {

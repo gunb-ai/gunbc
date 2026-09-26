@@ -49,11 +49,15 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
-import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class, deepseek_v4_1_flash_index_topk }
+import std.measure { token_count_value }
+import extdeps.vllm.sparse_indexer_topk {
+  vllm_d2d649e6_sm12_indexer_topk_route, vllm_d2d649e6_indexer_topk_class, vllm_d2d649e6_radix_topk_workspace,
+}
 import gunbc.spark.serving_runtime_capability_probe {
   RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere,
   MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator,
-  runtime_kernel_capability_label,
+  IndexerTopkRouteCorrect, runtime_kernel_capability_label,
 }
 import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
@@ -192,6 +196,131 @@ fn v41_py_kv_layout_block() -> String {
   ], "")
 }
 
+// THE INDEXER TOP-K QUESTION IS ASKED AS CORRECTNESS, BY CALLING THE ROUTE AND ITS KERNELS. A
+// registered operator that returns the wrong top-k raises nothing: the sparse attention then attends
+// over the wrong candidates and the engine answers anyway. So presence decides nothing here, and
+// upstream's own test cannot be the instrument either -- tests/kernels/test_top_k_per_row.py is not in
+// the vllm-openai target this image is built from, and neither is pytest, so a check that ran it would
+// read UNREAD on every image and could never be discharged. The block does what that test does
+// instead: it calls torch.ops.<decode_operator> with the upstream workspace and
+// torch.ops.<prefill_operator> over generated logits, and compares each valid prefix with a masked
+// torch.topk as a VALUE multiset, which is upstream compare_top_k_results's tie rule.
+//
+// THREE CONDITIONS, AND NONE OF THEM DEFAULTS. The route the resolver itself returns must be the one
+// extdeps.vllm.sparse_indexer_topk reads for this family; a nonzero number of cases must have run; and
+// every case must agree. A different route or a disagreeing case is a measured absence. An exception
+// prints no VERDICT line, which the reader takes as UNREAD -- a probe that could not ask produces no
+// evidence against the image.
+fn v41_py_indexer_topk_block() -> String {
+  let label = v41_py_quote(s: v41_probe_label(c: IndexerTopkRouteCorrect))
+  let route = vllm_d2d649e6_sm12_indexer_topk_route
+  join([
+    "def _topk_agrees(_logits, _got, _lengths, _k):\n",
+    "    for _r in range(_got.shape[0]):\n",
+    "        _len = int(_lengths[_r])\n",
+    "        _n = min(_k, _len)\n",
+    "        if _n <= 0:\n",
+    "            continue\n",
+    "        _idx = _got[_r, :_n].long()\n",
+    "        if int(_idx.min()) < 0 or int(_idx.max()) >= _len or _idx.unique().numel() != _n:\n",
+    "            return False\n",
+    "        _want = _logits[_r, :_len].topk(_n).values.sort().values\n",
+    "        _have = _logits[_r, _idx].sort().values\n",
+    "        if not torch.allclose(_have, _want, rtol=1e-5, atol=1e-5):\n",
+    "            return False\n",
+    "    return True\n",
+    "\n",
+    "def _topk_lengths(_rows, _seq):\n",
+    "    return torch.tensor([max(1, _seq - (_i * _seq) // max(1, _rows)) for _i in range(_rows)], dtype=torch.int32, device=\"cuda\")\n",
+    "\n",
+    "def _topk_logits(_rows, _seq, _ties):\n",
+    "    if _ties:\n",
+    "        return torch.randint(0, 8, (_rows, _seq), device=\"cuda\").float()\n",
+    "    return torch.randn(_rows, _seq, dtype=torch.float32, device=\"cuda\")\n",
+    "\n",
+    "try:\n",
+    "    torch.manual_seed(0)\n",
+    "    _k = ", to_string(token_count_value(t: deepseek_v4_1_flash_index_topk)), "\n",
+    "    _decode_op = getattr(torch.ops._C, ", v41_py_quote(s: v41_py_op_name(qualified: route.decode_operator)), ")\n",
+    "    _prefill_op = getattr(torch.ops._C, ", v41_py_quote(s: v41_py_op_name(qualified: route.prefill_operator)), ")\n",
+    "    _workspace = torch.empty(", to_string(vllm_d2d649e6_radix_topk_workspace.count), ", dtype=torch.uint8, device=\"cuda\")\n",
+    "    _mod, _, _cls = ", v41_py_quote(s: vllm_d2d649e6_indexer_topk_class), ".rpartition(\".\")\n",
+    "    _resolver = getattr(importlib.import_module(_mod), _cls)(\"auto\")\n",
+    "    _route = _resolver.resolve_backend(torch.empty((4, 4096), dtype=torch.float32, device=\"cuda\"), _k, 4)\n",
+    "    print(\"DETAIL\", ", label, ", \"route\", _route, \"expected\", ", v41_py_quote(s: route.decode_backend), ")\n",
+    "    _cases = 0\n",
+    "    _agreed = 0\n",
+    "    for _rows, _seq, _ties in ((1, 300, False), (4, 4096, False), (64, 4096, False), (128, 4096, False), (4, 65536, False), (4, 65536, True), (4, 262144, False)):\n",
+    "        _logits = _topk_logits(_rows, _seq, _ties)\n",
+    "        _lengths = _topk_lengths(_rows, _seq)\n",
+    "        _out = torch.full((_rows, _k), -1, dtype=torch.int32, device=\"cuda\")\n",
+    "        _decode_op(_logits, _lengths, _out, _workspace, _k, _seq)\n",
+    "        torch.cuda.synchronize()\n",
+    "        _ok = _topk_agrees(_logits, _out, _lengths, _k)\n",
+    "        _cases += 1\n",
+    "        _agreed += 1 if _ok else 0\n",
+    "        print(\"DETAIL\", ", label, ", \"decode\", \"rows\", _rows, \"seq\", _seq, \"ties\", _ties, \"agrees\" if _ok else \"DISAGREES\")\n",
+    "        _starts = torch.zeros(_rows, dtype=torch.int32, device=\"cuda\")\n",
+    "        _out = torch.full((_rows, _k), -1, dtype=torch.int32, device=\"cuda\")\n",
+    "        _prefill_op(_logits, _starts, _lengths, _out, _rows, _logits.stride(0), _logits.stride(1), _k)\n",
+    "        torch.cuda.synchronize()\n",
+    "        _ok = _topk_agrees(_logits, _out, _lengths, _k)\n",
+    "        _cases += 1\n",
+    "        _agreed += 1 if _ok else 0\n",
+    "        print(\"DETAIL\", ", label, ", \"prefill\", \"rows\", _rows, \"seq\", _seq, \"ties\", _ties, \"agrees\" if _ok else \"DISAGREES\")\n",
+    "    print(\"DETAIL\", ", label, ", \"cases\", _cases, \"agreed\", _agreed)\n",
+    "    print(\"VERDICT\", ", label, " + \"=\" + (\"present\" if _route == ", v41_py_quote(s: route.decode_backend), " and _cases > 0 and _agreed == _cases else \"absent\"))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", label, ", \"error\", repr(_error))\n",
+  ], "")
+}
+
+// THE COST SIDE IS AN INSTRUMENT, NOT A GATE. It times the decode operator this route runs against the
+// masked torch.topk reference at long context, and prints TIMING lines that no reader turns into a
+// verdict: the receipt carries the figures, re-derived on every probe, and nothing transcribes them.
+// DeepSelect is not timed because no sm_12x image can carry it. A failure here prints a DETAIL line
+// and nothing else, so the instrument can never change what the probe admits.
+fn v41_py_indexer_topk_timing_block() -> String {
+  let label = v41_py_quote(s: v41_probe_label(c: IndexerTopkRouteCorrect))
+  let route = vllm_d2d649e6_sm12_indexer_topk_route
+  join([
+    "try:\n",
+    "    _k = ", to_string(token_count_value(t: deepseek_v4_1_flash_index_topk)), "\n",
+    "    _decode_op = getattr(torch.ops._C, ", v41_py_quote(s: v41_py_op_name(qualified: route.decode_operator)), ")\n",
+    "    _workspace = torch.empty(", to_string(vllm_d2d649e6_radix_topk_workspace.count), ", dtype=torch.uint8, device=\"cuda\")\n",
+    "    def _time_ms(_fn, _iters=20):\n",
+    "        for _ in range(3):\n",
+    "            _fn()\n",
+    "        _start = torch.cuda.Event(enable_timing=True)\n",
+    "        _end = torch.cuda.Event(enable_timing=True)\n",
+    "        torch.cuda.synchronize()\n",
+    "        _start.record()\n",
+    "        for _ in range(_iters):\n",
+    "            _fn()\n",
+    "        _end.record()\n",
+    "        torch.cuda.synchronize()\n",
+    "        return _start.elapsed_time(_end) / _iters\n",
+    "    for _seq in (65536, 262144, 1048576):\n",
+    "        _logits = torch.randn(4, _seq, dtype=torch.float32, device=\"cuda\")\n",
+    "        _lengths = torch.full((4,), _seq, dtype=torch.int32, device=\"cuda\")\n",
+    "        _out = torch.empty((4, _k), dtype=torch.int32, device=\"cuda\")\n",
+    "        _kernel = _time_ms(lambda: _decode_op(_logits, _lengths, _out, _workspace, _k, _seq))\n",
+    "        _reference = _time_ms(lambda: _logits.topk(_k, dim=-1))\n",
+    "        print(\"TIMING\", ", label, ", ", v41_py_quote(s: route.decode_backend), ", \"rows\", 4, \"seq\", _seq, \"topk\", _k, \"kernel_ms\", round(_kernel, 4), \"torch_topk_ms\", round(_reference, 4))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", label, ", \"timing-error\", repr(_error))\n",
+  ], "")
+}
+
+// A ROUTE OPERATOR IS SPELLED WITH ITS LIBRARY NAMESPACE (`_C.persistent_topk`); the block reaches it
+// with getattr on torch.ops._C, so it needs the name after the namespace.
+fn v41_py_op_name(qualified: NonEmptyStr) -> NonEmptyStr {
+  match last(split(s: qualified as String, delimiter: ".")) {
+    Absent => qualified
+    Present { value: n } => n as NonEmptyStr
+  }
+}
+
 // AN EXCEPTION IS NOT AN ABSENCE, AND AN EARLIER REVISION MADE IT ONE. The helpers caught every
 // exception and returned False, so a broken interpreter, a partially installed package or an import
 // that raised for its own reasons all read as "this image does not have the symbol" -- evidence
@@ -295,6 +424,8 @@ fn v41_probe_script() -> String {
     v41_py_capability_call(label: v41_probe_label(c: DSparkSpeculator), surface: v41_dspark_surface),
     "report(", v41_py_quote(s: v41_probe_label(c: FlashInferSparseMlaSm120Symbols)),
     ", ops=[], modules=[], attrs=", v41_py_list(xs: v41_sm12_demand_symbols()), ")\n",
+    v41_py_indexer_topk_block(),
+    v41_py_indexer_topk_timing_block(),
   ], "")
 }
 
@@ -429,6 +560,7 @@ data v41_probed_capabilities: List<RuntimeKernelCapability> = [
   Csa2CompressorKernels,
   DSparkSpeculator,
   FlashInferSparseMlaSm120Symbols,
+  IndexerTopkRouteCorrect,
 ]
 
 fn v41_capability_reading_line(r: V41CapabilityReading) -> String {

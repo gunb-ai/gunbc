@@ -26,13 +26,22 @@ import gunbc.auth.approval_ntfy_access_readback {
   RuntimeConfigChangedSinceStart, RuntimeConfigDefaultAccessNotDeny, RuntimeConfigAccessCacheEnabled,
   RuntimeConfigListenNotDeclared, RuntimeConfigAuthFileNotDeclared, RuntimeAuthFileBirthUnknown,
   RuntimeAuthFileReplacedSinceStart, RuntimeListenerNotDeclared, RuntimeNoListener, FrontDoorFunnelled,
-  RuntimeConfigChangedDuringRead, RuntimeAuthFileChangedDuringRead, ActiveProcessJoinsUnbound,
+  RuntimeConfigChangedDuringRead, RuntimeAuthFileChangedDuringRead,
   RuntimeConfigNotRegularFile, RuntimeAuthFileNotRegularFile,
-  ActiveProcessJoin, JoinProcessEnvironmentNames, JoinProcessExecutable, JoinAuthFileHeldByProcess, JoinListenerSocketHeldByProcess,
-  approval_ntfy_modeled_joins_verdict, approval_ntfy_acl_of_listing,
+  ReadBinaryInode, ReadProcessObservation,
+  RuntimeProcessObservationRefused, RuntimeProcessIncarnationMismatch, RuntimeProcessEnvironmentOverrides,
+  RuntimeProcessExecutableReplaced, RuntimeProcessExecutableNotDeclared, RuntimeProcessExecutableInodeNotDeclared,
+  RuntimeAuthFileHeldDeleted, RuntimeAuthFileNotHeldByProcess, RuntimeListenerSocketNotHeldByProcess,
+  approval_ntfy_acl_of_listing,
   NtfyRuntimeReading, RuntimeUnitUnresolved, RuntimeReadsTaken, NtfyRuntimeReads,
   approval_ntfy_channel_verdict, approval_ntfy_read_command, approval_ntfy_unit_main_pid,
 }
+import gunbc.auth.approval_ntfy_runtime_observe {
+  NtfyRuntimeProcessObservation, NtfyOpenFd, NtfyRuntimeObserved, NtfyRuntimeObserveRefused, ntfy_runtime_observe_encode,
+}
+import gunbc.live_deploy.emit { RevisionBoundAtEmission, approval_ntfy_runtime_observe_helper_argv }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved }
+import extdeps.linux.proc_net_tcp { proc_net_tcp_table, ProcNetTcpParsed, ProcNetTcpUnparseable, tcp_listen_state_hex }
 
 // ── Enrolment-code issuance: one root, modeled reads, a verdict bound to the running server ──
 // EVERY fx_* READING BELOW IS REAL unless its claim says SYNTHETIC. Each FxRead is the exit status,
@@ -551,16 +560,94 @@ fn reads_of(fx: List<FxRead>) -> NtfyRuntimeReads {
     config_identity_after: run_of(fx: fx, name: "config_identity_after"),
     auth_file_identity_before: run_of(fx: fx, name: "auth_file_identity_before"), access_list: run_of(fx: fx, name: "access_list"),
     auth_file_identity_after: run_of(fx: fx, name: "auth_file_identity_after"),
-    front_door: run_of(fx: fx, name: "front_door"), unit_after: run_of(fx: fx, name: "unit_after"),
+    front_door: run_of(fx: fx, name: "front_door"),
+    binary_inode: run_of(fx: fx, name: "binary_inode"), process_observation: run_of(fx: fx, name: "process_observation"),
+    unit_after: run_of(fx: fx, name: "unit_after"),
     pid_stat_after: run_of(fx: fx, name: "pid_stat_after"),
   }
 }
 
 fn reading_of(fx: List<FxRead>) -> NtfyRuntimeReading {
-  match approval_ntfy_unit_main_pid(run: run_of(fx: fx, name: "unit_before")) {
-    Present { value: pid } => RuntimeReadsTaken { pid: pid, reads: reads_of(fx: fx) }
-    Absent => RuntimeUnitUnresolved { unit_before: run_of(fx: fx, name: "unit_before") }
+  let bound = with_bound_process(fx: fx)
+  match approval_ntfy_unit_main_pid(run: run_of(fx: bound, name: "unit_before")) {
+    Present { value: pid } => RuntimeReadsTaken { pid: pid, reads: reads_of(fx: bound) }
+    Absent => RuntimeUnitUnresolved { unit_before: run_of(fx: bound, name: "unit_before") }
   }
+}
+
+// ── THE PROCESS OBSERVATION: SYNTHETIC, DERIVED FROM EACH FIXTURE ──────────────────────────
+// The captures predate the helper, so no fixture carries its output. Each reading is given, AFTER its
+// own rows (so a with_read replacement, which prepends, wins), the observation a helper BOUND to that
+// capture's server would print: that capture's MainPID and starttime, a clean environment, the
+// declared binary at the inode its binary_inode read reports, and fds holding that capture's auth-file
+// inode at the declared path and a socket for every LISTEN row of the capture, plus an anon_inode
+// and a pipe fd that are never joined on. It is encoded by the production encoder
+// (ntfy_runtime_observe_encode) and read by the production decoder, so the codec is on the route.
+// Every process-join RED below edits exactly one field of this bound observation.
+data fx_binary_inode: Int = 1048593
+
+fn fx_pid(fx: List<FxRead>) -> Int {
+  match approval_ntfy_unit_main_pid(run: run_of(fx: fx, name: "unit_before")) {
+    Present { value: p } => match parse_int(s: p) { Present { value: n } => n  Absent => 0 }
+    Absent => 0
+  }
+}
+
+fn fx_start_ticks(fx: List<FxRead>) -> Int {
+  match proc_pid_stat_start_time(content: stdout_of(fx: fx, name: "pid_stat_before")) {
+    StartTimeObserved { ticks_since_boot: t } => t
+    _ => 0
+  }
+}
+
+fn fx_auth_inode(fx: List<FxRead>) -> Int {
+  match first(split(s: stdout_of(fx: fx, name: "auth_file_identity_before"), delimiter: " ")) {
+    Present { value: i } => match parse_int(s: i) { Present { value: n } => n  Absent => 0 }
+    Absent => 0
+  }
+}
+
+fn fx_listen_socket_fds(fx: List<FxRead>) -> List<NtfyOpenFd> {
+  match proc_net_tcp_table(text: stdout_of(fx: fx, name: "net_tcp")) {
+    ProcNetTcpParsed { rows: rows } => map(filter(rows, x => x.state == tcp_listen_state_hex), x => NtfyOpenFd {
+      target: "socket:[" + x.inode + "]",
+      target_inode: match parse_int(s: x.inode) { Present { value: n } => n  Absent => 0 },
+    })
+    ProcNetTcpUnparseable { line: _ } => []
+  }
+}
+
+fn bound_observation(fx: List<FxRead>) -> NtfyRuntimeProcessObservation {
+  NtfyRuntimeProcessObservation {
+    main_pid: fx_pid(fx: fx),
+    start_ticks_before: fx_start_ticks(fx: fx),
+    start_ticks_after: fx_start_ticks(fx: fx),
+    environment_names: ["LANG", "PATH", "INVOCATION_ID", "JOURNAL_STREAM"],
+    exe_target: "/usr/bin/ntfy",
+    exe_inode: fx_binary_inode,
+    open_fds: concat([
+      NtfyOpenFd { target: "/dev/null", target_inode: 5 },
+      NtfyOpenFd { target: "anon_inode:[eventpoll]", target_inode: 1057 },
+      NtfyOpenFd { target: "pipe:[2703658101]", target_inode: 2703658101 },
+      NtfyOpenFd { target: "/var/lib/gunbc-ntfy/user.db", target_inode: fx_auth_inode(fx: fx) },
+    ], fx_listen_socket_fds(fx: fx)),
+  }
+}
+
+fn observation_read(o: NtfyRuntimeProcessObservation) -> FxRead {
+  FxRead { read: "process_observation", exit_code: 0, stdout: ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserved { observation: o }) + "\n", stderr: "" }
+}
+
+fn with_bound_process(fx: List<FxRead>) -> List<FxRead> {
+  concat(fx, [
+    FxRead { read: "binary_inode", exit_code: 0, stdout: to_string(fx_binary_inode) + "\n", stderr: "" },
+    observation_read(o: bound_observation(fx: fx)),
+  ])
+}
+
+// One field of the bound observation replaced.
+fn with_observation(fx: List<FxRead>, o: NtfyRuntimeProcessObservation) -> List<FxRead> {
+  concat([observation_read(o: o)], fx)
 }
 
 // One read replaced: the replacement is found first.
@@ -574,10 +661,6 @@ fn stdout_of(fx: List<FxRead>, name: String) -> String {
 
 fn verdict_of(fx: List<FxRead>) -> ApprovalNtfyAclVerdict {
   approval_ntfy_channel_verdict(reading: reading_of(fx: fx))
-}
-
-fn modeled_verdict_of(fx: List<FxRead>) -> ApprovalNtfyAclVerdict {
-  approval_ntfy_modeled_joins_verdict(reading: reading_of(fx: fx))
 }
 
 fn refused_with(v: ApprovalNtfyAclVerdict) -> ApprovalNtfyAclDeviation? {
@@ -594,33 +677,139 @@ fn gap_of(fx: List<FxRead>) -> ActiveNtfyRuntimeGap? {
   }
 }
 
+data pin_revision: RevisionBoundAtEmission = RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }
+
 fn pinned(read: NtfyRuntimeRead, want: String) -> Bool {
-  join(argv_words(command: approval_ntfy_read_command(read: read, pid: "4242")), " ") == want
+  join(argv_words(command: approval_ntfy_read_command(read: read, pid: "4242", revision: pin_revision)), " ") == want
 }
 
-// ── POSITIVE CONTROL OF EVERY MODELED JOIN ────────────────────────────────────────────────
-// The exact reading passes every join this reading makes...
-test fn the_exact_reading_passes_every_modeled_join() -> Bool {
-  match modeled_verdict_of(fx: fx_exact) {
+// ── POSITIVE CONTROL: THE BOUND CHANNEL IS ESTABLISHED ─────────────────────────────────────
+// The exact reading with a helper observation bound to its server is the one reading that ADMITS:
+// every modeled read held, the listing is the exact ACL, and the process joins hold. Every RED in
+// this file is this reading with one thing changed.
+test fn the_exact_reading_bound_to_its_process_establishes_the_channel() -> Bool {
+  match verdict_of(fx: fx_exact) {
     AclEstablished => true
     _ => false
   }
 }
 
-// ...and the CHANNEL still refuses on the one gap alone: the four joins that need the process
-// itself are unbound, so issuance cannot happen until the per-release observation helper lands.
-test fn the_unbound_process_joins_alone_refuse_the_clean_reading() -> Bool {
-  match gap_of(fx: fx_exact) {
-    Present { value: ActiveProcessJoinsUnbound { joins: js, trigger: _ } } => count(js) == 4
-      && any(js, j => match j { JoinProcessEnvironmentNames => true  _ => false })
-      && any(js, j => match j { JoinProcessExecutable => true  _ => false })
-      && any(js, j => match j { JoinAuthFileHeldByProcess => true  _ => false })
-      && any(js, j => match j { JoinListenerSocketHeldByProcess => true  _ => false })
+// ── THE PROCESS JOINS: one RED per join, each one field of the bound observation ─────────────
+// UNBOUND: the helper's observation is absent -- the grant is not installed, so sudo -n refuses and
+// the read exits nonzero. It is the process read that is named, never a pass.
+test fn an_unbound_process_read_refuses_naming_it() -> Bool {
+  match gap_of(fx: with_read(fx: fx_exact, name: "process_observation", exit_code: 1, stdout: "", stderr: "sudo: a password is required")) {
+    Present { value: RuntimeReadFailed { read: ReadProcessObservation, failure: ReadExitedNonzero { exit_code: 1, stderr: _ } } } => true
     _ => false
   }
 }
 
-// ── THE TWENTY READS, EACH ARGV PINNED ───────────────────────────────────────────────────
+test fn an_undecodable_observation_refuses() -> Bool {
+  match gap_of(fx: with_read(fx: fx_exact, name: "process_observation", exit_code: 0, stdout: "{\"outcome\":\"observed\"}", stderr: "")) {
+    Present { value: RuntimeReadFailed { read: ReadProcessObservation, failure: ReadUnparseable { detail: _ } } } => true
+    _ => false
+  }
+}
+
+test fn the_helpers_own_refusal_is_carried_with_its_read() -> Bool {
+  match gap_of(fx: concat([FxRead { read: "process_observation", exit_code: 0, stdout: ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserveRefused { read: "environ", cause: "exit 1: Permission denied" }), stderr: "" }], fx_exact)) {
+    Present { value: RuntimeProcessObservationRefused { read: r, cause: _ } } => r == "environ"
+    _ => false
+  }
+}
+
+// ANOTHER INCARNATION: the helper observed a different starttime (the server restarted between the
+// bracket and the helper's reads), so its fds describe another process.
+test fn an_observation_of_another_incarnation_refuses() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after + 1, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode, open_fds: o.open_fds })) {
+    Present { value: RuntimeProcessIncarnationMismatch { observed: _, expected: _ } } => true
+    _ => false
+  }
+}
+
+// JOIN 1 -- ENVIRONMENT: a launch wrapper (`env NTFY_AUTH_DEFAULT_ACCESS=read-write /usr/bin/ntfy ...`)
+// leaves the unit's declarations and the manager's environment clean, so every modeled read held;
+// only the process's actual environment shows it.
+test fn an_ntfy_variable_in_the_actual_environment_refuses() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: concat(o.environment_names, ["NTFY_AUTH_DEFAULT_ACCESS"]), exe_target: o.exe_target, exe_inode: o.exe_inode, open_fds: o.open_fds })) {
+    Present { value: RuntimeProcessEnvironmentOverrides { names: n } } => n == ["NTFY_AUTH_DEFAULT_ACCESS"]
+    _ => false
+  }
+}
+
+// JOIN 2 -- EXECUTABLE, REPLACED: the binary was replaced under the running server; readlink keeps
+// the ` (deleted)` suffix verbatim, and that is its own refusal, never a match on the stripped path.
+test fn a_replaced_binary_refuses_as_replaced() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: "/usr/bin/ntfy (deleted)", exe_inode: o.exe_inode, open_fds: o.open_fds })) {
+    Present { value: RuntimeProcessExecutableReplaced { target: t } } => t == "/usr/bin/ntfy (deleted)"
+    _ => false
+  }
+}
+
+// JOIN 2 -- EXECUTABLE, ANOTHER PATH: argv[0] says /usr/bin/ntfy, the process executes another file.
+test fn another_executable_behind_the_declared_argv_refuses() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: "/tmp/ntfy", exe_inode: o.exe_inode, open_fds: o.open_fds })) {
+    Present { value: RuntimeProcessExecutableNotDeclared { target: t } } => t == "/tmp/ntfy"
+    _ => false
+  }
+}
+
+// JOIN 2 -- EXECUTABLE, SAME PATH, ANOTHER FILE: the path matches, the inode does not.
+test fn an_executable_of_another_inode_refuses() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode + 1, open_fds: o.open_fds })) {
+    Present { value: RuntimeProcessExecutableInodeNotDeclared { process: p, declared: d } } => p == fx_binary_inode + 1 && d == fx_binary_inode
+    _ => false
+  }
+}
+
+// JOIN 3 -- AUTH FILE, NOT HELD: a pre-existing database renamed over the path after start passes
+// every modeled read that stats the path; the server holds another inode.
+test fn an_auth_file_the_process_does_not_hold_refuses() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
+    open_fds: map(o.open_fds, fd => if fd.target == "/var/lib/gunbc-ntfy/user.db" { NtfyOpenFd { target: fd.target, target_inode: fd.target_inode + 7 } } else { fd }) })) {
+    Present { value: RuntimeAuthFileNotHeldByProcess { inode: i } } => i == "11184383"
+    _ => false
+  }
+}
+
+// JOIN 3 -- AUTH FILE, HELD DELETED: the database the server really uses was unlinked from the path.
+test fn an_auth_file_held_deleted_refuses_as_such() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
+    open_fds: concat(o.open_fds, [NtfyOpenFd { target: "/var/lib/gunbc-ntfy/user.db (deleted)", target_inode: 11184300 }]) })) {
+    Present { value: RuntimeAuthFileHeldDeleted { target: t } } => t == "/var/lib/gunbc-ntfy/user.db (deleted)"
+    _ => false
+  }
+}
+
+// ANON_INODE FDS ARE NEVER JOINED ON: an anon_inode fd that happens to carry the auth file's inode
+// number does not bind the auth file. Without the skip this reading would ADMIT.
+test fn an_anon_inode_fd_does_not_bind_the_auth_file() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
+    open_fds: map(o.open_fds, fd => if fd.target == "/var/lib/gunbc-ntfy/user.db" { NtfyOpenFd { target: "anon_inode:[/var/lib/gunbc-ntfy/user.db]", target_inode: fd.target_inode } } else { fd }) })) {
+    Present { value: RuntimeAuthFileNotHeldByProcess { inode: _ } } => true
+    _ => false
+  }
+}
+
+// JOIN 4 -- LISTENER: a same-uid decoy holds 127.0.0.1:2586; the running server holds no such socket.
+test fn a_listener_the_process_does_not_hold_refuses() -> Bool {
+  let o = bound_observation(fx: fx_exact)
+  match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
+    open_fds: filter(o.open_fds, fd => !starts_with(s: fd.target, prefix: "socket:[")) })) {
+    Present { value: RuntimeListenerSocketNotHeldByProcess { inode: i } } => i == "2703658130"
+    _ => false
+  }
+}
+
+// ── THE TWENTY-TWO READS, EACH ARGV PINNED ───────────────────────────────────────────────────
 test fn pin_unit_before() -> Bool { pinned(read: ReadUnitBefore, want: "timeout --kill-after 2s 10s /usr/bin/systemctl show --property=ActiveState,MainPID,Environment,EnvironmentFiles,PassEnvironment gunbc-ntfy.service") }
 test fn pin_unit_after() -> Bool { pinned(read: ReadUnitAfter, want: "timeout --kill-after 2s 10s /usr/bin/systemctl show --property=ActiveState,MainPID,Environment,EnvironmentFiles,PassEnvironment gunbc-ntfy.service") }
 test fn pin_pid_stat_before() -> Bool { pinned(read: ReadPidStatBefore, want: "timeout --kill-after 2s 10s cat /proc/4242/stat") }
@@ -640,6 +829,13 @@ test fn pin_config() -> Bool { pinned(read: ReadConfig, want: "timeout --kill-af
 test fn pin_auth_file_identity_before() -> Bool { pinned(read: ReadAuthFileIdentityBefore, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /var/lib/gunbc-ntfy/user.db") }
 test fn pin_auth_file_identity_after() -> Bool { pinned(read: ReadAuthFileIdentityAfter, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /var/lib/gunbc-ntfy/user.db") }
 test fn pin_access_list_under_an_empty_environment() -> Bool { pinned(read: ReadAccessList, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/env -i /usr/bin/ntfy access --config /etc/gunbc-ntfy/server.yml") }
+test fn pin_binary_inode() -> Bool { pinned(read: ReadBinaryInode, want: "timeout --kill-after 2s 10s /usr/bin/stat -c %i -- /usr/bin/ntfy") }
+// THE HELPER READ IS THE GRANTED ARGV, under its own wider timeout: the words after the timeout are
+// exactly gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_argv, which the sudoers line
+// is rendered from, so the verb runs nothing the grant does not name.
+test fn pin_process_observation_is_the_granted_argv() -> Bool {
+  pinned(read: ReadProcessObservation, want: "timeout --kill-after 2s 300s " + join(approval_ntfy_runtime_observe_helper_argv(revision: pin_revision), " "))
+}
 test fn pin_front_door() -> Bool { pinned(read: ReadFrontDoor, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n tailscale serve status --json") }
 
 // ── FAIL-CLOSED PER READ ───────────────────────────────────────────────────────────────────
@@ -664,7 +860,10 @@ test fn a_read_that_could_not_spawn_refuses() -> Bool {
       config_identity_after: run_of(fx: fx_exact, name: "config_identity_after"),
       auth_file_identity_before: run_of(fx: fx_exact, name: "auth_file_identity_before"), access_list: run_of(fx: fx_exact, name: "access_list"),
       auth_file_identity_after: run_of(fx: fx_exact, name: "auth_file_identity_after"),
-      front_door: run_of(fx: fx_exact, name: "front_door"), unit_after: run_of(fx: fx_exact, name: "unit_after"),
+      front_door: run_of(fx: fx_exact, name: "front_door"),
+      binary_inode: run_of(fx: with_bound_process(fx: fx_exact), name: "binary_inode"),
+      process_observation: run_of(fx: with_bound_process(fx: fx_exact), name: "process_observation"),
+      unit_after: run_of(fx: fx_exact, name: "unit_after"),
       pid_stat_after: run_of(fx: fx_exact, name: "pid_stat_after"),
     } }) {
       AclRefused { deviation: ActiveNtfyRuntimeUnbound { gap: RuntimeReadFailed { read: ReadConfigIdentityBefore, failure: ReadNotSpawned { program: p, cause: _ } } } } => p == "/usr/bin/sudo"
@@ -760,6 +959,9 @@ test fn an_ntfy_variable_in_the_manager_refuses() -> Bool {
 }
 
 // ── THE CONFIG AND THE AUTH FILE ───────────────────────────────────────────────────────────
+// Every reading here carries a process observation BOUND to its server (with_bound_process), so
+// this is config-changed-since-start with the process joins satisfiable: they are last and never
+// mask an earlier refusal.
 test fn a_config_written_after_start_refuses() -> Bool {
   match gap_of(fx: fx_config_touched) {
     Present { value: RuntimeConfigChangedSinceStart { changed: m, start: t0 } } => is_status_change(t: m) && !file_time_predates_start(t: m, start: t0)
@@ -1031,7 +1233,7 @@ test fn a_duplicated_principal_refuses() -> Bool {
 // ── THE SEALS: no second root compiles ─────────────────────────────────────────────────────
 // A fresh module reaching each effect leaf, and the runtime reader, from an unadmitted
 // declaration. Each call must be refused by admission, named by its subject.
-data unadmitted_effect_caller_source: String = "module probe_enrolment_second_root\nimport gunbc.auth.approval_device_routes { mint_enrolment_code, issue_and_deliver_enrolment_code_until, deliver_enrolment_code, enrolment_code_notification }\nimport gunbc.auth.approval_device_redemption { issue_enrolment_code }\nimport gunbc.auth.approval_request_submission { read_publisher_token, publish_notification }\nimport gunbc.auth.approval_ntfy_access_readback { approval_ntfy_runtime_reading, approval_ntfy_run, ReadConfig }\nfn second_root() -> Bool {\n  let a = mint_enrolment_code()\n  let t = read_publisher_token()\n  let b = issue_enrolment_code(root: \"/tmp/x\", code: \"c\", issued_at: \"2026-09-21T20:00:00Z\", expires_at: \"2026-09-21T20:10:00Z\")\n  let c = issue_and_deliver_enrolment_code_until(root: \"/tmp/x\", now: \"2026-09-21T20:00:00Z\", expires_at: \"2026-09-21T20:10:00Z\", code: \"c\", publisher: t)\n  let d = deliver_enrolment_code(code: \"c\", expires_at: \"2026-09-21T20:10:00Z\", publisher: t)\n  let e = publish_notification(message: enrolment_code_notification(code: \"c\", expires_at: \"2026-09-21T20:10:00Z\"), publisher: t)\n  let f = approval_ntfy_runtime_reading()\n  let g = approval_ntfy_run(read: ReadConfig, pid: \"1\")\n  true\n}\n"
+data unadmitted_effect_caller_source: String = "module probe_enrolment_second_root\nimport gunbc.auth.approval_device_routes { mint_enrolment_code, issue_and_deliver_enrolment_code_until, deliver_enrolment_code, enrolment_code_notification }\nimport gunbc.auth.approval_device_redemption { issue_enrolment_code }\nimport gunbc.auth.approval_request_submission { read_publisher_token, publish_notification }\nimport gunbc.auth.approval_ntfy_access_readback { approval_ntfy_runtime_reading, approval_ntfy_run, ReadConfig }\nimport gunbc.live_deploy.emit { RevisionNotInstalled }\nfn second_root() -> Bool {\n  let a = mint_enrolment_code()\n  let t = read_publisher_token()\n  let b = issue_enrolment_code(root: \"/tmp/x\", code: \"c\", issued_at: \"2026-09-21T20:00:00Z\", expires_at: \"2026-09-21T20:10:00Z\")\n  let c = issue_and_deliver_enrolment_code_until(root: \"/tmp/x\", now: \"2026-09-21T20:00:00Z\", expires_at: \"2026-09-21T20:10:00Z\", code: \"c\", publisher: t)\n  let d = deliver_enrolment_code(code: \"c\", expires_at: \"2026-09-21T20:10:00Z\", publisher: t)\n  let e = publish_notification(message: enrolment_code_notification(code: \"c\", expires_at: \"2026-09-21T20:10:00Z\"), publisher: t)\n  let f = approval_ntfy_runtime_reading(revision: RevisionNotInstalled)\n  let g = approval_ntfy_run(read: ReadConfig, pid: \"1\", revision: RevisionNotInstalled)\n  true\n}\n"
 
 data sealed_effect_leaves: List<String> = ["mint_enrolment_code", "read_publisher_token", "issue_enrolment_code", "issue_and_deliver_enrolment_code_until", "deliver_enrolment_code", "publish_notification", "approval_ntfy_runtime_reading", "approval_ntfy_run"]
 
@@ -1044,7 +1246,7 @@ test fn a_second_root_is_refused_at_every_effect_leaf() -> Bool {
 }
 
 // GREEN CONTROL: the admitted root compiles with no admission refusal.
-data admitted_root_caller_source: String = "module probe_enrolment_admitted_root\nimport gunbc.cli_wire { CliWireResponse }\nimport std.resources { Network }\nimport gunbc.auth.approval_device_routes { issue_device_enrolment_code }\nfn through_the_root() -> CliWireResponse uses net: Network { issue_device_enrolment_code() }\n"
+data admitted_root_caller_source: String = "module probe_enrolment_admitted_root\nimport gunbc.cli_wire { CliWireResponse }\nimport std.resources { Network }\nimport gunbc.auth.approval_device_routes { issue_device_enrolment_code }\nfn through_the_root() -> CliWireResponse uses net: Network { issue_device_enrolment_code(revision: \"0123456789abcdef0123456789abcdef01234567\") }\n"
 
 test fn the_one_root_compiles_without_an_admission_refusal() -> Bool {
   match census_blocking_count_for_class(census: compile_dag_diagnostic_census(admitted_root_caller_source), wanted: "ConstructorCallAdmissionRefused") {

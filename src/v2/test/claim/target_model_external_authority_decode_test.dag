@@ -2,8 +2,8 @@ module v2.test.claim.target_model_external_authority_decode
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_snoc_item }
+import std.algebra { Empty, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.compilers.target_model {
