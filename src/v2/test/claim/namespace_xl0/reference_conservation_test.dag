@@ -5,6 +5,8 @@ import v2.compiler.reference_conservation {
   ReferenceConservationReport,
   ReferenceConservationSubject,
   dag_declared_token_classes,
+  reference_conservation_accepted,
+  reference_conservation_admitted,
   reference_conservation_holds,
   reference_conservation_of_subject,
   reference_conservation_subject_of_read
@@ -99,7 +101,7 @@ fn clean_control_report() -> ReferenceConservationReport {
 }
 
 test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
-  reference_conservation_holds(report: clean_control_report())
+  reference_conservation_admitted(report: clean_control_report())
 }
 
 // The three numbers are separate and together account for the whole population: a check that
@@ -132,7 +134,8 @@ fn block_second_statement_report() -> ReferenceConservationReport {
 }
 
 test fn the_block_second_statement_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: block_second_statement_report(), wanted: ^dag_token_int_literal) == 1
+  let r = block_second_statement_report()
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^dag_token_int_literal) == 1
 }
 
 // ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ---------------------
@@ -158,7 +161,7 @@ fn if_arm_call_argument_report() -> ReferenceConservationReport {
 
 test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
   let r = if_arm_call_argument_report()
-  reference_conservation_holds(report: r) && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
+  reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
 }
 
 // ---- former drop 3: a later operand of an operator chain (repaired by #12145) ------------------
@@ -179,7 +182,7 @@ fn infix_right_operand_report() -> ReferenceConservationReport {
 
 test fn the_infix_right_operand_is_conserved_holds() -> Bool {
   let r = infix_right_operand_report()
-  reference_conservation_holds(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
+  reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
 }
 
 // ---- a measured drop outside the brief: the named-argument label ------------------------------
@@ -200,7 +203,7 @@ fn named_argument_label_report() -> ReferenceConservationReport {
 
 test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
   let r = named_argument_label_report()
-  report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
 }
 
 // ---- a list-literal call argument: conserved (was a module-wide refusal) ---------------------
@@ -226,8 +229,7 @@ fn list_literal_argument_report() -> ReferenceConservationReport {
 
 test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
   let r = list_literal_argument_report()
-  reference_conservation_holds(report: r)
-    && r.refused == 0
+  reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: ^rc_elsewhere) == 0
     && report_drop_count(report: r, wanted: ^rc_list_second) == 0
     && report_drop_count(report: r, wanted: ^rc_list_callee) == 0
@@ -259,7 +261,7 @@ fn repeated_spelling_report() -> ReferenceConservationReport {
 
 test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
   let r = repeated_spelling_report()
-  report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
 }
 
 // ---- a measured drop found by admission: the where-refinement predicate -----------------------
@@ -277,7 +279,7 @@ fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
 
 test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
   let r = conservation_report_of(subject: where_refinement_predicate_subject())
-  report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
 }
 
 // ---- measured drops found by admission: a later match arm, a statement-let binder -------------
@@ -289,7 +291,8 @@ test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
 
 test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
-  report_drops_identity(report: conservation_report_of(subject: match_later_arm_subject()), wanted: ^rc_third)
+  let r = conservation_report_of(subject: match_later_arm_subject())
+  reference_conservation_accepted(report: r) && report_drops_identity(report: r, wanted: ^rc_third)
 }
 
 // Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
@@ -299,7 +302,7 @@ data statement_let_binder_source: String = "module v2.test.reference_conservatio
 
 test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
   let r = conservation_report_of(subject: statement_let_binder_subject())
-  report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
 }
 
 fn match_later_arm_subject() -> ReferenceConservationSubject {
@@ -324,7 +327,30 @@ fn anonymous_slots_subject() -> ReferenceConservationSubject {
 
 test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -> Bool {
   let r = conservation_report_of(subject: anonymous_slots_subject())
-  reference_conservation_holds(report: r)
+  reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
     && r.authored > 0
+}
+
+// ---- the refusing fixture: acceptance is not the absence of drops -------------------------------
+
+// A MODULE NORMALIZATION REFUSES MUST NOT PASS AS CONSERVED. A caret-symbol operand has no lowered
+// form yet (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form), so this module refuses
+// at normalize, located at the operand. reference_conservation_holds does not see that: a located
+// refusal accounts for the atoms it covers, so the report can have no drops and no unmeasured rows.
+// Every "lowered, and ..." control above therefore reads reference_conservation_accepted /
+// reference_conservation_admitted, and this is their shared mutation: on a refusing report the
+// shared predicate is false, so each of those controls would be red. When caret symbols lower, this
+// fixture stops refusing and this claim reds -- restate it on whatever still refuses then.
+data refusing_fixture_source: String = "module v2.test.reference_conservation_refusing\n\nimport v2.std.logic { Bool }\nimport v2.std.node { Symbol }\n\nfn rc_refusing(rc_sym_arg: Symbol) -> Bool { rc_sym_arg == ^rc_caret }\n"
+
+fn refusing_fixture_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "refusing_fixture", source: refusing_fixture_source)
+}
+
+test fn a_refusing_module_is_neither_accepted_nor_admitted_holds() -> Bool {
+  let r = conservation_report_of(subject: refusing_fixture_subject())
+  (r.refused > 0)
+    && !reference_conservation_accepted(report: r)
+    && !reference_conservation_admitted(report: r)
 }

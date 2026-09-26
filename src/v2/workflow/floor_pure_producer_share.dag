@@ -848,6 +848,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.compiler.reference_conservation.dag_declared_token_classes",
   "v2.test.claim.namespace_xl0.reference_conservation.clean_control_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.block_second_statement_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.refusing_fixture_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.if_arm_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.infix_right_operand_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.repeated_spelling_subject",
