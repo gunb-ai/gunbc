@@ -135,11 +135,19 @@ pub struct CastSyntax {
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Int\"}, {\"from_type\": \"Int\", \"to_type\": \"Float\"}, {\"from_type\": \"Float\", \"to_type\": \"Int\"}, {\"from_type\": \"Float\", \"to_type\": \"Float\"}, {\"from_type\": \"Bool\", \"to_type\": \"Int\"}]")
+            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Int\"}, {\"from_type\": \"Int\", \"to_type\": \"Float\"}, {\"from_type\": \"Float\", \"to_type\": \"Int\"}, {\"from_type\": \"Float\", \"to_type\": \"Float\"}]")
                 .expect("valid data definition")
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+}
+pub fn dag_cast_domain_types() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["Int".to_string(), "Float".to_string(), "Bool".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
@@ -206,8 +214,8 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
 pub fn is_dag_cast_domain_type(name: String) -> bool {
     {
         let mut __found = false;
-        for r in dag_cast_rules().iter().cloned() {
-            if ((r.from_type.clone() == name.clone()) || (r.to_type.clone() == name.clone())) {
+        for t in dag_cast_domain_types().iter().cloned() {
+            if (t.clone() == name.clone()) {
                 __found = true;
                 break;
             }
