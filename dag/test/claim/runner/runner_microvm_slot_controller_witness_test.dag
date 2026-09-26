@@ -348,10 +348,10 @@ fn attempt_launch_property_words(attempt: MicroVmAttempt) -> List<String> {
   ])
 }
 
+// THE SLOT'S INSTANCE NAME IS READ FROM THE DERIVED SLOT, THE UNIT-NAME SCHEME IS THE ORACLE (review
+// 71598). The shakedown index moves with srv1's committed width, so a literal instance here was a
+// copy of today's width and would red on every width change for no reason about routing.
 test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool {
-  // THE SLOT'S INSTANCE NAME IS READ FROM THE DERIVED SLOT, THE UNIT-NAME SCHEME IS THE ORACLE (review
-  // 71598). The shakedown index moves with srv1's committed width, so a literal instance here was a
-  // copy of today's width and would red on every width change for no reason about routing.
   let instance = runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()) as String
   match microvm_attempt(slot: srv1_microvm_shakedown_slot(), attempt_id: "w-42") {
     MicroVmAttemptRefused { refusal: _ } => false
