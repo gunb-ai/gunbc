@@ -6,7 +6,7 @@ import std.measure { nanosecond_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.spark.v41_engram_access_probe {
   V41EngramAccessProbeOutcome, V41AccessProbeRead, V41AccessProbeRefused, v41_admit_access_reading,
-  v41_access_per_row, v41_access_probe_argv, v41_access_probe_image, v41_access_probe_script,
+  v41_access_per_row, v41_last_phase, v41_access_probe_argv, v41_access_probe_image, v41_access_probe_script,
   AccessMmapUnregistered, AccessPrefill262k, AccessCold,
 }
 
@@ -80,9 +80,17 @@ test fn a_failed_byte_check_or_no_done_refuses() -> Bool {
 test fn the_probe_runs_the_bounded_program_in_the_arm_a_image() -> Bool {
   let argv = v41_access_probe_argv(image: v41_access_probe_image)
   let script = v41_access_probe_script()
-  contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 2700 python3 -c import sys, runpy;")
+  contains(join(argv, " "), "timeout -k 30 1620 ")
+    && contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 -k 30 1500 python3 -u -c import sys, runpy;")
     && contains(join(argv, " "), "runpy.run_path(path, run_name='__main__')")
     && contains(script, "cudaDeviceGetAttribute")
     && contains(script, "POSIX_FADV_DONTNEED")
     && contains(script, "values = {}")
+}
+
+// A RUN A BOUND CUT SHORT IS LOCATED BY THE LAST PHASE IT ANNOUNCED, and one killed before any phase
+// says so rather than naming one.
+test fn a_cut_short_run_is_located_by_its_last_phase() -> Bool {
+  v41_last_phase(stdout: "PHASE attributes\nATTR pageable_memory_access 1\nPHASE write-store\nPHASE pinned\nTIME pinned warm decode 96 1 1\n") == "pinned"
+    && contains(v41_last_phase(stdout: ""), "killed before the first phase")
 }

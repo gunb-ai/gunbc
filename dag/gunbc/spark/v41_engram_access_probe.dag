@@ -12,7 +12,7 @@ import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli {
-  docker_run_ephemeral_command, docker_image_inspect_command, DockerPsByAncestor,
+  docker_run_ephemeral_command, docker_image_inspect_command, DockerPsByAncestor, docker_ps_running_command, docker_remove_force_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
 }
@@ -97,12 +97,17 @@ fn v41_access_probe_script() -> String {
     "RECORD = 264\n",
     "WEIGHT = 256\n",
     "QUANT_BLOCK = 32\n",
-    "ROWS = 64 * 1024 * 1024\n",
+    "ROWS = 32 * 1024 * 1024\n",
     "DECODE_ROWS = 16 * 6\n",
     "PREFILL_ROWS = 262144 * 6\n",
     "REPS = 3\n",
     "CHECK_ROWS = 64\n",
     "STORE_DIR = \"/var/tmp/gunbc-engram-access-probe\"\n",
+    "\n",
+    "\n",
+    "def phase(name):\n",
+    "    print(\"PHASE\", name)\n",
+    "    sys.stdout.flush()\n",
     "\n",
     "\n",
     "def refuse(cause):\n",
@@ -257,11 +262,12 @@ fn v41_access_probe_script() -> String {
     "    start = time.perf_counter_ns()\n",
     "    out = fn()\n",
     "    torch.cuda.synchronize()\n",
-    "    return out, time.perf_counter_ns() - start\n",
+    "    return out, (time.perf_counter_ns() - start) // 1000\n",
     "\n",
     "\n",
     "def report(path_label, temperature, batch_label, rows, samples):\n",
     "    print(\"TIME\", path_label, temperature, batch_label, rows, int(statistics.median(samples)), \" \".join(str(s) for s in samples))\n",
+    "    sys.stdout.flush()\n",
     "\n",
     "\n",
     "def check(path_label, out, idx, table_bytes):\n",
@@ -273,8 +279,10 @@ fn v41_access_probe_script() -> String {
     "\n",
     "\n",
     "def main():\n",
+    "    phase(\"attributes\")\n",
     "    attrs = read_attrs()\n",
     "    path = os.path.join(STORE_DIR, \"store.bin\")\n",
+    "    phase(\"write-store\")\n",
     "    write_store(path)\n",
     "    g = torch.Generator(device=\"cuda\").manual_seed(11)\n",
     "    batches = ((\"decode\", DECODE_ROWS), (\"prefill262k\", PREFILL_ROWS))\n",
@@ -284,6 +292,7 @@ fn v41_access_probe_script() -> String {
     "    mm = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)\n",
     "    table_bytes = mm\n",
     "\n",
+    "    phase(\"pinned\")\n",
     "    # (i) upstream layout: the whole table in pinned host memory, read by the kernel through UVA.\n",
     "    pinned = torch.empty(ROWS * RECORD, dtype=torch.uint8, pin_memory=True)\n",
     "    view = pinned.numpy()\n",
@@ -303,6 +312,7 @@ fn v41_access_probe_script() -> String {
     "    if attrs[\"pageable_memory_access\"] != 1:\n",
     "        print(\"SKIP mmap_unregistered pageable_memory_access=\" + str(attrs[\"pageable_memory_access\"]))\n",
     "    else:\n",
+    "        phase(\"mmap-unregistered\")\n",
     "        for label, n in batches:\n",
     "            idx = idx_of[label]\n",
     "            cold = []\n",
@@ -325,6 +335,7 @@ fn v41_access_probe_script() -> String {
     "                warm.append(us)\n",
     "            report(\"mmap_unregistered\", \"warm\", label, n, warm)\n",
     "\n",
+    "    phase(\"cpu-gather\")\n",
     "    # (iii) design B: hash ids to the host, CPU gather into pinned staging, copy up, dequantize.\n",
     "    staging = torch.empty((PREFILL_ROWS, RECORD), dtype=torch.uint8, pin_memory=True)\n",
     "\n",
@@ -366,7 +377,15 @@ fn v41_access_probe_script() -> String {
   ], "")
 }
 
-data v41_access_probe_time_bound: Second = second(count: 2700)
+// TWO BOUNDS, BOTH ON THE REMOTE SIDE, BOTH UNDER THE STEP'S HOUR. The program runs under `timeout`
+// inside the container, escalating to SIGKILL, because a process waiting in a device read can ignore
+// SIGTERM. The docker client runs under its own `timeout` on the host, escalating likewise, because
+// a wedged container keeps the client (and the ssh leg above it) waiting: run 36223556832 hung in
+// the remote exec until the job's 60-minute cap killed it, with the program's own bound inside the
+// container. Recovery, the container removal and the release keep the remaining ~30 minutes.
+data v41_access_probe_time_bound: Second = second(count: 1500)
+data v41_access_probe_client_bound: Second = second(count: 1620)
+data v41_access_probe_kill_grace: Second = second(count: 30)
 
 // THE SUBJECT IMAGE: the arm A runtime image, by its config digest, which `docker run` accepts as an
 // image reference and which pins the bytes rather than a tag. Fleet-converge run 36207135528 built
@@ -383,13 +402,37 @@ data v41_access_probe_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c
 data v41_access_probe_bootstrap: String = "import sys, runpy; path = '/var/tmp/gunbc_engram_access_probe.py'; open(path, 'w').write(sys.argv[1]); runpy.run_path(path, run_name='__main__')"
 
 fn v41_access_probe_argv(image: NonEmptyStr) -> List<String> {
-  argv_words(command: docker_run_ephemeral_command(
-    image: image,
-    gpus_all: true,
-    mounts: [],
-    entrypoint: "timeout" as NonEmptyStr,
-    argv: [to_string(second_count(s: v41_access_probe_time_bound)), "python3", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
-  ))
+  concat(
+    ["timeout", "-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_client_bound))],
+    argv_words(command: docker_run_ephemeral_command(
+      image: image,
+      gpus_all: true,
+      mounts: [],
+      entrypoint: "timeout" as NonEmptyStr,
+      argv: ["-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_time_bound)), "python3", "-u", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
+    )),
+  )
+}
+
+// EVERY CONTAINER OF THIS IMAGE IS REMOVED AFTER A RUN AND BEFORE A RECOVERY, by the ids `docker ps
+// --quiet` lists for the image. A killed client leaves its container running; the release and the
+// recovery observe quiescence, and this is what makes it reachable instead of a claim that stays
+// live behind an orphan. The arm A image runs nothing else on these hosts.
+fn v41_access_probe_remove_containers(ctx: SparkMaterializeContext, image: NonEmptyStr) -> String? {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_ps_running_command(filter: DockerPsByAncestor { image: image }))) {
+    RemoteUnreachable { cause: why } => Present { value: join(["docker ps did not run: ", why as String], "") }
+    RemoteRan { exit_code: c, stdout: out, stderr: e } =>
+      if c != 0 {
+        Present { value: join(["docker ps exited ", to_string(c), ": ", trim(s: e)], "") }
+      } else {
+        let failures = flat_map(filter(split(s: out, delimiter: "\n"), w => trim(s: w) != ""), id =>
+          match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_remove_force_command(name: trim(s: id) as NonEmptyStr))) {
+            RemoteUnreachable { cause: why } => [join(["docker rm -f ", trim(s: id), " did not run: ", why as String], "")]
+            RemoteRan { exit_code: rc, stdout: _, stderr: re } => if rc == 0 { [] as List<String> } else { [join(["docker rm -f ", trim(s: id), " exited ", to_string(rc), ": ", trim(s: re)], "")] }
+          })
+        if length(failures) != 0 { Present { value: join(failures, "; ") } } else { none }
+      }
+  }
 }
 
 // ── THE READING ─────────────────────────────────────────────────────────────────────────────────
@@ -455,6 +498,14 @@ fn v41_lines_with(stdout: String, keyword: String) -> List<List<String>> {
       Present { value: k } => if k == keyword { [ws] } else { [] as List<List<String>> }
       Absent => [] as List<List<String>>
     }
+  })
+}
+
+// The last phase the program announced, which locates a run a bound cut short.
+fn v41_last_phase(stdout: String) -> String {
+  fold(split(s: stdout, delimiter: "\n"), init: "none (killed before the first phase)", f: (acc, l) => {
+    let t = trim(s: l)
+    if starts_with(s: t, prefix: "PHASE ") { trim(s: substring(s: t, start: 6, end: string_length(s: t))) } else { acc }
   })
 }
 
@@ -622,16 +673,23 @@ fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr) -> V41E
         match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
           DockerImageInspectIdUnreadable { cause: why } => V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
           DockerImageInspectId { id: config_id } =>
-            match spark_remote_run(ctx: ctx, argv: v41_access_probe_argv(image: config_id)) {
-              RemoteUnreachable { cause: why } => V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: why }
-              RemoteRan { exit_code: c, stdout: out, stderr: e } =>
-                if c == 0 || c == 3 {
-                  v41_admit_access_reading(image_config: config_id, stdout: out)
-                } else if c == 124 {
-                  V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["the program exceeded its ", to_string(second_count(s: v41_access_probe_time_bound)), " s bound"], "") as NonEmptyStr }
-                } else {
-                  V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["exit=", to_string(c), " stderr=", trim(s: e)], "") as NonEmptyStr }
-                }
+            {
+              let run = spark_remote_run(ctx: ctx, argv: v41_access_probe_argv(image: config_id))
+              let outcome = match run {
+                RemoteUnreachable { cause: why } => V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: why }
+                RemoteRan { exit_code: c, stdout: out, stderr: e } =>
+                  if c == 0 || c == 3 {
+                    v41_admit_access_reading(image_config: config_id, stdout: out)
+                  } else if c == 124 || c == 137 {
+                    V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["a time bound fired (exit ", to_string(c), ") during phase ", v41_last_phase(stdout: out)], "") as NonEmptyStr }
+                  } else {
+                    V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["exit=", to_string(c), " during phase ", v41_last_phase(stdout: out), " stderr=", trim(s: e)], "") as NonEmptyStr }
+                  }
+              }
+              match v41_access_probe_remove_containers(ctx: ctx, image: config_id) {
+                Absent => outcome
+                Present { value: why } => V41AccessProbeRefused { step: "container-removal" as NonEmptyStr, cause: join(["the probe's container could not be removed, so the release will find residue: ", why], "") as NonEmptyStr }
+              }
             }
         }
       }
@@ -663,13 +721,24 @@ type V41AccessProbeClaimRecovery { host: HostIdentity, claim: EventId, standing:
 data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = [
   V41AccessProbeClaimRecovery {
     host: "srv8" as HostIdentity,
-    claim: ("6ce079b2a3889272" as NonEmptyStr) as EventId,
+    claim: ("be2cf3990cbf0e40" as NonEmptyStr) as EventId,
     standing: ClaimantTerminated,
-    receipt: "fleet-converge run 36221850026 (spark_v41_engram_access_probe): the probe program exited on the Triton @jit source error, its container ran with --rm, and the step ended; the release's docker ps then ran as the fleet agent and was refused /var/run/docker.sock, so quiescence was unread" as NonEmptyStr,
+    receipt: "fleet-converge run 36223556832 (spark_v41_engram_access_probe): after recovering 6ce079b2a3889272 it claimed be2cf3990cbf0e40, and its remote exec (ssh.PasswordFileSsh.ExecPortableWordsWithStdin, started 06:36:11) never returned; the job's 60-minute cap killed the step, so no release ran" as NonEmptyStr,
   },
 ]
 
 fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
+  if length(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String))) == 0 {
+    ExitSuccess
+  } else {
+    match v41_access_probe_remove_containers(ctx: ctx, image: v41_access_probe_image) {
+      Present { value: why } => exit_failure(reason: join(["the terminated run's container could not be removed before the recovery: ", why], ""))
+      Absent => v41_access_probe_recover_rows(ctx: ctx, host: host)
+    }
+  }
+}
+
+fn v41_access_probe_recover_rows(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
   fold(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String)), init: ExitSuccess, f: (acc, r) =>
     match acc {
       ExitSuccess => host_effect_recover_over(host: r.host, claim: r.claim, standing: r.standing, receipt: r.receipt, run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) })
