@@ -294,3 +294,22 @@ fn match_later_arm_subject() -> ReferenceConservationSubject {
 fn statement_let_binder_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source)
 }
+
+// ---- anonymous parameter slots are conserved by their minted identity -------------------------
+
+// Each `_` parameter lowers to its own minted binder (v2.std.anonymous_binder), so the label is
+// never the spelling `_`. The pool credits an authored `_` against the anonymous-slot class, keyed
+// on the minted identity: both `_` here are conserved and none is dropped. Keying the pool on the
+// spelling instead drops both.
+data anonymous_slots_source: String = "module v2.test.reference_conservation_anonymous\n\nfn rc_anon(_: Int, _: Bool) -> Int { 1 }\n"
+
+fn anonymous_slots_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "anonymous_slots", source: anonymous_slots_source)
+}
+
+test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -> Bool {
+  let r = conservation_report_of(subject: anonymous_slots_subject())
+  reference_conservation_holds(report: r)
+    && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
+    && r.authored > 0
+}

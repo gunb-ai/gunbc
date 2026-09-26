@@ -73,7 +73,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.node_query { find_named_child }
-import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view }
+import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 
@@ -2085,6 +2085,10 @@ fn target_semantic_enum_surface_from_coproduct(
   match type_decl_view(target: coproduct) {
     GenericTypeDecl { binders: _, member: _ } =>
       outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
+    GenericTypeAlias { binders: _, aliased: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
+    GenericOpaqueTypeDecl { binders: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
     PlainTypeDecl { member: m } =>
       target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m)
   }
@@ -2172,6 +2176,10 @@ fn target_semantic_struct_surface_from_record(
 ) -> Outcome<Node> {
   match type_decl_view(target: record) {
     GenericTypeDecl { binders: _, member: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
+    GenericTypeAlias { binders: _, aliased: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
+    GenericOpaqueTypeDecl { binders: _ } =>
       outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
     PlainTypeDecl { member: m } =>
       target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m)

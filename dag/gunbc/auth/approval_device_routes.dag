@@ -1,6 +1,8 @@
 module gunbc.auth.approval_device_routes
 
-import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus }
+import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus, CommitSha }
+import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+import std.resources { Network }
 import std.logic { Bool }
 import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
@@ -21,6 +23,16 @@ import extdeps.apple.app_attest {
   AttestationExpectation, verify_attestation, AssertionExpectation, verify_assertion,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import extdeps.ntfy.ntfy { NtfyMessage, ntfy_publish_outcome_sentence, NtfyAccepted, NtfyRefusedExplicitly, NtfyAcceptanceIndeterminate }
+import gunbc.auth.approval_notification { approval_notification }
+import gunbc.auth.approval_ntfy_deployment
+import gunbc.auth.approval_ntfy_access_readback {
+  ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
+  approval_ntfy_runtime_reading, approval_ntfy_channel_verdict, approval_ntfy_acl_deviation_sentence,
+}
+import std.decl_ref { decl_ref }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
+import gunbc.auth.approval_request_submission { PublisherTokenRead, PublisherTokenLoaded, PublisherTokenUnavailable, read_publisher_token, publish_notification, NotificationPublish, NotificationAttempted, NotificationPublisherTokenUnavailable }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability {
   ProposeApprove, ProposeDeny, utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after,
@@ -592,27 +604,50 @@ fn device_push_update_response_at(realization: DeviceCryptoRealization, body: St
   }
 }
 
-// ── The operator's verb: issue an enrolment code ─────────────────────────────────────────────
-// Run over the fleet SSH administrator edge as the owner of approval_device_store_root, never
-// served over HTTP (gunbc.auth.approval_device_redemption: the operator's SSH key is the
-// attribution). Eight hex characters of entropy, ten minutes to spend it, printed once.
+// ── The operator's verb: issue an enrolment code, delivered to the operator alone ─────────────
+// Runs ON THE HOST as the owner of approval_device_store_root, reached over the fleet SSH
+// administrator edge by gunbc.auth.approval_device_enrolment_code_issue (a FleetConvergeWorkflowMode
+// step, never an HTTP route -- gunbc.auth.approval_device_redemption: the operator's SSH key is the
+// attribution). Decision msg_a1d8d1b9 (2026-09-21): THE CODE NEVER APPEARS IN A STEP LOG OR A
+// RECEIPT. It is delivered over the operator ntfy topic gunbc.auth.approval_notification publishes
+// to. The verb's first act is a live read of that channel (gunbc.auth.approval_ntfy_access_readback):
+// the running server's process, config and listener, joined to its `ntfy access` listing, and it
+// proceeds only when that one run shows default deny, the publisher write-only, the operator
+// read-only and no other principal, on the server actually running. The gate is on the VERB, and
+// the verb is the only root that reaches the effects (see issue_device_enrolment_code). "Unprivileged
+// subscribe refused" is DERIVED from the bound listing through ntfy's own authorizer (deny default,
+// `*` without grants), not observed by a subscribe probe. A workflow log is readable by every repository reader, and a readable code lets
+// another principal enrol as the operator inside the window, the exact hole HTTP issuance was
+// refused for. What this verb prints is the delivery receipt: channel, message id, expiry.
+// Issued into the store BEFORE it is delivered so the code the operator receives is already valid.
 //
-// ITS CONSUMER IS A DECLARED FRONTIER (DESIGN section 3c, with the trigger beside it): in this
-// corpus the SSH administrator edge is realized by a FleetConvergeWorkflowMode running on the host
-// (gunbc.auth.approval_keyring_converge lands that way), and a mode's step output is a workflow
-// log readable by every principal with read access to the repository -- which is the exact
-// property the redemption module refuses for an HTTP issuer, since a readable code lets another
-// principal enrol its own key under the operator's login inside the window. So the verb is not
-// bound to a mode that prints it. TRIGGER: the operator's decision on how the code reaches them
-// and no one else (approval_device_enrolment_code_delivery_frontier below) -- the existing private
-// operator notification channel, or an SSH session of the operator's own -- after which one
-// FleetConvergeWorkflowMode or one documented operator invocation binds this function and
-// the routes gain their admitted entry.
+// SIXTEEN OCTETS, NOT FOUR (review of gunbc#12013). The redemption route answers "not issued"
+// differently from "attestation did not verify", so it is a validity oracle, and this server
+// models no attempt rate, lockout or query bound: the code's own entropy is the entire modeled
+// online secret strength. The code is delivered electronically and never memorized, so 128 bits
+// costs nothing and makes no claim about throttling Apple or the tailnet may or may not apply.
+//
+// A publish is a mutation, so its outcome is three answers (extdeps.ntfy.ntfy
+// ntfy_publish_acceptance): accepted (with or without a readable message id), explicitly refused,
+// or indeterminate. Only an explicit refusal establishes that nobody received the code; an
+// indeterminate delivery keeps the SAME code valid until it expires and says so, and never invites
+// a second code under the claim that the first reached no one.
 data approval_enrolment_code_window: Second = second(count: 600)
-data approval_enrolment_code_entropy: ByteSize = byte_size(count: 4)
+data approval_enrolment_code_entropy: ByteSize = byte_size(count: 16)
+data approval_enrolment_code_notification_title: NonEmptyStr = "Device enrolment code"
 
-fn mint_enrolment_code() -> NonEmptyStr? {
-  match base64_decode(s: trim(s: Urandom.ReadBytes(count: byte_size_count(b: approval_enrolment_code_entropy)).octets_b64), variant: Standard) {
+fn mint_enrolment_code() -> NonEmptyStr? admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+  decl_ref(module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", decl_name: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution"),
+] {
+  enrolment_code_of_entropy(octets_b64: Urandom.ReadBytes(count: byte_size_count(b: approval_enrolment_code_entropy)).octets_b64)
+}
+
+// THE CODE AS A FUNCTION OF THE ENTROPY READ: the read's base64 octets decode, must number exactly
+// approval_enrolment_code_entropy, and encode as lowercase hex. Pure, so its encoding is witnessed
+// over supplied octets; mint_enrolment_code is the one caller that supplies the real read.
+fn enrolment_code_of_entropy(octets_b64: String) -> NonEmptyStr? {
+  match base64_decode(s: trim(s: octets_b64), variant: Standard) {
     Absent => none
     Present { value: octets } =>
       if count(octets) != byte_size_count(b: approval_enrolment_code_entropy) {
@@ -626,21 +661,117 @@ fn mint_enrolment_code() -> NonEmptyStr? {
   }
 }
 
-data approval_device_enrolment_code_delivery_frontier: DissolutionCondition = unbound_dissolution(
-  description: "an operator-decided delivery of the enrolment code that only the operator can read -- the private operator notification channel gunbc.auth.approval_notification publishes to, or an operator-run SSH invocation -- binding issue_device_enrolment_code as one FleetConvergeWorkflowMode step or one documented operator verb, never a workflow log line -- SUFFICIENT FOR the operator to obtain a code that device_enrol_response will consume, with no other principal able to read it",
-)
+// The one place the code is rendered into text: the notification body. Nothing else renders it.
+fn enrolment_code_notification(code: NonEmptyStr, expires_at: Timestamp) -> NtfyMessage {
+  approval_notification(
+    title: approval_enrolment_code_notification_title,
+    body: ("Enter this code in Approve within " + to_string(second_count(s: approval_enrolment_code_window)) + " seconds: " + (code as String) + " (expires " + expires_at + ")") as NonEmptyStr,
+    approval_url: approval_broker_base_url(),
+  )
+}
 
-fn issue_device_enrolment_code() -> CliWireResponse {
-  match device_observed_at() {
-    Absent => CliWireUnprintable { cause: "the clock did not answer a canonical UTC instant" }
-    Present { value: now } =>
-      match mint_enrolment_code() {
-        Absent => CliWireUnprintable { cause: "the entropy read did not yield the requested octets" }
-        Present { value: code } =>
-          match issue_enrolment_code(root: approval_device_store_root, code: code, issued_at: now, expires_at: device_instant_plus(t: now, s: approval_enrolment_code_window)) {
-            DeviceStoreWritten => CliWirePrintable { bytes: "enrolment code " + (code as String) + " (expires " + device_instant_plus(t: now, s: approval_enrolment_code_window) + ")\n", exit: ExitSuccess }
-            DeviceStoreSlotOccupied => CliWireUnprintable { cause: "the minted code's slot is already occupied; run again" }
-            DeviceStoreRefused { detail: d } => CliWireUnprintable { cause: d }
+// THE RECEIPT THE STEP PRINTS: the channel, the message id and the expiry -- and by construction
+// not the code, which this record does not carry.
+// An accepted publish whose response body was unreadable is ACCEPTED WITHOUT A MESSAGE ID -- the
+// server took it; only its receipt is missing.
+type EnrolmentCodeDelivery
+  = DeliveryAccepted { message_id: NonEmptyStr? }
+  | DeliveryRefused { detail: String }
+  | DeliveryIndeterminate { detail: String }
+
+type EnrolmentCodeDeliveryReceipt {
+  topic: NonEmptyStr
+  message_id: NonEmptyStr?
+  expires_at: Timestamp
+}
+
+fn enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt) -> String {
+  let id = match r.message_id {
+    Present { value: m } => m as String
+    Absent => "unread (the server accepted the publish; its response body could not be read)"
+  }
+  "enrolment code issued and accepted for delivery: channel=ntfy:" + (r.topic as String) + " message_id=" + id + " expires=" + r.expires_at + "\n"
+}
+
+type EnrolmentCodeIssuance
+  = EnrolmentCodeIssued { topic: NonEmptyStr, expires_at: Timestamp, delivery: EnrolmentCodeDelivery }
+  | EnrolmentCodeIssuanceRefused { cause: String }
+
+// THE ONE RENDERING OF AN ISSUANCE. Only DeliveryRefused says the code reached no one; an
+// indeterminate delivery says the code may already be on the device and stays valid until expiry.
+fn enrolment_code_issuance_response(i: EnrolmentCodeIssuance) -> CliWireResponse {
+  match i {
+    EnrolmentCodeIssuanceRefused { cause: c } => CliWireUnprintable { cause: c as NonEmptyStr }
+    EnrolmentCodeIssued { topic: t, expires_at: x, delivery: d } => match d {
+      DeliveryAccepted { message_id: m } => CliWirePrintable { bytes: enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: t, message_id: m, expires_at: x }), exit: ExitSuccess }
+      DeliveryRefused { detail: why } => CliWireUnprintable { cause: ("a code was issued but its delivery was refused and never sent (" + why + "); it expires unspent at " + x + ", and running again issues a fresh code") as NonEmptyStr }
+      DeliveryIndeterminate { detail: why } => CliWireUnprintable { cause: ("a code was issued and its delivery is INDETERMINATE (" + why + "): it may already be on the operator's device and stays valid until " + x + "; check the channel before running again, since a re-run mints a second valid code") as NonEmptyStr }
+    }
+  }
+}
+
+// The window arithmetic in issue_device_enrolment_code is the one Clock read. Below it the route is two folds so each is
+// executed by a claim on the route it has (review 69755 of gunbc#12013): the slot write runs on
+// the wet route against a fresh root, and the publish -- with the receipt minted from the
+// published message and never from the code -- runs on the hermetic ntfy arm.
+fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, expires_at: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+  decl_ref(module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", decl_name: "the_code_slot_is_written_before_delivery_by_real_execution"),
+] {
+  match issue_enrolment_code(root: root, code: code, issued_at: now, expires_at: expires_at) {
+    DeviceStoreSlotOccupied => EnrolmentCodeIssuanceRefused { cause: "the minted code's slot is already occupied; run again" }
+    DeviceStoreRefused { detail: d } => EnrolmentCodeIssuanceRefused { cause: d as String }
+    DeviceStoreWritten => deliver_enrolment_code(code: code, expires_at: expires_at, publisher: publisher)
+  }
+}
+
+fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_and_deliver_enrolment_code_until"),
+  decl_ref(module_path: "test.claim.approval_device_enrolment_code_witness_test", decl_name: "the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code"),
+] {
+  let message = enrolment_code_notification(code: code, expires_at: expires_at)
+  EnrolmentCodeIssued { topic: message.topic as NonEmptyStr, expires_at: expires_at, delivery: enrolment_code_delivery_of(publish: publish_notification(message: message, publisher: publisher)) }
+}
+
+// No token means nothing was sent: that, like an explicit 4xx, establishes non-delivery.
+fn enrolment_code_delivery_of(publish: NotificationPublish) -> EnrolmentCodeDelivery {
+  match publish {
+    NotificationPublisherTokenUnavailable { detail: d } => DeliveryRefused { detail: "publisher token unavailable, nothing was sent: " + d }
+    NotificationAttempted { publish: p, acceptance: a } => match a {
+      NtfyAccepted { message_id: m } => DeliveryAccepted { message_id: m }
+      NtfyRefusedExplicitly { status: _, detail: _ } => DeliveryRefused { detail: "ntfy " + ntfy_publish_outcome_sentence(o: p) }
+      NtfyAcceptanceIndeterminate { detail: d } => DeliveryIndeterminate { detail: "ntfy " + d }
+    }
+  }
+}
+
+// THE ONE PRODUCTION ROOT. Every path to the entropy, the store slot, the publisher token and the
+// publish in this module starts here, and the helpers that reach them (mint_enrolment_code,
+// issue_and_deliver_enrolment_code_until, deliver_enrolment_code) are admit_callers-sealed to this
+// function and to the named witness that executes each; issue_enrolment_code, read_publisher_token
+// and publish_notification are sealed in their homes to their callers. So a second root -- in this
+// module or any other -- is a compile refusal, not a review finding.
+//
+// THE FIRST THING IT DOES is the live reading (gunbc.auth.approval_ntfy_access_readback
+// approval_ntfy_runtime_reading: modeled reads of the running server, sealed to this function), and
+// the first match is that reading's verdict. Nothing is accepted from a caller but the release
+// revision it runs as (`--arg revision=<sha>`), which only names the one per-release observation
+// helper the reading runs (gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_command): no
+// standing, no verdict, no listing. A revision naming no installed helper is a failed read and a
+// refusal. A refusal returns before the clock, the entropy, the slot, the token and the publish.
+fn issue_device_enrolment_code(revision: String) -> CliWireResponse
+  uses net: Network
+{
+  match approval_ntfy_channel_verdict(reading: approval_ntfy_runtime_reading(revision: RevisionBoundAtEmission { revision: revision as CommitSha })) {
+    AclRefused { deviation: d } => CliWireUnprintable { cause: ("refused before any code was minted: the ntfy channel is not established private: " + approval_ntfy_acl_deviation_sentence(d: d)) as NonEmptyStr }
+    AclEstablished =>
+      match device_observed_at() {
+        Absent => CliWireUnprintable { cause: "the clock did not answer a canonical UTC instant" }
+        Present { value: now } =>
+          match mint_enrolment_code() {
+            Absent => CliWireUnprintable { cause: "the entropy read did not yield the requested octets" }
+            Present { value: code } =>
+              enrolment_code_issuance_response(i: issue_and_deliver_enrolment_code_until(root: approval_device_store_root, now: now, expires_at: device_instant_plus(t: now, s: approval_enrolment_code_window), code: code, publisher: read_publisher_token()))
           }
       }
   }

@@ -102,19 +102,18 @@ type BillingConsequence
 // obligation -- a wide credential, a third-party bill or a break-glass effect is still witnessed per
 // instance.
 //
-// THIS RECORD IS NOT THE CONSENT, AND IT MUST NAME WHAT IS (review 70369). A row in the corpus is
-// author-written, so it cannot attest that the operator agreed (DESIGN §5: approval is external to
-// the diff). confirmation_read names the effectful read that finds the operator's stored approval of
-// the ruling's exact words; the site's realization must require its result before any write, so a
-// forged row yields a selection but no effect. What the census checks statically is only that the
-// interlock and the confirmation route are named against the site
-// (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock); the attestation itself
-// is the operator's tap, read at run time.
+// NO RUN-TIME CONFIRMATION READ (operator ruling 2026-09-25). #12101 added a confirmation_read that
+// every run had to satisfy with the operator's stored approval of the ruling's exact words; the
+// operator declined to file one ("no I don't want that - can you just remove that check asap"), so
+// the read and its field are deleted. What remains is the ruling as the selection's modeled input:
+// its words, the effect it covers and the interlock it is conditional on. The census checks
+// statically that the interlock is rostered against the site
+// (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
+// realization must take that hold before any write.
 type StandingDestructiveAuthorization {
   ruling_text: NonEmptyStr
   effect_subject: NonEmptyStr
   interlock: DeclarationRef
-  confirmation_read: DeclarationRef
 }
 
 type WitnessDischarge
@@ -554,7 +553,7 @@ fn witness_discharge_text(d: WitnessDischarge) -> String {
   match d {
     NoWitnessDischarge => "NoWitnessDischarge"
     StandingRulingUnderInterlock { ruling: r } =>
-      join(["StandingRulingUnderInterlock: confirmed by ", declaration_ref_display_key(ref: r.confirmation_read), " under ", declaration_ref_display_key(ref: r.interlock), "; ruling ", r.ruling_text as String], "")
+      join(["StandingRulingUnderInterlock: under ", declaration_ref_display_key(ref: r.interlock), "; ruling ", r.ruling_text as String], "")
   }
 }
 

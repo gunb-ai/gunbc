@@ -18,6 +18,9 @@ import gunbc.witness_v2_native_route {
   native_route_universe_member,
   required_v2_native_job_name
 }
+// THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
+// native_route_admission, and the emitted crate carries a module only when this closure reaches it.
+import gunbc.native_frontier_ratchet { native_frontier_verdict }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
