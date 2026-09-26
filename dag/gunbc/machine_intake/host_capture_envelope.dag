@@ -3,8 +3,11 @@ module gunbc.machine_intake_host_capture_envelope
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
+  ByteSize,
   Gibibyte,
   Mebibyte,
+  byte_size,
+  byte_size_count,
   gibibyte,
   gibibyte_to_byte_size,
   measure_fit_count_floor,
@@ -101,52 +104,91 @@ fn host_capture_edac_counters_command() -> NonEmptyStr {
 // failure rather than a silently shorter list.
 data host_capture_workload_chunk_dir: String = "/dev/shm/gunbc"
 
-// THE CHUNKS ARE NAMED, NOT GLOBBED, and the expected count is DERIVED from the same row: a glob
+// THE WORKLOAD SHAPE IS A PARAMETER, NOT A ROW OF THIS MODULE. This module owns the grammar of the
+// workload stage; HOW MUCH memory a given boot exercises is a fact about the machine state being
+// qualified, and it is chosen by the authority that already selects that state's expectation
+// (gunbc.machine_intake_mtcollins1_boot_milestone). A single hard-coded footprint here wrote four
+// 16 GiB chunks into a one-socket boot with 16 GiB installed (run 35808203121: `dd: error writing
+// /dev/shm/gunbc/chunk0: No space left on device`).
+//
+// THE CHUNKS ARE NAMED, NOT GLOBBED, and the expected count is DERIVED from the same list: a glob
 // silently shortens when a chunk is missing, and a separately authored count could disagree with the
 // list it counts. ONLY THE STEMS ARE AUTHORED -- the directory is host_capture_workload_chunk_dir and
-// nothing else, for the reason the tty row states one screen up. Authored twice, an edit to the dir
-// row alone would leave mkdir and rm acting on one directory while dd and sha256sum act on another:
-// the census would write its whole footprint somewhere it never cleans and STILL emit the stable
-// token, because every fact the token requires would hold about the other directory.
-data host_capture_workload_chunk_stems: String = "chunk0 chunk1 chunk2 chunk3"
-
-fn host_capture_workload_chunk_paths() -> String {
-  let stems = split(s: host_capture_workload_chunk_stems, delimiter: " ")
-  fold(stems, init: "", f: (acc, stem) => match acc == "" {
-    true => concat(host_capture_workload_chunk_dir, "/", stem)
-    false => concat(acc, " ", host_capture_workload_chunk_dir, "/", stem)
-  })
+// nothing else. Authored twice, an edit to the dir row alone would leave mkdir and rm acting on one
+// directory while dd and sha256sum act on another: the census would write its whole footprint
+// somewhere it never cleans and STILL emit the stable token.
+//
+// THE FOOTPRINT IS A MEASURE, not digits inside a shell string: dd's operands and the preflight's
+// byte figure are rendered from chunk_size, so a footprint edit cannot leave a stale count= behind.
+type HostCaptureWorkloadShape {
+  chunk_stems: List<NonEmptyStr>
+  chunk_size: Gibibyte
 }
-
-fn host_capture_workload_chunk_count() -> Int {
-  split(s: host_capture_workload_chunk_stems, delimiter: " ").length()
-}
-
-// THE FOOTPRINT IS A MEASURE, not digits inside a shell string. dd's operands are rendered from
-// these rows, so the size written per chunk and the block size are one fact each and the count
-// operand is DERIVED by fitting one into the other -- a footprint edit cannot leave a stale
-// count= behind, and the total this stage exercises is readable without parsing shell text.
-data host_capture_workload_chunk_size: Gibibyte = gibibyte(16)
 
 data host_capture_workload_dd_block: Mebibyte = mebibyte(1)
 
-fn host_capture_workload_dd_count() -> Nat {
+fn host_capture_workload_chunk_paths(workload: HostCaptureWorkloadShape) -> String {
+  fold(workload.chunk_stems, init: "", f: (acc, stem) => match acc == "" {
+    true => concat(host_capture_workload_chunk_dir, "/", stem as String)
+    false => concat(acc, " ", host_capture_workload_chunk_dir, "/", stem as String)
+  })
+}
+
+fn host_capture_workload_chunk_count(workload: HostCaptureWorkloadShape) -> Int {
+  count(workload.chunk_stems)
+}
+
+fn host_capture_workload_dd_count(workload: HostCaptureWorkloadShape) -> Nat {
   measure_fit_count_floor(
-    capacity: gibibyte_to_byte_size(g: host_capture_workload_chunk_size),
+    capacity: gibibyte_to_byte_size(g: workload.chunk_size),
     each: mebibyte_to_byte_size(m: host_capture_workload_dd_block),
   )
 }
 
+// THE EXACT BYTES THE STAGE EXERCISES: whole dd blocks per chunk times the chunk count. Derived from
+// the dd operands actually rendered, so the recorded figure is what was written, not what was meant.
+fn host_capture_workload_total_bytes(workload: HostCaptureWorkloadShape) -> ByteSize {
+  let per_chunk = host_capture_workload_dd_count(workload: workload)
+    * byte_size_count(b: mebibyte_to_byte_size(m: host_capture_workload_dd_block))
+  byte_size(count: fold(workload.chunk_stems, init: 0, f: (acc, _) => acc + per_chunk))
+}
 
-fn host_capture_workload_command() -> NonEmptyStr {
+// THE PREFLIGHT REFUSES; IT NEVER SHRINKS (DESIGN §5). Before a single byte is written the stage
+// prints the declared total and the two capacities that bound it -- MemAvailable and the free space
+// of the tmpfs the chunks land on -- and if either is below the declared total it prints the refused
+// token, removes its directory and exits nonzero. There is no arm that writes a smaller footprint:
+// a workload that does not fit is a wrong declaration or a wrong machine state, and either is a
+// finding for the verdict, not a size for the program to pick. An unreadable capacity refuses too.
+data host_capture_workload_bytes_token: String = "workload-bytes="
+
+data host_capture_workload_shm_avail_token: String = "workload-shm-avail-bytes="
+
+data host_capture_workload_mem_available_token: String = "workload-mem-available-bytes="
+
+data host_capture_workload_preflight_fits: String = "workload-preflight=fits"
+
+data host_capture_workload_preflight_refused: String = "workload-preflight=refused"
+
+fn host_capture_workload_command(workload: HostCaptureWorkloadShape) -> NonEmptyStr {
   let dir = host_capture_workload_chunk_dir
-  let paths = host_capture_workload_chunk_paths()
-  let want = host_capture_workload_chunk_count() as String
+  let paths = host_capture_workload_chunk_paths(workload: workload)
+  let want = host_capture_workload_chunk_count(workload: workload) as String
   let bs = concat(mebibyte_count(m: host_capture_workload_dd_block) as String, "M")
-  let count = host_capture_workload_dd_count() as String
+  let dd_count = host_capture_workload_dd_count(workload: workload) as String
+  let need = byte_size_count(b: host_capture_workload_total_bytes(workload: workload)) as String
   concat(
-    "mkdir -p ", dir, " && rc=0; for f in ", paths, "; do ",
-    "dd if=/dev/urandom of=$f bs=", bs, " count=", count, " status=none || rc=1; done; ",
+    "need=", need, "; echo ", host_capture_workload_bytes_token, "$need; ",
+    "mkdir -p ", dir, " || exit 1; ",
+    "shm=$(df -B1 --output=avail ", dir, " | tail -n 1 | tr -d ' '); ",
+    "ma=$(awk '/^MemAvailable:/ { printf \"%.0f\", $2 * 1024 }' /proc/meminfo); ",
+    "echo ", host_capture_workload_shm_avail_token, "$shm; ",
+    "echo ", host_capture_workload_mem_available_token, "$ma; ",
+    "fit=1; case \"$shm\" in ''|*[!0-9]*) fit=0;; esac; case \"$ma\" in ''|*[!0-9]*) fit=0;; esac; ",
+    "[ \"$fit\" = 1 ] && [ \"$shm\" -ge \"$need\" ] && [ \"$ma\" -ge \"$need\" ] || fit=0; ",
+    "if [ \"$fit\" != 1 ]; then echo ", host_capture_workload_preflight_refused, "; rm -rf ", dir, "; exit 1; fi; ",
+    "echo ", host_capture_workload_preflight_fits, "; ",
+    "rc=0; for f in ", paths, "; do ",
+    "dd if=/dev/urandom of=$f bs=", bs, " count=", dd_count, " status=none || rc=1; done; ",
     "echo ", host_capture_workload_write_rc_token, "$rc; ",
     "a=$(sha256sum ", paths, "); sa=$?; b=$(sha256sum ", paths, "); sb=$?; ",
     "na=$(printf '%s\\n' \"$a\" | grep -c .); nb=$(printf '%s\\n' \"$b\" | grep -c .); ",
@@ -166,7 +208,8 @@ fn host_capture_workload_command() -> NonEmptyStr {
 // The envelope's END marker follows the last stage and is the only thing that may precede the halt;
 // it is not a section, because a section can fail and still be followed by more output, whereas END
 // is the program's statement that it wrote everything.
-data host_capture_census_stages: List<HostCaptureStage> = [
+fn host_capture_census_stages(workload: HostCaptureWorkloadShape) -> List<HostCaptureStage> {
+  [
   HostCaptureStage { name: "subject-system", command: "dmidecode --type 1" },
   HostCaptureStage { name: "subject-baseboard", command: "dmidecode --type 2" },
   HostCaptureStage { name: "subject-chassis", command: "dmidecode --type 3" },
@@ -186,9 +229,10 @@ data host_capture_census_stages: List<HostCaptureStage> = [
   },
   HostCaptureStage { name: "edac-find", command: "find /sys/devices/system/edac | sort" },
   HostCaptureStage { name: "edac-before", command: host_capture_edac_counters_command() },
-  HostCaptureStage { name: "workload", command: host_capture_workload_command() },
+  HostCaptureStage { name: "workload", command: host_capture_workload_command(workload: workload) },
   HostCaptureStage { name: "edac-after", command: host_capture_edac_counters_command() },
-]
+  ]
+}
 
 fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMarker) -> String {
   concat(

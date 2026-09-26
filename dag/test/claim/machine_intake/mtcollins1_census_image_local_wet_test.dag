@@ -1,5 +1,6 @@
 module test.claim.mtcollins1_census_image_local_wet
 
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import extdeps.exec.command { LocalExec }
@@ -8,6 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.shell.exec { ProcessObservation }
 import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureWorkloadShape,
   HostCaptureBound,
   HostCaptureStage,
   HostCaptureUnbound, HostCaptureOpen, HostCaptureNotBegun,
@@ -16,7 +18,6 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_bound_nproc_exact,
   host_capture_bound_section_exit_zero,
   host_capture_bound_workload_stable,
-  host_capture_census_stages,
   host_capture_program,
   host_capture_workload_command,
 }
@@ -39,7 +40,6 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
 }
-import gunbc.machine_intake_host_capture_envelope { host_capture_census_stages }
 import gunbc.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
@@ -90,7 +90,7 @@ test fn the_historical_binding_holds_against_the_committed_capture_by_real_execu
     HostCaptureUnbound { reason: _ } => false
     HostCaptureOpen { envelope: _ } => false
     HostCaptureNotBegun => false
-    HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: host_capture_census_stages)
+    HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: mtcollins1_census_stages)
   }
 }
 
@@ -166,7 +166,7 @@ data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  ver
 
 fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
   mtcollins1_seeded_image_input(
-    stages: host_capture_census_stages,
+    stages: mtcollins1_census_stages,
     image_stem: mtcollins1_census_image_stem,
     volume_id: mtcollins1_census_volume_id,
     user_data_body: census_user_data_fixture,
@@ -225,9 +225,9 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
 // them through two functions ran the program twice per case to learn what a single run already
 // reported -- eight executions where four suffice. It also made the disagreeing case incoherent:
 // that stub counts invocations, so a second spawn continued a sequence the first had started.
-fn workload_case(stubs: String) -> ProcessObservation {
+fn workload_case_of(stubs: String, workload: HostCaptureWorkloadShape) -> ProcessObservation {
   run_shell_command_observe(
-    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
+    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command(workload: workload) as String, "\n")),
     transport: LocalExec,
   )
 }
@@ -235,11 +235,21 @@ fn workload_case(stubs: String) -> ProcessObservation {
 // The token must be a WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX",
 // or the token inside an argv echo, may not satisfy this. Captured stdout carries no trailing
 // newline, so the capture is padded on BOTH sides before the line-delimited match.
+fn workload_case(stubs: String) -> ProcessObservation {
+  workload_case_of(stubs: stubs, workload: mtcollins1_one_socket_workload)
+}
+
 fn workload_emitted_the_token(o: ProcessObservation) -> Bool {
   string_contains(s: concat("\n", o.stdout, "\n"), pattern: "\nworkload-digest-stable=yes\n")
 }
 
-data workload_stub_dd: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
+// CAPACITY IS STUBBED TOO: 16 GiB free on /dev/shm and 16 GiB MemAvailable -- mtcollins1's one-socket
+// installed memory, so a fitting preflight here is the real machine's ceiling, not a generous one.
+data workload_stub_capacity_16gib: String = "df() { printf 'Avail\\n17179869184\\n'; }; awk() { printf 17179869184; };"
+
+data workload_stub_io: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
+
+data workload_stub_dd: String = concat(workload_stub_io, workload_stub_capacity_16gib)
 
 // Every named chunk hashes, both passes agree: the one case that may emit the token.
 data workload_stub_complete: String = "sha256sum() { for f in \"$@\"; do echo \"deadbeef  $f\"; done; };"
@@ -249,7 +259,7 @@ data workload_stub_complete: String = "sha256sum() { for f in \"$@\"; do echo \"
 data workload_stub_both_empty: String = "sha256sum() { return 1; };"
 
 // Both passes omit the same chunk and exit zero. The manifests agree again, over three files.
-data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk3) continue;; esac; echo \"deadbeef  $f\"; done; };"
+data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk1) continue;; esac; echo \"deadbeef  $f\"; done; };"
 
 // Complete passes that DISAGREE: the genuine instability this stage exists to detect.
 data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/gunbc-wl-counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };"
@@ -283,4 +293,38 @@ test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execu
     && partial.exit_code != 0
     && string_contains(s: disagree.stdout, pattern: "workload-digest-stable=yes") == false
     && disagree.exit_code != 0
+}
+
+
+// THE PREFLIGHT REFUSES A WORKLOAD LARGER THAN CAPACITY, BEFORE ANY WRITE, BY REAL EXECUTION. The
+// SAME 16 GiB capacity stubs run both shapes: the one-socket profile's 4 GiB passes the preflight and
+// writes; the dual-socket profile's 64 GiB -- the shape run 35808203121 wrote into this machine --
+// prints the refused token, exits nonzero, and never reaches dd (its stub leaves a marker that must
+// stay absent). Only the declared shape varies, so the refusal is the preflight's and nothing else's.
+data workload_stub_dd_marks: String = "dd() { echo dd-ran > /tmp/gunbc-wl-dd-marker; }; rm() { :; }; mkdir() { :; };"
+
+test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution() -> Bool {
+  let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-dd-marker")
+  let big = workload_case_of(stubs: concat(workload_stub_dd_marks, workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_dual_socket_workload)
+  let dd_after_big = Filesystem.Read(path: "/tmp/gunbc-wl-dd-marker").success
+  let small = workload_case_of(stubs: concat(workload_stub_dd_marks, workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_one_socket_workload)
+  let dd_after_small = Filesystem.Read(path: "/tmp/gunbc-wl-dd-marker").success
+  let cleaned = shell.Remove.FileForce(path: "/tmp/gunbc-wl-dd-marker")
+  string_contains(s: concat("\n", big.stdout, "\n"), pattern: "\nworkload-preflight=refused\n")
+    && string_contains(s: big.stdout, pattern: "workload-bytes=68719476736")
+    && string_contains(s: big.stdout, pattern: "workload-write-rc=") == false
+    && string_contains(s: big.stdout, pattern: "workload-digest-stable=yes") == false
+    && big.exit_code != 0
+    && dd_after_big == false
+    && string_contains(s: concat("\n", small.stdout, "\n"), pattern: "\nworkload-preflight=fits\n")
+    && string_contains(s: small.stdout, pattern: "workload-bytes=4294967296")
+    && workload_emitted_the_token(o: small) && small.exit_code == 0
+    && dd_after_small
+}
+
+// AN UNREADABLE CAPACITY REFUSES, it is not read as room: df printing no figure must not fit.
+test fn an_unreadable_capacity_refuses_at_preflight_by_real_execution() -> Bool {
+  let o = workload_case(stubs: concat(workload_stub_io, "df() { :; }; awk() { printf 17179869184; };", workload_stub_complete))
+  string_contains(s: o.stdout, pattern: "workload-preflight=refused") && o.exit_code != 0
+    && string_contains(s: o.stdout, pattern: "workload-digest-stable=yes") == false
 }

@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_census_medium_readback_witness_test
 
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1CensusMedium, MtCollins1StockInstallerMedium }
@@ -7,7 +8,6 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_image, Mtcollins1CensusImage, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused,
   mtcollins1_census_image_stem, mtcollins1_census_volume_id, mtcollins1_seeded_image_input,
 }
-import gunbc.machine_intake_host_capture_envelope { host_capture_census_stages }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
   CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus,
@@ -40,7 +40,7 @@ fn refused(reason: String) -> RemoteAnswer { remote_answer_of(outcome: TypedArgv
 // input only to name the record path; the real derivation is read by the chain claim above.
 fn census_input() -> UbuntuSeededInstallMediaBuildInput {
   mtcollins1_seeded_image_input(
-    stages: host_capture_census_stages,
+    stages: mtcollins1_census_stages,
     image_stem: mtcollins1_census_image_stem,
     volume_id: mtcollins1_census_volume_id,
     user_data_body: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
