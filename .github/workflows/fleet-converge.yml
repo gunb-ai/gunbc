@@ -1838,7 +1838,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
         timeout-minutes: 40
-      - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a recorded approval)
+      - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)
         id: wif_auth_iam_converge
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
@@ -1849,7 +1849,7 @@ jobs:
           create_credentials_file: false
         if: github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_request.outputs.approved == 'true'
         timeout-minutes: 5
-      - name: "GCP IAM converge: re-plan, re-read the recorded approval, apply as iam-converge, read back as iam-observe"
+      - name: "GCP IAM converge: re-plan, re-admit the approval, apply exactly the approved effects as iam-converge, read back as iam-observe"
         id: gcp_iam_apply
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

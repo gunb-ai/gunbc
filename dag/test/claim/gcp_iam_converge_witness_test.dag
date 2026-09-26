@@ -8,7 +8,9 @@ import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, heal_publisher_dedicated_federation, impersonation_cell }
-import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
 import gunbc.auth.gcp_iam_converge {
   GcpIamPlan, GcpIamDiff, GcpIamNoop, GcpIamApply, GcpIamRefused,
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstateRefused,
@@ -16,12 +18,14 @@ import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, GrantPolicyReading,
   PolicySubject, ServiceAccountPolicy, policy_subject_resource,
   ApprovedPolicyWrite, WriteApprovedCells, ApprovedCellsRefused, approved_policy_write,
-  iam_converge_provider_population, iam_converge_provider_condition, iam_converge_reach_excludes_its_own_trust,
-  iam_converge_provider_role_permissions, gcp_iam_observe_dedicated_federation,
+  iam_converge_reach_excludes_its_own_trust, iam_converge_own_trust_resources,
+  iam_converge_bindings, iam_converge_bootstrap_readback, ReachProbe, ExpectAdmitted, ExpectDenied,
+  ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole, pool_resource,
+  iam_converge_provider_role_permissions, iam_converge_account_policy_role_permissions, iam_converge_secret_policy_role_permissions,
+  gcp_iam_observe_dedicated_federation,
   plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage,
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
-  iam_converge_resource_population, iam_converge_resource_condition,
-  iam_converge_denied_permissions, iam_converge_policy_role_permissions, iam_converge_create_role_permissions,
+  iam_converge_denied_permissions, iam_converge_create_role_permissions,
   service_account_resource,
 }
 import gunbc.auth.privileged_effect_census {
@@ -36,7 +40,6 @@ import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converg
 import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved }
 import gunbc.auth.approval_gate { ApprovalGate, GateAdmitted, GateRefused }
 import extdeps.cloud.gcp.iam { gcp_cell_in, gcp_policy_cells }
-import extdeps.cloud.gcp.gcp { wif_pool_resource }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlKeyValue }
@@ -268,20 +271,33 @@ test fn the_converge_site_diverges_with_the_reviewed_code_reason() -> Bool {
 
 // ── The reach of setIamPolicy ────────────────────────────────────────────────────────────────
 
-// NO POPULATION REACHES THE JOB'S OWN TRUST (HOLD review 5326329930, finding 4): neither account's
-// policy is writable, and the job's own pool is in neither the policy nor the provider-create
-// population -- so an iam-converge token cannot add a provider to the pool whose principal set may
-// become it. The RED is the job's federation restored as a target, which puts its pool into the
-// provider population and iam-observe into the policy population.
-test fn the_converge_reach_excludes_its_own_trust_and_covers_every_target() -> Bool {
-  let own_pool = wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: gcp_iam_observe_dedicated_federation().pool_id as String)
+// THE REACH IS RESOURCE-LOCAL AND NEVER TOUCHES THE JOB'S OWN TRUST (HOLD findings 4 and
+// 5326588564-1): every target's pool carries the provider role, every target account the account
+// policy role and every target secret the secret policy role, while the job's pool and both of its
+// accounts carry no binding at all. No binding depends on a resource.name condition. The RED is the
+// job's federation restored as a target, which binds its own pool and iam-observe.
+test fn every_target_is_bound_resource_locally_and_the_own_trust_is_not() -> Bool {
+  let bs = iam_converge_bindings()
   iam_converge_reach_excludes_its_own_trust()
-    && !string_contains(s: iam_converge_provider_condition().expression, pattern: own_pool)
-    && all(gcp_iam_converge_targets, f => any(iam_converge_resource_population(), r => r == service_account_resource(email: f.service_account)))
-    && all(gcp_iam_converge_targets, f => any(iam_converge_provider_population(), r => r == wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: f.pool_id as String)))
-    && all(iam_converge_resource_population(), r => string_contains(s: iam_converge_resource_condition().expression, pattern: join(["resource.name == '", r, "'"], "")))
+    && all(gcp_iam_converge_targets, f =>
+      any(bs, b => b.resource == pool_resource(pool_id: f.pool_id) && match b.role { ConvergeProviderRole => true  _ => false })
+        && any(bs, b => b.resource == service_account_resource(email: f.service_account) && match b.role { ConvergeAccountPolicyRole => true  _ => false })
+        && all(f.secret_grants, g => any(bs, b => match b.role { ConvergeSecretPolicyRole => string_contains(s: b.resource, pattern: concat("/secrets/", g.target.secret as String))  _ => false })))
     && !any(iam_converge_create_role_permissions, p => p == "iam.workloadIdentityPoolProviders.create")
     && any(iam_converge_provider_role_permissions, p => p == "iam.workloadIdentityPoolProviders.create")
+}
+
+// THE BOOTSTRAP READBACK HAS BOTH HALVES: every bound permission is expected ADMITTED on its target,
+// and provider creation on the job's own pool and policy writes on both of its accounts are expected
+// DENIED. Without the admitted half, a model that admitted nothing would pass the denials.
+test fn the_bootstrap_readback_expects_targets_admitted_and_own_trust_denied() -> Bool {
+  let rb = iam_converge_bootstrap_readback()
+  let admitted = flat_map(rb, p => match p { ExpectAdmitted { resource: r, permission: q } => [concat(concat(r, " "), q)]  ExpectDenied { resource: _, permission: _ } => [] })
+  let denied = flat_map(rb, p => match p { ExpectDenied { resource: r, permission: q } => [concat(concat(r, " "), q)]  ExpectAdmitted { resource: _, permission: _ } => [] })
+  all(gcp_iam_converge_targets, f => any(admitted, x => x == concat(concat(pool_resource(pool_id: f.pool_id), " "), "iam.workloadIdentityPoolProviders.create"))
+      && any(admitted, x => x == concat(concat(service_account_resource(email: f.service_account), " "), "iam.serviceAccounts.setIamPolicy")))
+    && all(iam_converge_own_trust_resources(), r => any(denied, x => starts_with(s: x, prefix: concat(r, " "))))
+    && !any(admitted, x => any(iam_converge_own_trust_resources(), r => starts_with(s: x, prefix: concat(r, " "))))
 }
 
 // GRANT BUT NEVER READ: the payload and token permissions are denied, and none of them is granted.
@@ -290,7 +306,7 @@ test fn the_deny_list_covers_payload_reads_and_token_minting_and_no_role_grants_
   any(denied, p => p == "secretmanager.googleapis.com/versions.access")
     && any(denied, p => p == "iam.googleapis.com/serviceAccounts.getAccessToken")
     && any(denied, p => p == "iam.googleapis.com/serviceAccounts.actAs")
-    && !any(concat(iam_converge_policy_role_permissions, concat(iam_converge_create_role_permissions, iam_converge_provider_role_permissions)), p => p == "secretmanager.versions.access" || p == "iam.serviceAccounts.getAccessToken" || p == "iam.serviceAccounts.actAs")
+    && !any(concat(concat(iam_converge_account_policy_role_permissions, iam_converge_secret_policy_role_permissions), concat(iam_converge_create_role_permissions, iam_converge_provider_role_permissions)), p => p == "secretmanager.versions.access" || p == "iam.serviceAccounts.getAccessToken" || p == "iam.serviceAccounts.actAs")
 }
 
 // ── Execution writes exactly the approved cells (HOLD finding 1) ─────────────────────────────
@@ -383,5 +399,33 @@ test fn a_rerun_attempt_files_afresh_and_malformed_attempts_refuse() -> Bool {
             && match attempt_identity_of(run_id: "", run_attempt: "1") { Absent => true  Present { value: _ } => false }
         }
       }
+  }
+}
+
+// ── One project, bound into consent (HOLD 5326588564 finding 2) ──────────────────────────────
+
+// A GRANT IN ANOTHER PROJECT CANNOT SHARE A REVISION WITH ITS FLEET-PROJECT TWIN: the subject has no
+// project of its own (the preimage renders the fleet project), so the plan refuses a declared grant
+// outside that project instead of carrying it into consent. The RED is a plan that admits it.
+fn in_project(g: SecretAccessGrant, project: String) -> SecretAccessGrant {
+  SecretAccessGrant {
+    target: SecretRef { project: project as GcpProjectId, secret: g.target.secret, version: g.target.version, hash_state: g.target.hash_state },
+    role: g.role,
+    condition: g.condition,
+  }
+}
+
+test fn a_grant_outside_the_fleet_project_refuses_the_plan() -> Bool {
+  let moved = DedicatedFederation {
+    label: heal.label, pool_id: heal.pool_id, pool_display_name: heal.pool_display_name, provider_id: heal.provider_id,
+    attribute_mapping: heal.attribute_mapping, attribute_condition: heal.attribute_condition, principal_set: heal.principal_set,
+    service_account: heal.service_account, service_account_id: heal.service_account_id, service_account_display_name: heal.service_account_display_name,
+    service_account_member: heal.service_account_member,
+    secret_grants: map(heal.secret_grants, g => in_project(g: g, project: "another-project")),
+  }
+  let readings = map(moved.secret_grants, g => GrantPolicyReading { grant: g, reading: PolicyObserved { policy: empty_policy(etag: "s0") } })
+  match plan_dedicated_federation(f: moved, classification: nothing_to_create, account_policy: PolicyObserved { policy: policy_of(cells: [impersonation_cell(f: heal)], etag: "a1") }, secret_policies: readings) {
+    GcpIamRefused { target: _, reasons: rs } => any(rs, r => string_contains(s: r, pattern: "outside the fleet project"))
+    _ => false
   }
 }

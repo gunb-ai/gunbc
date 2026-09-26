@@ -3395,10 +3395,10 @@ fn fleet_converge_jobs() -> List<Job> {
 // Its own job for the boot's reason: OIDC tokens are minted per job, and this one federates through
 // its own pool pinned by the `environment` claim (gunbc.auth.gcp_iam_converge_federation). It runs on
 // srv1 because the approval client files and polls over srv1's loopback. THE STEP ORDER IS THE GATE
-// (gunbc.auth.gcp_iam_converge_run): the job federates as iam-observe, plans and waits; only a
-// recorded approval over exactly the planned request writes the request step's approved output,
-// and only that output admits the second auth step, which federates as iam-converge. The apply step
-// re-reads the recorded approval itself before the token is used.
+// (gunbc.auth.gcp_iam_converge_run): the job federates as iam-observe, plans and waits; only a live
+// approval over exactly the planned request and run attempt writes the request step's approved
+// output, and only that output admits the second auth step, which federates as iam-converge. The
+// apply step re-admits the approval through the same live gate before the token is used.
 data fleet_converge_gcp_iam_converge_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
 
 // THE IMPERSONATION CONDITION reads the request step's own output, which the run writes through the
@@ -3427,7 +3427,7 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
 // not wif_auth, so no step that reads the job's observe token can read this one by accident.
 fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
   UsesStep {
-    name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a recorded approval)" },
+    name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)" },
     id: Present { value: "wif_auth_iam_converge" },
     uses: google_auth_action,
     with: Present {
@@ -3448,7 +3448,7 @@ fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
 
 fn fleet_converge_gcp_iam_apply_step() -> Step {
   RunStep {
-    name: Present { value: "GCP IAM converge: re-plan, re-read the recorded approval, apply as iam-converge, read back as iam-observe" },
+    name: Present { value: "GCP IAM converge: re-plan, re-admit the approval, apply exactly the approved effects as iam-converge, read back as iam-observe" },
     id: Present { value: "gcp_iam_apply" },
     run: gunbc_ci_gcp_iam_converge_apply_invoke(),
     shell: none,

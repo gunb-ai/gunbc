@@ -189,7 +189,7 @@ fn readback_converged(observe: Secret) -> ProcessExit
 fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret) -> ProcessExit
 {
   match approval_instant_now() {
-    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the recorded approval cannot be read")
+    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the approval cannot be re-admitted")
     Present { value: now } =>
       match approval_standing_read(escalation_id: request.escalation_id, expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
         StandingClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable at the recorded-approval read")

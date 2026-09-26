@@ -8,7 +8,7 @@ import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
 import v2.std.optional { Present, Absent }
 import extdeps.crypto.sha2 { sha256_hex }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId, wif_pool_resource }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource }
 import extdeps.cloud.gcp.iam {
   IamCondition, GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
@@ -52,14 +52,15 @@ import gunbc.auth.gcp_iam_converge_federation {
 //   request   -- the diff's canonical preimage is SHA-256'd; the digest is the request's intent hash
 //                and the escalation id's suffix, so the operator's tap is consent to exactly it.
 //   gate      -- the request step emits the job output that admits the next step only when the
-//                approval store holds an approval over exactly this request (gunbc.auth.gcp_iam_converge_run).
+//                live gate (approval_gate_from_poll at the observed instant) admits an approval over
+//                exactly this request and this run attempt (gunbc.auth.gcp_iam_converge_run).
 //   impersonate -- only then does the workflow's second auth step federate to iam-converge, for
 //                iam_converge_token_lifetime.
-//   actuate   -- the apply step re-plans under iam-observe, re-derives the request, re-reads the
-//                recorded approval and refuses unless it is for that revision, then runs the existing
-//                provisioning protocol (gunbc.auth.heal_publisher_provision provision_dedicated_federation)
-//                under the iam-converge token: create only what was observed absent, re-observe and
-//                re-classify, etag-fenced policy writes, and a readback under iam-observe.
+//   actuate   -- the apply step re-plans under iam-observe, re-derives the request, re-admits the
+//                approval through the same live gate, then executes EXACTLY the approved effects
+//                (execute_approved_estate): each create with its approved configuration, each policy
+//                add only at its approved etag and only for its approved cells, fenced writes, and a
+//                readback under iam-observe.
 //
 // THE RUNG, STATED HONESTLY (operator 2026-09-25). Approval-necessity is enforced by REVIEWED MAIN
 // CODE, not by the credential layer: the pool's provider admits this job at main by its pinned
@@ -99,11 +100,19 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 data iam_converge_token_lifetime: Second = second(count: 600)
 
 // ── The reach of setIamPolicy, bounded in three layers ───────────────────────────────────────
-// 1. THREE CUSTOM ROLES, split on the resource each permission is authorized against.
+// 1. FOUR CUSTOM ROLES, EACH BOUND ON THE RESOURCE ITS PERMISSIONS ARE AUTHORIZED AGAINST (HOLD
+//    review 5326588564, finding 1). An earlier cut bound the policy and provider roles at the project
+//    under a `resource.name` IAM Condition; IAM Conditions do not support resource.name on IAM
+//    resources (workload identity pools, service accounts), so those conditions would have denied the
+//    declared targets too -- fail-closed but unusable, and a bootstrap readback that saw the job's own
+//    pool denied would have passed for the wrong reason. The reach is now RESOURCE-LOCAL: each role
+//    is granted in the IAM policy of each resource it may act on, and nowhere else
+//    (iam_converge_bindings), so the population is the set of policies the bootstrap writes rather
+//    than an expression evaluated against a request.
 //
-//    PROJECT-PARENTED CREATES, unconditioned: a pool and a service account are created on the
-//    project, and a new one trusts nobody and is trusted by nobody -- nothing names it until a
-//    policy write does, and every policy write is in the conditioned policy role.
+//    PROJECT-PARENTED CREATES, bound on the project: a pool and a service account are created on the
+//    project, and a new one trusts nobody and is trusted by nobody -- nothing names it until a policy
+//    write does, and every policy write is in a resource-local role below.
 data iam_converge_create_role_permissions: List<String> = [
   "iam.workloadIdentityPools.create",
   "iam.workloadIdentityPools.get",
@@ -111,23 +120,25 @@ data iam_converge_create_role_permissions: List<String> = [
   "iam.serviceAccounts.get",
 ]
 
-//    POOL-PARENTED CREATES, conditioned on the declared target pools (HOLD review 5326329930,
-//    finding 4). A provider is created on its parent POOL, and a provider added to the pool whose
-//    principal set may impersonate iam-converge admits new identities into that trusted set without
-//    touching iam-converge's own policy. So this role is bound under iam_converge_provider_condition,
-//    whose population is the target pools only, and the converge job's own pool is never a target
-//    (iam_converge_reach_excludes_its_own_trust). A provider-create denial against that pool must be
-//    OBSERVED under an iam-converge token before first live use; that observation belongs to the
-//    bootstrap ceremony's readback, not to this model.
+//    POOL-PARENTED CREATES, bound on each declared TARGET POOL (HOLD review 5326329930, finding 4). A
+//    provider is created on its parent pool, and a provider added to the pool whose principal set may
+//    impersonate iam-converge would admit new identities into that trusted set without touching
+//    iam-converge's own policy -- so this role is never bound on the job's own pool.
 data iam_converge_provider_role_permissions: List<String> = [
   "iam.workloadIdentityPoolProviders.create",
   "iam.workloadIdentityPoolProviders.get",
   "iam.workloadIdentityPoolProviders.list",
 ]
 
-data iam_converge_policy_role_permissions: List<String> = [
+//    ACCOUNT POLICY, bound on each declared target SERVICE ACCOUNT.
+data iam_converge_account_policy_role_permissions: List<String> = [
+  "iam.serviceAccounts.get",
   "iam.serviceAccounts.getIamPolicy",
   "iam.serviceAccounts.setIamPolicy",
+]
+
+//    SECRET POLICY, bound on each declared target SECRET.
+data iam_converge_secret_policy_role_permissions: List<String> = [
   "secretmanager.secrets.get",
   "secretmanager.secrets.getIamPolicy",
   "secretmanager.secrets.setIamPolicy",
@@ -161,16 +172,16 @@ data iam_converge_denied_permissions: List<String> = [
   "iam.googleapis.com/serviceAccounts.signJwt",
 ]
 
-// 3. THE RESOURCE CONDITION, derived from the targets rather than spelled: the policy role reaches
-//    exactly the service accounts the declared federations name and the secrets their grants name.
-//    Adding a federation to gcp_iam_converge_targets widens this, and nothing else can.
+// 3. THE BINDINGS, derived from the targets rather than spelled (iam_converge_bindings): each role
+//    in the policy of each target resource it may act on. Adding a federation to
+//    gcp_iam_converge_targets widens this, and nothing else can.
 //
 //    THE CONVERGE JOB'S OWN TRUST IS NEVER A TARGET. iam-converge's and iam-observe's own policies,
 //    and the pool and provider whose principal set may impersonate them, are written once by the
 //    bootstrap ceremony and are outside every population below: if iam-converge could write either
 //    account's policy, or add a provider to that pool, it could name a second path to its own
-//    credential. iam_converge_reach_excludes_its_own_trust is that property, executed over all three
-//    populations. The job's federation is therefore a BOOTSTRAP subject, declared here for the
+//    credential. iam_converge_reach_excludes_its_own_trust is that property, executed over every
+//    binding. The job's federation is therefore a BOOTSTRAP subject, declared here for the
 //    ceremony that provisions it (declared frontier: the bootstrap ruling, PR 2 of this program).
 fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
   DedicatedFederation {
@@ -206,50 +217,106 @@ fn grant_secret_resource(g: SecretAccessGrant) -> String {
   gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: g.target.secret)
 }
 
-fn federation_resources(f: DedicatedFederation) -> List<String> {
-  concat([service_account_resource(email: f.service_account)], map(f.secret_grants, g => grant_secret_resource(g: g)))
-}
-
-fn iam_converge_resource_population() -> List<String> {
-  distinct_by_key(xs: flat_map(gcp_iam_converge_targets, f => federation_resources(f: f)), key: r => r)
-}
-
 fn pool_resource(pool_id: NonEmptyStr) -> String {
   wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: pool_id as String)
 }
 
-fn iam_converge_provider_population() -> List<String> {
-  distinct_by_key(xs: map(gcp_iam_converge_targets, f => pool_resource(pool_id: f.pool_id)), key: r => r)
+fn project_resource() -> String {
+  concat("projects/", fleet_secrets_project_id as String)
+}
+
+// THE ROLE A BINDING GRANTS, by what it is authorized against; each is a custom role in the fleet
+// project whose permissions are the list above.
+type IamConvergeRole
+  = ConvergeCreateRole
+  | ConvergeProviderRole
+  | ConvergeAccountPolicyRole
+  | ConvergeSecretPolicyRole
+
+fn iam_converge_role_permissions(r: IamConvergeRole) -> List<String> {
+  match r {
+    ConvergeCreateRole => iam_converge_create_role_permissions
+    ConvergeProviderRole => iam_converge_provider_role_permissions
+    ConvergeAccountPolicyRole => iam_converge_account_policy_role_permissions
+    ConvergeSecretPolicyRole => iam_converge_secret_policy_role_permissions
+  }
+}
+
+fn iam_converge_role_id(r: IamConvergeRole) -> String {
+  concat(concat(project_resource(), "/roles/"), match r {
+    ConvergeCreateRole => "gunbcIamConvergeCreate"
+    ConvergeProviderRole => "gunbcIamConvergeProvider"
+    ConvergeAccountPolicyRole => "gunbcIamConvergeAccountPolicy"
+    ConvergeSecretPolicyRole => "gunbcIamConvergeSecretPolicy"
+  })
+}
+
+// ONE BINDING OF ONE ROLE IN ONE RESOURCE'S POLICY, for iam-converge. The list is derived from the
+// targets and is exactly what the bootstrap writes; adding a federation to gcp_iam_converge_targets
+// widens it, and nothing else can.
+type ResourceLocalBinding {
+  resource: String
+  role: IamConvergeRole
+}
+
+fn federation_bindings(f: DedicatedFederation) -> List<ResourceLocalBinding> {
+  concat(
+    [
+      ResourceLocalBinding { resource: pool_resource(pool_id: f.pool_id), role: ConvergeProviderRole },
+      ResourceLocalBinding { resource: service_account_resource(email: f.service_account), role: ConvergeAccountPolicyRole },
+    ],
+    map(f.secret_grants, g => ResourceLocalBinding { resource: grant_secret_resource(g: g), role: ConvergeSecretPolicyRole }),
+  )
+}
+
+fn binding_key(b: ResourceLocalBinding) -> String {
+  concat(concat(b.resource, " "), iam_converge_role_id(r: b.role))
+}
+
+fn iam_converge_bindings() -> List<ResourceLocalBinding> {
+  distinct_by_key(
+    xs: concat([ResourceLocalBinding { resource: project_resource(), role: ConvergeCreateRole }], flat_map(gcp_iam_converge_targets, f => federation_bindings(f: f))),
+    key: b => binding_key(b: b),
+  )
 }
 
 fn string_member(xs: List<String>, x: String) -> Bool {
   list_member(xs: xs, x: x, eq: (a, b) => a == b)
 }
 
-// NO POPULATION REACHES THE JOB'S OWN TRUST: neither account's policy is in the policy population,
-// and the job's pool is in neither the policy nor the provider population.
+// THE RESOURCES THE CONVERGE JOB'S OWN TRUST LIVES IN: its pool, and the two accounts that pool may
+// become. None of them may carry any iam-converge binding.
+fn iam_converge_own_trust_resources() -> List<String> {
+  [
+    pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id),
+    service_account_resource(email: iam_converge_service_account),
+    service_account_resource(email: iam_observe_service_account),
+  ]
+}
+
 fn iam_converge_reach_excludes_its_own_trust() -> Bool {
-  let own_pool = pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id)
-  !string_member(xs: iam_converge_resource_population(), x: service_account_resource(email: iam_converge_service_account))
-    && !string_member(xs: iam_converge_resource_population(), x: service_account_resource(email: iam_observe_service_account))
-    && !string_member(xs: iam_converge_provider_population(), x: own_pool)
-    && !string_member(xs: iam_converge_resource_population(), x: own_pool)
+  let bound = map(iam_converge_bindings(), b => b.resource)
+  all(iam_converge_own_trust_resources(), r => !string_member(xs: bound, x: r))
 }
 
-fn resource_name_condition(title: String, population: List<String>) -> IamCondition {
-  IamCondition {
-    title: title,
-    expression: join(map(population, r => join(["resource.name == '", r, "'"], "")), " || "),
-    description: Present { value: "derived from gunbc.auth.gcp_iam_converge gcp_iam_converge_targets" },
-  }
-}
+// ── The bootstrap's readback, BOTH HALVES (HOLD review 5326588564) ───────────────────────────
+// Before first live use the bootstrap must observe, under an iam-converge token, every permission of
+// every binding ADMITTED on its resource, and the permissions that would reach the job's own trust
+// DENIED on theirs. A readback of only the denied half would pass for any reason that denies --
+// including a model that admits nothing -- so the admitted half is what makes the denials evidence.
+type ReachProbe
+  = ExpectAdmitted { resource: String, permission: String }
+  | ExpectDenied { resource: String, permission: String }
 
-fn iam_converge_provider_condition() -> IamCondition {
-  resource_name_condition(title: "gunbc-iam-converge-target-pools", population: iam_converge_provider_population())
-}
-
-fn iam_converge_resource_condition() -> IamCondition {
-  resource_name_condition(title: "gunbc-iam-converge-declared-population", population: iam_converge_resource_population())
+fn iam_converge_bootstrap_readback() -> List<ReachProbe> {
+  concat(
+    flat_map(iam_converge_bindings(), b => map(iam_converge_role_permissions(r: b.role), p => ExpectAdmitted { resource: b.resource, permission: p })),
+    [
+      ExpectDenied { resource: pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id), permission: "iam.workloadIdentityPoolProviders.create" },
+      ExpectDenied { resource: service_account_resource(email: iam_converge_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
+      ExpectDenied { resource: service_account_resource(email: iam_observe_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
+    ],
+  )
 }
 
 // ── The diff ─────────────────────────────────────────────────────────────────────────────────
@@ -264,9 +331,14 @@ fn iam_converge_resource_condition() -> IamCondition {
 // the bytes, not a declaration the executor might read differently later. A policy addition carries
 // its subject, the etag it was planned against and the exact cells; execution writes those cells
 // against that etag or refuses.
+// ONE PROJECT, NOT A FIELD (HOLD review 5326588564, finding 2). Every subject lives in the fleet
+// project, and the preimage renders that project; a subject carrying its own project that reached
+// the API calls but not the preimage would let two effects differing only in project share one
+// approval revision. The plan refuses a declared grant in any other project (grant_in_fleet_project)
+// rather than widening the subject.
 type PolicySubject
   = ServiceAccountPolicy { email: ServiceAccountEmail }
-  | SecretPolicy { project: GcpProjectId, secret: NonEmptyStr }
+  | SecretPolicy { secret: NonEmptyStr }
 
 type GcpIamEffect
   = CreatePool { pool_id: NonEmptyStr, display_name: NonEmptyStr }
@@ -277,7 +349,7 @@ type GcpIamEffect
 fn policy_subject_resource(s: PolicySubject) -> String {
   match s {
     ServiceAccountPolicy { email: e } => service_account_resource(email: e)
-    SecretPolicy { project: _, secret: n } => gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: n)
+    SecretPolicy { secret: n } => gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: n)
   }
 }
 
@@ -335,6 +407,10 @@ fn policy_delta(subject: PolicySubject, desired: List<GcpIamBindingCell>, readin
   }
 }
 
+fn grant_in_fleet_project(g: SecretAccessGrant) -> Bool {
+  (g.target.project as String) == (fleet_secrets_project_id as String)
+}
+
 fn grant_secret_names(gs: List<SecretAccessGrant>) -> List<String> {
   map(gs, g => g.target.secret as String)
 }
@@ -376,6 +452,8 @@ fn plan_dedicated_federation(
     FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } =>
       if !grant_readings_cover(declared: f.secret_grants, readings: secret_policies) {
         GcpIamRefused { target: f.label, reasons: ["the secret policy readings are not exactly the declared grants"] }
+      } else if !all(f.secret_grants, g => grant_in_fleet_project(g: g)) {
+        GcpIamRefused { target: f.label, reasons: [concat("a declared grant names a secret outside the fleet project ", fleet_secrets_project_id as String)] }
       } else {
         let creates = concat(
           if cp { [CreatePool { pool_id: f.pool_id, display_name: f.pool_display_name }] } else { [] },
@@ -391,7 +469,7 @@ fn plan_dedicated_federation(
           absent_admitted: ca,
         )
         let secret_deltas = map(secret_policies, gp => policy_delta(
-          subject: SecretPolicy { project: gp.grant.target.project, secret: gp.grant.target.secret },
+          subject: SecretPolicy { secret: gp.grant.target.secret },
           desired: secret_access_desired_cells(member: f.service_account_member, grant: gp.grant),
           reading: gp.reading,
           absent_admitted: false,
@@ -607,7 +685,7 @@ fn read_account_policy(f: DedicatedFederation, token: Secret) -> PolicyReading
 
 fn read_secret_policy(g: SecretAccessGrant, token: Secret) -> PolicyReading
 {
-  let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: g.target.project, secret: g.target.secret)
+  let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: g.target.secret)
   if rest_ok(o: r.outcome) {
     PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
   } else if outcome_is_not_found(o: r.outcome) {
@@ -655,8 +733,8 @@ fn policy_subject_reading(s: PolicySubject, token: Secret) -> PolicyReading
       else if outcome_is_not_found(o: r.outcome) { PolicyResourceAbsent }
       else { PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) } }
     }
-    SecretPolicy { project: pr, secret: n } => {
-      let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: pr, secret: n)
+    SecretPolicy { secret: n } => {
+      let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n)
       if rest_ok(o: r.outcome) { PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) } }
       else if outcome_is_not_found(o: r.outcome) { PolicyResourceAbsent }
       else { PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) } }
@@ -676,8 +754,8 @@ fn policy_subject_write(s: PolicySubject, policy: GcpPolicy, token: Secret) -> P
       if rest_ok(o: w.outcome) { PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) } }
       else { PolicyWriteRefused { cause: rest_refusal_text(o: w.outcome) } }
     }
-    SecretPolicy { project: pr, secret: n } => {
-      let w = gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: pr, secret: n, policy: policy)
+    SecretPolicy { secret: n } => {
+      let w = gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n, policy: policy)
       if rest_ok(o: w.outcome) { PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) } }
       else { PolicyWriteRefused { cause: rest_refusal_text(o: w.outcome) } }
     }
