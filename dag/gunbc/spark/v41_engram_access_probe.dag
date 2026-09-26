@@ -1,0 +1,1139 @@
+module gunbc.spark.v41_engram_access_probe
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.checked_arithmetic { nat_magnitude }
+import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import extdeps.docker.cli {
+  docker_run_ephemeral_command, docker_image_inspect_command, DockerPsByLabel, DockerLabel, docker_ps_running_command, docker_remove_force_command,
+  docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
+  docker_image_inspect_names_no_such_image,
+}
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_openssh_trust_policy_of,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run, spark_remote_argv_run, HostCli,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live_over, host_effect_recover_over }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, ClaimantStanding, ClaimantTerminated }
+import product.placement_supply { HostIdentity }
+import product.capacity.event_chain { EventId }
+
+// ══ V4.1 ENGRAM ACCESS PROBE: PRICE BOTH CUTOVER DESIGNS FROM ONE RUN ═══════════════════════════
+//
+// WHY THIS EXISTS. Upstream d2d649e6 looks Engram rows up with a Triton kernel
+// (_engram_lookup_kernel) that reads the weight and scale tables through device pointers to a
+// PINNED host table (DPSharedEngramStorage, the whole table in /dev/shm, cudaHostRegister'd),
+// taking the hash ids already on the GPU and dequantizing into bf16 GPU staging on a side stream.
+// The file-backed overlay's FileBackedEngramStorage.fetch_rows is a CPU gather. Serving V4.1
+// file-backed needs one of two designs, and which one is admissible is a device fact plus a price:
+//   A. the kernel reads an UNREGISTERED read-only mmap of the rank's row store directly, which is
+//      only possible when the GPU has pageable-memory access through the host page tables;
+//   B. the hash ids come back to the host, the CPU gathers rows into pinned staging, the rows go
+//      up, and a kernel dequantizes them: a host sync and a CPU gather on the token path.
+// This probe reads the device attributes that decide whether A is possible at all, then times a
+// lookup-kernel-shaped read over (i) the upstream pinned layout as the baseline, (ii) the mmap,
+// cold and warm, and (iii) design B, cold and warm, over the same rows. It does not choose: the
+// choice is a decision with these readings as its evidence (proud-deer-538, 2026-09-26).
+//
+// WHAT IT READS AND WHAT IT LEAVES. It runs inside the arm A runtime image on ONE admitted Spark,
+// writes a synthetic row store of the V4.1 record geometry inside the container's own filesystem,
+// and removes the container. It never touches the served model or a real row store. The geometry
+// is the model's: 256 fp8 weight bytes plus 256/32 ue8m0 scale bytes per row, so 264 bytes
+// (extdeps.deepseek.deepseek_v4_1_flash head_dim and weight block size; gunbc.spark.v41_engram_row_store
+// v41_row_bytes). At TP4 a rank owns cdiv(24, 4) = 6 hash columns per Engram layer, so one x16
+// decode step reads 16 x 6 rows and a 262k prefill reads 262144 x 6 rows per layer per rank.
+//
+// IT REFUSES RATHER THAN REPORTS when a device attribute cannot be read, when the store directory
+// is a memory filesystem (where a cold read cannot exist), when the page cache is not empty after
+// the drop (cold not established), or when any path returns rows that differ from the store's
+// bytes. Design A's cells are NOT ATTEMPTED, with the attribute as the reason, when the GPU reports
+// no pageable-memory access: reading an unregistered pointer there would fault the device.
+
+// ── THE PROGRAM ─────────────────────────────────────────────────────────────────────────────────
+//
+// The program crosses as one argument, as the runtime-image probe's does
+// (gunbc.spark.v41_runtime_image_probe v41_probe_privileged_argv), but runs from a file the
+// bootstrap below writes, because Triton reads kernel source from the file. It runs under `timeout`
+// so a wedged device read cannot outlive the step.
+// 🟡 dissolve-on: v41_access_probe_script -- THIS FUNCTION CARRIES A PYTHON + TRITON PROGRAM AS TEXT,
+// a hand-written foreign medium beside extdeps.languages.python, the corpus's authority for Python
+// surface syntax. WHY THAT AUTHORITY DOES NOT DISSOLVE IT TODAY: extdeps.languages.python is a target
+// model the generic emitter consumes to translate this repository's declarations; this program is
+// device reflection (cudaDeviceGetAttribute, mincore, POSIX_FADV_DONTNEED) plus a lookup-shaped kernel
+// written to measure a foreign runtime, and there is nothing in .dag to emit it from.
+// DISSOLVES WHEN the probe is retired, which is its intended end: per the operator's ruling
+// (2026-09-26) this module is a one-shot instrument that never lands on main, and its receipts (run
+// 36247421840 is the evidence of record for the design-B choice) are what the cutover cites. It is
+// deleted with its branch once the design-B cutover lands; nothing on main consumes it. The interim
+// shape follows gunbc.spark.v41_runtime_image_probe v41_probe_script and
+// gunbc.instruments.emit_host_fixtures.
+fn v41_access_probe_script() -> String {
+  join([
+    "import ctypes\n",
+    "import gc\n",
+    "import ctypes.util\n",
+    "import glob\n",
+    "import mmap\n",
+    "import os\n",
+    "import statistics\n",
+    "import sys\n",
+    "import time\n",
+    "\n",
+    "import numpy as np\n",
+    "import torch\n",
+    "import triton\n",
+    "import triton.language as tl\n",
+    "\n",
+    "RECORD = 264\n",
+    "WEIGHT = 256\n",
+    "QUANT_BLOCK = 32\n",
+    "ROWS = 16 * 1024 * 1024\n",
+    "DECODE_ROWS = 16 * 6\n",
+    "PREFILL_ROWS = 262144 * 6\n",
+    "REPS = 3\n",
+    "CHECK_ROWS = 64\n",
+    "STORE_DIR = \"/var/tmp/gunbc-engram-access-probe\"\n",
+    "\n",
+    "\n",
+    "def meminfo_kib(key):\n",
+    "    with open(\"/proc/meminfo\") as f:\n",
+    "        for line in f:\n",
+    "            if line.startswith(key + \":\"):\n",
+    "                return int(line.split()[1])\n",
+    "    return -1\n",
+    "\n",
+    "\n",
+    "def cgroup_bytes():\n",
+    "    try:\n",
+    "        with open(\"/sys/fs/cgroup/memory.current\") as f:\n",
+    "            return int(f.read().strip())\n",
+    "    except OSError:\n",
+    "        return -1\n",
+    "\n",
+    "\n",
+    "def phase(name):\n",
+    "    print(\"PHASE\", name)\n",
+    "    free, total = torch.cuda.mem_get_info()\n",
+    "    print(\"MEM\", name, \"host_available_kib\", meminfo_kib(\"MemAvailable\"), \"cgroup_current_bytes\", cgroup_bytes(), \"cuda_free_bytes\", free, \"cuda_total_bytes\", total)\n",
+    "    sys.stdout.flush()\n",
+    "\n",
+    "\n",
+    "# PINNED MEMORY IS REGISTERED AND UNREGISTERED EXPLICITLY, as upstream DPSharedEngramStorage does, so\n",
+    "# it is returned when a phase ends: torch's caching host allocator keeps pin_memory=True blocks after\n",
+    "# `del`, which held the whole pinned table for the rest of run 36230564997.\n",
+    "def pinned_buffer(nbytes):\n",
+    "    owner = np.empty(nbytes, dtype=np.uint8)\n",
+    "    status = torch.cuda.cudart().cudaHostRegister(owner.ctypes.data, nbytes, 0)\n",
+    "    if status.value != 0:\n",
+    "        refuse(\"cudaHostRegister failed: \" + str(status))\n",
+    "    return owner\n",
+    "\n",
+    "\n",
+    "def unpin(owner):\n",
+    "    torch.cuda.cudart().cudaHostUnregister(owner.ctypes.data)\n",
+    "\n",
+    "\n",
+    "def refuse(cause):\n",
+    "    print(\"REFUSED\", cause)\n",
+    "    sys.stdout.flush()\n",
+    "    sys.exit(3)\n",
+    "\n",
+    "\n",
+    "def load_cudart():\n",
+    "    names = []\n",
+    "    found = ctypes.util.find_library(\"cudart\")\n",
+    "    if found:\n",
+    "        names.append(found)\n",
+    "    torch_lib = os.path.join(os.path.dirname(torch.__file__), \"lib\")\n",
+    "    names += sorted(glob.glob(os.path.join(torch_lib, \"libcudart.so*\")))\n",
+    "    for site in sys.path:\n",
+    "        names += sorted(glob.glob(os.path.join(site, \"nvidia\", \"cuda_runtime\", \"lib\", \"libcudart.so*\")))\n",
+    "    names += sorted(glob.glob(\"/usr/local/cuda/lib64/libcudart.so*\"))\n",
+    "    for name in names:\n",
+    "        try:\n",
+    "            return ctypes.CDLL(name), name\n",
+    "        except OSError:\n",
+    "            continue\n",
+    "    return None, \"\"\n",
+    "\n",
+    "\n",
+    "ATTRS = ((\"pageable_memory_access\", 88), (\"concurrent_managed_access\", 89), (\"pageable_memory_access_uses_host_page_tables\", 100))\n",
+    "\n",
+    "\n",
+    "def read_attrs():\n",
+    "    lib, name = load_cudart()\n",
+    "    if lib is None:\n",
+    "        refuse(\"no libcudart could be loaded to read device attributes\")\n",
+    "    print(\"CUDART\", name)\n",
+    "    values = \{\}\n",
+    "    for label, code in ATTRS:\n",
+    "        value = ctypes.c_int(-1)\n",
+    "        status = lib.cudaDeviceGetAttribute(ctypes.byref(value), code, 0)\n",
+    "        if status != 0:\n",
+    "            refuse(\"cudaDeviceGetAttribute(\" + label + \") returned status \" + str(status))\n",
+    "        print(\"ATTR\", label, value.value)\n",
+    "        values[label] = value.value\n",
+    "    return values\n",
+    "\n",
+    "\n",
+    "_libc = ctypes.CDLL(ctypes.util.find_library(\"c\"), use_errno=True)\n",
+    "_libc.mmap.restype = ctypes.c_void_p\n",
+    "_libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]\n",
+    "_libc.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]\n",
+    "_libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]\n",
+    "\n",
+    "\n",
+    "def resident_bytes(path):\n",
+    "    size = os.path.getsize(path)\n",
+    "    page = os.sysconf(\"SC_PAGE_SIZE\")\n",
+    "    fd = os.open(path, os.O_RDONLY)\n",
+    "    try:\n",
+    "        total = 0\n",
+    "        off = 0\n",
+    "        window = 1 << 30\n",
+    "        while off < size:\n",
+    "            length = min(window, size - off)\n",
+    "            addr = _libc.mmap(None, length, mmap.PROT_READ, mmap.MAP_SHARED, fd, off)\n",
+    "            if addr in (None, ctypes.c_void_p(-1).value):\n",
+    "                refuse(\"mmap for the residency readback failed\")\n",
+    "            try:\n",
+    "                vec = (ctypes.c_ubyte * ((length + page - 1) // page))()\n",
+    "                if _libc.mincore(addr, length, vec) != 0:\n",
+    "                    refuse(\"mincore failed\")\n",
+    "                total += sum(b & 1 for b in bytes(vec))\n",
+    "            finally:\n",
+    "                _libc.munmap(addr, length)\n",
+    "            off += length\n",
+    "        return min(total * page, size)\n",
+    "    finally:\n",
+    "        os.close(fd)\n",
+    "\n",
+    "\n",
+    "def fstype_of(path):\n",
+    "    best, kind = \"\", \"\"\n",
+    "    with open(\"/proc/mounts\") as mounts:\n",
+    "        for line in mounts:\n",
+    "            fields = line.split()\n",
+    "            point = fields[1]\n",
+    "            if path.startswith(point) and len(point) > len(best):\n",
+    "                best, kind = point, fields[2]\n",
+    "    return kind\n",
+    "\n",
+    "\n",
+    "def resident_ranges(path, limit):\n",
+    "    size = os.path.getsize(path)\n",
+    "    page = os.sysconf(\"SC_PAGE_SIZE\")\n",
+    "    fd = os.open(path, os.O_RDONLY)\n",
+    "    ranges = []\n",
+    "    try:\n",
+    "        off = 0\n",
+    "        window = 1 << 30\n",
+    "        start = None\n",
+    "        while off < size and len(ranges) < limit:\n",
+    "            length = min(window, size - off)\n",
+    "            addr = _libc.mmap(None, length, mmap.PROT_READ, mmap.MAP_SHARED, fd, off)\n",
+    "            if addr in (None, ctypes.c_void_p(-1).value):\n",
+    "                refuse(\"mmap for the residency readback failed\")\n",
+    "            try:\n",
+    "                vec = (ctypes.c_ubyte * ((length + page - 1) // page))()\n",
+    "                if _libc.mincore(addr, length, vec) != 0:\n",
+    "                    refuse(\"mincore failed\")\n",
+    "                for i, b in enumerate(bytes(vec)):\n",
+    "                    here = off + i * page\n",
+    "                    if b & 1 and start is None:\n",
+    "                        start = here\n",
+    "                    elif not (b & 1) and start is not None:\n",
+    "                        ranges.append((start, here))\n",
+    "                        start = None\n",
+    "                        if len(ranges) >= limit:\n",
+    "                            break\n",
+    "            finally:\n",
+    "                _libc.munmap(addr, length)\n",
+    "            off += length\n",
+    "        if start is not None and len(ranges) < limit:\n",
+    "            ranges.append((start, size))\n",
+    "    finally:\n",
+    "        os.close(fd)\n",
+    "    return ranges\n",
+    "\n",
+    "\n",
+    "# EVERY MAPPING OF THE STORE MUST BE CLOSED BEFORE THIS IS CALLED: POSIX_FADV_DONTNEED cannot evict a\n",
+    "# page that is still mapped (run 36246229964 kept exactly 16 MiB, 64 byte-checked rows times a 256 KiB\n",
+    "# fault window, because the check read through an open mmap) nor one that is still dirty, so the store\n",
+    "# is fdatasync'd at write and the drop is retried once before it refuses naming what stayed.\n",
+    "def drop_cache(path):\n",
+    "    for attempt in range(2):\n",
+    "        fd = os.open(path, os.O_RDONLY)\n",
+    "        try:\n",
+    "            os.fdatasync(fd)\n",
+    "            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)\n",
+    "        finally:\n",
+    "            os.close(fd)\n",
+    "        remaining = resident_bytes(path)\n",
+    "        if remaining == 0:\n",
+    "            return\n",
+    "    stayed = \", \".join(str(a) + \"-\" + str(b) for a, b in resident_ranges(path, 8))\n",
+    "    refuse(\"cold not established: \" + str(remaining) + \" store bytes stayed resident after POSIX_FADV_DONTNEED, retried once; resident offset ranges (first 8): \" + stayed)\n",
+    "\n",
+    "\n",
+    "def write_store(path):\n",
+    "    os.makedirs(STORE_DIR, exist_ok=True)\n",
+    "    kind = fstype_of(STORE_DIR)\n",
+    "    print(\"STORE_FSTYPE\", kind)\n",
+    "    if kind in (\"tmpfs\", \"ramfs\", \"\"):\n",
+    "        refuse(\"the synthetic store directory is on \" + (kind or \"an unknown filesystem\") + \", where a cold read cannot be established\")\n",
+    "    rng = np.random.default_rng(7)\n",
+    "    chunk_rows = 1 << 18\n",
+    "    with open(path, \"wb\") as f:\n",
+    "        written = 0\n",
+    "        while written < ROWS:\n",
+    "            n = min(chunk_rows, ROWS - written)\n",
+    "            block = rng.integers(0, 256, size=(n, RECORD), dtype=np.uint8)\n",
+    "            block[:, :WEIGHT] &= 0x77\n",
+    "            block[:, WEIGHT:] = rng.integers(120, 135, size=(n, RECORD - WEIGHT), dtype=np.uint8)\n",
+    "            f.write(block.tobytes())\n",
+    "            written += n\n",
+    "        f.flush()\n",
+    "        os.fdatasync(f.fileno())\n",
+    "        os.fsync(f.fileno())\n",
+    "    print(\"GEOMETRY\", RECORD, ROWS, os.path.getsize(path))\n",
+    "\n",
+    "\n",
+    "@triton.jit\n",
+    "def lookup_kernel(base, idx_ptr, out_ptr, RECORD: tl.constexpr, WEIGHT: tl.constexpr, QUANT_BLOCK: tl.constexpr):\n",
+    "    pid = tl.program_id(0)\n",
+    "    row = tl.load(idx_ptr + pid).to(tl.int64)\n",
+    "    rec = base.to(tl.pointer_type(tl.uint8)) + row * RECORD\n",
+    "    cols = tl.arange(0, WEIGHT)\n",
+    "    w = tl.load(rec + cols).to(tl.float8e4nv, bitcast=True).to(tl.float32)\n",
+    "    s = tl.load(rec + WEIGHT + cols // QUANT_BLOCK).to(tl.float32)\n",
+    "    tl.store(out_ptr + pid.to(tl.int64) * WEIGHT + cols, (w * tl.exp2(s - 127.0)).to(tl.bfloat16))\n",
+    "\n",
+    "\n",
+    "def gpu_lookup(base_ptr, idx):\n",
+    "    out = torch.empty((idx.shape[0], WEIGHT), dtype=torch.bfloat16, device=\"cuda\")\n",
+    "    lookup_kernel[(idx.shape[0],)](base_ptr, idx, out, RECORD=RECORD, WEIGHT=WEIGHT, QUANT_BLOCK=QUANT_BLOCK)\n",
+    "    return out\n",
+    "\n",
+    "\n",
+    "def reference(table_bytes, rows):\n",
+    "    out = []\n",
+    "    for r in rows:\n",
+    "        rec = table_bytes[r * RECORD:(r + 1) * RECORD]\n",
+    "        w = torch.frombuffer(bytearray(rec[:WEIGHT]), dtype=torch.uint8).view(torch.float8_e4m3fn).float()\n",
+    "        s = torch.tensor([float(b) for b in rec[WEIGHT:]]).repeat_interleave(QUANT_BLOCK)\n",
+    "        out.append((w * torch.exp2(s - 127.0)).to(torch.bfloat16))\n",
+    "    return torch.stack(out)\n",
+    "\n",
+    "\n",
+    "def timed(fn):\n",
+    "    torch.cuda.synchronize()\n",
+    "    start = time.perf_counter_ns()\n",
+    "    out = fn()\n",
+    "    torch.cuda.synchronize()\n",
+    "    return out, time.perf_counter_ns() - start\n",
+    "\n",
+    "\n",
+    "def distinct_pages(idx):\n",
+    "    page = os.sysconf(\"SC_PAGE_SIZE\")\n",
+    "    off = idx.cpu().to(torch.int64) * RECORD\n",
+    "    return int(torch.unique(torch.cat([off // page, (off + RECORD - 1) // page])).numel())\n",
+    "\n",
+    "\n",
+    "def report(path_label, temperature, batch_label, rows, samples):\n",
+    "    print(\"TIME\", path_label, temperature, batch_label, rows, int(statistics.median(samples)), \" \".join(str(s) for s in samples))\n",
+    "    sys.stdout.flush()\n",
+    "\n",
+    "\n",
+    "def check(path_label, out, idx, table_bytes):\n",
+    "    rows = idx[:CHECK_ROWS].cpu().tolist()\n",
+    "    ok = torch.equal(out[:CHECK_ROWS].cpu(), reference(table_bytes, rows))\n",
+    "    print(\"CHECK\", path_label, \"ok\" if ok else \"mismatch\")\n",
+    "    if not ok:\n",
+    "        refuse(path_label + \" returned rows that differ from the store's bytes\")\n",
+    "\n",
+    "\n",
+    "# THE PRE-FLIGHT COVERS WHAT THE CAP MAY NOT: the 16 GiB container cap, plus the device footprint that\n",
+    "# unified-memory CUDA allocations may place outside the cgroup (two 805 MB bf16 prefill outputs, a\n",
+    "# 415 MB device copy of the staged rows, index tensors and allocator slack, ~4 GiB), plus a 4 GiB\n",
+    "# margin. Clean page cache counts toward MemAvailable, so a host holding only reclaimable cache passes.\n",
+    "CAP_KIB = 16 * 1024 * 1024\n",
+    "DEVICE_ESTIMATE_KIB = 4 * 1024 * 1024\n",
+    "MARGIN_KIB = 4 * 1024 * 1024\n",
+    "PREFLIGHT_KIB = CAP_KIB + DEVICE_ESTIMATE_KIB + MARGIN_KIB\n",
+    "\n",
+    "\n",
+    "def main():\n",
+    "    phase(\"preflight\")\n",
+    "    available = meminfo_kib(\"MemAvailable\")\n",
+    "    if available < PREFLIGHT_KIB:\n",
+    "        refuse(\"the host has \" + str(available) + \" KiB available, under the \" + str(PREFLIGHT_KIB) + \" KiB this probe requires before it allocates anything\")\n",
+    "    phase(\"attributes\")\n",
+    "    attrs = read_attrs()\n",
+    "    path = os.path.join(STORE_DIR, \"store.bin\")\n",
+    "    phase(\"write-store\")\n",
+    "    write_store(path)\n",
+    "    drop_cache(path)\n",
+    "    g = torch.Generator(device=\"cuda\").manual_seed(11)\n",
+    "    batches = ((\"decode\", DECODE_ROWS), (\"prefill262k\", PREFILL_ROWS))\n",
+    "    idx_of = \{label: torch.randint(0, ROWS, (n,), device=\"cuda\", generator=g, dtype=torch.int64) for label, n in batches\}\n",
+    "    for label, n in batches:\n",
+    "        print(\"PAGES\", label, n, distinct_pages(idx_of[label]), os.sysconf(\"SC_PAGE_SIZE\"))\n",
+    "\n",
+    "    fd = os.open(path, os.O_RDONLY)\n",
+    "    mm = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)\n",
+    "    table_bytes = mm\n",
+    "\n",
+    "    phase(\"pinned\")\n",
+    "    # (i) upstream layout: the whole table in pinned host memory, read by the kernel through UVA.\n",
+    "    owner = pinned_buffer(ROWS * RECORD)\n",
+    "    pinned = torch.from_numpy(owner)\n",
+    "    with open(path, \"rb\") as f:\n",
+    "        f.readinto(memoryview(owner))\n",
+    "    for label, n in batches:\n",
+    "        idx = idx_of[label]\n",
+    "        samples = []\n",
+    "        for _ in range(REPS):\n",
+    "            out, us = timed(lambda: gpu_lookup(pinned.data_ptr(), idx))\n",
+    "            samples.append(us)\n",
+    "        check(\"pinned\", out, idx, table_bytes)\n",
+    "        report(\"pinned\", \"warm\", label, n, samples)\n",
+    "    del pinned, out\n",
+    "    unpin(owner)\n",
+    "    del owner\n",
+    "    gc.collect()\n",
+    "    torch.cuda.empty_cache()\n",
+    "    mm.close()\n",
+    "    os.close(fd)\n",
+    "    drop_cache(path)\n",
+    "    fd = os.open(path, os.O_RDONLY)\n",
+    "    mm = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)\n",
+    "    table_bytes = mm\n",
+    "\n",
+    "    # (ii) an UNREGISTERED read-only mmap read directly by the kernel, cold and warm.\n",
+    "    if attrs[\"pageable_memory_access\"] != 1:\n",
+    "        print(\"SKIP mmap_unregistered pageable_memory_access=\" + str(attrs[\"pageable_memory_access\"]))\n",
+    "    else:\n",
+    "        phase(\"mmap-unregistered\")\n",
+    "        for label, n in batches:\n",
+    "            idx = idx_of[label]\n",
+    "            cold = []\n",
+    "            for _ in range(REPS):\n",
+    "                mm.close()\n",
+    "                os.close(fd)\n",
+    "                drop_cache(path)\n",
+    "                fd = os.open(path, os.O_RDONLY)\n",
+    "                mm = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)\n",
+    "                base = np.frombuffer(mm, dtype=np.uint8).ctypes.data\n",
+    "                out, us = timed(lambda: gpu_lookup(base, idx))\n",
+    "                cold.append(us)\n",
+    "            table_bytes = mm\n",
+    "            check(\"mmap_unregistered\", out, idx, table_bytes)\n",
+    "            print(\"COLD_VERIFIED mmap_unregistered\", label)\n",
+    "            report(\"mmap_unregistered\", \"cold\", label, n, cold)\n",
+    "            base = np.frombuffer(mm, dtype=np.uint8).ctypes.data\n",
+    "            warm = []\n",
+    "            for _ in range(REPS):\n",
+    "                out, us = timed(lambda: gpu_lookup(base, idx))\n",
+    "                warm.append(us)\n",
+    "            report(\"mmap_unregistered\", \"warm\", label, n, warm)\n",
+    "\n",
+    "    phase(\"cpu-gather\")\n",
+    "    # (iii) design B: hash ids to the host, CPU gather into pinned staging, copy up, dequantize.\n",
+    "    torch.cuda.empty_cache()\n",
+    "    staging_owner = pinned_buffer(PREFILL_ROWS * RECORD)\n",
+    "    staging = torch.from_numpy(staging_owner).view(PREFILL_ROWS, RECORD)\n",
+    "\n",
+    "    def cpu_gather(idx):\n",
+    "        host_idx = idx.cpu()\n",
+    "        table = torch.frombuffer(mm, dtype=torch.uint8).view(ROWS, RECORD)\n",
+    "        n = host_idx.shape[0]\n",
+    "        torch.index_select(table, 0, host_idx, out=staging[:n])\n",
+    "        device_rows = staging[:n].to(\"cuda\", non_blocking=True)\n",
+    "        local = torch.arange(n, device=\"cuda\", dtype=torch.int64)\n",
+    "        return gpu_lookup(device_rows.data_ptr(), local)\n",
+    "\n",
+    "    for label, n in batches:\n",
+    "        idx = idx_of[label]\n",
+    "        cold = []\n",
+    "        for _ in range(REPS):\n",
+    "            mm.close()\n",
+    "            os.close(fd)\n",
+    "            drop_cache(path)\n",
+    "            fd = os.open(path, os.O_RDONLY)\n",
+    "            mm = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)\n",
+    "            out, us = timed(lambda: cpu_gather(idx))\n",
+    "            cold.append(us)\n",
+    "        check(\"cpu_gather\", out, idx, mm)\n",
+    "        print(\"COLD_VERIFIED cpu_gather\", label)\n",
+    "        report(\"cpu_gather\", \"cold\", label, n, cold)\n",
+    "        warm = []\n",
+    "        for _ in range(REPS):\n",
+    "            out, us = timed(lambda: cpu_gather(idx))\n",
+    "            warm.append(us)\n",
+    "        report(\"cpu_gather\", \"warm\", label, n, warm)\n",
+    "\n",
+    "    del staging, out\n",
+    "    unpin(staging_owner)\n",
+    "    del staging_owner\n",
+    "    gc.collect()\n",
+    "    torch.cuda.empty_cache()\n",
+    "    mm.close()\n",
+    "    os.close(fd)\n",
+    "    os.unlink(path)\n",
+    "    phase(\"done\")\n",
+    "    print(\"DONE\")\n",
+    "\n",
+    "\n",
+    "main()\n",
+  ], "")
+}
+
+// TWO BOUNDS, BOTH ON THE REMOTE SIDE, BOTH UNDER THE STEP'S HOUR. The program runs under `timeout`
+// inside the container, escalating to SIGKILL, because a process waiting in a device read can ignore
+// SIGTERM. The docker client runs under its own `timeout` on the host, escalating likewise, because
+// a wedged container keeps the client (and the ssh leg above it) waiting: run 36223556832 hung in
+// the remote exec until the job's 60-minute cap killed it, with the program's own bound inside the
+// container. Recovery, the container removal and the release keep the remaining ~30 minutes.
+data v41_access_probe_time_bound: Second = second(count: 1500)
+data v41_access_probe_client_bound: Second = second(count: 1620)
+data v41_access_probe_kill_grace: Second = second(count: 30)
+
+// THE FOOTPRINT IS CAPPED, NOT HOPED FOR. Run 36230564997 left srv8 thrashing (ssh banner timeouts,
+// 75-118 ms LAN ping) with the probe's pinned table, its page cache and its mmap all resident, and
+// torch's caching host allocator holding the pinned table after `del`. The container now runs under a
+// 16 GiB memory cgroup with no swap, so a runaway is OOM-killed inside it; the program pins through
+// cudaHostRegister and unregisters each buffer when its phase ends, drops the store's page cache
+// between phases, keeps the store at 16M rows (~4.2 GB), refuses before allocating unless the host
+// reports 24 GiB available, and prints host and cgroup memory at every phase.
+data v41_access_probe_memory_cap: ByteSize = byte_size(count: 17179869184)
+
+// THE SUBJECT IMAGE: the arm A runtime image, by its config digest, which `docker run` accepts as an
+// image reference and which pins the bytes rather than a tag. Fleet-converge run 36207135528 built
+// it (tag gunbc-vllm-dsv41-gb10:d73e307009a5d716), and it is the only V4.1 image on srv8. The same
+// digest is the arm A binding in gunbc.spark.v41_capacity_measurement once #12331 lands; until then
+// that binding is not on main, so this probe names the digest itself, and it reads the binding
+// instead when #12331 lands.
+data v41_access_probe_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as NonEmptyStr
+
+// TRITON READS A KERNEL'S SOURCE FROM ITS FILE (`@jit functions should be defined in a Python file`,
+// run 36221850026), so the program cannot run as `python3 -c <program>`. It still crosses as one
+// argument, and this bootstrap writes it to a file inside the container and runs that file, which
+// leaves nothing on the host: the container is removed with it.
+data v41_access_probe_bootstrap: String = "import sys, runpy; path = '/var/tmp/gunbc_engram_access_probe.py'; open(path, 'w').write(sys.argv[1]); runpy.run_path(path, run_name='__main__')"
+
+// THE LANE'S MARK ON ITS CONTAINER. Residue, removal and recovery select by this label and nothing
+// else, so a measurement or serving container started from the same image on the same host is never
+// read as this lane's residue and never removed by it. The claim id rides as a second label, naming
+// which claim a container belongs to.
+data v41_access_probe_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "engram-access-probe" as NonEmptyStr }
+
+fn v41_access_probe_argv(image: NonEmptyStr, claim: NonEmptyStr) -> List<String> {
+  concat(
+    ["timeout", "-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_client_bound))],
+    argv_words(command: docker_run_ephemeral_command(
+      image: image,
+      gpus_all: true,
+      mounts: [],
+      labels: [v41_access_probe_lane_label, DockerLabel { key: "gunbc.claim" as NonEmptyStr, value: claim }],
+      memory_limit: Present { value: v41_access_probe_memory_cap },
+      entrypoint: "timeout" as NonEmptyStr,
+      argv: ["-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_time_bound)), "python3", "-u", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
+    )),
+  )
+}
+
+// EVERY CONTAINER CARRYING THIS LANE'S LABEL IS REMOVED AFTER A RUN AND BEFORE A RECOVERY, by the ids
+// `docker ps --quiet` lists for the label. A killed client leaves its container running; the release
+// and the recovery observe quiescence, and this is what makes it reachable instead of a claim that
+// stays live behind an orphan. Only containers this lane started carry the label.
+fn v41_access_probe_remove_containers(ctx: SparkMaterializeContext) -> String? {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_ps_running_command(filter: DockerPsByLabel { label: v41_access_probe_lane_label }))) {
+    RemoteUnreachable { cause: why } => Present { value: join(["docker ps did not run: ", why as String], "") }
+    RemoteRan { exit_code: c, stdout: out, stderr: e } =>
+      if c != 0 {
+        Present { value: join(["docker ps exited ", to_string(c), ": ", trim(s: e)], "") }
+      } else {
+        let failures = flat_map(filter(split(s: out, delimiter: "\n"), w => trim(s: w) != ""), id =>
+          match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_remove_force_command(name: trim(s: id) as NonEmptyStr))) {
+            RemoteUnreachable { cause: why } => [join(["docker rm -f ", trim(s: id), " did not run: ", why as String], "")]
+            RemoteRan { exit_code: rc, stdout: _, stderr: re } => if rc == 0 { [] as List<String> } else { [join(["docker rm -f ", trim(s: id), " exited ", to_string(rc), ": ", trim(s: re)], "")] }
+          })
+        if length(failures) != 0 { Present { value: join(failures, "; ") } } else { none }
+      }
+  }
+}
+
+// ── THE READING ─────────────────────────────────────────────────────────────────────────────────
+
+type V41AccessPath = AccessPinnedUva | AccessMmapUnregistered | AccessCpuGather
+type V41AccessTemperature = AccessCold | AccessWarm
+type V41AccessBatch = AccessDecodeStep | AccessPrefill262k
+
+// EACH TOKEN IS SPELLED ONCE, in the variant-to-token function; the parse is that function's inverse
+// over the closed variant list, so the two directions cannot drift.
+fn v41_access_path_token(p: V41AccessPath) -> String {
+  match p {
+    AccessPinnedUva => "pinned"
+    AccessMmapUnregistered => "mmap_unregistered"
+    AccessCpuGather => "cpu_gather"
+  }
+}
+
+fn v41_access_path_of(token: String) -> V41AccessPath? {
+  list_at_optional(xs: filter([AccessPinnedUva, AccessMmapUnregistered, AccessCpuGather], v => v41_access_path_token(p: v) == token), index: 0)
+}
+
+fn v41_access_temperature_of(token: String) -> V41AccessTemperature? {
+  list_at_optional(xs: filter([AccessCold, AccessWarm], v => v41_temperature_token(t: v) == token), index: 0)
+}
+
+fn v41_access_batch_of(token: String) -> V41AccessBatch? {
+  list_at_optional(xs: filter([AccessDecodeStep, AccessPrefill262k], v => v41_batch_token(b: v) == token), index: 0)
+}
+
+type V41AccessTiming sole_constructor {
+  path: V41AccessPath
+  temperature: V41AccessTemperature
+  batch: V41AccessBatch
+  rows: Nat
+  median: Nanosecond
+}
+
+// PER TOKEN-ROW LATENCY is the batch median divided over its rows, floored. The program reports
+// nanoseconds, so no scale is changed here.
+fn v41_access_per_row(t: V41AccessTiming) -> Nanosecond {
+  if t.rows == 0 { nanosecond(count: 0) } else { nanosecond(count: nanosecond_count(n: t.median) / t.rows) }
+}
+
+// ── PLAUSIBILITY: A CELL THAT OUTRUNS THE HARDWARE IS NOT A READING ─────────────────────────────
+//
+// A lookup cell reads rows x 264 logical bytes; a cold cell also pulls its distinct pages off the
+// drive. A timing implying more than the host's memory bandwidth, or a cold cell implying more than
+// the NVMe link can carry, is an instrument defect (a unit, an unsynchronised timer, a view instead
+// of a copy), and the reading refuses rather than being ranked. Run 36227645107 is why: its program
+// printed microseconds that the receipt labelled nanoseconds, and every cell looked impossible.
+// These ceilings only catch the impossible; they are not performance expectations.
+//   memory: 273 GB/s, the DGX Spark's published LPDDR5x bandwidth (NVIDIA DGX Spark specifications).
+//   drive: 15.75 GB/s, the PCIe 5.0 x4 link rate, which bounds any NVMe drive on such a link.
+// A CEILING IS A BYTE COUNT OVER A TIME, BOTH TYPED, rather than a number whose unit lives in its
+// name; the comparison then cross-multiplies the two typed quantities and changes no scale.
+// std.measure Bandwidth is not used: its scale does not pin bits versus bytes, and its existing
+// consumers read it as bits per second at a network scale, so a byte-rate ceiling in it would be the
+// unit ambiguity this gate exists to catch.
+type V41ThroughputCeiling sole_constructor { bytes: ByteSize, per: Nanosecond }
+
+data v41_access_memory_ceiling: V41ThroughputCeiling = V41ThroughputCeiling { bytes: byte_size(count: 273000), per: nanosecond(count: 1000) }
+data v41_access_drive_ceiling: V41ThroughputCeiling = V41ThroughputCeiling { bytes: byte_size(count: 15750), per: nanosecond(count: 1000) }
+data v41_access_record_bytes: ByteSize = byte_size(count: 264)
+
+type V41BatchPages sole_constructor { batch: V41AccessBatch, rows: Nat, distinct_pages: Nat, page_bytes: ByteSize }
+
+fn v41_batch_pages_of(stdout: String, batch: V41AccessBatch) -> V41BatchPages? {
+  match list_at_optional(xs: filter(v41_lines_with(stdout: stdout, keyword: "PAGES"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: b } => b == v41_batch_token(b: batch)  Absent => false }), index: 0) {
+    Absent => none
+    Present { value: ws } => match v41_nat_word(ws: ws, index: 2) {
+      Absent => none
+      Present { value: rows } => match v41_nat_word(ws: ws, index: 3) {
+        Absent => none
+        Present { value: pages } => match v41_nat_word(ws: ws, index: 4) {
+          Absent => none
+          Present { value: page } => Present { value: V41BatchPages { batch: batch, rows: rows, distinct_pages: pages, page_bytes: byte_size(count: page) } }
+        }
+      }
+    }
+  }
+}
+
+// moved / took > ceiling.bytes / ceiling.per, cross-multiplied: no division, so a small time cannot
+// round to zero, and at these magnitudes neither product leaves 64 bits (the substrate refuses an
+// overflow rather than wrapping).
+fn v41_exceeds(moved: ByteSize, took: Nanosecond, ceiling: V41ThroughputCeiling) -> Bool {
+  byte_size_count(b: moved) * nanosecond_count(n: ceiling.per) > byte_size_count(b: ceiling.bytes) * nanosecond_count(n: took)
+}
+
+fn v41_implausibility(t: V41AccessTiming, pages: V41BatchPages) -> String? {
+  if nanosecond_count(n: t.median) == 0 {
+    Present { value: join(["cell ", v41_timing_key_wire(t: t), " reports zero time"], "") }
+  } else if v41_exceeds(moved: byte_size(count: t.rows * byte_size_count(b: v41_access_record_bytes)), took: t.median, ceiling: v41_access_memory_ceiling) {
+    Present { value: join(["cell ", v41_timing_key_wire(t: t), " implies more than the 273 GB/s memory ceiling"], "") }
+  } else {
+    match t.temperature {
+      AccessWarm => none
+      AccessCold =>
+        if v41_exceeds(moved: byte_size(count: pages.distinct_pages * byte_size_count(b: pages.page_bytes)), took: t.median, ceiling: v41_access_drive_ceiling) {
+          Present { value: join(["cold cell ", v41_timing_key_wire(t: t), " implies more than the 15.75 GB/s drive link for its distinct pages"], "") }
+        } else { none }
+    }
+  }
+}
+
+type V41DeviceAttributes sole_constructor {
+  pageable_memory_access: Nat
+  pageable_memory_access_uses_host_page_tables: Nat
+  concurrent_managed_access: Nat
+}
+
+type V41EngramAccessProbeOutcome
+  = V41AccessProbeRead { image_config: NonEmptyStr, attributes: V41DeviceAttributes, timings: List<V41AccessTiming>, pages: List<V41BatchPages>, mmap_not_attempted: Bool }
+  | V41AccessProbeRefused { step: NonEmptyStr, cause: NonEmptyStr }
+
+fn v41_words(line: String) -> List<String> {
+  filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+}
+
+fn v41_lines_with(stdout: String, keyword: String) -> List<List<String>> {
+  flat_map(split(s: stdout, delimiter: "\n"), l => {
+    let ws = v41_words(line: l)
+    match list_at_optional(xs: ws, index: 0) {
+      Present { value: k } => if k == keyword { [ws] } else { [] as List<List<String>> }
+      Absent => [] as List<List<String>>
+    }
+  })
+}
+
+// The last phase the program announced, which locates a run a bound cut short.
+fn v41_last_phase(stdout: String) -> String {
+  fold(split(s: stdout, delimiter: "\n"), init: "none (killed before the first phase)", f: (acc, l) => {
+    let t = trim(s: l)
+    if starts_with(s: t, prefix: "PHASE ") { trim(s: substring(s: t, start: 6, end: string_length(s: t))) } else { acc }
+  })
+}
+
+// The program's own refusal: the text after the REFUSED keyword on its first REFUSED line.
+fn v41_refusal_line(stdout: String) -> String? {
+  list_at_optional(xs: flat_map(split(s: stdout, delimiter: "\n"), l => {
+    let t = trim(s: l)
+    if starts_with(s: t, prefix: "REFUSED ") { [trim(s: substring(s: t, start: 8, end: string_length(s: t)))] } else { [] as List<String> }
+  }), index: 0)
+}
+
+fn v41_nat_word(ws: List<String>, index: Nat) -> Nat? {
+  match list_at_optional(xs: ws, index: index) {
+    Absent => none
+    Present { value: w } => match parse_int(s: w) {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else { Present { value: nat_magnitude(a: n) } }
+    }
+  }
+}
+
+fn v41_attribute(stdout: String, label: String) -> Nat? {
+  match list_at_optional(xs: filter(v41_lines_with(stdout: stdout, keyword: "ATTR"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: l } => l == label  Absent => false }), index: 0) {
+    Present { value: ws } => v41_nat_word(ws: ws, index: 2)
+    Absent => none
+  }
+}
+
+fn v41_timing_of(ws: List<String>) -> V41AccessTiming? {
+  match list_at_optional(xs: ws, index: 1) { Absent => none  Present { value: p } =>
+  match list_at_optional(xs: ws, index: 2) { Absent => none  Present { value: t } =>
+  match list_at_optional(xs: ws, index: 3) { Absent => none  Present { value: b } =>
+  match v41_access_path_of(token: p) { Absent => none  Present { value: path } =>
+  match v41_access_temperature_of(token: t) { Absent => none  Present { value: temperature } =>
+  match v41_access_batch_of(token: b) { Absent => none  Present { value: batch } =>
+  match v41_nat_word(ws: ws, index: 4) { Absent => none  Present { value: rows } =>
+  match v41_nat_word(ws: ws, index: 5) { Absent => none  Present { value: median } =>
+    Present { value: V41AccessTiming { path: path, temperature: temperature, batch: batch, rows: rows, median: nanosecond(count: median) } }
+  } } } } } } } }
+}
+
+type V41AccessCellKey { path: V41AccessPath, temperature: V41AccessTemperature, batch: V41AccessBatch }
+
+// THE CELLS THE RUN OWES. The pinned baseline is warm only: the upstream layout copies the whole
+// table into pinned memory at start, so its reads never touch the store. Design A's cells are owed
+// only when the GPU reports pageable-memory access.
+fn v41_owed_access_cells(mmap_attempted: Bool) -> List<V41AccessCellKey> {
+  let batches = [AccessDecodeStep, AccessPrefill262k]
+  concat(concat(
+    map(batches, b => V41AccessCellKey { path: AccessPinnedUva, temperature: AccessWarm, batch: b }),
+    if mmap_attempted {
+      flat_map(batches, b => [V41AccessCellKey { path: AccessMmapUnregistered, temperature: AccessCold, batch: b }, V41AccessCellKey { path: AccessMmapUnregistered, temperature: AccessWarm, batch: b }])
+    } else { [] as List<V41AccessCellKey> }),
+    flat_map(batches, b => [V41AccessCellKey { path: AccessCpuGather, temperature: AccessCold, batch: b }, V41AccessCellKey { path: AccessCpuGather, temperature: AccessWarm, batch: b }]))
+}
+
+fn v41_temperature_token(t: V41AccessTemperature) -> String {
+  match t {
+    AccessCold => "cold"
+    AccessWarm => "warm"
+  }
+}
+
+fn v41_batch_token(b: V41AccessBatch) -> String {
+  match b {
+    AccessDecodeStep => "decode"
+    AccessPrefill262k => "prefill262k"
+  }
+}
+
+fn v41_cell_key_wire(k: V41AccessCellKey) -> String {
+  join([v41_access_path_token(p: k.path), " ", v41_temperature_token(t: k.temperature), " ", v41_batch_token(b: k.batch)], "")
+}
+
+fn v41_timing_key_wire(t: V41AccessTiming) -> String {
+  v41_cell_key_wire(k: V41AccessCellKey { path: t.path, temperature: t.temperature, batch: t.batch })
+}
+
+// THE READING IS ADMITTED ONLY WHOLE: every device attribute read, every owed cell present exactly
+// once, every attempted path checked equal to the store's bytes, and the program's DONE line. A
+// REFUSED line from the program is its own typed refusal, carried with its cause.
+fn v41_admit_access_reading(image_config: NonEmptyStr, stdout: String) -> V41EngramAccessProbeOutcome {
+  match v41_refusal_line(stdout: stdout) {
+    Present { value: line } => V41AccessProbeRefused { step: "probe-program" as NonEmptyStr, cause: line as NonEmptyStr }
+    Absent =>
+      match v41_attribute(stdout: stdout, label: "pageable_memory_access") {
+        Absent => V41AccessProbeRefused { step: "device-attributes" as NonEmptyStr, cause: "cudaDevAttrPageableMemoryAccess was not read" as NonEmptyStr }
+        Present { value: pageable } =>
+          match v41_attribute(stdout: stdout, label: "pageable_memory_access_uses_host_page_tables") {
+            Absent => V41AccessProbeRefused { step: "device-attributes" as NonEmptyStr, cause: "cudaDevAttrPageableMemoryAccessUsesHostPageTables was not read" as NonEmptyStr }
+            Present { value: host_tables } =>
+              match v41_attribute(stdout: stdout, label: "concurrent_managed_access") {
+                Absent => V41AccessProbeRefused { step: "device-attributes" as NonEmptyStr, cause: "cudaDevAttrConcurrentManagedAccess was not read" as NonEmptyStr }
+                Present { value: managed } => {
+                  let timings = flat_map(v41_lines_with(stdout: stdout, keyword: "TIME"), ws => match v41_timing_of(ws: ws) { Present { value: t } => [t]  Absent => [] as List<V41AccessTiming> })
+                  let unparsed = length(v41_lines_with(stdout: stdout, keyword: "TIME")) - length(timings)
+                  let attempted = pageable == 1
+                  let owed = v41_owed_access_cells(mmap_attempted: attempted)
+                  let join_causes = flat_map(owed, k => {
+                    let n = length(filter(timings, t => v41_timing_key_wire(t: t) == v41_cell_key_wire(k: k)))
+                    if n == 1 { [] as List<String> } else { [join(["cell ", v41_cell_key_wire(k: k), " appears ", to_string(n), " times"], "")] }
+                  })
+                  let extra = filter(timings, t => length(filter(owed, k => v41_cell_key_wire(k: k) == v41_timing_key_wire(t: t))) == 0)
+                  let checked_paths = if attempted { ["pinned", "mmap_unregistered", "cpu_gather"] } else { ["pinned", "cpu_gather"] }
+                  let check_causes = flat_map(checked_paths, p =>
+                    if length(filter(v41_lines_with(stdout: stdout, keyword: "CHECK"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: q } => q == p && match list_at_optional(xs: ws, index: 2) { Present { value: v } => v == "ok"  Absent => false }  Absent => false })) == 0 {
+                      [join(["no byte check passed for ", p], "")]
+                    } else { [] as List<String> })
+                  let done = length(v41_lines_with(stdout: stdout, keyword: "DONE")) == 1
+                  let pages = flat_map([AccessDecodeStep, AccessPrefill262k], b => match v41_batch_pages_of(stdout: stdout, batch: b) { Present { value: p } => [p]  Absent => [] as List<V41BatchPages> })
+                  let pages_causes = flat_map([AccessDecodeStep, AccessPrefill262k], b => match v41_batch_pages_of(stdout: stdout, batch: b) { Present { value: _ } => [] as List<String>  Absent => [join(["no distinct-page count for ", v41_batch_token(b: b)], "")] })
+                  let cold_causes = flat_map(filter(owed, k => match k.temperature { AccessCold => true  AccessWarm => false }), k =>
+                    if length(filter(v41_lines_with(stdout: stdout, keyword: "COLD_VERIFIED"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: p } => p == v41_access_path_token(p: k.path) && match list_at_optional(xs: ws, index: 2) { Present { value: b } => b == v41_batch_token(b: k.batch)  Absent => false }  Absent => false })) == 1 {
+                      [] as List<String>
+                    } else { [join(["cold was not verified for ", v41_cell_key_wire(k: k)], "")] })
+                  let plausibility_causes = flat_map(timings, t => match list_at_optional(xs: filter(pages, p => v41_batch_token(b: p.batch) == v41_batch_token(b: t.batch)), index: 0) {
+                    Absent => [] as List<String>
+                    Present { value: p } => match v41_implausibility(t: t, pages: p) { Present { value: why } => [why]  Absent => [] as List<String> }
+                  })
+                  let causes = concat(concat(concat(concat(concat(concat(concat(
+                    pages_causes,
+                    cold_causes),
+                    plausibility_causes),
+                    join_causes),
+                    map(extra, t => join(["an unowed cell ", v41_timing_key_wire(t: t)], ""))),
+                    check_causes),
+                    if unparsed > 0 { [join([to_string(unparsed), " TIME lines did not parse"], "")] } else { [] as List<String> }),
+                    if done { [] as List<String> } else { ["the program did not reach DONE"] })
+                  if length(causes) != 0 {
+                    V41AccessProbeRefused { step: "reading-admission" as NonEmptyStr, cause: join(causes, "; ") as NonEmptyStr }
+                  } else {
+                    V41AccessProbeRead {
+                      image_config: image_config,
+                      attributes: V41DeviceAttributes { pageable_memory_access: pageable, pageable_memory_access_uses_host_page_tables: host_tables, concurrent_managed_access: managed },
+                      timings: timings,
+                      pages: pages,
+                      mmap_not_attempted: !attempted,
+                    }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn v41_access_timing_line(t: V41AccessTiming) -> String {
+  join(["  ", v41_timing_key_wire(t: t), " rows=", to_string(t.rows), " median_ns=", to_string(nanosecond_count(n: t.median)), " ns_per_row=", to_string(nanosecond_count(n: v41_access_per_row(t: t))), "\n"], "")
+}
+
+fn v41_access_probe_body(o: V41EngramAccessProbeOutcome) -> String {
+  match o {
+    V41AccessProbeRefused { step: s, cause: c } => join(["REFUSED step=", s as String, " cause=", c as String, "\n"], "")
+    V41AccessProbeRead { image_config: i, attributes: a, timings: ts, pages: ps, mmap_not_attempted: skipped } =>
+      join([
+        join(map(ps, p => join(["distinct_pages ", v41_batch_token(b: p.batch), " rows=", to_string(p.rows), " pages=", to_string(p.distinct_pages), " page_bytes=", to_string(byte_size_count(b: p.page_bytes)), "\n"], "")), ""),
+        join(["image_config=", i as String, "\n"], ""),
+        join(["pageable_memory_access=", to_string(a.pageable_memory_access), " uses_host_page_tables=", to_string(a.pageable_memory_access_uses_host_page_tables), " concurrent_managed_access=", to_string(a.concurrent_managed_access), "\n"], ""),
+        if skipped { "design A (mmap_unregistered): NOT ATTEMPTED, the GPU reports no pageable-memory access\n" } else { "" },
+        join(map(ts, t => v41_access_timing_line(t: t)), ""),
+      ], "")
+  }
+}
+
+// ── ASKING IT ───────────────────────────────────────────────────────────────────────────────────
+//
+// READ THE IMAGE'S CONFIG ID BACK, THEN RUN INSIDE IT: the reading names the bytes the daemon holds,
+// and a daemon that holds no such image refuses here rather than being asked to pull.
+fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr, claim: NonEmptyStr) -> V41EngramAccessProbeOutcome {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: image))) {
+    RemoteUnreachable { cause: why } => V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+    RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
+      if code != 0 {
+        if docker_image_inspect_names_no_such_image(stderr: err) {
+          V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: "docker image inspect: No such image on this host" as NonEmptyStr }
+        } else {
+          V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") as NonEmptyStr }
+        }
+      } else {
+        match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
+          DockerImageInspectIdUnreadable { cause: why } => V41AccessProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+          DockerImageInspectId { id: config_id } =>
+            {
+              let run = spark_remote_run(ctx: ctx, argv: v41_access_probe_argv(image: config_id, claim: claim))
+              let outcome = match run {
+                RemoteUnreachable { cause: why } => V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: why }
+                RemoteRan { exit_code: c, stdout: out, stderr: e } =>
+                  if c == 0 || c == 3 {
+                    v41_admit_access_reading(image_config: config_id, stdout: out)
+                  } else if c == 124 || c == 137 {
+                    V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["a time bound fired (exit ", to_string(c), ") during phase ", v41_last_phase(stdout: out)], "") as NonEmptyStr }
+                  } else {
+                    V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["exit=", to_string(c), " during phase ", v41_last_phase(stdout: out), " stderr=", trim(s: e)], "") as NonEmptyStr }
+                  }
+              }
+              match v41_access_probe_remove_containers(ctx: ctx) {
+                Absent => outcome
+                Present { value: why } => V41AccessProbeRefused { step: "container-removal" as NonEmptyStr, cause: join(["the probe's container could not be removed, so the release will find residue: ", why], "") as NonEmptyStr }
+              }
+            }
+        }
+      }
+  }
+}
+
+// ── THE FLEET-CONVERGE ENTRY ────────────────────────────────────────────────────────────────────
+//
+// `spark_v41_engram_access_probe` with SPARK_CONVERGE_TARGET naming ONE Spark that holds the arm A
+// image (srv8). Admission is the Group A route the image build and the checkpoint materialize take:
+// the host must be one the Group A pair subject holds (admit_host_held_by_subject), and the probe
+// lands a host-effect claim (claim_host_effect_live) so it serializes with builds on that host,
+// releasing it on every exit.
+data v41_access_probe_attempt_raw: String = "v41-engram-access-probe-ci"
+data v41_access_probe_receipt_path: String = "target/v41-engram-access-probe-receipt.txt"
+data v41_access_probe_host_purpose: NonEmptyStr = "an Engram access probe, which starts one GPU container that writes and reads a synthetic 17 GB row store inside itself" as NonEmptyStr
+data v41_access_probe_host_effect_term: Second = second(count: 3600)
+
+// THE RESIDUE IS THE LANE'S OWN: the bootstrap's file name, which appears on the docker client's and
+// the program's command lines, and the lane label on the container. Neither matches another lane's
+// container started from the same image.
+data v41_access_probe_process_pattern: NonEmptyStr = "gunbc_engram_access_probe" as NonEmptyStr
+
+fn v41_access_probe_host_residue() -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: v41_access_probe_process_pattern, container: Present { value: DockerPsByLabel { label: v41_access_probe_lane_label } } }
+}
+
+// A CLAIM THIS LANE LEFT LIVE, NAMED EXACTLY, with the claimant's typed standing and the receipt that
+// established it (gunbc.spark.host_commitment host_effect_recover_over). The mode recovers the rows
+// naming its target before it claims, over the privileged leg, and a row that no longer names a live
+// claim refuses, so a recovered row is deleted rather than left to accumulate.
+type V41AccessProbeClaimRecovery { host: HostIdentity, claim: EventId, standing: ClaimantStanding, receipt: NonEmptyStr }
+
+// Empty: 111fbe04d3012e4a was recovered by run 36244207148 (its host-placement.12 release), as
+// be2cf3990cbf0e40 and 6ce079b2a3889272 were by earlier runs.
+data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = []
+
+fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
+  if length(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String))) == 0 {
+    ExitSuccess
+  } else {
+    match v41_access_probe_remove_containers(ctx: ctx) {
+      Present { value: why } => exit_failure(reason: join(["the terminated run's container could not be removed before the recovery: ", why], ""))
+      Absent => v41_access_probe_recover_rows(ctx: ctx, host: host)
+    }
+  }
+}
+
+fn v41_access_probe_recover_rows(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
+  fold(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String)), init: ExitSuccess, f: (acc, r) =>
+    match acc {
+      ExitSuccess => host_effect_recover_over(host: r.host, claim: r.claim, standing: r.standing, receipt: r.receipt, run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) })
+      std.process.ExitFailure { code: _, reason: _ } => acc
+    })
+}
+
+// ── WHEN THE PRE-FLIGHT REFUSES, THE RECEIPT NAMES WHAT HOLDS THE MEMORY ────────────────────────
+//
+// Run 36244207148 refused before allocating: srv8 reported 15.2 GiB available of ~121 GiB right after
+// a power cycle, with no known service holding it. A refusal that says only "not enough" leaves the
+// holder unnamed, so on that refusal the host side reads, over the same privileged leg, what could
+// hold it: the memory summary, containers and their cgroups, the largest processes, the cgroup tree,
+// the GPU's compute clients, and /dev/shm (where upstream Engram storage lives). Each reading is
+// carried with its exit code; a leg that did not run is recorded as such, never dropped. Nothing here
+// changes the host.
+type V41HostDiagnostic
+  = V41DiagnosticRead { name: NonEmptyStr, exit_code: Int, output: String }
+  | V41DiagnosticUnread { name: NonEmptyStr, cause: NonEmptyStr }
+
+data v41_meminfo_keys: List<String> = ["MemTotal", "MemFree", "MemAvailable", "Buffers", "Cached", "Shmem", "Mlocked", "Unevictable", "AnonPages", "HugePages_Total", "HugePages_Free", "Hugetlb", "Percpu", "KernelStack", "SUnreclaim", "VmallocUsed"]
+
+fn v41_first_lines(text: String, n: Nat) -> String {
+  join(take(split(s: text, delimiter: "\n"), n), "\n")
+}
+
+fn v41_diagnostic(ctx: SparkMaterializeContext, name: String, argv: List<String>, keep: fn(String) -> String) -> V41HostDiagnostic {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: why } => V41DiagnosticUnread { name: name as NonEmptyStr, cause: why }
+    RemoteRan { exit_code: c, stdout: o, stderr: e } => V41DiagnosticRead { name: name as NonEmptyStr, exit_code: c, output: if c == 0 { keep(o) } else { join([keep(o), "\nstderr: ", trim(s: e)], "") } }
+  }
+}
+
+fn v41_container_cgroup_diagnostics(ctx: SparkMaterializeContext) -> List<V41HostDiagnostic> {
+  match spark_remote_run(ctx: ctx, argv: ["docker", "ps", "-aq", "--no-trunc"]) {
+    RemoteUnreachable { cause: why } => [V41DiagnosticUnread { name: "container memory.current" as NonEmptyStr, cause: why }]
+    RemoteRan { exit_code: c, stdout: o, stderr: e } =>
+      if c != 0 {
+        [V41DiagnosticRead { name: "docker ps -aq --no-trunc" as NonEmptyStr, exit_code: c, output: trim(s: e) }]
+      } else {
+        map(filter(split(s: o, delimiter: "\n"), w => trim(s: w) != ""), id =>
+          v41_diagnostic(ctx: ctx, name: join(["memory.current of container ", trim(s: id)], ""), argv: ["cat", join(["/sys/fs/cgroup/system.slice/docker-", trim(s: id), ".scope/memory.current"], "")], keep: t => trim(s: t)))
+      }
+  }
+}
+
+fn v41_host_memory_diagnostics(ctx: SparkMaterializeContext) -> List<V41HostDiagnostic> {
+  concat([
+    v41_diagnostic(ctx: ctx, name: "/proc/meminfo", argv: ["cat", "/proc/meminfo"], keep: t => join(filter(split(s: t, delimiter: "\n"), l => length(filter(v41_meminfo_keys, k => starts_with(s: l, prefix: k + ":"))) > 0), "\n")),
+    v41_diagnostic(ctx: ctx, name: "docker ps -a --size", argv: ["docker", "ps", "-a", "--size"], keep: t => v41_first_lines(text: t, n: 40)),
+    v41_diagnostic(ctx: ctx, name: "top processes by RSS", argv: ["ps", "-eo", "pid,rss,comm", "--sort=-rss"], keep: t => v41_first_lines(text: t, n: 11)),
+    v41_diagnostic(ctx: ctx, name: "systemd-cgtop -b -n 1 -m", argv: ["systemd-cgtop", "-b", "-n", "1", "-m"], keep: t => v41_first_lines(text: t, n: 30)),
+    v41_diagnostic(ctx: ctx, name: "nvidia-smi compute apps", argv: ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv"], keep: t => v41_first_lines(text: t, n: 20)),
+    v41_diagnostic(ctx: ctx, name: "df /dev/shm", argv: ["df", "-k", "/dev/shm"], keep: t => trim(s: t)),
+    v41_diagnostic(ctx: ctx, name: "ls /dev/shm", argv: ["ls", "-la", "/dev/shm"], keep: t => v41_first_lines(text: t, n: 30)),
+  ], v41_container_cgroup_diagnostics(ctx: ctx))
+}
+
+// The pre-flight's own refusal, and no other, triggers the capture.
+fn v41_refused_at_preflight(o: V41EngramAccessProbeOutcome) -> Bool {
+  match o {
+    V41AccessProbeRefused { step: s, cause: c } => (s as String) == "probe-program" && starts_with(s: c as String, prefix: "the host has ")
+    V41AccessProbeRead { image_config: _, attributes: _, timings: _, pages: _, mmap_not_attempted: _ } => false
+  }
+}
+
+fn v41_diagnostics_body(ds: List<V41HostDiagnostic>) -> String {
+  join(map(ds, d => match d {
+    V41DiagnosticRead { name: n, exit_code: c, output: o } => join(["DIAG ", n as String, " exit=", to_string(c), "\n", o, "\n"], "")
+    V41DiagnosticUnread { name: n, cause: why } => join(["DIAG ", n as String, " UNREAD: ", why as String, "\n"], "")
+  }), "")
+}
+
+fn v41_access_probe_run_and_report(ctx: SparkMaterializeContext, claim: NonEmptyStr, at: String, host: HostIdentity, executor: String, anchor_receipt: String) -> ProcessExit {
+  let outcome = v41_access_probe_on(ctx: ctx, image: v41_access_probe_image, claim: claim)
+  let diagnostics = if v41_refused_at_preflight(o: outcome) { v41_host_memory_diagnostics(ctx: ctx) } else { [] as List<V41HostDiagnostic> }
+  v41_access_probe_receipt_exit(at: at, host: host, executor: executor, anchor_receipt: join([anchor_receipt, v41_diagnostics_body(ds: diagnostics)], ""), outcome: outcome)
+}
+
+fn v41_access_probe_receipt_exit(at: String, host: HostIdentity, executor: String, anchor_receipt: String, outcome: V41EngramAccessProbeOutcome) -> ProcessExit {
+  let body = join([
+    join(["v41 engram access probe probed_at=", at, " host=", host as String, "\n"], ""),
+    v41_access_probe_body(o: outcome),
+    join(["executor=", executor, "\n"], ""),
+    anchor_receipt,
+  ], "")
+  let w = Filesystem.Write(path: v41_access_probe_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["v41 engram access probe receipt write failed: ", w.error], ""))
+  } else {
+    match outcome {
+      V41AccessProbeRead { image_config: _, attributes: _, timings: _, pages: _, mmap_not_attempted: _ } => ExitSuccess
+      V41AccessProbeRefused { step: _, cause: _ } => exit_failure(reason: join(["the engram access probe refused:\n", body], ""))
+    }
+  }
+}
+
+// THE ORDER IS THE POINT: the administrator context exists before anything is claimed, so every
+// claim this entry lands is released over the same privileged leg that ran the container. Declared
+// recoveries for the target run first; the claim lands only on a recovered, admitted host.
+fn v41_engram_access_probe_ci_wet() -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode starts a GPU container on ONE host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_engram_access_probe_ci: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: path } =>
+              match read_bootstrap_credential() {
+                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                BootstrapCredentialReady { secret: administrator } =>
+                  match fleet_ssh_attempt_identity(raw: v41_access_probe_attempt_raw) {
+                    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                    Present { value: attempt } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_openssh_trust_policy_of(outcome: materialization) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: trust } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-v41-engram-access-probe-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              let ctx = SparkMaterializeContext {
+                                host: target_host,
+                                trust: trust,
+                                path: path,
+                                admin_credential: administrator as Secret,
+                                admin_credential_file: file,
+                                executor: HostCli,
+                              }
+                              match v41_access_probe_recover(ctx: ctx, host: target_host) {
+                                std.process.ExitFailure { code: _, reason: why } => exit_failure(reason: join(["a declared recovery of this lane's claim on ", target_host as String, " did not complete, so nothing was claimed or run: ", why], ""))
+                                ExitSuccess =>
+                                  match claim_host_effect_live(host: target_host, purpose: v41_access_probe_host_purpose, term: v41_access_probe_host_effect_term, residue: v41_access_probe_host_residue()) {
+                                    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+                                    HostEffectClaimLanded { handle: handle } =>
+                                      release_host_effect_live_over(
+                                        handle: Present { value: handle },
+                                        run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) },
+                                        exit: v41_access_probe_run_and_report(
+                                          ctx: ctx,
+                                          claim: handle.claim as NonEmptyStr,
+                                          at: probed_at_word(reading: now) as String,
+                                          host: target_host,
+                                          executor: executor,
+                                          anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
+                                        ),
+                                      )
+                                  }
+                              }
+                            },
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: exit } => exit
+                          }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

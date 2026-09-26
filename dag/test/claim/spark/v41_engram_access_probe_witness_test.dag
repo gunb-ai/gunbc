@@ -1,0 +1,147 @@
+module test.claim.spark.v41_engram_access_probe_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.algebra { filter }
+import std.measure { nanosecond_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import extdeps.docker.cli { DockerPsByLabel, DockerPsByAncestor, DockerPsByName, DockerLabel }
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, residue_spec_members, residue_spec_decode }
+import gunbc.spark.v41_engram_access_probe {
+  V41EngramAccessProbeOutcome, V41AccessProbeRead, V41AccessProbeRefused, v41_admit_access_reading,
+  v41_access_per_row, v41_last_phase, v41_access_probe_argv, v41_access_probe_image,
+  AccessMmapUnregistered, AccessPrefill262k, AccessCold, v41_access_probe_host_residue,
+  v41_refused_at_preflight, V41HostDiagnostic, V41DiagnosticRead, V41DiagnosticUnread, v41_diagnostics_body,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ADMISSION AT ITS OWN INTERFACE, OVER SUPPLIED PROGRAM OUTPUT. The program runs only inside the
+// arm A image on a Spark (the spark_v41_engram_access_probe fleet mode); these outputs have its
+// line grammar.
+
+data w_pages: String = "PAGES decode 96 190 4096\nPAGES prefill262k 1572864 1400000 4096\n"
+data w_attrs_on: String = "ATTR pageable_memory_access 1\nATTR concurrent_managed_access 1\nATTR pageable_memory_access_uses_host_page_tables 1\n"
+data w_attrs_off: String = "ATTR pageable_memory_access 0\nATTR concurrent_managed_access 1\nATTR pageable_memory_access_uses_host_page_tables 0\n"
+data w_pinned: String = "TIME pinned warm decode 96 40000 41000 40000 39000\nTIME pinned warm prefill262k 1572864 90000000 90000000 91000000 89900000\nCHECK pinned ok\n"
+data w_mmap: String = "TIME mmap_unregistered cold decode 96 900000 900000 910000 890000\nTIME mmap_unregistered warm decode 96 50000 50000 51000 49000\nTIME mmap_unregistered cold prefill262k 1572864 4718592000 4718592000 4800000000 4700000000\nTIME mmap_unregistered warm prefill262k 1572864 120000000 120000000 121000000 119000000\nCHECK mmap_unregistered ok\nCOLD_VERIFIED mmap_unregistered decode\nCOLD_VERIFIED mmap_unregistered prefill262k\n"
+data w_gather: String = "TIME cpu_gather cold decode 96 1200000 1200000 1210000 1190000\nTIME cpu_gather warm decode 96 300000 300000 301000 299000\nTIME cpu_gather cold prefill262k 1572864 6000000000 6000000000 6100000000 5900000000\nTIME cpu_gather warm prefill262k 1572864 400000000 400000000 401000000 399000000\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+
+fn w_run(parts: List<String>) -> String {
+  join(parts, "")
+}
+
+fn w_refused_with(o: V41EngramAccessProbeOutcome, needle: String) -> Bool {
+  match o {
+    V41AccessProbeRefused { step: _, cause: c } => contains(c as String, needle)
+    V41AccessProbeRead { image_config: _, attributes: _, timings: _, pages: _, mmap_not_attempted: _ } => false
+  }
+}
+
+test fn a_complete_run_is_admitted_with_every_cell_and_per_row_latency() -> Bool {
+  match v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, w_gather, "DONE\n"])) {
+    V41AccessProbeRead { image_config: _, attributes: a, timings: ts, pages: _, mmap_not_attempted: skipped } => {
+      let cold_prefill = filter(ts, t => match t.path { AccessMmapUnregistered => match t.batch { AccessPrefill262k => match t.temperature { AccessCold => true  gunbc.spark.v41_engram_access_probe.AccessWarm => false }  gunbc.spark.v41_engram_access_probe.AccessDecodeStep => false }  gunbc.spark.v41_engram_access_probe.AccessPinnedUva => false  gunbc.spark.v41_engram_access_probe.AccessCpuGather => false })
+      a.pageable_memory_access == 1 && !skipped && length(ts) == 10 && length(cold_prefill) == 1
+        && length(filter(cold_prefill, t => nanosecond_count(n: v41_access_per_row(t: t)) == 3000)) == 1
+    }
+    V41AccessProbeRefused { step: _, cause: _ } => false
+  }
+}
+
+// WITHOUT PAGEABLE ACCESS, DESIGN A IS NOT ATTEMPTED AND NOT OWED; the run is still a reading.
+test fn without_pageable_access_design_a_is_not_owed() -> Bool {
+  match v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_off, "SKIP mmap_unregistered pageable_memory_access=0\n", w_pinned, w_gather, "DONE\n"])) {
+    V41AccessProbeRead { image_config: _, attributes: _, timings: ts, pages: _, mmap_not_attempted: skipped } => skipped && length(ts) == 6
+    V41AccessProbeRefused { step: _, cause: _ } => false
+  }
+}
+
+// THE REDS: an unread attribute, the program's own refusal, a missing cell, a failed byte check, and
+// a run that never reached DONE each refuse instead of reporting.
+test fn an_unread_device_attribute_refuses() -> Bool {
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: ["ATTR pageable_memory_access 1\nATTR concurrent_managed_access 1\n", w_pinned, w_mmap, w_gather, "DONE\n"])), needle: "UsesHostPageTables")
+}
+
+test fn the_programs_refusal_is_carried() -> Bool {
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, "REFUSED cold not established: 4096 store bytes stayed resident\n"])), needle: "cold not established")
+}
+
+test fn a_missing_cell_refuses() -> Bool {
+  let no_warm_gather = "TIME cpu_gather cold decode 96 1200000 1200000\nTIME cpu_gather cold prefill262k 1572864 6000000000 6000000000\nTIME cpu_gather warm prefill262k 1572864 400000000 400000000\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, no_warm_gather, "DONE\n"])), needle: "cell cpu_gather warm decode appears 0 times")
+}
+
+test fn a_failed_byte_check_or_no_done_refuses() -> Bool {
+  let unchecked = w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather mismatch\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n", "DONE\n"])
+  let unfinished = w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, w_gather])
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: unchecked), needle: "no byte check passed for cpu_gather")
+    && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: unfinished), needle: "did not reach DONE")
+}
+
+// THE COMMAND IT SENDS: bounded on the host and in the container, labelled for this lane, capped in
+// memory, in the arm A image by config digest, run from a file (Triton reads kernel source from it).
+// The program's own behaviour is established by execution on a Spark (the fleet mode's receipt, which
+// the admission above reads), not by searching its text here.
+test fn the_probe_runs_the_bounded_program_in_the_arm_a_image() -> Bool {
+  let argv = v41_access_probe_argv(image: v41_access_probe_image, claim: "c1" as NonEmptyStr)
+  contains(join(argv, " "), "timeout -k 30 1620 ")
+    && contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 -k 30 1500 python3 -u -c import sys, runpy;")
+    && contains(join(argv, " "), "runpy.run_path(path, run_name='__main__')")
+    && contains(join(argv, " "), "--label gunbc.lane=engram-access-probe --label gunbc.claim=c1 --memory 17179869184 --memory-swap 17179869184 --entrypoint timeout")
+}
+
+// A RUN A BOUND CUT SHORT IS LOCATED BY THE LAST PHASE IT ANNOUNCED, and one killed before any phase
+// says so rather than naming one.
+test fn a_cut_short_run_is_located_by_its_last_phase() -> Bool {
+  v41_last_phase(stdout: "PHASE attributes\nATTR pageable_memory_access 1\nPHASE write-store\nPHASE pinned\nTIME pinned warm decode 96 1 1\n") == "pinned"
+    && contains(v41_last_phase(stdout: ""), "killed before the first phase")
+}
+
+// THE LANE-LABEL RESIDUE SURVIVES THE EVENT LOG'S WIRE, and a document naming two filters (an image
+// and a label) is incoherent and decodes to nothing rather than to either one.
+test fn the_label_residue_round_trips_and_two_filters_refuse() -> Bool {
+  let spec = v41_access_probe_host_residue()
+  let round = match residue_spec_decode(doc: json_object(members: residue_spec_members(prefix: "residue_", s: spec)), prefix: "residue_") {
+    Present { value: back } => match back.container {
+      Present { value: DockerPsByLabel { label: l } } => (l.key as String) == "gunbc.lane" && (l.value as String) == "engram-access-probe" && (back.process_pattern as String) == "gunbc_engram_access_probe"
+      Present { value: DockerPsByAncestor { image: _ } } => false
+      Present { value: DockerPsByName { name: _ } } => false
+      Absent => false
+    }
+    Absent => false
+  }
+  let two = concat(residue_spec_members(prefix: "residue_", s: spec), [json_kv(key: "residue_container_image", value: json_string(s: "sha256:ea39"))])
+  let incoherent = match residue_spec_decode(doc: json_object(members: two), prefix: "residue_") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  round && incoherent
+}
+
+// THE INSTRUMENT GATES. Run 36227645107's receipt, read as the nanoseconds it claimed, is refused as
+// implausible (27 us for 415 MB is ~15 TB/s), and a cold cell whose drop was not verified refuses.
+test fn a_run_implying_more_than_the_hardware_refuses() -> Bool {
+  let fast_warm = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 26869 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+  let fast_cold = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 1626327 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, fast_warm, "DONE\n"])), needle: "cpu_gather warm prefill262k implies more than the 273 GB/s memory ceiling")
+    && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, fast_cold, "DONE\n"])), needle: "cold cell cpu_gather cold prefill262k implies more than the 15.75 GB/s drive link")
+}
+
+test fn an_unverified_cold_or_a_missing_page_count_refuses() -> Bool {
+  let unverified = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\n"
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, unverified, "DONE\n"])), needle: "cold was not verified for cpu_gather cold prefill262k")
+    && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, w_pinned, w_mmap, w_gather, "DONE\n"])), needle: "no distinct-page count for decode")
+}
+
+// THE DIAGNOSTIC CAPTURE FIRES ON THE PRE-FLIGHT'S REFUSAL AND NO OTHER, and an unread leg is carried
+// as unread rather than dropped.
+test fn only_the_preflight_refusal_triggers_host_diagnostics() -> Bool {
+  let pre = v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: "REFUSED the host has 15973216 KiB available, under the 25165824 KiB this probe requires before it allocates anything\n")
+  let other = v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, "REFUSED cold not established: 4096 store bytes stayed resident\n"]))
+  let body = v41_diagnostics_body(ds: [V41DiagnosticRead { name: "/proc/meminfo" as NonEmptyStr, exit_code: 0, output: "MemAvailable: 15973216 kB" }, V41DiagnosticUnread { name: "nvidia-smi compute apps" as NonEmptyStr, cause: "leg did not land" as NonEmptyStr }])
+  v41_refused_at_preflight(o: pre) && !v41_refused_at_preflight(o: other)
+    && contains(body, "DIAG /proc/meminfo exit=0\nMemAvailable: 15973216 kB")
+    && contains(body, "DIAG nvidia-smi compute apps UNREAD: leg did not land")
+}
