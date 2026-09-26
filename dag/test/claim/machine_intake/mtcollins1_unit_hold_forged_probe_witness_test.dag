@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test
 
+import v2.std.algebra { filter }
 import std.types { String, Bool, Int, List }
 import v2.std.algebra { filter }
 import extdeps.filesystem.filesystem_io
@@ -76,6 +77,8 @@ test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_drive_handoff") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_attach_diskless_image") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_boot_handoff") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_action_after_confirmed_selection") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_actuate_and_read_back") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_attach_remote_image") >= 1
 }
 

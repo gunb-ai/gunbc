@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
 import v2.std.optional { Present }
+import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
   SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
   SolAcquireStart, sol_acquire_plan,
@@ -44,6 +45,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn the_step_timeout_covers_the_boot_phases() -> Bool {
   let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
+    + (second_count(s: oob_power_readback_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
     + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
@@ -214,7 +216,6 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
     export_host: census_subject.export_host,
     export_dir: census_subject.export_dir,
     selection: census_subject.selection,
-    power_action: census_subject.power_action,
     execution_revision: census_subject.execution_revision,
   }
   (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
