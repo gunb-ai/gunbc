@@ -235,6 +235,8 @@ type EdgeDiscipline
 
   | LoopBoundEdges
 
+  | PositionalPlusOneNamedEdges
+
   | ArrowBodyEdges
 
 // 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
@@ -319,6 +321,10 @@ fn positional_child_count(children: List<Edge>) -> Int {
       Named { name: _ } => acc
     }
   })
+}
+
+fn named_child_count(children: List<Edge>) -> Int {
+  count(children) - positional_child_count(children: children)
 }
 
 fn loop_positional_child_count(children: List<Edge>) -> Int {
@@ -572,6 +578,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
       all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
+    PositionalPlusOneNamedEdges => named_child_count(children: children) <= 1
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
   }
 }
@@ -635,7 +642,8 @@ fn match_arm_children_conform_skip_first(children: List<Edge>, skipped_scrutinee
 fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
-    Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Transform =>
+      edges_conform(children: children, d: PositionalPlusOneNamedEdges) && (positional_child_count(children: children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
@@ -675,7 +683,7 @@ fn is_empty_conj_root(n: Node) -> Bool {
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   match b {
     Value => NoEdges
-    Transform => PositionalEdges
+    Transform => PositionalPlusOneNamedEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
     Bind => PositionalEdges
@@ -762,6 +770,24 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
   )
 }
 
+// A TRANSFORM CARRIES ITS POSITIONAL CHILDREN IN ORDER AND AT MOST ONE NAMED EDGE BESIDE THEM. The
+// named edge is a v2.std.type_binder marker (a cast's target). A Bind stays PositionalEdges until the
+// let-annotation carrier lands its producer and widens it in the same change. This module states
+// the SHAPE only, because it cannot intern the marker lexemes (v2.std.compilers.lexing imports it),
+// and type_binder_labels_conform states which label a behavior admits -- the split
+// arrow_signature_edges_conform already makes. Positional order is
+// identity-bearing, so it is kept; the named edge sorts after it, so where a producer placed it
+// cannot move the content hash.
+fn canonicalize_positional_then_named<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+  concat(
+    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
+    sort_labeled(
+      items: filter(items, fn(x) { !labeled_is_positional(x: x, label_of: label_of) }),
+      label_of: label_of
+    )
+  )
+}
+
 // The discipline depends on the kind and the child COUNT -- never on a child's target -- which is
 // exactly why this generalizes. node_edge_discipline delegates here rather than duplicating it.
 fn kind_edge_discipline(kind: NodeKind, child_count: Int) -> EdgeDiscipline {
@@ -783,6 +809,7 @@ fn canonicalize_labeled_for_content_hash<T>(
     PositionalEdges => items
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
+    PositionalPlusOneNamedEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
   }
 }
 

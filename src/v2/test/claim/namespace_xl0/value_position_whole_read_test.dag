@@ -601,8 +601,10 @@ test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> B
 }
 
 // `fn(_, _)`: two wildcard parameters in one domain. A domain is a record (every edge Named, every
-// name distinct), so the wildcards take unspellable distinct names; two edges named `_` failed the
-// post-normalize well-formedness gate and refused the whole ingest (02_parse c01376 / c02555).
+// name distinct), so the wildcards are minted distinct unauthorable labels by the one anonymous-slot
+// mint (v2.std.anonymous_binder anonymous_binder_mint_domain), as a named fn's are; two edges named
+// `_` failed the post-normalize well-formedness gate and refused the whole ingest (02_parse c01376 /
+// c02555).
 fn vpw_is_two_wildcard_arrow(n: Node) -> Bool {
   vpw_is_arrow(n: n) && (match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
     Present { value: domain } => (length(xs: domain.children) == 2) && (length(xs: type_param_names(n: n)) == 3)

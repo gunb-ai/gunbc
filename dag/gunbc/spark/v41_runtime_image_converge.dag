@@ -4,7 +4,11 @@ import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.container.oci.digest { OciContentDigest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
+import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.measure { Second, second }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import extdeps.exec.command { argv_words }
 import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1_wheel_url }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
@@ -34,10 +38,14 @@ import gunbc.spark.vllm_runtime_image_build {
   SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, SparkBuildHostWork, with_spark_build_host,
   vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue,
   vllm_image_receipt_line,
+  VllmImageDistributionSubject, distribute_vllm_image, vllm_image_distribution_wire, vllm_image_distribution_succeeded,
+  vllm_image_transfer_tar_path,
 }
+import gunbc.spark.vllm_image_identity { vllm_image_tag_for_key }
 import gunbc.spark.v41_source_patch_converge {
   V41PatchedImageBuild, V41PatchedImageBuilt, V41PatchedImageRefused,
   converge_vllm_runtime_image_with_patches,
+  V41ObservedSourceIdentity, v41_observed_source_identity_of, v41_patched_image_build_key,
 }
 import gunbc.spark.v41_runtime_candidate {
   V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
@@ -470,6 +478,153 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
                     }
                   }
                 }})
+          }
+      }
+  }
+}
+
+// ── DISTRIBUTION: THE PRODUCED IMAGE ON ANOTHER GROUP A HOST ──────────────────────────────────
+//
+// WHY A SECOND HOST NEEDS THESE BYTES AND NOT A SECOND BUILD. The produced image is one content
+// address; a rebuild on another host is a new build whose digest nobody has admitted, and V4.1
+// serving and the Engram differential both have to run in THE image the production admitted. The
+// row stores the differential reads live on srv5, the image was produced on srv8, and serving
+// later needs it on all four Group A hosts -- so the image moves, by the one transport the fleet
+// models for images (gunbc.spark.vllm_runtime_image_build distribute_vllm_image: save, scp through
+// the executor, load, readback), and this entry supplies what that fold needs and nothing else.
+//
+// THE SUBJECT IS THE PRODUCTION RECEIPT, NOT A TAG. What the production run established is a
+// configuration digest on a host, and that is the whole identity this row carries: the observed
+// source tree the build read (from which the canonical tag is DERIVED here, through the same key
+// fold the build used, rather than transcribed -- so a row whose tree does not re-derive the tag
+// the build printed cannot exist silently), the digest the daemon answered, and the host that
+// answered it. Transcribed from fleet-converge run 36207135528 (spark_v41_runtime_image_build on
+// srv8, 2026-09-26), whose receipt reads: produced runtime tag=gunbc-vllm-dsv41-gb10:d73e307009a5d716
+// config_digest=sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664
+// source_head=d2d649e674c75425d2d6975c87eb89fd4d55fff8
+// worktree_diff_sha256=79ee43471662502d1ae0ddff9723b5d17599b036725d17b45fc5909679b7ece7, and
+// "probe identity JOINED to the produced image" at the same digest.
+//
+// A HELD RECEIPT IS NOT A PRODUCED STANDING. gunbc.spark.v41_runtime_realized V41ProducedRuntimeImage
+// is sole_constructor so only a real build leg mints one, and this row does not pretend to: it
+// names bytes to move, and the source's readback -- not this row -- is what establishes the bytes
+// are still there under that digest when the move runs.
+type V41ProducedImageHeld {
+  observed: V41ObservedSourceIdentity
+  config: OciContentDigest
+  held_on: HostIdentity
+  receipt_run: NonEmptyStr
+}
+
+data v41_arm_a_produced_image: V41ProducedImageHeld = V41ProducedImageHeld {
+  observed: v41_observed_source_identity_of(
+    revision_head: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr,
+    worktree_diff_sha256: Sha256Digest { hex: "79ee43471662502d1ae0ddff9723b5d17599b036725d17b45fc5909679b7ece7" as Sha256DigestHex },
+  ),
+  config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
+  held_on: "srv8" as HostIdentity,
+  receipt_run: "36207135528" as NonEmptyStr,
+}
+
+fn v41_produced_image_subject(p: V41ProducedImageHeld) -> VllmImageDistributionSubject {
+  VllmImageDistributionSubject {
+    tag: vllm_image_tag_for_key(r: v41_candidate_recipe(), key: v41_patched_image_build_key(r: v41_candidate_recipe(), observed: p.observed)),
+    config: p.config,
+  }
+}
+
+// WHAT THIS MODE DOES TO A HOST, handed to the host-effect claim on both ends: the source writes a
+// tar of the image's size into /tmp and the target writes one there and then loads it. Two hours
+// bounds a ~30 GB save, two scp legs and a load on the management LAN; an unreleased claim reads
+// OVERDUE after it and still fences until the host is observed quiet. The residue a crashed run
+// leaves is the digest-named tar, which every leg carries on its command line.
+data v41_image_distribution_host_purpose: NonEmptyStr = "a runtime image distribution, which saves or loads the produced image through a digest-named staging tar" as NonEmptyStr
+data v41_image_distribution_host_effect_term: Second = second(count: 7200)
+
+fn v41_image_distribution_host_residue(p: V41ProducedImageHeld) -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: vllm_image_transfer_tar_path(config: p.config), container: none }
+}
+
+fn v41_with_host_effect_claim(host: HostIdentity, p: V41ProducedImageHeld, run: fn() -> ProcessExit) -> ProcessExit {
+  match claim_host_effect_live(host: host, term: v41_image_distribution_host_effect_term, purpose: v41_image_distribution_host_purpose, residue: v41_image_distribution_host_residue(p: p)) {
+    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+    HostEffectClaimLanded { handle: handle } => release_host_effect_live(handle: Present { value: handle }, exit: run())
+  }
+}
+
+data v41_distribution_attempt_raw: String = "v41-runtime-image-distribute"
+data v41_distribution_receipt_path: String = "target/v41-runtime-image-distribute-receipt.txt"
+
+fn v41_distribute_to(target_host: HostIdentity, p: V41ProducedImageHeld) -> ProcessExit {
+  let now = clock_now_probed_at()
+  let image = v41_produced_image_subject(p: p)
+  match with_spark_build_host(
+    host: p.held_on,
+    attempt_raw: v41_distribution_attempt_raw,
+    identity_file_name: "gunbc-v41-runtime-image-distribute-admin-password" as NonEmptyStr,
+    use: fn(target, context, ctx) {
+      let dist = distribute_vllm_image(source_ctx: ctx, source_endpoint: target.endpoint, image: image, targets: [target_host])
+      SparkBuildHostWork {
+        receipt: vllm_image_distribution_wire(dist: dist),
+        converged: vllm_image_distribution_succeeded(dist: dist),
+      }
+    },
+  ) {
+    SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+    SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+      let body = join([
+        join(["v41 runtime image distribute probed_at=", probed_at_word(reading: now) as String, " source=", p.held_on as String, " endpoint=", endpoint as String, " target=", target_host as String, " executor=", executor, "\n"], ""),
+        trust_receipt,
+        join(["image tag=", image.tag as String, " config_digest=", render_oci_content_digest_wire(d: image.config), " receipt_run=", p.receipt_run as String, "\n"], ""),
+        work.receipt,
+      ], "")
+      let w = Filesystem.Write(path: v41_distribution_receipt_path, content: body)
+      if !w.success {
+        exit_failure(reason: join(["v41 runtime image distribute receipt write failed: ", w.error], ""))
+      } else if work.converged {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["the V4.1 runtime image was not verified on the target:\n", body], ""))
+      }
+    }
+  }
+}
+
+// ── THE MODE ENTRY ────────────────────────────────────────────────────────────────────────────
+//
+// SPARK_CONVERGE_TARGET NAMES THE TARGET; THE SOURCE IS THE RECEIPT'S HOST. Where the bytes are is
+// a fact the production run established, not an operator's choice, so it is not an input; an
+// unset target refuses rather than fanning out, because this mode writes tens of gigabytes to the
+// host it delivers to.
+//
+// BOTH HOSTS ARE ADMITTED BY THE RELATION THE PRODUCTION USES -- the Group A pair subject HOLDS
+// them (gunbc.spark.host_commitment admit_host_held_by_subject) -- and both are CLAIMED, because
+// both carry the effect: a save and a staging tar on one, a staging tar and a load on the other. A
+// target that is the source holds the image already; the fold reads it as the Noop, and the one host
+// is claimed once. Occupancy (gunbc.spark.host_occupancy_admission, #12351) answers a GPU and memory
+// need, which a save and a load do not have; the need this effect does have is disk, and the fold
+// states and checks it on every filesystem a copy lands on before a byte moves.
+fn v41_runtime_image_distribute_ci_wet() -> ProcessExit
+{
+  let p = v41_arm_a_produced_image
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: distributing this image writes tens of gigabytes to the host it names, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match admit_host_held_by_subject(raw: p.held_on, subject: PairServingUnitOn { group: FabricGroupA }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
+            Present { value: why } => exit_failure(reason: why)
+            Absent =>
+              v41_with_host_effect_claim(host: p.held_on, p: p, run: fn() {
+                if host_identity_eq(a: target_host, b: p.held_on) {
+                  v41_distribute_to(target_host: target_host, p: p)
+                } else {
+                  v41_with_host_effect_claim(host: target_host, p: p, run: fn() { v41_distribute_to(target_host: target_host, p: p) })
+                }
+              })
           }
       }
   }
