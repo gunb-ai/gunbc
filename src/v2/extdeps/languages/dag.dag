@@ -3363,7 +3363,7 @@ fn dag_zip_fold_closure_edges() -> List<Edge> {
 }
 
 // The field of an inhabitant record whose target is the type the record declares; every other
-// field states a fact about that type (std.kind roster_member_kind).
+// field states a fact about that type (std.kind roster_kind_index).
 fn dag_declared_inhabitants_subject_field() -> Symbol {
   ^dag_inhabitant_field_atom
 }

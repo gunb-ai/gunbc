@@ -18,9 +18,15 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.target_model {
+  IsLess,
+  IsNotEqual,
+  equality_predicate_wire_symbol,
+  ordering_predicate_wire_symbol,
   symbol_kernel_type_node,
   target_model_canonical_operation_type_node,
-  target_model_canonical_operations_roster_root
+  target_model_canonical_operations_roster_root,
+  target_model_equality_predicate_type_node,
+  target_model_ordering_predicate_type_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
@@ -31,6 +37,7 @@ import v2.std.node {
   Conj,
   Named,
   Node,
+  Symbol,
   TypeNode,
   node_subtree_nodes
 }
@@ -57,7 +64,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // canonical-operations roster root (provenance is not a type, DESIGN section 3). The
 // declared-inhabitant controls pin that a record derives its KIND (std.kind TypeDenotationKind),
 // a fact hung off a record derives TypeFactKind -- each asserts the exact kind node, so a roster
-// root reaching derived_type reddens both. The closing control pins the specimen's full closure: zero frontier
+// root reaching derived_type reddens both. The predicate controls pin that a comparison's predicate
+// atom derives the predicate type its comparison declares -- OrderingPredicate for an ordering
+// atom, EqualityPredicate for an equality atom, so a rule answering one type for both reddens one
+// of the pair -- while an atom spelled like a predicate but declared by no roster member stays on
+// the frontier. The closing control pins the specimen's full closure: zero frontier
 // nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
 // the boundary control.
 
@@ -230,5 +241,43 @@ test fn door_specimen_fully_derives_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       atom_grounding_census_frontier(inferred: inferred) == 0
+  }
+}
+
+fn predicate_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn ordering_predicate_atom_derives_ordering_predicate_type_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: predicate_atom(id: ordering_predicate_wire_symbol(predicate: IsLess))) {
+    Absent => false
+    Present { value: evidence } => evidence == target_model_ordering_predicate_type_node()
+  }
+}
+
+test fn equality_predicate_atom_derives_equality_predicate_type_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: predicate_atom(id: equality_predicate_wire_symbol(predicate: IsNotEqual))) {
+    Absent => false
+    Present { value: evidence } => evidence == target_model_equality_predicate_type_node()
+  }
+}
+
+test fn undeclared_predicate_atom_stays_on_the_frontier_holds() -> Bool {
+  let undeclared = predicate_atom(id: ^ordering_predicate_is_between)
+  match infer(tree: undeclared) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(undeclared) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => true
+            DerivedGrounding { grounding: _ } => false
+          }
+      }
   }
 }
