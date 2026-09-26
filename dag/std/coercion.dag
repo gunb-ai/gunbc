@@ -216,7 +216,7 @@ type CastSyntax {
 // They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists
 // so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is
 // expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY
-// dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the
+// dag_cast_domain_types, so grounding a primitive to a coproduct does NOT drag that coproduct into the
 // explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String
 // cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent
 // (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because
@@ -229,8 +229,18 @@ data dag_cast_rules: List<CastRule> = [
   { from_type: "Int",   to_type: "Float" },
   { from_type: "Float", to_type: "Int" },
   { from_type: "Float", to_type: "Float" },
-  { from_type: "Bool",  to_type: "Int" },
 ]
+
+// THE EXPLICIT-CAST DOMAIN IS DECLARED, NOT DERIVED FROM THE ADMISSION ROWS. It used to be read off
+// dag_cast_rules, so deleting an admission row silently shrank the domain -- and v1.compiler.infer
+// validate_cast ABSTAINS on a type outside the domain, so removing Bool->Int would have turned
+// `true as Int` from a checked admission into an unchecked one rather than a refusal. Bool stays
+// in the domain with no admission row: under the coercion ruling (DESIGN section 4, 2026-09-26) a
+// Bool does not implicitly inhabit an Int, a Bool literal is not an Int literal, and a plain
+// `true as Int` refuses -- applying any Bool-to-number mapping changes interpretation, so it needs
+// a named, author-selected conversion. Per-target CastSyntax rows that can REALIZE such a
+// conversion (Rust bool as i64) are target capability and are deliberately left in place.
+data dag_cast_domain_types: List<String> = ["Int", "Float", "Bool"]
 
 data grounded_primitive_coproduct_identities: List<CastRule> = [
   { from_type: "Int",    to_type: "Nat" },
@@ -261,5 +271,5 @@ fn dag_can_cast(source_type: String, target_type: String) -> Bool {
 }
 
 fn is_dag_cast_domain_type(name: String) -> Bool {
-  dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
+  dag_cast_domain_types |> any(t => t == name)
 }
