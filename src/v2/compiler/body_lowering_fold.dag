@@ -7848,6 +7848,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
 
 type BodyLowerServiceAcc {
   operations: List<Edge>,
+  operation_shells: List<Node>,
   set_aside: List<ServiceSetAside>,
 }
 
@@ -7860,16 +7861,19 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
           outcome_accepted(value: a)
         } else if id == ^dag_surface_operation {
           bind_outcome(o: body_lower_operation(shell: member), f: fn(op) {
-            let operations = list_snoc_item(xs: a.operations, item: op.edge)
-            match first(repeated_name_edges(children: operations)) {
-              Present { value: _ } => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_operation_repeated, n: member))
-              Absent => outcome_accepted(value: BodyLowerServiceAcc { operations: operations, set_aside: list_append(left: a.set_aside, right: op.set_aside) })
-            }
+            outcome_accepted(
+              value: BodyLowerServiceAcc {
+                operations: list_snoc_item(xs: a.operations, item: op.edge),
+                operation_shells: list_snoc_item(xs: a.operation_shells, item: member),
+                set_aside: list_append(left: a.set_aside, right: op.set_aside)
+              }
+            )
           })
         } else if (id == ^dag_surface_transport) || (id == ^dag_surface_service_config) {
           outcome_accepted(
             value: BodyLowerServiceAcc {
               operations: a.operations,
+              operation_shells: a.operation_shells,
               set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: RealizationMemberSetAside, member: member })
             }
           )
@@ -7912,11 +7916,20 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
         Present { value: service_name } =>
           match fold(
             body_lower_service_member_shells(root: captured),
-            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, set_aside: Empty }),
+            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, operation_shells: Empty, set_aside: Empty }),
             f: fn(acc, member) { body_lower_service_member(acc: acc, member: member) }
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: a, diagnostics: _ } =>
+              match first(repeated_name_edges(children: a.operations)) {
+                Present { value: repeated } =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_service_operation_repeated,
+                      n: body_lower_service_second_operation_shell(operations: a.operations, shells: a.operation_shells, label: repeated.label, service: shell)
+                    )
+                  )
+                Absent =>
               match a.set_aside {
                 Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations)))
                 Cons { head: _, tail: _ } =>
@@ -7934,7 +7947,39 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
                     }
                   }
               }
+              }
           }
+      }
+  }
+}
+
+// AN OPERATION NAME IS DECLARED ONCE PER SERVICE. The repeat is read once, over the finished
+// operation list, from v2.std.node_query repeated_name_edges; this only locates it, at the SECOND
+// operation shell carrying that name, so the refusal names the declaration that repeated it.
+fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: List<Node>, label: EdgeLabel, service: Node) -> Node {
+  match operations {
+    Empty => service
+    Cons { head: e, tail: rest } =>
+      match shells {
+        Empty => service
+        Cons { head: _, tail: more } =>
+          if e.label == label {
+            body_lower_service_next_operation_shell(operations: rest, shells: more, label: label, service: service)
+          } else {
+            body_lower_service_second_operation_shell(operations: rest, shells: more, label: label, service: service)
+          }
+      }
+  }
+}
+
+fn body_lower_service_next_operation_shell(operations: List<Edge>, shells: List<Node>, label: EdgeLabel, service: Node) -> Node {
+  match operations {
+    Empty => service
+    Cons { head: e, tail: rest } =>
+      match shells {
+        Empty => service
+        Cons { head: sh, tail: more } =>
+          if e.label == label { sh } else { body_lower_service_next_operation_shell(operations: rest, shells: more, label: label, service: service) }
       }
   }
 }
