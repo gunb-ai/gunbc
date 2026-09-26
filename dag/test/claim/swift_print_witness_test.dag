@@ -1,0 +1,65 @@
+module test.claim.swift_print_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+import v2.std.optional { Present }
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftStaticModifier, SwiftDocLineComment,
+  sw_t, sw_id, sw_path, sw_call, sw_callt, sw_pos, sw_arg, sw_str, sw_raw, sw_cloe, sw_not, sw_eq,
+  sw_expr, sw_ret, sw_throw, sw_let, sw_guard, sw_cond, sw_bind, sw_switch, sw_case, sw_default, sw_pexpr, sw_int,
+  sw_p_, sw_func, sw_struct, sw_enum, sw_field, sw_static_let, sw_doc, sw_import, sw_asq
+}
+import v2.extdeps.languages.swift.print { print_swift_source_file }
+import gunbc.auth.approval_device_redemption_fixtures { surface_vectors }
+import gunbc.approve_ios_swift_protocol_vector_tests { approve_ios_surface_spelled_decl }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRINTER'S CANONICAL LAYOUT, AT ITS OWN INTERFACE (DESIGN §3: a witness discriminates at one
+// interface). A supplied tree exercises every layout rule v2.extdeps.languages.swift.print states --
+// adjacent imports, the blank line around a member with a body, an inline guard and an inline
+// closure, an inline and a multi-line switch case, the static-literal escapes and the verbatim
+// extended literal -- and the whole text is compared, so a rule that drifts reds here by name.
+fn witness_tree() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [
+    sw_import(n: "Foundation"),
+    sw_import(n: "XCTest"),
+    sw_enum(n: "E", i: [], m: [
+      sw_static_let(n: "a", e: sw_str(s: "q\"b\\s\né\u{1F}")),
+      sw_static_let(n: "r", e: sw_raw(s: "\{\"k\": \"\\n\"\}")),
+      sw_doc(c: ["Doc."], d: sw_func(m: [SwiftStaticModifier], n: "f", p: [sw_p_(n: "x", t: sw_t(n: "Int"))], th: true, r: Present { value: sw_t(n: "String") }, b: [
+        sw_guard(c: [sw_bind(n: "s", e: sw_asq(e: sw_id(n: "x"), t: sw_t(n: "String"))), sw_cond(e: sw_not(e: sw_path(b: "s", m: "isEmpty")))], e: [sw_throw(e: sw_id(n: "failure"))]),
+        sw_let(n: "ys", e: sw_callt(f: sw_path(b: "xs", m: "filter"), a: [], c: sw_cloe(e: sw_eq(l: sw_id(n: "$0"), r: sw_id(n: "x"))))),
+        sw_switch(e: sw_id(n: "x"), c: [
+          sw_case(p: [sw_pexpr(e: sw_int(n: 1))], s: [sw_ret(e: sw_str(s: "one"))]),
+          sw_default(s: [sw_expr(e: sw_call(f: sw_id(n: "log"), a: [sw_pos(v: sw_id(n: "x"))])), sw_ret(e: sw_str(s: "many"))]),
+        ]),
+      ])),
+    ]),
+    sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String")), sw_field(n: "b", t: sw_t(n: "Int"))]),
+  ] }
+}
+
+data witness_tree_text: String = "import Foundation\nimport XCTest\n\nenum E \{\n    static let a = \"q\\\"b\\\\s\\n\\u\{E9\}\\u\{1F\}\"\n    static let r = #\"\{\"k\": \"\\n\"\}\"#\n\n    /// Doc.\n    static func f(_ x: Int) throws -> String \{\n        guard let s = x as? String, !s.isEmpty else \{ throw failure \}\n        let ys = xs.filter \{ $0 == x \}\n        switch x \{\n        case 1: return \"one\"\n        default:\n            log(x)\n            return \"many\"\n        \}\n    \}\n\}\n\nstruct S: Equatable \{\n    var a: String\n    var b: Int\n\}\n"
+
+test fn the_printer_realizes_every_canonical_layout_rule() -> Bool {
+  print_swift_source_file(f: witness_tree()) == witness_tree_text
+}
+
+// A discriminating control on the same interface: one node changed (the struct's second field) moves
+// the text, so the equality above is not satisfied by a printer that ignores its input.
+test fn a_changed_node_changes_the_text() -> Bool {
+  let changed = SwiftSourceFile { declarations: [sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String"))])] }
+  print_swift_source_file(f: changed) != print_swift_source_file(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String")), sw_field(n: "b", t: sw_t(n: "Int"))])] })
+}
+
+// THE SURFACE SET IS THE FIXTURE'S. The declaration testSurfaceMatchesTheFixture uses
+// (gunbc.approve_ios_swift_protocol_vector_tests approve_ios_surface_spelled_decl), printed, spells
+// exactly the names gunbc.auth.approval_device_redemption_fixtures surface_vectors emits into
+// vectors.json, in its order, and none of the header rows #12000 removed -- the defect that left the
+// Mac run at 18/19. That the committed file carries this declaration is the drift gate's claim.
+test fn the_spelled_surface_set_is_the_fixtures_names() -> Bool {
+  let names = map(surface_vectors, v => concat(concat("\"", v.name as String), "\""))
+  let expected = concat(concat("let spelled: Set<String> = [", join(names, ", ")), "]\n")
+  print_swift_source_file(f: SwiftSourceFile { declarations: [approve_ios_surface_spelled_decl()] }) == expected
+}

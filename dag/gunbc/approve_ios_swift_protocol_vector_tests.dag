@@ -1,0 +1,421 @@
+module gunbc.approve_ios_swift_protocol_vector_tests
+
+import std.types { String, List, Bool }
+import v2.std.algebra { length }
+import v2.std.optional { Present }
+import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector }
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftDeclarationModifier,
+  SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
+  SwiftImportDecl, SwiftAttribute, SwiftClassDecl, SwiftFunctionDecl,
+  SwiftFinalModifier, SwiftPrivateModifier, SwiftVar, SwiftLet, SwiftVariableDecl, SwiftIdentifierPattern,
+  SwiftLogicalAndOperator, SwiftDeclarationStmt,
+  sw_t, sw_tg, sw_tarr, sw_topt,
+  sw_id, sw_dot, sw_mem, sw_path, sw_chain, sw_call, sw_calln, sw_callt, sw_sub, sw_arg, sw_pos,
+  sw_str, sw_raw, sw_interp, sw_st, sw_si, sw_bool, sw_arr, sw_strs, sw_dict, sw_kv, sw_tuple, sw_cloe,
+  sw_try, sw_tryq, sw_not, sw_op, sw_add, sw_eq,
+  sw_expr, sw_ret, sw_let, sw_var, sw_let_typed, sw_for, sw_assign, sw_cmt_stmt,
+  sw_field, sw_p_, sw_func, sw_struct, sw_doc, sw_cmt, sw_import
+}
+import v2.extdeps.languages.swift.print { print_swift_source_file }
+
+// apps/approve-ios/ApproveTests/ProtocolVectorTests.swift AS A SWIFT SYNTAX TREE
+// (v2.extdeps.languages.swift.syntax), printed by v2.extdeps.languages.swift.print into the
+// committed file (gunbc.generated_artifact ApproveIosProtocolVectorTestsSwiftArtifact).
+//
+// THE ONE DERIVED PART, and the defect it retires: testSurfaceMatchesTheFixture joins the fixture's
+// surface rows to the set of names the app spells. The hand-written set went stale when #12000
+// removed the three X-Approval-* header rows and added method_every_device_operation, so the
+// operator's Mac run failed that test (18/19). The set is now built from surface_vectors, the same
+// rows gunbc.auth.approval_device_redemption_fixtures emits into vectors.json, so the two cannot
+// disagree about which names exist. What the join still discriminates is the other side: each
+// row's VALUE is compared to the app's own Route constant above it.
+
+// ── Local constructors ───────────────────────────────────────────────────────────────────────
+fn at_s() -> SwiftType { sw_t(n: "String") }
+
+fn at_assert(n: String, a: List<SwiftExpr>) -> SwiftStmt { sw_expr(e: sw_calln(f: n, a: map(a, x => sw_pos(v: x)))) }
+
+// Data(<e>.utf8)
+fn at_data_utf8(e: SwiftExpr) -> SwiftExpr { sw_calln(f: "Data", a: [sw_pos(v: sw_mem(b: e, m: "utf8"))]) }
+
+// try load()
+fn at_load() -> SwiftExpr { sw_try(e: sw_calln(f: "load", a: [])) }
+
+// try envelope("<name>")
+fn at_envelope(name: String) -> SwiftExpr { sw_try(e: sw_calln(f: "envelope", a: [sw_pos(v: sw_str(s: name))])) }
+
+// v.input.<f>
+fn at_vin(f: String) -> SwiftExpr { sw_mem(b: sw_path(b: "v", m: "input"), m: f) }
+
+fn at_test(doc: List<String>, n: String, th: Bool, b: List<SwiftStmt>) -> SwiftDecl {
+  let f = sw_func(m: [], n: n, p: [], th: th, r: none, b: b)
+  if length(xs: doc) == 0 { f } else { sw_doc(c: doc, d: f) }
+}
+
+fn at_decode(decoder: String, e: SwiftExpr) -> SwiftExpr { sw_try(e: sw_call(f: sw_path(b: "WireDecode", m: decoder), a: [sw_pos(v: e)])) }
+
+// ── struct Vectors ───────────────────────────────────────────────────────────────────────────
+fn at_decodable(n: String, m: List<SwiftDecl>) -> SwiftDecl { sw_struct(n: n, i: [sw_t(n: "Decodable")], m: m) }
+
+fn at_string_fields(names: List<String>) -> List<SwiftDecl> { map(names, x => sw_field(n: x, t: at_s())) }
+
+fn at_named_vector(n: String, input: List<SwiftDecl>) -> SwiftDecl {
+  at_decodable(n: n, m: [at_decodable(n: "Input", m: input), sw_field(n: "name", t: at_s()), sw_field(n: "input", t: sw_t(n: "Input")), sw_field(n: "expected", t: at_s())])
+}
+
+fn at_vectors() -> SwiftDecl {
+  at_decodable(n: "Vectors", m: [
+    at_named_vector(n: "Redemption", input: at_string_fields(names: ["audience", "enrollment_id", "challenge_expires_at", "nonce_hex", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])),
+    at_named_vector(n: "Enrolment", input: at_string_fields(names: ["code", "platform", "point_b64url"])),
+    at_named_vector(n: "Read", input: at_string_fields(names: ["path", "enrollment_id", "requested_at"])),
+    at_decodable(n: "Envelope", m: at_string_fields(names: ["name", "body"])),
+    at_decodable(n: "PathSegment", m: at_string_fields(names: ["input", "encoded"])),
+    at_decodable(n: "Surface", m: at_string_fields(names: ["name", "value"])),
+    at_decodable(n: "StoredRequest", m: [
+      at_decodable(n: "Input", m: [sw_field(n: "requester", t: at_s()), sw_field(n: "purpose", t: at_s()), sw_field(n: "destructive", t: sw_t(n: "Bool")), sw_field(n: "expires_at", t: at_s())]),
+      sw_field(n: "name", t: at_s()),
+      sw_field(n: "input", t: sw_t(n: "Input")),
+      sw_doc(c: ["stored_request_json over a StoredApprovalRequest carrying `input`, emitted by the witness."], d: sw_field(n: "json", t: at_s())),
+    ]),
+    sw_field(n: "framing", t: at_s()),
+    sw_field(n: "redemption", t: sw_tarr(e: sw_t(n: "Redemption"))),
+    sw_field(n: "enrolment", t: sw_tarr(e: sw_t(n: "Enrolment"))),
+    sw_field(n: "read", t: sw_tarr(e: sw_t(n: "Read"))),
+    sw_field(n: "envelope", t: sw_tarr(e: sw_t(n: "Envelope"))),
+    sw_doc(c: ["path_segment: input -> encoded, emitted by the .dag path_segment fold."], d: sw_field(n: "path_segment", t: sw_tarr(e: sw_t(n: "PathSegment")))),
+    sw_doc(c: ["surface: the one method, and the route paths, by name."], d: sw_field(n: "surface", t: sw_tarr(e: sw_t(n: "Surface")))),
+    sw_doc(
+      c: [
+        "stored_request: the store's own rendering, so the detail screen's reader is joined to it.",
+        "Optional in the Codable so that a fixture predating the section (it is emitted by",
+        "gunbc.auth.approval_device_redemption_fixtures stored_request_specimens) fails ONLY the test",
+        "that reads it, never the whole suite; that test refuses nil loudly.",
+      ],
+      d: sw_field(n: "stored_request", t: sw_topt(w: sw_tarr(e: sw_t(n: "StoredRequest"))))
+    ),
+  ])
+}
+
+// ── The test case ────────────────────────────────────────────────────────────────────────────
+fn at_nonempty(section: String, message: String) -> SwiftStmt {
+  at_assert(n: "XCTAssertFalse", a: [sw_mem(b: sw_path(b: "v", m: section), m: "isEmpty"), sw_str(s: message)])
+}
+
+fn at_load_fn() -> SwiftDecl {
+  sw_doc(c: ["Absence is a failure, never a skip: a green run with no vectors would establish nothing."], d: sw_func(m: [SwiftPrivateModifier], n: "load", p: [], th: true, r: Present { value: sw_t(n: "Vectors") }, b: [
+    sw_let(n: "url", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [
+      sw_pos(v: sw_call(f: sw_mem(b: sw_calln(f: "Bundle", a: [sw_arg(l: "for", v: sw_path(b: "Self", m: "self"))]), m: "url"), a: [sw_arg(l: "forResource", v: sw_str(s: "vectors")), sw_arg(l: "withExtension", v: sw_str(s: "json"))])),
+      sw_pos(v: sw_str(s: "vectors.json missing from the test bundle — the .dag witness has not emitted it")),
+    ]))),
+    sw_let(n: "v", e: sw_try(e: sw_call(f: sw_mem(b: sw_calln(f: "JSONDecoder", a: []), m: "decode"), a: [sw_pos(v: sw_path(b: "Vectors", m: "self")), sw_arg(l: "from", v: sw_calln(f: "Data", a: [sw_arg(l: "contentsOf", v: sw_id(n: "url"))]))]))),
+    at_nonempty(section: "redemption", message: "no redemption vectors"),
+    at_nonempty(section: "enrolment", message: "no enrolment vectors"),
+    at_nonempty(section: "read", message: "no read vectors"),
+    at_nonempty(section: "envelope", message: "no envelope vectors"),
+    at_nonempty(section: "path_segment", message: "no path_segment vectors"),
+    at_nonempty(section: "surface", message: "no surface vectors"),
+    sw_ret(e: sw_id(n: "v")),
+  ]))
+}
+
+fn at_framed_field(f: String) -> SwiftExpr { sw_call(f: sw_path(b: "Protocol", m: "framedField"), a: [sw_pos(v: sw_str(s: f))]) }
+fn at_framed(fields: List<String>) -> SwiftExpr { sw_call(f: sw_path(b: "Protocol", m: "framed"), a: [sw_pos(v: sw_strs(e: fields))]) }
+
+fn at_signing_input(values: List<SwiftArgument>) -> SwiftExpr { sw_calln(f: "DeviceRedemptionSigningInput", a: values) }
+
+// for v in try load().<section> { <body> }
+fn at_each(section: String, b: List<SwiftStmt>) -> SwiftStmt { sw_for(n: "v", e: sw_mem(b: at_load(), m: section), s: b) }
+
+// XCTAssertThrowsError(try WireDecode.<decoder>(<e>))
+fn at_throws(decoder: String, e: SwiftExpr) -> SwiftStmt { at_assert(n: "XCTAssertThrowsError", a: [at_decode(decoder: decoder, e: e)]) }
+
+// ["name_a", "name_b", ...]: the surface rows the fixture carries, by name, in the fixture's order.
+fn at_surface_names() -> SwiftExpr {
+  sw_arr(e: map(surface_vectors, v => sw_str(s: v.name as String)))
+}
+
+// `let spelled: Set<String> = [...]`: the declaration testSurfaceMatchesTheFixture joins the fixture's
+// rows against, exposed so its witness reads it at this interface rather than printing the file.
+fn approve_ios_surface_spelled_decl() -> SwiftDecl {
+  SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: SwiftIdentifierPattern { name: "spelled" }, annotation: Present { value: sw_tg(n: "Set", a: [at_s()]) }, initializer: Present { value: at_surface_names() } }
+}
+
+fn at_surface_route(route: String, row: String) -> SwiftStmt {
+  at_assert(n: "XCTAssertEqual", a: [sw_path(b: "Route", m: route), sw_try(e: sw_calln(f: "surface", a: [sw_pos(v: sw_str(s: row))]))])
+}
+
+fn at_tests() -> List<SwiftDecl> {
+  [
+    at_load_fn(),
+    at_test(
+      doc: [
+        "Framing counts CODE POINTS, not UTF-8 bytes and not grapheme clusters: \"é\" is 1, a flag emoji",
+        "(two scalars) is 2, and a field containing \",\" or \":\" frames unchanged.",
+      ],
+      n: "testFramedFieldCountsUnicodeScalars", th: false,
+      b: [
+        at_assert(n: "XCTAssertEqual", a: [at_framed_field(f: "é"), sw_str(s: "1:é,")]),
+        at_assert(n: "XCTAssertEqual", a: [at_framed_field(f: "\u{1F1EC}\u{1F1E7}"), sw_str(s: "2:\u{1F1EC}\u{1F1E7},")]),
+        at_assert(n: "XCTAssertEqual", a: [at_framed_field(f: "a,b:c"), sw_str(s: "5:a,b:c,")]),
+        at_assert(n: "XCTAssertEqual", a: [at_framed_field(f: ""), sw_str(s: "0:,")]),
+      ]
+    ),
+    at_test(doc: [], n: "testRedemptionSigningInputMatchesEveryVector", th: true, b: [
+      at_each(section: "redemption", b: [
+        sw_let(n: "decision", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_calln(f: "ProposedDecision", a: [sw_arg(l: "rawValue", v: at_vin(f: "decision"))])), sw_pos(v: sw_path(b: "v", m: "name"))]))),
+        sw_let(n: "input", e: at_signing_input(values: [
+          sw_arg(l: "audience", v: at_vin(f: "audience")),
+          sw_arg(l: "enrollment_id", v: at_vin(f: "enrollment_id")),
+          sw_arg(l: "challenge", v: sw_calln(f: "RedemptionChallenge", a: [sw_arg(l: "expires_at", v: at_vin(f: "challenge_expires_at")), sw_arg(l: "nonce_hex", v: at_vin(f: "nonce_hex"))])),
+          sw_arg(l: "escalation_id", v: at_vin(f: "escalation_id")),
+          sw_arg(l: "request_revision", v: at_vin(f: "request_revision")),
+          sw_arg(l: "stored_request_text", v: at_vin(f: "stored_request_text")),
+          sw_arg(l: "decision", v: sw_id(n: "decision")),
+          sw_arg(l: "capability_text", v: at_vin(f: "capability_text")),
+          sw_arg(l: "capability_tag_b64url", v: at_vin(f: "capability_tag_b64url")),
+        ])),
+        at_assert(n: "XCTAssertEqual", a: [sw_calln(f: "deviceRedemptionSigningInput", a: [sw_pos(v: sw_id(n: "input"))]), at_data_utf8(e: sw_path(b: "v", m: "expected")), sw_path(b: "v", m: "name")]),
+      ]),
+    ]),
+    at_test(doc: [], n: "testEnrolmentTranscriptMatchesEveryVector", th: true, b: [
+      at_each(section: "enrolment", b: [
+        sw_let(n: "platform", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_calln(f: "MobilePlatform", a: [sw_arg(l: "rawValue", v: at_vin(f: "platform"))])), sw_pos(v: sw_path(b: "v", m: "name"))]))),
+        sw_let(n: "got", e: sw_calln(f: "enrolmentTranscript", a: [
+          sw_arg(l: "code", v: at_vin(f: "code")),
+          sw_arg(l: "decisionKey", v: sw_calln(f: "VerifyingKey", a: [sw_arg(l: "point_b64url", v: at_vin(f: "point_b64url"))])),
+          sw_arg(l: "platform", v: sw_id(n: "platform")),
+        ])),
+        at_assert(n: "XCTAssertEqual", a: [sw_id(n: "got"), at_data_utf8(e: sw_path(b: "v", m: "expected")), sw_path(b: "v", m: "name")]),
+      ]),
+    ]),
+    at_test(
+      doc: [
+        "Discriminating control on the builder itself: swapping the verb must move the bytes, and a",
+        "field that contains the frame's own punctuation must not collide with a split field.",
+      ],
+      n: "testBuilderDiscriminatesTheVerbAndFramingIsInjective", th: false,
+      b: [
+        sw_let(n: "base", e: at_signing_input(values: [
+          sw_arg(l: "audience", v: sw_str(s: "a")), sw_arg(l: "enrollment_id", v: sw_str(s: "e")), sw_arg(l: "challenge", v: sw_calln(f: "RedemptionChallenge", a: [sw_arg(l: "expires_at", v: sw_str(s: "x")), sw_arg(l: "nonce_hex", v: sw_str(s: "n"))])),
+          sw_arg(l: "escalation_id", v: sw_str(s: "s")), sw_arg(l: "request_revision", v: sw_str(s: "r")), sw_arg(l: "stored_request_text", v: sw_str(s: "t")), sw_arg(l: "decision", v: sw_dot(n: "approve")),
+          sw_arg(l: "capability_text", v: sw_str(s: "c")), sw_arg(l: "capability_tag_b64url", v: sw_str(s: "g")),
+        ])),
+        sw_var(n: "denied", e: sw_id(n: "base")),
+        sw_assign(l: sw_path(b: "denied", m: "decision"), r: sw_dot(n: "deny")),
+        at_assert(n: "XCTAssertNotEqual", a: [sw_calln(f: "deviceRedemptionSigningInput", a: [sw_pos(v: sw_id(n: "base"))]), sw_calln(f: "deviceRedemptionSigningInput", a: [sw_pos(v: sw_id(n: "denied"))])]),
+        at_assert(n: "XCTAssertNotEqual", a: [at_framed(fields: ["a,b"]), at_framed(fields: ["a", "b"])]),
+        at_assert(n: "XCTAssertNotEqual", a: [at_framed(fields: ["1:a,"]), at_framed(fields: ["a"])]),
+      ]
+    ),
+    at_test(doc: [], n: "testReadClientDataMatchesEveryVector", th: true, b: [
+      at_each(section: "read", b: [
+        sw_let(n: "got", e: sw_calln(f: "deviceReadClientData", a: [sw_arg(l: "path", v: at_vin(f: "path")), sw_arg(l: "enrollmentId", v: at_vin(f: "enrollment_id")), sw_arg(l: "requestedAt", v: at_vin(f: "requested_at"))])),
+        at_assert(n: "XCTAssertEqual", a: [sw_id(n: "got"), at_data_utf8(e: sw_path(b: "v", m: "expected")), sw_path(b: "v", m: "name")]),
+      ]),
+    ]),
+    sw_cmt(c: ["── Envelopes: the HTTP wire, matched as bytes ───────────────────────────────────────────"], d: sw_func(m: [SwiftPrivateModifier], n: "envelope", p: [sw_p_(n: "name", t: at_s())], th: true, r: Present { value: at_s() }, b: [
+      sw_expr(e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [
+        sw_pos(v: sw_try(e: sw_mem(b: sw_chain(b: sw_callt(f: sw_mem(b: sw_mem(b: sw_calln(f: "load", a: []), m: "envelope"), m: "first"), a: [], c: sw_cloe(e: sw_eq(l: sw_path(b: "$0", m: "name"), r: sw_id(n: "name"))))), m: "body"))),
+        sw_pos(v: sw_interp(p: [sw_st(s: "envelope vector "), sw_si(e: sw_id(n: "name")), sw_st(s: " missing")])),
+      ]))),
+    ])),
+    at_round_trip(
+      doc: ["Each request body the fixture carries is decoded by the app's strict reader and re-encoded", "by the app's encoder; the bytes must be the authority's. No input is typed here."],
+      n: "testEnrolmentRequestRoundTripsToTheFixtureBytes", name: "enrolment_request", codec: "enrolmentRequest"
+    ),
+    at_round_trip(doc: [], n: "testSignedRedemptionRoundTripsToTheFixtureBytes", name: "signed_redemption", codec: "signedRedemption"),
+    at_round_trip(doc: [], n: "testPushUpdateRoundTripsToTheFixtureBytes", name: "push_update", codec: "pushUpdate"),
+    at_test(
+      doc: [
+        "The read-authentication body and the push-update envelope \{ auth, push \} are ENCODED only by",
+        "the app (the server decodes them), so they are checked against the fixture bytes directly",
+        "from the fixture's own field values.",
+      ],
+      n: "testReadAuthenticationEncodesToTheFixtureBytes", th: true,
+      b: [
+        sw_let(n: "body", e: at_envelope(name: "read_authentication")),
+        sw_let(n: "auth", e: sw_calln(f: "ReadAuth", a: [sw_arg(l: "enrollmentId", v: sw_str(s: "enr-482913")), sw_arg(l: "requestedAt", v: sw_str(s: "2026-09-18T12:00:30Z")), sw_arg(l: "assertionB64", v: sw_str(s: "omlzaWduYXR1cmU"))])),
+        at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "WireEncode", m: "readRequest"), a: [sw_pos(v: sw_id(n: "auth"))]), sw_id(n: "body")]),
+        sw_let(n: "pushBody", e: at_envelope(name: "push_update")),
+        sw_let(n: "push", e: at_decode(decoder: "pushUpdate", e: at_data_utf8(e: sw_id(n: "pushBody")))),
+        at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "WireEncode", m: "pushUpdateRequest"), a: [sw_pos(v: sw_id(n: "auth")), sw_pos(v: sw_id(n: "push"))]), at_envelope(name: "push_update_request")]),
+      ]
+    ),
+    at_test(doc: ["Every response body decodes strictly, with its declared members present and non-empty."], n: "testResponsesDecode", th: true, b: [
+      at_assert(n: "XCTAssertFalse", a: [sw_mem(b: sw_mem(b: at_decode(decoder: "enrolmentGrant", e: at_data_utf8(e: at_envelope(name: "enrolment_grant"))), m: "enrollment_id"), m: "isEmpty")]),
+      at_assert(n: "XCTAssertFalse", a: [sw_mem(b: at_decode(decoder: "pendingList", e: at_data_utf8(e: at_envelope(name: "pending_list"))), m: "isEmpty")]),
+      sw_let(n: "f", e: at_decode(decoder: "fetchedRequest", e: at_data_utf8(e: at_envelope(name: "fetched_request")))),
+      at_assert(n: "XCTAssertNotEqual", a: [sw_path(b: "f", m: "approve"), sw_path(b: "f", m: "deny")]),
+      at_assert(n: "XCTAssertEqual", a: [sw_mem(b: at_decode(decoder: "enrolmentReadback", e: at_data_utf8(e: at_envelope(name: "enrolment_readback"))), m: "standing"), sw_dot(n: "active")]),
+      sw_cmt_stmt(
+        c: [
+          "Every redemption_response_* envelope decodes to an outcome name the app spells (an arm",
+          "renamed in the .dag reds here), and the two names the app BRANCHES on are joined to their",
+          "own envelopes, so a renamed revoked/unknown arm cannot leave the phone a live decider.",
+        ],
+        s: sw_let(n: "responses", e: sw_callt(f: sw_mem(b: sw_mem(b: at_load(), m: "envelope"), m: "filter"), a: [], c: sw_cloe(e: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "hasPrefix"), a: [sw_pos(v: sw_str(s: "redemption_response_"))]))))
+      ),
+      at_assert(n: "XCTAssertFalse", a: [sw_path(b: "responses", m: "isEmpty"), sw_str(s: "no redemption_response_* envelopes")]),
+      sw_for(n: "r", e: sw_id(n: "responses"), s: [
+        sw_let(n: "o", e: at_decode(decoder: "redemptionResponse", e: at_data_utf8(e: sw_path(b: "r", m: "body")))),
+        at_assert(n: "XCTAssertTrue", a: [sw_call(f: sw_mem(b: sw_path(b: "OutcomeName", m: "all"), m: "contains"), a: [sw_pos(v: sw_path(b: "o", m: "outcome"))]), sw_add(l: sw_add(l: sw_path(b: "r", m: "name"), r: sw_str(s: ": unspelled outcome ")), r: sw_path(b: "o", m: "outcome"))]),
+        at_assert(n: "XCTAssertFalse", a: [sw_mem(b: sw_path(b: "o", m: "message"), m: "isEmpty"), sw_path(b: "r", m: "name")]),
+      ]),
+      at_assert(n: "XCTAssertEqual", a: [sw_mem(b: at_decode(decoder: "redemptionResponse", e: at_data_utf8(e: at_envelope(name: "redemption_response_enrollment_revoked"))), m: "outcome"), sw_path(b: "OutcomeName", m: "enrollmentRevoked")]),
+      at_assert(n: "XCTAssertEqual", a: [sw_mem(b: at_decode(decoder: "redemptionResponse", e: at_data_utf8(e: at_envelope(name: "redemption_response_enrollment_unknown"))), m: "outcome"), sw_path(b: "OutcomeName", m: "enrollmentUnknown")]),
+    ]),
+    at_test(
+      doc: [
+        "The detail screen's strict read, joined to the store's own rendering: every stored_request",
+        "vector (stored_request_json over the witness's input) decodes to exactly that input. No",
+        "rendering is typed here.",
+      ],
+      n: "testStoredRequestReadMatchesEveryVector", th: true,
+      b: [
+        sw_let(n: "vectors", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_mem(b: at_load(), m: "stored_request")), sw_pos(v: sw_str(s: "vectors.json has no stored_request section — the witness (stored_request_specimens) has not emitted it"))]))),
+        at_assert(n: "XCTAssertFalse", a: [sw_path(b: "vectors", m: "isEmpty"), sw_str(s: "no stored_request vectors")]),
+        sw_for(n: "v", e: sw_id(n: "vectors"), s: [
+          sw_let(n: "s", e: at_decode(decoder: "storedRequest", e: sw_path(b: "v", m: "json"))),
+          at_assert(n: "XCTAssertEqual", a: [
+            sw_id(n: "s"),
+            sw_calln(f: "StoredRequestSummary", a: [sw_arg(l: "requester", v: at_vin(f: "requester")), sw_arg(l: "purpose", v: at_vin(f: "purpose")), sw_arg(l: "destructive", v: at_vin(f: "destructive")), sw_arg(l: "expires_at", v: at_vin(f: "expires_at"))]),
+            sw_path(b: "v", m: "name"),
+          ]),
+        ]),
+        sw_cmt_stmt(c: ["Refusals: a record missing a required member, an unknown member, or no JSON at all."], s: at_throws(decoder: "storedRequest", e: sw_raw(s: "\{\"kind\":\"request\"\}"))),
+        at_throws(decoder: "storedRequest", e: sw_raw(s: "\{\"requester\":\"ops\",\"purpose\":\"Boot\",\"destructive\":true,\"expires_at\":\"x\",\"extra\":1\}")),
+        at_throws(decoder: "storedRequest", e: sw_str(s: "not json")),
+      ]
+    ),
+    at_test(doc: ["The push hint decodes from the APNs custom key and refuses its absence."], n: "testPushHintDecodesTheCustomKey", th: false, b: [
+      at_assert(n: "XCTAssertEqual", a: [
+        sw_tryq(e: sw_call(f: sw_path(b: "WireDecode", m: "pushHint"), a: [sw_pos(v: sw_dict(e: [sw_kv(k: sw_str(s: "notification_id"), v: sw_str(s: "n-1")), sw_kv(k: sw_str(s: "aps"), v: sw_dict(e: [sw_kv(k: sw_str(s: "alert"), v: sw_str(s: "Approval requested"))]))]))])),
+        sw_calln(f: "ApprovalPushHint", a: [sw_arg(l: "notification_id", v: sw_str(s: "n-1"))]),
+      ]),
+      at_throws(decoder: "pushHint", e: sw_dict(e: [sw_kv(k: sw_str(s: "aps"), v: sw_dict(e: [sw_kv(k: sw_str(s: "alert"), v: sw_str(s: "x"))]))])),
+    ]),
+    at_test(
+      doc: [
+        "The strict reader refuses an unknown member, an empty string, an unadmitted kind, and a",
+        "member that belongs to ANOTHER arm of the same sum (decoded per arm, never per union).",
+      ],
+      n: "testStrictReaderRefusesUnknownAndEmptyMembers", th: false,
+      b: [
+        at_throws(decoder: "enrolmentGrant", e: at_data_utf8(e: sw_raw(s: "\{\"enrollment_id\": \"e\", \"extra\": 1\}"))),
+        at_throws(decoder: "enrolmentGrant", e: at_data_utf8(e: sw_raw(s: "\{\"enrollment_id\": \"\"\}"))),
+        at_throws(decoder: "pushUpdate", e: at_data_utf8(e: sw_raw(s: "\{\"kind\": \"fcm\", \"project\": \"p\", \"token\": \"t\"\}"))),
+        at_throws(decoder: "pushUpdate", e: at_data_utf8(e: sw_raw(s: "\{\"kind\": \"apns\", \"environment\": \"production\", \"topic\": \"t\", \"token\": \"k\", \"project\": \"p\"\}"))),
+      ]
+    ),
+    at_test(doc: ["enrollment_id_for_code, pinned by the envelope vector over the enrolment vectors' code."], n: "testEnrollmentIdForCodeMatchesTheFixture", th: true, b: [
+      sw_let(n: "code", e: sw_mem(b: sw_mem(b: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_mem(b: sw_mem(b: at_load(), m: "enrolment"), m: "first"))])), m: "input"), m: "code")),
+      at_assert(n: "XCTAssertEqual", a: [sw_calln(f: "enrollmentIdForCode", a: [sw_pos(v: sw_id(n: "code"))]), sw_try(e: sw_calln(f: "envelope", a: [sw_pos(v: sw_add(l: sw_str(s: "enrollment_id_for_code_"), r: sw_id(n: "code")))]))]),
+    ]),
+    at_test(
+      doc: [
+        "device_push_update_client_data frames the exact push body; the enrolment id and time are the",
+        "read vectors' inputs, so the only bytes compared are the authority's.",
+      ],
+      n: "testPushUpdateClientDataMatchesTheFixture", th: true,
+      b: [
+        sw_let(n: "read", e: sw_mem(b: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_mem(b: sw_mem(b: at_load(), m: "read"), m: "first"))])), m: "input")),
+        sw_let(n: "body", e: at_envelope(name: "push_update")),
+        sw_let(n: "got", e: sw_calln(f: "devicePushUpdateClientData", a: [sw_arg(l: "enrollmentId", v: sw_path(b: "read", m: "enrollment_id")), sw_arg(l: "requestedAt", v: sw_path(b: "read", m: "requested_at")), sw_arg(l: "pushBodyJson", v: sw_id(n: "body"))])),
+        at_assert(n: "XCTAssertEqual", a: [sw_id(n: "got"), at_data_utf8(e: at_envelope(name: "push_update_client_data"))]),
+      ]
+    ),
+    at_test(
+      doc: [
+        "The method and every route the app spells is the fixture's; a missing surface row FAILS, so",
+        "a route the wire adds and the app does not spell is caught, not silently absent.",
+      ],
+      n: "testSurfaceMatchesTheFixture", th: true,
+      b: [
+        sw_let(n: "rows", e: sw_calln(f: "Dictionary", a: [sw_arg(l: "uniqueKeysWithValues", v: sw_callt(f: sw_mem(b: sw_mem(b: at_load(), m: "surface"), m: "map"), a: [], c: sw_cloe(e: sw_tuple(e: [sw_pos(v: sw_path(b: "$0", m: "name")), sw_pos(v: sw_path(b: "$0", m: "value"))]))))])),
+        SwiftDeclarationStmt { decl: sw_func(m: [], n: "surface", p: [sw_p_(n: "name", t: at_s())], th: true, r: Present { value: at_s() }, b: [
+          sw_expr(e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_sub(b: sw_id(n: "rows"), a: [sw_pos(v: sw_id(n: "name"))])), sw_pos(v: sw_interp(p: [sw_st(s: "surface row "), sw_si(e: sw_id(n: "name")), sw_st(s: " missing")]))]))),
+        ]) },
+        at_assert(n: "XCTAssertEqual", a: [sw_str(s: "POST"), sw_try(e: sw_calln(f: "surface", a: [sw_pos(v: sw_str(s: "method_every_device_operation"))]))]),
+        at_surface_route(route: "enrol", row: "route_enrol"),
+        at_surface_route(route: "pending", row: "route_pending"),
+        at_surface_route(route: "requestPrefix", row: "route_request_prefix"),
+        at_surface_route(route: "redeem", row: "route_redeem"),
+        at_surface_route(route: "enrollmentPrefix", row: "route_enrollment_prefix"),
+        at_surface_route(route: "push", row: "route_push"),
+        sw_cmt_stmt(
+          c: [
+            "Completeness is an identity join, not a count: the surface names must be exactly the ones",
+            "the app spells, so a renamed row plus an added one cannot cancel out. The spelled set is",
+            "generated from gunbc.auth.approval_device_redemption_fixtures surface_vectors, the rows",
+            "vectors.json is emitted from.",
+          ],
+          s: SwiftDeclarationStmt { decl: approve_ios_surface_spelled_decl() }
+        ),
+        at_assert(n: "XCTAssertEqual", a: [
+          sw_calln(f: "Set", a: [sw_pos(v: sw_path(b: "rows", m: "keys"))]),
+          sw_id(n: "spelled"),
+          sw_interp(p: [sw_st(s: "surface rows and the app's spelled set differ: "), sw_si(e: sw_call(f: sw_mem(b: sw_call(f: sw_mem(b: sw_calln(f: "Set", a: [sw_pos(v: sw_path(b: "rows", m: "keys"))]), m: "symmetricDifference"), a: [sw_pos(v: sw_id(n: "spelled"))]), m: "sorted"), a: []))]),
+        ]),
+      ]
+    ),
+    at_test(doc: [], n: "testPathsMatchTheFixture", th: true, b: [
+      sw_let(n: "f", e: at_decode(decoder: "fetchedRequest", e: at_data_utf8(e: at_envelope(name: "fetched_request")))),
+      at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "Route", m: "request"), a: [sw_pos(v: sw_path(b: "f", m: "escalation_id"))]), at_envelope(name: "request_path")]),
+      sw_let(n: "g", e: at_decode(decoder: "enrolmentGrant", e: at_data_utf8(e: at_envelope(name: "enrolment_grant")))),
+      at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "Route", m: "enrollment"), a: [sw_pos(v: sw_path(b: "g", m: "enrollment_id"))]), at_envelope(name: "enrollment_path")]),
+    ]),
+    at_test(
+      doc: ["path_segment over every input -> encoded vector the .dag fold emitted: \"id-\" + padded", "base64url of the UTF-8 bytes."],
+      n: "testPathSegmentMatchesEveryVector", th: true,
+      b: [
+        at_each(section: "path_segment", b: [
+          at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "Route", m: "segment"), a: [sw_pos(v: sw_path(b: "v", m: "input"))]), sw_path(b: "v", m: "encoded"), sw_path(b: "v", m: "input")]),
+        ]),
+        sw_cmt_stmt(c: ["Alphabet control: the URL-safe variant, padded, never \"+\" or \"/\"."], s: sw_let(n: "seg", e: sw_call(f: sw_path(b: "Route", m: "segment"), a: [sw_pos(v: sw_str(s: "\u{FFFF}?>"))]))),
+        at_assert(n: "XCTAssertTrue", a: [sw_op(
+          l: sw_op(l: sw_call(f: sw_path(b: "seg", m: "hasPrefix"), a: [sw_pos(v: sw_str(s: "id-"))]), o: SwiftLogicalAndOperator, r: sw_not(e: sw_call(f: sw_path(b: "seg", m: "contains"), a: [sw_pos(v: sw_str(s: "+"))]))),
+          o: SwiftLogicalAndOperator,
+          r: sw_not(e: sw_call(f: sw_path(b: "seg", m: "contains"), a: [sw_pos(v: sw_str(s: "/"))]))
+        )]),
+      ]
+    ),
+    at_test(doc: ["The emitter's escaping is serialize_json's: controls as \\u00XX upper-case, \"/\" literal."], n: "testEmitterEscapesLikeSerializeJson", th: false, b: [
+      at_assert(n: "XCTAssertEqual", a: [sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "string"), a: [sw_pos(v: sw_str(s: "a\u{1F}b/\"c\\"))]), m: "serialized"), sw_raw(s: "\"a\\u001Fb/\\\"c\\\\\"")]),
+      at_assert(n: "XCTAssertEqual", a: [
+        sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "object"), a: [sw_pos(v: sw_arr(e: [sw_tuple(e: [sw_pos(v: sw_str(s: "k")), sw_pos(v: sw_call(f: sw_dot(n: "array"), a: [sw_pos(v: sw_arr(e: [sw_call(f: sw_dot(n: "string"), a: [sw_pos(v: sw_str(s: "x"))])]))]))])]))]), m: "serialized"),
+        sw_raw(s: "\{\"k\": [\"x\"]\}"),
+      ]),
+    ]),
+  ]
+}
+
+// XCTAssertEqual(WireEncode.<codec>(try WireDecode.<codec>(Data(body.utf8))), body)
+fn at_round_trip(doc: List<String>, n: String, name: String, codec: String) -> SwiftDecl {
+  at_test(doc: doc, n: n, th: true, b: [
+    sw_let(n: "body", e: at_envelope(name: name)),
+    at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "WireEncode", m: codec), a: [sw_pos(v: at_decode(decoder: codec, e: at_data_utf8(e: sw_id(n: "body"))))]), sw_id(n: "body")]),
+  ])
+}
+
+data approve_ios_tests_header: List<String> = [
+  "The Swift byte builders against the vectors the .dag witness EMITS from device_redemption_signing_input",
+  "and enrolment_transcript (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte",
+  "is written here: a hand-copied expectation would be a second authority for the join.",
+  "GENERATED from gunbc.approve_ios_swift_protocol_vector_tests by v2.extdeps.languages.swift.print; do not edit.",
+]
+
+fn approve_ios_protocol_vector_tests_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile {
+    declarations: [
+      sw_cmt(c: approve_ios_tests_header, d: sw_import(n: "XCTest")),
+      SwiftImportDecl { attributes: [SwiftAttribute { name: "testable", arguments: [] }], module_name: "Approve" },
+      at_vectors(),
+      SwiftClassDecl { attributes: [], modifiers: [SwiftFinalModifier], name: "ProtocolVectorTests", inherits: [sw_t(n: "XCTestCase")], members: at_tests() },
+    ],
+  }
+}
+
+fn expected_approve_ios_protocol_vector_tests_swift() -> String {
+  print_swift_source_file(f: approve_ios_protocol_vector_tests_swift_file())
+}

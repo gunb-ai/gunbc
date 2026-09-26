@@ -1,6 +1,7 @@
 // The Swift byte builders against the vectors the .dag witness EMITS from device_redemption_signing_input
 // and enrolment_transcript (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte
 // is written here: a hand-copied expectation would be a second authority for the join.
+// GENERATED from gunbc.approve_ios_swift_protocol_vector_tests by v2.extdeps.languages.swift.print; do not edit.
 import XCTest
 @testable import Approve
 
@@ -18,42 +19,51 @@ struct Vectors: Decodable {
             var capability_text: String
             var capability_tag_b64url: String
         }
+
         var name: String
         var input: Input
         var expected: String
     }
+
     struct Enrolment: Decodable {
         struct Input: Decodable {
             var code: String
             var platform: String
             var point_b64url: String
         }
+
         var name: String
         var input: Input
         var expected: String
     }
+
     struct Read: Decodable {
         struct Input: Decodable {
             var path: String
             var enrollment_id: String
             var requested_at: String
         }
+
         var name: String
         var input: Input
         var expected: String
     }
+
     struct Envelope: Decodable {
         var name: String
         var body: String
     }
+
     struct PathSegment: Decodable {
         var input: String
         var encoded: String
     }
+
     struct Surface: Decodable {
         var name: String
         var value: String
     }
+
     struct StoredRequest: Decodable {
         struct Input: Decodable {
             var requester: String
@@ -61,11 +71,13 @@ struct Vectors: Decodable {
             var destructive: Bool
             var expires_at: String
         }
+
         var name: String
         var input: Input
         /// stored_request_json over a StoredApprovalRequest carrying `input`, emitted by the witness.
         var json: String
     }
+
     var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
@@ -85,8 +97,7 @@ struct Vectors: Decodable {
 final class ProtocolVectorTests: XCTestCase {
     /// Absence is a failure, never a skip: a green run with no vectors would establish nothing.
     private func load() throws -> Vectors {
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "vectors", withExtension: "json"),
-                                "vectors.json missing from the test bundle — the .dag witness has not emitted it")
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "vectors", withExtension: "json"), "vectors.json missing from the test bundle \u{2014} the .dag witness has not emitted it")
         let v = try JSONDecoder().decode(Vectors.self, from: Data(contentsOf: url))
         XCTAssertFalse(v.redemption.isEmpty, "no redemption vectors")
         XCTAssertFalse(v.enrolment.isEmpty, "no enrolment vectors")
@@ -100,7 +111,7 @@ final class ProtocolVectorTests: XCTestCase {
     /// Framing counts CODE POINTS, not UTF-8 bytes and not grapheme clusters: "é" is 1, a flag emoji
     /// (two scalars) is 2, and a field containing "," or ":" frames unchanged.
     func testFramedFieldCountsUnicodeScalars() {
-        XCTAssertEqual(Protocol.framedField("é"), "1:é,")
+        XCTAssertEqual(Protocol.framedField("\u{E9}"), "1:\u{E9},")
         XCTAssertEqual(Protocol.framedField("\u{1F1EC}\u{1F1E7}"), "2:\u{1F1EC}\u{1F1E7},")
         XCTAssertEqual(Protocol.framedField("a,b:c"), "5:a,b:c,")
         XCTAssertEqual(Protocol.framedField(""), "0:,")
@@ -109,17 +120,7 @@ final class ProtocolVectorTests: XCTestCase {
     func testRedemptionSigningInputMatchesEveryVector() throws {
         for v in try load().redemption {
             let decision = try XCTUnwrap(ProposedDecision(rawValue: v.input.decision), v.name)
-            let input = DeviceRedemptionSigningInput(
-                audience: v.input.audience,
-                enrollment_id: v.input.enrollment_id,
-                challenge: RedemptionChallenge(expires_at: v.input.challenge_expires_at, nonce_hex: v.input.nonce_hex),
-                escalation_id: v.input.escalation_id,
-                request_revision: v.input.request_revision,
-                stored_request_text: v.input.stored_request_text,
-                decision: decision,
-                capability_text: v.input.capability_text,
-                capability_tag_b64url: v.input.capability_tag_b64url
-            )
+            let input = DeviceRedemptionSigningInput(audience: v.input.audience, enrollment_id: v.input.enrollment_id, challenge: RedemptionChallenge(expires_at: v.input.challenge_expires_at, nonce_hex: v.input.nonce_hex), escalation_id: v.input.escalation_id, request_revision: v.input.request_revision, stored_request_text: v.input.stored_request_text, decision: decision, capability_text: v.input.capability_text, capability_tag_b64url: v.input.capability_tag_b64url)
             XCTAssertEqual(deviceRedemptionSigningInput(input), Data(v.expected.utf8), v.name)
         }
     }
@@ -127,11 +128,7 @@ final class ProtocolVectorTests: XCTestCase {
     func testEnrolmentTranscriptMatchesEveryVector() throws {
         for v in try load().enrolment {
             let platform = try XCTUnwrap(MobilePlatform(rawValue: v.input.platform), v.name)
-            let got = enrolmentTranscript(
-                code: v.input.code,
-                decisionKey: VerifyingKey(point_b64url: v.input.point_b64url),
-                platform: platform
-            )
+            let got = enrolmentTranscript(code: v.input.code, decisionKey: VerifyingKey(point_b64url: v.input.point_b64url), platform: platform)
             XCTAssertEqual(got, Data(v.expected.utf8), v.name)
         }
     }
@@ -139,11 +136,9 @@ final class ProtocolVectorTests: XCTestCase {
     /// Discriminating control on the builder itself: swapping the verb must move the bytes, and a
     /// field that contains the frame's own punctuation must not collide with a split field.
     func testBuilderDiscriminatesTheVerbAndFramingIsInjective() {
-        let base = DeviceRedemptionSigningInput(
-            audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
-            escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .approve,
-            capability_text: "c", capability_tag_b64url: "g")
-        var denied = base; denied.decision = .deny
+        let base = DeviceRedemptionSigningInput(audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"), escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .approve, capability_text: "c", capability_tag_b64url: "g")
+        var denied = base
+        denied.decision = .deny
         XCTAssertNotEqual(deviceRedemptionSigningInput(base), deviceRedemptionSigningInput(denied))
         XCTAssertNotEqual(Protocol.framed(["a,b"]), Protocol.framed(["a", "b"]))
         XCTAssertNotEqual(Protocol.framed(["1:a,"]), Protocol.framed(["a"]))
@@ -207,23 +202,19 @@ final class ProtocolVectorTests: XCTestCase {
             XCTAssertTrue(OutcomeName.all.contains(o.outcome), r.name + ": unspelled outcome " + o.outcome)
             XCTAssertFalse(o.message.isEmpty, r.name)
         }
-        XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_revoked").utf8)).outcome,
-                       OutcomeName.enrollmentRevoked)
-        XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_unknown").utf8)).outcome,
-                       OutcomeName.enrollmentUnknown)
+        XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_revoked").utf8)).outcome, OutcomeName.enrollmentRevoked)
+        XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_unknown").utf8)).outcome, OutcomeName.enrollmentUnknown)
     }
 
     /// The detail screen's strict read, joined to the store's own rendering: every stored_request
     /// vector (stored_request_json over the witness's input) decodes to exactly that input. No
     /// rendering is typed here.
     func testStoredRequestReadMatchesEveryVector() throws {
-        let vectors = try XCTUnwrap(try load().stored_request,
-                                    "vectors.json has no stored_request section — the witness (stored_request_specimens) has not emitted it")
+        let vectors = try XCTUnwrap(try load().stored_request, "vectors.json has no stored_request section \u{2014} the witness (stored_request_specimens) has not emitted it")
         XCTAssertFalse(vectors.isEmpty, "no stored_request vectors")
         for v in vectors {
             let s = try WireDecode.storedRequest(v.json)
-            XCTAssertEqual(s, StoredRequestSummary(requester: v.input.requester, purpose: v.input.purpose,
-                                                   destructive: v.input.destructive, expires_at: v.input.expires_at), v.name)
+            XCTAssertEqual(s, StoredRequestSummary(requester: v.input.requester, purpose: v.input.purpose, destructive: v.input.destructive, expires_at: v.input.expires_at), v.name)
         }
         // Refusals: a record missing a required member, an unknown member, or no JSON at all.
         XCTAssertThrowsError(try WireDecode.storedRequest(#"{"kind":"request"}"#))
@@ -233,8 +224,7 @@ final class ProtocolVectorTests: XCTestCase {
 
     /// The push hint decodes from the APNs custom key and refuses its absence.
     func testPushHintDecodesTheCustomKey() {
-        XCTAssertEqual(try? WireDecode.pushHint(["notification_id": "n-1", "aps": ["alert": "Approval requested"]]),
-                       ApprovalPushHint(notification_id: "n-1"))
+        XCTAssertEqual(try? WireDecode.pushHint(["notification_id": "n-1", "aps": ["alert": "Approval requested"]]), ApprovalPushHint(notification_id: "n-1"))
         XCTAssertThrowsError(try WireDecode.pushHint(["aps": ["alert": "x"]]))
     }
 
@@ -266,7 +256,9 @@ final class ProtocolVectorTests: XCTestCase {
     /// a route the wire adds and the app does not spell is caught, not silently absent.
     func testSurfaceMatchesTheFixture() throws {
         let rows = Dictionary(uniqueKeysWithValues: try load().surface.map { ($0.name, $0.value) })
-        func surface(_ name: String) throws -> String { try XCTUnwrap(rows[name], "surface row \(name) missing") }
+        func surface(_ name: String) throws -> String {
+            try XCTUnwrap(rows[name], "surface row \(name) missing")
+        }
         XCTAssertEqual("POST", try surface("method_every_device_operation"))
         XCTAssertEqual(Route.enrol, try surface("route_enrol"))
         XCTAssertEqual(Route.pending, try surface("route_pending"))
@@ -275,9 +267,10 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(Route.enrollmentPrefix, try surface("route_enrollment_prefix"))
         XCTAssertEqual(Route.push, try surface("route_push"))
         // Completeness is an identity join, not a count: the surface names must be exactly the ones
-        // the app spells, so a renamed row plus an added one cannot cancel out.
-        let spelled: Set<String> = ["header_enrollment", "header_requested_at", "header_assertion", "route_enrol", "route_pending",
-                                    "route_request_prefix", "route_redeem", "route_enrollment_prefix", "route_push"]
+        // the app spells, so a renamed row plus an added one cannot cancel out. The spelled set is
+        // generated from gunbc.auth.approval_device_redemption_fixtures surface_vectors, the rows
+        // vectors.json is emitted from.
+        let spelled: Set<String> = ["method_every_device_operation", "route_enrol", "route_pending", "route_request_prefix", "route_redeem", "route_enrollment_prefix", "route_push"]
         XCTAssertEqual(Set(rows.keys), spelled, "surface rows and the app's spelled set differ: \(Set(rows.keys).symmetricDifference(spelled).sorted())")
     }
 

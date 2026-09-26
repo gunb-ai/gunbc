@@ -1,0 +1,782 @@
+module gunbc.approve_ios_swift_wire
+
+import std.types { String, List, Bool, Int }
+import v2.std.algebra { list_append }
+import v2.std.optional { Present }
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftCondition,
+  SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
+  SwiftStaticModifier, SwiftPrivateModifier, SwiftIndirectModifier, SwiftLet, SwiftVar,
+  SwiftEnumDecl, SwiftStructDecl, SwiftExtensionDecl, SwiftFunctionDecl, SwiftInitializerDecl, SwiftVariableDecl,
+  SwiftIdentifierPattern, SwiftTuplePattern, SwiftWildcardPattern, SwiftWildcardExpr,
+  SwiftSwitchStmt, SwiftSwitchCase, SwiftCaseItems, SwiftIfStmt, SwiftNoElse, SwiftClosure,
+  SwiftInfixOperator, SwiftLogicalOrOperator, SwiftLogicalAndOperator, SwiftNilCoalescingOperator, SwiftClosedRangeOperator,
+  SwiftHalfOpenRangeOperator, SwiftAddAssignmentOperator, SwiftNotEqualOperator, SwiftNilLiteral,
+  SwiftParameter, SwiftTupleTypeElement,
+  sw_t, sw_tg, sw_tarr, sw_tdict, sw_topt, sw_ttuple, sw_tel, sw_tnel,
+  sw_id, sw_dot, sw_mem, sw_path, sw_chain, sw_call, sw_calln, sw_callt, sw_sub, sw_arg, sw_pos,
+  sw_str, sw_interp, sw_st, sw_si, sw_int, sw_arr, sw_strs, sw_dict, sw_kv, sw_tuple, sw_paren, sw_clo, sw_cloe,
+  sw_try, sw_await, sw_not, sw_op, sw_add, sw_eq, sw_ternary, sw_asq, sw_keypath,
+  sw_expr, sw_ret, sw_throw, sw_assign, sw_let, sw_var, sw_let_uninit, sw_let_pat, sw_guard, sw_if, sw_for, sw_switch,
+  sw_case, sw_default, sw_do_catch, sw_cond, sw_bind, sw_bind_self, sw_pid, sw_pexpr, sw_pcase, sw_plet, sw_cmt_stmt,
+  sw_let_decl, sw_static_let, sw_static_let_typed, sw_stored, sw_field, sw_computed, sw_param, sw_p, sw_p_, sw_func,
+  sw_struct, sw_enum, sw_cases, sw_case_payload, sw_doc, sw_cmt, sw_import
+}
+import v2.extdeps.languages.swift.print { print_swift_source_file }
+
+// apps/approve-ios/Approve/Wire.swift AS A SWIFT SYNTAX TREE (v2.extdeps.languages.swift.syntax),
+// printed by v2.extdeps.languages.swift.print into the committed file (gunbc.generated_artifact
+// ApproveIosWireSwiftArtifact). Transcribed from the hand-written file it replaces; deriving the
+// member names, arms and routes from gunbc.auth.approval_device_wire is the later step named by
+// gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier.
+
+// ── Local constructors for the shapes this file repeats ──────────────────────────────────────
+fn aw_s() -> SwiftType { sw_t(n: "String") }
+fn aw_ret(t: SwiftType) -> SwiftType? { Present { value: t } }
+
+// throw WireError.refused(at: <at>, cause: <cause>)
+fn aw_refuse(at: SwiftExpr, cause: SwiftExpr) -> SwiftStmt {
+  sw_throw(e: sw_call(f: sw_path(b: "WireError", m: "refused"), a: [sw_arg(l: "at", v: at), sw_arg(l: "cause", v: cause)]))
+}
+
+fn aw_config_missing(message: SwiftExpr) -> SwiftStmt {
+  sw_throw(e: sw_call(f: sw_path(b: "WireError", m: "configMissing"), a: [sw_pos(v: message)]))
+}
+
+// path(key)
+fn aw_pathk() -> SwiftExpr { sw_calln(f: "path", a: [sw_pos(v: sw_id(n: "key"))]) }
+
+// try o.string("<key>")
+fn aw_ostr(o: String, key: String) -> SwiftExpr { sw_try(e: sw_call(f: sw_path(b: o, m: "string"), a: [sw_pos(v: sw_str(s: key))])) }
+
+// ("<key>", .string(<value>))
+fn aw_member_string(key: String, value: SwiftExpr) -> SwiftExpr {
+  sw_tuple(e: [sw_pos(v: sw_str(s: key)), sw_pos(v: sw_call(f: sw_dot(n: "string"), a: [sw_pos(v: value)]))])
+}
+
+fn aw_member(key: String, value: SwiftExpr) -> SwiftExpr {
+  sw_tuple(e: [sw_pos(v: sw_str(s: key)), sw_pos(v: value)])
+}
+
+// .object([...])
+fn aw_object(members: List<SwiftExpr>) -> SwiftExpr { sw_call(f: sw_dot(n: "object"), a: [sw_pos(v: sw_arr(e: members))]) }
+
+// WireJson.object([...]).serialized
+fn aw_serialized_object(members: List<SwiftExpr>) -> SwiftExpr {
+  sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "object"), a: [sw_pos(v: sw_arr(e: members))]), m: "serialized")
+}
+
+// o.object("<key>", allowed: [...])
+fn aw_oobject(o: String, key: String, allowed: SwiftExpr) -> SwiftExpr {
+  sw_call(f: sw_path(b: o, m: "object"), a: [sw_pos(v: sw_str(s: key)), sw_arg(l: "allowed", v: allowed)])
+}
+
+// try WireObject.document(data, allowed: [...])
+fn aw_document(allowed: List<String>) -> SwiftExpr {
+  sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [sw_pos(v: sw_id(n: "data")), sw_arg(l: "allowed", v: sw_strs(e: allowed))]))
+}
+
+// try o.expect("<key>", <admitted>, "<cause>")
+fn aw_expect(key: String, admitted: SwiftExpr, cause: String) -> SwiftStmt {
+  sw_expr(e: sw_try(e: sw_call(f: sw_path(b: "o", m: "expect"), a: [sw_pos(v: sw_str(s: key)), sw_pos(v: admitted), sw_pos(v: sw_str(s: cause))])))
+}
+
+// o.members["<key>"]
+fn aw_omember(key: String) -> SwiftExpr { sw_sub(b: sw_path(b: "o", m: "members"), a: [sw_pos(v: sw_str(s: key))]) }
+
+// guard let <n> = <v> as? <t>, !<n>.isEmpty
+fn aw_nonempty_cast(n: String, v: SwiftExpr, t: String) -> List<SwiftCondition> {
+  [sw_bind(n: n, e: sw_asq(e: v, t: sw_t(n: t))), sw_cond(e: sw_not(e: sw_path(b: n, m: "isEmpty")))]
+}
+
+fn aw_static_func(n: String, p: List<SwiftParameter>, th: Bool, r: SwiftType, b: List<SwiftStmt>) -> SwiftDecl {
+  sw_func(m: [SwiftStaticModifier], n: n, p: p, th: th, r: aw_ret(t: r), b: b)
+}
+
+// The JSONSerialization read both decoders share: `let v: Any` then a do/catch that refuses at "$".
+fn aw_json_read() -> List<SwiftStmt> {
+  [
+    sw_let_uninit(n: "v", t: sw_t(n: "Any")),
+    sw_do_catch(
+      s: [sw_assign(l: sw_id(n: "v"), r: sw_try(e: sw_call(f: sw_path(b: "JSONSerialization", m: "jsonObject"), a: [sw_arg(l: "with", v: sw_id(n: "data")), sw_arg(l: "options", v: sw_arr(e: [sw_dot(n: "fragmentsAllowed")]))])))],
+      c: [aw_refuse(at: sw_str(s: "$"), cause: sw_path(b: "error", m: "localizedDescription"))]
+    ),
+  ]
+}
+
+// ── serialize_json ───────────────────────────────────────────────────────────────────────────
+fn aw_escape_case(code: Int, spelled: String) -> SwiftSwitchCase {
+  sw_case(p: [sw_pexpr(e: sw_int(n: code))], s: [sw_expr(e: sw_op(l: sw_id(n: "out"), o: SwiftAddAssignmentOperator, r: sw_str(s: spelled)))])
+}
+
+fn aw_wire_json() -> SwiftDecl {
+  sw_cmt(c: ["── serialize_json ───────────────────────────────────────────────────────────────────────────"], d: SwiftEnumDecl {
+    attributes: [], modifiers: [SwiftIndirectModifier], name: "WireJson", inherits: [],
+    members: [
+      sw_case_payload(n: "string", a: [sw_tel(t: aw_s())]),
+      sw_case_payload(n: "object", a: [sw_tel(t: sw_tarr(e: sw_ttuple(e: [sw_tel(t: aw_s()), sw_tel(t: sw_t(n: "WireJson"))])))]),
+      sw_case_payload(n: "array", a: [sw_tel(t: sw_tarr(e: sw_t(n: "WireJson")))]),
+      sw_doc(
+        c: [
+          "escape_json_string: \\b \\t \\n \\f \\r \\\" \\\\, other C0 controls as \\u00XX (upper-case hex),",
+          "everything else — including \"/\" and non-ASCII — literal.",
+        ],
+        d: aw_static_func(n: "escape", p: [sw_p_(n: "s", t: aw_s())], th: false, r: aw_s(), b: [
+          sw_var(n: "out", e: sw_str(s: "")),
+          sw_for(n: "u", e: sw_path(b: "s", m: "unicodeScalars"), s: [
+            sw_switch(e: sw_path(b: "u", m: "value"), c: [
+              aw_escape_case(code: 8, spelled: "\\b"),
+              aw_escape_case(code: 9, spelled: "\\t"),
+              aw_escape_case(code: 10, spelled: "\\n"),
+              aw_escape_case(code: 12, spelled: "\\f"),
+              aw_escape_case(code: 13, spelled: "\\r"),
+              aw_escape_case(code: 34, spelled: "\\\""),
+              aw_escape_case(code: 92, spelled: "\\\\"),
+              sw_case(p: [sw_pexpr(e: sw_op(l: sw_int(n: 0), o: SwiftClosedRangeOperator, r: sw_int(n: 31)))], s: [
+                sw_expr(e: sw_op(l: sw_id(n: "out"), o: SwiftAddAssignmentOperator, r: sw_calln(f: "String", a: [sw_arg(l: "format", v: sw_str(s: "\\u%04X")), sw_pos(v: sw_path(b: "u", m: "value"))]))),
+              ]),
+              sw_default(s: [sw_expr(e: sw_call(f: sw_mem(b: sw_path(b: "out", m: "unicodeScalars"), m: "append"), a: [sw_pos(v: sw_id(n: "u"))]))]),
+            ]),
+          ]),
+          sw_ret(e: sw_id(n: "out")),
+        ])
+      ),
+      sw_computed(n: "serialized", t: aw_s(), s: [
+        sw_switch(e: sw_id(n: "self"), c: [
+          sw_case(p: [sw_pcase(n: "string", a: [sw_plet(n: "s")])], s: [
+            sw_ret(e: sw_add(l: sw_add(l: sw_str(s: "\""), r: sw_call(f: sw_path(b: "WireJson", m: "escape"), a: [sw_pos(v: sw_id(n: "s"))])), r: sw_str(s: "\""))),
+          ]),
+          sw_case(p: [sw_pcase(n: "array", a: [sw_plet(n: "xs")])], s: [
+            sw_ret(e: sw_add(l: sw_add(l: sw_str(s: "["), r: sw_call(f: sw_mem(b: sw_call(f: sw_path(b: "xs", m: "map"), a: [sw_pos(v: sw_keypath(c: ["serialized"]))]), m: "joined"), a: [sw_arg(l: "separator", v: sw_str(s: ", "))])), r: sw_str(s: "]"))),
+          ]),
+          sw_case(p: [sw_pcase(n: "object", a: [sw_plet(n: "kvs")])], s: [
+            sw_ret(e: sw_add(
+              l: sw_add(
+                l: sw_str(s: "\{"),
+                r: sw_call(
+                  f: sw_mem(b: sw_callt(f: sw_path(b: "kvs", m: "map"), a: [], c: sw_cloe(e: sw_add(
+                    l: sw_add(l: sw_add(l: sw_str(s: "\""), r: sw_call(f: sw_path(b: "WireJson", m: "escape"), a: [sw_pos(v: sw_path(b: "$0", m: "0"))])), r: sw_str(s: "\": ")),
+                    r: sw_mem(b: sw_path(b: "$0", m: "1"), m: "serialized")
+                  ))), m: "joined"),
+                  a: [sw_arg(l: "separator", v: sw_str(s: ", "))]
+                )
+              ),
+              r: sw_str(s: "\}")
+            )),
+          ]),
+        ]),
+      ]),
+    ],
+  })
+}
+
+// ── Strict readers (wire_object / wire_string) ───────────────────────────────────────────────
+fn aw_wire_error() -> SwiftDecl {
+  sw_cmt(c: ["── Strict readers (wire_object / wire_string) ───────────────────────────────────────────────"], d: sw_enum(n: "WireError", i: [sw_t(n: "Error"), sw_t(n: "LocalizedError")], m: [
+    sw_case_payload(n: "configMissing", a: [sw_tel(t: aw_s())]),
+    sw_doc(c: ["The server answered with a refusal status; the body is shown, never interpreted."], d: sw_case_payload(n: "status", a: [sw_tel(t: sw_t(n: "Int")), sw_tel(t: aw_s())])),
+    sw_doc(c: ["A 2xx whose body did not decode: the request MAY have taken effect. Path of the member."], d: sw_case_payload(n: "refused", a: [sw_tnel(n: "at", t: aw_s()), sw_tnel(n: "cause", t: aw_s())])),
+    sw_doc(c: ["No answer at all: the request MAY have taken effect."], d: sw_case_payload(n: "transport", a: [sw_tel(t: aw_s())])),
+    sw_computed(n: "errorDescription", t: sw_topt(w: aw_s()), s: [
+      sw_switch(e: sw_id(n: "self"), c: [
+        sw_case(p: [sw_pcase(n: "configMissing", a: [sw_plet(n: "m")])], s: [sw_ret(e: sw_id(n: "m"))]),
+        sw_case(p: [sw_pcase(n: "status", a: [sw_plet(n: "s"), sw_plet(n: "body")])], s: [sw_ret(e: sw_interp(p: [sw_st(s: "server refused: HTTP "), sw_si(e: sw_id(n: "s")), sw_st(s: " "), sw_si(e: sw_id(n: "body"))]))]),
+        sw_case(p: [sw_pcase(n: "refused", a: [sw_plet(n: "at"), sw_plet(n: "cause")])], s: [sw_ret(e: sw_interp(p: [sw_st(s: "server answer refused at "), sw_si(e: sw_id(n: "at")), sw_st(s: ": "), sw_si(e: sw_id(n: "cause")), sw_st(s: " (outcome unknown)")]))]),
+        sw_case(p: [sw_pcase(n: "transport", a: [sw_plet(n: "m")])], s: [sw_ret(e: sw_interp(p: [sw_st(s: "server unreached (outcome unknown): "), sw_si(e: sw_id(n: "m"))]))]),
+      ]),
+    ]),
+  ]))
+}
+
+// guard let v = members[key] else { throw WireError.refused(at: path(key), cause: "missing") }
+fn aw_member_present() -> SwiftStmt {
+  sw_guard(c: [sw_bind(n: "v", e: sw_sub(b: sw_id(n: "members"), a: [sw_pos(v: sw_id(n: "key"))]))], e: [aw_refuse(at: aw_pathk(), cause: sw_str(s: "missing"))])
+}
+
+fn aw_wire_object() -> SwiftDecl {
+  sw_doc(
+    c: [
+      "One decoded JSON object with exactly the declared members. Divergence, stated: Foundation's",
+      "parser keeps the LAST of a duplicated member where json_object_unique_member refuses; the app",
+      "reads server answers, not attacker input, and the server side keeps the strict rule.",
+    ],
+    d: sw_struct(n: "WireObject", i: [], m: [
+      sw_stored(k: SwiftLet, n: "at", t: aw_s()),
+      sw_stored(k: SwiftLet, n: "members", t: sw_tdict(k: aw_s(), v: sw_t(n: "Any"))),
+      SwiftInitializerDecl { modifiers: [], parameters: [sw_p_(n: "v", t: sw_topt(w: sw_t(n: "Any"))), sw_p(n: "at", t: aw_s()), sw_p(n: "allowed", t: sw_tarr(e: aw_s()))], throws: true, body: [
+        sw_guard(c: [sw_bind(n: "o", e: sw_asq(e: sw_id(n: "v"), t: sw_tdict(k: aw_s(), v: sw_t(n: "Any"))))], e: [aw_refuse(at: sw_id(n: "at"), cause: sw_str(s: "not an object"))]),
+        sw_let(n: "unknown", e: sw_call(f: sw_mem(b: sw_callt(f: sw_mem(b: sw_path(b: "o", m: "keys"), m: "filter"), a: [], c: sw_cloe(e: sw_not(e: sw_call(f: sw_path(b: "allowed", m: "contains"), a: [sw_pos(v: sw_id(n: "$0"))])))), m: "sorted"), a: [])),
+        sw_guard(c: [sw_cond(e: sw_path(b: "unknown", m: "isEmpty"))], e: [aw_refuse(at: sw_id(n: "at"), cause: sw_add(l: sw_str(s: "unknown member: "), r: sw_call(f: sw_path(b: "unknown", m: "joined"), a: [sw_arg(l: "separator", v: sw_str(s: ", "))])))]),
+        sw_assign(l: sw_path(b: "self", m: "at"), r: sw_id(n: "at")),
+        sw_assign(l: sw_path(b: "self", m: "members"), r: sw_id(n: "o")),
+      ] },
+      sw_func(m: [SwiftPrivateModifier], n: "path", p: [sw_p_(n: "key", t: aw_s())], th: false, r: aw_ret(t: aw_s()), b: [
+        sw_expr(e: sw_ternary(c: sw_eq(l: sw_id(n: "at"), r: sw_str(s: "$")), t: sw_id(n: "key"), e: sw_add(l: sw_add(l: sw_id(n: "at"), r: sw_str(s: ".")), r: sw_id(n: "key")))),
+      ]),
+      sw_func(m: [], n: "string", p: [sw_p_(n: "key", t: aw_s())], th: true, r: aw_ret(t: aw_s()), b: [
+        aw_member_present(),
+        sw_guard(c: [sw_bind(n: "s", e: sw_asq(e: sw_id(n: "v"), t: aw_s()))], e: [aw_refuse(at: aw_pathk(), cause: sw_str(s: "not a string"))]),
+        sw_guard(c: [sw_cond(e: sw_not(e: sw_path(b: "s", m: "isEmpty")))], e: [aw_refuse(at: aw_pathk(), cause: sw_str(s: "empty"))]),
+        sw_ret(e: sw_id(n: "s")),
+      ]),
+      sw_func(m: [], n: "object", p: [sw_p_(n: "key", t: aw_s()), sw_p(n: "allowed", t: sw_tarr(e: aw_s()))], th: true, r: aw_ret(t: sw_t(n: "WireObject")), b: [
+        aw_member_present(),
+        sw_ret(e: sw_try(e: sw_calln(f: "WireObject", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: aw_pathk()), sw_arg(l: "allowed", v: sw_id(n: "allowed"))]))),
+      ]),
+      sw_func(m: [], n: "array", p: [sw_p_(n: "key", t: aw_s())], th: true, r: aw_ret(t: sw_tarr(e: sw_t(n: "Any"))), b: [
+        aw_member_present(),
+        sw_guard(c: [sw_bind(n: "a", e: sw_asq(e: sw_id(n: "v"), t: sw_tarr(e: sw_t(n: "Any"))))], e: [aw_refuse(at: aw_pathk(), cause: sw_str(s: "not an array"))]),
+        sw_ret(e: sw_id(n: "a")),
+      ]),
+      sw_doc(c: ["The member must equal the one admitted spelling."], d: sw_func(m: [], n: "expect", p: [sw_p_(n: "key", t: aw_s()), sw_p_(n: "admitted", t: aw_s()), sw_p_(n: "cause", t: aw_s())], th: true, r: none, b: [
+        sw_guard(c: [sw_cond(e: sw_eq(l: sw_try(e: sw_calln(f: "string", a: [sw_pos(v: sw_id(n: "key"))])), r: sw_id(n: "admitted")))], e: [aw_refuse(at: aw_pathk(), cause: sw_id(n: "cause"))]),
+      ])),
+      sw_doc(
+        c: [
+          "A sum: the \"kind\" member selects the arm, and the object then admits exactly THAT arm's",
+          "members — a member of another arm is refused (decode per arm, never per union).",
+        ],
+        d: aw_static_func(
+          n: "sum",
+          p: [sw_p_(n: "v", t: sw_topt(w: sw_t(n: "Any"))), sw_p(n: "at", t: aw_s()), sw_p(n: "arms", t: sw_tdict(k: aw_s(), v: sw_tarr(e: aw_s())))],
+          th: true,
+          r: sw_ttuple(e: [sw_tnel(n: "kind", t: aw_s()), sw_tnel(n: "object", t: sw_t(n: "WireObject"))]),
+          b: [
+            sw_guard(c: [sw_bind(n: "o", e: sw_asq(e: sw_id(n: "v"), t: sw_tdict(k: aw_s(), v: sw_t(n: "Any"))))], e: [aw_refuse(at: sw_id(n: "at"), cause: sw_str(s: "not an object"))]),
+            sw_let(n: "path", e: sw_ternary(c: sw_eq(l: sw_id(n: "at"), r: sw_str(s: "$")), t: sw_str(s: "kind"), e: sw_add(l: sw_id(n: "at"), r: sw_str(s: ".kind")))),
+            sw_guard(c: [sw_bind(n: "k", e: sw_sub(b: sw_id(n: "o"), a: [sw_pos(v: sw_str(s: "kind"))]))], e: [aw_refuse(at: sw_id(n: "path"), cause: sw_str(s: "missing"))]),
+            sw_guard(c: aw_nonempty_cast(n: "kind", v: sw_id(n: "k"), t: "String"), e: [aw_refuse(at: sw_id(n: "path"), cause: sw_str(s: "not a string"))]),
+            sw_guard(c: [sw_bind(n: "allowed", e: sw_sub(b: sw_id(n: "arms"), a: [sw_pos(v: sw_id(n: "kind"))]))], e: [aw_refuse(at: sw_id(n: "path"), cause: sw_str(s: "not an admitted kind"))]),
+            sw_ret(e: sw_tuple(e: [sw_pos(v: sw_id(n: "kind")), sw_pos(v: sw_try(e: sw_calln(f: "WireObject", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_id(n: "at")), sw_arg(l: "allowed", v: sw_add(l: sw_strs(e: ["kind"]), r: sw_id(n: "allowed")))])))])),
+          ]
+        )
+      ),
+      aw_static_func(n: "document", p: [sw_p_(n: "data", t: sw_t(n: "Data")), sw_p(n: "allowed", t: sw_tarr(e: aw_s()))], th: true, r: sw_t(n: "WireObject"), b: list_append(left: aw_json_read(), right: [
+        sw_ret(e: sw_try(e: sw_calln(f: "WireObject", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_str(s: "$")), sw_arg(l: "allowed", v: sw_id(n: "allowed"))]))),
+      ])),
+    ])
+  )
+}
+
+// ── Crypto carriers and sums ─────────────────────────────────────────────────────────────────
+fn aw_encode_fn(doc: String, n: String, p: String, t: String, members: List<SwiftExpr>) -> SwiftDecl {
+  sw_doc(c: [doc], d: aw_static_func(n: n, p: [sw_p_(n: p, t: sw_t(n: t))], th: false, r: sw_t(n: "WireJson"), b: [sw_expr(e: aw_object(members: members))]))
+}
+
+fn aw_field_of(p: String, f: String) -> SwiftExpr { aw_member_string(key: f, value: sw_path(b: p, m: f)) }
+
+fn aw_wire_encode() -> SwiftDecl {
+  sw_cmt(c: ["── Crypto carriers and sums ─────────────────────────────────────────────────────────────────"], d: sw_enum(n: "WireEncode", i: [], m: [
+    aw_encode_fn(doc: "verifying_key_json", n: "verifyingKey", p: "k", t: "VerifyingKey", members: [
+      aw_member_string(key: "suite", value: sw_path(b: "VerifyingKey", m: "suite")), aw_member_string(key: "encoding", value: sw_path(b: "VerifyingKey", m: "encoding")), aw_field_of(p: "k", f: "point_b64url"),
+    ]),
+    aw_encode_fn(doc: "signature_bytes_json", n: "signature", p: "b", t: "SignatureBytes", members: [
+      aw_member_string(key: "suite", value: sw_path(b: "SignatureBytes", m: "suite")), aw_member_string(key: "encoding", value: sw_path(b: "SignatureBytes", m: "encoding")), aw_field_of(p: "b", f: "b64url"),
+    ]),
+    aw_encode_fn(doc: "push_registration_json, ApnsRegistration arm", n: "push", p: "p", t: "ApnsRegistration", members: [
+      aw_member_string(key: "kind", value: sw_str(s: "apns")), aw_field_of(p: "p", f: "environment"), aw_field_of(p: "p", f: "topic"), aw_field_of(p: "p", f: "token"),
+    ]),
+    aw_encode_fn(doc: "presented_evidence_json, IosAppAttestAttestation arm", n: "evidence", p: "e", t: "IosAppAttestBoundDecisionKey", members: [
+      aw_member_string(key: "kind", value: sw_str(s: "ios_app_attest")), aw_field_of(p: "e", f: "attest_key_id"), aw_field_of(p: "e", f: "attestation_b64"),
+    ]),
+    aw_encode_fn(doc: "platform_proof_json, IosAppAttestAssertion arm", n: "proof", p: "p", t: "IosAppAttestAssertion", members: [
+      aw_member_string(key: "kind", value: sw_str(s: "ios_app_attest_assertion")), aw_field_of(p: "p", f: "assertion_b64"),
+    ]),
+    aw_encode_fn(doc: "redemption_challenge_json", n: "challenge", p: "c", t: "RedemptionChallenge", members: [
+      aw_field_of(p: "c", f: "expires_at"), aw_field_of(p: "c", f: "nonce_hex"),
+    ]),
+    aw_encode_fn(doc: "signing_input_json", n: "signingInput", p: "i", t: "DeviceRedemptionSigningInput", members: [
+      aw_field_of(p: "i", f: "audience"),
+      aw_field_of(p: "i", f: "enrollment_id"),
+      aw_member(key: "challenge", value: sw_calln(f: "challenge", a: [sw_pos(v: sw_path(b: "i", m: "challenge"))])),
+      aw_field_of(p: "i", f: "escalation_id"),
+      aw_field_of(p: "i", f: "request_revision"),
+      aw_field_of(p: "i", f: "stored_request_text"),
+      aw_member_string(key: "decision", value: sw_mem(b: sw_path(b: "i", m: "decision"), m: "rawValue")),
+      aw_field_of(p: "i", f: "capability_text"),
+      aw_field_of(p: "i", f: "capability_tag_b64url"),
+    ]),
+    sw_doc(c: ["enrolment_request_json"], d: aw_static_func(n: "enrolmentRequest", p: [sw_p_(n: "r", t: sw_t(n: "EnrolmentRequest"))], th: false, r: aw_s(), b: [
+      sw_expr(e: aw_serialized_object(members: [
+        aw_field_of(p: "r", f: "code"),
+        aw_member_string(key: "platform", value: sw_mem(b: sw_path(b: "r", m: "platform"), m: "rawValue")),
+        aw_member(key: "decision_key", value: sw_calln(f: "verifyingKey", a: [sw_pos(v: sw_path(b: "r", m: "decision_key"))])),
+        aw_member(key: "evidence", value: sw_calln(f: "evidence", a: [sw_pos(v: sw_path(b: "r", m: "evidence"))])),
+        aw_member(key: "push", value: sw_calln(f: "push", a: [sw_pos(v: sw_path(b: "r", m: "push"))])),
+      ])),
+    ])),
+    sw_doc(c: ["signed_redemption_json"], d: aw_static_func(n: "signedRedemption", p: [sw_p_(n: "r", t: sw_t(n: "SignedRedemption"))], th: false, r: aw_s(), b: [
+      sw_expr(e: aw_serialized_object(members: [
+        aw_member(key: "signing_input", value: sw_calln(f: "signingInput", a: [sw_pos(v: sw_path(b: "r", m: "signing_input"))])),
+        aw_member(key: "signature", value: sw_calln(f: "signature", a: [sw_pos(v: sw_path(b: "r", m: "signature"))])),
+        aw_member(key: "platform_proof", value: sw_calln(f: "proof", a: [sw_pos(v: sw_path(b: "r", m: "platform_proof"))])),
+      ])),
+    ])),
+    sw_doc(c: ["push_update_json"], d: aw_static_func(n: "pushUpdate", p: [sw_p_(n: "p", t: sw_t(n: "ApnsRegistration"))], th: false, r: aw_s(), b: [
+      sw_expr(e: sw_mem(b: sw_calln(f: "push", a: [sw_pos(v: sw_id(n: "p"))]), m: "serialized")),
+    ])),
+    aw_encode_fn(doc: "read_authentication_json_value", n: "readAuthentication", p: "a", t: "ReadAuth", members: [
+      aw_member_string(key: "enrollment_id", value: sw_path(b: "a", m: "enrollmentId")), aw_member_string(key: "requested_at", value: sw_path(b: "a", m: "requestedAt")), aw_member_string(key: "assertion_b64", value: sw_path(b: "a", m: "assertionB64")),
+    ]),
+    sw_doc(c: ["read_authentication_json: the body of the three authenticated reads"], d: aw_static_func(n: "readRequest", p: [sw_p_(n: "a", t: sw_t(n: "ReadAuth"))], th: false, r: aw_s(), b: [
+      sw_expr(e: sw_mem(b: sw_calln(f: "readAuthentication", a: [sw_pos(v: sw_id(n: "a"))]), m: "serialized")),
+    ])),
+    sw_doc(c: ["push_update_request_json: \{ auth, push \}"], d: aw_static_func(n: "pushUpdateRequest", p: [sw_p_(n: "a", t: sw_t(n: "ReadAuth")), sw_p_(n: "p", t: sw_t(n: "ApnsRegistration"))], th: false, r: aw_s(), b: [
+      sw_expr(e: aw_serialized_object(members: [
+        aw_member(key: "auth", value: sw_calln(f: "readAuthentication", a: [sw_pos(v: sw_id(n: "a"))])),
+        aw_member(key: "push", value: sw_calln(f: "push", a: [sw_pos(v: sw_id(n: "p"))])),
+      ])),
+    ])),
+  ]))
+}
+
+// ── WireDecode ───────────────────────────────────────────────────────────────────────────────
+fn aw_decode_fn(n: String, p: List<SwiftParameter>, r: SwiftType, b: List<SwiftStmt>) -> SwiftDecl {
+  aw_static_func(n: n, p: p, th: true, r: r, b: b)
+}
+
+fn aw_po() -> List<SwiftParameter> { [sw_p_(n: "o", t: sw_t(n: "WireObject"))] }
+fn aw_pdata() -> List<SwiftParameter> { [sw_p_(n: "data", t: sw_t(n: "Data"))] }
+fn aw_pany() -> List<SwiftParameter> { [sw_p_(n: "v", t: sw_topt(w: sw_t(n: "Any"))), sw_p(n: "at", t: aw_s())] }
+
+// <Type>(<field>: try o.string("<field>"), ...)
+fn aw_construct_strings(t: String, o: String, fields: List<String>) -> SwiftExpr {
+  sw_calln(f: t, a: map(fields, f => sw_arg(l: f, v: aw_ostr(o: o, key: f))))
+}
+
+// let (<bind>, o) = try WireObject.sum(v, at: at, arms: ["<kind>": [...]])
+fn aw_sum(bind: SwiftExpr, kind: String, members: List<String>) -> SwiftStmt {
+  sw_let_pat(
+    p: SwiftTuplePattern { elements: [match bind { SwiftWildcardExpr => SwiftWildcardPattern  _ => sw_pid(n: "kind") }, sw_pid(n: "o")] },
+    e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "sum"), a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_id(n: "at")), sw_arg(l: "arms", v: sw_dict(e: [sw_kv(k: sw_str(s: kind), v: sw_strs(e: members))]))]))
+  )
+}
+
+data aw_signing_input_members: List<String> = ["audience", "enrollment_id", "challenge", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"]
+data aw_challenge_members: List<String> = ["expires_at", "nonce_hex"]
+
+fn aw_challenge_of_o() -> SwiftExpr {
+  sw_try(e: sw_calln(f: "challenge", a: [sw_pos(v: aw_oobject(o: "o", key: "challenge", allowed: sw_strs(e: aw_challenge_members)))]))
+}
+
+fn aw_wire_decode() -> SwiftDecl {
+  sw_enum(n: "WireDecode", i: [], m: [
+    aw_decode_fn(n: "verifyingKey", p: aw_po(), r: sw_t(n: "VerifyingKey"), b: [
+      aw_expect(key: "suite", admitted: sw_path(b: "VerifyingKey", m: "suite"), cause: "not the admitted suite"),
+      aw_expect(key: "encoding", admitted: sw_path(b: "VerifyingKey", m: "encoding"), cause: "not the admitted encoding"),
+      sw_ret(e: aw_construct_strings(t: "VerifyingKey", o: "o", fields: ["point_b64url"])),
+    ]),
+    aw_decode_fn(n: "signature", p: aw_po(), r: sw_t(n: "SignatureBytes"), b: [
+      aw_expect(key: "suite", admitted: sw_path(b: "SignatureBytes", m: "suite"), cause: "not the admitted suite"),
+      aw_expect(key: "encoding", admitted: sw_path(b: "SignatureBytes", m: "encoding"), cause: "not the admitted encoding"),
+      sw_ret(e: aw_construct_strings(t: "SignatureBytes", o: "o", fields: ["b64url"])),
+    ]),
+    sw_doc(c: ["Android's arm is modeled and encodable upstream; the app refuses it as the server does."], d: aw_decode_fn(n: "push", p: aw_pany(), r: sw_t(n: "ApnsRegistration"), b: [
+      aw_sum(bind: sw_id(n: "kind"), kind: "apns", members: ["environment", "topic", "token"]),
+      sw_guard(c: [sw_cond(e: sw_eq(l: sw_id(n: "kind"), r: sw_str(s: "apns")))], e: [aw_refuse(at: sw_add(l: sw_id(n: "at"), r: sw_str(s: ".kind")), cause: sw_str(s: "not an admitted push provider"))]),
+      sw_let(n: "env", e: aw_ostr(o: "o", key: "environment")),
+      sw_guard(c: [sw_cond(e: sw_op(l: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "production")), o: SwiftLogicalOrOperator, r: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "development"))))], e: [aw_refuse(at: sw_str(s: "push.environment"), cause: sw_str(s: "not an APNs environment"))]),
+      sw_ret(e: sw_calln(f: "ApnsRegistration", a: [sw_arg(l: "environment", v: sw_id(n: "env")), sw_arg(l: "topic", v: aw_ostr(o: "o", key: "topic")), sw_arg(l: "token", v: aw_ostr(o: "o", key: "token"))])),
+    ])),
+    aw_decode_fn(n: "evidence", p: aw_pany(), r: sw_t(n: "IosAppAttestBoundDecisionKey"), b: [
+      aw_sum(bind: SwiftWildcardExpr, kind: "ios_app_attest", members: ["attest_key_id", "attestation_b64"]),
+      sw_ret(e: aw_construct_strings(t: "IosAppAttestBoundDecisionKey", o: "o", fields: ["attest_key_id", "attestation_b64"])),
+    ]),
+    aw_decode_fn(n: "proof", p: aw_pany(), r: sw_t(n: "IosAppAttestAssertion"), b: [
+      aw_sum(bind: SwiftWildcardExpr, kind: "ios_app_attest_assertion", members: ["assertion_b64"]),
+      sw_ret(e: aw_construct_strings(t: "IosAppAttestAssertion", o: "o", fields: ["assertion_b64"])),
+    ]),
+    aw_decode_fn(n: "challenge", p: aw_po(), r: sw_t(n: "RedemptionChallenge"), b: [
+      sw_expr(e: aw_construct_strings(t: "RedemptionChallenge", o: "o", fields: aw_challenge_members)),
+    ]),
+    aw_decode_fn(n: "signingInput", p: aw_po(), r: sw_t(n: "DeviceRedemptionSigningInput"), b: [
+      sw_let(n: "d", e: aw_ostr(o: "o", key: "decision")),
+      sw_guard(c: [sw_bind(n: "decision", e: sw_calln(f: "ProposedDecision", a: [sw_arg(l: "rawValue", v: sw_id(n: "d"))]))], e: [aw_refuse(at: sw_str(s: "signing_input.decision"), cause: sw_str(s: "not approve or deny"))]),
+      sw_ret(e: sw_calln(f: "DeviceRedemptionSigningInput", a: [
+        sw_arg(l: "audience", v: aw_ostr(o: "o", key: "audience")),
+        sw_arg(l: "enrollment_id", v: aw_ostr(o: "o", key: "enrollment_id")),
+        sw_arg(l: "challenge", v: aw_challenge_of_o()),
+        sw_arg(l: "escalation_id", v: aw_ostr(o: "o", key: "escalation_id")),
+        sw_arg(l: "request_revision", v: aw_ostr(o: "o", key: "request_revision")),
+        sw_arg(l: "stored_request_text", v: aw_ostr(o: "o", key: "stored_request_text")),
+        sw_arg(l: "decision", v: sw_id(n: "decision")),
+        sw_arg(l: "capability_text", v: aw_ostr(o: "o", key: "capability_text")),
+        sw_arg(l: "capability_tag_b64url", v: aw_ostr(o: "o", key: "capability_tag_b64url")),
+      ])),
+    ]),
+    aw_decode_fn(n: "verbCapability", p: aw_po(), r: sw_t(n: "VerbCapability"), b: [
+      sw_expr(e: aw_construct_strings(t: "VerbCapability", o: "o", fields: ["capability_text", "capability_tag_b64url"])),
+    ]),
+    sw_cmt(c: ["Request decoders exist so the envelope fixtures round-trip through the app's own encoders."], d: aw_decode_fn(n: "enrolmentRequest", p: aw_pdata(), r: sw_t(n: "EnrolmentRequest"), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["code", "platform", "decision_key", "evidence", "push"])),
+      aw_expect(key: "platform", admitted: sw_mem(b: sw_path(b: "MobilePlatform", m: "ios"), m: "rawValue"), cause: "not an admitted platform"),
+      sw_ret(e: sw_calln(f: "EnrolmentRequest", a: [
+        sw_arg(l: "code", v: aw_ostr(o: "o", key: "code")),
+        sw_arg(l: "platform", v: sw_dot(n: "ios")),
+        sw_arg(l: "decision_key", v: sw_try(e: sw_calln(f: "verifyingKey", a: [sw_pos(v: aw_oobject(o: "o", key: "decision_key", allowed: sw_strs(e: ["suite", "encoding", "point_b64url"])))]))),
+        sw_arg(l: "evidence", v: sw_try(e: sw_calln(f: "evidence", a: [sw_pos(v: aw_omember(key: "evidence")), sw_arg(l: "at", v: sw_str(s: "evidence"))]))),
+        sw_arg(l: "push", v: sw_try(e: sw_calln(f: "push", a: [sw_pos(v: aw_omember(key: "push")), sw_arg(l: "at", v: sw_str(s: "push"))]))),
+      ])),
+    ])),
+    aw_decode_fn(n: "signedRedemption", p: aw_pdata(), r: sw_t(n: "SignedRedemption"), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["signing_input", "signature", "platform_proof"])),
+      sw_ret(e: sw_calln(f: "SignedRedemption", a: [
+        sw_arg(l: "signing_input", v: sw_try(e: sw_calln(f: "signingInput", a: [sw_pos(v: aw_oobject(o: "o", key: "signing_input", allowed: sw_strs(e: aw_signing_input_members)))]))),
+        sw_arg(l: "signature", v: sw_try(e: sw_calln(f: "signature", a: [sw_pos(v: aw_oobject(o: "o", key: "signature", allowed: sw_strs(e: ["suite", "encoding", "b64url"])))]))),
+        sw_arg(l: "platform_proof", v: sw_try(e: sw_calln(f: "proof", a: [sw_pos(v: aw_omember(key: "platform_proof")), sw_arg(l: "at", v: sw_str(s: "platform_proof"))]))),
+      ])),
+    ]),
+    aw_decode_fn(n: "pushUpdate", p: aw_pdata(), r: sw_t(n: "ApnsRegistration"), b: list_append(left: aw_json_read(), right: [
+      sw_ret(e: sw_try(e: sw_calln(f: "push", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_str(s: "$"))]))),
+    ])),
+    sw_cmt(c: ["Responses."], d: aw_decode_fn(n: "enrolmentGrant", p: aw_pdata(), r: sw_t(n: "EnrolmentGrant"), b: [
+      sw_expr(e: sw_calln(f: "EnrolmentGrant", a: [sw_arg(l: "enrollment_id", v: sw_try(e: sw_call(f: sw_mem(b: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [sw_pos(v: sw_id(n: "data")), sw_arg(l: "allowed", v: sw_strs(e: ["enrollment_id"]))]), m: "string"), a: [sw_pos(v: sw_str(s: "enrollment_id"))])))])),
+    ])),
+    aw_decode_fn(n: "pendingList", p: aw_pdata(), r: sw_tarr(e: sw_t(n: "PendingApproval")), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["pending"])),
+      sw_ret(e: sw_try(e: sw_callt(
+        f: sw_mem(b: sw_call(f: sw_mem(b: sw_call(f: sw_path(b: "o", m: "array"), a: [sw_pos(v: sw_str(s: "pending"))]), m: "enumerated"), a: []), m: "map"),
+        a: [],
+        c: sw_clo(p: ["i", "row"], s: [
+          sw_let(n: "r", e: sw_try(e: sw_calln(f: "WireObject", a: [sw_pos(v: sw_id(n: "row")), sw_arg(l: "at", v: sw_interp(p: [sw_st(s: "pending["), sw_si(e: sw_id(n: "i")), sw_st(s: "]")])), sw_arg(l: "allowed", v: sw_strs(e: ["escalation_id", "request_revision"]))]))),
+          sw_ret(e: aw_construct_strings(t: "PendingApproval", o: "r", fields: ["escalation_id", "request_revision"])),
+        ])
+      ))),
+    ]),
+    aw_decode_fn(n: "fetchedRequest", p: aw_pdata(), r: sw_t(n: "FetchedRequest"), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["escalation_id", "request_revision", "stored_request_text", "challenge", "approve", "deny"])),
+      sw_let(n: "cap", e: sw_strs(e: ["capability_text", "capability_tag_b64url"])),
+      sw_ret(e: sw_calln(f: "FetchedRequest", a: [
+        sw_arg(l: "escalation_id", v: aw_ostr(o: "o", key: "escalation_id")),
+        sw_arg(l: "request_revision", v: aw_ostr(o: "o", key: "request_revision")),
+        sw_arg(l: "stored_request_text", v: aw_ostr(o: "o", key: "stored_request_text")),
+        sw_arg(l: "challenge", v: aw_challenge_of_o()),
+        sw_arg(l: "approve", v: sw_try(e: sw_calln(f: "verbCapability", a: [sw_pos(v: aw_oobject(o: "o", key: "approve", allowed: sw_id(n: "cap")))]))),
+        sw_arg(l: "deny", v: sw_try(e: sw_calln(f: "verbCapability", a: [sw_pos(v: aw_oobject(o: "o", key: "deny", allowed: sw_id(n: "cap")))]))),
+      ])),
+    ]),
+    aw_decode_fn(n: "enrolmentReadback", p: aw_pdata(), r: sw_t(n: "EnrolmentReadback"), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["enrollment_id", "standing"])),
+      sw_let(n: "s", e: aw_ostr(o: "o", key: "standing")),
+      sw_guard(c: [sw_bind(n: "standing", e: sw_calln(f: "EnrolmentStandingWire", a: [sw_arg(l: "rawValue", v: sw_id(n: "s"))]))], e: [aw_refuse(at: sw_str(s: "standing"), cause: sw_str(s: "not an enrolment standing"))]),
+      sw_ret(e: sw_calln(f: "EnrolmentReadback", a: [sw_arg(l: "enrollment_id", v: aw_ostr(o: "o", key: "enrollment_id")), sw_arg(l: "standing", v: sw_id(n: "standing"))])),
+    ]),
+    sw_doc(
+      c: [
+        "approval_push_custom_keys: the hint travels as the top-level custom key \"notification_id\"",
+        "beside aps. It is decoded and then used for NOTHING but being present: the push wakes the",
+        "list and never selects what is shown.",
+      ],
+      d: aw_decode_fn(n: "pushHint", p: [sw_p_(n: "userInfo", t: sw_tdict(k: sw_t(n: "AnyHashable"), v: sw_t(n: "Any")))], r: sw_t(n: "ApprovalPushHint"), b: [
+        sw_guard(c: aw_nonempty_cast(n: "id", v: sw_sub(b: sw_id(n: "userInfo"), a: [sw_pos(v: sw_str(s: "notification_id"))]), t: "String"), e: [aw_refuse(at: sw_str(s: "notification_id"), cause: sw_str(s: "missing"))]),
+        sw_ret(e: sw_calln(f: "ApprovalPushHint", a: [sw_arg(l: "notification_id", v: sw_id(n: "id"))])),
+      ])
+    ),
+    aw_decode_fn(n: "redemptionResponse", p: aw_pdata(), r: sw_t(n: "RedemptionOutcome"), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["outcome", "message"])),
+      sw_ret(e: aw_construct_strings(t: "RedemptionOutcome", o: "o", fields: ["outcome", "message"])),
+    ]),
+  ])
+}
+
+// ── The stored request the operator decides on ───────────────────────────────────────────────
+fn aw_stored_request() -> List<SwiftDecl> {
+  [
+    SwiftCommentedDecl {
+      comments: [
+        SwiftLineComment { text: "── The stored request the operator decides on ───────────────────────────────────────────────" },
+        SwiftDocLineComment { text: "gunbc.auth.approval_decision_store stored_request_json, read STRICTLY from the exact text that is" },
+        SwiftDocLineComment { text: "signed: requester, purpose, destructive and the request's own expires_at are required, the other" },
+        SwiftDocLineComment { text: "members the store renders are admitted and unread. A missing member or a failed parse refuses the" },
+        SwiftDocLineComment { text: "presentation. Typed ApprovalTarget and the access lifetime wait on approval_target_frontier." },
+      ],
+      decl: sw_struct(n: "StoredRequestSummary", i: [sw_t(n: "Equatable")], m: [
+        sw_field(n: "requester", t: aw_s()),
+        sw_field(n: "purpose", t: aw_s()),
+        sw_field(n: "destructive", t: sw_t(n: "Bool")),
+        sw_field(n: "expires_at", t: aw_s()),
+      ]),
+    },
+    SwiftExtensionDecl { extended: sw_t(n: "WireDecode"), inherits: [], members: [
+      aw_decode_fn(n: "storedRequest", p: [sw_p_(n: "text", t: aw_s())], r: sw_t(n: "StoredRequestSummary"), b: [
+        sw_let(n: "o", e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [
+          sw_pos(v: sw_calln(f: "Data", a: [sw_pos(v: sw_path(b: "text", m: "utf8"))])),
+          sw_arg(l: "allowed", v: sw_strs(e: ["kind", "escalation_id", "request_revision", "attempt", "requester", "purpose", "destructive", "issued_at", "expires_at", "key_id"])),
+        ]))),
+        sw_guard(c: [sw_bind(n: "d", e: sw_asq(e: aw_omember(key: "destructive"), t: sw_t(n: "Bool")))], e: [aw_refuse(at: sw_str(s: "destructive"), cause: sw_str(s: "missing or not a bool"))]),
+        sw_ret(e: sw_calln(f: "StoredRequestSummary", a: [
+          sw_arg(l: "requester", v: aw_ostr(o: "o", key: "requester")), sw_arg(l: "purpose", v: aw_ostr(o: "o", key: "purpose")),
+          sw_arg(l: "destructive", v: sw_id(n: "d")), sw_arg(l: "expires_at", v: aw_ostr(o: "o", key: "expires_at")),
+        ])),
+      ]),
+    ] },
+  ]
+}
+
+// ── Records the wire carries ─────────────────────────────────────────────────────────────────
+fn aw_record(n: String, i: List<String>, fields: List<String>) -> SwiftDecl {
+  sw_struct(n: n, i: map(i, x => sw_t(n: x)), m: map(fields, f => sw_field(n: f, t: aw_s())))
+}
+
+data aw_outcome_names_before_branched: List<String> = ["DeviceRedeemed", "DeviceAlreadyDecided"]
+
+data aw_outcome_names_after_branched: List<String> = [
+  "DeviceEnrollmentForAnotherOperator", "DeviceEscalationNotFiled", "DeviceStoreUnreadable",
+  "DeviceKeyringUnavailable", "DeviceSignedForAnotherRequest", "DeviceChallengeExpired",
+  "DeviceChallengeNotIssuedHere", "DeviceCapabilityTagMalformed", "DeviceCapabilityRefused",
+  "DeviceSignatureRefused", "DevicePlatformProofRefused", "DevicePlatformProofForOtherBytes",
+  "DevicePlatformProofWrongKey", "DevicePlatformUnrealized", "DeviceLostTheRace", "DeviceCommitRefused",
+]
+
+fn aw_records() -> List<SwiftDecl> {
+  [
+    SwiftCommentedDecl {
+      comments: [
+        SwiftLineComment { text: "── Records the wire carries ─────────────────────────────────────────────────────────────────" },
+        SwiftDocLineComment { text: "EnrolmentRequest: the POST /approve/device/enrol body. The login is not sent: the server derives it." },
+      ],
+      decl: sw_struct(n: "EnrolmentRequest", i: [sw_t(n: "Equatable")], m: [
+        sw_field(n: "code", t: aw_s()),
+        sw_field(n: "platform", t: sw_t(n: "MobilePlatform")),
+        sw_field(n: "decision_key", t: sw_t(n: "VerifyingKey")),
+        sw_field(n: "evidence", t: sw_t(n: "IosAppAttestBoundDecisionKey")),
+        sw_field(n: "push", t: sw_t(n: "ApnsRegistration")),
+      ]),
+    },
+    aw_record(n: "EnrolmentGrant", i: ["Equatable"], fields: ["enrollment_id"]),
+    sw_struct(n: "PendingApproval", i: [sw_t(n: "Identifiable"), sw_t(n: "Hashable")], m: [
+      sw_field(n: "escalation_id", t: aw_s()),
+      sw_field(n: "request_revision", t: aw_s()),
+      sw_computed(n: "id", t: aw_s(), s: [sw_expr(e: sw_id(n: "escalation_id"))]),
+    ]),
+    sw_doc(c: ["VerbCapability: the text and the canonical base64url tag exactly as issued, sent back untouched."], d: aw_record(n: "VerbCapability", i: ["Equatable"], fields: ["capability_text", "capability_tag_b64url"])),
+    sw_doc(c: ["FetchedRequest: the stored request byte for byte, a fresh challenge, and BOTH verbs' capabilities."], d: sw_struct(n: "FetchedRequest", i: [sw_t(n: "Equatable")], m: [
+      sw_field(n: "escalation_id", t: aw_s()),
+      sw_field(n: "request_revision", t: aw_s()),
+      sw_field(n: "stored_request_text", t: aw_s()),
+      sw_field(n: "challenge", t: sw_t(n: "RedemptionChallenge")),
+      sw_field(n: "approve", t: sw_t(n: "VerbCapability")),
+      sw_field(n: "deny", t: sw_t(n: "VerbCapability")),
+      sw_func(m: [], n: "capability", p: [sw_param(l: Present { value: "for" }, n: "d", t: sw_t(n: "ProposedDecision"))], th: false, r: aw_ret(t: sw_t(n: "VerbCapability")), b: [
+        sw_switch(e: sw_id(n: "d"), c: [
+          sw_case(p: [sw_pcase(n: "approve", a: [])], s: [sw_ret(e: sw_id(n: "approve"))]),
+          sw_case(p: [sw_pcase(n: "deny", a: [])], s: [sw_ret(e: sw_id(n: "deny"))]),
+        ]),
+      ]),
+    ])),
+    sw_enum(n: "EnrolmentStandingWire", i: [aw_s()], m: [sw_cases(n: ["active", "revoked"])]),
+    sw_struct(n: "EnrolmentReadback", i: [sw_t(n: "Equatable")], m: [
+      sw_field(n: "enrollment_id", t: aw_s()),
+      sw_field(n: "standing", t: sw_t(n: "EnrolmentStandingWire")),
+    ]),
+    sw_doc(
+      c: [
+        "RedemptionResponse: the DeviceRedemptionOutcome arm name and the operator-facing reason. The app",
+        "renders the reason and branches only on the name.",
+      ],
+      d: aw_record(n: "RedemptionOutcome", i: ["Equatable"], fields: ["outcome", "message"])
+    ),
+    sw_doc(
+      c: [
+        "gunbc.auth.approval_device_redemption device_redemption_outcome_wire: the arm names, spelled",
+        "here and nowhere else. The two the app BRANCHES on end the enrolment's authority; the rest are",
+        "rendered as returned. The test joins every name to the fixture's redemption_response_* envelopes.",
+      ],
+      d: sw_enum(n: "OutcomeName", i: [], m: [
+        sw_static_let(n: "enrollmentUnknown", e: sw_str(s: "DeviceEnrollmentUnknown")),
+        sw_static_let(n: "enrollmentRevoked", e: sw_str(s: "DeviceEnrollmentRevoked")),
+        sw_doc(c: ["Every arm of DeviceRedemptionOutcome, for the identity join with the emitted envelopes."], d: sw_static_let_typed(
+          n: "all",
+          t: sw_tg(n: "Set", a: [aw_s()]),
+          e: sw_arr(e: list_append(left: list_append(left: map(aw_outcome_names_before_branched, s => sw_str(s: s)), right: [sw_id(n: "enrollmentUnknown"), sw_id(n: "enrollmentRevoked")]), right: map(aw_outcome_names_after_branched, s => sw_str(s: s))))
+        )),
+      ])
+    ),
+  ]
+}
+
+// ── Paths ────────────────────────────────────────────────────────────────────────────────────
+fn aw_paths() -> List<SwiftDecl> {
+  [
+    SwiftCommentedDecl {
+      comments: [
+        SwiftLineComment { text: "── Paths ────────────────────────────────────────────────────────────────────────────────────" },
+        SwiftDocLineComment { text: "EVERY DEVICE OPERATION IS A POST WHOSE BODY CARRIES ITS AUTHENTICATION (gunbc.auth.approval_device_wire" },
+        SwiftDocLineComment { text: "ReadAuthentication): the server hands a route no request header but the tailnet login, so the" },
+        SwiftDocLineComment { text: "enrolment id, the claimed time and the assertion travel in the JSON body. The assertion's client" },
+        SwiftDocLineComment { text: "data (device_read_client_data) is unchanged by where the carrier rides." },
+        SwiftDocLineComment { text: "The credentials an authenticated read or push update carries; produced by the caller so this file signs nothing." },
+      ],
+      decl: aw_record(n: "ReadAuth", i: [], fields: ["enrollmentId", "requestedAt", "assertionB64"]),
+    },
+    sw_enum(n: "Route", i: [], m: [
+      sw_static_let(n: "enrol", e: sw_str(s: "/approve/device/enrol")),
+      sw_static_let(n: "pending", e: sw_str(s: "/approve/device/pending")),
+      sw_static_let(n: "redeem", e: sw_str(s: "/approve/device/redeem")),
+      sw_static_let(n: "push", e: sw_str(s: "/approve/device/push")),
+      sw_static_let(n: "requestPrefix", e: sw_str(s: "/approve/device/requests/")),
+      sw_static_let(n: "enrollmentPrefix", e: sw_str(s: "/approve/device/enrollments/")),
+      sw_doc(
+        c: [
+          "path_segment = \"id-\" + base64url(UTF-8(identity)), padded URL-safe alphabet (A-Z a-z 0-9 - _",
+          "with \"=\" padding): total and injective, never refused, no percent escape for any layer to",
+          "decode, never a dot segment, no case-equivalent spelling. Transported verbatim.",
+        ],
+        d: aw_static_func(n: "segment", p: [sw_p_(n: "s", t: aw_s())], th: false, r: aw_s(), b: [
+          sw_expr(e: sw_add(l: sw_str(s: "id-"), r: aw_replace(e: aw_replace(e: sw_call(f: sw_mem(b: sw_calln(f: "Data", a: [sw_pos(v: sw_path(b: "s", m: "utf8"))]), m: "base64EncodedString"), a: []), of: "+", with: "-"), of: "/", with: "_"))),
+        ])
+      ),
+      sw_doc(c: ["device_request_path"], d: aw_static_func(n: "request", p: [sw_p_(n: "escalationId", t: aw_s())], th: false, r: aw_s(), b: [
+        sw_expr(e: sw_add(l: sw_id(n: "requestPrefix"), r: sw_calln(f: "segment", a: [sw_pos(v: sw_id(n: "escalationId"))]))),
+      ])),
+      sw_doc(c: ["device_enrollment_path"], d: aw_static_func(n: "enrollment", p: [sw_p_(n: "enrollmentId", t: aw_s())], th: false, r: aw_s(), b: [
+        sw_expr(e: sw_add(l: sw_id(n: "enrollmentPrefix"), r: sw_calln(f: "segment", a: [sw_pos(v: sw_id(n: "enrollmentId"))]))),
+      ])),
+    ]),
+  ]
+}
+
+fn aw_replace(e: SwiftExpr, of: String, with: String) -> SwiftExpr {
+  sw_call(f: sw_mem(b: e, m: "replacingOccurrences"), a: [sw_arg(l: "of", v: sw_str(s: of)), sw_arg(l: "with", v: sw_str(s: with))])
+}
+
+// ── Transport ────────────────────────────────────────────────────────────────────────────────
+fn aw_info(key: String) -> SwiftExpr { sw_sub(b: sw_id(n: "info"), a: [sw_pos(v: sw_str(s: key))]) }
+
+fn aw_server_config() -> SwiftDecl {
+  sw_cmt(c: ["── Transport ────────────────────────────────────────────────────────────────────────────────"], d: sw_struct(n: "ServerConfig", i: [], m: [
+    sw_doc(c: ["APPROVE_SERVER_HOST from Config/Team.xcconfig via Info.plist. Plain URLSession over the", "tailnet: no new network path."], d: sw_stored(k: SwiftLet, n: "host", t: aw_s())),
+    sw_doc(c: ["apns_environment_wire: \"development\" | \"production\"."], d: sw_stored(k: SwiftLet, n: "apnsEnvironment", t: aw_s())),
+    sw_doc(c: ["extdeps.apple.apns ApnsTopic: the bundle identifier, read from the bundle and never defaulted."], d: sw_stored(k: SwiftLet, n: "apnsTopic", t: aw_s())),
+    aw_static_func(n: "fromBundle", p: [], th: true, r: sw_t(n: "ServerConfig"), b: [
+      sw_let(n: "info", e: sw_op(l: sw_mem(b: sw_path(b: "Bundle", m: "main"), m: "infoDictionary"), o: SwiftNilCoalescingOperator, r: sw_dict(e: []))),
+      sw_guard(c: aw_nonempty_cast(n: "host", v: aw_info(key: "ApproveServerHost"), t: "String"), e: [aw_config_missing(message: sw_str(s: "APPROVE_SERVER_HOST is empty in Config/Team.xcconfig"))]),
+      sw_guard(
+        c: [sw_bind(n: "env", e: sw_asq(e: aw_info(key: "ApproveApnsEnvironment"), t: aw_s())), sw_cond(e: sw_op(l: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "development")), o: SwiftLogicalOrOperator, r: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "production"))))],
+        e: [aw_config_missing(message: sw_str(s: "APNS_ENVIRONMENT must be development or production in Config/Team.xcconfig"))]
+      ),
+      sw_guard(c: [sw_bind(n: "topic", e: sw_mem(b: sw_path(b: "Bundle", m: "main"), m: "bundleIdentifier")), sw_cond(e: sw_not(e: sw_path(b: "topic", m: "isEmpty")))], e: [aw_config_missing(message: sw_str(s: "CFBundleIdentifier is missing; the APNs topic cannot be derived"))]),
+      sw_cmt_stmt(c: ["A configured host is a host: refuse anything URLComponents will not carry as one."], s: sw_var(n: "probe", e: sw_calln(f: "URLComponents", a: []))),
+      sw_assign(l: sw_path(b: "probe", m: "scheme"), r: sw_str(s: "https")),
+      sw_assign(l: sw_path(b: "probe", m: "host"), r: sw_id(n: "host")),
+      sw_guard(
+        c: [
+          sw_cond(e: sw_op(l: sw_path(b: "probe", m: "url"), o: SwiftNotEqualOperator, r: SwiftNilLiteral)),
+          sw_cond(e: sw_eq(l: sw_path(b: "probe", m: "host"), r: sw_id(n: "host"))),
+          sw_cond(e: sw_not(e: sw_call(f: sw_path(b: "host", m: "contains"), a: [sw_pos(v: sw_str(s: "/"))]))),
+          sw_cond(e: sw_not(e: sw_call(f: sw_path(b: "host", m: "contains"), a: [sw_pos(v: sw_str(s: "?"))]))),
+          sw_cond(e: sw_not(e: sw_call(f: sw_path(b: "host", m: "contains"), a: [sw_pos(v: sw_str(s: "#"))]))),
+        ],
+        e: [aw_config_missing(message: sw_interp(p: [sw_st(s: "APPROVE_SERVER_HOST is not a bare host: "), sw_si(e: sw_id(n: "host"))]))]
+      ),
+      sw_ret(e: sw_calln(f: "ServerConfig", a: [sw_arg(l: "host", v: sw_id(n: "host")), sw_arg(l: "apnsEnvironment", v: sw_id(n: "env")), sw_arg(l: "apnsTopic", v: sw_id(n: "topic"))])),
+    ]),
+    sw_doc(
+      c: [
+        "path is a Route path whose segments are already base64url; it is set as percentEncodedPath so",
+        "URLComponents transports it verbatim and never re-encodes it (the alphabet has nothing to escape).",
+      ],
+      d: sw_func(m: [], n: "url", p: [sw_p_(n: "path", t: aw_s())], th: true, r: aw_ret(t: sw_t(n: "URL")), b: [
+        sw_var(n: "c", e: sw_calln(f: "URLComponents", a: [])),
+        sw_assign(l: sw_path(b: "c", m: "scheme"), r: sw_str(s: "https")),
+        sw_assign(l: sw_path(b: "c", m: "host"), r: sw_id(n: "host")),
+        sw_assign(l: sw_path(b: "c", m: "percentEncodedPath"), r: sw_id(n: "path")),
+        sw_guard(c: [sw_bind(n: "u", e: sw_path(b: "c", m: "url"))], e: [aw_config_missing(message: sw_interp(p: [sw_st(s: "route path malformed: "), sw_si(e: sw_id(n: "path"))]))]),
+        sw_ret(e: sw_id(n: "u")),
+      ])
+    ),
+  ]))
+}
+
+// try WireDecode.<decode>(await send("POST", <path>, body: WireEncode.<encode>(<arg>)))
+fn aw_post(decode: String, path: SwiftExpr, encode: String, args: List<SwiftArgument>) -> SwiftStmt {
+  sw_expr(e: sw_try(e: sw_call(f: sw_path(b: "WireDecode", m: decode), a: [sw_pos(v: aw_send(path: path, encode: encode, args: args))])))
+}
+
+fn aw_send(path: SwiftExpr, encode: String, args: List<SwiftArgument>) -> SwiftExpr {
+  sw_await(e: sw_calln(f: "send", a: [sw_pos(v: sw_str(s: "POST")), sw_pos(v: path), sw_arg(l: "body", v: sw_call(f: sw_path(b: "WireEncode", m: encode), a: args))]))
+}
+
+fn aw_async_func(n: String, p: List<SwiftParameter>, r: SwiftType?, b: List<SwiftStmt>) -> SwiftDecl {
+  SwiftFunctionDecl { attributes: [], modifiers: [], name: n, parameters: p, is_async: true, throws: true, result: r, body: b }
+}
+
+fn aw_client() -> SwiftDecl {
+  sw_struct(n: "Client", i: [], m: [
+    sw_stored(k: SwiftLet, n: "config", t: sw_t(n: "ServerConfig")),
+    SwiftVariableDecl { attributes: [], modifiers: [], keyword: SwiftLet, pattern: sw_pid(n: "session"), annotation: none, initializer: Present { value: sw_calln(f: "URLSession", a: [sw_arg(l: "configuration", v: sw_dot(n: "ephemeral"))]) } },
+    SwiftFunctionDecl {
+      attributes: [], modifiers: [SwiftPrivateModifier], name: "send",
+      parameters: [sw_p_(n: "method", t: aw_s()), sw_p_(n: "path", t: aw_s()), SwiftParameter { argument_label: none, name: "body", parameter_type: sw_topt(w: aw_s()), default_value: Present { value: SwiftNilLiteral } }],
+      is_async: true, throws: true, result: aw_ret(t: sw_t(n: "Data")),
+      body: [
+        sw_var(n: "req", e: sw_calln(f: "URLRequest", a: [sw_arg(l: "url", v: sw_try(e: sw_call(f: sw_path(b: "config", m: "url"), a: [sw_pos(v: sw_id(n: "path"))])))])),
+        sw_assign(l: sw_path(b: "req", m: "httpMethod"), r: sw_id(n: "method")),
+        sw_if(c: [sw_bind_self(n: "body")], s: [
+          sw_assign(l: sw_path(b: "req", m: "httpBody"), r: sw_calln(f: "Data", a: [sw_pos(v: sw_path(b: "body", m: "utf8"))])),
+          sw_expr(e: sw_call(f: sw_path(b: "req", m: "setValue"), a: [sw_pos(v: sw_str(s: "application/json")), sw_arg(l: "forHTTPHeaderField", v: sw_str(s: "Content-Type"))])),
+        ]),
+        sw_let_uninit(n: "data", t: sw_t(n: "Data")),
+        sw_let_uninit(n: "resp", t: sw_t(n: "URLResponse")),
+        sw_do_catch(
+          s: [sw_assign(l: sw_tuple(e: [sw_pos(v: sw_id(n: "data")), sw_pos(v: sw_id(n: "resp"))]), r: sw_try(e: sw_await(e: sw_call(f: sw_path(b: "session", m: "data"), a: [sw_arg(l: "for", v: sw_id(n: "req"))]))))],
+          c: [sw_throw(e: sw_call(f: sw_path(b: "WireError", m: "transport"), a: [sw_pos(v: sw_path(b: "error", m: "localizedDescription"))]))]
+        ),
+        sw_guard(c: [sw_bind(n: "status", e: sw_mem(b: sw_chain(b: sw_paren(e: sw_asq(e: sw_id(n: "resp"), t: sw_t(n: "HTTPURLResponse")))), m: "statusCode"))], e: [aw_refuse(at: sw_str(s: "$"), cause: sw_str(s: "no HTTP status"))]),
+        sw_cmt_stmt(
+          c: ["A refusal is a typed, located error; the body is shown, never guessed at."],
+          s: sw_guard(
+            c: [sw_cond(e: sw_call(f: sw_mem(b: sw_paren(e: sw_op(l: sw_int(n: 200), o: SwiftHalfOpenRangeOperator, r: sw_int(n: 300))), m: "contains"), a: [sw_pos(v: sw_id(n: "status"))]))],
+            e: [sw_throw(e: sw_call(f: sw_path(b: "WireError", m: "status"), a: [sw_pos(v: sw_id(n: "status")), sw_pos(v: sw_calln(f: "String", a: [sw_arg(l: "decoding", v: sw_id(n: "data")), sw_arg(l: "as", v: sw_path(b: "UTF8", m: "self"))]))]))]
+          )
+        ),
+        sw_ret(e: sw_id(n: "data")),
+      ],
+    },
+    aw_async_func(n: "enrol", p: [sw_p_(n: "r", t: sw_t(n: "EnrolmentRequest"))], r: aw_ret(t: sw_t(n: "EnrolmentGrant")), b: [
+      aw_post(decode: "enrolmentGrant", path: sw_path(b: "Route", m: "enrol"), encode: "enrolmentRequest", args: [sw_pos(v: sw_id(n: "r"))]),
+    ]),
+    sw_doc(c: ["POST /approve/device/pending, body = read_authentication_json"], d: aw_async_func(n: "pending", p: [sw_p_(n: "read", t: sw_t(n: "ReadAuth"))], r: aw_ret(t: sw_tarr(e: sw_t(n: "PendingApproval"))), b: [
+      aw_post(decode: "pendingList", path: sw_path(b: "Route", m: "pending"), encode: "readRequest", args: [sw_pos(v: sw_id(n: "read"))]),
+    ])),
+    sw_doc(c: ["POST /approve/device/requests/<id>, body = read_authentication_json"], d: aw_async_func(n: "fetch", p: [sw_p_(n: "path", t: aw_s()), sw_p_(n: "read", t: sw_t(n: "ReadAuth"))], r: aw_ret(t: sw_t(n: "FetchedRequest")), b: [
+      aw_post(decode: "fetchedRequest", path: sw_id(n: "path"), encode: "readRequest", args: [sw_pos(v: sw_id(n: "read"))]),
+    ])),
+    aw_async_func(n: "redeem", p: [sw_p_(n: "r", t: sw_t(n: "SignedRedemption"))], r: aw_ret(t: sw_t(n: "RedemptionOutcome")), b: [
+      aw_post(decode: "redemptionResponse", path: sw_path(b: "Route", m: "redeem"), encode: "signedRedemption", args: [sw_pos(v: sw_id(n: "r"))]),
+    ]),
+    sw_doc(c: ["POST /approve/device/enrollments/<enrollment_id>, body = read_authentication_json."], d: aw_async_func(n: "readback", p: [sw_p_(n: "path", t: aw_s()), sw_p_(n: "read", t: sw_t(n: "ReadAuth"))], r: aw_ret(t: sw_t(n: "EnrolmentReadback")), b: [
+      aw_post(decode: "enrolmentReadback", path: sw_id(n: "path"), encode: "readRequest", args: [sw_pos(v: sw_id(n: "read"))]),
+    ])),
+    sw_doc(
+      c: [
+        "POST /approve/device/push, body = push_update_request_json \{ auth, push \}; the assertion's",
+        "client data frames push_update_json(push) alone, exactly as the server re-renders it.",
+      ],
+      d: aw_async_func(n: "updatePush", p: [sw_p_(n: "push", t: sw_t(n: "ApnsRegistration")), sw_p_(n: "read", t: sw_t(n: "ReadAuth"))], r: none, b: [
+        sw_assign(l: SwiftWildcardExpr, r: sw_try(e: aw_send(path: sw_path(b: "Route", m: "push"), encode: "pushUpdateRequest", args: [sw_pos(v: sw_id(n: "read")), sw_pos(v: sw_id(n: "push"))]))),
+      ])
+    ),
+  ])
+}
+
+data approve_ios_wire_header: List<String> = [
+  "THE HTTP WIRE, mirrored from gunbc.auth.approval_device_wire \"The HTTP wire\" exactly: request and",
+  "response bodies, every sum's \"kind\", the crypto carriers, the header names and the path-segment",
+  "rule. Encoding mirrors extdeps.languages.json.emit serialize_json byte for byte (members in the",
+  "authored order, \", \" and \": \" separators, controls as \\u00XX upper-case, no other escaping) so",
+  "the envelope fixtures can be matched as bytes. Decoding mirrors wire_object / wire_string: an",
+  "unknown member, a missing member, an empty string or an unadmitted kind is refused at its path.",
+  "Nothing outside this file spells a path, a header or a JSON key.",
+  "GENERATED from gunbc.approve_ios_swift_wire by v2.extdeps.languages.swift.print; do not edit.",
+]
+
+fn approve_ios_wire_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile {
+    declarations: list_append(left: list_append(left: list_append(left: list_append(left: [sw_cmt(c: approve_ios_wire_header, d: sw_import(n: "Foundation")), aw_wire_json(), aw_wire_error(), aw_wire_object(), aw_wire_encode(), aw_wire_decode()], right: aw_stored_request()), right: aw_records()), right: aw_paths()), right: [aw_server_config(), aw_client()]),
+  }
+}
+
+fn expected_approve_ios_wire_swift() -> String {
+  print_swift_source_file(f: approve_ios_wire_swift_file())
+}

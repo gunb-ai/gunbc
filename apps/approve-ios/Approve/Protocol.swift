@@ -2,6 +2,7 @@
 // here is a transcription of that module; the .dag is the authority and this file invents nothing.
 // The bytes the builders produce are checked against vectors the .dag witness emits (ApproveTests).
 // The HTTP spelling of these records (JSON bodies, headers, paths) is Wire.swift.
+// GENERATED from gunbc.approve_ios_swift_protocol by v2.extdeps.languages.swift.print; do not edit.
 import Foundation
 
 enum Protocol {
@@ -42,7 +43,8 @@ enum ProposedDecision: String {
 /// extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly
 /// (signature_suite_wire, public_key_encoding_wire) and are the enclave's only values
 /// (extdeps.apple.secure_enclave secure_enclave_signing_suite / secure_enclave_public_key_encoding).
-struct VerifyingKey: Equatable, Codable {  // Codable only for the local keychain record; the wire spelling is WireEncode.verifyingKey
+// Codable only for the local keychain record; the wire spelling is WireEncode.verifyingKey
+struct VerifyingKey: Equatable, Codable {
     static let suite = "ECDSA-P256-SHA256"
     static let encoding = "SEC1-uncompressed"
     var point_b64url: String
@@ -59,17 +61,14 @@ struct SignatureBytes: Equatable {
 /// enrolment_transcript = framed([protocol, code, platform_wire, point_b64url]). The one-time code
 /// the operator types IS the challenge identifier; the login is NOT here — the server derives it.
 func enrolmentTranscript(code: String, decisionKey: VerifyingKey, platform: MobilePlatform) -> Data {
-    Protocol.framed([
-        Protocol.enrolmentProtocol,
-        code,
-        platform.rawValue,
-        decisionKey.point_b64url,
-    ])
+    Protocol.framed([Protocol.enrolmentProtocol, code, platform.rawValue, decisionKey.point_b64url])
 }
 
 /// gunbc.auth.approval_device_wire enrollment_id_for_code: the enrolment an accepted code produces is
 /// named by the code, so a lost enrolment answer costs nothing the app cannot re-derive.
-func enrollmentIdForCode(_ code: String) -> String { "enr-" + code }
+func enrollmentIdForCode(_ code: String) -> String {
+    "enr-" + code
+}
 
 /// gunbc.auth.approval_device_wire RedemptionChallenge: stateless. nonce_hex is the server's
 /// MAC over redemption_challenge_message(escalation_id, request_revision, enrollment_id, expires_at);
@@ -97,19 +96,7 @@ struct DeviceRedemptionSigningInput: Equatable {
 /// device_redemption_signing_input = framed([...]). Order is the .dag's: the challenge contributes
 /// expires_at then nonce_hex, in that position.
 func deviceRedemptionSigningInput(_ i: DeviceRedemptionSigningInput) -> Data {
-    Protocol.framed([
-        Protocol.redemptionProtocol,
-        i.audience,
-        i.enrollment_id,
-        i.challenge.expires_at,
-        i.challenge.nonce_hex,
-        i.escalation_id,
-        i.request_revision,
-        i.stored_request_text,
-        i.decision.rawValue,
-        i.capability_text,
-        i.capability_tag_b64url,
-    ])
+    Protocol.framed([Protocol.redemptionProtocol, i.audience, i.enrollment_id, i.challenge.expires_at, i.challenge.nonce_hex, i.escalation_id, i.request_revision, i.stored_request_text, i.decision.rawValue, i.capability_text, i.capability_tag_b64url])
 }
 
 /// device_read_client_data = framed([protocol, path, enrollment_id, requested_at]): what the App
@@ -157,9 +144,6 @@ struct ApprovalPushHint: Equatable {
 
 enum Base64Url {
     static func encode(_ d: Data) -> String {
-        d.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }

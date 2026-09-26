@@ -5,6 +5,7 @@
 // the envelope fixtures can be matched as bytes. Decoding mirrors wire_object / wire_string: an
 // unknown member, a missing member, an empty string or an unadmitted kind is refused at its path.
 // Nothing outside this file spells a path, a header or a JSON key.
+// GENERATED from gunbc.approve_ios_swift_wire by v2.extdeps.languages.swift.print; do not edit.
 import Foundation
 
 // ── serialize_json ───────────────────────────────────────────────────────────────────────────
@@ -77,7 +78,9 @@ struct WireObject {
         self.members = o
     }
 
-    private func path(_ key: String) -> String { at == "$" ? key : at + "." + key }
+    private func path(_ key: String) -> String {
+        at == "$" ? key : at + "." + key
+    }
 
     func string(_ key: String) throws -> String {
         guard let v = members[key] else { throw WireError.refused(at: path(key), cause: "missing") }
@@ -115,8 +118,11 @@ struct WireObject {
 
     static func document(_ data: Data, allowed: [String]) throws -> WireObject {
         let v: Any
-        do { v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) }
-        catch { throw WireError.refused(at: "$", cause: error.localizedDescription) }
+        do {
+            v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        } catch {
+            throw WireError.refused(at: "$", cause: error.localizedDescription)
+        }
         return try WireObject(v, at: "$", allowed: allowed)
     }
 }
@@ -127,66 +133,62 @@ enum WireEncode {
     static func verifyingKey(_ k: VerifyingKey) -> WireJson {
         .object([("suite", .string(VerifyingKey.suite)), ("encoding", .string(VerifyingKey.encoding)), ("point_b64url", .string(k.point_b64url))])
     }
+
     /// signature_bytes_json
     static func signature(_ b: SignatureBytes) -> WireJson {
         .object([("suite", .string(SignatureBytes.suite)), ("encoding", .string(SignatureBytes.encoding)), ("b64url", .string(b.b64url))])
     }
+
     /// push_registration_json, ApnsRegistration arm
     static func push(_ p: ApnsRegistration) -> WireJson {
         .object([("kind", .string("apns")), ("environment", .string(p.environment)), ("topic", .string(p.topic)), ("token", .string(p.token))])
     }
+
     /// presented_evidence_json, IosAppAttestAttestation arm
     static func evidence(_ e: IosAppAttestBoundDecisionKey) -> WireJson {
         .object([("kind", .string("ios_app_attest")), ("attest_key_id", .string(e.attest_key_id)), ("attestation_b64", .string(e.attestation_b64))])
     }
+
     /// platform_proof_json, IosAppAttestAssertion arm
     static func proof(_ p: IosAppAttestAssertion) -> WireJson {
         .object([("kind", .string("ios_app_attest_assertion")), ("assertion_b64", .string(p.assertion_b64))])
     }
+
     /// redemption_challenge_json
     static func challenge(_ c: RedemptionChallenge) -> WireJson {
         .object([("expires_at", .string(c.expires_at)), ("nonce_hex", .string(c.nonce_hex))])
     }
+
     /// signing_input_json
     static func signingInput(_ i: DeviceRedemptionSigningInput) -> WireJson {
-        .object([
-            ("audience", .string(i.audience)),
-            ("enrollment_id", .string(i.enrollment_id)),
-            ("challenge", challenge(i.challenge)),
-            ("escalation_id", .string(i.escalation_id)),
-            ("request_revision", .string(i.request_revision)),
-            ("stored_request_text", .string(i.stored_request_text)),
-            ("decision", .string(i.decision.rawValue)),
-            ("capability_text", .string(i.capability_text)),
-            ("capability_tag_b64url", .string(i.capability_tag_b64url)),
-        ])
+        .object([("audience", .string(i.audience)), ("enrollment_id", .string(i.enrollment_id)), ("challenge", challenge(i.challenge)), ("escalation_id", .string(i.escalation_id)), ("request_revision", .string(i.request_revision)), ("stored_request_text", .string(i.stored_request_text)), ("decision", .string(i.decision.rawValue)), ("capability_text", .string(i.capability_text)), ("capability_tag_b64url", .string(i.capability_tag_b64url))])
     }
+
     /// enrolment_request_json
     static func enrolmentRequest(_ r: EnrolmentRequest) -> String {
-        WireJson.object([
-            ("code", .string(r.code)),
-            ("platform", .string(r.platform.rawValue)),
-            ("decision_key", verifyingKey(r.decision_key)),
-            ("evidence", evidence(r.evidence)),
-            ("push", push(r.push)),
-        ]).serialized
+        WireJson.object([("code", .string(r.code)), ("platform", .string(r.platform.rawValue)), ("decision_key", verifyingKey(r.decision_key)), ("evidence", evidence(r.evidence)), ("push", push(r.push))]).serialized
     }
+
     /// signed_redemption_json
     static func signedRedemption(_ r: SignedRedemption) -> String {
-        WireJson.object([
-            ("signing_input", signingInput(r.signing_input)),
-            ("signature", signature(r.signature)),
-            ("platform_proof", proof(r.platform_proof)),
-        ]).serialized
+        WireJson.object([("signing_input", signingInput(r.signing_input)), ("signature", signature(r.signature)), ("platform_proof", proof(r.platform_proof))]).serialized
     }
+
     /// push_update_json
-    static func pushUpdate(_ p: ApnsRegistration) -> String { push(p).serialized }
+    static func pushUpdate(_ p: ApnsRegistration) -> String {
+        push(p).serialized
+    }
+
     /// read_authentication_json_value
     static func readAuthentication(_ a: ReadAuth) -> WireJson {
         .object([("enrollment_id", .string(a.enrollmentId)), ("requested_at", .string(a.requestedAt)), ("assertion_b64", .string(a.assertionB64))])
     }
+
     /// read_authentication_json: the body of the three authenticated reads
-    static func readRequest(_ a: ReadAuth) -> String { readAuthentication(a).serialized }
+    static func readRequest(_ a: ReadAuth) -> String {
+        readAuthentication(a).serialized
+    }
+
     /// push_update_request_json: { auth, push }
     static func pushUpdateRequest(_ a: ReadAuth, _ p: ApnsRegistration) -> String {
         WireJson.object([("auth", readAuthentication(a)), ("push", push(p))]).serialized
@@ -199,11 +201,13 @@ enum WireDecode {
         try o.expect("encoding", VerifyingKey.encoding, "not the admitted encoding")
         return VerifyingKey(point_b64url: try o.string("point_b64url"))
     }
+
     static func signature(_ o: WireObject) throws -> SignatureBytes {
         try o.expect("suite", SignatureBytes.suite, "not the admitted suite")
         try o.expect("encoding", SignatureBytes.encoding, "not the admitted encoding")
         return SignatureBytes(b64url: try o.string("b64url"))
     }
+
     /// Android's arm is modeled and encodable upstream; the app refuses it as the server does.
     static func push(_ v: Any?, at: String) throws -> ApnsRegistration {
         let (kind, o) = try WireObject.sum(v, at: at, arms: ["apns": ["environment", "topic", "token"]])
@@ -212,31 +216,27 @@ enum WireDecode {
         guard env == "production" || env == "development" else { throw WireError.refused(at: "push.environment", cause: "not an APNs environment") }
         return ApnsRegistration(environment: env, topic: try o.string("topic"), token: try o.string("token"))
     }
+
     static func evidence(_ v: Any?, at: String) throws -> IosAppAttestBoundDecisionKey {
         let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest": ["attest_key_id", "attestation_b64"]])
         return IosAppAttestBoundDecisionKey(attest_key_id: try o.string("attest_key_id"), attestation_b64: try o.string("attestation_b64"))
     }
+
     static func proof(_ v: Any?, at: String) throws -> IosAppAttestAssertion {
         let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest_assertion": ["assertion_b64"]])
         return IosAppAttestAssertion(assertion_b64: try o.string("assertion_b64"))
     }
+
     static func challenge(_ o: WireObject) throws -> RedemptionChallenge {
         RedemptionChallenge(expires_at: try o.string("expires_at"), nonce_hex: try o.string("nonce_hex"))
     }
+
     static func signingInput(_ o: WireObject) throws -> DeviceRedemptionSigningInput {
         let d = try o.string("decision")
         guard let decision = ProposedDecision(rawValue: d) else { throw WireError.refused(at: "signing_input.decision", cause: "not approve or deny") }
-        return DeviceRedemptionSigningInput(
-            audience: try o.string("audience"),
-            enrollment_id: try o.string("enrollment_id"),
-            challenge: try challenge(o.object("challenge", allowed: ["expires_at", "nonce_hex"])),
-            escalation_id: try o.string("escalation_id"),
-            request_revision: try o.string("request_revision"),
-            stored_request_text: try o.string("stored_request_text"),
-            decision: decision,
-            capability_text: try o.string("capability_text"),
-            capability_tag_b64url: try o.string("capability_tag_b64url"))
+        return DeviceRedemptionSigningInput(audience: try o.string("audience"), enrollment_id: try o.string("enrollment_id"), challenge: try challenge(o.object("challenge", allowed: ["expires_at", "nonce_hex"])), escalation_id: try o.string("escalation_id"), request_revision: try o.string("request_revision"), stored_request_text: try o.string("stored_request_text"), decision: decision, capability_text: try o.string("capability_text"), capability_tag_b64url: try o.string("capability_tag_b64url"))
     }
+
     static func verbCapability(_ o: WireObject) throws -> VerbCapability {
         VerbCapability(capability_text: try o.string("capability_text"), capability_tag_b64url: try o.string("capability_tag_b64url"))
     }
@@ -245,23 +245,21 @@ enum WireDecode {
     static func enrolmentRequest(_ data: Data) throws -> EnrolmentRequest {
         let o = try WireObject.document(data, allowed: ["code", "platform", "decision_key", "evidence", "push"])
         try o.expect("platform", MobilePlatform.ios.rawValue, "not an admitted platform")
-        return EnrolmentRequest(
-            code: try o.string("code"), platform: .ios,
-            decision_key: try verifyingKey(o.object("decision_key", allowed: ["suite", "encoding", "point_b64url"])),
-            evidence: try evidence(o.members["evidence"], at: "evidence"),
-            push: try push(o.members["push"], at: "push"))
+        return EnrolmentRequest(code: try o.string("code"), platform: .ios, decision_key: try verifyingKey(o.object("decision_key", allowed: ["suite", "encoding", "point_b64url"])), evidence: try evidence(o.members["evidence"], at: "evidence"), push: try push(o.members["push"], at: "push"))
     }
+
     static func signedRedemption(_ data: Data) throws -> SignedRedemption {
         let o = try WireObject.document(data, allowed: ["signing_input", "signature", "platform_proof"])
-        return SignedRedemption(
-            signing_input: try signingInput(o.object("signing_input", allowed: ["audience", "enrollment_id", "challenge", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])),
-            signature: try signature(o.object("signature", allowed: ["suite", "encoding", "b64url"])),
-            platform_proof: try proof(o.members["platform_proof"], at: "platform_proof"))
+        return SignedRedemption(signing_input: try signingInput(o.object("signing_input", allowed: ["audience", "enrollment_id", "challenge", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])), signature: try signature(o.object("signature", allowed: ["suite", "encoding", "b64url"])), platform_proof: try proof(o.members["platform_proof"], at: "platform_proof"))
     }
+
     static func pushUpdate(_ data: Data) throws -> ApnsRegistration {
         let v: Any
-        do { v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) }
-        catch { throw WireError.refused(at: "$", cause: error.localizedDescription) }
+        do {
+            v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        } catch {
+            throw WireError.refused(at: "$", cause: error.localizedDescription)
+        }
         return try push(v, at: "$")
     }
 
@@ -269,6 +267,7 @@ enum WireDecode {
     static func enrolmentGrant(_ data: Data) throws -> EnrolmentGrant {
         EnrolmentGrant(enrollment_id: try WireObject.document(data, allowed: ["enrollment_id"]).string("enrollment_id"))
     }
+
     static func pendingList(_ data: Data) throws -> [PendingApproval] {
         let o = try WireObject.document(data, allowed: ["pending"])
         return try o.array("pending").enumerated().map { i, row in
@@ -276,30 +275,25 @@ enum WireDecode {
             return PendingApproval(escalation_id: try r.string("escalation_id"), request_revision: try r.string("request_revision"))
         }
     }
+
     static func fetchedRequest(_ data: Data) throws -> FetchedRequest {
         let o = try WireObject.document(data, allowed: ["escalation_id", "request_revision", "stored_request_text", "challenge", "approve", "deny"])
         let cap = ["capability_text", "capability_tag_b64url"]
-        return FetchedRequest(
-            escalation_id: try o.string("escalation_id"),
-            request_revision: try o.string("request_revision"),
-            stored_request_text: try o.string("stored_request_text"),
-            challenge: try challenge(o.object("challenge", allowed: ["expires_at", "nonce_hex"])),
-            approve: try verbCapability(o.object("approve", allowed: cap)),
-            deny: try verbCapability(o.object("deny", allowed: cap)))
+        return FetchedRequest(escalation_id: try o.string("escalation_id"), request_revision: try o.string("request_revision"), stored_request_text: try o.string("stored_request_text"), challenge: try challenge(o.object("challenge", allowed: ["expires_at", "nonce_hex"])), approve: try verbCapability(o.object("approve", allowed: cap)), deny: try verbCapability(o.object("deny", allowed: cap)))
     }
+
     static func enrolmentReadback(_ data: Data) throws -> EnrolmentReadback {
         let o = try WireObject.document(data, allowed: ["enrollment_id", "standing"])
         let s = try o.string("standing")
         guard let standing = EnrolmentStandingWire(rawValue: s) else { throw WireError.refused(at: "standing", cause: "not an enrolment standing") }
         return EnrolmentReadback(enrollment_id: try o.string("enrollment_id"), standing: standing)
     }
+
     /// approval_push_custom_keys: the hint travels as the top-level custom key "notification_id"
     /// beside aps. It is decoded and then used for NOTHING but being present: the push wakes the
     /// list and never selects what is shown.
     static func pushHint(_ userInfo: [AnyHashable: Any]) throws -> ApprovalPushHint {
-        guard let id = userInfo["notification_id"] as? String, !id.isEmpty else {
-            throw WireError.refused(at: "notification_id", cause: "missing")
-        }
+        guard let id = userInfo["notification_id"] as? String, !id.isEmpty else { throw WireError.refused(at: "notification_id", cause: "missing") }
         return ApprovalPushHint(notification_id: id)
     }
 
@@ -325,9 +319,7 @@ extension WireDecode {
     static func storedRequest(_ text: String) throws -> StoredRequestSummary {
         let o = try WireObject.document(Data(text.utf8), allowed: ["kind", "escalation_id", "request_revision", "attempt", "requester", "purpose", "destructive", "issued_at", "expires_at", "key_id"])
         guard let d = o.members["destructive"] as? Bool else { throw WireError.refused(at: "destructive", cause: "missing or not a bool") }
-        return StoredRequestSummary(
-            requester: try o.string("requester"), purpose: try o.string("purpose"),
-            destructive: d, expires_at: try o.string("expires_at"))
+        return StoredRequestSummary(requester: try o.string("requester"), purpose: try o.string("purpose"), destructive: d, expires_at: try o.string("expires_at"))
     }
 }
 
@@ -341,12 +333,17 @@ struct EnrolmentRequest: Equatable {
     var push: ApnsRegistration
 }
 
-struct EnrolmentGrant: Equatable { var enrollment_id: String }
+struct EnrolmentGrant: Equatable {
+    var enrollment_id: String
+}
 
 struct PendingApproval: Identifiable, Hashable {
     var escalation_id: String
     var request_revision: String
-    var id: String { escalation_id }
+
+    var id: String {
+        escalation_id
+    }
 }
 
 /// VerbCapability: the text and the canonical base64url tag exactly as issued, sent back untouched.
@@ -372,7 +369,9 @@ struct FetchedRequest: Equatable {
     }
 }
 
-enum EnrolmentStandingWire: String { case active, revoked }
+enum EnrolmentStandingWire: String {
+    case active, revoked
+}
 
 struct EnrolmentReadback: Equatable {
     var enrollment_id: String
@@ -393,14 +392,7 @@ enum OutcomeName {
     static let enrollmentUnknown = "DeviceEnrollmentUnknown"
     static let enrollmentRevoked = "DeviceEnrollmentRevoked"
     /// Every arm of DeviceRedemptionOutcome, for the identity join with the emitted envelopes.
-    static let all: Set<String> = [
-        "DeviceRedeemed", "DeviceAlreadyDecided", enrollmentUnknown, enrollmentRevoked,
-        "DeviceEnrollmentForAnotherOperator", "DeviceEscalationNotFiled", "DeviceStoreUnreadable",
-        "DeviceKeyringUnavailable", "DeviceSignedForAnotherRequest", "DeviceChallengeExpired",
-        "DeviceChallengeNotIssuedHere", "DeviceCapabilityTagMalformed", "DeviceCapabilityRefused",
-        "DeviceSignatureRefused", "DevicePlatformProofRefused", "DevicePlatformProofForOtherBytes",
-        "DevicePlatformProofWrongKey", "DevicePlatformUnrealized", "DeviceLostTheRace", "DeviceCommitRefused",
-    ]
+    static let all: Set<String> = ["DeviceRedeemed", "DeviceAlreadyDecided", enrollmentUnknown, enrollmentRevoked, "DeviceEnrollmentForAnotherOperator", "DeviceEscalationNotFiled", "DeviceStoreUnreadable", "DeviceKeyringUnavailable", "DeviceSignedForAnotherRequest", "DeviceChallengeExpired", "DeviceChallengeNotIssuedHere", "DeviceCapabilityTagMalformed", "DeviceCapabilityRefused", "DeviceSignatureRefused", "DevicePlatformProofRefused", "DevicePlatformProofForOtherBytes", "DevicePlatformProofWrongKey", "DevicePlatformUnrealized", "DeviceLostTheRace", "DeviceCommitRefused"]
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────────────────────────
@@ -427,14 +419,18 @@ enum Route {
     /// with "=" padding): total and injective, never refused, no percent escape for any layer to
     /// decode, never a dot segment, no case-equivalent spelling. Transported verbatim.
     static func segment(_ s: String) -> String {
-        "id-" + Data(s.utf8).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
+        "id-" + Data(s.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
     }
+
     /// device_request_path
-    static func request(_ escalationId: String) -> String { requestPrefix + segment(escalationId) }
+    static func request(_ escalationId: String) -> String {
+        requestPrefix + segment(escalationId)
+    }
+
     /// device_enrollment_path
-    static func enrollment(_ enrollmentId: String) -> String { enrollmentPrefix + segment(enrollmentId) }
+    static func enrollment(_ enrollmentId: String) -> String {
+        enrollmentPrefix + segment(enrollmentId)
+    }
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────────────────────
@@ -449,22 +445,14 @@ struct ServerConfig {
 
     static func fromBundle() throws -> ServerConfig {
         let info = Bundle.main.infoDictionary ?? [:]
-        guard let host = info["ApproveServerHost"] as? String, !host.isEmpty else {
-            throw WireError.configMissing("APPROVE_SERVER_HOST is empty in Config/Team.xcconfig")
-        }
-        guard let env = info["ApproveApnsEnvironment"] as? String, env == "development" || env == "production" else {
-            throw WireError.configMissing("APNS_ENVIRONMENT must be development or production in Config/Team.xcconfig")
-        }
-        guard let topic = Bundle.main.bundleIdentifier, !topic.isEmpty else {
-            throw WireError.configMissing("CFBundleIdentifier is missing; the APNs topic cannot be derived")
-        }
+        guard let host = info["ApproveServerHost"] as? String, !host.isEmpty else { throw WireError.configMissing("APPROVE_SERVER_HOST is empty in Config/Team.xcconfig") }
+        guard let env = info["ApproveApnsEnvironment"] as? String, env == "development" || env == "production" else { throw WireError.configMissing("APNS_ENVIRONMENT must be development or production in Config/Team.xcconfig") }
+        guard let topic = Bundle.main.bundleIdentifier, !topic.isEmpty else { throw WireError.configMissing("CFBundleIdentifier is missing; the APNs topic cannot be derived") }
         // A configured host is a host: refuse anything URLComponents will not carry as one.
         var probe = URLComponents()
         probe.scheme = "https"
         probe.host = host
-        guard probe.url != nil, probe.host == host, !host.contains("/"), !host.contains("?"), !host.contains("#") else {
-            throw WireError.configMissing("APPROVE_SERVER_HOST is not a bare host: \(host)")
-        }
+        guard probe.url != nil, probe.host == host, !host.contains("/"), !host.contains("?"), !host.contains("#") else { throw WireError.configMissing("APPROVE_SERVER_HOST is not a bare host: \(host)") }
         return ServerConfig(host: host, apnsEnvironment: env, apnsTopic: topic)
     }
 
@@ -493,8 +481,11 @@ struct Client {
         }
         let data: Data
         let resp: URLResponse
-        do { (data, resp) = try await session.data(for: req) }
-        catch { throw WireError.transport(error.localizedDescription) }
+        do {
+            (data, resp) = try await session.data(for: req)
+        } catch {
+            throw WireError.transport(error.localizedDescription)
+        }
         guard let status = (resp as? HTTPURLResponse)?.statusCode else { throw WireError.refused(at: "$", cause: "no HTTP status") }
         // A refusal is a typed, located error; the body is shown, never guessed at.
         guard (200..<300).contains(status) else { throw WireError.status(status, String(decoding: data, as: UTF8.self)) }
@@ -504,21 +495,26 @@ struct Client {
     func enrol(_ r: EnrolmentRequest) async throws -> EnrolmentGrant {
         try WireDecode.enrolmentGrant(await send("POST", Route.enrol, body: WireEncode.enrolmentRequest(r)))
     }
+
     /// POST /approve/device/pending, body = read_authentication_json
     func pending(_ read: ReadAuth) async throws -> [PendingApproval] {
         try WireDecode.pendingList(await send("POST", Route.pending, body: WireEncode.readRequest(read)))
     }
+
     /// POST /approve/device/requests/<id>, body = read_authentication_json
     func fetch(_ path: String, _ read: ReadAuth) async throws -> FetchedRequest {
         try WireDecode.fetchedRequest(await send("POST", path, body: WireEncode.readRequest(read)))
     }
+
     func redeem(_ r: SignedRedemption) async throws -> RedemptionOutcome {
         try WireDecode.redemptionResponse(await send("POST", Route.redeem, body: WireEncode.signedRedemption(r)))
     }
+
     /// POST /approve/device/enrollments/<enrollment_id>, body = read_authentication_json.
     func readback(_ path: String, _ read: ReadAuth) async throws -> EnrolmentReadback {
         try WireDecode.enrolmentReadback(await send("POST", path, body: WireEncode.readRequest(read)))
     }
+
     /// POST /approve/device/push, body = push_update_request_json { auth, push }; the assertion's
     /// client data frames push_update_json(push) alone, exactly as the server re-renders it.
     func updatePush(_ push: ApnsRegistration, _ read: ReadAuth) async throws {
