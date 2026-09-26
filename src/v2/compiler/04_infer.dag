@@ -1918,14 +1918,7 @@ fn infer_application_formal_args(node: Node, formals: List<InhabitanceFormal>) -
   }
 }
 
-fn infer_formal_named(formals: List<InhabitanceFormal>, label: Symbol) -> Optional<InhabitanceFormal> {
-  fold(formals, init: optional_absent(), f: fn(acc, f) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if f.parameter_identity == label { optional_present(value: f) } else { acc }
-    }
-  })
-}
+
 
 fn infer_transform_binary_infix(
   node: Node,
