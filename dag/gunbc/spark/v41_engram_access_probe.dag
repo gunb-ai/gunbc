@@ -1,6 +1,6 @@
 module gunbc.spark.v41_engram_access_probe
 
-import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.nat { Nat }
@@ -889,14 +889,9 @@ fn v41_access_probe_host_residue() -> HostEffectResidueSpec {
 // claim refuses, so a recovered row is deleted rather than left to accumulate.
 type V41AccessProbeClaimRecovery { host: HostIdentity, claim: EventId, standing: ClaimantStanding, receipt: NonEmptyStr }
 
-data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = [
-  V41AccessProbeClaimRecovery {
-    host: "srv8" as HostIdentity,
-    claim: ("111fbe04d3012e4a" as NonEmptyStr) as EventId,
-    standing: ClaimantTerminated,
-    receipt: "fleet-converge run 36230564997 (spark_v41_engram_access_probe): srv8 became unresponsive mid-probe from ~09:24 (ssh banner timeouts, 75-118 ms LAN ping), no PHASE output was captured, and the container removal and release could not run" as NonEmptyStr,
-  },
-]
+// Empty: 111fbe04d3012e4a was recovered by run 36244207148 (its host-placement.12 release), as
+// be2cf3990cbf0e40 and 6ce079b2a3889272 were by earlier runs.
+data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = []
 
 fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
   if length(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String))) == 0 {
@@ -915,6 +910,78 @@ fn v41_access_probe_recover_rows(ctx: SparkMaterializeContext, host: HostIdentit
       ExitSuccess => host_effect_recover_over(host: r.host, claim: r.claim, standing: r.standing, receipt: r.receipt, run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) })
       std.process.ExitFailure { code: _, reason: _ } => acc
     })
+}
+
+// ── WHEN THE PRE-FLIGHT REFUSES, THE RECEIPT NAMES WHAT HOLDS THE MEMORY ────────────────────────
+//
+// Run 36244207148 refused before allocating: srv8 reported 15.2 GiB available of ~121 GiB right after
+// a power cycle, with no known service holding it. A refusal that says only "not enough" leaves the
+// holder unnamed, so on that refusal the host side reads, over the same privileged leg, what could
+// hold it: the memory summary, containers and their cgroups, the largest processes, the cgroup tree,
+// the GPU's compute clients, and /dev/shm (where upstream Engram storage lives). Each reading is
+// carried with its exit code; a leg that did not run is recorded as such, never dropped. Nothing here
+// changes the host.
+type V41HostDiagnostic
+  = V41DiagnosticRead { name: NonEmptyStr, exit_code: Int, output: String }
+  | V41DiagnosticUnread { name: NonEmptyStr, cause: NonEmptyStr }
+
+data v41_meminfo_keys: List<String> = ["MemTotal", "MemFree", "MemAvailable", "Buffers", "Cached", "Shmem", "Mlocked", "Unevictable", "AnonPages", "HugePages_Total", "HugePages_Free", "Hugetlb", "Percpu", "KernelStack", "SUnreclaim", "VmallocUsed"]
+
+fn v41_first_lines(text: String, n: Nat) -> String {
+  join(take(split(s: text, delimiter: "\n"), n), "\n")
+}
+
+fn v41_diagnostic(ctx: SparkMaterializeContext, name: String, argv: List<String>, keep: fn(String) -> String) -> V41HostDiagnostic {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: why } => V41DiagnosticUnread { name: name as NonEmptyStr, cause: why }
+    RemoteRan { exit_code: c, stdout: o, stderr: e } => V41DiagnosticRead { name: name as NonEmptyStr, exit_code: c, output: if c == 0 { keep(o) } else { join([keep(o), "\nstderr: ", trim(s: e)], "") } }
+  }
+}
+
+fn v41_container_cgroup_diagnostics(ctx: SparkMaterializeContext) -> List<V41HostDiagnostic> {
+  match spark_remote_run(ctx: ctx, argv: ["docker", "ps", "-aq", "--no-trunc"]) {
+    RemoteUnreachable { cause: why } => [V41DiagnosticUnread { name: "container memory.current" as NonEmptyStr, cause: why }]
+    RemoteRan { exit_code: c, stdout: o, stderr: e } =>
+      if c != 0 {
+        [V41DiagnosticRead { name: "docker ps -aq --no-trunc" as NonEmptyStr, exit_code: c, output: trim(s: e) }]
+      } else {
+        map(filter(split(s: o, delimiter: "\n"), w => trim(s: w) != ""), id =>
+          v41_diagnostic(ctx: ctx, name: join(["memory.current of container ", trim(s: id)], ""), argv: ["cat", join(["/sys/fs/cgroup/system.slice/docker-", trim(s: id), ".scope/memory.current"], "")], keep: t => trim(s: t)))
+      }
+  }
+}
+
+fn v41_host_memory_diagnostics(ctx: SparkMaterializeContext) -> List<V41HostDiagnostic> {
+  concat([
+    v41_diagnostic(ctx: ctx, name: "/proc/meminfo", argv: ["cat", "/proc/meminfo"], keep: t => join(filter(split(s: t, delimiter: "\n"), l => length(filter(v41_meminfo_keys, k => starts_with(s: l, prefix: k + ":"))) > 0), "\n")),
+    v41_diagnostic(ctx: ctx, name: "docker ps -a --size", argv: ["docker", "ps", "-a", "--size"], keep: t => v41_first_lines(text: t, n: 40)),
+    v41_diagnostic(ctx: ctx, name: "top processes by RSS", argv: ["ps", "-eo", "pid,rss,comm", "--sort=-rss"], keep: t => v41_first_lines(text: t, n: 11)),
+    v41_diagnostic(ctx: ctx, name: "systemd-cgtop -b -n 1 -m", argv: ["systemd-cgtop", "-b", "-n", "1", "-m"], keep: t => v41_first_lines(text: t, n: 30)),
+    v41_diagnostic(ctx: ctx, name: "nvidia-smi compute apps", argv: ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv"], keep: t => v41_first_lines(text: t, n: 20)),
+    v41_diagnostic(ctx: ctx, name: "df /dev/shm", argv: ["df", "-k", "/dev/shm"], keep: t => trim(s: t)),
+    v41_diagnostic(ctx: ctx, name: "ls /dev/shm", argv: ["ls", "-la", "/dev/shm"], keep: t => v41_first_lines(text: t, n: 30)),
+  ], v41_container_cgroup_diagnostics(ctx: ctx))
+}
+
+// The pre-flight's own refusal, and no other, triggers the capture.
+fn v41_refused_at_preflight(o: V41EngramAccessProbeOutcome) -> Bool {
+  match o {
+    V41AccessProbeRefused { step: s, cause: c } => (s as String) == "probe-program" && starts_with(s: c as String, prefix: "the host has ")
+    V41AccessProbeRead { image_config: _, attributes: _, timings: _, pages: _, mmap_not_attempted: _ } => false
+  }
+}
+
+fn v41_diagnostics_body(ds: List<V41HostDiagnostic>) -> String {
+  join(map(ds, d => match d {
+    V41DiagnosticRead { name: n, exit_code: c, output: o } => join(["DIAG ", n as String, " exit=", to_string(c), "\n", o, "\n"], "")
+    V41DiagnosticUnread { name: n, cause: why } => join(["DIAG ", n as String, " UNREAD: ", why as String, "\n"], "")
+  }), "")
+}
+
+fn v41_access_probe_run_and_report(ctx: SparkMaterializeContext, claim: NonEmptyStr, at: String, host: HostIdentity, executor: String, anchor_receipt: String) -> ProcessExit {
+  let outcome = v41_access_probe_on(ctx: ctx, image: v41_access_probe_image, claim: claim)
+  let diagnostics = if v41_refused_at_preflight(o: outcome) { v41_host_memory_diagnostics(ctx: ctx) } else { [] as List<V41HostDiagnostic> }
+  v41_access_probe_receipt_exit(at: at, host: host, executor: executor, anchor_receipt: join([anchor_receipt, v41_diagnostics_body(ds: diagnostics)], ""), outcome: outcome)
 }
 
 fn v41_access_probe_receipt_exit(at: String, host: HostIdentity, executor: String, anchor_receipt: String, outcome: V41EngramAccessProbeOutcome) -> ProcessExit {
@@ -983,12 +1050,13 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
                                       release_host_effect_live_over(
                                         handle: Present { value: handle },
                                         run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) },
-                                        exit: v41_access_probe_receipt_exit(
+                                        exit: v41_access_probe_run_and_report(
+                                          ctx: ctx,
+                                          claim: handle.claim as NonEmptyStr,
                                           at: probed_at_word(reading: now) as String,
                                           host: target_host,
                                           executor: executor,
                                           anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
-                                          outcome: v41_access_probe_on(ctx: ctx, image: v41_access_probe_image, claim: handle.claim as NonEmptyStr),
                                         ),
                                       )
                                   }

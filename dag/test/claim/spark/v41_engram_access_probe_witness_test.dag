@@ -12,6 +12,7 @@ import gunbc.spark.v41_engram_access_probe {
   V41EngramAccessProbeOutcome, V41AccessProbeRead, V41AccessProbeRefused, v41_admit_access_reading,
   v41_access_per_row, v41_last_phase, v41_access_probe_argv, v41_access_probe_image,
   AccessMmapUnregistered, AccessPrefill262k, AccessCold, v41_access_probe_host_residue,
+  v41_refused_at_preflight, V41HostDiagnostic, V41DiagnosticRead, V41DiagnosticUnread, v41_diagnostics_body,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -132,4 +133,15 @@ test fn an_unverified_cold_or_a_missing_page_count_refuses() -> Bool {
   let unverified = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\n"
   w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, unverified, "DONE\n"])), needle: "cold was not verified for cpu_gather cold prefill262k")
     && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, w_pinned, w_mmap, w_gather, "DONE\n"])), needle: "no distinct-page count for decode")
+}
+
+// THE DIAGNOSTIC CAPTURE FIRES ON THE PRE-FLIGHT'S REFUSAL AND NO OTHER, and an unread leg is carried
+// as unread rather than dropped.
+test fn only_the_preflight_refusal_triggers_host_diagnostics() -> Bool {
+  let pre = v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: "REFUSED the host has 15973216 KiB available, under the 25165824 KiB this probe requires before it allocates anything\n")
+  let other = v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, "REFUSED cold not established: 4096 store bytes stayed resident\n"]))
+  let body = v41_diagnostics_body(ds: [V41DiagnosticRead { name: "/proc/meminfo" as NonEmptyStr, exit_code: 0, output: "MemAvailable: 15973216 kB" }, V41DiagnosticUnread { name: "nvidia-smi compute apps" as NonEmptyStr, cause: "leg did not land" as NonEmptyStr }])
+  v41_refused_at_preflight(o: pre) && !v41_refused_at_preflight(o: other)
+    && contains(body, "DIAG /proc/meminfo exit=0\nMemAvailable: 15973216 kB")
+    && contains(body, "DIAG nvidia-smi compute apps UNREAD: leg did not land")
 }
