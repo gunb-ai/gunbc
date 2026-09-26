@@ -426,7 +426,7 @@ fn wp_group(identity: NonEmptyStr, kind: KvGroupKind, layers: Nat, block: Nat, p
     kind: Present { value: kind },
     layer_identities: Present { value: map(wp_layer_names(layers), n => n) },
     block_size: Present { value: token_count(count: block) },
-    page_size_bytes: Present { value: byte_size(count: page) },
+    group_spec_page_size_bytes: Present { value: byte_size(count: page) },
     tokens_per_state: Present { value: token_count(count: tokens_per_state) },
     max_memory_usage_bytes: Present { value: byte_size(count: max_use) },
     blocks_at_requested_length: Present { value: allocator_block_count(count: blocks_at) },
@@ -443,6 +443,8 @@ fn wp_capture(groups: List<KvAllocationPlanCaptureGroup>) -> KvAllocationPlanCap
     image_digest: Present { value: "sha256:1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff0000111122223333" as NonEmptyStr },
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
+    physical_pool_bytes_per_block: Absent,
+    allocated_pool_bytes: Absent,
     requested_length: Present { value: token_count(count: 1048576) },
     scheduler_block_size: Present { value: token_count(count: 16) },
     groups: Present { value: groups },
@@ -528,7 +530,7 @@ test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
       kind: Present { value: FullAttention },
       layer_identities: Present { value: wp_layer_names(layers: 1) },
       block_size: Present { value: token_count(count: 16) },
-      page_size_bytes: Absent,
+      group_spec_page_size_bytes: Absent,
       tokens_per_state: Present { value: token_count(count: 16) },
       max_memory_usage_bytes: Present { value: byte_size(count: 4294967296) },
       blocks_at_requested_length: Present { value: allocator_block_count(count: 65536) },
@@ -539,13 +541,15 @@ test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
     image_digest: Present { value: "sha256:1111" as NonEmptyStr },
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
+    physical_pool_bytes_per_block: Absent,
+    allocated_pool_bytes: Absent,
     requested_length: Present { value: token_count(count: 1048576) },
     scheduler_block_size: Present { value: token_count(count: 16) },
     groups: Present { value: [wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536)] },
     grouping_padding: Absent,
   }
   (match resolved_kv_allocation_plan_from_capture(capture: no_page) {
-    KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "page_size_bytes")
+    KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "group_spec_page_size_bytes")
     KvAllocationPlanAdmitted { plan: _ } => false
   })
     && (match resolved_kv_allocation_plan_from_capture(capture: no_padding) {
@@ -566,6 +570,8 @@ test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> 
     image_digest: Present { value: "sha256:1111" as NonEmptyStr },
     cache_format: Present { value: "fp8_ds_mla" as NonEmptyStr },
     allocator_blocks: Present { value: allocator_block_count(count: 65536) },
+    physical_pool_bytes_per_block: Absent,
+    allocated_pool_bytes: Absent,
     requested_length: Present { value: token_count(count: 1048576) },
     scheduler_block_size: Present { value: token_count(count: 16) },
     groups: Present { value: [wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536)] },
@@ -624,6 +630,8 @@ fn wp_pre_patch_revision_plan() -> ResolvedKvAllocationPlan {
     image_digest: Present { value: "sha256:1111" as NonEmptyStr },
     cache_format: "fp8_ds_mla" as NonEmptyStr,
     allocator_blocks: allocator_block_count(count: 65536),
+    physical_pool_bytes_per_block: none,
+    allocated_pool_bytes: none,
     requested_length: token_count(count: 1048576),
     scheduler_block_size: token_count(count: 16),
     groups: [KvAllocationPlanGroup {
@@ -631,7 +639,7 @@ fn wp_pre_patch_revision_plan() -> ResolvedKvAllocationPlan {
       kind: FullAttention,
       layer_identities: wp_layer_names(layers: 1),
       block_size: token_count(count: 16),
-      page_size_bytes: byte_size(count: 65536),
+      group_spec_page_size_bytes: byte_size(count: 65536),
       tokens_per_state: token_count(count: 16),
       max_memory_usage_bytes: byte_size(count: 4294967296),
       blocks_at_requested_length: allocator_block_count(count: 65536),

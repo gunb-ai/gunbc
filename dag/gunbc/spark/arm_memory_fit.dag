@@ -19,11 +19,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.kv_layout {
-  ResolvedKvLayout, KvGroupLayout, cold_admission_blocks, cold_admission_bytes,
+  ResolvedKvLayout, KvGroupLayout, cold_admission_blocks,
   AdmissionCostBlocks, AdmissionCostUnestablished,
-  AdmissionByteCostBytes, AdmissionByteCostUnestablished,
   KvGroupKind, FullAttention, SlidingWindowAttention, MambaState, KPoolIndex,
-  ResolvedKvAllocationPlan,
+  ResolvedKvAllocationPlan, KvAllocationPlanGroup,
+  KvAdmissionDemand, kv_allocator_carve_from_plan, request_block_equivalent_bytes,
 }
 import extdeps.zhipu.glm_5_3_flash {
   Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_hybrid_shape_consistent,
@@ -2075,25 +2075,51 @@ fn arm_admit_wet_binding_subject_wall(binding: ArmWetReceiptBinding, target: Mem
 // FOLD and nothing else:
 //
 //     seats x cold_admission_blocks(roster, 262144) <= allocator_blocks on EVERY rank
-//     seats x cold_admission_bytes (roster, 262144) <= admitted_kv_arena_bytes on EVERY rank
 //
-// cold_admission_blocks/bytes (extdeps.vllm.kv_layout) charge each group its own growth law --
-// KDA state fixed per sequence, sparse MLA per token, KPool per pooled token, the sparse-indexer
-// tail per sequence, and the grouping/padding is the per-group ceil-to-block times page bytes, so
-// it is inside the fold rather than beside it. THE ROSTER BINDS THE EXACT MODEL: a roster with a
-// different KDA count, a different pool interval, or a missing tail group is a different capacity,
-// and a proof at one roster says nothing at another. THE TOKEN DIVISION IS NOT A PROOF: the
-// printed "GPU KV cache size: N tokens" is a full-context-equivalent projection, and the floor of
-// it divided by the context is carried as a candidate sizing hint with no path into any verdict.
+// THE SHARED-POOL BYTE CORRECTION (docs/plans/shared-pool-byte-correction.md, owner directive
+// 2026-09-26) makes the block wall the capacity authority and demotes bytes to a conservation
+// check on the pool's construction: the old second clause (seats x per-group page bytes <=
+// admitted arena) priced the group spec's pages as if they were the shared pool's block cost and
+// underpriced the request ~106x — group-spec page bytes are the LOGICAL group charge, and the
+// physical pool block (vLLM's _get_kv_cache_bytes_per_block; one backing tensor, groups
+// overlaying it, a block ID owned by one group at a time) is a different, larger figure that only
+// the allocation plan's v2 emission carries. So NO fold here compares demand bytes against an
+// arena: the byte-level controls are pool-CONSTRUCTION controls (PoolConstructionProved — the
+// carve conserves, fits every rank's arena, and the arena slack is under one block modulo named
+// reservations/rounding), a demand's only byte spelling is block_equivalent_bytes (blocks x the
+// physical pool block size), and a v1 (blocks-only) plan proves at the block wall with no byte
+// conservation claimed. cold_admission_blocks/bytes (extdeps.vllm.kv_layout) charge each group
+// its own growth law — KDA state fixed per sequence, sparse MLA per token, KPool per pooled
+// token, the sparse-indexer tail per sequence, and the grouping/padding is the per-group
+// ceil-to-block charge, inside the fold rather than beside it. THE ROSTER BINDS THE EXACT MODEL:
+// a roster with a different KDA count, a different pool interval, or a missing tail group is a
+// different capacity, and a proof at one roster says nothing at another. THE TOKEN DIVISION IS
+// NOT A PROOF: the printed "GPU KV cache size: N tokens" is a full-context-equivalent
+// projection, and the floor of it divided by the context is carried as a candidate sizing hint
+// with no path into any verdict.
+//
+// THE VERDICT SHAPE IS THE CORRECTION'S: Proved carries the evidence-bound limiting rank, the
+// seat population, the length, the per-seat block cost, the used and reserved block counts, the
+// hard ceiling, and — only when the plan carries the v2 pool figures — the demand spelled as
+// block_equivalent_bytes. Any byte figure anywhere in this vocabulary is named
+// block_equivalent_bytes, never demand bytes, ordinary memory demand, or physical headroom.
 type CacheFitVerdict
-  = CacheFitProved { rank: Nat, seats: Nat, length: TokenCount, demand_bytes: ByteSize, headroom_bytes: ByteSize }
-  | CacheFitRefused {
-      rank: Nat
+  = CacheFitProved {
+      limiting_rank: Nat
       seats: Nat
       length: TokenCount
-      demand_bytes: ByteSize
-      demand_blocks: AllocatorBlockCount
-      supply_arena_bytes: ByteSize
+      blocks_per_seat: AllocatorBlockCount
+      blocks_used: AllocatorBlockCount
+      blocks_reserved: AllocatorBlockCount
+      hard_ceiling: Nat
+      block_equivalent_bytes: ByteSize?
+    }
+  | CacheFitRefused {
+      limiting_rank: Nat
+      seats: Nat
+      length: TokenCount
+      blocks_per_seat: AllocatorBlockCount
+      blocks_used: AllocatorBlockCount
       supply_allocator_blocks: AllocatorBlockCount
       cause: NonEmptyStr
     }
@@ -2181,10 +2207,14 @@ fn cache_supply_obligations(supplies: List<ArmRankCacheSupply>, rank_count: Nat)
       join(["rank ", to_string(s.rank), " carries a zero allocator inventory or KV-arena observation: a zero reading bounds nothing and the supply side stays open on that rank"], "") as NonEmptyStr))
 }
 
-// THE DIRECT FOLD. Order: roster obligations, then supply obligations, then the per-rank decision
-// (byte wall first, block wall second, ranks in roster order, first refusal carries). PROVED names
-// the worst rank and its headroom; a refusal that fires only because the roster padded a missing
-// group as zero is impossible by construction, because the obligations above already refused.
+// THE DIRECT (LAYOUT) FOLD. Order: roster obligations, then supply obligations, then the per-rank
+// BLOCK decision (ranks in roster order, first refusal carries). The layout has no pool-byte
+// figures — byte conservation is the allocation plan's construction vocabulary, never this fold's
+// — so a Proved here is blocks-only: block_equivalent_bytes rides Absent, blocks_reserved is zero
+// (the reserve policy is the plan fold's vocabulary), and the limiting rank is the first supply
+// rank, because the layout fold holds no per-rank evidence that separates a uniform-inventory
+// tie. A refusal that fires only because the roster padded a missing group as zero is impossible
+// by construction, because the obligations above already refused.
 fn cache_fit_verdict(
   layout: ResolvedKvLayout,
   shape: Glm53FlashHybridShape,
@@ -2199,89 +2229,67 @@ fn cache_fit_verdict(
   match length(obligations) > 0 {
     true => CacheFitUnestablished { obligations: obligations }
     false =>
-      match cold_admission_bytes(layout: layout, sequence_budget: at) {
-        AdmissionByteCostUnestablished { cause: c } => CacheFitUnestablished { obligations: [c] }
-        AdmissionByteCostBytes { bytes: per_seat_bytes } =>
-          match cold_admission_blocks(layout: layout, sequence_budget: at) {
-            AdmissionCostUnestablished { cause: c } => CacheFitUnestablished { obligations: [c] }
-            AdmissionCostBlocks { blocks: per_seat_blocks } =>
-              let demand_bytes = byte_size(count: byte_size_count(b: per_seat_bytes) * seats)
-              let demand_blocks = allocator_block_count(count: allocator_block_count_value(c: per_seat_blocks) * seats)
-              match cache_fit_rank_scan(
-                supplies: supplies,
-                demand_bytes: demand_bytes,
-                demand_blocks: demand_blocks,
-                seats: seats,
-                length: at,
-              ) {
-                Present { value: refused } => refused
-                Absent => cache_fit_proved_corner(supplies: supplies, demand_bytes: demand_bytes, seats: seats, length: at)
-              }
+      match cold_admission_blocks(layout: layout, sequence_budget: at) {
+        AdmissionCostUnestablished { cause: c } => CacheFitUnestablished { obligations: [c] }
+        AdmissionCostBlocks { blocks: per_seat_blocks } =>
+          let demand_blocks = allocator_block_count(count: allocator_block_count_value(c: per_seat_blocks) * seats)
+          match cache_fit_rank_scan(
+            supplies: supplies,
+            blocks_per_seat: per_seat_blocks,
+            demand_blocks: demand_blocks,
+            seats: seats,
+            length: at,
+          ) {
+            Present { value: refused } => refused
+            Absent => cache_fit_proved_corner(supplies: supplies, blocks_per_seat: per_seat_blocks, demand_blocks: demand_blocks, seats: seats, length: at)
           }
       }
   }
 }
 
-// ONE REFUSAL OR NONE: the first rank whose arena cannot hold the byte demand, or whose inventory
-// cannot hold the block demand. BOTH walls are checked on every rank: the byte wall on every rank
-// is the doctrine's independent second clause, and uniform per-seat demand makes the per-rank
-// block scan decide the limiting rank by construction.
+// ONE REFUSAL OR NONE: the first rank whose inventory cannot hold the block demand — the block
+// wall is the only capacity wall, so the scan is a single comparison per rank. (The byte wall the
+// scan used to run was the withdrawn move: it compared the sum of group-spec page bytes against
+// arenas, and that sum is not the shared pool's block cost.)
 fn cache_fit_rank_scan(
   supplies: List<ArmRankCacheSupply>,
-  demand_bytes: ByteSize,
+  blocks_per_seat: AllocatorBlockCount,
   demand_blocks: AllocatorBlockCount,
   seats: Nat,
   length: TokenCount,
 ) -> CacheFitVerdict? {
   first(map(filter(supplies, s =>
-      byte_size_count(b: demand_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes)
-        || allocator_block_count_value(c: demand_blocks) > allocator_block_count_value(c: s.allocator_blocks)), s =>
-    match byte_size_count(b: demand_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes) {
-      true => CacheFitRefused {
-        rank: s.rank,
-        seats: seats,
-        length: length,
-        demand_bytes: demand_bytes,
-        demand_blocks: demand_blocks,
-        supply_arena_bytes: s.admitted_kv_arena_bytes,
-        supply_allocator_blocks: s.allocator_blocks,
-        cause: join([
-          "cache capacity REFUSED at rank ", to_string(s.rank), ": ", to_string(seats), " seats at ",
-          to_string(token_count_value(t: length)), " tokens hold ", to_string(byte_size_count(b: demand_bytes)),
-          " bytes by the exact roster fold, which exceeds the rank's admitted KV arena of ",
-          to_string(byte_size_count(b: s.admitted_kv_arena_bytes)), " bytes",
-        ], "") as NonEmptyStr,
-      }
-      false => CacheFitRefused {
-        rank: s.rank,
-        seats: seats,
-        length: length,
-        demand_bytes: demand_bytes,
-        demand_blocks: demand_blocks,
-        supply_arena_bytes: s.admitted_kv_arena_bytes,
-        supply_allocator_blocks: s.allocator_blocks,
-        cause: join([
-          "cache capacity REFUSED at rank ", to_string(s.rank), ": ", to_string(seats), " seats at ",
-          to_string(token_count_value(t: length)), " tokens require ", to_string(allocator_block_count_value(c: demand_blocks)),
-          " allocator blocks by the exact roster fold, which exceeds the rank's inventory of ",
-          to_string(allocator_block_count_value(c: s.allocator_blocks)), " blocks",
-        ], "") as NonEmptyStr,
-      }
+      allocator_block_count_value(c: demand_blocks) > allocator_block_count_value(c: s.allocator_blocks)), s =>
+    CacheFitRefused {
+      limiting_rank: s.rank,
+      seats: seats,
+      length: length,
+      blocks_per_seat: blocks_per_seat,
+      blocks_used: demand_blocks,
+      supply_allocator_blocks: s.allocator_blocks,
+      cause: join([
+        "cache capacity REFUSED at rank ", to_string(s.rank), ": ", to_string(seats), " seats at ",
+        to_string(token_count_value(t: length)), " tokens require ", to_string(allocator_block_count_value(c: demand_blocks)),
+        " allocator blocks by the exact roster fold, which exceeds the rank's inventory of ",
+        to_string(allocator_block_count_value(c: s.allocator_blocks)), " blocks",
+      ], "") as NonEmptyStr,
     }))
 }
 
-// THE PROVED CORNER, reached only when no rank refused: the worst (least) arena headroom across
-// the ranks, named with its rank.
-fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, demand_bytes: ByteSize, seats: Nat, length: TokenCount) -> CacheFitVerdict {
+// THE PROVED CORNER, reached only when no rank refused. The worst (least) BLOCK headroom across
+// the ranks names the limiting rank; under a uniform engine-derived inventory the tie is real
+// (the engine already applied the min across ranks when it computed the inventory) and the first
+// supply rank is named, said so rather than hidden.
+fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, blocks_per_seat: AllocatorBlockCount, demand_blocks: AllocatorBlockCount, seats: Nat, length: TokenCount) -> CacheFitVerdict {
   let headrooms = map(supplies, s => ArmRankCacheSupply {
     rank: s.rank,
-    allocator_blocks: s.allocator_blocks,
-    admitted_kv_arena_bytes: byte_size(count: byte_size_count(b: s.admitted_kv_arena_bytes) - byte_size_count(b: demand_bytes)),
+    allocator_blocks: allocator_block_count(count: allocator_block_count_value(c: s.allocator_blocks) - allocator_block_count_value(c: demand_blocks)),
+    admitted_kv_arena_bytes: s.admitted_kv_arena_bytes,
   })
   let worst = fold(headrooms, init: first(headrooms), f: (acc, s) => match acc {
     Absent => Present { value: s }
     Present { value: a } =>
-      match byte_size_count(b: s.admitted_kv_arena_bytes) < byte_size_count(b: a.admitted_kv_arena_bytes) {
+      match allocator_block_count_value(c: s.allocator_blocks) < allocator_block_count_value(c: a.allocator_blocks) {
         true => Present { value: s }
         false => acc
       }
@@ -2289,11 +2297,14 @@ fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, demand_bytes: Byt
   match worst {
     Absent => CacheFitUnestablished { obligations: ["unreachable: a supply roster that passed the count wall has a first rank" as NonEmptyStr] }
     Present { value: w } => CacheFitProved {
-      rank: w.rank,
+      limiting_rank: w.rank,
       seats: seats,
       length: length,
-      demand_bytes: demand_bytes,
-      headroom_bytes: w.admitted_kv_arena_bytes,
+      blocks_per_seat: blocks_per_seat,
+      blocks_used: demand_blocks,
+      blocks_reserved: allocator_block_count(count: 0),
+      hard_ceiling: (allocator_block_count_value(c: w.allocator_blocks) + allocator_block_count_value(c: demand_blocks)) / allocator_block_count_value(c: blocks_per_seat),
+      block_equivalent_bytes: none,
     }
   }
 }
@@ -2310,17 +2321,30 @@ fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, demand_bytes: Byt
 // and block size (that is the layout projection's job, and on the plan's allocation grouping it
 // would double-count: group-0 rosters both the indexer.k_cache and the attn entries of each
 // sparse layer, and the mamba groups are charged per group, not per layer identity). IT PRICES
-// THE PLAN'S OWN VOUCHED FIGURES: per-seat blocks are the sum of blocks_at_requested_length,
-// per-seat bytes the sum of blocks_at_requested_length x page_size_bytes — the padded block the
-// allocator actually charges, which max_memory_usage_bytes stands behind on every row of the real
-// capture. The exact-model bind is the roster census below, computed from the plan's own layer
-// identities: a roster with a different KDA population, a different sparse coverage, or a missing
-// tail prices a different cache, exactly as the layout fold refuses the foreign roster.
+// THE PLAN'S OWN VOUCHED FIGURES: per-seat blocks are the sum of blocks_at_requested_length — one
+// shared-pool block per figure, because a block ID owned by any group consumes one block of the
+// engine's single backing tensor. The group rows' group_spec_page_size_bytes are the LOGICAL
+// per-group page charge (blocks_at x spec page = max_memory_usage_bytes, the charge that
+// reproduces the printed capacity); they are NEVER summed into a byte demand — that sum was the
+// withdrawn 125,010,432-byte figure, ~106x under the block-equivalent spelling. The exact-model
+// bind is the roster census below, computed from the plan's own layer identities: a roster with
+// a different KDA population, a different sparse coverage, or a missing tail prices a different
+// cache, exactly as the layout fold refuses the foreign roster.
 //
 // THE FOLD PRICES AT THE PLAN'S OWN REQUESTED LENGTH and nowhere else: blocks_at_requested_length
 // is vouched at that length alone. A consumer pricing another length uses the plan's growth
 // re-derivation (extdeps.vllm.kv_layout plan_admission_blocks_at_length), a different (weaker)
 // claim, and does not reach this verdict vocabulary.
+//
+// THE CORRECTED DEMAND, per the shared-pool byte correction: the block wall decides capacity
+// (blocks_used <= inventory on every rank); the ONLY byte figure the verdict carries is
+// block_equivalent_bytes = blocks_used x physical_pool_bytes_per_block, present only when the
+// plan carries the v2 pool fields, and named so it is never read as ordinary memory demand or
+// physical headroom. A v1 plan proves with block_equivalent_bytes Absent — blocks proven, no byte
+// conservation claimed. The limiting rank and the reserve policy are EVIDENCE INPUTS: the
+// bundle's observations name the rank that set the engine's min-across-ranks inventory (the
+// engine applied that min when it computed allocator_blocks, uniform across the ranks), and the
+// policy names how many blocks stand reserved behind the proven seats.
 
 // THE CENSUS, from the plan's own layer identities. The GLM-5.3-Flash allocation grouping rosters
 // each recurrent layer once across the mamba groups; each sparse layer twice in the mla_attention
@@ -2394,21 +2418,60 @@ fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, shape: Glm53Fla
   }
 }
 
+// THE RESERVE POLICY, the doctrine's explicit split of hard ceiling from guaranteed service
+// (docs/plans/shared-pool-byte-correction.md): the hard ceiling is a property of the inventory
+// alone (floor(inventory / blocks_per_seat)); how many of those seats are GUARANTEED full-context
+// service is a policy decision, not a cache fact. NoOperationalReserve guarantees to the wall;
+// ReserveBlocks holds an explicit block count back; ReserveFullLengthSeats holds back whole seats
+// (the first production candidate, one seat, selects 7 of the 8 ceiling seats at 123 blocks per
+// seat over the 1035-block inventory); ReserveBasisPoints holds back a share of the inventory.
+type CacheReservePolicy
+  = NoOperationalReserve
+  | ReserveBlocks { blocks: AllocatorBlockCount }
+  | ReserveFullLengthSeats { seats: Nat }
+  | ReserveBasisPoints { basis_points: Nat }
+
+// THE POLICY'S BLOCK RESERVE, evaluated against the plan's per-seat cost. Basis points ride Nat
+// (0..=10000); a policy spelling outside that range is the malformed question the frontier fold's
+// walls refuse, not something this projection clamps.
+fn cache_reserve_blocks(policy: CacheReservePolicy, blocks_per_seat: AllocatorBlockCount, inventory: AllocatorBlockCount) -> AllocatorBlockCount {
+  match policy {
+    NoOperationalReserve => allocator_block_count(count: 0)
+    ReserveBlocks { blocks: b } => b
+    ReserveFullLengthSeats { seats: s } => allocator_block_count(count: s * allocator_block_count_value(c: blocks_per_seat))
+    ReserveBasisPoints { basis_points: bp } => allocator_block_count(count: allocator_block_count_value(c: inventory) * bp / 10000)
+  }
+}
+
 // THE PLAN FOLD. Order mirrors the layout fold: roster obligations, then supply obligations, then
-// the malformed-question wall (zero seats names no admission), then the per-rank decision — byte
-// wall first, block wall second, ranks in roster order, first refusal carries, and PROVED names
-// the worst rank's headroom. The demand is the plan's own figures times the seat count; the
-// length the verdict carries is the plan's requested length, the only length the plan vouches.
+// the malformed-question wall (zero seats names no admission), then the per-rank BLOCK decision —
+// ranks in roster order, first refusal carries. The demand is the plan's own per-seat block
+// figure times the seat count, and the only byte figure minted is block_equivalent_bytes from
+// the v2 pool carve. PROVED carries the evidence-bound limiting rank, the policy's block reserve,
+// the hard ceiling, and the demand's block-equivalent spelling; the reserve is a standing, not a
+// refusal gate — the block wall alone decides capacity, and the reserve says how much of the
+// inventory stands behind the proven seats (a reserve at or above the inventory simply leaves no
+// guaranteed seats in the frontier fold's spelling). The length the verdict carries is the plan's
+// requested length, the only length the plan vouches.
 fn cache_fit_verdict_from_plan(
   plan: ResolvedKvAllocationPlan,
   shape: Glm53FlashHybridShape,
   seats: Nat,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
+  limiting_rank: Nat,
+  reserve_policy: CacheReservePolicy,
 ) -> CacheFitVerdict {
   let roster_obligations = cache_plan_roster_obligations(plan: plan, shape: shape)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
-  let obligations = concat(roster_obligations, supply_obligations)
+  let rank_obligations = match limiting_rank < rank_count {
+    true => [] as List<NonEmptyStr>
+    false => [join([
+      "the named limiting rank ", to_string(limiting_rank), " is outside the ", to_string(rank_count),
+      "-rank topology: the rank the evidence binds as limiting is part of the supply side, and a limiting rank the roster does not contain names no rank",
+    ], "") as NonEmptyStr]
+  }
+  let obligations = concat(concat(roster_obligations, supply_obligations), rank_obligations)
   match length(obligations) > 0 {
     true => CacheFitUnestablished { obligations: obligations }
     false =>
@@ -2416,20 +2479,95 @@ fn cache_fit_verdict_from_plan(
         true => CacheFitUnestablished { obligations: ["zero seats name no admission: the cache question is how many full-length sequences the arm admits, and a seat population of zero prices nothing" as NonEmptyStr] }
         false => {
           let per_seat_blocks = fold(plan.groups, init: 0, f: (acc, g) => acc + allocator_block_count_value(c: g.blocks_at_requested_length))
-          let per_seat_bytes = fold(plan.groups, init: 0, f: (acc, g) => acc + allocator_block_count_value(c: g.blocks_at_requested_length) * byte_size_count(b: g.page_size_bytes))
-          let demand_blocks = allocator_block_count(count: per_seat_blocks * seats)
-          let demand_bytes = byte_size(count: per_seat_bytes * seats)
-          match cache_fit_rank_scan(
-            supplies: supplies,
-            demand_bytes: demand_bytes,
-            demand_blocks: demand_blocks,
-            seats: seats,
-            length: plan.requested_length,
-          ) {
-            Present { value: refused } => refused
-            Absent => cache_fit_proved_corner(supplies: supplies, demand_bytes: demand_bytes, seats: seats, length: plan.requested_length)
+          match per_seat_blocks == 0 {
+            true => CacheFitUnestablished { obligations: ["the plan's groups sum to no blocks for a full-context request, so no admission cost can be priced from them" as NonEmptyStr] }
+            false => {
+              let per_seat = allocator_block_count(count: per_seat_blocks)
+              let inventory = plan.allocator_blocks
+              let demand_blocks = allocator_block_count(count: per_seat_blocks * seats)
+              let block_equivalent = match kv_allocator_carve_from_plan(plan: plan) {
+                Present { value: carve } =>
+                  Present { value: request_block_equivalent_bytes(
+                    demand: KvAdmissionDemand { population_blocks: demand_blocks },
+                    carve: carve,
+                  ) }
+                Absent => none
+              }
+              match cache_fit_rank_scan(
+                supplies: supplies,
+                blocks_per_seat: per_seat,
+                demand_blocks: demand_blocks,
+                seats: seats,
+                length: plan.requested_length,
+              ) {
+                Present { value: refused } => refused
+                Absent => CacheFitProved {
+                  limiting_rank: limiting_rank,
+                  seats: seats,
+                  length: plan.requested_length,
+                  blocks_per_seat: per_seat,
+                  blocks_used: demand_blocks,
+                  blocks_reserved: cache_reserve_blocks(policy: reserve_policy, blocks_per_seat: per_seat, inventory: inventory),
+                  hard_ceiling: allocator_block_count_value(c: inventory) / per_seat_blocks,
+                  block_equivalent_bytes: block_equivalent,
+                }
+              }
+            }
           }
         }
+      }
+  }
+}
+
+// ── THE REQUEST-COST AND ADMISSION VERDICTS: THE DOCTRINE'S THREE-PART BYTE/ BLOCK SPLIT ────────
+//
+// PoolConstructionProved (extdeps.vllm.kv_layout pool_construction_verdict) verifies the pool's
+// CONSTRUCTION in bytes; RequestBlockCostProved and CacheAdmissionProved are the two block-side
+// companions this module owns: the exact roster's per-request cost, and the promised population
+// against the usable inventory. Together they spell the correction's rule — bytes verify pool
+// construction, blocks mint capacity, and the two never stand in for each other.
+type RequestBlockCostVerdict
+  = RequestBlockCostProved { group_roster: List<KvAllocationPlanGroup>, blocks_per_request: AllocatorBlockCount }
+  | RequestBlockCostRefused { cause: NonEmptyStr }
+
+// THE EXACT ROSTER'S PER-REQUEST COST: the group rows the engine vouched for, and the sum of
+// their blocks_at_requested_length — the KvAdmissionDemand of one full-context request. An empty
+// roster prices no request (the census obligations refuse foreign rosters upstream in the fold).
+fn request_block_cost(plan: ResolvedKvAllocationPlan) -> RequestBlockCostVerdict {
+  let blocks = fold(plan.groups, init: 0, f: (acc, g) => acc + allocator_block_count_value(c: g.blocks_at_requested_length))
+  match blocks == 0 {
+    true => RequestBlockCostRefused { cause: "the plan's groups sum to no blocks for a full-context request, so no request block cost can be priced from them" as NonEmptyStr }
+    false => RequestBlockCostProved {
+      group_roster: plan.groups,
+      blocks_per_request: allocator_block_count(count: blocks),
+    }
+  }
+}
+
+type CacheAdmissionVerdict
+  = CacheAdmissionProved { request_blocks: AllocatorBlockCount, usable_allocator_blocks: AllocatorBlockCount }
+  | CacheAdmissionRefused { request_blocks: AllocatorBlockCount, usable_allocator_blocks: AllocatorBlockCount, cause: NonEmptyStr }
+
+// THE POPULATION AGAINST THE USABLE INVENTORY: usable = inventory − the policy's reserve
+// (saturating — a reserve at or above the inventory leaves zero usable blocks, and the admission
+// refuses there rather than wrapping). This is the per-question form of the frontier fold's rung
+// decision, for callers that ask about one population rather than the whole ladder.
+fn cache_admission_verdict(population_blocks: AllocatorBlockCount, inventory: AllocatorBlockCount, reserve_blocks: AllocatorBlockCount) -> CacheAdmissionVerdict {
+  let usable = match allocator_block_count_value(c: reserve_blocks) >= allocator_block_count_value(c: inventory) {
+    true => allocator_block_count(count: 0)
+    false => allocator_block_count(count: allocator_block_count_value(c: inventory) - allocator_block_count_value(c: reserve_blocks))
+  }
+  match allocator_block_count_value(c: population_blocks) <= allocator_block_count_value(c: usable) {
+    true => CacheAdmissionProved { request_blocks: population_blocks, usable_allocator_blocks: usable }
+    false =>
+      CacheAdmissionRefused {
+        request_blocks: population_blocks,
+        usable_allocator_blocks: usable,
+        cause: join([
+          "cache admission REFUSED: the promised population requires ", to_string(allocator_block_count_value(c: population_blocks)),
+          " shared-pool blocks, which exceeds the usable inventory of ", to_string(allocator_block_count_value(c: usable)),
+          " blocks after the reserve policy holds ", to_string(allocator_block_count_value(c: reserve_blocks)), " back",
+        ], "") as NonEmptyStr,
       }
   }
 }
@@ -2468,8 +2606,8 @@ fn cache_capacity_candidate(printed_pool_tokens: TokenCount, division_length: To
 // prefill transient is CacheFitProved beside ArmMemoryFitUnestablished, never a whole-arm fit.
 fn cache_verdict_obligations(v: CacheFitVerdict) -> List<NonEmptyStr> {
   match v {
-    CacheFitProved { rank: _, seats: _, length: _, demand_bytes: _, headroom_bytes: _ } => [] as List<NonEmptyStr>
-    CacheFitRefused { rank: _, seats: _, length: _, demand_bytes: _, demand_blocks: _, supply_arena_bytes: _, supply_allocator_blocks: _, cause: c } => [c]
+    CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => [] as List<NonEmptyStr>
+    CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, supply_allocator_blocks: _, cause: c } => [c]
     CacheFitUnestablished { obligations: os } => os
   }
 }
@@ -2525,3 +2663,4 @@ fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, arm: ArmMemoryFitVerdic
 }
 
 data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "DISCHARGED 2026-09-24: the typed receipt join (ArmComponentReceipt, arm_memory_fit_subject_with_receipts) replaced the wire-containment provenance check with a construction-level join -- receipts name their term by (rank, component) and the measurement contract governs discharge. WHAT REMAINS: the receipt TEXT still carries the identity wires for provenance; the typed identity ride-along (a receipt record carrying checkpoint/runtime/topology as fields, compared by equality) is the remaining rung, landed when the bounded-experiment observer's capture leg mints receipts from live captures instead of witness fixtures. THE MoA RUNG (owner directive 2026-09-25): MemoryProofSubject and the MemoryTerm census bind every term to the seven-axis subject, and the wet-receipt admission (arm_admit_wet_binding) enforces the receipt-subject compatibility law -- the typed identity ride-along lands with the same observer work, at which point the measured_on wires become subject equality rather than containment." as NonEmptyStr)
+

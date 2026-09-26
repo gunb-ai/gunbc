@@ -74,6 +74,16 @@ import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
 // arm below stands as the regression control for the next foreign revision, exactly the flip
 // kv_group_metadata's capture frontier describes.
 //
+// BOTH EMISSION VINTAGES PARSE, AND THE BYTE-CONSERVATION WALL RIDES ONLY THE v2 ONE: the v1
+// record (the 2026-09-25 real capture) carries no physical_pool_bytes_per_block or
+// allocated_pool_bytes — its parse mints a BLOCKS-ONLY plan, and the mint's byte-conservation
+// wall stays inactive by construction, not by leniency (extdeps.vllm.kv_layout states the wall).
+// The v2 record adds the two engine-side pool figures; the parser reads them as ordinary optional
+// members, and the mint's vintage + zero + conservation walls judge them. The per-group wire key
+// stays "page_size_bytes" in both vintages; the codec maps it onto the corpus field
+// group_spec_page_size_bytes so the group spec's page can never again be read as the shared
+// pool's block size (docs/plans/shared-pool-byte-correction.md).
+//
 // THE CONTROL'S TWO SIDES NEVER SHARE A SOURCE. The plan comes off the emission; the reported
 // capacity comes from the engine's startup stdout lines (extdeps.vllm.log_lines), captured and
 // supplied by the caller that observed the launch. The record deliberately does NOT carry the
@@ -360,7 +370,7 @@ fn kv_plan_group_row_assemble(
       kind: mapped,
       layer_identities: kv_plan_layer_opt(r: layers),
       block_size: kv_plan_token_opt(r: block_size),
-      page_size_bytes: kv_plan_byte_opt(r: page),
+      group_spec_page_size_bytes: kv_plan_byte_opt(r: page),
       tokens_per_state: kv_plan_token_opt(r: tokens_per_state),
       max_memory_usage_bytes: kv_plan_byte_opt(r: max_use),
       blocks_at_requested_length: kv_plan_block_opt(r: blocks_at),
@@ -453,6 +463,8 @@ fn kv_plan_capture_top(doc: JsonValue) -> KvPlanCaptureParse {
   let image_digest = kv_plan_string_member(obj: doc, key: "image_digest")
   let cache_format = kv_plan_string_member(obj: doc, key: "cache_format")
   let allocator_blocks = kv_plan_nat_member(obj: doc, key: "allocator_blocks")
+  let physical_pool_bytes_per_block = kv_plan_nat_member(obj: doc, key: "physical_pool_bytes_per_block")
+  let allocated_pool_bytes = kv_plan_nat_member(obj: doc, key: "allocated_pool_bytes")
   let requested_length = kv_plan_nat_member(obj: doc, key: "requested_length")
   let scheduler_block_size = kv_plan_nat_member(obj: doc, key: "scheduler_block_size")
   let groups = kv_plan_groups_member(obj: doc)
@@ -462,8 +474,11 @@ fn kv_plan_capture_top(doc: JsonValue) -> KvPlanCaptureParse {
     concat(
       concat(kv_plan_string_causes(cache_format), kv_plan_nat_causes(allocator_blocks)),
       concat(
-        concat(kv_plan_nat_causes(requested_length), kv_plan_nat_causes(scheduler_block_size)),
-        concat(kv_plan_group_list_causes(groups), kv_plan_string_causes(grouping_padding)),
+        concat(kv_plan_nat_causes(physical_pool_bytes_per_block), kv_plan_nat_causes(allocated_pool_bytes)),
+        concat(
+          concat(kv_plan_nat_causes(requested_length), kv_plan_nat_causes(scheduler_block_size)),
+          concat(kv_plan_group_list_causes(groups), kv_plan_string_causes(grouping_padding)),
+        ),
       ),
     ),
   )
@@ -481,6 +496,8 @@ fn kv_plan_capture_top(doc: JsonValue) -> KvPlanCaptureParse {
               image_digest: kv_plan_nonempty_opt(r: image_digest),
               cache_format: kv_plan_nonempty_opt(r: cache_format),
               allocator_blocks: kv_plan_block_opt(r: allocator_blocks),
+              physical_pool_bytes_per_block: kv_plan_byte_opt(r: physical_pool_bytes_per_block),
+              allocated_pool_bytes: kv_plan_byte_opt(r: allocated_pool_bytes),
               requested_length: kv_plan_token_opt(r: requested_length),
               scheduler_block_size: kv_plan_token_opt(r: scheduler_block_size),
               groups: match groups {

@@ -478,7 +478,7 @@ test fn the_real_capture_mints_with_the_engines_own_figures() -> Bool {
                   && (match g.kind { FullAttention => true  _ => false })
                   && length(g.layer_identities) == 22
                   && token_count_value(t: g.block_size) == 2304
-                  && byte_size_count(b: g.page_size_bytes) == 76032
+                  && byte_size_count(b: g.group_spec_page_size_bytes) == 76032
                   && byte_size_count(b: g.max_memory_usage_bytes) == 8667648
                   && allocator_block_count_value(c: g.blocks_at_requested_length) == 114
             })
@@ -497,7 +497,7 @@ test fn the_real_capture_mints_with_the_engines_own_figures() -> Bool {
               Present { value: g } =>
                 (match g.kind { MambaState => true  _ => false })
                   && length(g.layer_identities) == 9
-                  && byte_size_count(b: g.page_size_bytes) == 1511424
+                  && byte_size_count(b: g.group_spec_page_size_bytes) == 1511424
                   && byte_size_count(b: g.max_memory_usage_bytes) == 3022848
                   && allocator_block_count_value(c: g.blocks_at_requested_length) == 2
             })

@@ -1600,7 +1600,14 @@ fn fx_moa_group_mamba(layers: Nat, page: Nat) -> KvGroupLayout {
 }
 
 fn fx_moa_group_sparse() -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: 11), block_size: token_count(count: 16), page_size_bytes: byte_size(count: 8192) }
+  fx_moa_group_sparse_block(block: 16)
+}
+
+// THE BLOCK-ARITHMETIC VARIANT of the sparse group: same eleven layers and same 8 KiB page, at a
+// different block size — the roster-shaped way to change the per-seat BLOCK cost without touching
+// the roster obligations (the byte costs stay the page's, and bytes price no capacity).
+fn fx_moa_group_sparse_block(block: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: 11), block_size: token_count(count: block), page_size_bytes: byte_size(count: 8192) }
 }
 
 fn fx_moa_group_kpool(pool_every: Nat, page: Nat) -> KvGroupLayout {
@@ -1677,38 +1684,43 @@ fn fx_cache_supplies(blocks: Nat, arena_bytes: Nat) -> List<ArmRankCacheSupply> 
 
 // ── WITNESS 20: THE DISCRIMINATING CONTROLS OF THE DIRECT FOLD ───────────────────────────────────
 //
-// SAME ARENA, DIFFERENT ROSTER, DIFFERENT CAPACITY. Roster A charges the tail at 4 KiB per
-// sequence; roster D charges the same tail at 40 KiB. One arena figure, 10683000000 bytes, sits
-// between the two six-seat demands: A proves, D refuses, and the ONLY difference is the roster.
-test fn w_same_arena_different_roster_different_capacity() -> Bool {
+// SAME INVENTORY, DIFFERENT ROSTER, DIFFERENT CAPACITY — AT THE BLOCK WALL. Roster A charges the
+// sparse MLA at sixteen-token blocks; roster D charges the same eleven sparse layers at
+// eight-token blocks (same layers, same kinds, same pages — only the block arithmetic differs, so
+// the roster obligations pass for both). One 2,000,000-block inventory sits between the two
+// six-seat demands: A proves, D refuses, and the ONLY difference is the roster.
+test fn w_same_inventory_different_roster_different_capacity() -> Bool {
   let roster_d = fx_moa_layout(groups: [
     fx_moa_group_mamba(layers: 34, page: 1048576),
-    fx_moa_group_sparse(),
+    fx_moa_group_sparse_block(block: 8),
     fx_moa_group_kpool(pool_every: 4, page: 65536),
-    fx_moa_group_tail(page: 40960),
+    fx_moa_group_tail(page: 4096),
   ])
-  let demand_a = match cold_admission_bytes(layout: fx_roster_a(), sequence_budget: token_count(count: 262144)) {
-    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
-    AdmissionByteCostUnestablished { cause: _ } => 0
+  let blocks_a = match cold_admission_blocks(layout: fx_roster_a(), sequence_budget: token_count(count: 262144)) {
+    AdmissionCostBlocks { blocks: b } => allocator_block_count_value(c: b)
+    AdmissionCostUnestablished { cause: _ } => 0
   }
-  let demand_d = match cold_admission_bytes(layout: roster_d, sequence_budget: token_count(count: 262144)) {
-    AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b)
-    AdmissionByteCostUnestablished { cause: _ } => 0
+  let blocks_d = match cold_admission_blocks(layout: roster_d, sequence_budget: token_count(count: 262144)) {
+    AdmissionCostBlocks { blocks: b } => allocator_block_count_value(c: b)
+    AdmissionCostUnestablished { cause: _ } => 0
   }
-  (demand_a == 1780486144 && demand_d == 1780523008 && demand_a != demand_d)
+  (blocks_a == 184355 && blocks_d == 364579 && blocks_a != blocks_d)
     && (match cache_fit_verdict(
       layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 10683000000), rank_count: 4) {
-      CacheFitProved { rank: _, seats: _, length: _, demand_bytes: d, headroom_bytes: _ } => byte_size_count(b: d) == 10682916864
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } =>
+        allocator_block_count_value(c: bu) == 1106130
       _ => false
     })
     && (match cache_fit_verdict(
       layout: roster_d, shape: glm_5_3_flash_hybrid_shape,
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 10683000000), rank_count: 4) {
-      CacheFitRefused { rank: _, seats: _, length: _, demand_bytes: _, demand_blocks: _, supply_arena_bytes: a, supply_allocator_blocks: _, cause: c } =>
-        byte_size_count(b: a) == 10683000000 && string_contains(s: c as String, pattern: "REFUSED")
+      CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: bu, supply_allocator_blocks: sb, cause: c } =>
+        allocator_block_count_value(c: bu) == 2187474
+          && allocator_block_count_value(c: sb) == 2000000
+          && string_contains(s: c as String, pattern: "REFUSED")
       _ => false
     })
 }
@@ -1744,7 +1756,13 @@ test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
       layout: fx_roster_e(), shape: fx_shape_kda33(),
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
-      CacheFitProved { rank: _, seats: _, length: _, demand_bytes: d, headroom_bytes: _ } => byte_size_count(b: d) == 10676625408
+      CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
+        s == 6
+          && allocator_block_count_value(c: bu) == 1106124
+          && (match be {
+            Absent => true
+            Present { value: _ } => false
+          })
       _ => false
     })
 }
@@ -2015,8 +2033,13 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4, profile: w_restoration_profile()))
   (match cache {
-    CacheFitProved { rank: _, seats: s, length: _, demand_bytes: d, headroom_bytes: h } =>
-      s == 6 && byte_size_count(b: d) == 10682916864 && byte_size_count(b: h) == 10791919616
+    CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
+      s == 6
+        && allocator_block_count_value(c: bu) == 1106130
+        && (match be {
+          Absent => true
+          Present { value: _ } => false
+        })
     _ => false
   })
     && (match arm {
@@ -2027,7 +2050,7 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
       Present { value: arm_verdict } =>
         let standing = arm_memory_fit_whole_standing(cache: cache, arm: arm_verdict, subject_length: token_count(count: 262144))
         (match standing.cache_verdict {
-          CacheFitProved { rank: _, seats: _, length: _, demand_bytes: _, headroom_bytes: _ } => true
+          CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
           _ => false
         })
           && (match standing.arm_verdict {
@@ -2114,7 +2137,7 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms()
     && w_the_unified_subject_names_all_seven_axes()
     && w_the_mechanism_census_names_every_component()
-    && w_same_arena_different_roster_different_capacity()
+    && w_same_inventory_different_roster_different_capacity()
     && w_same_printed_tokens_changed_kda_count_no_proof_reuse()
     && w_missing_tail_group_is_unestablished()
     && w_kpool_4_to_8_changes_derived_capacity()

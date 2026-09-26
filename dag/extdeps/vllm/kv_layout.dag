@@ -606,12 +606,22 @@ fn allocator_usage(layout: ResolvedKvLayout, free_blocks: AllocatorBlockCount) -
 // groups share blocks (and what each group's ceil-to-block padding costs) is part of the plan the
 // engine must vouch for. A consumer that re-derived padding from its own arithmetic would be
 // pricing a different allocator than the one that ran.
+// THE PER-GROUP BYTE FIELD IS THE GROUP SPEC'S PAGE, NOT THE POOL BLOCK. The shared-pool byte
+// correction (docs/plans/shared-pool-byte-correction.md, owner directive 2026-09-26) renamed this
+// field group_spec_page_size_bytes because reading it as the byte cost of taking one block ID from
+// the shared pool underpriced a request by ~106x: vLLM constructs ONE backing tensor at startup
+// whose block size is _get_kv_cache_bytes_per_block (vllm/v1/core/kv_cache_utils.py at the pinned
+// 8d09804c8), every cache group overlays that allocation, and a block ID owned by any group consumes
+// one block of it. The page this group spec prices (blocks_at_requested_length x
+// group_spec_page_size_bytes = the group's max_memory_usage_bytes) is the logical charge that
+// reproduces the printed capacity; the PHYSICAL pool block bytes ride the plan below, and the two
+// must never be read as one figure again.
 type KvAllocationPlanGroup {
   identity: NonEmptyStr
   kind: KvGroupKind
   layer_identities: List<NonEmptyStr>
   block_size: TokenCount
-  page_size_bytes: ByteSize
+  group_spec_page_size_bytes: ByteSize
   tokens_per_state: TokenCount
   max_memory_usage_bytes: ByteSize
   blocks_at_requested_length: AllocatorBlockCount
@@ -632,11 +642,25 @@ type KvAllocationPlanGroup {
 // `requested_length` is the sequence length the engine's blocks_at_requested_length figures were
 // computed at (its own max_model_len at capture); `grouping_padding` is the allocator's own
 // statement of the grouping and padding decision, quoted, not paraphrased.
+//
+// THE PHYSICAL POOL BYTES ARE OPTIONAL-UNTIL-EMITTED, and their optionality is the vintage wall
+// the byte-conservation check rides (docs/plans/shared-pool-byte-correction.md): the v1 emission
+// predates them, so a plan lacking them is a BLOCKS-ONLY plan — the block wall proves against it,
+// and no byte conservation is claimed or checkable. `physical_pool_bytes_per_block` is the byte
+// size of one block of the engine's single shared backing tensor — vLLM's
+// _get_kv_cache_bytes_per_block at the emission's revision, the divisor that turned
+// available_memory into allocator_blocks; `allocated_pool_bytes` is the worker's whole-pool
+// allocation, allocator_blocks x physical_pool_bytes_per_block, both the engine's own figures. A
+// plan carrying exactly one of the two is a partial vintage and refuses: the pair is one fact.
+// When both ride, the mint's conservation wall (allocated == blocks x bytes_per_block) is ACTIVE;
+// for a v1 plan it is inactive BY CONSTRUCTION, not by leniency.
 type ResolvedKvAllocationPlan {
   runtime: VllmSourceRevision
   image_digest: NonEmptyStr?
   cache_format: NonEmptyStr
   allocator_blocks: AllocatorBlockCount
+  physical_pool_bytes_per_block: ByteSize?
+  allocated_pool_bytes: ByteSize?
   requested_length: TokenCount
   scheduler_block_size: TokenCount
   groups: List<KvAllocationPlanGroup>
@@ -664,7 +688,7 @@ fn resolved_kv_layout_from_plan(plan: ResolvedKvAllocationPlan) -> ResolvedKvLay
       kind: g.kind,
       layer_count: attention_layer_count(count: length(g.layer_identities)),
       block_size: g.block_size,
-      page_size_bytes: g.page_size_bytes,
+      page_size_bytes: g.group_spec_page_size_bytes,
     }),
     established_at_revision: plan.runtime,
   }
@@ -682,6 +706,8 @@ type KvAllocationPlanCapture {
   image_digest: NonEmptyStr?
   cache_format: NonEmptyStr?
   allocator_blocks: AllocatorBlockCount?
+  physical_pool_bytes_per_block: ByteSize?
+  allocated_pool_bytes: ByteSize?
   requested_length: TokenCount?
   scheduler_block_size: TokenCount?
   groups: List<KvAllocationPlanCaptureGroup>?
@@ -689,13 +715,17 @@ type KvAllocationPlanCapture {
 }
 
 // ONE CAPTURED GROUP ROW, same optionality discipline as the top-level capture: the emission
-// either vouches for a field or the mint names its absence.
+// either vouches for a field or the mint names its absence. The spec-page field is renamed
+// group_spec_page_size_bytes for the reason KvAllocationPlanGroup states; the WIRE key the
+// patched engine emits stays "page_size_bytes" (both emission vintages spell it so — the v2
+// extension adds the two pool fields, it does not rename the group rows), and the codec maps it
+// onto the renamed field so the old reading cannot recur at the type.
 type KvAllocationPlanCaptureGroup {
   identity: NonEmptyStr?
   kind: KvGroupKind?
   layer_identities: List<NonEmptyStr>?
   block_size: TokenCount?
-  page_size_bytes: ByteSize?
+  group_spec_page_size_bytes: ByteSize?
   tokens_per_state: TokenCount?
   max_memory_usage_bytes: ByteSize?
   blocks_at_requested_length: AllocatorBlockCount?
@@ -727,8 +757,8 @@ fn kv_allocation_plan_capture_group_missing(g: KvAllocationPlanCaptureGroup) -> 
             Present { value: _ } => [] as List<NonEmptyStr>
           },
           concat(
-            match g.page_size_bytes {
-              Absent => ["page_size_bytes" as NonEmptyStr]
+            match g.group_spec_page_size_bytes {
+              Absent => ["group_spec_page_size_bytes" as NonEmptyStr]
               Present { value: _ } => [] as List<NonEmptyStr>
             },
             concat(
@@ -747,18 +777,25 @@ fn kv_allocation_plan_capture_group_missing(g: KvAllocationPlanCaptureGroup) -> 
                 })))))))
 }
 
-// THE PLAN MINT. Three walls, in order: the capture's revision must be the modeled one (the field
+// THE PLAN MINT. Four walls, in order: the capture's revision must be the modeled one (the field
 // set an emission carries is a property of the upstream revision, unread revisions are not
 // trusted); every top-level field and every group row the plan PRICES must be vouched for (no
 // invented layer identities, page bytes or block figures beside a real capture) — image_digest is
 // deliberately NOT among them, the patched engine's contract making it an optional
 // deployment-supplied self-report, and the authoritative image identity binds at the receipt's
-// launch carrier instead; and the zero walls -- a zero inventory, a zero requested length, a
-// group with zero layers, zero block size, zero-byte page or zero tokens per state is not a
-// group, exactly as the layout fold refuses. THE MINT DOES NOT CHECK THE PLAN AGAINST ANY PRINTED
-// CAPACITY: that is the control below, kept separate so a plan can be observed (minted) before it
-// is controlled, and a control failure reads as located evidence about one of the two, not as a
-// parse error.
+// launch carrier instead, and the two PHYSICAL POOL fields are not among them either, being
+// optional-until-emitted: a v1 capture without them mints a blocks-only plan, which is a stated
+// standing, not a gap; and the zero walls -- a zero inventory, a zero requested length, a
+// group with zero layers, zero block size, zero-byte spec page or zero tokens per state is not a
+// group, exactly as the layout fold refuses (a zero PHYSICAL pool block size or a zero
+// allocated_pool_bytes on a v2 capture is likewise not a pool); and the POOL-BYTE CONSERVATION
+// WALL, active only when both physical fields ride — a v2 capture whose allocated_pool_bytes is
+// not exactly allocator_blocks x physical_pool_bytes_per_block is refused, because the emission
+// then does not describe the engine's own construction (and a capture carrying exactly one of
+// the two refuses as a partial vintage above the zero walls). THE MINT DOES NOT CHECK THE PLAN
+// AGAINST ANY PRINTED CAPACITY: that is the control below, kept separate so a plan can be observed
+// (minted) before it is controlled, and a control failure reads as located evidence about one of
+// the two, not as a parse error.
 fn resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture) -> KvAllocationPlanAdmission {
   if !revision_is_modelled(r: capture.observed_at_revision) {
     KvAllocationPlanRefused {
@@ -796,7 +833,7 @@ fn resolved_kv_allocation_plan_from_capture(capture: KvAllocationPlanCapture) ->
                     ". A roster with invented identities, page bytes or block figures is a fixture wearing a receipt's name",
                   ], "") as NonEmptyStr,
                 }
-              false => kv_allocation_plan_zero_walls(capture: capture, groups: groups)
+              false => kv_allocation_plan_pool_field_vintage_wall(capture: capture, groups: groups)
             }
         }
     }
@@ -836,16 +873,43 @@ fn kv_allocation_plan_capture_top_missing(capture: KvAllocationPlanCapture) -> L
 }
 
 // THE ZERO WALLS RUN AFTER COMPLETENESS: a complete capture of a broken engine is still broken.
+// THE POOL-FIELD VINTAGE WALL, between the completeness walls and the zero walls: the two
+// physical pool fields are optional-until-emitted, but they are ONE fact — a capture carrying
+// exactly one of them is a partial emission, and a half-known pool construction is worse than an
+// unemitted one because it invites exactly the read the field rename above forbids. Both absent
+// is the v1 vintage: the plan mints, blocks-only. Both present falls through to the zero walls
+// and the conservation wall.
+fn kv_allocation_plan_pool_field_vintage_wall(capture: KvAllocationPlanCapture, groups: List<KvAllocationPlanCaptureGroup>) -> KvAllocationPlanAdmission {
+  match capture.physical_pool_bytes_per_block {
+    Present { value: _ } =>
+      match capture.allocated_pool_bytes {
+        Present { value: _ } => kv_allocation_plan_zero_walls(capture: capture, groups: groups)
+        Absent =>
+          KvAllocationPlanRefused {
+            cause: "the capture carries physical_pool_bytes_per_block but not allocated_pool_bytes: the two are one fact about the engine's shared pool construction, and a half-emitted pair refuses rather than letting one pool byte figure be read beside a guessed other" as NonEmptyStr,
+          }
+      }
+    Absent =>
+      match capture.allocated_pool_bytes {
+        Present { value: _ } =>
+          KvAllocationPlanRefused {
+            cause: "the capture carries allocated_pool_bytes but not physical_pool_bytes_per_block: the two are one fact about the engine's shared pool construction, and a half-emitted pair refuses rather than letting one pool byte figure be read beside a guessed other" as NonEmptyStr,
+          }
+        Absent => kv_allocation_plan_zero_walls(capture: capture, groups: groups)
+      }
+  }
+}
+
 fn kv_allocation_plan_zero_walls(capture: KvAllocationPlanCapture, groups: List<KvAllocationPlanCaptureGroup>) -> KvAllocationPlanAdmission {
   let zero_group = first(filter(groups, g =>
     (match g.layer_identities { Present { value: ls } => length(ls) == 0  Absent => false })
       || (match g.block_size { Present { value: b } => token_count_value(t: b) == 0  Absent => false })
-      || (match g.page_size_bytes { Present { value: p } => byte_size_count(b: p) == 0  Absent => false })
+      || (match g.group_spec_page_size_bytes { Present { value: p } => byte_size_count(b: p) == 0  Absent => false })
       || (match g.tokens_per_state { Present { value: t } => token_count_value(t: t) == 0  Absent => false })))
   match zero_group {
     Present { value: _ } =>
       KvAllocationPlanRefused {
-        cause: "an allocation-plan group with zero layer identities, zero block size, zero-byte page or zero tokens per state is not a group, so the plan refuses rather than pricing a free or broken one" as NonEmptyStr,
+        cause: "an allocation-plan group with zero layer identities, zero block size, zero-byte spec page or zero tokens per state is not a group, so the plan refuses rather than pricing a free or broken one" as NonEmptyStr,
       }
     Absent =>
       match capture.allocator_blocks {
@@ -853,17 +917,69 @@ fn kv_allocation_plan_zero_walls(capture: KvAllocationPlanCapture, groups: List<
           match allocator_block_count_value(c: blocks) == 0 {
             true => KvAllocationPlanRefused { cause: "the capture carries a zero allocator inventory, so there is no pool to divide" as NonEmptyStr }
             false =>
-              match capture.requested_length {
-                Present { value: requested } =>
-                  match token_count_value(t: requested) == 0 {
-                    true => KvAllocationPlanRefused { cause: "the capture carries a zero requested length, so the blocks-per-request figures it vouches for describe no admission" as NonEmptyStr }
-                    false => kv_allocation_plan_assemble(capture: capture, groups: groups)
+              match capture.physical_pool_bytes_per_block {
+                Present { value: pool_block } =>
+                  match byte_size_count(b: pool_block) == 0 {
+                    true => KvAllocationPlanRefused { cause: "the capture carries a zero physical_pool_bytes_per_block: a zero-byte shared pool block is not a pool, and every byte conservation control would divide by it" as NonEmptyStr }
+                    false =>
+                      match capture.allocated_pool_bytes {
+                        Present { value: allocated } =>
+                          match byte_size_count(b: allocated) == 0 {
+                            true => KvAllocationPlanRefused { cause: "the capture carries a zero allocated_pool_bytes beside a nonzero inventory and block size: the engine's pool construction is broken, and the plan refuses rather than pricing a free pool" as NonEmptyStr }
+                            false => kv_allocation_plan_conservation_wall(capture: capture, groups: groups, blocks: blocks)
+                          }
+                        Absent => KvAllocationPlanRefused { cause: "unreachable: the vintage wall above already refused the half-emitted pair" as NonEmptyStr }
+                      }
                   }
-                Absent => KvAllocationPlanRefused { cause: "unreachable: the top-level missing-field refusal above already named the absent requested length" as NonEmptyStr }
+                Absent => kv_allocation_plan_zero_walls_tail(capture: capture, groups: groups, blocks: blocks)
               }
           }
         Absent => KvAllocationPlanRefused { cause: "unreachable: the top-level missing-field refusal above already named the absent allocator inventory" as NonEmptyStr }
       }
+  }
+}
+
+// THE REMAINING ZERO WALLS for the v1 vintage (no pool fields): the requested length must be
+// nonzero, and a passed capture assembles.
+fn kv_allocation_plan_zero_walls_tail(capture: KvAllocationPlanCapture, groups: List<KvAllocationPlanCaptureGroup>, blocks: AllocatorBlockCount) -> KvAllocationPlanAdmission {
+  match capture.requested_length {
+    Present { value: requested } =>
+      match token_count_value(t: requested) == 0 {
+        true => KvAllocationPlanRefused { cause: "the capture carries a zero requested length, so the blocks-per-request figures it vouches for describe no admission" as NonEmptyStr }
+        false => kv_allocation_plan_assemble(capture: capture, groups: groups)
+      }
+    Absent => KvAllocationPlanRefused { cause: "unreachable: the top-level missing-field refusal above already named the absent requested length" as NonEmptyStr }
+  }
+}
+
+// THE CONSERVATION WALL, active only for the v2 vintage: the emission's own pool figures must
+// describe one construction — allocated_pool_bytes exactly equals allocator_blocks x
+// physical_pool_bytes_per_block (the worker allocates one backing tensor of that product at
+// startup, and cache groups overlay it). A v2 capture whose figures do not conserve is refused:
+// either the emission read a different engine than its revision's _get_kv_cache_bytes_per_block
+// describes, or the figures were garbled in flight. The block wall and the printed-capacity
+// control below are unaffected — a non-conserving POOL BYTE figure is located evidence about the
+// pool's construction, not about the block inventory.
+fn kv_allocation_plan_conservation_wall(capture: KvAllocationPlanCapture, groups: List<KvAllocationPlanCaptureGroup>, blocks: AllocatorBlockCount) -> KvAllocationPlanAdmission {
+  match capture.physical_pool_bytes_per_block {
+    Present { value: pool_block } =>
+      match capture.allocated_pool_bytes {
+        Present { value: allocated } =>
+          match byte_size_count(b: allocated) == allocator_block_count_value(c: blocks) * byte_size_count(b: pool_block) {
+            true => kv_allocation_plan_zero_walls_tail(capture: capture, groups: groups, blocks: blocks)
+            false =>
+              KvAllocationPlanRefused {
+                cause: join([
+                  "the v2 emission's pool figures do not conserve: allocated_pool_bytes is ", to_string(byte_size_count(b: allocated)),
+                  " but allocator_blocks x physical_pool_bytes_per_block is ",
+                  to_string(allocator_block_count_value(c: blocks) * byte_size_count(b: pool_block)),
+                  "; the worker allocates one backing tensor of exactly that product, so the capture does not describe the engine's pool construction",
+                ], "") as NonEmptyStr,
+              }
+          }
+        Absent => KvAllocationPlanRefused { cause: "unreachable: the vintage wall above already refused the half-emitted pair" as NonEmptyStr }
+      }
+    Absent => KvAllocationPlanRefused { cause: "unreachable: the zero walls above only reach the conservation wall with both pool fields present" as NonEmptyStr }
   }
 }
 
@@ -883,6 +999,8 @@ fn kv_allocation_plan_assemble(capture: KvAllocationPlanCapture, groups: List<Kv
         Present { value: b } => b
         Absent => allocator_block_count(count: 0)
       },
+      physical_pool_bytes_per_block: capture.physical_pool_bytes_per_block,
+      allocated_pool_bytes: capture.allocated_pool_bytes,
       requested_length: match capture.requested_length {
         Present { value: l } => l
         Absent => token_count(count: 0)
@@ -908,7 +1026,7 @@ fn kv_allocation_plan_assemble(capture: KvAllocationPlanCapture, groups: List<Kv
           Present { value: b } => b
           Absent => token_count(count: 0)
         },
-        page_size_bytes: match g.page_size_bytes {
+        group_spec_page_size_bytes: match g.group_spec_page_size_bytes {
           Present { value: p } => p
           Absent => byte_size(count: 0)
         },
@@ -1058,6 +1176,104 @@ fn plan_admission_blocks_at_length(plan: ResolvedKvAllocationPlan, at: TokenCoun
       Present { value: n } => AdmissionCostBlocks { blocks: allocator_block_count(count: n) }
     }
   }
+}
+
+// ── THE SHARED-POOL BYTE CORRECTION: CARVE VS DEMAND, AND THE CONSTRUCTION VERDICT ───────────────
+//
+// THE TWO NAMED CONCEPTS (docs/plans/shared-pool-byte-correction.md, owner directive 2026-09-26).
+// Calling both "KV bytes" is what enabled the 106x mistake, so the two quantities now have two
+// names and no function reads one as the other:
+//
+//   KvAllocatorCarve    — the physical resident pool the engine allocated at startup: one backing
+//                         tensor of allocated_pool_bytes, counted in blocks of
+//                         physical_pool_bytes_per_block (vLLM's _get_kv_cache_bytes_per_block at
+//                         the emission's revision). The cache groups OVERLAY this allocation; a
+//                         block ID owned by any group consumes one block of it.
+//   KvAdmissionDemand   — the logical blocks the promised population requires: the exact sum of
+//                         the group rosters' blocks_at_requested_length, one shared-pool block
+//                         each. Its byte spelling, when a carve exists to price it against, is
+//                         block-equivalent: request_blocks x physical_pool_bytes_per_block — NEVER
+//                         the sum of blocks x group-spec page bytes (the withdrawn 125,010,432-byte
+//                         figure priced exactly that wrong sum).
+//
+// THE VERDICT STRUCTURE IS THE DOCTRINE'S: PoolConstructionProved (the bytes verify the pool's
+// CONSTRUCTION — allocated == blocks x bytes_per_block, allocated <= every rank's admitted KV
+// arena, and the arena slack under one block modulo named reservations/rounding),
+// RequestBlockCostProved (the exact group roster and its blocks per request), and
+// CacheAdmissionProved (request blocks <= usable inventory). BYTES NEVER MINT CAPACITY: the block
+// wall is the capacity authority; the byte wall is a conservation check on the pool's
+// construction.
+type KvAllocatorCarve {
+  physical_pool_bytes_per_block: ByteSize
+  allocated_pool_bytes: ByteSize
+  allocator_blocks: AllocatorBlockCount
+}
+
+// THE LOGICAL DEMAND, in shared-pool blocks. `population_blocks` is the promised population's
+// exact block count (seats x the roster's blocks_at_requested_length sum); it is block-typed so
+// no byte figure can ride it unlabeled.
+type KvAdmissionDemand {
+  population_blocks: AllocatorBlockCount
+}
+
+// THE CARVE PROJECTION OF A PLAN: present exactly when the plan carries the v2 pool fields —
+// a v1 (blocks-only) plan has no carve, and every byte-level control below says so rather than
+// deriving bytes from the group spec pages, which is the withdrawn move.
+fn kv_allocator_carve_from_plan(plan: ResolvedKvAllocationPlan) -> KvAllocatorCarve? {
+  match plan.physical_pool_bytes_per_block {
+    Present { value: pool_block } =>
+      match plan.allocated_pool_bytes {
+        Present { value: allocated } =>
+          Present { value: KvAllocatorCarve {
+            physical_pool_bytes_per_block: pool_block,
+            allocated_pool_bytes: allocated,
+            allocator_blocks: plan.allocator_blocks,
+          } }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// THE CONSTRUCTION VERDICT, MINT-LEVEL. The mint's conservation wall already refused a v2 capture
+// whose figures do not conserve, so a constructed plan with a carve passes here by construction —
+// this fold is the typed re-statement consumers branch on, and the Unestablished arm is the v1
+// vintage's honest standing: blocks proven, no byte conservation claimed.
+type PoolConstructionVerdict
+  = PoolConstructionProved { physical_pool_block_bytes: ByteSize, allocator_blocks: AllocatorBlockCount, allocated_pool_bytes: ByteSize }
+  | PoolConstructionRefused { cause: NonEmptyStr }
+  | PoolConstructionUnestablished { cause: NonEmptyStr }
+
+fn pool_construction_verdict(plan: ResolvedKvAllocationPlan) -> PoolConstructionVerdict {
+  match kv_allocator_carve_from_plan(plan: plan) {
+    Present { value: carve } =>
+      match byte_size_count(b: carve.allocated_pool_bytes) == allocator_block_count_value(c: carve.allocator_blocks) * byte_size_count(b: carve.physical_pool_bytes_per_block) {
+        true => PoolConstructionProved {
+          physical_pool_block_bytes: carve.physical_pool_bytes_per_block,
+          allocator_blocks: carve.allocator_blocks,
+          allocated_pool_bytes: carve.allocated_pool_bytes,
+        }
+        false =>
+          PoolConstructionRefused {
+            cause: join([
+              "the plan's pool figures do not conserve: allocated_pool_bytes is ", to_string(byte_size_count(b: carve.allocated_pool_bytes)),
+              " but allocator_blocks x physical_pool_bytes_per_block is ",
+              to_string(allocator_block_count_value(c: carve.allocator_blocks) * byte_size_count(b: carve.physical_pool_bytes_per_block)),
+            ], "") as NonEmptyStr,
+          }
+      }
+    Absent =>
+      PoolConstructionUnestablished {
+        cause: "the plan carries no physical_pool_bytes_per_block or allocated_pool_bytes (the v1 emission vintage): the block wall proves against it, and no byte conservation is claimed — pool construction stands blocks-only until a v2 capture emits the engine's own pool figures" as NonEmptyStr,
+      }
+  }
+}
+
+// THE BLOCK-EQUIVALENT BYTE SPELLING OF A DEMAND, priced against the carve's physical pool block
+// — the only byte figure a capacity question may carry, and named block_equivalent_bytes
+// wherever it travels so it is never read as ordinary memory demand or physical headroom.
+fn request_block_equivalent_bytes(demand: KvAdmissionDemand, carve: KvAllocatorCarve) -> ByteSize {
+  byte_size(count: allocator_block_count_value(c: demand.population_blocks) * byte_size_count(b: carve.physical_pool_bytes_per_block))
 }
 
 data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch. THE ALLOCATION-PLAN RUNG: ResolvedKvAllocationPlan and its capture mint close the emission gap extdeps.vllm.kv_group_metadata documents -- the patched engine's emission that vouches for layer identities, page bytes, tokens per state, per-group usage and blocks at the requested length, with allocation_plan_reproduces_reported_capacity as the independent control. THE EMISSION PATCH IS A FOLLOW-UP: until a capture of the patched engine exists, every capture through the mint lands on the missing-field or revision wall, and the arm's cache fold keeps refusing for want of the roster." as NonEmptyStr)
