@@ -2044,11 +2044,10 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // general type fields do not (see dag_grammar_io_field_decl_expr).
 // Service-level `config` follows v1 parse_service_config_block: `config` `{` (field `:` expr)* `}`
 // over v1's closed field set. The v2-inline operation form is v1-admitted and not yet in this
-// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
-// no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
-// (body_lowering_fold body_lower_wrapper_retained_shell, counted by body_lowering_retention_census)
-// and normalized_tree admit_normalized_tree refuses it before resolve. The refusal moved from parse
-// to normalize; it did not disappear.
+// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl lowers
+// at declaration grade in v2.compiler.body_lowering_fold body_lower_service_decl, which reads the
+// interface and sets realization (transport, config, exit, response, mock_response) and unmodeled
+// interface members aside, typed and located.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
@@ -2082,12 +2081,14 @@ fn dag_grammar_status_expr_entry_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_io_block_expr() -> GrammarExpr {
+// `input` and `output` are TWO productions, not one io_block over a choice of the two words. A
+// literal terminal is captured by its token class alone (v2.std.grammar StampLexeme keeps no
+// lexeme), so a single io_block's parse tree could not say which word it matched, and the
+// declaration-grade lowering (v2.compiler.body_lowering_fold body_lower_service_decl) needs exactly
+// that fact to build an operation's domain and codomain. The production identity carries it.
+fn dag_grammar_io_block_expr(keyword: String) -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "input")),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "output"))
-    ),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: keyword)),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
       right: dag_grammar_sequence(
@@ -2173,16 +2174,19 @@ fn dag_grammar_mock_response_block_expr() -> GrammarExpr {
 
 fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_io_block),
+    left: dag_grammar_nonterminal(production: ^dag_production_input_block),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
+      left: dag_grammar_nonterminal(production: ^dag_production_output_block),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_transport),
+        left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+          left: dag_grammar_nonterminal(production: ^dag_production_transport),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_response_block),
-            right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+            left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+            right: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_response_block),
+              right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+            )
           )
         )
       )
@@ -2584,10 +2588,15 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_transport_expr(),
     emitted: ^dag_surface_transport
   )
-  let io_block = dag_grammar_production(
-    name: ^dag_production_io_block,
-    expression: dag_grammar_io_block_expr(),
-    emitted: ^dag_surface_io_block
+  let input_block = dag_grammar_production(
+    name: ^dag_production_input_block,
+    expression: dag_grammar_io_block_expr(keyword: "input"),
+    emitted: ^dag_surface_input_block
+  )
+  let output_block = dag_grammar_production(
+    name: ^dag_production_output_block,
+    expression: dag_grammar_io_block_expr(keyword: "output"),
+    emitted: ^dag_surface_output_block
   )
   let op_modifier = dag_grammar_production(
     name: ^dag_production_op_modifier,
@@ -2823,7 +2832,8 @@ fn dag_grammar_root() -> GrammarRoot {
       operation,
       operation_body_entry,
       transport,
-      io_block,
+      input_block,
+      output_block,
       op_modifier,
       exit_block,
       response_block,

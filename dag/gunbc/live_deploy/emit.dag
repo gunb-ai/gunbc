@@ -10,6 +10,7 @@ import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
 import gunbc.managed_directory {
   ManagedDirectory,
+  ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_mode_octal,
   attempt_state_directory_at,
 }
@@ -110,7 +111,7 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
-  EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
+  EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
@@ -1374,10 +1375,25 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredHostDirectory { path, owner } => [
       deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
     ]
+    EnsuredManagedHostDirectory { admission } => [deploy_raw(command: ensure_managed_directory_command(admission: admission))]
   }
 }
 
-// `-g` is spelled with the OWNER'S USER NAME, not a modeled group name, and that is inherited from
+// A REFUSED ADMISSION LOWERS TO A MARKER THAT IS NOT SHELL, so the apply fails at this step naming
+// the writer the directory's owner and group do not cover -- it never emits an install with a wider
+// mode, and never a directory the writer then cannot write.
+data managed_directory_writer_uncovered_poison: String = "__GUNBC_DEPLOY_REFUSED__ managed host directory NOT ENSURED: a declared writer is neither its owner nor in its group, and gunbc.managed_directory managed_directory_admit refuses rather than deriving a world-writable mode. member="
+
+fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> String {
+  match admission {
+    ManagedDirectoryAdmitted { dir } => install_d_managed_command(dir: dir)
+    ManagedDirectoryRefused { member, path, writer } =>
+      join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], "")
+  }
+}
+
+// `-g` is spelled with the GROUP PRINCIPAL'S USER NAME (the owner's, unless the directory declares
+// another writer's group), not a modeled group name, and that is inherited from
 // install_d_owned_command rather than introduced here: PosixUser carries a gid but no group name,
 // and srv1's per-user groups happen to share their user's name so the emitted argv is
 // byte-identical either way. It is written down because the coincidence is load-bearing and silent
@@ -1389,7 +1405,7 @@ fn install_d_managed_command(dir: ManagedDirectory) -> String {
   install_directory_owned_command(
     mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
     owner: dir.owner.name,
-    group: dir.owner.name,
+    group: dir.group_principal.name,
     path: dir.path as String,
   )
 }

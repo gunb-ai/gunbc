@@ -181,7 +181,6 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/derived_realization_schedule.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/memory_governor.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_body_producer.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_normalize.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_target_carriers.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_discovery_enumeration.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_parse_engine_hooks.rs", cause: SeedRetainedIntrinsicSource),

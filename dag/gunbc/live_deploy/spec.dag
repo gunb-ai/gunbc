@@ -40,8 +40,8 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root }
-import gunbc.fabric_storage_placement { fabric_storage_store_root, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_listen_port }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_listen_port }
+import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_dispatch_worktree_root,
@@ -127,14 +127,20 @@ type EnsuredDependencyKind =
 // reading a deployment spec, so an ensured host resource stays a fact about the HOST and needs no
 // instance to be stated.
 
+// A MANAGED host directory is the arm whose owner, group and mode are DERIVED from its declared
+// dependents (gunbc.managed_directory) rather than asserted as one owner at the shared 0755. It
+// carries the ADMISSION, not the directory, so a directory with a writer the owner and group do not
+// cover reaches the emitter as a refusal and can never be lowered to an install at all.
 type EnsuredSubject
   = EnsuredPackage { package: NonEmptyStr }
   | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
+  | EnsuredManagedHostDirectory { admission: ManagedDirectoryAdmission }
 
 fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
   match subject {
     EnsuredPackage { package } => package
     EnsuredHostDirectory { path, owner } => path
+    EnsuredManagedHostDirectory { admission } => managed_directory_admission_path(a: admission) as String as NonEmptyStr
   }
 }
 
@@ -1067,8 +1073,15 @@ fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
 // absent area refuses not_found -- fleet-converge run 35818578751's host-effect claim did exactly
 // that. The areas are derived from the store's own root function, so the ensured paths and the
 // written paths cannot disagree, and this deployment is the store's one production creator.
+//
+// AND AN AREA THE WRITER CANNOT WRITE IS NOT A STORE EITHER. The three directories are managed:
+// their owner, group and mode come from the writers gunbc.fabric_storage_placement
+// fabric_storage_store_directories declares (the service principal and the CI job principal), not
+// from gunbc_service_user at the shared 0755 -- which is what refused fleet-converge run
+// 36139624393's claim permission_denied. install -d re-applies owner, group and mode to a directory
+// that already exists, so the next apply repairs the areas #12126 created.
 fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> {
-  [
+  concat([
     DeploymentDependencyStep {
       kind: DevbootArtifactStoreDirectory,
       subject: EnsuredHostDirectory {
@@ -1076,27 +1089,10 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
         owner: gunbc_service_user,
       },
     },
-    DeploymentDependencyStep {
+  ], concat(map(fabric_storage_store_directories(), a => DeploymentDependencyStep {
       kind: FabricStorageStoreDirectory,
-      subject: EnsuredHostDirectory {
-        path: fabric_storage_store_root(),
-        owner: gunbc_service_user,
-      },
-    },
-    DeploymentDependencyStep {
-      kind: FabricStorageStoreDirectory,
-      subject: EnsuredHostDirectory {
-        path: fabric_storage_file_root(root: fabric_storage_store_root()).objects,
-        owner: gunbc_service_user,
-      },
-    },
-    DeploymentDependencyStep {
-      kind: FabricStorageStoreDirectory,
-      subject: EnsuredHostDirectory {
-        path: fabric_storage_file_root(root: fabric_storage_store_root()).heads,
-        owner: gunbc_service_user,
-      },
-    },
+      subject: EnsuredManagedHostDirectory { admission: a },
+    }), [
     DeploymentDependencyStep {
       kind: CodexRuntimeReleaseDirectory,
       subject: EnsuredHostDirectory {
@@ -1104,7 +1100,7 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
         owner: gunbc_service_user,
       },
     },
-  ]
+  ]))
 }
 
 fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {

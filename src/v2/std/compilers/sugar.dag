@@ -73,9 +73,10 @@ data sugar_rule_type_alias_rhs: SugarRule = SugarRule {
   lowering: SugarFoldCoproductPipeChain {}
 }
 
-// A coproduct may open with its separator (`type H =\n  | A\n  | B`). The separator is layout,
-// so the lead production (v2.extdeps.languages.dag dag_grammar_type_alias_rhs_lead_expr) lowers
-// to its type_alias_rhs child and `= | A | B` normalizes to the tree `= A | B` does.
+// A coproduct may open with its separator (`type H =\n  | A\n  | B`). Over two or more variants the
+// separator is layout, so the lead production (v2.extdeps.languages.dag
+// dag_grammar_type_alias_rhs_lead_expr) lowers to its type_alias_rhs child and `= | A | B` normalizes
+// to the tree `= A | B` does; over ONE variant it marks a coproduct (sugar_carries_separator).
 data sugar_rule_type_alias_rhs_lead: SugarRule = SugarRule {
   key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs_lead },
   lowering: SugarDropLeadingSeparator {}
@@ -317,6 +318,40 @@ fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node>
   }
 }
 
+// A LEADING SEPARATOR IS LAYOUT ONLY WHEN THE RIGHT-HAND SIDE IS ALREADY A COPRODUCT. `= | A | B` and
+// `= A | B` are one tree. But a single payload-less variant is an ALIAS without the separator and a
+// ONE-VARIANT COPRODUCT with it -- v1.compiler.parse parse_type_body_after_eq takes the `|` arm to a
+// Disj and the bare arm to type_item_from_alias_rhs -- so the separator is the only mark of that
+// meaning. Dropping it read `type SignatureSuite =\n  | EcdsaP256Sha256` as an alias to an undeclared
+// name (gunbc.recurring_failure_mode leading_separator_single_variant_read_as_an_alias_in_v2). When the
+// separator is present the right-hand side lowers to the coproduct of its variants, one or many.
+fn sugar_carries_separator(node: Node) -> Bool {
+  match sugar_first_atom_identity_optional(node: node) {
+    Present { value: sym } => sym == ^dag_token_pipe
+    Absent => false
+  }
+}
+
+fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node) -> Outcome<Node> {
+  match rhs.kind {
+    TypeNode { connective: Disj } => Accepted { value: rhs, diagnostics: None }
+    _ =>
+      match sugar_named_child_optional(root: rhs, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: captured)) {
+            Accepted { value: edges, diagnostics: d } =>
+              if edges_conform(children: edges, d: LabeledEdges) {
+                Accepted { value: sugar_type_node(connective: Disj, children: edges, n: shell), diagnostics: d }
+              } else {
+                Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+              }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+      }
+  }
+}
+
 fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
   match rule.lowering {
     SugarRewriteConnective { connective: connective, edges: discipline } =>
@@ -355,7 +390,12 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
       match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
         Present { value: captured } =>
           match sugar_sequence_pair_optional(node: captured) {
-            Present { value: pair } => Accepted { value: pair.right, diagnostics: None }
+            Present { value: pair } =>
+              if sugar_carries_separator(node: pair.left) {
+                sugar_separated_rhs_as_coproduct(rhs: pair.right, shell: n)
+              } else {
+                Accepted { value: pair.right, diagnostics: None }
+              }
             Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
           }
         Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }

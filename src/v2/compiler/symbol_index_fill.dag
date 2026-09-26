@@ -13,7 +13,9 @@ import v2.std.collection {
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -48,7 +50,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view }
+import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -73,10 +75,24 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
 // unwrapped for its readers, through the typed view, so `Box` resolves to its Disj and `Box.Full` is a
 // declared variant, while the binders -- scoped by v2.compiler.resolve over the wrapper -- are never
 // declared identities.
-fn symbol_index_declared_member(target: Node) -> Node {
+//
+// A GENERIC ALIAS OR BODYLESS DECLARATION DECLARES NO MEMBERS. Its name is bound to its wrapper --
+// which keeps the binders an instantiation of `List<Int>` must substitute through -- and the index does
+// not descend into it: an aliased expression's parts (a qualified head's spine, its arguments) are not
+// declarations of the alias, and a binder is never a declared identity.
+// The node a declared name binds to, and the member the index descends into when the declaration
+// declares members -- one dispatch on the view for both.
+type SymbolIndexDeclared {
+  bound: Node
+  members: Optional<Node>
+}
+
+fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   match type_decl_view(target: target) {
-    GenericTypeDecl { binders: _, member: m } => m
-    PlainTypeDecl { member: m } => m
+    GenericTypeDecl { binders: _, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
+    GenericTypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    GenericOpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
   }
 }
 
@@ -101,17 +117,21 @@ fn symbol_index_fill_containment_edge(
         )
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let member = symbol_index_declared_member(target: edge.target)
+        let declared = symbol_index_declared(target: edge.target)
         let with_binding = symbol_index_insert(
           index: index,
           qualified_path: child_path,
-          resolved: member
+          resolved: declared.bound
         )
-        symbol_index_fill_containment_node(
-          index: with_binding,
-          path: child_path,
-          node: member
-        )
+        match declared.members {
+          Present { value: member } =>
+            symbol_index_fill_containment_node(
+              index: with_binding,
+              path: child_path,
+              node: member
+            )
+          Absent => with_binding
+        }
       }
     Positional =>
       symbol_index_fill_containment_node(

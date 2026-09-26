@@ -126,3 +126,27 @@ test fn utf8_decode_octets_still_refuses_a_bad_lead_holds() -> Bool {
     Present { value: _ } => false
   }
 }
+
+fn utf8_octets_refuse(octets: List<Int>) -> Bool {
+  match utf8_decode_octets(octets: octets) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// Shortest-form and scalar admission are read from the one octet-count table,
+// std.unicode.types unicode_scalar_utf8_octet_count. One accepted scalar at each sequence length
+// ('°' C2 B0, '€' E2 82 AC, U+10FFFF F4 8F BF BF), and one refusal per boundary the table
+// decides: an overlong two-byte NUL (C0 80), an overlong three-byte '/' (E0 80 AF), a surrogate
+// (ED A0 80, U+D800) and a value past U+10FFFF (F4 90 80 80).
+test fn utf8_decode_octets_admits_by_the_octet_count_table_holds() -> Bool {
+  let accepts = match utf8_decode_octets(octets: [194, 176, 226, 130, 172, 244, 143, 191, 191]) {
+    Present { value: cps } => cps == [176, 8364, 1114111]
+    Absent => false
+  }
+  accepts
+    && utf8_octets_refuse(octets: [192, 128])
+    && utf8_octets_refuse(octets: [224, 128, 175])
+    && utf8_octets_refuse(octets: [237, 160, 128])
+    && utf8_octets_refuse(octets: [244, 144, 128, 128])
+}

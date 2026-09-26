@@ -42,6 +42,8 @@ import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.occurrence_identity { OccurrenceId, occurrence_id_allocator_initial, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label }
+import v2.std.node_query { pattern_wildcard_name }
 
 // REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
 //
@@ -571,6 +573,21 @@ fn pool_add(pool: Map<Symbol, Int>, sym: Symbol) -> Map<Symbol, Int> {
   }
 }
 
+// AN ANONYMOUS SLOT IS POOLED UNDER ITS MINTED IDENTITY, NOT UNDER A SPELLING. Lowering relabels
+// each authored `_` parameter with its slot's minted binder (v2.std.anonymous_binder), so the label
+// is never `_`, and every slot of every arity is one copy of the anonymous-slot class. Keying the
+// pool on the spelling `_` could not see a minted slot at all; keying it on each slot's own label
+// could not be asked by an authored `_`, which does not know its slot. So each minted label
+// contributes one copy under the class identity below, and an authored `_` consumes one: two `_`
+// parameters are conserved against two slots, and a third, unmatched `_` stays a DroppedReference.
+fn anonymous_slot_pool_key() -> Symbol {
+  anonymous_param_label(slot: 0)
+}
+
+fn pool_key_of_label(label: Symbol) -> Symbol {
+  if is_anonymous_param_label(sym: label) { anonymous_slot_pool_key() } else { label }
+}
+
 fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> {
   let here = match node_atom_identity_of(node: node) {
     Absent => acc
@@ -582,7 +599,7 @@ fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> 
   }
   fold(node.children, init: here, f: fn(inner, edge) {
     let labelled = match edge.label {
-      Named { name: name } => pool_add(pool: inner, sym: name)
+      Named { name: name } => pool_add(pool: inner, sym: pool_key_of_label(label: name))
       Positional => inner
     }
     rebuilt_spelling_pool(acc: labelled, node: edge.target)
@@ -688,8 +705,18 @@ fn item_pool(
 // is asked first; the canonical one only when the authored spelling has no copy left.
 fn pool_spelling_of(pool: Map<Symbol, Int>, identity: Symbol) -> Symbol {
   match map_lookup(m: pool, key: identity) {
-    Present { value: n } => if n > 0 { identity } else { body_lower_resolved_type_binding(sym: identity) }
-    Absent => body_lower_resolved_type_binding(sym: identity)
+    Present { value: n } => if n > 0 { identity } else { pool_fallback_spelling_of(identity: identity) }
+    Absent => pool_fallback_spelling_of(identity: identity)
+  }
+}
+
+// The authored `_` of a parameter is asked against the anonymous-slot class when no `_` copy (a
+// pattern wildcard) is left; any other atom against lowering's canonical type binding.
+fn pool_fallback_spelling_of(identity: Symbol) -> Symbol {
+  if identity == pattern_wildcard_name() {
+    anonymous_slot_pool_key()
+  } else {
+    body_lower_resolved_type_binding(sym: identity)
   }
 }
 

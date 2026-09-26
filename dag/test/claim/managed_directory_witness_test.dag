@@ -18,6 +18,8 @@ import gunbc.managed_directory {
   dependent_class_of,
   managed_directory_permissions,
   managed_directory_mode_octal,
+  ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
+  managed_directory_admit,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -57,6 +59,7 @@ fn dir_with(dependents: List<DirectoryDependent>) -> ManagedDirectory {
     member: "synthetic",
     path: "/synthetic/root",
     owner: owner_user(),
+    group_principal: owner_user(),
     dependents: dependents,
     ownership: Owned,
   }
@@ -71,15 +74,15 @@ fn class_label(c: DependentClass) -> String {
 }
 
 test fn witness_same_uid_is_owner_class() -> Bool {
-  class_label(c: dependent_class_of(owner: owner_user(), who: owner_user())) == "owner"
+  class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: owner_user())) == "owner"
 }
 
 test fn witness_shared_gid_is_group_class() -> Bool {
-  class_label(c: dependent_class_of(owner: owner_user(), who: group_mate_user())) == "group"
+  class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: group_mate_user())) == "group"
 }
 
 test fn witness_unrelated_principal_is_other_class() -> Bool {
-  class_label(c: dependent_class_of(owner: owner_user(), who: stranger_user())) == "other"
+  class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: stranger_user())) == "other"
 }
 
 test fn witness_sole_owner_dependent_derives_0700() -> Bool {
@@ -187,4 +190,48 @@ test fn an_unreadable_octal_mode_refuses_rather_than_reading_as_all_denied() -> 
       Present { value: b } => b.read && b.write && !b.execute
       Absent => false
     })
+}
+
+// ── A SECOND WRITER'S GROUP, AND THE WRITER NOBODY COVERS ────────────────────────────────────────
+//
+// The fabric store's shape on synthetic principals: the owner writes, and one writer with its own
+// gid writes too. Naming that writer as the group principal admits it as group and sets setgid
+// (2770); leaving the group at the owner's puts it in the other class, and admission REFUSES naming
+// it -- the model-level RED for an ensure the claim principal could not write. The derivation alone
+// would have granted the other class write (0707) there, which is the world-writable arm the admission exists to close.
+
+fn writers_dir(group: PosixUser) -> ManagedDirectory {
+  ManagedDirectory {
+    member: "synthetic-store",
+    path: "/synthetic/store",
+    owner: owner_user(),
+    group_principal: group,
+    dependents: [
+      DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
+    ],
+    ownership: Owned,
+  }
+}
+
+test fn witness_second_writer_group_derives_setgid_2770() -> Bool {
+  managed_directory_mode_octal(d: writers_dir(group: stranger_user())) == "2770"
+}
+
+test fn witness_second_writer_group_is_admitted() -> Bool {
+  match managed_directory_admit(d: writers_dir(group: stranger_user())) {
+    ManagedDirectoryAdmitted { dir: _ } => true
+    ManagedDirectoryRefused { member: _, path: _, writer: _ } => false
+  }
+}
+
+test fn witness_uncovered_writer_refuses_naming_it() -> Bool {
+  match managed_directory_admit(d: writers_dir(group: owner_user())) {
+    ManagedDirectoryAdmitted { dir: _ } => false
+    ManagedDirectoryRefused { member: _, path: _, writer } => (writer as String) == "outsider"
+  }
+}
+
+test fn witness_uncovered_writer_would_have_derived_world_write() -> Bool {
+  managed_directory_permissions(d: writers_dir(group: owner_user())).mode.other.write
 }

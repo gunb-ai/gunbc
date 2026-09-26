@@ -68,6 +68,7 @@ type FormalNonterminal {
 type FormalGrammarSymbol
   = FormalTerminalOccurrence { terminal: FormalTerminal, binding: Optional<Symbol> }
   | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
+  | FormalNestedNonterminalOccurrence { nonterminal: FormalNonterminal, unit: Symbol }
 
 type FormalProduction {
   lhs: FormalNonterminal
@@ -111,6 +112,8 @@ fn formal_grammar_symbol_in_alphabet(
     FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
       terminals.member(terminal)
     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      nonterminals.member(nonterminal)
+    FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
       nonterminals.member(nonterminal)
   }
 }
@@ -261,6 +264,8 @@ fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExp
           grammar_expr_terminal(token_class: terminal.identity)
       }
     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      Nonterminal { production: nonterminal.identity }
+    FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
       Nonterminal { production: nonterminal.identity }
   }
 }
@@ -435,6 +440,19 @@ fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbo
   }
 }
 
+// A NONTERMINAL OCCURRENCE WHOSE EMISSION IS NESTED ONE LEVEL, BY `unit`. Nesting is a fact about
+// this occurrence in this production (a right-recursive list's own tail occurrence is not nested
+// again), so it lives on the occurrence, and the serializer wraps exactly this child's tokens in one
+// std.layout nest: an unbalanced block has no constructor. `unit` is a symbol the target spells
+// (its binding_spellings), so the grammar says THAT the child nests and the target says by how much.
+// Matching, slot counting and ingest read it as the plain nonterminal occurrence it is.
+fn grammar_formal_nested_occurrence(identity: Symbol, unit: Symbol) -> FormalGrammarSymbol {
+  FormalNestedNonterminalOccurrence {
+    nonterminal: FormalNonterminal { identity: identity },
+    unit: unit
+  }
+}
+
 fn grammar_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: lhs),
@@ -511,6 +529,17 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
         },
         children: [
           grammar_named_edge(name: ^formal_symbol_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal))
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: unit } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: ^formal_symbol_nested_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal)),
+          grammar_named_edge(name: ^formal_symbol_nested_unit_node_projection, target: grammar_atom(identity: unit))
         ],
         occurrence_id: OccurrenceSynthetic
 }
@@ -653,6 +682,28 @@ fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymb
   }
 }
 
+fn formal_nested_occurrence_from_node(node: Node, nonterminal_node: Node) -> Witness<FormalGrammarSymbol> {
+  match formal_nonterminal_from_node(node: nonterminal_node) {
+    Holds { value: nonterminal } =>
+      match find_named_child(root: node, name: ^formal_symbol_nested_unit_node_projection) {
+        Accepted { value: unit_node, diagnostics: _ } =>
+          match grammar_atom_identity_from_node(node: unit_node) {
+            Holds { value: unit } => Holds { value: FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: unit } }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Rejected { diagnostics: _ } =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_production_not_found,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
 fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -660,6 +711,10 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
         Accepted { value: terminal_node, diagnostics: _ } =>
           formal_terminal_occurrence_from_node(node: terminal_node)
         Rejected { diagnostics: _ } =>
+          match find_named_child(root: node, name: ^formal_symbol_nested_nonterminal_node_projection) {
+            Accepted { value: nested_node, diagnostics: _ } =>
+              formal_nested_occurrence_from_node(node: node, nonterminal_node: nested_node)
+            Rejected { diagnostics: _ } =>
           match find_named_child(root: node, name: ^formal_symbol_nonterminal_node_projection) {
             Accepted { value: nonterminal_node, diagnostics: _ } =>
               match formal_nonterminal_from_node(node: nonterminal_node) {
@@ -677,6 +732,7 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
               }
+          }
           }
       }
     _ =>
@@ -947,6 +1003,25 @@ fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> No
   )
 }
 
+// ONE ITEM IN A RELATION ROW'S TOKEN LIST FOR A NESTED OCCURRENCE: the child's own token edges,
+// kept together under the unit that nests them, so the serializer can wrap exactly this span.
+fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
+  Edge {
+    label: Positional,
+    target: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        grammar_named_edge(name: ^grammar_nested_block_unit, target: grammar_atom(identity: unit)),
+        grammar_named_edge(
+          name: ^grammar_nested_block_tokens,
+          target: grammar_relation_tokens_node(tokens: grammar_relation_token_edge_targets(edges: edges), token_to_node: fn(token_node) { token_node })
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
 fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
   match binding {
     Present { value: binding } =>
@@ -973,6 +1048,7 @@ fn derive_grammar_relation_terminal_token_edges_step(
         item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
       )
     FormalNonterminalOccurrence { nonterminal: _ } => acc
+    FormalNestedNonterminalOccurrence { nonterminal: _, unit: _ } => acc
   }
 }
 
@@ -1021,6 +1097,7 @@ fn formal_production_emitted_slot_count_step(count: Int, symbol: FormalGrammarSy
         Absent => count
       }
     FormalNonterminalOccurrence { nonterminal: _ } => count + 1
+    FormalNestedNonterminalOccurrence { nonterminal: _, unit: _ } => count + 1
   }
 }
 
@@ -1090,6 +1167,7 @@ fn formal_production_rhs_singleton_terminal_identity_step(
             Present { value: _ } => RhsSingletonTerminalAmbiguous
           }
         FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonTerminalAmbiguous
+        FormalNestedNonterminalOccurrence { nonterminal: _, unit: _ } => RhsSingletonTerminalAmbiguous
       }
   }
 }
@@ -1125,6 +1203,7 @@ fn formal_production_rhs_singleton_binding_step(
             Absent => RhsSingletonBindingAmbiguous
           }
         FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonBindingAmbiguous
+        FormalNestedNonterminalOccurrence { nonterminal: _, unit: _ } => RhsSingletonBindingAmbiguous
       }
   }
 }
@@ -1221,6 +1300,13 @@ fn formal_production_rhs_matches_emitted_conj_step(
     EmittedRhsMatchFail => state
     EmittedRhsMatchOk { index: index } =>
       match symbol {
+        FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
+          formal_production_rhs_matches_emitted_conj_step(
+            state: state,
+            resolution: resolution,
+            children: children,
+            symbol: FormalNonterminalOccurrence { nonterminal: nonterminal }
+          )
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
@@ -1393,6 +1479,12 @@ fn formal_production_nonterminal_at_slot(production: FormalProduction, slot: Int
             Absent => acc
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          if acc.index == slot {
+            SlotNonterminalScan { index: acc.index + 1, found: optional_present(value: nonterminal.identity) }
+          } else {
+            SlotNonterminalScan { index: acc.index + 1, found: acc.found }
+          }
+        FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
           if acc.index == slot {
             SlotNonterminalScan { index: acc.index + 1, found: optional_present(value: nonterminal.identity) }
           } else {
@@ -1709,6 +1801,25 @@ fn derive_grammar_relation_token_edges_recursive_step(
     Violates { diagnostic: d } => Violates { diagnostic: d }
     Holds { value: DeriveGrammarRelationTokensProgress { edges: edges, conj_index: conj_index, conj_children: conj_children } } =>
       match symbol {
+        FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: unit } =>
+          match derive_grammar_relation_token_edges_recursive_step(
+            progress: Holds {
+              value: DeriveGrammarRelationTokensProgress { edges: Empty, conj_index: conj_index, conj_children: conj_children }
+            },
+            resolution: resolution,
+            emitted: emitted,
+            symbol: FormalNonterminalOccurrence { nonterminal: nonterminal }
+          ) {
+            Holds { value: inner } =>
+              Holds {
+                value: DeriveGrammarRelationTokensProgress {
+                  edges: list_snoc_item(xs: edges, item: grammar_nested_block_edge(unit: unit, edges: inner.edges)),
+                  conj_index: inner.conj_index,
+                  conj_children: conj_children
+                }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
@@ -2170,6 +2281,13 @@ fn rebuild_emitted_rhs_walk_step(
     RebuildRhsWalkFail => state
     RebuildRhsWalkOk { children: children, token_index: token_index } =>
       match symbol {
+        FormalNestedNonterminalOccurrence { nonterminal: nonterminal, unit: _ } =>
+          rebuild_emitted_rhs_walk_step(
+            state: state,
+            productions: productions,
+            tokens: tokens,
+            symbol: FormalNonterminalOccurrence { nonterminal: nonterminal }
+          )
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Absent =>

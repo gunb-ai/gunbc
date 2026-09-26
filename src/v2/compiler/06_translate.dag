@@ -159,6 +159,8 @@ import v2.std.compilers.target_model {
   target_text_is_empty,
   render_target_text,
   token_spelling_from_model,
+  token_text_from_model,
+  target_text_nested,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
   serialize_type_expr_arrow_param_spelling,
@@ -283,6 +285,7 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
 type TokenSequenceItemKind
   = TokenSequenceConcreteToken
   | TokenSequenceNonterminal
+  | TokenSequenceNestedBlock { unit: Symbol, tokens: List<Node> }
 
 type GroundingGatePassed {}
 
@@ -778,7 +781,32 @@ fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
     edge_name: ^concrete_syntax_token_field_kind
   )
 }
+// A NESTED BLOCK (v2.std.grammar grammar_nested_block_edge, derived from a
+// grammar_formal_nested_occurrence) is recognized before the token/nonterminal split: it carries
+// its unit and the child's own token items, which the serializer renders as one std.layout nest.
 fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
+  match optional_named_child_ignoring_positional(parent: item, edge_name: ^grammar_nested_block_tokens) {
+    Accepted { value: Present { value: tokens_node }, diagnostics: _ } =>
+      bind_outcome(
+        o: conj_named_child(parent: item, edge_name: ^grammar_nested_block_unit),
+        f: fn(unit_node) {
+          bind_outcome(
+            o: node_atom_identity(node: unit_node),
+            f: fn(unit) {
+              bind_outcome(
+                o: grammar_tokens_node_targets(tokens_node: tokens_node),
+                f: fn(inner) { Accepted { value: TokenSequenceNestedBlock { unit: unit, tokens: inner }, diagnostics: None } }
+              )
+            }
+          )
+        }
+      )
+    Accepted { value: Absent, diagnostics: _ } => token_sequence_item_kind_flat(item: item)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn token_sequence_item_kind_flat(item: Node) -> Outcome<TokenSequenceItemKind> {
   bind_outcome(
     o: concrete_token_class_child(parent: item),
     f: fn(class_node) {
@@ -1143,62 +1171,7 @@ fn target_serialize_relation_row_from_model_bounded(
                 bind_outcome(
                   o: grammar_tokens_node_targets(tokens_node: tokens_root),
                   f: fn(tokens) {
-                    fold_list(
-                      xs: tokens,
-                      empty: Accepted { value: target_text_empty, diagnostics: None },
-                      cons: fn(acc, token_node) {
-                        match acc {
-                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                          Accepted { value: partial, diagnostics: ad } =>
-                            match token_sequence_item_kind(item: token_node) {
-                              Accepted { value: TokenSequenceConcreteToken, diagnostics: kd } =>
-                                match token_spelling_from_model(target: target, token: token_node) {
-                                  Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
-                                      value: target_text_seq(acc: partial, next: text_atom(lexeme: source)),
-                                      diagnostics: diagnostics_merge(
-                                        outer: diagnostics_merge(outer: ad, inner: kd),
-                                        inner: td
-                                      )
-                                    }
-                                  Rejected { diagnostics: r } =>
-                                    Rejected {
-                                      diagnostics: rejected_with_pending(
-                                        pending: diagnostics_merge(outer: ad, inner: kd),
-                                        rejected: r
-                                      )
-                                    }
-                                }
-                              Accepted { value: TokenSequenceNonterminal, diagnostics: kd } =>
-                                match target_serialize_relation_row_from_model_bounded(
-                                  remaining - 1,
-                                  target,
-                                  token_node
-                                ) {
-                                  Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
-                                      value: target_text_seq(acc: partial, next: source),
-                                      diagnostics: diagnostics_merge(
-                                        outer: diagnostics_merge(outer: ad, inner: kd),
-                                        inner: td
-                                      )
-                                    }
-                                  Rejected { diagnostics: r } =>
-                                    Rejected {
-                                      diagnostics: rejected_with_pending(
-                                        pending: diagnostics_merge(outer: ad, inner: kd),
-                                        rejected: r
-                                      )
-                                    }
-                                }
-                              Rejected { diagnostics: r } =>
-                                Rejected {
-                                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                                }
-                            }
-                        }
-                      }
-                    )
+                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens)
                   }
                 )
               }
@@ -1207,6 +1180,64 @@ fn target_serialize_relation_row_from_model_bounded(
         )
       }
     )
+  }
+}
+
+// THE ROW'S TOKEN ITEMS IN ORDER, as one TargetText. A nested block renders its own items through
+// this same fold and is wrapped whole in one nest, spelled by the target (binding_spellings), so a
+// block's contents are indented exactly once and can never be left open.
+fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, tokens: List<Node>) -> Outcome<TargetText> {
+  fold_list(
+    xs: tokens,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, token_node) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match token_item_to_source_bounded(remaining, token_node, target) {
+            Accepted { value: source, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: source),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          }
+      }
+    }
+  )
+}
+
+fn serialize_relation_row_nested_bounded(
+  remaining: Int,
+  target: TargetModel,
+  unit: Symbol,
+  tokens: List<Node>
+) -> Outcome<TargetText> {
+  match map_get(target.binding_spellings, unit) {
+    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
+      bind_outcome(
+        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens),
+        f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
+      )
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// A nest's unit must be spelled by the target. The binding lookup's fallback to the symbol's own
+// name is right for an identifier and wrong for an indent, so an unspelled unit refuses rather than
+// indenting by the symbol's name.
+fn translate_layout_unit_unspelled_diagnostic(unit: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_layout_unit_unspelled,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: unit } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+}),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
@@ -1249,12 +1280,9 @@ fn token_item_to_source_bounded(
     f: fn(item_kind) {
       match item_kind {
         TokenSequenceConcreteToken =>
-          bind_outcome(
-            o: token_spelling_from_model(target: target, token: item),
-            f: fn(spelling) {
-              outcome_accepted(text_atom(lexeme: spelling))
-            }
-          )
+          token_text_from_model(target: target, token: item)
+        TokenSequenceNestedBlock { unit: unit, tokens: inner } =>
+          serialize_relation_row_nested_bounded(remaining - 1, target, unit, inner)
         TokenSequenceNonterminal =>
           target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
       }

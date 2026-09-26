@@ -1,0 +1,425 @@
+module gunbc.defork_type_name_census
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plan { PlanDerivation, PlanDerived, PlanDerivationRefused }
+import gunbc.plans.md_helpers { h2, p, cell, row }
+import v2.std.decl_index { DeclFact, decl_facts, TypeItem, FnItem, DataItem, ServiceItem, OtherItem }
+import v2.std.decl_ref_resolution { resolve_declaration_ref_live, declaration_ref_resolution_is_resolved }
+
+// THE SHARED TYPE-NAME CENSUS OF THE dag/std <-> src/v2/std FORK, DERIVED RATHER THAN TRANSCRIBED.
+//
+// The population -- every type name declared under both standard-library roots -- is a fact about
+// the live tree, so it is read from the namespace (`v2.std.decl_index` `decl_facts`) and never
+// written down (DESIGN §6: name the instrument, never transcribe its output; §5: a measurement
+// copied from the current tree is not an oracle). What IS authored is what a person decided about
+// each name: its disposition. The two meet in an IDENTITY JOIN by name, refused in both directions
+// -- a derived name no row disposes of, and a row naming a pair that no longer exists -- so the
+// authored half cannot drift from the derived half without the plan's generation refusing, and
+// with it the required generated-artifact drift gate.
+//
+// "Declares a type" is the seed's item kind: `TypeItem` (a record or coproduct) or `OtherItem` (a
+// declaration with no connective, transport or body -- on these two roots, exactly the `type`
+// aliases). The node kind cannot be used instead: a function's declaration node is its signature,
+// a TypeNode. Any over-inclusion by `OtherItem` fails CLOSED: a non-type declaration entering the
+// population is a name no disposition row carries, and that refuses.
+data defork_census_dag_root: String = "dag/std"
+data defork_census_v2_root: String = "src/v2/std"
+
+type SharedTypeName {
+  name: String
+  dag_files: List<String>
+  v2_files: List<String>
+}
+
+fn census_declares_type(f: DeclFact) -> Bool {
+  match f.kind {
+    TypeItem => true
+    OtherItem => true
+    FnItem => false
+    DataItem => false
+    ServiceItem => false
+  }
+}
+
+fn census_under(f: DeclFact, root: String) -> Bool {
+  starts_with(f.rel_path, concat(root, "/"))
+}
+
+fn census_names_of(facts: List<DeclFact>) -> List<String> {
+  census_names_of_strings(xs: map(facts, x => x.name))
+}
+
+fn census_files_named(facts: List<DeclFact>, name: String) -> List<String> {
+  map(filter(facts, x => x.name == name), x => x.rel_path)
+}
+
+// Pure over the facts it is handed, so a claim can supply a planted fixture pool and the plan can
+// supply the live one: one derivation, two callers, no second walker.
+fn shared_type_names(facts: List<DeclFact>, dag_root: String, v2_root: String) -> List<SharedTypeName> {
+  let types = filter(facts, f => census_declares_type(f: f))
+  let dag_side = filter(types, f => census_under(f: f, root: dag_root))
+  let v2_side = filter(types, f => census_under(f: f, root: v2_root))
+  let v2_names = census_names_of(facts: v2_side)
+  map(
+    filter(census_names_of(facts: dag_side), n => v2_names.contains(n)),
+    n => SharedTypeName {
+      name: n,
+      dag_files: census_files_named(facts: dag_side, name: n),
+      v2_files: census_files_named(facts: v2_side, name: n)
+    }
+  )
+}
+
+// WHAT EACH SIDE'S BODY RESOLVES TO IS AUTHORED HERE, AND IS TYPED AS AUTHORED. The census's
+// classification compares resolved referents, not body text, and no module-scoped type-reference
+// resolution over the live pool is consumable from .dag today (import facts carry the target
+// module and never the imported names; the pool-wide bare-name read is not scope-aware). Hand-
+// rolling one here would be a second resolver beside the compiler's. So the reading is a person's,
+// recorded with the frontier below, and it is rendered under a heading that says so.
+type AuthoredResolutionReading {
+  dag_side: String
+  v2_side: String
+  class: String
+}
+
+type ReferentResolutionFrontier {
+  capability: NonEmptyStr
+  candidate_home: DeclarationRef
+}
+
+data defork_census_referent_frontier: ReferentResolutionFrontier = ReferentResolutionFrontier {
+  capability: "module-scoped type-reference resolution over the live pool, consumable from .dag: for a type declaration, each name its body references resolved to the declaration it binds in that module's scope (its own declarations, else its imports). When it lands, the three reading columns of every row here are derived from it and the authored readings are deleted; nothing else retires this frontier.",
+  candidate_home: decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "resolve_with_admission")
+}
+
+type SharedTypeNameDisposition
+  = ForkOpen { reason: String }
+  | ForkAwaitingRuling { question: String }
+  | ForkNeedsDecisionRecord { family: String }
+
+type SharedTypeNameRow {
+  names: List<String>
+  reading: AuthoredResolutionReading
+  disposition: SharedTypeNameDisposition
+}
+
+// A name the fork shared and no longer does. It is not a disposition of a live pair -- there is no
+// pair left to key on -- but the inverse obligation: the name must STAY absent from the derived
+// population, so a re-fork refuses by name.
+type ForkResolution
+  = ResolvedByRenamingV2 { renamed_to: String, citation: String }
+  | ResolvedByDeletingV2 { reason: String }
+  | ResolvedByRenamingDag { renamed_to: String, citation: String }
+
+type ResolvedSharedTypeName {
+  names: List<String>
+  resolution: ForkResolution
+  change: Int
+}
+
+type DeforkCensusFinding
+  = UndisposedSharedTypeName { name: String }
+  | StaleDisposition { name: String }
+  | DuplicateDisposition { name: String }
+  | ResolvedNameReforked { name: String, change: Int }
+
+fn census_row_names(rows: List<SharedTypeNameRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, r) { concat(acc, r.names) })
+}
+
+fn census_resolved_names(resolved: List<ResolvedSharedTypeName>) -> List<String> {
+  fold(resolved, init: [], f: fn(acc, r) { concat(acc, r.names) })
+}
+
+fn census_count(xs: List<String>, x: String) -> Int {
+  length(xs: filter(xs, y => y == x))
+}
+
+fn defork_census_findings(
+  shared: List<SharedTypeName>,
+  rows: List<SharedTypeNameRow>,
+  resolved: List<ResolvedSharedTypeName>
+) -> List<DeforkCensusFinding> {
+  let live = map(shared, s => s.name)
+  let disposed = census_row_names(rows: rows)
+  let undisposed = map(filter(live, n => !disposed.contains(n)), n => UndisposedSharedTypeName { name: n })
+  let stale = map(filter(disposed, n => !live.contains(n)), n => StaleDisposition { name: n })
+  let duplicate = map(
+    filter(census_names_of_strings(xs: disposed), n => census_count(xs: disposed, x: n) > 1),
+    n => DuplicateDisposition { name: n }
+  )
+  let reforked = fold(resolved, init: [], f: fn(acc, r) {
+    concat(acc, map(filter(r.names, n => live.contains(n)), n => ResolvedNameReforked { name: n, change: r.change }))
+  })
+  concat(concat(concat(undisposed, stale), duplicate), reforked)
+}
+
+fn census_names_of_strings(xs: List<String>) -> List<String> {
+  fold(xs, init: [], f: fn(acc, x) { if acc.contains(x) { acc } else { concat(acc, [x]) } })
+}
+
+fn defork_census_finding_text(f: DeforkCensusFinding) -> String {
+  match f {
+    UndisposedSharedTypeName { name } =>
+      concat(concat("UndisposedSharedTypeName: ", name), " is declared as a type under both roots and no disposition row names it")
+    StaleDisposition { name } =>
+      concat(concat("StaleDisposition: a disposition row names ", name), ", which is no longer declared as a type under both roots")
+    DuplicateDisposition { name } =>
+      concat(concat("DuplicateDisposition: ", name), " is named by more than one disposition row")
+    ResolvedNameReforked { name, change } =>
+      concat(concat(concat(concat("ResolvedNameReforked: ", name), " was resolved by #"), change as String), " and is declared under both roots again")
+  }
+}
+
+fn defork_census_findings_text(findings: List<DeforkCensusFinding>) -> String {
+  fold(findings, init: "", f: fn(acc, x) {
+    if acc == "" { defork_census_finding_text(f: x) } else { concat(concat(acc, "; "), defork_census_finding_text(f: x)) }
+  })
+}
+
+data defork_census_rows: List<SharedTypeNameRow> = [
+  SharedTypeNameRow {
+    names: ["NonNegativeInt", "PositiveInt"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`std.integer` — `= Nat` / `= Nat where gt_zero` (refinement of `std.nat` `Nat`)",
+      v2_side: "`v2.std.refinement` — record `refined: Refined<Int>` (smart-constructor over `v2.std.integer` `Int`), consumed by the formatter extdeps",
+      class: "MEANING FORK"
+    },
+    disposition: ForkOpen { reason: "next PR of the de-fork wave (the v2 side has ~40 consumer sites across `v2.extdeps.formatters.*`)" }
+  },
+  SharedTypeNameRow {
+    names: ["Float"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`= Float64` → `std.float` `Float64`",
+      v2_side: "`= Binary64` → `v2.std.float` `Binary64` (was `= Float64`, byte-identical text, different referent)",
+      class: "resolution-divergent (text was identical)"
+    },
+    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
+  },
+  SharedTypeNameRow {
+    names: ["String"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`= FreeMonoid<Char>` → `std.algebra` `FreeMonoid`, `std.types` `Char`",
+      v2_side: "same referents",
+      class: "one concept, two declarations (duplicate)"
+    },
+    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
+  },
+  SharedTypeNameRow {
+    names: ["List"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`= FreeMonoid<element>` → `std.algebra` `FreeMonoid`",
+      v2_side: "`= std.algebra.FreeMonoid<T>` → same",
+      class: "one concept, two declarations (duplicate)"
+    },
+    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
+  },
+  SharedTypeNameRow {
+    names: ["Bool"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`std.types` `= True \\| False`",
+      v2_side: "`v2.std.logic` `= True \\| False` (arms are two more same-name declarations)",
+      class: "one concept, two declarations (duplicate)"
+    },
+    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
+  },
+  SharedTypeNameRow {
+    names: ["Nat"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`= CommutativeSemiring<Magnitude>`",
+      v2_side: "`= Zero \\| Succ` (Peano coproduct)",
+      class: "same concept, divergent model"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "integer family root" }
+  },
+  SharedTypeNameRow {
+    names: ["Int", "UInt"],
+    reading: AuthoredResolutionReading {
+      dag_side: "→ `std.nat` `Nat` (via `std.algebra` `GroupCompletion`)",
+      v2_side: "→ `v2.std.nat` `Nat`",
+      class: "same concept, divergent referent"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "integer family" }
+  },
+  SharedTypeNameRow {
+    names: ["Int8", "Int16", "Int32", "Int64", "Int128", "UInt8", "UInt16", "UInt32", "UInt64", "UInt128"],
+    reading: AuthoredResolutionReading {
+      dag_side: "→ `std.machine_constraints` `Compose` / `MachineWidth<N>` + `std.integer` `Int`/`UInt`",
+      v2_side: "→ `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth<WordN>` + `v2.std.integer` `Int`/`UInt`",
+      class: "same concept, every referent divergent"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "integer family" }
+  },
+  SharedTypeNameRow {
+    names: ["IntPlatform", "UIntPlatform"],
+    reading: AuthoredResolutionReading {
+      dag_side: "→ `std.machine_constraints` `Compose`/`MachineWidth`/`PointerWidth`",
+      v2_side: "→ `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth`/`PointerWidth`",
+      class: "text near-identical, every referent divergent"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "integer family" }
+  },
+  SharedTypeNameRow {
+    names: ["Compose", "MachineWidth"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`std.machine_constraints` — phantom composition / width over `WidthResolution`",
+      v2_side: "`v2.std.integer` / `v2.std.machine` — opaque, unconstrained parameter",
+      class: "same concept, divergent constraint"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "integer family" }
+  },
+  SharedTypeNameRow {
+    names: ["TerminationProof"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`std.termination` — `dimensions: List<RankingDimension>`",
+      v2_side: "`v2.std.cardinality` — `non_increasing: List<RankingComponent>`, `strict: RankingComponent`",
+      class: "same question, divergent model"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "termination" }
+  },
+  SharedTypeNameRow {
+    names: ["Unit"],
+    reading: AuthoredResolutionReading {
+      dag_side: "`std.types` — empty record",
+      v2_side: "`v2.std.cardinality` — empty record",
+      class: "one concept, two declarations"
+    },
+    disposition: ForkNeedsDecisionRecord { family: "unit" }
+  },
+]
+
+data defork_census_resolved: List<ResolvedSharedTypeName> = [
+  ResolvedSharedTypeName {
+    names: ["ProjectionKind"],
+    resolution: ResolvedByDeletingV2 { reason: "`v2.std.projection` (compiler lens kinds) had zero importers; `std.planar_projection` keeps the name for drawing views" },
+    change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["AlgebraCarrier"],
+    resolution: ResolvedByDeletingV2 { reason: "`v2.std.rust_leaf_model_claim` type and datum were never read; `std.algebra` `AlgebraProfile` `OrderedRingProfile` already names that structure" },
+    change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["ApproximateField"],
+    resolution: ResolvedByDeletingV2 { reason: "`v2.std.algebra` ops record had zero consumers; ops come from inhabitance (DESIGN §4)" },
+    change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["EffectRequest"],
+    resolution: ResolvedByRenamingV2 { renamed_to: "OperationCall", citation: "Plotkin–Pretnar, *Handling Algebraic Effects* (LMCS 2013): `op(v; y.c)` is an operation call" },
+    change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["Float32", "Float64"],
+    resolution: ResolvedByRenamingV2 { renamed_to: "Binary32 / Binary64", citation: "IEEE 754-2019 §3.6 interchange-format names" },
+    change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["RankingDimension"],
+    resolution: ResolvedByRenamingV2 { renamed_to: "RankingComponent", citation: "Ben-Amram & Genaim, *Ranking Functions for Linear-Constraint Loops* (JACM 2014): a lexicographic ranking function's components" },
+    change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["TestClaim"],
+    resolution: ResolvedByRenamingDag { renamed_to: "AssertionClaim", citation: "a name collision resolved by renaming apart, not a grounding merge" },
+    change: 5640
+  },
+]
+
+fn census_names_text(names: List<String>) -> String {
+  fold(names, init: "", f: fn(acc, n) {
+    let q = concat(concat("`", n), "`")
+    if acc == "" { q } else { concat(concat(acc, ", "), q) }
+  })
+}
+
+fn census_disposition_text(d: SharedTypeNameDisposition) -> String {
+  match d {
+    ForkOpen { reason } => concat("OPEN — ", reason)
+    ForkAwaitingRuling { question } => concat("AWAITING OPERATOR RULING — ", question)
+    ForkNeedsDecisionRecord { family } => concat(concat("NEEDS A DECISION RECORD (", family), ")")
+  }
+}
+
+fn census_resolution_text(r: ForkResolution) -> String {
+  match r {
+    ResolvedByRenamingV2 { renamed_to, citation } => concat(concat(concat("v2 side renamed `", renamed_to), "` — "), citation)
+    ResolvedByDeletingV2 { reason } => concat("v2 side deleted — ", reason)
+    ResolvedByRenamingDag { renamed_to, citation } => concat(concat(concat("dag side renamed `", renamed_to), "` — "), citation)
+  }
+}
+
+fn census_declared_in(shared: List<SharedTypeName>, names: List<String>) -> String {
+  let files = fold(filter(shared, s => names.contains(s.name)), init: [], f: fn(acc, s) { concat(concat(acc, s.dag_files), s.v2_files) })
+  census_names_text(names: census_names_of_strings(xs: files))
+}
+
+fn defork_census_blocks(shared: List<SharedTypeName>, rows: List<SharedTypeNameRow>, resolved: List<ResolvedSharedTypeName>) -> List<MarkdownBlock> {
+  [
+    h2(text: "2D. The shared type-name census (the one list): the population is derived, the dispositions are authored"),
+    p(text: concat(concat(concat(concat(
+      "**Derived:** every name declared as a `type` (record, coproduct or alias) under both `dag/std` and `src/v2/std`, read from the namespace by `gunbc.defork_type_name_census` `shared_type_names` at generation — **",
+      length(xs: shared) as String),
+      " names** in this projection. **Authored:** each row's disposition, and — until the frontier below lands — the reading of what each side's body RESOLVES to. The two meet in an identity join by name, refused in both directions (a derived name no row disposes of; a row naming a pair that no longer exists), so this section cannot be generated from a stale disposition. Resolution, not body text, is what separates the classes: `Float = Float64` was byte-identical on both sides and bound two different `Float64`s. A **meaning fork** is one name for materially different concepts (DESIGN §3), resolved by renaming or deleting one side at its declaration, delete-first with no alias, the new name taken from the cited framework. **Frontier:** "),
+      defork_census_referent_frontier.capability as String),
+      concat(concat(" Candidate home: `", declaration_ref_display_key(ref: defork_census_referent_frontier.candidate_home)), "`.")
+    )),
+    TableBlock {
+      header: row(cells: [cell(text: "name(s)"), cell(text: "declared in (derived)"), cell(text: "dag/std side (authored reading)"), cell(text: "src/v2/std side (authored reading)"), cell(text: "class (authored)"), cell(text: "disposition")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: map(rows, r => row(cells: [
+        cell(text: census_names_text(names: r.names)),
+        cell(text: census_declared_in(shared: shared, names: r.names)),
+        cell(text: r.reading.dag_side),
+        cell(text: r.reading.v2_side),
+        cell(text: r.reading.class),
+        cell(text: census_disposition_text(d: r.disposition))
+      ])),
+    },
+    p(text: "**Resolved — each name must stay absent from the derived population; a name here that is declared under both roots again refuses by name:**"),
+    TableBlock {
+      header: row(cells: [cell(text: "name(s)"), cell(text: "resolution"), cell(text: "change")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: map(resolved, r => row(cells: [
+        cell(text: census_names_text(names: r.names)),
+        cell(text: census_resolution_text(r: r.resolution)),
+        cell(text: concat("#", r.change as String))
+      ])),
+    },
+  ]
+}
+
+fn defork_census_derivation_over(
+  shared: List<SharedTypeName>,
+  rows: List<SharedTypeNameRow>,
+  resolved: List<ResolvedSharedTypeName>
+) -> PlanDerivation {
+  let findings = defork_census_findings(shared: shared, rows: rows, resolved: resolved)
+  if length(xs: findings) > 0 {
+    PlanDerivationRefused { reason: defork_census_findings_text(findings: findings) }
+  } else {
+    PlanDerived { blocks: defork_census_blocks(shared: shared, rows: rows, resolved: resolved) }
+  }
+}
+
+// The live route, called only where the plan's bytes are generated. It also refuses a frontier
+// whose candidate home no longer resolves: a citation that fails to resolve is a §3 defect, and
+// this is the one place it is read.
+fn defork_census_derivation() -> PlanDerivation {
+  let roots = [defork_census_dag_root, defork_census_v2_root]
+  if !declaration_ref_resolution_is_resolved(
+    resolution: resolve_declaration_ref_live(ref: defork_census_referent_frontier.candidate_home, pool_roots: ["src/v2/compiler"])
+  ) {
+    PlanDerivationRefused {
+      reason: concat("the referent-resolution frontier's candidate home does not resolve: ", declaration_ref_display_key(ref: defork_census_referent_frontier.candidate_home))
+    }
+  } else {
+    defork_census_derivation_over(
+      shared: shared_type_names(facts: decl_facts(pool_roots: roots), dag_root: defork_census_dag_root, v2_root: defork_census_v2_root),
+      rows: defork_census_rows,
+      resolved: defork_census_resolved
+    )
+  }
+}

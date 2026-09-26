@@ -114,10 +114,17 @@ type DirectoryDependent {
   needs: List<Verb>
 }
 
+// THE DIRECTORY'S GROUP IS A PRINCIPAL'S PRIMARY GROUP, NAMED BY THAT PRINCIPAL. It is the capability
+// the frontier note above names as missing -- a group distinct from the owner's -- and it is carried
+// as a PosixUser rather than a group name because PosixUser is where the roster already states a gid,
+// and srv1's primary groups share their user's name (the coincidence install_d_managed_command
+// records). For every directory whose group is its owner's, group_principal IS the owner and the
+// derivation is unchanged byte for byte.
 type ManagedDirectory {
   member: NonEmptyStr
   path: FilePath
   owner: PosixUser
+  group_principal: PosixUser
   dependents: List<DirectoryDependent>
   ownership: Ownership
 }
@@ -132,10 +139,10 @@ fn dependent_class_eq(a: DependentClass, b: DependentClass) -> Bool {
   }
 }
 
-fn dependent_class_of(owner: PosixUser, who: PosixUser) -> DependentClass {
+fn dependent_class_of(owner: PosixUser, group_gid: Int, who: PosixUser) -> DependentClass {
   if who.uid == owner.uid {
     OwnerClass
-  } else if who.gid == owner.gid {
+  } else if who.gid == group_gid {
     GroupClass
   } else {
     OtherClass
@@ -148,6 +155,7 @@ fn needs_verb(needs: List<Verb>, v: Verb) -> Bool {
 
 fn class_needs(
   owner: PosixUser,
+  group_gid: Int,
   dependents: List<DirectoryDependent>,
   cls: DependentClass,
 ) -> List<Verb> {
@@ -155,7 +163,7 @@ fn class_needs(
     filter(
       xs: dependents,
       predicate: d => dependent_class_eq(
-        a: dependent_class_of(owner: owner, who: d.who),
+        a: dependent_class_of(owner: owner, group_gid: group_gid, who: d.who),
         b: cls,
       ),
     ),
@@ -165,10 +173,11 @@ fn class_needs(
 
 fn class_bits(
   owner: PosixUser,
+  group_gid: Int,
   dependents: List<DirectoryDependent>,
   cls: DependentClass,
 ) -> PermissionBits {
-  let needs = class_needs(owner: owner, dependents: dependents, cls: cls)
+  let needs = class_needs(owner: owner, group_gid: group_gid, dependents: dependents, cls: cls)
   PermissionBits {
     read: needs_verb(needs: needs, v: Read),
     write: needs_verb(needs: needs, v: Write),
@@ -176,17 +185,59 @@ fn class_bits(
   }
 }
 
+// SETGID IS DERIVED FROM THE GROUP, NOT CHOSEN: it is set exactly when the directory's group is not
+// its owner's. Such a directory exists because a second principal writes into it, and without setgid
+// every entry the OWNER creates would land in the owner's group while the other writer's entries land
+// in theirs -- two groups inside one directory, so any later tightening of the other-class bits would
+// silently cut one writer off from the other's entries. With setgid every entry carries the
+// directory's group, and the group is what both writers share.
 fn managed_directory_permissions(d: ManagedDirectory) -> FilePermissions {
+  let g = d.group_principal.gid
   FilePermissions {
-    ownership: FileOwnership { uid: d.owner.uid, gid: d.owner.gid },
+    ownership: FileOwnership { uid: d.owner.uid, gid: g },
     mode: FileMode {
-      owner: class_bits(owner: d.owner, dependents: d.dependents, cls: OwnerClass),
-      group: class_bits(owner: d.owner, dependents: d.dependents, cls: GroupClass),
-      other: class_bits(owner: d.owner, dependents: d.dependents, cls: OtherClass),
+      owner: class_bits(owner: d.owner, group_gid: g, dependents: d.dependents, cls: OwnerClass),
+      group: class_bits(owner: d.owner, group_gid: g, dependents: d.dependents, cls: GroupClass),
+      other: class_bits(owner: d.owner, group_gid: g, dependents: d.dependents, cls: OtherClass),
       setuid: false,
-      setgid: false,
+      setgid: g != d.owner.gid,
       sticky: false,
     },
+  }
+}
+
+// ── ADMISSION: A WRITER THE OWNER AND GROUP DO NOT COVER REFUSES ─────────────────────────────────
+//
+// The derivation above is total: a dependent in the other class that needs Write gets o+w, because
+// that is what it asked for. For a directory the fleet ensures that is the wrong answer -- a
+// world-writable store is not a way to admit one more writer -- so a consumer that emits an ensure
+// takes the directory through this admission, and a writer outside the owner and the group REFUSES
+// with its name rather than widening the mode. The remedy the refusal points at is the model:
+// make that writer the owner, or the directory's group principal, or (for a third writer with its
+// own gid) a shared group, which this module does not model yet and so refuses rather than fakes.
+type ManagedDirectoryAdmission
+  = ManagedDirectoryAdmitted { dir: ManagedDirectory }
+  | ManagedDirectoryRefused { member: NonEmptyStr, path: FilePath, writer: NonEmptyStr }
+
+fn managed_directory_admit(d: ManagedDirectory) -> ManagedDirectoryAdmission {
+  let g = d.group_principal.gid
+  let stray = filter(
+    xs: d.dependents,
+    predicate: dep => needs_verb(needs: dep.needs, v: Write) && dependent_class_eq(
+      a: dependent_class_of(owner: d.owner, group_gid: g, who: dep.who),
+      b: OtherClass,
+    ),
+  )
+  match first(stray) {
+    Absent => ManagedDirectoryAdmitted { dir: d }
+    Present { value: dep } => ManagedDirectoryRefused { member: d.member, path: d.path, writer: dep.who.name }
+  }
+}
+
+fn managed_directory_admission_path(a: ManagedDirectoryAdmission) -> FilePath {
+  match a {
+    ManagedDirectoryAdmitted { dir } => dir.path
+    ManagedDirectoryRefused { member: _, path, writer: _ } => path
   }
 }
 
@@ -232,6 +283,7 @@ fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
     member: "attempt-state-root" as NonEmptyStr,
     path: path,
     owner: service,
+    group_principal: service,
     dependents: [
       DirectoryDependent { who: service, needs: [Read, Write, Execute] },
     ],

@@ -1,4 +1,4 @@
-//! Generic seed-shim assembly for curated self-host behavioral receipts.
+//! Whole-emitted-closure assembly for curated self-host behavioral receipts.
 //! Authority: tools.self_host_curated_seed_linked_harness (5-arm design).
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 
@@ -159,11 +159,7 @@ fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError>
 /// `closure_compiler_mod_stays_emit_retained` stays enrolled as the regression control for that
 /// climb (DESIGN 4b(4)): a compiler-family closure member keeps its emitted bytes and never
 /// becomes a `pub use v1_compiler::` re-export.
-pub fn assemble_seed_linked_closure(
-    out_dir: &Path,
-    entry_dag: &Path,
-    _std_bridge_dir: &Path,
-) -> Result<(), AssemblyError> {
+pub fn assemble_seed_linked_closure(out_dir: &Path, entry_dag: &Path) -> Result<(), AssemblyError> {
     let src_dir = out_dir.join("src");
     let manifest_path = src_dir.join(emitted_population_manifest_basename());
     let entry_mod = dag_entry_rust_module(entry_dag)?;
@@ -279,14 +275,12 @@ mod tests {
         base
     }
 
-    fn entry_dag_and_bridge(root: &Path, stem: &str, module: &str) -> (PathBuf, PathBuf) {
+    fn entry_dag(root: &Path, stem: &str, module: &str) -> PathBuf {
         let repo = root.join("repo");
         let dag = repo.join(format!("src/v2/compiler/{stem}.dag"));
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, format!("module {module}\n")).expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        (dag, bridge)
+        dag
     }
 
     #[test]
@@ -306,9 +300,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
         assert!(kept.contains("emitted std_error_primitives"));
     }
@@ -348,9 +340,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/04_infer.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
         assert!(
             kept.contains("pub struct ResolvedTree"),
@@ -389,9 +379,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
         assert!(
             kept.contains("broken_syntax"),
@@ -427,9 +415,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept =
             fs::read_to_string(out.join("src/extdeps_communication_medium.rs")).expect("read");
         assert!(kept.contains("emitted extdeps_communication_medium"));
@@ -448,9 +434,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept = fs::read_to_string(out.join("src/dry_run.rs")).expect("read");
         assert!(kept.contains("emitted dry_run"));
     }
@@ -468,9 +452,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept = fs::read_to_string(out.join("src/gunbc_plans_md_helpers.rs")).expect("read");
         assert!(kept.contains("emitted gunbc_plans_md_helpers"));
     }
@@ -491,9 +473,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/05_emit.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
-        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag).expect("assemble");
         let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
             .expect("read");
         assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
@@ -520,8 +500,8 @@ mod tests {
             ],
         )
         .expect("manifest");
-        let (dag, bridge) = entry_dag_and_bridge(&root, "01_tokenize", "v2.compiler.tokenize");
-        let err = assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err();
+        let dag = entry_dag(&root, "01_tokenize", "v2.compiler.tokenize");
+        let err = assemble_seed_linked_closure(&out, &dag).unwrap_err();
         match err {
             AssemblyError::RefusedDeclaredMember {
                 declared_path,
@@ -544,8 +524,8 @@ mod tests {
         fs::create_dir_all(&src).expect("src");
         fs::write(out.join("src/lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("lib");
         fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
-        let (dag, bridge) = entry_dag_and_bridge(&root, "01_tokenize", "v2.compiler.tokenize");
-        match assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err() {
+        let dag = entry_dag(&root, "01_tokenize", "v2.compiler.tokenize");
+        match assemble_seed_linked_closure(&out, &dag).unwrap_err() {
             AssemblyError::MissingPopulationManifest { path } => {
                 assert!(path.ends_with(emitted_population_manifest_basename()));
             }
@@ -568,139 +548,12 @@ mod tests {
             "not a declared line\n",
         )
         .expect("manifest");
-        let (dag, bridge) = entry_dag_and_bridge(&root, "01_tokenize", "v2.compiler.tokenize");
-        match assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err() {
+        let dag = entry_dag(&root, "01_tokenize", "v2.compiler.tokenize");
+        match assemble_seed_linked_closure(&out, &dag).unwrap_err() {
             AssemblyError::EmptyPopulationManifest { path } => {
                 assert!(path.ends_with(emitted_population_manifest_basename()));
             }
             other => panic!("expected EmptyPopulationManifest, got {other:?}"),
         }
-    }
-
-    /// RED control for 03_normalize wet-receipt shim refresh: dropping `pub mod
-    /// v2_compiler_namespace_graft` from the narrow hand lib must refuse cargo.
-    #[test]
-    fn normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo() {
-        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let root = manifest
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
-            .expect("repo root")
-            .to_path_buf();
-        let gunbc = root.join("target/release/gunbc");
-        let assemble_bin = root.join("target/release/cssl_assemble");
-        let shim_dir = root.join("dag/gunbc/instruments/self_host_03_normalize_shims");
-        if !gunbc.is_file() || !assemble_bin.is_file() || !shim_dir.is_dir() {
-            panic!(
-                "release bins or shim dir missing (gunbc={}, assemble={}, shims={})",
-                gunbc.is_file(),
-                assemble_bin.is_file(),
-                shim_dir.is_dir()
-            );
-        }
-        let out =
-            std::env::temp_dir().join(format!("cssl_normalize_stale_red_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&out);
-        let compile_status = std::process::Command::new(&gunbc)
-            .args([
-                "compile",
-                "--source-root",
-                "dag",
-                "--source-root",
-                "src/v2",
-                "--entry",
-                "src/v2/compiler/03_normalize.dag",
-                "--output-dir",
-                &out.to_string_lossy(),
-                "--target",
-                "rust",
-                "--dependency-pool-index",
-                "primary-precedence",
-            ])
-            .current_dir(&root)
-            .output()
-            .expect("gunbc compile spawn");
-        if !compile_status.status.success() {
-            panic!(
-                "RED-control setup refused: gunbc compile failed (exit={:?}):\n{}\n{}",
-                compile_status.status.code(),
-                String::from_utf8_lossy(&compile_status.stdout),
-                String::from_utf8_lossy(&compile_status.stderr)
-            );
-        }
-        let assemble_status = std::process::Command::new(&assemble_bin)
-            .args([
-                "--out-dir",
-                &out.to_string_lossy(),
-                "--entry-dag",
-                "src/v2/compiler/03_normalize.dag",
-                "--root",
-                &root.to_string_lossy(),
-                "--std-bridge-dir",
-                "dag/gunbc/instruments/self_host_std_bridge_shims",
-            ])
-            .current_dir(&root)
-            .output()
-            .expect("cssl_assemble spawn");
-        if !assemble_status.status.success() {
-            panic!(
-                "RED-control setup refused: cssl_assemble failed (exit={:?}):\n{}\n{}",
-                assemble_status.status.code(),
-                String::from_utf8_lossy(&assemble_status.stdout),
-                String::from_utf8_lossy(&assemble_status.stderr)
-            );
-        }
-        // Mirror the roster row's shim writes: shared std surface from the std-bridge (one
-        // authority, not one copy per transport), the rest from this transport's shim dir.
-        // Copying only shim_dir would leave emitted std stubs in place and the control would
-        // refuse for the wrong reason -- the assertion is about the dropped
-        // `pub mod v2_compiler_namespace_graft`, not a broken std surface.
-        let std_bridge_dir = root.join("dag/gunbc/instruments/self_host_std_bridge_shims");
-        for dir in [&std_bridge_dir, &shim_dir] {
-            for entry in fs::read_dir(dir).expect("shim dir") {
-                let entry = entry.expect("entry");
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if name == "lib.rs" || name == "witness_main.rs" {
-                    continue;
-                }
-                fs::copy(entry.path(), out.join("src").join(name.as_ref())).expect("copy shim");
-            }
-        }
-        let stale_lib = "// stale RED control — namespace_graft pub mod deliberately dropped\n\
-            #![allow(clippy::all, dead_code, unused_imports)]\n\
-            pub use v1_compiler::NonEmptyVec;\n\
-            pub use v1_compiler::NonEmptyBTreeSet;\n\
-            pub use v1_compiler::v1_rt;\n\
-            pub mod std_algebra;\npub mod std_types;\npub mod v2_std_integer;\n\
-            pub mod v2_std_algebra;\npub mod v2_std_collection;\npub mod v2_std_grammar;\n\
-            pub mod v2_std_diagnostic;\npub mod v2_std_node;\npub mod v2_std_compilers_sugar;\n\
-            pub mod v2_compiler_body_lowering_fold;\npub mod v2_compiler_normalized_tree;\n\
-            pub mod v2_extdeps_languages_dag;\npub mod v2_compiler_normalize;\n";
-        fs::write(out.join("src/lib.rs"), stale_lib).expect("stale lib");
-        fs::write(
-            out.join("Cargo.toml"),
-            format!(
-                "[package]\nname = \"stale_red\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
-                 [lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n\
-                 im = {{ version = \"15.1\", features = [\"serde\"] }}\n\
-                 v1-compiler = {{ path = \"{}\" }}\n",
-                root.join("src/v1/stage0").display()
-            ),
-        )
-        .expect("cargo");
-        let status = std::process::Command::new("cargo")
-            .args(["build", "--lib"])
-            .current_dir(&out)
-            .env("RUSTC_WRAPPER", "")
-            .env("CTRL_BUILD_WRAP_CARGO", "0")
-            .status()
-            .expect("cargo");
-        assert!(
-            !status.success(),
-            "stale narrow lib without namespace_graft must refuse cargo"
-        );
-        let _ = fs::remove_dir_all(&out);
     }
 }

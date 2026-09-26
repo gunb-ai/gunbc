@@ -20,7 +20,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "memory_governor.rs",
     "namespace_baseline.rs",
     "v2_compiler_body_producer.rs",
-    "v2_compiler_normalize.rs",
     "v2_compiler_target_carriers.rs",
     "v2_compiler_discovery_enumeration.rs",
     "v2_compiler_parse_engine_hooks.rs",
