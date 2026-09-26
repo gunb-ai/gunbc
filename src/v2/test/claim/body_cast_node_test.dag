@@ -263,8 +263,16 @@ fn bcn_infers(o: Outcome<Node>) -> Outcome<Bool> {
 // an Identity crossing and admitted; the same sum cast to Bool has no structural witness and refuses
 // with coercion's own mismatch (coercion_cast_crossing), not a name-keyed cast table. RED BEFORE the
 // infer rule: the Bool cast was admitted.
+fn bcn_int_sum_as_int_inferred() -> Outcome<Bool> {
+  bcn_infers(o: bcn_int_sum_as_int())
+}
+
+fn bcn_int_sum_as_bool_inferred() -> Outcome<Bool> {
+  bcn_infers(o: bcn_int_sum_as_bool())
+}
+
 test fn bcn_infer_admits_int_to_int() -> Bool {
-  match bcn_infers(o: bcn_int_sum_as_int()) {
+  match bcn_int_sum_as_int_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -272,7 +280,7 @@ test fn bcn_infer_admits_int_to_int() -> Bool {
 
 test fn bcn_infer_refuses_int_to_bool() -> Bool {
   tpb_accepts(o: bcn_int_sum_as_bool())
-    && match bcn_infers(o: bcn_int_sum_as_bool()) {
+    && match bcn_int_sum_as_bool_inferred() {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
     }

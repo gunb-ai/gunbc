@@ -830,6 +830,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_value_param_as_type",
   "v2.test.claim.body_cast_node.bcn_int_sum_as_int",
   "v2.test.claim.body_cast_node.bcn_int_sum_as_bool",
+  "v2.test.claim.body_cast_node.bcn_int_sum_as_int_inferred",
+  "v2.test.claim.body_cast_node.bcn_int_sum_as_bool_inferred",
   "v2.test.claim.body_cast_node.bcn_into_refinement",
   "v2.test.claim.body_cast_node.bcn_out_of_refinement",
   "v2.test.claim.body_cast_node.bcn_into_refinement_inferred",
