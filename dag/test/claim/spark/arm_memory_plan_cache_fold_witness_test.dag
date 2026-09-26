@@ -28,6 +28,8 @@ import gunbc.spark.arm_memory_fit {
   CacheFrontierRung, CacheFrontierRungProved, CacheFrontierRungRefused, CacheFrontier, CacheFrontierUnestablished, cache_frontier_from_plan,
   ArmMemoryFitUnestablished, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
   pool_construction_per_rank,
+  PoolConstructionSlackProved, PoolConstructionSlackUnestablished, PoolConstructionSlackRefused,
+  pool_construction_slack_standing, CacheFitWithPoolConstruction, cache_fit_with_pool_construction,
   SharedPoolByteClaimConsistent, SharedPoolByteClaimRefused, shared_pool_byte_claim_red,
 }
 import gunbc.spark.arm_memory_experiment_observed {
@@ -1118,4 +1120,211 @@ test fn the_v2_run_to_run_variance_is_named_never_folded() -> Bool {
     })
     && length(arm_experiment_2026_09_26_arena_readings) == 4
     && length(arm_experiment_kvplan_v2_2026_09_26_arena_readings) == 4
+}
+
+// ── THE POOL-CONSTRUCTION STANDING BESIDE THE V2 VERDICT: FIT PROVED, TIGHT UNESTABLISHED ────────
+//
+// THE CONSERVATION FINDING THIS SECTION MODELS HONESTLY: the v2 emission's allocated pool
+// (13,766,049,792 bytes over 1012 blocks of 13,602,816 — the engine's own figures, conserving
+// exactly) is admitted at EVERY rank's arena — the <= half of the doctrine's construction
+// sentence PASSES on all four ranks — but the limiting rank's arena exceeds the allocated pool by
+// 3,811,103,866 bytes at the hundredths floor (~3.55 GiB, 280 physical pool blocks), where the
+// v1-image launch's construction was tight (slack 346 bytes). The difference is UNEXPLAINED by
+// the current controls, and the CUDA-graph-pool estimation line on TP1's own log (0.1 GiB actual,
+// 1.82 GiB estimated, 1.71 GiB difference) is a candidate mechanism, NOT an established one. The
+// slack standing reports exactly that: Proved at the fit half, Unestablished at the tight half,
+// carrying the slack figure and the candidate as an open obligation — never papered over, and the
+// existing per-rank control is pinned beside it STILL REFUSING the same evidence, not weakened.
+
+fn w_v2_slack_candidate_mechanism() -> NonEmptyStr {
+  "TP1/srv10's own profile line at this launch: 'CUDA graph pool memory: 0.1 GiB (actual), 1.82 GiB (estimated), difference: 1.71 GiB (1649.1%)' -- the CUDA graph pool's estimated reservation over-counts its actual footprint by ~1.71 GiB, the largest uncertain term in the envelope-minus-usage arena derivation; a candidate for the allocator's available-memory deduction that would leave the constructed pool smaller than the derived arena, NOT an established mechanism" as NonEmptyStr
+}
+
+// THE V2 SLACK STANDING AT THE REAL FOUR ARENAS: the fit half proves (13,766,049,792 bytes is
+// admitted at every rank's arena floor) and the tight half is Unestablished at the limiting rank
+// -- srv11's 17,577,153,658-byte floor exceeds the pool by 3,811,103,866 bytes, 280 physical pool
+// blocks -- with the candidate mechanism and the open obligation riding in the standing's own
+// fields, and the obligation naming the slack figure verbatim.
+test fn the_v2_pool_fits_every_arena_but_the_tight_construction_is_unestablished() -> Bool {
+  match w_minted_v2_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match kv_allocator_carve_from_plan(plan: p) {
+        Absent => false
+        Present { value: carve } =>
+          match pool_construction_slack_standing(
+            carve: carve,
+            supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
+            allowance_bytes: byte_size(count: 0),
+            allowance_reason: "none named" as NonEmptyStr,
+            candidate_mechanism: w_v2_slack_candidate_mechanism()) {
+            PoolConstructionSlackUnestablished { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a, limiting_rank: lr, limiting_rank_arena_bytes: ab, slack_bytes: sb, slack_physical_pool_blocks: spb, candidate_mechanism: cm, obligation: o } =>
+              byte_size_count(b: b) == 13602816
+                && allocator_block_count_value(c: bl) == 1012
+                && byte_size_count(b: a) == 13766049792
+                && lr == 3
+                && byte_size_count(b: ab) == 17577153658
+                && byte_size_count(b: sb) == 3811103866
+                && spb == 280
+                && string_contains(s: cm as String, pattern: "CUDA graph pool")
+                && string_contains(s: o as String, pattern: "3811103866")
+                && string_contains(s: o as String, pattern: "280")
+                && string_contains(s: o as String, pattern: "candidate, NOT established")
+                && string_contains(s: o as String, pattern: "PROVED -- the allocated pool")
+            _ => false
+          }
+      }
+  }
+}
+
+// THE EXISTING PER-RANK CONTROL IS NOT WEAKENED: run the v2 evidence through
+// pool_construction_per_rank and it refuses — the first over-slacked rank names the cause, the
+// reading is not the admitted arena of THIS pool — the same loud refusal the control minted
+// against the pre-clamp projections. The slack standing adds the split report; it never loosens
+// the gate.
+test fn the_existing_per_rank_control_still_refuses_the_v2_slack() -> Bool {
+  match w_minted_v2_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match kv_allocator_carve_from_plan(plan: p) {
+        Absent => false
+        Present { value: carve } =>
+          match pool_construction_per_rank(
+            carve: carve,
+            supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
+            allowance_bytes: byte_size(count: 0),
+            allowance_reason: "none named" as NonEmptyStr) {
+            PoolConstructionRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "rank 0")
+                && string_contains(s: c as String, pattern: "not the admitted arena of THIS pool")
+            _ => false
+          }
+      }
+  }
+}
+
+// THE SLACK STANDING STILL ADMITS THE TIGHT CONSTRUCTION, AND STILL REFUSES THE FIT VIOLATION:
+// the designed v1 carve (18,564,995,790 bytes over 1035 blocks of 17,937,194) at the v1-image
+// launch's four arenas proves -- the limiting rank is srv11 again, its 18,564,996,136-byte floor
+// slack 346 bytes, under one physical block -- while the same carve at the v2 launch's smaller
+// arenas refuses at rank 3 (16.37 GiB cannot hold an 18.56 GiB pool): the fit half's gate is
+// unchanged in both directions.
+test fn the_slack_standing_proves_the_tight_case_and_refuses_the_fit_violation() -> Bool {
+  match w_carve() {
+    Absent => false
+    Present { value: carve } =>
+      (match pool_construction_slack_standing(
+        carve: carve,
+        supplies: arm_experiment_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1035)),
+        allowance_bytes: byte_size(count: 0),
+        allowance_reason: "none named" as NonEmptyStr,
+        candidate_mechanism: "none named" as NonEmptyStr) {
+        PoolConstructionSlackProved { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a, limiting_rank: lr, limiting_rank_arena_bytes: ab, slack_bytes: sb } =>
+          byte_size_count(b: b) == 17937194
+            && allocator_block_count_value(c: bl) == 1035
+            && byte_size_count(b: a) == 18564995790
+            && lr == 3
+            && byte_size_count(b: ab) == 18564996136
+            && byte_size_count(b: sb) == 346
+        _ => false
+      })
+        && (match pool_construction_slack_standing(
+          carve: carve,
+          supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
+          allowance_bytes: byte_size(count: 0),
+          allowance_reason: "none named" as NonEmptyStr,
+          candidate_mechanism: "none named" as NonEmptyStr) {
+          PoolConstructionSlackRefused { cause: c } =>
+            string_contains(s: c as String, pattern: "rank 3")
+              && string_contains(s: c as String, pattern: "exceeds the rank's admitted KV arena")
+          _ => false
+        })
+  }
+}
+
+// THE MALFORMED SUPPLIES REFUSE, NOT PROVE: a zero arena reading refuses as bounding nothing, and
+// an arena below the allocated pool refuses the fit half naming the rank -- the slack standing
+// never mints a standing over a supply side that says nothing.
+test fn the_slack_standing_refuses_zero_and_under_arena_readings() -> Bool {
+  match w_minted_v2_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match kv_allocator_carve_from_plan(plan: p) {
+        Absent => false
+        Present { value: carve } =>
+          (match pool_construction_slack_standing(
+            carve: carve,
+            supplies: w_uniform_supplies(blocks: 1012, arena: byte_size(count: 0)),
+            allowance_bytes: byte_size(count: 0),
+            allowance_reason: "none named" as NonEmptyStr,
+            candidate_mechanism: "none named" as NonEmptyStr) {
+            PoolConstructionSlackRefused { cause: c } => string_contains(s: c as String, pattern: "zero")
+            _ => false
+          })
+            && (match pool_construction_slack_standing(
+              carve: carve,
+              supplies: w_uniform_supplies(blocks: 1012, arena: byte_size(count: 13000000000)),
+              allowance_bytes: byte_size(count: 0),
+              allowance_reason: "none named" as NonEmptyStr,
+              candidate_mechanism: "none named" as NonEmptyStr) {
+              PoolConstructionSlackRefused { cause: c } =>
+                string_contains(s: c as String, pattern: "rank 0")
+                  && string_contains(s: c as String, pattern: "the fit half fails at this rank")
+              _ => false
+            })
+      }
+  }
+}
+
+// THE VERDICT CARRIES THE CONSTRUCTION STANDING BESIDE IT: one join over the v2 plan and the v2
+// bundle's arenas returns CacheFitProved { rank 3, seats 6, blocks_per_seat 123, blocks_used 738,
+// blocks_reserved 123 under ReserveFullLengthSeats{1}, hard_ceiling 8, block_equivalent_bytes
+// 10,038,878,208 } BESIDE PoolConstructionSlackUnestablished { limiting rank 3, slack
+// 3,811,103,866 bytes, 280 physical blocks, the candidate mechanism and the open obligation } --
+// six seats proven at the block wall while the pool's tight construction stays an open obligation,
+// the two facts traveling together so neither can be cited without the other.
+test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool {
+  match w_minted_v2_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match kv_allocator_carve_from_plan(plan: p) {
+        Absent => false
+        Present { value: carve } =>
+          match cache_fit_with_pool_construction(
+            plan: p, shape: glm_5_3_flash_hybrid_shape,
+            seats: 6,
+            supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
+            rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 },
+            carve: carve,
+            allowance_bytes: byte_size(count: 0),
+            allowance_reason: "none named" as NonEmptyStr,
+            candidate_mechanism: w_v2_slack_candidate_mechanism()) {
+            CacheFitWithPoolConstruction { cache_verdict: cache, pool_construction: construction } =>
+              (match cache {
+                CacheFitProved { limiting_rank: lr, seats: s, length: l, blocks_per_seat: bps, blocks_used: bu, blocks_reserved: br, hard_ceiling: hc, block_equivalent_bytes: be } =>
+                  lr == 3
+                    && s == 6
+                    && token_count_value(t: l) == 262144
+                    && allocator_block_count_value(c: bps) == 123
+                    && allocator_block_count_value(c: bu) == 738
+                    && allocator_block_count_value(c: br) == 123
+                    && hc == 8
+                    && (match be {
+                      Present { value: b } => byte_size_count(b: b) == 10038878208
+                      Absent => false
+                    })
+                _ => false
+              })
+                && (match construction {
+                  PoolConstructionSlackUnestablished { limiting_rank: lr2, slack_bytes: sb2, slack_physical_pool_blocks: spb2, candidate_mechanism: cm2, obligation: _ } =>
+                    lr2 == 3
+                      && byte_size_count(b: sb2) == 3811103866
+                      && spb2 == 280
+                      && string_contains(s: cm2 as String, pattern: "CUDA graph pool")
+                  _ => false
+                })
+            _ => false
+          }
+      }
+  }
 }

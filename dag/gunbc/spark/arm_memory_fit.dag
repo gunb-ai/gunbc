@@ -2635,6 +2635,170 @@ fn pool_construction_rank_scan(carve: KvAllocatorCarve, supplies: List<ArmRankCa
     }))
 }
 
+// ── THE SLACK STANDING: THE CONSTRUCTION CONTROL'S TWO HALVES, REPORTED SEPARATELY ───────────────
+//
+// pool_construction_per_rank above mints ONE verdict and refuses when either half fails — the
+// doctrine's conservation sentence as a single gate. THE 2026-09-26 V2 EVIDENCE PASSES ONE HALF
+// AND FAILS THE OTHER, and a two-arm vocabulary cannot say that honestly: the allocated pool
+// (13,766,049,792 bytes over 1012 blocks of 13,602,816) is admitted at EVERY rank's arena — the
+// <= half PASSES on all four ranks — while the limiting rank's arena exceeds the pool by ~3.81 GB,
+// ~280 physical blocks, where the doctrine's tight-construction shape asks for under one block. A
+// single Refused would falsely read as "the pool does not fit"; a single Proved is exactly the
+// papering-over the arena-slack control exists to refuse. So this fold reports the two halves
+// apart: WHICH RANK LIMITS (the least arena slack, the same min-across-ranks spirit the engine's
+// inventory decision embodies), the slack in bytes and in physical pool blocks, and — when the
+// slack exceeds one physical block plus the caller's NAMED allowance — an Unestablished arm
+// carrying the slack figure and the caller-named CANDIDATE mechanism (a candidate, never an
+// established one: the day a mechanism is pinned against the engine source, the caller names it as
+// an allowance with its reason and the tight half closes that way instead). THE EXISTING CONTROL
+// IS NOT WEAKENED BY THIS FOLD: it still refuses the same evidence, and the suite pins both
+// answers side by side.
+type PoolConstructionSlackStanding
+  = PoolConstructionSlackProved {
+      physical_pool_block_bytes: ByteSize
+      allocator_blocks: AllocatorBlockCount
+      allocated_pool_bytes: ByteSize
+      limiting_rank: Nat
+      limiting_rank_arena_bytes: ByteSize
+      slack_bytes: ByteSize
+    }
+  | PoolConstructionSlackUnestablished {
+      physical_pool_block_bytes: ByteSize
+      allocator_blocks: AllocatorBlockCount
+      allocated_pool_bytes: ByteSize
+      limiting_rank: Nat
+      limiting_rank_arena_bytes: ByteSize
+      slack_bytes: ByteSize
+      slack_physical_pool_blocks: Nat
+      candidate_mechanism: NonEmptyStr
+      obligation: NonEmptyStr
+    }
+  | PoolConstructionSlackRefused { cause: NonEmptyStr }
+
+fn pool_construction_slack_standing(carve: KvAllocatorCarve, supplies: List<ArmRankCacheSupply>, allowance_bytes: ByteSize, allowance_reason: NonEmptyStr, candidate_mechanism: NonEmptyStr) -> PoolConstructionSlackStanding {
+  match pool_construction_slack_refusal_scan(carve: carve, supplies: supplies, allowance_bytes: allowance_bytes, allowance_reason: allowance_reason) {
+    Present { value: refused } => refused
+    Absent =>
+      match pool_construction_min_slack_supply(carve: carve, supplies: supplies) {
+        Absent =>
+          PoolConstructionSlackRefused { cause: "unreachable: a supply roster that passed the fit scan has a first rank" as NonEmptyStr }
+        Present { value: worst } =>
+          let slack = subtract_saturating(minuend: worst.admitted_kv_arena_bytes, subtrahend: carve.allocated_pool_bytes)
+          match byte_size_count(b: slack) < byte_size_count(b: carve.physical_pool_bytes_per_block) + byte_size_count(b: allowance_bytes) {
+            true =>
+              PoolConstructionSlackProved {
+                physical_pool_block_bytes: carve.physical_pool_bytes_per_block,
+                allocator_blocks: carve.allocator_blocks,
+                allocated_pool_bytes: carve.allocated_pool_bytes,
+                limiting_rank: worst.rank,
+                limiting_rank_arena_bytes: worst.admitted_kv_arena_bytes,
+                slack_bytes: slack,
+              }
+            false =>
+              PoolConstructionSlackUnestablished {
+                physical_pool_block_bytes: carve.physical_pool_bytes_per_block,
+                allocator_blocks: carve.allocator_blocks,
+                allocated_pool_bytes: carve.allocated_pool_bytes,
+                limiting_rank: worst.rank,
+                limiting_rank_arena_bytes: worst.admitted_kv_arena_bytes,
+                slack_bytes: slack,
+                slack_physical_pool_blocks: byte_size_count(b: slack) / byte_size_count(b: carve.physical_pool_bytes_per_block),
+                candidate_mechanism: candidate_mechanism,
+                obligation: join([
+                  "the fit half is PROVED -- the allocated pool of ", to_string(byte_size_count(b: carve.allocated_pool_bytes)),
+                  " bytes is admitted at every rank's admitted KV arena -- but the tight-construction half is UNESTABLISHED: the limiting rank's arena exceeds the allocated pool by ",
+                  to_string(byte_size_count(b: slack)), " bytes (", to_string(byte_size_count(b: slack) / byte_size_count(b: carve.physical_pool_bytes_per_block)),
+                  " physical pool blocks of ", to_string(byte_size_count(b: carve.physical_pool_bytes_per_block)),
+                  " bytes), far more than one physical block plus the named allowance of ", to_string(byte_size_count(b: allowance_bytes)),
+                  " bytes (", allowance_reason as String,
+                  "): name the mechanism that admits the slack -- candidate, NOT established: ", candidate_mechanism as String,
+                  " -- or derive a bound for it; until one lands, no consumer may read this pool as exactly filling its limiting rank's arena",
+                ], "") as NonEmptyStr,
+              }
+          }
+      }
+  }
+}
+
+// THE FIT HALF'S REFUSAL SCAN, the existing control's two causes carried verbatim: a zero arena
+// bounds nothing, and an allocated pool above the arena plus the named allowance does not fit —
+// the <= half failed, and no slack question arises.
+fn pool_construction_slack_refusal_scan(carve: KvAllocatorCarve, supplies: List<ArmRankCacheSupply>, allowance_bytes: ByteSize, allowance_reason: NonEmptyStr) -> PoolConstructionSlackStanding? {
+  first(map(filter(supplies, s =>
+      byte_size_count(b: s.admitted_kv_arena_bytes) == 0
+        || byte_size_count(b: carve.allocated_pool_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes) + byte_size_count(b: allowance_bytes)), s =>
+    match byte_size_count(b: s.admitted_kv_arena_bytes) == 0 {
+      true =>
+        PoolConstructionSlackRefused {
+          cause: join([
+            "pool construction REFUSED at rank ", to_string(s.rank), ": the rank's arena observation is zero, and a zero reading bounds nothing -- construction cannot be verified there",
+          ], "") as NonEmptyStr,
+        }
+      false =>
+        PoolConstructionSlackRefused {
+          cause: join([
+            "pool construction REFUSED at rank ", to_string(s.rank), ": the allocated pool of ", to_string(byte_size_count(b: carve.allocated_pool_bytes)),
+            " bytes exceeds the rank's admitted KV arena of ", to_string(byte_size_count(b: s.admitted_kv_arena_bytes)),
+            " bytes even after the named allowance of ", to_string(byte_size_count(b: allowance_bytes)),
+            " bytes (", allowance_reason as String, "): the fit half fails at this rank",
+          ], "") as NonEmptyStr,
+        }
+    }))
+}
+
+// THE LIMITING RANK OF THE SLACK QUESTION: the supply row whose arena leaves the least over the
+// allocated pool — the tightest reading, the rank whose arena the pool most nearly fills. Saturating
+// subtraction keeps the comparison total even where a named allowance let a slightly-smaller arena
+// through the fit scan.
+fn pool_construction_slack_of(carve: KvAllocatorCarve, s: ArmRankCacheSupply) -> ByteSize {
+  subtract_saturating(minuend: s.admitted_kv_arena_bytes, subtrahend: carve.allocated_pool_bytes)
+}
+
+fn pool_construction_min_slack_supply(carve: KvAllocatorCarve, supplies: List<ArmRankCacheSupply>) -> ArmRankCacheSupply? {
+  fold(supplies, init: first(supplies), f: (acc, s) => match acc {
+    Absent => Present { value: s }
+    Present { value: a } =>
+      match byte_size_count(b: pool_construction_slack_of(carve: carve, s: s)) < byte_size_count(b: pool_construction_slack_of(carve: carve, s: a)) {
+        true => Present { value: s }
+        false => acc
+      }
+  })
+}
+
+// THE VERDICT BESIDE THE CONSTRUCTION STANDING: a capacity question that prices this plan against
+// these arenas takes home both facts in one join — the cache verdict the block wall mints, and the
+// pool-construction standing the byte conservation reports — so a Proved cache beside an
+// Unestablished tight-construction travels as exactly that, never as a silently completed
+// construction.
+type CacheFitWithPoolConstruction {
+  cache_verdict: CacheFitVerdict
+  pool_construction: PoolConstructionSlackStanding
+}
+
+fn cache_fit_with_pool_construction(
+  plan: ResolvedKvAllocationPlan,
+  shape: Glm53FlashHybridShape,
+  seats: Nat,
+  supplies: List<ArmRankCacheSupply>,
+  rank_count: Nat,
+  limiting_rank: Nat,
+  reserve_policy: CacheReservePolicy,
+  carve: KvAllocatorCarve,
+  allowance_bytes: ByteSize,
+  allowance_reason: NonEmptyStr,
+  candidate_mechanism: NonEmptyStr,
+) -> CacheFitWithPoolConstruction {
+  CacheFitWithPoolConstruction {
+    cache_verdict: cache_fit_verdict_from_plan(
+      plan: plan, shape: shape, seats: seats, supplies: supplies,
+      rank_count: rank_count, limiting_rank: limiting_rank, reserve_policy: reserve_policy),
+    pool_construction: pool_construction_slack_standing(
+      carve: carve, supplies: supplies, allowance_bytes: allowance_bytes,
+      allowance_reason: allowance_reason, candidate_mechanism: candidate_mechanism),
+  }
+}
+
+
 // THE CONSERVATION RED: ONE CLAIM, CHECKED AGAINST THE POOL IT CLAIMS TO SIT IN. The block wall
 // owns capacity; this control owns the byte claims a consumer tries to attach to a block
 // population. The exact byte spelling of a block population against this pool is
