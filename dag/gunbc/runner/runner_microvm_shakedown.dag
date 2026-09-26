@@ -3,14 +3,17 @@ module gunbc.runner_microvm_shakedown
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.decl_ref { decl_ref }
-import std.measure { second, money_amount_micro, MoneyPerSecond }
+import std.measure { second, money_amount_micro, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
 import product.fabric.work {
   Work, WorkContract, WorkStep, ReceiptSatisfiable, OpaqueEffects, MaterializedProgram,
   declared_output_obligations_from_manifests, work_for,
 }
-import product.fabric.demand { Demand }
+import product.fabric.demand { Demand, BudgetAccountId }
+import product.fabric.budget { MoneyAccount }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -98,17 +101,41 @@ fn microvm_shakedown_offer_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmp
 // THE MONEY TERMS ARE THE FCI-1 PROBE'S, because the fleet prices its own cells at nothing and the
 // budget is a wall against a fixture defect rather than a market: a reservation refused on money
 // here would be a broken row masquerading as a market answer (the probe's 50/51 split argument).
+data microvm_shakedown_budget_account: BudgetAccountId = "fleet-ci" as BudgetAccountId
+
+fn microvm_shakedown_maximum_buy_order() -> MoneyAmountMicro {
+  money_amount_micro(count: 1000000)
+}
+
 fn microvm_shakedown_demand(slot: RunnerSlotIdentity) -> Demand<NonEmptyStr> {
   floor_demand(
     id: microvm_shakedown_demand_id(slot: slot),
     work: microvm_shakedown_work().id,
     origin: "gunbc.observation.microvm-shakedown",
     submitted_at: "2026-09-21T00:00:00Z",
-    account: "fleet-ci",
+    account: microvm_shakedown_budget_account,
     reservation_price: money_amount_micro(count: 500000),
-    maximum_buy_order: money_amount_micro(count: 1000000),
+    maximum_buy_order: microvm_shakedown_maximum_buy_order(),
     deadline: none,
   )
+}
+
+// THE ACCOUNT THE BROKER ENCUMBERS IS THE DEMAND'S OWN, appropriated at exactly the demand's maximum
+// buy order: the budget can admit whatever this demand may spend and nothing beyond it. It is a PURE
+// VALUE with no entries, because no ledger for the fleet-ci account is persisted anywhere yet -- the
+// broker's advanced account is reported in its receipt and not stored, which is the same standing the
+// FCI-1 probe's account has. A persisted fleet ledger is not this lane's to model; the offer's quote
+// is zero, so the encumbrance this reservation takes is zero whatever ledger it is taken against.
+fn microvm_shakedown_account() -> MoneyAccount {
+  MoneyAccount {
+    account: microvm_shakedown_budget_account,
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: microvm_shakedown_maximum_buy_order() },
+      entries: [],
+    },
+    leases: [],
+  }
 }
 
 // THE ROUTE IS THE FLEET'S OWN SLOT, CITED BY DECLARATION: the provider is the fabric slot roster

@@ -95,6 +95,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_timeout_stop_sec,
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
   microvm_slot_controller_receipt_dir,
+  microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
@@ -2114,8 +2115,10 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
 // belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
 // service section is that module's list plus one directive, inserted rather than re-authored.
-fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
-  match microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()) {
+// EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
+// over any such unit: the slot controller and the shakedown broker both exec from this locus.
+fn microvm_locus_unit_with_workspace_root(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
+  match file {
     ServiceUnitFile { unit: u, service: s, install: i } =>
       ServiceUnitFile {
         unit: u,
@@ -2124,6 +2127,13 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
       }
     other => other
   }
+}
+
+fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
+  microvm_locus_unit_with_workspace_root(
+    file: microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
+    release_dir: release_dir,
+  )
 }
 
 fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
@@ -2147,6 +2157,18 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       stage_name: microvm_slot_unit_template_name as String,
       mode: install_file_shared_mode,
       dest: microvm_slot_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_slot_reserve_unit_name as String,
+      content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
+        file: microvm_slot_reserve_unit_file(release_dir: microvm_controller_release_dir(revision: revision)),
+        release_dir: microvm_controller_release_dir(revision: revision),
+      )),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_slot_reserve_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_slot_reserve_unit_path() as String,
     )),
   ]
 }

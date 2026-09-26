@@ -87,7 +87,7 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
-  microvm_slot_unit_instance_name,
+  microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
 }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -896,7 +896,13 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
 // `show` loads it without starting it. Anything but `loaded` means the unit file the install wrote
 // is not what the manager parses.
 fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
-  let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))
+  match microvm_unit_load_readback(unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+    ExitSuccess => microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+    refused => refused
+  }
+}
+
+fn microvm_unit_load_readback(unit: NonEmptyStr) -> ProcessExit {
   let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: LoadState))
   if !shown.success {
     exit_failure(reason: join(["microvm_controller_install: LoadState of ", unit as String, " could not be read"], ""))

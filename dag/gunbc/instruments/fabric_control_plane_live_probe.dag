@@ -72,6 +72,7 @@ import gunbc.fabric_control_plane {
   HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
+  permit_standing_wire, money_refusal_wire, cas_unreadable_wire, cas_store_failure_wire, offer_candidacy_wire,
   bind_fabric_cell_candidate, fabric_hold_owner, fabric_money_reservation_ref,
 }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree }
@@ -510,7 +511,7 @@ fn fci1_live_replace_held(root: NonEmptyStr) -> Fci1HeldGenerationMutation {
             CasPreconditionFailed { expected: _, observed: _ } =>
               Fci1HeldGenerationMutationRefused { detail: "the held slot moved between observation and mutation" }
             CasStoreRefused { cause: cause } =>
-              Fci1HeldGenerationMutationRefused { detail: fci1_cas_store_failure_wire(cause: cause) }
+              Fci1HeldGenerationMutationRefused { detail: cas_store_failure_wire(cause: cause) }
           }
       }
     Fci1SlotAbsent { path: _ } => Fci1HeldGenerationMutationRefused { detail: "the slot is absent, so there is no hold to replace" }
@@ -540,18 +541,6 @@ fn fci1_held_generation_mutation_wire(mutation: Fci1HeldGenerationMutation) -> S
 // a permit minted for a different subject than the one being reserved for -- which is exactly the
 // defect this probe had, and a generic string would have hidden it behind the same text as the
 // other three.
-fn fci1_permit_standing_wire(standing: PermitStanding<NonEmptyStr>) -> String {
-  match standing {
-    PermitAuthorizesUse => "authorizes"
-    PermitNamesAnotherOfferThan { permit_names: n } => join(["another-offer|permit-names=", n.key as String], "")
-    PermitNamesAnotherRouteThan => "another-route"
-    PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
-      join(["another-work|permit=", pw.key as String, "|subject=", sw.key as String], "")
-    PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
-      join(["another-demand|permit=", pd.key as String, "|subject=", sd.key as String], "")
-  }
-}
-
 fn fci1_cell_reservation_wire(reservation: CellReservation) -> String {
   match reservation {
     CellReserved { offer: offer, slot_key: slot, generation: generation, account: _ } => join([
@@ -560,76 +549,30 @@ fn fci1_cell_reservation_wire(reservation: CellReservation) -> String {
       "|offer=", offer.key as String,
     ], "")
     PermitNamesAnotherUseForCell { standing: standing } => join([
-      "reservation-permit-names-another-use|", fci1_permit_standing_wire(standing: standing),
+      "reservation-permit-names-another-use|", permit_standing_wire(standing: standing),
     ], "")
     CellSelectionTieUnresolved { digest: digest, considered: considered } => join([
       "reservation-tie-unresolved|digest=", digest as String,
       "|considered=",
-      serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => fci1_offer_candidacy_wire(candidacy: c)))) as String,
+      serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => offer_candidacy_wire(candidacy: c)))) as String,
     ], "")
     NoCellAdmissible { considered: considered, refused: refused } => join([
       "reservation-no-cell-admissible|considered=",
-      serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => fci1_offer_candidacy_wire(candidacy: c)))) as String,
+      serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => offer_candidacy_wire(candidacy: c)))) as String,
       "|refused=", serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(refused, r => capacity_admission_wire(admission: r)))) as String,
     ], "")
     BudgetRefused { slot_key: slot, refusal: refusal } => join([
       "reservation-budget-refused|slot=", slot as String,
-      "|cause=", fci1_money_refusal_wire(refusal: refusal) as String,
+      "|cause=", money_refusal_wire(refusal: refusal) as String,
     ], "")
     ReservationLost { slot_key: slot } => join(["reservation-lost|slot=", slot as String], "")
     StoreUnavailable { slot_key: slot, cause: cause } => join([
       "reservation-store-unavailable|slot=", slot as String,
-      "|cause=", fci1_cas_store_failure_wire(cause: cause) as String,
+      "|cause=", cas_store_failure_wire(cause: cause) as String,
     ], "")
     AttemptRefused { slot_key: slot, detail: detail } => join([
       "reservation-attempt-refused|slot=", slot as String, "|detail=", detail as String,
     ], "")
-  }
-}
-
-fn fci1_money_refusal_wire(refusal: MoneyRefusal) -> NonEmptyStr {
-  match refusal {
-    CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "money-currency-mismatch"
-    LedgerRefused { account: _, refusal: _ } => "money-ledger-refused"
-    StaleLeaseGeneration { reference: _, presented: generation } =>
-      join(["money-stale-generation|presented=", to_string(generation)], "") as NonEmptyStr
-  }
-}
-
-fn fci1_cas_unreadable_wire(cause: CasUnreadableSlot) -> NonEmptyStr {
-  match cause {
-    CasUnreadableMalformed { detail: _ } => "cas-malformed"
-    CasUnreadableContentMissing { referenced: hash } =>
-      join(["cas-content-missing|hash=", serialize_content_hash(hash: hash) as String], "") as NonEmptyStr
-    CasUnreadableReadRefused { detail: _ } => "cas-read-refused"
-    CasUnreadableObservationBoundExceeded { bound: b } =>
-      join(["cas-observation-bound-exceeded|bound=", b as String], "") as NonEmptyStr
-  }
-}
-
-// THE TWO WAYS A STORE CAN FAIL RENDER AS TWO WIRES. This probe rendered the reservation and hold
-// store-failure arms through the UNREADABLE wire while their carriers had already been widened to
-// `CasStoreFailure`, so the module did not resolve at all -- and nothing found it, because no claim
-// and no suite entry runs this instrument. That is the specification-without-execution boundary
-// DESIGN section 5 names, on the author's own diff.
-fn fci1_cas_store_failure_wire(cause: CasStoreFailure) -> NonEmptyStr {
-  match cause {
-    CasSlotObservationRefused { cause: c } => fci1_cas_unreadable_wire(cause: c)
-    CasGenerationPublicationRefused { detail: _ } => "cas-publication-refused"
-    CasGenerationSpaceExhausted { head: _ } => "cas-generation-space-exhausted"
-  }
-}
-
-fn fci1_offer_candidacy_wire(candidacy: OfferCandidacy<NonEmptyStr>) -> NonEmptyStr {
-  match candidacy {
-    OfferPriced { offer: o, cost: _, basis: _, horizon: _ } => join(["priced|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferNotFungible { offer: o, fungibility: _ } => join(["not-fungible|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferUnavailableForGrant { offer: o, needed: _, available: _ } => join(["unavailable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferCannotHoldAnUnboundedGrant { offer: o, available: _ } => join(["unbounded-refused|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferNotPriceable { offer: o, unpriced: _ } => join(["not-priceable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferWrongCurrency { offer: o, mismatch: _ } => join(["wrong-currency|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferUnaffordable { offer: o, affordability: _ } => join(["unaffordable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
-    OfferLiabilityOverBuyOrder { offer: o, liability: _, maximum: _ } => join(["over-buy-order|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
   }
 }
 
@@ -2051,7 +1994,7 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
     ], "")
     HoldEndBudgetRefused { slot_key: slot, refusal: refusal } => join([
       "hold-budget-refused|slot=", slot as String,
-      "|cause=", fci1_money_refusal_wire(refusal: refusal) as String,
+      "|cause=", money_refusal_wire(refusal: refusal) as String,
     ], "")
     HoldEndSlotNotHeld { slot_key: slot, detail: detail } => join([
       "hold-slot-not-held|slot=", slot as String, "|detail=", detail as String,
@@ -2059,7 +2002,7 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
     HoldEndLost { slot_key: slot } => join(["hold-lost|slot=", slot as String], "")
     HoldEndStoreUnavailable { slot_key: slot, cause: cause } => join([
       "hold-store-unavailable|slot=", slot as String,
-      "|cause=", fci1_cas_store_failure_wire(cause: cause) as String,
+      "|cause=", cas_store_failure_wire(cause: cause) as String,
     ], "")
     HoldEndAttemptRefused { slot_key: slot, detail: detail } => join([
       "hold-attempt-refused|slot=", slot as String, "|detail=", detail as String,

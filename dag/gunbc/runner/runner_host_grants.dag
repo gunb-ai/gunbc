@@ -24,7 +24,8 @@ import gunbc.executor_privileged_operation {
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
+import gunbc.runner_microvm_slot_unit { microvm_slot_reserve_unit_name }
 import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_root_path,
@@ -340,6 +341,19 @@ fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOp
   }
 }
 
+// THE SHAKEDOWN BROKER'S ONE GRANT: START ITS FIXED UNIT, ON THE HOST THAT CARRIES THE SHAKEDOWN SLOT
+// AND NOWHERE ELSE. The job user may ask systemd to start gunbc-microvm-slot-reserve.service and do
+// nothing else to it: the unit is root-owned, installed from the root-owned locus, and derives what it
+// reserves inside the root process (gunbc.runner_microvm_slot_reserve), so this line authorizes a
+// request and carries no payload. It is one exact argv rendered from SystemdStartUnit, never a pattern.
+fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if (deploy.host_label as String) == (srv1_microvm_shakedown_slot().host as String) {
+    [SystemdStartUnit { unit: microvm_slot_reserve_unit_name }]
+  } else {
+    []
+  }
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
@@ -348,6 +362,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + runner_slot_activation_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)
+    + microvm_slot_reserve_start_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
     + microvm_network_granted_operations()
 }

@@ -1,0 +1,230 @@
+module test.claim.runner.runner_microvm_slot_reserve_witness_test
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.measure { second, MoneyOnce, MoneyPerSecond, money_amount_micro }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.durable_compare_and_set { cas_generation_first }
+import std.durable_exclusive_hold {
+  DurableHoldHeld, HoldSlotAbsent, HoldSlotHeld, HoldAcquireEligible, HoldAcquireRefused,
+  HoldAcquireOccupied, durable_hold_acquire_assess, durable_hold_owner_equal,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, ExecStart, ServiceUser, NotInstallable, serialize_systemd_unit_file,
+}
+import product.fabric.identity { FabricIdentity, DemandKey }
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
+  AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired, OperatingCostMeasured,
+  NoFeasibleAlternativeUse,
+}
+import product.fabric.supply { SupplierOffer }
+import extdeps.currency.currency { Usd }
+import test.claim.fabric.provider_use_fixture { fixture_route, fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.durable_exclusive_hold_file_store { HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload }
+import gunbc.fabric_control_plane {
+  CellReserved, ReservationLost, fabric_hold_owner, fabric_money_reservation_ref,
+}
+import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_sudoers_command }
+import gunbc.runner_host_deploy { RunnerHostDeploy, gunbc_ci_github_app }
+import gunbc.runner_host_grants { microvm_slot_reserve_start_operations }
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner_microvm_shakedown { microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account }
+import gunbc.runner_microvm_slot_unit {
+  microvm_slot_reserve_unit_file, microvm_slot_reserve_unit_name, microvm_slot_reserve_entry_function,
+  microvm_controller_owner,
+}
+import gunbc.runner_microvm_slot_start {
+  SlotStartCompleted, SlotStartRefused, UnitPropertyRead, ControllerReceiptRead, ControllerReceiptUnreadable,
+}
+import gunbc.runner_microvm_slot_reserve {
+  ShakedownRosterBound, ShakedownOfferIsNotTheCell, bind_shakedown_roster,
+  microvm_slot_reserve_admitted, cell_reservation_text, shakedown_broker_subject_text,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn slot() -> RunnerSlotIdentity {
+  srv1_microvm_shakedown_slot()
+}
+
+fn shakedown_owner() -> NonEmptyStr {
+  fabric_hold_owner(reservation: fabric_money_reservation_ref(
+    demand: microvm_shakedown_demand(slot: slot()).id,
+    offer: microvm_shakedown_offer(slot: slot()).id,
+  )) as NonEmptyStr
+}
+
+// THE HOLD THE BROKER WRITES IS OWNED BY THE SHAKEDOWN DEMAND, AND BY NOTHING ELSE. The slot payload
+// the broker commits (the shared hold codec over the reservation reference) decodes to a hold whose
+// owner is the one observe_required_build_cell_wet compares against for this demand and offer. The
+// RED is a hold owned by another demand on the same offer -- the FCI-1 probe's demand key -- which
+// the controller would report as ReservationPayloadWorkMismatch: if the broker keyed the reservation
+// on anything but the shakedown demand, this is the claim that goes false.
+test fn the_committed_hold_is_owned_by_the_shakedown_demand() -> Bool {
+  let demand = microvm_shakedown_demand(slot: slot())
+  let offer = microvm_shakedown_offer(slot: slot())
+  let written = hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)) })
+  let other = FabricIdentity { principal: demand.id.principal, key: "demand-floor-1" as DemandKey }
+  match decode_hold_slot_payload(payload: written) {
+    HoldPayloadUndecodable { detail: _ } => false
+    HoldPayloadDecoded { state: DurableHoldHeld { owner: held } } =>
+      durable_hold_owner_equal(left: held, right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)))
+        && !durable_hold_owner_equal(left: held, right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: other, offer: offer.id)))
+        && (demand.id.key as String).contains(pattern: "srv1-13")
+    HoldPayloadDecoded { state: _ } => false
+  }
+}
+
+// A SECOND RESERVE OF A HELD CELL REFUSES, INCLUDING A RESERVE BY THE SAME SHAKEDOWN DEMAND. The
+// broker's CAS step (gunbc.fabric_control_plane reserve_selected_cell, over file_hold_acquire) admits
+// only an absent or free slot; a slot held by the shakedown's own owner is Occupied -- the same spelling
+// does not prove the earlier holder is gone -- which the broker reports as ReservationLost. The control
+// is the absent slot, which is eligible. The live counterpart is the srv1 run's second dispatch.
+test fn a_second_reserve_of_the_held_shakedown_cell_refuses() -> Bool {
+  let held = durable_hold_acquire_assess(observed: HoldSlotHeld {
+    generation: cas_generation_first(),
+    owner: fabric_hold_owner(reservation: fabric_money_reservation_ref(
+      demand: microvm_shakedown_demand(slot: slot()).id,
+      offer: microvm_shakedown_offer(slot: slot()).id,
+    )),
+  })
+  let absent = durable_hold_acquire_assess(observed: HoldSlotAbsent)
+  let held_refuses = match held {
+    HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => true
+    _ => false
+  }
+  let absent_admits = match absent {
+    HoldAcquireEligible { expected: _ } => true
+    _ => false
+  }
+  held_refuses && absent_admits
+}
+
+// THE CANDIDATE IS SUPPLIED, NOT PRODUCED (DESIGN 3, a witness discriminates at one interface): its
+// permit comes from the shared provider-use fixture, because the production permit's producer -- the
+// fleet CI cell's first-party posture -- is not this claim's subject.
+fn candidate_executed_by(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> {
+  let base = microvm_shakedown_offer(slot: slot())
+  let offer = SupplierOffer {
+    id: base.id, executor: executor, route: fixture_route(), shape: base.shape,
+    capabilities: base.capabilities, trust_domain: base.trust_domain, isolation: base.isolation,
+    quantity_bound: base.quantity_bound, ready_at: base.ready_at, quote: base.quote,
+    billing_quantum: base.billing_quantum, evidence: base.evidence,
+  }
+  match bind_candidate(
+    offer: offer,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+    dispatch: DispatchInputs {
+      offer: offer.id,
+      availability: AvailableIndefinitely { delay: second(count: 0), receipt: "gunbc.observation.availability-1" },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: "gunbc.observation.start-1" },
+      transition: NoTransitionRequired,
+      operating: OperatingCostMeasured { rate: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }, receipt: "gunbc.observation.power-1" },
+      opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" },
+    },
+  ) {
+    CandidateBound { candidate: c } => [c]
+    _ => []
+  }
+}
+
+// THE ROSTER BINDING REFUSES AN OFFER WHOSE EXECUTOR IS NOT THE CELL rather than dropping it: a dropped
+// offer would reach the broker as an empty roster and read as "nothing offered", a different remedy.
+// The shakedown cell's own executor binds one candidate; the same offer executed by a neighbouring
+// slot refuses, naming both. The fixture must yield a candidate in both cases or the claim is false.
+test fn the_roster_binding_refuses_an_offer_that_is_not_the_cell() -> Bool {
+  let own = candidate_executed_by(executor: "srv1-13")
+  let neighbour = candidate_executed_by(executor: "srv1-12")
+  let bound = match bind_shakedown_roster(slot: slot(), admitted: own) {
+    ShakedownRosterBound { roster: r } => r.length() == 1
+    ShakedownOfferIsNotTheCell { slot_key: _, executor: _ } => false
+  }
+  let refused = match bind_shakedown_roster(slot: slot(), admitted: own + neighbour) {
+    ShakedownRosterBound { roster: _ } => false
+    ShakedownOfferIsNotTheCell { slot_key: k, executor: e } => (k as String) == "srv1-13" && (e as String) == "srv1-12"
+  }
+  own.length() == 1 && neighbour.length() == 1 && bound && refused
+}
+
+// THE RECEIPT NAMES THE HOLDER. The subject line carries the demand identity and the hold owner the
+// controller will compare against, and a committed reservation renders on the line the reserve step
+// admits on. A lost reservation renders on another line, which the step refuses.
+test fn the_broker_receipt_names_the_demand_and_the_holder() -> Bool {
+  let subject = shakedown_broker_subject_text(slot: slot())
+  subject.contains(pattern: join(["demand=", microvm_shakedown_demand(slot: slot()).id.principal as String, "/", microvm_shakedown_demand(slot: slot()).id.key as String], ""))
+    && subject.contains(pattern: join(["hold-owner=", shakedown_owner() as String], ""))
+    && cell_reservation_text(r: CellReserved { offer: microvm_shakedown_offer(slot: slot()).id, slot_key: "srv1-13", generation: 1, account: microvm_shakedown_account() }).starts_with("reservation=committed ")
+    && cell_reservation_text(r: ReservationLost { slot_key: "srv1-13" }).starts_with("reservation=lost ")
+}
+
+data u: NonEmptyStr = "gunbc-microvm-slot-reserve.service" as NonEmptyStr
+data inv: NonEmptyStr = "0123abcd" as NonEmptyStr
+
+fn completed_with(text: String) -> Bool {
+  microvm_slot_reserve_admitted(run: SlotStartCompleted {
+    unit: u, invocation_id: inv, exec_main_status: UnitPropertyRead { value: "0" },
+    controller_receipt: ControllerReceiptRead { path: "/p", text: text },
+  })
+}
+
+// THE RESERVE STEP SUCCEEDS ONLY ON A COMMITTED RESERVATION READ FROM THIS START'S RECEIPT. Unlike the
+// slot start, a receipt that was read but records a refusal fails the step: the next step is
+// meaningful only if the cell is held. REDS: a lost reservation, a store that could not answer, an
+// unreadable receipt, a refused start.
+test fn the_reserve_step_admits_only_a_committed_reservation() -> Bool {
+  completed_with(text: "broker slot=srv1-13 demand=gunbc/x\nreservation=committed slot=srv1-13 generation=1 offer=o")
+    && !completed_with(text: "broker slot=srv1-13 demand=gunbc/x\nreservation=lost slot=srv1-13 -- held")
+    && !completed_with(text: "broker slot=srv1-13 demand=gunbc/x\nreservation=store-unavailable slot=srv1-13 cause=cas-read-refused")
+    && !microvm_slot_reserve_admitted(run: SlotStartCompleted {
+      unit: u, invocation_id: inv, exec_main_status: UnitPropertyRead { value: "0" },
+      controller_receipt: ControllerReceiptUnreadable { path: "/p", detail: "EACCES" },
+    })
+    && !microvm_slot_reserve_admitted(run: SlotStartRefused { unit: u, detail: "x" })
+}
+
+// THE BROKER UNIT TAKES NOTHING FROM ITS STARTER: it runs as the locus owner (root), execs the broker
+// entry, carries no instance specifier a starter could aim at another cell, and is never enabled.
+test fn the_broker_unit_is_fixed_root_and_not_installable() -> Bool {
+  let file = microvm_slot_reserve_unit_file(release_dir: "/opt/gunbc/microvm-controller/releases/abc")
+  let text = serialize_systemd_unit_file(file: file)
+  let shaped = match file {
+    ServiceUnitFile { unit: _, service: directives, install: NotInstallable } =>
+      fold(directives, init: false, f: (acc, d) => acc || match d {
+        ServiceUser { name: n } => (n as String) == (microvm_controller_owner as String)
+        _ => false
+      })
+        && fold(directives, init: false, f: (acc, d) => acc || match d {
+          ExecStart { command: c } => (c as String).contains(pattern: join(["--function ", microvm_slot_reserve_entry_function], ""))
+          _ => false
+        })
+    _ => false
+  }
+  shaped && !text.contains(pattern: "%i") && !(microvm_slot_reserve_unit_name as String).contains(pattern: "@")
+}
+
+fn deploy_on(host: NonEmptyStr) -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: host,
+    ssh_target: "x@invalid.example",
+    runner_user: "r",
+    unit_user: "r",
+    job_user: "ghrunner",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+// THE GRANT IS ONE EXACT START, ON THE SHAKEDOWN SLOT'S HOST ONLY. The rendered sudoers command is the
+// full argv for this one unit; another host (srv3) derives no such line.
+test fn the_broker_start_grant_is_exact_and_on_the_shakedown_host_only() -> Bool {
+  let on_srv1 = microvm_slot_reserve_start_operations(deploy: deploy_on(host: srv1_microvm_shakedown_slot().host as NonEmptyStr))
+  let on_srv3 = microvm_slot_reserve_start_operations(deploy: deploy_on(host: "srv3"))
+  on_srv1.length() == 1
+    && on_srv3.length() == 0
+    && (executor_privileged_operation_sudoers_command(op: SystemdStartUnit { unit: microvm_slot_reserve_unit_name }) as String)
+      == "/usr/bin/systemctl start gunbc-microvm-slot-reserve.service"
+}

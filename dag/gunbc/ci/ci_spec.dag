@@ -1,5 +1,5 @@
 module gunbc.ci_spec
-import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path }
+import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -960,6 +960,11 @@ data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget
   function: "microvm_slot_start_ci_wet",
 }
 
+data gunbc_ci_microvm_slot_reserve_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_slot_reserve.dag",
+  function: "microvm_slot_reserve_ci_wet",
+}
+
 data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
   function: "runner_microvm_boot_probe_wet",
@@ -1226,6 +1231,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
+    gunbc_ci_microvm_slot_reserve_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
@@ -2509,6 +2515,16 @@ fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
     function: gunbc_ci_host_reset_dispatch_admission_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_microvm_slot_reserve_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_slot_reserve_target.entry,
+    function: gunbc_ci_microvm_slot_reserve_target.function,
+    claim_run: false,
+    receipt_rel: microvm_slot_reserve_receipt_path
   )
 }
 

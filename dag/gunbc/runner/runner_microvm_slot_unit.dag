@@ -196,19 +196,27 @@ data microvm_slot_source_roots: List<String> = ["dag", "src/v2"]
 // renamed flag on the modeled surface renames it here. Source roots and the entry are relative to
 // WorkingDirectory, which is the release directory, so the corpus the controller loads is the one
 // the receipt beside it digests.
-fn microvm_slot_unit_execstart(release_dir: String) -> NonEmptyStr {
+fn microvm_locus_execstart(release_dir: String, entry: String, function: String) -> NonEmptyStr {
   join(
     concat(
       [microvm_controller_gunbc_binary(release_dir: release_dir)],
       invocation_words_bare(words: gunbc_run_invocation_words(
         source_roots: microvm_slot_source_roots,
-        entry: microvm_slot_controller_entry_file,
-        function: microvm_slot_controller_entry_function,
+        entry: entry,
+        function: function,
         claim_run: false,
       )),
     ),
     " ",
   ) as NonEmptyStr
+}
+
+fn microvm_slot_unit_execstart(release_dir: String) -> NonEmptyStr {
+  microvm_locus_execstart(
+    release_dir: release_dir,
+    entry: microvm_slot_controller_entry_file,
+    function: microvm_slot_controller_entry_function,
+  )
 }
 
 // THE LIFECYCLE INTENT IS THE FLEET'S DECLARED ONE, READ NOT RESTATED: ExitType=main with
@@ -296,5 +304,79 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         _ => false
       })
     _ => false
+  }
+}
+
+// THE SHAKEDOWN CELL'S BROKER UNIT: THE ROOT PROCESS THAT RESERVES THE CELL THE CONTROLLER LATER
+// OBSERVES. It is a SEPARATE unit from the slot controller because broker and tenant are distinct
+// parties on the fabric route (DESIGN 3b): the controller observes a reservation somebody else made
+// and never mints its own. It runs as root for the reason the allocation store is root-only
+// (gunbc.fabric_allocation_store_substrate): a reservation the job user could write is one the root
+// controller would believe, which is the root-equivalence class ruled out on 2026-09-21. It runs from
+// the same root-owned release locus as the controller, so the job chooses no byte this process
+// evaluates; the job may only ask systemd to start this one fixed unit.
+//
+// IT IS NOT A TEMPLATE, BECAUSE NOTHING ABOUT WHAT IT RESERVES MAY ARRIVE FROM OUTSIDE. The slot,
+// the demand, the offer and the slot key are all derived inside the root process from the shakedown
+// slot row (gunbc.runner_microvm_slot_reserve), so there is no instance specifier a starter could
+// point at another cell. It is never enabled (NotInstallable): a reservation is a decision made when
+// someone asks for it, not at boot.
+//
+// Type=exec, NOT oneshot: under oneshot `systemctl start` returns the process's failure, so a broker
+// that correctly REFUSED (a held cell, a store that could not answer) would surface to the starter as
+// a failed start with no receipt read, collapsing the market's answer into a transport error. Under
+// exec the start returns once the process runs, and the starter waits for it and reads the receipt,
+// exactly as it does for the slot controller.
+data microvm_slot_reserve_unit_name: NonEmptyStr = "gunbc-microvm-slot-reserve.service" as NonEmptyStr
+
+fn microvm_slot_reserve_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", microvm_slot_reserve_unit_name as String], "") as NonEmptyStr
+}
+
+data microvm_slot_reserve_entry_file: String = "dag/gunbc/runner/runner_microvm_slot_reserve.dag"
+
+data microvm_slot_reserve_entry_function: String = "microvm_slot_reserve_main"
+
+// THE BROKER'S RECEIPT SITS BESIDE THE CONTROLLER'S, in the root-owned directory the install creates,
+// under a prefix of its own and keyed on the InvocationID systemd minted for that start, so a starter
+// reads the receipt of ITS start and never an earlier one.
+fn microvm_slot_reserve_receipt_prefix() -> String {
+  join([microvm_slot_controller_receipt_dir, "/reserve-"], "")
+}
+
+// ONE SPELLING OF "THE RECEIPT OF THIS INCARNATION" for every unit that runs from the locus: the
+// unit's receipt prefix followed by the InvocationID systemd minted for that start.
+fn microvm_unit_receipt_path(prefix: String, invocation_id: NonEmptyStr) -> String {
+  join([prefix, invocation_id as String, ".txt"], "")
+}
+
+data microvm_slot_reserve_receipt_path: String = "target/microvm-slot-reserve-receipt.txt"
+
+// THE STARTER'S WAIT BOUND IS A DECLARED POLICY BUDGET, NOT A MEASUREMENT: the broker resolves its
+// closure under the seed and performs one CAS read and one write, and 20 minutes is several times the
+// controller's measured corpus resolve on srv1. A broker still running at the bound fails the step
+// loudly with the invocation named; it is not killed by the starter.
+data microvm_slot_reserve_wait_bound: Second = second(count: 1200)
+
+fn microvm_slot_reserve_unit_file(release_dir: String) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc microVM shakedown cell broker (reserves the cell the slot controller observes)" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: ExecMode },
+      ServiceUser { name: microvm_controller_owner },
+      ServiceSlice { name: microvm_controller_slice_unit_name },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
+      ExecStart {
+        command: microvm_locus_execstart(
+          release_dir: release_dir,
+          entry: microvm_slot_reserve_entry_file,
+          function: microvm_slot_reserve_entry_function,
+        ),
+      },
+      Restart { policy: "no" as NonEmptyStr },
+    ],
+    install: NotInstallable,
   }
 }
