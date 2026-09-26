@@ -18,8 +18,9 @@ import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.git {
   git_apply_check_command, git_apply_reverse_check_command, git_apply_command, git_diff_binary_head_command,
-  git_status_porcelain_command,
+  git_status_porcelain_command, git_reset_hard_command,
 }
+import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write {
@@ -46,12 +47,17 @@ import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 // std.realization_reconcile consumes it. Selection of which patches stays in the candidate model;
 // this fold never chooses P.
 
+// reset_to_revision_first: the tree carries exactly the tree THIS fold last converged (its diff
+// digest equals the recorded one) and that tree is not the desired P -- a patch-set change. Only
+// then may the fold reset tracked changes to the pin before applying; a dirty tree it cannot
+// identify as its own still refuses.
 type V41SourcePatchPlan sole_constructor {
   patches: List<V41EnginePatch>
+  reset_to_revision_first: Bool
 }
 
 fn v41_source_patch_plan(patches: List<V41EnginePatch>) -> V41SourcePatchPlan {
-  V41SourcePatchPlan { patches: patches }
+  V41SourcePatchPlan { patches: patches, reset_to_revision_first: false }
 }
 
 type V41ObservedSourceIdentity sole_constructor {
@@ -74,15 +80,27 @@ fn v41_patch_member_read(path: NonEmptyStr, observed_sha256: Sha256Digest, rever
   V41PatchMemberRead { path: path, observed_sha256: observed_sha256, reverse_applicable: reverse_applicable, forward_applicable: forward_applicable }
 }
 
+// recorded_converged_diff_sha256: the worktree_diff_sha256 this fold recorded (outside the source
+// tree, under the build root it owns) at its last successful converge; Absent when no record
+// exists. It is the ownership evidence for a dirty tree: equal to the observed diff digest means
+// every tracked change on the tree is one this fold made.
 type V41SourceTreeRead sole_constructor {
   head: NonEmptyStr
   porcelain: String
   worktree_diff_sha256: Sha256Digest
   members: List<V41PatchMemberRead>
+  recorded_converged_diff_sha256: Sha256Digest?
 }
 
-fn v41_source_tree_read(head: NonEmptyStr, porcelain: String, worktree_diff_sha256: Sha256Digest, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
-  V41SourceTreeRead { head: head, porcelain: porcelain, worktree_diff_sha256: worktree_diff_sha256, members: members }
+fn v41_source_tree_read(head: NonEmptyStr, porcelain: String, worktree_diff_sha256: Sha256Digest, members: List<V41PatchMemberRead>, recorded_converged_diff_sha256: Sha256Digest?) -> V41SourceTreeRead {
+  V41SourceTreeRead { head: head, porcelain: porcelain, worktree_diff_sha256: worktree_diff_sha256, members: members, recorded_converged_diff_sha256: recorded_converged_diff_sha256 }
+}
+
+fn v41_tree_is_last_converged(read: V41SourceTreeRead) -> Bool {
+  match read.recorded_converged_diff_sha256 {
+    Absent => false
+    Present { value: rec } => v41_sha256_hex_eq(a: rec, b: read.worktree_diff_sha256)
+  }
 }
 
 fn v41_sha256_hex_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
@@ -144,6 +162,8 @@ fn v41_source_patch_decision(
         } else if length(desired_patches) == 0 {
           if vllm_source_is_clean(stdout: read.porcelain) {
             Noop
+          } else if v41_tree_is_last_converged(read: read) {
+            Apply { plan: V41SourcePatchPlan { patches: desired_patches, reset_to_revision_first: true } }
           } else {
             Refuse { reason: "vanilla desired state requires a clean tree at the revision; a dirty tree is not an unpatched checkout" as NonEmptyStr }
           }
@@ -164,11 +184,13 @@ fn v41_source_patch_decision(
               Refuse { reason: "partial application: every patch reverses but at least one still applies forward, so the tree is not a completed P and not a clean R" as NonEmptyStr }
             }
           } else if length(forward_ok) == n && vllm_source_is_clean(stdout: read.porcelain) {
-            Apply { plan: V41SourcePatchPlan { patches: desired_patches } }
+            Apply { plan: V41SourcePatchPlan { patches: desired_patches, reset_to_revision_first: false } }
+          } else if v41_tree_is_last_converged(read: read) {
+            Apply { plan: V41SourcePatchPlan { patches: desired_patches, reset_to_revision_first: true } }
           } else if length(reverse_ok) != 0 || length(forward_ok) != 0 {
-            Refuse { reason: "partial application: some patches in P are present and some are not" as NonEmptyStr }
+            Refuse { reason: "partial application: some patches in P are present and some are not, and the tree is not the one this converge last recorded, so it is not ours to reset" as NonEmptyStr }
           } else {
-            Refuse { reason: "patches are neither applicable to a clean tree nor already present in reverse order" as NonEmptyStr }
+            Refuse { reason: "patches are neither applicable to a clean tree nor already present in reverse order, and the tree is not the one this converge last recorded, so it is not ours to reset" as NonEmptyStr }
           }
         }
       }
@@ -314,6 +336,57 @@ fn v41_observe_members(target: SshTarget, context: FleetSshExecutionContext, pat
   }
 }
 
+fn v41_converge_record_path() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/declared-patches/converged-tree.sha256"], "") as NonEmptyStr
+}
+
+type V41ConvergeRecordRead
+  = V41ConvergeRecordObserved { recorded: Sha256Digest? }
+  | V41ConvergeRecordUnreadable
+
+// cat(1) exits 1 on a missing file: that is the no-record observation. Any other failure, or a
+// record whose bytes are not a sha256 hex, is unreadable -- never read as "no record".
+fn v41_read_converge_record(target: SshTarget, context: FleetSshExecutionContext) -> V41ConvergeRecordRead
+{
+  match vllm_image_leg_unchecked(target: target, context: context, step: "converge-record-read" as NonEmptyStr, command: cat_command(path: v41_converge_record_path() as String)) {
+    ImageUncheckedFailed { step: _, cause: _ } => V41ConvergeRecordUnreadable
+    ImageUncheckedRan { exit_code: code, stdout: out, stderr: _ } =>
+      if code == 1 {
+        V41ConvergeRecordObserved { recorded: none }
+      } else if code != 0 {
+        V41ConvergeRecordUnreadable
+      } else {
+        match sha256_hex_digest(hex: trim(s: out)) {
+          Absent => V41ConvergeRecordUnreadable
+          Present { value: d } => V41ConvergeRecordObserved { recorded: Present { value: d } }
+        }
+      }
+  }
+}
+
+fn v41_write_converge_record(target: SshTarget, context: FleetSshExecutionContext, observed: V41ObservedSourceIdentity) -> String?
+{
+  let admission = typed_remote_file_write_seal(
+    path: v41_converge_record_path() as FilePath,
+    content: join([observed.worktree_diff_sha256.hex as String, "\n"], ""),
+    allowed_scope: FileTreeScope { root_path: vllm_build_root() },
+  )
+  match admission {
+    TypedRemoteFileWriteAdmissionRefused { cause: why } => Present { value: why as String }
+    TypedRemoteFileWriteAdmitted { write: _ } =>
+      match converge_typed_remote_file(
+        target: target,
+        context: context,
+        admission: admission,
+        mode: RemoteFileModeOwnerReadWrite,
+        privilege: RemoteFileAsSessionPrincipal,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: st, reason: why } => Present { value: join(["recording converged tree failed at ", st, ": ", why], "") }
+        TypedRemoteFileConverged { converged: _ } => none
+      }
+  }
+}
+
 fn v41_observe_tree(target: SshTarget, context: FleetSshExecutionContext, desired_patches: List<V41EnginePatch>) -> V41SourceTreeRead?
 {
   match vllm_source_head(target: target, context: context) {
@@ -330,12 +403,17 @@ fn v41_observe_tree(target: SshTarget, context: FleetSshExecutionContext, desire
                 Present { value: diff_sha } =>
                   match v41_observe_members(target: target, context: context, patches: desired_patches) {
                     Absent => none
-                    Present { value: members } => Present { value: V41SourceTreeRead {
-                      head: head as NonEmptyStr,
-                      porcelain: porcelain,
-                      worktree_diff_sha256: diff_sha,
-                      members: members,
-                    } }
+                    Present { value: members } =>
+                      match v41_read_converge_record(target: target, context: context) {
+                        V41ConvergeRecordUnreadable => none
+                        V41ConvergeRecordObserved { recorded: rec } => Present { value: V41SourceTreeRead {
+                          head: head as NonEmptyStr,
+                          porcelain: porcelain,
+                          worktree_diff_sha256: diff_sha,
+                          members: members,
+                          recorded_converged_diff_sha256: rec,
+                        } }
+                      }
                   }
               }
           }
@@ -400,35 +478,115 @@ fn converge_vllm_source_with_patches(
         ImageLegRan { stdout: _ } =>
           match v41_observe_tree(target: target, context: context, desired_patches: patches) {
             Absent => V41PatchedSourceRefused { step: "patch-observe" as NonEmptyStr, cause: "the tree or declared patch files could not be read back" }
-            Present { value: before } => {
-              let decision = v41_source_patch_decision(desired_revision: r.source, desired_patches: patches, read: before)
-              match decision {
-                Refuse { reason: why } => V41PatchedSourceRefused { step: "patch-decision" as NonEmptyStr, cause: why as String }
-                Noop =>
-                  match classify_reconciled(r: v41_source_patch_reconcile(
-                    decision: decision, application: NotApplied, desired_revision: r.source, desired_patches: patches, after: before,
-                  )) {
-                    EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
-                    EffectConverged { converged: c } => V41PatchedSourceConverged { patches_already_on_tree: true, observed: c.evidence }
-                  }
-                Apply { plan: plan } =>
-                  match v41_apply_plan(target: target, context: context, plan: plan) {
-                    Present { value: why } => V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: why }
-                    Absent =>
-                      match v41_observe_tree(target: target, context: context, desired_patches: patches) {
-                        Absent => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: "apply reported success and the tree could not be read back" }
-                        Present { value: after } =>
-                          match classify_reconciled(r: v41_source_patch_reconcile(
-                            decision: decision, application: Applied, desired_revision: r.source, desired_patches: patches, after: after,
-                          )) {
-                            EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
-                            EffectConverged { converged: c } => V41PatchedSourceConverged { patches_already_on_tree: false, observed: c.evidence }
-                          }
-                      }
-                  }
-              }
-            }
+            Present { value: before } => v41_converge_from_read(target: target, context: context, r: r, patches: patches, before: before)
           }
+      }
+  }
+}
+
+fn v41_record_converged(target: SshTarget, context: FleetSshExecutionContext, already: Bool, observed: V41ObservedSourceIdentity) -> V41PatchedSourceConverge
+{
+  match v41_write_converge_record(target: target, context: context, observed: observed) {
+    Present { value: why } => V41PatchedSourceRefused { step: "converge-record-write" as NonEmptyStr, cause: why }
+    Absent => V41PatchedSourceConverged { patches_already_on_tree: already, observed: observed }
+  }
+}
+
+// ONE DECISION OVER ONE READ. A reset plan resets tracked changes to the pin, re-observes, and
+// decides again over the fresh read through v41_converge_after_reset, which admits no second
+// reset, so a tree that still is not the desired P after one reset refuses rather than looping.
+fn v41_noop_read_back(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  patches: List<V41EnginePatch>,
+  before: V41SourceTreeRead,
+  already: Bool,
+) -> V41PatchedSourceConverge
+{
+  match classify_reconciled(r: v41_source_patch_reconcile(
+    decision: Noop, application: NotApplied, desired_revision: r.source, desired_patches: patches, after: before,
+  )) {
+    EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
+    EffectConverged { converged: c } => v41_record_converged(target: target, context: context, already: already, observed: c.evidence)
+  }
+}
+
+fn v41_apply_and_read_back(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  patches: List<V41EnginePatch>,
+  decision: UpsertDecision<V41SourcePatchPlan>,
+  plan: V41SourcePatchPlan,
+) -> V41PatchedSourceConverge
+{
+  match v41_apply_plan(target: target, context: context, plan: plan) {
+    Present { value: why } => V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: why }
+    Absent =>
+      match v41_observe_tree(target: target, context: context, desired_patches: patches) {
+        Absent => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: "apply reported success and the tree could not be read back" }
+        Present { value: after } =>
+          match classify_reconciled(r: v41_source_patch_reconcile(
+            decision: decision, application: Applied, desired_revision: r.source, desired_patches: patches, after: after,
+          )) {
+            EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
+            EffectConverged { converged: c } => v41_record_converged(target: target, context: context, already: false, observed: c.evidence)
+          }
+      }
+  }
+}
+
+fn v41_converge_after_reset(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  patches: List<V41EnginePatch>,
+  before: V41SourceTreeRead,
+) -> V41PatchedSourceConverge
+{
+  let decision = v41_source_patch_decision(desired_revision: r.source, desired_patches: patches, read: before)
+  match decision {
+    Refuse { reason: why } => V41PatchedSourceRefused { step: "patch-decision" as NonEmptyStr, cause: why as String }
+    Noop => v41_noop_read_back(target: target, context: context, r: r, patches: patches, before: before, already: false)
+    Apply { plan: plan } =>
+      if plan.reset_to_revision_first {
+        V41PatchedSourceRefused { step: "patch-reset" as NonEmptyStr, cause: "the tree still asks for a reset after one reset to the pin" }
+      } else {
+        v41_apply_and_read_back(target: target, context: context, r: r, patches: patches, decision: decision, plan: plan)
+      }
+  }
+}
+
+fn v41_converge_from_read(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  patches: List<V41EnginePatch>,
+  before: V41SourceTreeRead,
+) -> V41PatchedSourceConverge
+{
+  let decision = v41_source_patch_decision(desired_revision: r.source, desired_patches: patches, read: before)
+  match decision {
+    Refuse { reason: why } => V41PatchedSourceRefused { step: "patch-decision" as NonEmptyStr, cause: why as String }
+    Noop => v41_noop_read_back(target: target, context: context, r: r, patches: patches, before: before, already: true)
+    Apply { plan: plan } =>
+      if plan.reset_to_revision_first {
+        match vllm_image_leg(
+            target: target,
+            context: context,
+            step: "patch-reset" as NonEmptyStr,
+            command: git_reset_hard_command(repository_dir: vllm_source_dir() as String, revision: r.source.full_revision as String),
+          ) {
+            ImageLegFailed { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
+            ImageLegRan { stdout: _ } =>
+              match v41_observe_tree(target: target, context: context, desired_patches: patches) {
+                Absent => V41PatchedSourceRefused { step: "patch-reset-readback" as NonEmptyStr, cause: "reset reported success and the tree could not be read back" }
+                Present { value: fresh } => v41_converge_after_reset(target: target, context: context, r: r, patches: patches, before: fresh)
+              }
+          }
+      } else {
+        v41_apply_and_read_back(target: target, context: context, r: r, patches: patches, decision: decision, plan: plan)
       }
   }
 }

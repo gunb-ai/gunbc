@@ -8,7 +8,7 @@ import std.realization_reconcile { Applied, NotApplied, classify_reconciled, Eff
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision }
 import gunbc.spark.v41_runtime_candidate { v41_engine_patch, V41EnginePatch, v41_storage_backed_patch_population, V41PatchesObserved, V41PatchesUnestablished, V41PatchesAbsentByObservation }
-import extdeps.git { git_apply_args }
+import extdeps.git { git_apply_args, git_reset_hard_args }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command, sha256sum_argv }
 import extdeps.exec.command { argv_words }
 import gunbc.spark.v41_source_patch_converge {
@@ -37,7 +37,101 @@ fn w_member(path: String, c: String, reverse_applicable: Bool, forward_applicabl
 }
 
 fn w_read(head: String, porcelain: String, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
-  v41_source_tree_read(head: head as NonEmptyStr, porcelain: porcelain, worktree_diff_sha256: w_sha(c: "d"), members: members)
+  v41_source_tree_read(head: head as NonEmptyStr, porcelain: porcelain, worktree_diff_sha256: w_sha(c: "d"), members: members, recorded_converged_diff_sha256: none)
+}
+
+fn w_read_recorded(porcelain: String, diff: String, recorded: String, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
+  v41_source_tree_read(
+    head: vllm_d2d649e6_revision.full_revision as NonEmptyStr,
+    porcelain: porcelain,
+    worktree_diff_sha256: w_sha(c: diff),
+    members: members,
+    recorded_converged_diff_sha256: Present { value: w_sha(c: recorded) },
+  )
+}
+
+// Patch set B = [b1, b2]; the tree carries set A, which this converge recorded (diff "a" == record
+// "a"). Neither B member applies forward (a new module already exists) nor reverses.
+fn w_set_b() -> List<V41EnginePatch> {
+  concat(w_patch(path: "b1.patch", c: "1"), w_patch(path: "b2.patch", c: "2"))
+}
+
+test fn red1_patch_set_b_onto_a_tree_this_converge_recorded_under_a_resets_then_applies_and_reads_back_b() -> Bool {
+  let on_a = w_read_recorded(
+    porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py\nM  vllm/models/deepseek_v4_1/nvidia/engram.py",
+    diff: "a",
+    recorded: "a",
+    members: [w_member(path: "b1.patch", c: "1", reverse_applicable: false, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: false, forward_applicable: false)],
+  )
+  let after_reset = w_read_recorded(
+    porcelain: "",
+    diff: "e",
+    recorded: "a",
+    members: [w_member(path: "b1.patch", c: "1", reverse_applicable: false, forward_applicable: true), w_member(path: "b2.patch", c: "2", reverse_applicable: false, forward_applicable: true)],
+  )
+  let on_b = w_read_recorded(
+    porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py",
+    diff: "b",
+    recorded: "a",
+    members: [w_member(path: "b1.patch", c: "1", reverse_applicable: true, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: true, forward_applicable: false)],
+  )
+  match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: on_a) {
+    Apply { plan: p } => p.reset_to_revision_first && length(p.patches) == 2
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+    && match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: after_reset) {
+      Apply { plan: p } => !p.reset_to_revision_first
+      Noop => false
+      Refuse { reason: _ } => false
+    }
+    && match classify_reconciled(r: v41_source_patch_reconcile(
+      decision: Apply { plan: v41_source_patch_plan(patches: w_set_b()) }, application: Applied, desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), after: on_b,
+    )) {
+      EffectConverged { converged: c } => (c.evidence.worktree_diff_sha256.hex as String) == (w_sha(c: "b").hex as String)
+      EffectNotConverged { reason: _, attempt: _ } => false
+    }
+}
+
+test fn red2_a_tree_with_an_edit_this_converge_did_not_record_refuses_rather_than_resetting() -> Bool {
+  let members = [w_member(path: "b1.patch", c: "1", reverse_applicable: false, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: false, forward_applicable: false)]
+  let foreign = w_read_recorded(porcelain: " M vllm/engine/llm_engine.py", diff: "f", recorded: "a", members: members)
+  let unrecorded = w_read(head: vllm_d2d649e6_revision.full_revision as String, porcelain: " M vllm/engine/llm_engine.py", members: members)
+  let untracked = w_read_recorded(porcelain: "?? stray.py", diff: "a", recorded: "a", members: members)
+  match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: foreign) {
+    Refuse { reason: r } => (r as String).contains("not ours to reset")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+    && match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: unrecorded) {
+      Refuse { reason: r } => (r as String).contains("not ours to reset")
+      Noop => false
+      Apply { plan: _ } => false
+    }
+    && match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: untracked) {
+      Refuse { reason: r } => (r as String).contains("untracked")
+      Noop => false
+      Apply { plan: _ } => false
+    }
+}
+
+test fn red3_the_same_set_twice_is_a_noop_even_though_the_record_matches() -> Bool {
+  let on_b = w_read_recorded(
+    porcelain: "A  vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py",
+    diff: "b",
+    recorded: "b",
+    members: [w_member(path: "b1.patch", c: "1", reverse_applicable: true, forward_applicable: false), w_member(path: "b2.patch", c: "2", reverse_applicable: true, forward_applicable: false)],
+  )
+  match v41_source_patch_decision(desired_revision: vllm_d2d649e6_revision, desired_patches: w_set_b(), read: on_b) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn git_reset_hard_names_the_pin_not_head() -> Bool {
+  git_reset_hard_args(repository_dir: "/tmp/vllm", revision: vllm_d2d649e6_revision.full_revision as String)
+    == ["-C", "/tmp/vllm", "reset", "--hard", vllm_d2d649e6_revision.full_revision as String]
 }
 
 test fn a_clean_tree_at_r_with_forward_checks_is_apply() -> Bool {

@@ -889,6 +889,17 @@ fn git_apply_command(repository_dir: String, patch_path: String) -> ArgvCommand 
   argv_command(program: git_binary_name, arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
+// git-reset(1) --hard <commit>: resets index AND working tree to <commit>; paths that were only in the
+// index (a create-file patch applied with --index) are removed. Untracked paths are NOT touched --
+// a caller that must not destroy files it did not create relies on exactly that.
+fn git_reset_hard_args(repository_dir: String, revision: String) -> List<String> {
+  ["-C", repository_dir, "reset", "--hard", revision]
+}
+
+fn git_reset_hard_command(repository_dir: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_reset_hard_args(repository_dir: repository_dir, revision: revision))
+}
+
 fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
   ["-C", repository_dir, "diff", "--binary", "HEAD"]
 }
