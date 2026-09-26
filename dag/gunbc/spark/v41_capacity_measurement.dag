@@ -1,0 +1,852 @@
+module gunbc.spark.v41_capacity_measurement
+
+import v2.std.algebra { filter }
+import v2.std.collection { list_at_optional }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_min }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value,
+  Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count,
+  BasisPoint, basis_point, basis_point_count, concurrent_request_hundredths_count,
+  Gibibyte, gibibyte, gibibyte_to_byte_size,
+}
+import std.content_hash { ContentHash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved }
+import extdeps.vllm.kv_layout { VllmReportedCapacity, observed_revisions_agree }
+import extdeps.linux.psi { PsiReading, PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable, psi_full_stall_interval }
+import extdeps.linux.diskstats { DiskstatsReading, DiskReadInterval, DiskReadMeasured, DiskReadUnmeasurable, disk_read_interval }
+import extdeps.linux.mincore { MincoreFileResidency, mincore_resident_bytes }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }
+import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
+import gunbc.floor_memory_demand { CgroupMemoryEvents }
+import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyUnread, ClientBenchLatencyReported }
+
+// ══ V4.1 CAPACITY MEASUREMENT ═══════════════════════════════════════════════════════════════════
+//
+// THE FIRST SERVING ACTION FOR V4.1 FLASH on Group A (srv5-8, one TP4 replica, fp8_ds_mla on SM12,
+// Engram file-backed) is a MEASUREMENT, not production traffic (operator approval, 2026-09-25).
+// This module holds its plan, its receipt carriers, and the three capacities it reports. It
+// computes every answer from readings and refuses, typed and naming the missing reading, whenever
+// a reading is absent. It never interpolates: a capacity is one of the concurrencies the staircase
+// or the probe actually ran (extdeps.vllm.kv_cache VllmCapPoolObservation carries the same rule for
+// the context cap / pool relation).
+//
+// THE SERVE THAT MEASURES IS ITS OWN ADMITTED REALIZATION. The production gate at the bottom refuses
+// V4.1 production admission until a capacity report is admitted; it does not gate the measurement
+// serve, which must be up to be measured. The two are distinct variants so the gate can tell them
+// apart (ruling from proud-deer-538, 2026-09-25).
+
+// ── THE PLAN ────────────────────────────────────────────────────────────────────────────────────
+
+// The TP4 ranks, by their rank index.
+data v41_measurement_ranks: List<Nat> = [0, 1, 2, 3]
+
+data v41_measurement_rank_count: Nat = length(v41_measurement_ranks)
+
+data v41_measurement_max_model_len: TokenCount = token_count(count: 262144)
+
+// The staircase concurrencies, in order. A capacity is always one of these, never a value between two.
+data v41_staircase_concurrencies: List<Nat> = [1, 2, 4, 6, 8, 12, 16]
+
+type V41ProbeCell { context: TokenCount, concurrency: Nat }
+
+data v41_probe_cells: List<V41ProbeCell> = [
+  V41ProbeCell { context: token_count(count: 32768), concurrency: 1 },
+  V41ProbeCell { context: token_count(count: 262144), concurrency: 1 },
+  V41ProbeCell { context: token_count(count: 262144), concurrency: 2 },
+  V41ProbeCell { context: token_count(count: 262144), concurrency: 4 },
+  V41ProbeCell { context: token_count(count: 262144), concurrency: 6 },
+]
+
+// THE ENGRAM STARTUP ARMS ARE IMAGES, NOT A RUNTIME FLAG. Arm A keeps the page cache after the
+// checksum pass: it is the pre-release overlay on main. Arm B releases it: it is the image built
+// after the fetch_rows / page-release change lands. There is deliberately no switch inside one
+// image that keeps the cache (the release refuses if pages stay resident). So the arm is read off
+// the image's patch digest by a binding, and an image no binding names has no arm and refuses.
+type V41EngramStartupArm = EngramCacheRetained | EngramCacheReleased
+
+type V41EngramArmBinding { arm: V41EngramStartupArm, patch_digest: ContentHash }
+
+// Empty until the first srv8 image exists: its patch digest is read from that image, never typed
+// in from a prefix relayed in chat.
+data v41_engram_arm_bindings: List<V41EngramArmBinding> = []
+
+data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image is built (after #12294) and its source-patch digest is read from the image (gunbc.spark.v41_runtime_realized); that digest is bound to EngramCacheRetained. The image built after the Engram page-release change lands is bound to EngramCacheReleased. SUFFICIENT FOR: every residency timeline cell names the arm by image content, not by a flag or a label." as NonEmptyStr)
+
+fn v41_engram_arm_of(patch_digest: ContentHash, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
+  match list_at_optional(xs: filter(bindings, b => b.patch_digest == patch_digest), index: 0) {
+    Present { value: b } => Present { value: b.arm }
+    Absent => none
+  }
+}
+
+fn v41_arm_wire(a: V41EngramStartupArm) -> String {
+  match a {
+    EngramCacheRetained => "A-cache-retained"
+    EngramCacheReleased => "B-cache-released"
+  }
+}
+
+// ── BETS TO FALSIFY ─────────────────────────────────────────────────────────────────────────────
+//
+// These figures come from a side-chat derivation. They are carried as bets (DESIGN 4d): each has
+// its standing and the reading that would settle it, and each gets a verdict against the reading.
+// No capacity is ever computed from a bet.
+type V41ByteRangeBet {
+  key: NonEmptyStr
+  low: ByteSize
+  high: ByteSize
+  standing: CitedFigureStanding
+}
+
+type V41EngramResidentBet {
+  concurrency: Nat
+  resident: Gibibyte
+  standing: CitedFigureStanding
+}
+
+data v41_kv_bytes_per_token_bet: V41ByteRangeBet = V41ByteRangeBet {
+  key: "kv bytes per logical token per rank (MLA replicated under TP4, DCP=1): 1,790 B content = (584 main + 132 indexer) x 2.5 states from compress ratios [2,2,2,1] on kv_source_layers [2,8,14,20], plus block alignment" as NonEmptyStr,
+  low: byte_size(count: 1800),
+  high: byte_size(count: 1940),
+  standing: TranscribedUncited { read_obligation: "the min rank's available KV bytes divided by its GPU KV cache size tokens, from the startup receipt (v41_min_rank_bytes_per_token)" as NonEmptyStr },
+}
+
+data v41_engram_resident_bets: List<V41EngramResidentBet> = [
+  V41EngramResidentBet { concurrency: 2, resident: gibibyte(count: 19), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x2, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 4, resident: gibibyte(count: 30), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x4, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 6, resident: gibibyte(count: 37), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x6, disjoint prompts" as NonEmptyStr } },
+  V41EngramResidentBet { concurrency: 16, resident: gibibyte(count: 46), standing: TranscribedUncited { read_obligation: "mincore resident bytes over the rank's Engram files after requests at 262k x16, disjoint prompts" as NonEmptyStr } },
+]
+
+type V41BetVerdict
+  = BetConfirmed { key: NonEmptyStr, observed: ByteSize }
+  | BetFalsified { key: NonEmptyStr, observed: ByteSize }
+  | BetUnreadable { key: NonEmptyStr, cause: NonEmptyStr }
+
+fn v41_judge_byte_range_bet(bet: V41ByteRangeBet, observed: ByteSize?) -> V41BetVerdict {
+  match observed {
+    Absent => BetUnreadable { key: bet.key, cause: "the reading the bet names was not taken" as NonEmptyStr }
+    Present { value: o } =>
+      if byte_size_count(b: o) >= byte_size_count(b: bet.low) && byte_size_count(b: o) <= byte_size_count(b: bet.high) {
+        BetConfirmed { key: bet.key, observed: o }
+      } else {
+        BetFalsified { key: bet.key, observed: o }
+      }
+  }
+}
+
+// THE ENGRAM FIGURES ARE POINT BETS ("about 19 GiB") WITH NO STATED TOLERANCE, so no band exists to
+// confirm or falsify them against, and inventing one here would be a heuristic. Their verdict pairs
+// the observation with the bet, both in bytes, and a reader decides with both in view. A reading
+// that is missing is Unreadable, exactly as for the ranged bet.
+type V41PointBetVerdict
+  = PointBetObserved { concurrency: Nat, bet: ByteSize, observed: ByteSize }
+  | PointBetUnreadable { concurrency: Nat, cause: NonEmptyStr }
+
+fn v41_judge_engram_resident_bet(bet: V41EngramResidentBet, observed: ByteSize?) -> V41PointBetVerdict {
+  match observed {
+    Absent => PointBetUnreadable { concurrency: bet.concurrency, cause: "no after-requests mincore residency was read at this concurrency" as NonEmptyStr }
+    Present { value: o } => PointBetObserved { concurrency: bet.concurrency, bet: gibibyte_to_byte_size(g: bet.resident), observed: o }
+  }
+}
+
+// The observed figure the Engram bets name: a rank's mincore residency after requests, from the
+// admitted timeline. It is read per rank; the bet is per rank.
+fn v41_after_requests_resident(t: V41ResidencyTimeline, rank: Nat) -> ByteSize? {
+  match t {
+    ResidencyTimelineRefused { causes: _ } => none
+    ResidencyTimelineAdmitted { run_id: _, arm: _, cells: cs } =>
+      match list_at_optional(xs: filter(cs, c => c.rank == rank && v41_phase_wire(p: c.phase) == v41_phase_wire(p: AfterRequests)), index: 0) {
+        Present { value: c } => Present { value: v41_cell_engram_resident_bytes(c: c) }
+        Absent => none
+      }
+  }
+}
+
+// ── MEASUREMENT 1: THE STARTUP MEMORY RECEIPT, FROM EVERY RANK ─────────────────────────────────
+//
+// A READING carries every field as optional, because the wet reader takes them from log lines and
+// endpoints that may not print. ADMISSION requires every field and names each missing one. A rank
+// that is missing anything refuses the whole receipt: the replica is judged by its MINIMUM rank, and
+// a missing rank could be that minimum.
+type V41RankParallelism { tp: Nat, dcp: Nat, pp: Nat, dp: Nat }
+
+type V41RankMemoryBreakdown {
+  free: ByteSize
+  total: ByteSize
+  weights: ByteSize
+  non_torch: ByteSize
+  activation_peak: ByteSize
+  cuda_graph: ByteSize
+  available_kv: ByteSize
+}
+
+type V41RankStartupReading {
+  run_id: NonEmptyStr
+  rank: Nat
+  host: NonEmptyStr
+  image: V41OciImageDigest?
+  vllm_revision: VllmSourceRevision?
+  parallelism: V41RankParallelism?
+  kv_format: VllmResolvedKvFormat
+  block_size: Nat?
+  max_model_len: TokenCount?
+  max_num_seqs: Nat?
+  max_num_batched_tokens: Nat?
+  spec_decode_config: NonEmptyStr?
+  memory: V41RankMemoryBreakdown?
+  reported: VllmReportedCapacity?
+  num_gpu_blocks: Nat?
+  kv_cache_groups: Nat?
+}
+
+type V41RankStartupReceipt sole_constructor {
+  run_id: NonEmptyStr
+  rank: Nat
+  host: NonEmptyStr
+  image: V41OciImageDigest
+  vllm_revision: VllmSourceRevision
+  parallelism: V41RankParallelism
+  block_size: Nat
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  max_num_batched_tokens: Nat
+  spec_decode_config: NonEmptyStr
+  memory: V41RankMemoryBreakdown
+  reported: VllmReportedCapacity
+  num_gpu_blocks: Nat
+  kv_cache_groups: Nat
+}
+
+fn v41_missing_if<T>(v: T?, name: String) -> List<String> {
+  match v {
+    Present { value: _ } => [] as List<String>
+    Absent => [name]
+  }
+}
+
+fn v41_rank_reading_missing(r: V41RankStartupReading) -> List<String> {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    v41_missing_if(v: r.image, name: "image digest"),
+    v41_missing_if(v: r.vllm_revision, name: "vLLM commit")),
+    v41_missing_if(v: r.parallelism, name: "TP/DCP/PP/DP")),
+    match r.kv_format { ResolvedFp8DsMla => [] as List<String>  ResolvedUnobserved => ["resolved kv dtype"] }),
+    v41_missing_if(v: r.block_size, name: "resolved block size")),
+    v41_missing_if(v: r.max_model_len, name: "max_model_len")),
+    v41_missing_if(v: r.max_num_seqs, name: "max_num_seqs")),
+    v41_missing_if(v: r.max_num_batched_tokens, name: "max_num_batched_tokens")),
+    v41_missing_if(v: r.spec_decode_config, name: "spec-decode config")),
+    v41_missing_if(v: r.memory, name: "memory breakdown (free/total, weights, non-torch, activation peak, CUDA graphs, available KV)")),
+    v41_missing_if(v: r.reported, name: "GPU KV cache size tokens and max concurrency")),
+    v41_missing_if(v: r.num_gpu_blocks, name: "num_gpu_blocks")),
+    v41_missing_if(v: r.kv_cache_groups, name: "KV cache groups"))
+}
+
+type V41RankStartupAdmission
+  = RankStartupAdmitted { receipt: V41RankStartupReceipt }
+  | RankStartupRefused { rank: Nat, missing: List<String> }
+
+fn v41_admit_rank_startup(r: V41RankStartupReading) -> V41RankStartupAdmission {
+  match r.image { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: image } => match r.vllm_revision { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: rev } => match r.parallelism { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: par } => match r.block_size { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: block } => match r.max_model_len { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: mml } => match r.max_num_seqs { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: seqs } => match r.max_num_batched_tokens { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: batched } => match r.spec_decode_config { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: spec } => match r.memory { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: mem } => match r.reported { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: rep } => match r.num_gpu_blocks { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: blocks } => match r.kv_cache_groups { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+  Present { value: groups } => match r.kv_format {
+    ResolvedUnobserved => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+    ResolvedFp8DsMla => RankStartupAdmitted { receipt: V41RankStartupReceipt {
+      run_id: r.run_id, rank: r.rank, host: r.host, image: image, vllm_revision: rev,
+      parallelism: par, block_size: block, max_model_len: mml, max_num_seqs: seqs,
+      max_num_batched_tokens: batched, spec_decode_config: spec, memory: mem, reported: rep,
+      num_gpu_blocks: blocks, kv_cache_groups: groups,
+    } }
+  } } } } } } } } } } } } }
+}
+
+// EFFECTIVE BYTES PER TOKEN IS AVAILABLE KV BYTES OVER THE ENGINE'S OWN TOKEN FIGURE. Blocks times
+// block size is not a substitute: under MLA with the DeepSeek fp8 layout it is a different quantity
+// (extdeps.vllm.kv_cache records that reconstruction as a refusal subject).
+fn v41_rank_bytes_per_token(r: V41RankStartupReceipt) -> ByteSize? {
+  let tokens = token_count_value(t: r.reported.pool.tokens)
+  if tokens == 0 { none } else { Present { value: byte_size(count: byte_size_count(b: r.memory.available_kv) / tokens) } }
+}
+
+type V41StartupReceipt sole_constructor {
+  run_id: NonEmptyStr
+  ranks: List<V41RankStartupReceipt>
+  min_rank: V41RankStartupReceipt
+}
+
+type V41StartupAdmission
+  = StartupAdmitted { receipt: V41StartupReceipt }
+  | StartupRefused { causes: List<String> }
+
+fn v41_image_wire(i: V41OciImageDigest) -> String {
+  join([render_oci_content_digest_wire(d: i.manifest) as String, "/", render_oci_content_digest_wire(d: i.config) as String], "")
+}
+
+// The min rank is the one with the fewest GPU KV cache tokens: that pool bounds the replica.
+fn v41_min_rank(first: V41RankStartupReceipt, rest: List<V41RankStartupReceipt>) -> V41RankStartupReceipt {
+  fold(rest, init: first, f: (acc, r) =>
+    if token_count_value(t: r.reported.pool.tokens) < token_count_value(t: acc.reported.pool.tokens) { r } else { acc })
+}
+
+fn v41_admit_startup(readings: List<V41RankStartupReading>) -> V41StartupAdmission {
+  let admissions = map(readings, r => v41_admit_rank_startup(r: r))
+  let refusals = flat_map(admissions, a => match a {
+    RankStartupAdmitted { receipt: _ } => [] as List<String>
+    RankStartupRefused { rank: k, missing: m } => [join(["rank ", to_string(k), " missing: ", join(m, ", ")], "")]
+  })
+  let receipts = flat_map(admissions, a => match a {
+    RankStartupAdmitted { receipt: x } => [x]
+    RankStartupRefused { rank: _, missing: _ } => [] as List<V41RankStartupReceipt>
+  })
+  let absent_ranks = flat_map(v41_measurement_ranks, k =>
+    if length(filter(readings, r => r.rank == k)) == 0 { [join(["rank ", to_string(k), " has no reading"], "")] } else { [] as List<String> })
+  let duplicate_ranks = flat_map(v41_measurement_ranks, k =>
+    if length(filter(readings, r => r.rank == k)) > 1 { [join(["rank ", to_string(k), " has more than one reading"], "")] } else { [] as List<String> })
+  let foreign_ranks = flat_map(readings, r =>
+    if r.rank >= v41_measurement_rank_count { [join(["rank ", to_string(r.rank), " is outside TP4"], "")] } else { [] as List<String> })
+  let shape = concat(concat(concat(refusals, absent_ranks), duplicate_ranks), foreign_ranks)
+  if length(shape) != 0 {
+    StartupRefused { causes: shape }
+  } else {
+    match list_at_optional(xs: receipts, index: 0) {
+      Absent => StartupRefused { causes: ["no rank reading was supplied"] }
+      Present { value: first } => {
+        let disagreements = flat_map(receipts, r => concat(concat(
+          if r.run_id != first.run_id { [join(["rank ", to_string(r.rank), " is from another run"], "")] } else { [] as List<String> },
+          if v41_image_wire(i: r.image) != v41_image_wire(i: first.image) { [join(["rank ", to_string(r.rank), " ran another image"], "")] } else { [] as List<String> }),
+          if !observed_revisions_agree(a: r.vllm_revision, b: first.vllm_revision) { [join(["rank ", to_string(r.rank), " ran another vLLM commit"], "")] } else { [] as List<String> }))
+        if length(disagreements) != 0 {
+          StartupRefused { causes: disagreements }
+        } else {
+          StartupAdmitted { receipt: V41StartupReceipt {
+            run_id: first.run_id,
+            ranks: receipts,
+            min_rank: v41_min_rank(first: first, rest: receipts),
+          } }
+        }
+      }
+    }
+  }
+}
+
+fn v41_min_rank_bytes_per_token(s: V41StartupAdmission) -> ByteSize? {
+  match s {
+    StartupAdmitted { receipt: r } => v41_rank_bytes_per_token(r: r.min_rank)
+    StartupRefused { causes: _ } => none
+  }
+}
+
+// THE TOKEN THRESHOLDS ARE CONCURRENCY TIMES THE CONTEXT CAP, not three authored numbers: x6 at 262k
+// is 1,572,864 tokens and x16 is 4,194,304. The production x16 row adds a headroom margin, which is
+// operator policy (V41CapacityPolicy.production_pool_margin) and not derived here.
+fn v41_pool_tokens_needed(concurrency: Nat) -> Nat {
+  concurrency * token_count_value(t: v41_measurement_max_model_len)
+}
+
+// ── MEASUREMENT 2: THE ENGRAM RESIDENCY TIMELINE ────────────────────────────────────────────────
+type V41ResidencyPhase = BeforeStart | AfterChecksum | AfterKvAllocation | AfterRequests
+
+data v41_residency_phases: List<V41ResidencyPhase> = [BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests]
+
+fn v41_phase_wire(p: V41ResidencyPhase) -> String {
+  match p {
+    BeforeStart => "before-start"
+    AfterChecksum => "after-checksum"
+    AfterKvAllocation => "after-kv-allocation"
+    AfterRequests => "after-requests"
+  }
+}
+
+type V41TorchMemory { free: ByteSize, reserved: ByteSize, allocated: ByteSize }
+
+// ONE CELL: one rank at one phase under one image arm. mincore residency is RESIDENCY, never touches.
+type V41ResidencyCell {
+  run_id: NonEmptyStr
+  arm: V41EngramStartupArm
+  phase: V41ResidencyPhase
+  rank: Nat
+  engram_files: List<MincoreFileResidency>
+  memory_current: ByteSize
+  memory_stat: CgroupMemoryStat
+  memory_events: CgroupMemoryEvents
+  memory_pressure: PsiReading
+  io_pressure: PsiReading
+  nvme: DiskstatsReading
+  torch: V41TorchMemory?
+}
+
+type V41ResidencyTimeline
+  = ResidencyTimelineAdmitted { run_id: NonEmptyStr, arm: V41EngramStartupArm, cells: List<V41ResidencyCell> }
+  | ResidencyTimelineRefused { causes: List<String> }
+
+// BeforeStart has no process, so it has no torch reading; every later phase owes one.
+fn v41_cell_owes_torch(p: V41ResidencyPhase) -> Bool {
+  match p {
+    BeforeStart => false
+    AfterChecksum => true
+    AfterKvAllocation => true
+    AfterRequests => true
+  }
+}
+
+// THE TIMELINE IS AN IDENTITY JOIN over (phase x rank). A missing cell is named, a duplicate is
+// named, and a count that happens to match is not accepted in place of the join.
+fn v41_admit_residency_timeline(run_id: NonEmptyStr, arm: V41EngramStartupArm, cells: List<V41ResidencyCell>) -> V41ResidencyTimeline {
+  let owed = flat_map(v41_residency_phases, p => map(v41_measurement_ranks, k => V41ResidencyKey { phase: p, rank: k }))
+  let join_causes = flat_map(owed, key => {
+    let matching = filter(cells, c => v41_phase_wire(p: c.phase) == v41_phase_wire(p: key.phase) && c.rank == key.rank)
+    if length(matching) == 0 {
+      [join(["no cell for ", v41_phase_wire(p: key.phase), " rank ", to_string(key.rank)], "")]
+    } else if length(matching) > 1 {
+      [join(["more than one cell for ", v41_phase_wire(p: key.phase), " rank ", to_string(key.rank)], "")]
+    } else { [] as List<String> }
+  })
+  let cell_causes = flat_map(cells, c => concat(concat(concat(
+    if c.run_id != run_id { [join(["a ", v41_phase_wire(p: c.phase), " cell is from another run"], "")] } else { [] as List<String> },
+    if v41_arm_wire(a: c.arm) != v41_arm_wire(a: arm) { [join(["a ", v41_phase_wire(p: c.phase), " cell is from the other image arm"], "")] } else { [] as List<String> }),
+    if c.rank >= v41_measurement_rank_count { [join(["a cell names rank ", to_string(c.rank), ", outside TP4"], "")] } else { [] as List<String> }),
+    if v41_cell_owes_torch(p: c.phase) && v41_torch_absent(t: c.torch) { [join(["no torch memory reading at ", v41_phase_wire(p: c.phase), " rank ", to_string(c.rank)], "")] } else { [] as List<String> }))
+  let causes = concat(join_causes, cell_causes)
+  if length(causes) != 0 { ResidencyTimelineRefused { causes: causes } } else { ResidencyTimelineAdmitted { run_id: run_id, arm: arm, cells: cells } }
+}
+
+type V41ResidencyKey { phase: V41ResidencyPhase, rank: Nat }
+
+fn v41_torch_absent(t: V41TorchMemory?) -> Bool {
+  match t {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn v41_cell_engram_resident_bytes(c: V41ResidencyCell) -> ByteSize {
+  byte_size(count: fold(c.engram_files, init: 0, f: (acc, f) => acc + byte_size_count(b: mincore_resident_bytes(r: f))))
+}
+
+// ── MEASUREMENT 3: THE COLD/WARM ENGRAM PROBE AND THE STAIRCASE ────────────────────────────────
+//
+// DISTINCT TOUCHES ARE NOT RESIDENCY. The per-rank distinct-page counter and the fetch_rows timing
+// have to come from inside the fetch_rows path. That path is being rewritten by the Engram
+// page-release lane, and the counter is a follow-up lane dispatched once that change lands (ruling,
+// proud-deer-538, 2026-09-25). Until the counter exists, every touch reading is
+// TouchCounterUnavailable, and the Engram-resident capacity refuses on it. mincore residency is
+// still recorded, as its own reading.
+type V41EngramLookupObservable
+  = TouchCounterUnavailable { frontier: DissolutionCondition }
+  | EngramLookupObserved { distinct_pages_touched: Nat, fetch_rows_calls: Nat, fetch_rows_time: Microsecond }
+
+data v41_touch_counter_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the follow-up lane after the Engram page-release / batched fetch_rows change exposes, per rank, a distinct-page count (bitmap or sketch, no row contents) and fetch_rows call count and time, readable at an epoch boundary. SUFFICIENT FOR: each probe cell carries EngramLookupObserved, and the Engram-resident capacity is computed from touches rather than refused." as NonEmptyStr)
+
+type V41ProbeTemperature = ProbeCold | ProbeWarm
+
+type V41ProbeRankReading {
+  rank: Nat
+  lookup: V41EngramLookupObservable
+  residency_before: List<MincoreFileResidency>
+  residency_after: List<MincoreFileResidency>
+  stat_before: CgroupMemoryStat
+  stat_after: CgroupMemoryStat
+  nvme_before: DiskstatsReading
+  nvme_after: DiskstatsReading
+}
+
+type V41ProbeReading {
+  run_id: NonEmptyStr
+  cell: V41ProbeCell
+  temperature: V41ProbeTemperature
+  prompts_disjoint: Bool
+  prefix_caching_defeated: Bool
+  latency: ClientBenchLatency
+  ranks: List<V41ProbeRankReading>
+}
+
+// A WARM PASS WITH NO MAJOR FAULTS ON ANY RANK means the cell's Engram working set was resident. A
+// cold pass is the contrast, not the criterion.
+type V41ProbeVerdict
+  = ProbeWorkingSetResident { cell: V41ProbeCell }
+  | ProbeWorkingSetFaulted { cell: V41ProbeCell, major_faults: Nat }
+  | ProbeRefused { cell: V41ProbeCell, causes: List<String> }
+
+fn v41_probe_rank_major_faults(r: V41ProbeRankReading) -> Nat? {
+  if r.stat_after.pgmajfault < r.stat_before.pgmajfault { none } else { Present { value: r.stat_after.pgmajfault - r.stat_before.pgmajfault } }
+}
+
+fn v41_judge_probe(p: V41ProbeReading) -> V41ProbeVerdict {
+  let causes = concat(concat(concat(concat(
+    if !p.prompts_disjoint { ["prompts were not disjoint"] } else { [] as List<String> },
+    if !p.prefix_caching_defeated { ["prefix caching was not defeated"] } else { [] as List<String> }),
+    match p.temperature { ProbeWarm => [] as List<String>  ProbeCold => ["a cold pass is the contrast; the verdict is read on the warm pass"] }),
+    flat_map(v41_measurement_ranks, k => if length(filter(p.ranks, r => r.rank == k)) == 1 { [] as List<String> } else { [join(["rank ", to_string(k), " has no single probe reading"], "")] })),
+    flat_map(p.ranks, r => match r.lookup {
+      TouchCounterUnavailable { frontier: _ } => [join(["rank ", to_string(r.rank), ": the distinct-touch counter is unavailable"], "")]
+      EngramLookupObserved { distinct_pages_touched: _, fetch_rows_calls: _, fetch_rows_time: _ } => [] as List<String>
+    }))
+  if length(causes) != 0 {
+    ProbeRefused { cell: p.cell, causes: causes }
+  } else {
+    let faults = map(p.ranks, r => v41_probe_rank_major_faults(r: r))
+    if length(filter(faults, f => match f { Present { value: _ } => false  Absent => true })) != 0 {
+      ProbeRefused { cell: p.cell, causes: ["a pgmajfault counter went backwards between readings"] }
+    } else {
+      let total = fold(faults, init: 0, f: (acc, f) => match f { Present { value: n } => acc + n  Absent => acc })
+      if total == 0 { ProbeWorkingSetResident { cell: p.cell } } else { ProbeWorkingSetFaulted { cell: p.cell, major_faults: total } }
+    }
+  }
+}
+
+// ── THE STAIRCASE AND ITS STOP RULES ────────────────────────────────────────────────────────────
+//
+// THE THRESHOLDS ARE OPERATOR POLICY. No SLO or sustained-window threshold exists in the corpus: TTFT
+// is only a selection axis, and the load probe measures TTFT and TPOT without bounds. So the policy
+// row is carried with its standing. While it is Proposed, the staircase refuses; it does not run
+// against a proposal (ruling, proud-deer-538, 2026-09-25).
+type V41CapacityPolicy {
+  ttft_ceiling: Millisecond
+  tpot_ceiling: Millisecond
+  psi_full_ceiling: BasisPoint
+  psi_window: Microsecond
+  nvme_read_await_ceiling: Microsecond
+  refault_growth_ceiling: BasisPoint
+  production_pool_margin: BasisPoint
+}
+
+type V41PolicyStanding
+  = PolicyProposed { proposal: V41CapacityPolicy, reasons: NonEmptyStr }
+  | PolicyOperatorSigned { policy: V41CapacityPolicy, ruling: NonEmptyStr }
+
+data v41_capacity_policy: V41PolicyStanding = PolicyProposed {
+  proposal: V41CapacityPolicy {
+    ttft_ceiling: millisecond(count: 30000),
+    tpot_ceiling: millisecond(count: 100),
+    psi_full_ceiling: basis_point(count: 1000),
+    psi_window: microsecond(count: 60000000),
+    nvme_read_await_ceiling: microsecond(count: 5000),
+    refault_growth_ceiling: basis_point(count: 15000),
+    production_pool_margin: basis_point(count: 1000),
+  },
+  reasons: "PROPOSED by clever-gull-48, awaiting operator sign-off; not policy. ttft 30 s: a cold 262k prefill is a few tens of seconds on one TP4 Spark replica. tpot 100 ms: 10 tok/s per stream is the floor of interactive use. PSI full 10% over a 60 s window: a tenth of wall time with every task stalled on memory is thrash, not a transient. NVMe read await 5 ms: NVMe reads are sub-millisecond when healthy, so 5 ms is queueing. Refault growth 1.5x per concurrency unit between adjacent steps: this is the superlinear test, since linear growth keeps the per-request ratio near 1.0. Production pool margin 10%: this takes x16 at 262k from 4,194,304 to ~4.6M tokens, which matches the brief's production figure." as NonEmptyStr,
+}
+
+type V41StaircaseStepReading {
+  run_id: NonEmptyStr
+  concurrency: Nat
+  preemptions: Nat?
+  refault_file_before: Nat
+  refault_file_after: Nat
+  memory_pressure_before: PsiReading
+  memory_pressure_after: PsiReading
+  nvme_before: DiskstatsReading
+  nvme_after: DiskstatsReading
+  latency: ClientBenchLatency
+}
+
+type V41StaircaseStop
+  = StopKvPreemption { concurrency: Nat, preemptions: Nat }
+  | StopSuperlinearRefault { concurrency: Nat, per_request: Nat, previous_per_request: Nat }
+  | StopPsiFullSustained { concurrency: Nat, stalled: Microsecond, window: Microsecond }
+  | StopNvmeLatency { concurrency: Nat, mean_read_await: Microsecond }
+  | StopSloBreach { concurrency: Nat, which: NonEmptyStr, observed: Millisecond }
+  | StopReadingMissing { concurrency: Nat, cause: NonEmptyStr }
+
+type V41StaircaseOutcome
+  = StaircaseStopped { last_sustained: Nat?, stop: V41StaircaseStop }
+  | StaircaseCompleted { last_sustained: Nat }
+  | StaircaseRefused { cause: NonEmptyStr }
+
+type V41StairScan { outcome: V41StaircaseOutcome?, last: Nat?, previous_per_request: Nat? }
+
+fn v41_step_stop(policy: V41CapacityPolicy, step: V41StaircaseStepReading, previous_per_request: Nat?) -> V41StaircaseStop? {
+  let c = step.concurrency
+  match step.preemptions {
+    Absent => Present { value: StopReadingMissing { concurrency: c, cause: "the preemption counter was not read" as NonEmptyStr } }
+    Present { value: pre } =>
+      if pre > 0 { Present { value: StopKvPreemption { concurrency: c, preemptions: pre } } }
+      else if step.refault_file_after < step.refault_file_before {
+        Present { value: StopReadingMissing { concurrency: c, cause: "workingset_refault_file went backwards" as NonEmptyStr } }
+      } else {
+        let per_request = (step.refault_file_after - step.refault_file_before) / c
+        let superlinear = match previous_per_request {
+          Absent => false
+          Present { value: prev } => prev > 0 && per_request * 10000 > prev * basis_point_count(bp: policy.refault_growth_ceiling)
+        }
+        if superlinear {
+          Present { value: StopSuperlinearRefault { concurrency: c, per_request: per_request, previous_per_request: match previous_per_request { Present { value: p } => p  Absent => 0 } } }
+        } else {
+          match psi_full_stall_interval(before: step.memory_pressure_before, after: step.memory_pressure_after, window: policy.psi_window) {
+            PsiStallUnmeasurable { cause: why } => Present { value: StopReadingMissing { concurrency: c, cause: why } }
+            PsiStallMeasured { stalled: s, window: w } =>
+              if microsecond_count(m: s) * 10000 > microsecond_count(m: w) * basis_point_count(bp: policy.psi_full_ceiling) {
+                Present { value: StopPsiFullSustained { concurrency: c, stalled: s, window: w } }
+              } else {
+                match disk_read_interval(before: step.nvme_before, after: step.nvme_after) {
+                  DiskReadUnmeasurable { cause: why } => Present { value: StopReadingMissing { concurrency: c, cause: why } }
+                  DiskReadMeasured { read_bytes: _, reads: _, mean_read_await: aw } =>
+                    match aw {
+                      Present { value: a } =>
+                        if microsecond_count(m: a) > microsecond_count(m: policy.nvme_read_await_ceiling) {
+                          Present { value: StopNvmeLatency { concurrency: c, mean_read_await: a } }
+                        } else { v41_slo_stop(policy: policy, c: c, latency: step.latency) }
+                      Absent => v41_slo_stop(policy: policy, c: c, latency: step.latency)
+                    }
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn v41_slo_stop(policy: V41CapacityPolicy, c: Nat, latency: ClientBenchLatency) -> V41StaircaseStop? {
+  match latency {
+    ClientBenchLatencyUnread { cause: why } => Present { value: StopReadingMissing { concurrency: c, cause: why } }
+    ClientBenchLatencyReported { output_throughput: _, tpot_milli: tpot, itl_milli: _, ttft_milli: ttft, window: _ } =>
+      if millisecond_count(m: ttft) > millisecond_count(m: policy.ttft_ceiling) {
+        Present { value: StopSloBreach { concurrency: c, which: "ttft" as NonEmptyStr, observed: ttft } }
+      } else if millisecond_count(m: tpot) > millisecond_count(m: policy.tpot_ceiling) {
+        Present { value: StopSloBreach { concurrency: c, which: "tpot" as NonEmptyStr, observed: tpot } }
+      } else { none }
+  }
+}
+
+// THE STAIRCASE RUNS IN PLAN ORDER AND STOPS AT THE FIRST STOP RULE. A step reading that is missing
+// for a planned concurrency is a StopReadingMissing, never a skipped step: a staircase with a hole
+// cannot claim anything above the hole.
+fn v41_run_staircase(policy: V41PolicyStanding, run_id: NonEmptyStr, steps: List<V41StaircaseStepReading>) -> V41StaircaseOutcome {
+  match policy {
+    PolicyProposed { proposal: _, reasons: _ } =>
+      StaircaseRefused { cause: "the staircase thresholds are an unsigned proposal; operator sign-off is required before any stop rule is applied" as NonEmptyStr }
+    PolicyOperatorSigned { policy: p, ruling: _ } => {
+      let scan = fold(v41_staircase_concurrencies, init: V41StairScan { outcome: none, last: none, previous_per_request: none }, f: (acc, c) =>
+        match acc.outcome {
+          Present { value: _ } => acc
+          Absent => {
+            let at = filter(steps, s => s.concurrency == c && s.run_id == run_id)
+            if length(at) != 1 {
+              V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: StopReadingMissing { concurrency: c, cause: "no single step reading for this run at this concurrency" as NonEmptyStr } } }, last: acc.last, previous_per_request: acc.previous_per_request }
+            } else {
+              match list_at_optional(xs: at, index: 0) {
+                Absent => acc
+                Present { value: step } => match v41_step_stop(policy: p, step: step, previous_per_request: acc.previous_per_request) {
+                  Present { value: stop } => V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: stop } }, last: acc.last, previous_per_request: acc.previous_per_request }
+                  Absent => V41StairScan { outcome: none, last: Present { value: c }, previous_per_request: Present { value: (step.refault_file_after - step.refault_file_before) / c } }
+                }
+              }
+            }
+          }
+        })
+      match scan.outcome {
+        Present { value: o } => o
+        Absent => match scan.last {
+          Present { value: l } => StaircaseCompleted { last_sustained: l }
+          Absent => StaircaseRefused { cause: "the staircase plan is empty" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+// ── THE THREE CAPACITIES, REPORTED SEPARATELY ──────────────────────────────────────────────────
+type V41Capacity
+  = CapacityAt { concurrency: Nat }
+  | CapacityBelowFirstStep
+  | CapacityRefused { cause: NonEmptyStr }
+
+type V41CapacityReport {
+  run_id: NonEmptyStr
+  kv_admission: V41Capacity
+  engram_resident: V41Capacity
+  sla_sustainable: V41Capacity
+}
+
+// KV ADMISSION: the largest planned concurrency whose max_model_len requests fit the MIN rank's pool.
+fn v41_kv_admission_capacity(s: V41StartupAdmission) -> V41Capacity {
+  match s {
+    StartupRefused { causes: cs } => CapacityRefused { cause: join(["the startup receipt refused: ", join(cs, "; ")], "") as NonEmptyStr }
+    StartupAdmitted { receipt: r } => {
+      let pool = token_count_value(t: r.min_rank.reported.pool.tokens)
+      let fits = filter(v41_staircase_concurrencies, c => v41_pool_tokens_needed(concurrency: c) <= pool)
+      match list_at_optional(xs: reverse(fits), index: 0) {
+        Present { value: c } => CapacityAt { concurrency: c }
+        Absent => CapacityBelowFirstStep
+      }
+    }
+  }
+}
+
+// ENGRAM RESIDENT: the largest 262k probe concurrency whose warm pass faulted nothing, over a prefix
+// of the probe plan with no hole. It refuses on any refused probe, which today means on the absent
+// touch counter.
+fn v41_engram_resident_capacity(verdicts: List<V41ProbeVerdict>) -> V41Capacity {
+  let refused = flat_map(verdicts, v => match v {
+    ProbeRefused { cell: c, causes: cs } => [join(["probe ", to_string(token_count_value(t: c.context)), " x", to_string(c.concurrency), ": ", join(cs, "; ")], "")]
+    ProbeWorkingSetResident { cell: _ } => [] as List<String>
+    ProbeWorkingSetFaulted { cell: _, major_faults: _ } => [] as List<String>
+  })
+  let missing = flat_map(v41_probe_cells, cell =>
+    if length(filter(verdicts, v => v41_probe_verdict_cell_is(v: v, cell: cell))) == 1 { [] as List<String> } else { [join(["probe ", to_string(token_count_value(t: cell.context)), " x", to_string(cell.concurrency), " has no single verdict"], "")] })
+  let causes = concat(refused, missing)
+  if length(causes) != 0 {
+    CapacityRefused { cause: join(causes, "; ") as NonEmptyStr }
+  } else {
+    let long = filter(v41_probe_cells, cell => token_count_value(t: cell.context) == token_count_value(t: v41_measurement_max_model_len))
+    let scan = fold(long, init: V41ResidentScan { broken: false, best: none }, f: (acc, cell) =>
+      if acc.broken { acc } else {
+        if length(filter(verdicts, v => match v { ProbeWorkingSetResident { cell: x } => v41_same_cell(a: x, b: cell)  ProbeWorkingSetFaulted { cell: _, major_faults: _ } => false  ProbeRefused { cell: _, causes: _ } => false })) == 1 {
+          V41ResidentScan { broken: false, best: Present { value: cell.concurrency } }
+        } else { V41ResidentScan { broken: true, best: acc.best } }
+      })
+    match scan.best {
+      Present { value: c } => CapacityAt { concurrency: c }
+      Absent => CapacityBelowFirstStep
+    }
+  }
+}
+
+type V41ResidentScan { broken: Bool, best: Nat? }
+
+fn v41_same_cell(a: V41ProbeCell, b: V41ProbeCell) -> Bool {
+  token_count_value(t: a.context) == token_count_value(t: b.context) && a.concurrency == b.concurrency
+}
+
+fn v41_probe_verdict_cell_is(v: V41ProbeVerdict, cell: V41ProbeCell) -> Bool {
+  match v {
+    ProbeWorkingSetResident { cell: c } => v41_same_cell(a: c, b: cell)
+    ProbeWorkingSetFaulted { cell: c, major_faults: _ } => v41_same_cell(a: c, b: cell)
+    ProbeRefused { cell: c, causes: _ } => v41_same_cell(a: c, b: cell)
+  }
+}
+
+// SLA SUSTAINABLE: the last staircase step before the first stop.
+fn v41_sla_capacity(o: V41StaircaseOutcome) -> V41Capacity {
+  match o {
+    StaircaseRefused { cause: c } => CapacityRefused { cause: c }
+    StaircaseCompleted { last_sustained: l } => CapacityAt { concurrency: l }
+    StaircaseStopped { last_sustained: l, stop: s } => match s {
+      StopReadingMissing { concurrency: c, cause: why } => CapacityRefused { cause: join(["a reading is missing at x", to_string(c), ": ", why as String], "") as NonEmptyStr }
+      StopKvPreemption { concurrency: _, preemptions: _ } => v41_last_or_below(l: l)
+      StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => v41_last_or_below(l: l)
+      StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => v41_last_or_below(l: l)
+      StopNvmeLatency { concurrency: _, mean_read_await: _ } => v41_last_or_below(l: l)
+      StopSloBreach { concurrency: _, which: _, observed: _ } => v41_last_or_below(l: l)
+    }
+  }
+}
+
+fn v41_last_or_below(l: Nat?) -> V41Capacity {
+  match l {
+    Present { value: c } => CapacityAt { concurrency: c }
+    Absent => CapacityBelowFirstStep
+  }
+}
+
+fn v41_capacity_report(
+  run_id: NonEmptyStr,
+  startup: V41StartupAdmission,
+  probes: List<V41ProbeReading>,
+  staircase: V41StaircaseOutcome,
+) -> V41CapacityReport {
+  V41CapacityReport {
+    run_id: run_id,
+    kv_admission: v41_kv_admission_capacity(s: startup),
+    engram_resident: v41_engram_resident_capacity(verdicts: map(probes, p => v41_judge_probe(p: p))),
+    sla_sustainable: v41_sla_capacity(o: staircase),
+  }
+}
+
+fn v41_capacity_wire(c: V41Capacity) -> String {
+  match c {
+    CapacityAt { concurrency: n } => join(["x", to_string(n)], "")
+    CapacityBelowFirstStep => "below-x1"
+    CapacityRefused { cause: why } => join(["refused: ", why as String], "")
+  }
+}
+
+// ── THE PRODUCTION GATE, WHICH DOES NOT GATE THE MEASUREMENT SERVE ─────────────────────────────
+//
+// The measurement serve is admitted with a no-production-traffic contract: it is what produces the
+// report, so gating it on the report would be circular. Production admission requires all three
+// capacities to be CapacityAt, and it admits the MINIMUM of the three. The larger two are headroom
+// on axes that are not the binding one.
+type V41ServingRealization
+  = V41MeasurementServe { run_id: NonEmptyStr }
+  | V41ProductionServe
+
+type V41ServingAdmission
+  = MeasurementServeAdmitted { run_id: NonEmptyStr }
+  | ProductionAdmitted { run_id: NonEmptyStr, concurrency: Nat }
+  | ProductionRefused { cause: NonEmptyStr }
+
+fn v41_capacity_at(c: V41Capacity) -> Nat? {
+  match c {
+    CapacityAt { concurrency: n } => Present { value: n }
+    CapacityBelowFirstStep => none
+    CapacityRefused { cause: _ } => none
+  }
+}
+
+fn v41_serving_admission(realization: V41ServingRealization, report: V41CapacityReport?) -> V41ServingAdmission {
+  match realization {
+    V41MeasurementServe { run_id: r } => MeasurementServeAdmitted { run_id: r }
+    V41ProductionServe => match report {
+      Absent => ProductionRefused { cause: "no V4.1 capacity report has been admitted; the first serving action is the measurement" as NonEmptyStr }
+      Present { value: rep } => match v41_capacity_at(c: rep.kv_admission) {
+        Absent => ProductionRefused { cause: join(["KV admission: ", v41_capacity_wire(c: rep.kv_admission)], "") as NonEmptyStr }
+        Present { value: kv } => match v41_capacity_at(c: rep.engram_resident) {
+          Absent => ProductionRefused { cause: join(["Engram resident: ", v41_capacity_wire(c: rep.engram_resident)], "") as NonEmptyStr }
+          Present { value: en } => match v41_capacity_at(c: rep.sla_sustainable) {
+            Absent => ProductionRefused { cause: join(["SLA sustainable: ", v41_capacity_wire(c: rep.sla_sustainable)], "") as NonEmptyStr }
+            Present { value: sla } => ProductionAdmitted { run_id: rep.run_id, concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla) }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE DRY RUN ────────────────────────────────────────────────────────────────────────────────
+//
+// The plan the wet runner will execute, rendered without touching a host: the startup receipt from
+// every rank, the residency timeline for each bound image arm, the probe cells, the staircase, and
+// the standing of every precondition that is not met yet. The wet runner is a fleet mode that lands
+// after the srv8 runtime image exists (v41_wet_runner_frontier), and it consumes this same plan.
+data v41_wet_runner_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the srv8 V4.1 runtime image exists (after #12294) and a Group A fleet mode (a gunbc.ci.ci_spec GunbcRunStepTarget) brings up the measurement serve and reads the startup log lines, cgroup files, PSI, diskstats, mincore residency, torch memory, and vLLM metrics on every rank, producing the readings this module admits. SUFFICIENT FOR: v41_capacity_report is computed from readings taken on srv5-8 under one run id." as NonEmptyStr)
+
+fn v41_capacity_measurement_plan_text() -> String {
+  let arms = if length(v41_engram_arm_bindings) == 0 {
+    "engram arms: unbound (no image patch digest bound yet)"
+  } else {
+    join(["engram arms: ", join(map(v41_engram_arm_bindings, b => v41_arm_wire(a: b.arm)), ", ")], "")
+  }
+  let policy = match v41_capacity_policy {
+    PolicyProposed { proposal: _, reasons: _ } => "staircase policy: PROPOSED, awaiting operator sign-off; the staircase refuses"
+    PolicyOperatorSigned { policy: _, ruling: r } => join(["staircase policy: signed (", r as String, ")"], "")
+  }
+  join([
+    join(["V4.1 capacity measurement: Group A TP4 x1, ", to_string(v41_measurement_rank_count), " ranks, max_model_len ", to_string(token_count_value(t: v41_measurement_max_model_len))], ""),
+    "measurement 1: startup memory receipt from every rank, judged by the min rank",
+    join(["  thresholds: x6 needs ", to_string(v41_pool_tokens_needed(concurrency: 6)), " tokens, x16 needs ", to_string(v41_pool_tokens_needed(concurrency: 16))], ""),
+    join(["measurement 2: residency timeline at ", join(map(v41_residency_phases, p => v41_phase_wire(p: p)), ", ")], ""),
+    join(["  ", arms], ""),
+    join(["measurement 3: probe cells ", join(map(v41_probe_cells, c => join([to_string(token_count_value(t: c.context)), "x", to_string(c.concurrency)], "")), ", ")], ""),
+    "  distinct touches: TouchCounterUnavailable until the follow-up counter lane lands; Engram-resident refuses",
+    join(["  staircase: ", join(map(v41_staircase_concurrencies, c => join(["x", to_string(c)], "")), " -> ")], ""),
+    join(["  ", policy], ""),
+    "production admission: refused until a capacity report is admitted; the measurement serve is admitted on its own",
+  ], "\n")
+}
