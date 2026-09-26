@@ -44,7 +44,7 @@ import gunbc.spark.native_experiment_apply {
   spark_plan_targets_fragmentation, spark_experiment_workload_phase,
   spark_churn_window_seconds, spark_churn_requests_per_seat, spark_churn_band_floor_tokens,
   spark_allocator_sample_cadence_seconds, spark_churn_request_timeout_seconds,
-  SparkPrefillSeatsRefused, SparkChurnRefused, SparkAllocatorSamplingRefused,
+  SparkEndpointReadinessRefused, SparkPrefillSeatsRefused, SparkChurnRefused, SparkAllocatorSamplingRefused,
 }
 import gunbc.spark.arm_memory_experiment_observed {
   arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
@@ -357,7 +357,7 @@ fn w_admitted_shape(
 
 // THE WORKLOAD PHASE'S SHAPE, asserted inside the admitted-shape fold so every admitted-bracket
 // witness checks it: the default actuation's plan targets every open obligation and the subject's
-// fragmentation allowance is open, so the phase is present with exactly the three legs on the head
+// fragmentation allowance is open, so the phase is present with exactly the four legs on the head
 // host — the prefill seats, the churn launch, the allocator sampling — the window rendered from
 // the plan's one admitted duration, and the cadence the runbook pins.
 fn w_workload_shape(admission: ArmExperimentActuationAdmission, head_member: SystemdExecutionMember, admitted: Nat) -> Bool {
@@ -367,10 +367,13 @@ fn w_workload_shape(admission: ArmExperimentActuationAdmission, head_member: Sys
       match workload {
         Absent => false
         Present { value: phase } =>
-          (phase.prefill_seats.member.host as String) == (head_member.host as String)
+          (phase.readiness_gate.member.host as String) == (head_member.host as String)
+            && (phase.prefill_seats.member.host as String) == (head_member.host as String)
             && (phase.churn.member.host as String) == (head_member.host as String)
             && (phase.sampling.member.host as String) == (head_member.host as String)
+            && (phase.readiness_gate.plan.unit_name as String) == (head_member.unit_name as String)
             && (phase.prefill_seats.plan.unit_name as String) == (head_member.unit_name as String)
+            && phase.readiness_bounded_seconds == admitted
             && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: admitted)
             && phase.churn_window_seconds > 0
             && phase.sample_cadence_seconds == spark_allocator_sample_cadence_seconds
@@ -471,12 +474,12 @@ test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool {
 }
 
 // THE POSITIVE CONTROL: every leg applies, 20 prior + 4 prepared + 4 activated + 1 head readback
-// + 3 rank readbacks + 3 workload legs + 4 stopped = 39 outcomes, the run reports convergence, and
-// neither halt is minted.
+// + 3 rank readbacks + 4 workload legs (readiness gate, prefill seats, churn launch, sampler) +
+// 4 stopped = 40 outcomes, the run reports convergence, and neither halt is minted.
 test fn w_route_full_success_runs_prior_prepare_activate_readback_workload_stop() -> Bool {
   match fx_route_result(run_leg: fx_applied) {
     Present { value: result } =>
-      length(result.outcomes) == 39
+      length(result.outcomes) == 40
         && spark_pair_apply_all_applied(outcomes: result.outcomes)
         && (match result.halt { Absent => true  Present { value: _ } => false })
         && (match result.workload_halt { Absent => true  Present { value: _ } => false })
@@ -489,8 +492,8 @@ test fn w_route_full_success_runs_prior_prepare_activate_readback_workload_stop(
 // short-circuit the cohort's observation), every rank leg reports the planted failure, the workload
 // phase never runs behind a readback halt — 20 + 4 + 4 + 1 + 3 + 4 = 36 outcomes, the same count
 // the pre-workload bracket minted — the run refuses, and the halt is located on a rank host by the
-// rank-profile variant. The count IS the gate's witness: three workload legs behind a halted
-// readback would make 39.
+// rank-profile variant. The count IS the gate's witness: four workload legs behind a halted
+// readback would make 40.
 test fn w_route_rank_readback_failure_refuses_located_on_the_rank() -> Bool {
   match fx_route_result(run_leg: fx_run_fail_rank_readback) {
     Present { value: result } =>
@@ -546,7 +549,7 @@ test fn w_workload_phase_gate_follows_the_plans_targets() -> Bool {
 
 // THE GATE PLANS THE PHASE OR NOTHING, on the same cohort: the loader-transient plan against the
 // default actuation's cohort plans Absent — the bracket for a memory-profile experiment is the
-// bracket that has always run — and the fragmentation-churn plan plans three legs, every one on the
+// bracket that has always run — and the fragmentation-churn plan plans four legs, every one on the
 // head host.
 test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
   match spark_native_experiment_default_actuation() {
@@ -585,11 +588,16 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
       match workload {
         Absent => false
         Present { value: phase } =>
+          let gate = phase.readiness_gate.plan.script
           let prefill = phase.prefill_seats.plan.script
           let churn = phase.churn.plan.script
           let sampling = phase.sampling.plan.script
           let window = spark_churn_window_seconds(admitted_seconds: admitted)
-          string_contains(s: prefill, pattern: "/v1/completions")
+          string_contains(s: gate, pattern: "/v1/models")
+            && string_contains(s: gate, pattern: join(["endpoint-not-ready-after-", to_string(phase.readiness_bounded_seconds), "s"], ""))
+            && string_contains(s: gate, pattern: "unit-inactive-before-endpoint-ready")
+            && string_contains(s: gate, pattern: "sleep 5")
+            && string_contains(s: prefill, pattern: "/v1/completions")
             && string_contains(s: prefill, pattern: "prompt_tokens=")
             && string_contains(s: prefill, pattern: "s%02db%05d")
             && string_contains(s: prefill, pattern: "probe.json")
@@ -639,16 +647,18 @@ test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool 
   }
 }
 
-// THE DRY RENDERING ORDERS THE READBACK PHASE: filtering the dry text to exactly the lines that
-// carry a readback bound or the stop block's banner yields, in order, the head leg's banner, one
-// banner per rank leg in cohort order, and the stop banner — no stop line before any readback, no
-// rank leg before the head's, and every leg the admission planned present in the rendering.
+// THE DRY RENDERING ORDERS THE READBACK PHASE: filtering the dry text to exactly the readback
+// banners and the stop block's banner yields, in order, the head leg's banner, one banner per rank
+// leg in cohort order, and the stop banner — no stop line before any readback, no rank leg before
+// the head's, and every leg the admission planned present in the rendering. (The readiness gate
+// carries a bounded_seconds banner too now; this witness names the readback banners because the
+// readback phase is its subject — the gate's ordering is the workload witness's.)
 test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: _, admitted_seconds: admitted } =>
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
       let dry = spark_native_experiment_actuation_dry()
-      let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: " bounded_seconds=") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
+      let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: "HEAD READBACK ") || string_contains(s: l, pattern: "RANK READBACK ") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
       let expected = concat(
         [join(["HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")],
         concat(
@@ -679,12 +689,61 @@ test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
   }
 }
 
+// THE READINESS GATE'S REFUSAL IS THE NEVER-READY LOCATED HALT: the runner plants a failure in
+// exactly the gate leg — discriminated by the not-ready line its script alone carries. The gate
+// outcome fails, the prefill, churn and sampling legs are never issued, and the stops still run:
+// 20 + 4 + 4 + 1 + 3 + 1 + 4 = 37 outcomes, the workload halt is located on the head by the
+// readiness variant, and the readback halt is absent — the readbacks converged; the front door
+// never opened.
+fn fx_run_fail_readiness_gate(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: "endpoint-not-ready-after-") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+test fn w_route_never_ready_endpoint_halts_the_workload_before_the_stops() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_readiness_gate) {
+    Present { value: result } =>
+      length(result.outcomes) == 37
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt { Absent => true  Present { value: _ } => false })
+        && (match result.workload_halt {
+          Present { value: SparkEndpointReadinessRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_head_unit_name as String)
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+// THE READINESS GATE SHARES THE PLAN'S ONE ADMITTED DURATION: its poll loop renders from the same
+// admitted_seconds with the identical (seconds + 4) / 5 iteration arithmetic as the profile
+// readbacks, so the cohort is charged one experiment duration across every bounded wait in the
+// cell — the gate's bound is the budget shared, never a fresh duration minted at the phase edge.
+test fn w_the_readiness_gate_shares_the_plans_one_admitted_duration() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: admitted } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          let expected_loop = join(["for i in ", join(map(nat_range_inclusive(lo: 1, hi: (admitted + 4) / 5), n => to_string(n)), " "), "; do"], "")
+          phase.readiness_bounded_seconds == admitted
+            && string_contains(s: phase.readiness_gate.plan.script, pattern: expected_loop)
+            && string_contains(s: phase.readiness_gate.plan.script, pattern: join(["endpoint-not-ready-after-", to_string(admitted), "s"], ""))
+            && string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["WORKLOAD ENDPOINT READINESS ", phase.readiness_gate.member.host as String, " ", phase.readiness_gate.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], ""))
+      }
+  }
+}
+
 // A WORKLOAD LEG THAT FAILS HALTS LOCATED AND SHORT-CIRCUITS THE PHASE: the runner plants a
 // failure in exactly the prefill leg — discriminated by the calibration refusal the prefill script
-// alone carries. The prefill outcome fails, the churn and sampling legs are never issued, and the
-// stops still run: 20 + 4 + 4 + 1 + 3 + 1 + 4 = 37 outcomes, the workload halt is located on the
-// head by the prefill variant, and the readback halt is absent — the readbacks converged; it was
-// the engine under load that refused.
+// alone carries. The gate and prefill outcomes are on the spine, the churn and sampling legs are
+// never issued, and the stops still run: 20 + 4 + 4 + 1 + 3 + 2 + 4 = 38 outcomes, the workload
+// halt is located on the head by the prefill variant, and the readback halt is absent — the
+// readbacks converged; it was the engine under load that refused.
 fn fx_run_fail_prefill(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
   if string_contains(s: plan.script, pattern: "prefill-calibration-unreadable") {
     fx_failed(plan: plan)
@@ -704,7 +763,7 @@ fn fx_run_fail_sampling(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutco
 test fn w_route_prefill_failure_halts_the_workload_before_the_stops() -> Bool {
   match fx_route_result(run_leg: fx_run_fail_prefill) {
     Present { value: result } =>
-      length(result.outcomes) == 37
+      length(result.outcomes) == 38
         && !spark_pair_apply_all_applied(outcomes: result.outcomes)
         && (match result.halt { Absent => true  Present { value: _ } => false })
         && (match result.workload_halt {
@@ -717,15 +776,15 @@ test fn w_route_prefill_failure_halts_the_workload_before_the_stops() -> Bool {
 }
 
 // THE SAMPLER'S REFUSAL IS THE MID-RUN LOCATED HALT: the runner plants a failure in exactly the
-// sampling leg — discriminated by the peak line its script alone folds. The prefill and churn legs
-// apply (the driver launches), the sampler refuses, the stops run after: 20 + 4 + 4 + 1 + 3 + 3 +
-// 4 = 39 outcomes with one failure among them, the workload halt is located on the head by the
+// sampling leg — discriminated by the peak line its script alone folds. The gate, prefill and churn
+// legs apply (the driver launches), the sampler refuses, the stops run after: 20 + 4 + 4 + 1 + 3 +
+// 4 + 4 = 40 outcomes with one failure among them, the workload halt is located on the head by the
 // sampler variant — the endpoint-unreachable-mid-run arm lands here — and the readback halt stays
 // absent.
 test fn w_route_sampling_failure_refuses_located_on_the_head() -> Bool {
   match fx_route_result(run_leg: fx_run_fail_sampling) {
     Present { value: result } =>
-      length(result.outcomes) == 39
+      length(result.outcomes) == 40
         && !spark_pair_apply_all_applied(outcomes: result.outcomes)
         && (match result.halt { Absent => true  Present { value: _ } => false })
         && (match result.workload_halt {
@@ -738,9 +797,10 @@ test fn w_route_sampling_failure_refuses_located_on_the_head() -> Bool {
 }
 
 // THE DRY RENDERING ORDERS THE WORKLOAD PHASE: filtering the dry text to exactly the lines that
-// carry a workload banner or the stop block's banner yields, in order, the prefill banner, the
-// churn banner, the sampler banner, then the stop banner — the workload phase between the readback
-// legs and the deterministic stop, and the stops always last.
+// carry a workload banner or the stop block's banner yields, in order, the readiness gate banner,
+// the prefill banner, the churn banner, the sampler banner, then the stop banner — the gate after
+// the readback legs and ahead of every workload leg, the workload phase between the readbacks and
+// the deterministic stop, and the stops always last.
 test fn w_the_dry_workload_phase_is_ordered_between_the_readbacks_and_the_stops() -> Bool {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
@@ -749,15 +809,17 @@ test fn w_the_dry_workload_phase_is_ordered_between_the_readbacks_and_the_stops(
         Absent => false
         Present { value: phase } =>
           let dry = spark_native_experiment_actuation_dry()
-          let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: "WORKLOAD PREFILL SEATS ") || string_contains(s: l, pattern: "WORKLOAD CHURN ") || string_contains(s: l, pattern: "WORKLOAD ALLOCATOR SAMPLING ") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
+          let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: "WORKLOAD ENDPOINT READINESS ") || string_contains(s: l, pattern: "WORKLOAD PREFILL SEATS ") || string_contains(s: l, pattern: "WORKLOAD CHURN ") || string_contains(s: l, pattern: "WORKLOAD ALLOCATOR SAMPLING ") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
           let expected = [
+            join(["WORKLOAD ENDPOINT READINESS ", phase.readiness_gate.member.host as String, " ", phase.readiness_gate.plan.unit_name as String, " bounded_seconds=", to_string(phase.readiness_bounded_seconds)], ""),
             join(["WORKLOAD PREFILL SEATS ", phase.prefill_seats.member.host as String, " ", phase.prefill_seats.plan.unit_name as String], ""),
             join(["WORKLOAD CHURN ", phase.churn.member.host as String, " ", phase.churn.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " requests_per_client=", to_string(spark_churn_requests_per_seat), " band_floor_tokens=", to_string(spark_churn_band_floor_tokens)], ""),
             join(["WORKLOAD ALLOCATOR SAMPLING ", phase.sampling.member.host as String, " ", phase.sampling.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " cadence_seconds=", to_string(phase.sample_cadence_seconds)], ""),
             "STOP (deterministic end on every rank)",
           ]
-          length(actual) == 4
+          length(actual) == 5
             && join(actual, "\n") == join(expected, "\n")
+            && string_contains(s: dry, pattern: "endpoint-ready bounded_seconds=")
             && string_contains(s: dry, pattern: "prefill-seats-complete")
             && string_contains(s: dry, pattern: "churn-driver-launched")
             && string_contains(s: dry, pattern: "allocator-gap-peak")

@@ -186,9 +186,12 @@ test fn w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures() -
         Present { value: phase } =>
           let seat_count = length(arm_experiment_kvplan_v2_2026_09_26_workload().cold_sequence_budgets)
           let seat_window = token_count_value(t: arm_experiment_kvplan_v2_2026_09_26_policy_profile().max_model_len)
-          (phase.prefill_seats.member.host as String) == (head.member.host as String)
+          (phase.readiness_gate.member.host as String) == (head.member.host as String)
+            && (phase.prefill_seats.member.host as String) == (head.member.host as String)
             && (phase.churn.member.host as String) == (head.member.host as String)
             && (phase.sampling.member.host as String) == (head.member.host as String)
+            && string_contains(s: phase.readiness_gate.plan.script, pattern: "/v1/models")
+            && phase.readiness_bounded_seconds == admitted
             && string_contains(s: phase.prefill_seats.plan.script, pattern: join(["while [ \"$seat\" -le ", to_string(seat_count), " ]"], ""))
             && string_contains(s: phase.prefill_seats.plan.script, pattern: join(["blocks=$(( ", to_string(seat_window), " / yield ))"], ""))
             && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: admitted)

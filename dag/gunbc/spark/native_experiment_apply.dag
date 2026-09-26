@@ -84,7 +84,8 @@ import gunbc.spark.systemd_execution_cell {
 // host: the head leg holds the cohort's memory-profile anchor, and one leg per rank host holds
 // that host's own per-rank profile line, every leg bounded by the plan's one admitted duration
 // shared across the cohort. Only after all four readbacks succeed may the bracket's one optional
-// workload phase run — three legs on the head host, planned only when the experiment plan targets
+// workload phase run — the readiness gate and three legs on the head host, planned only when the
+// experiment plan targets
 // the fragmentation allowance: the cold full-window prefill seats, the bounded mixed-length churn
 // driver launched beside the allocator sampler, and the sampler folding the peak unreclaimable gap
 // the run exists to mint. For a memory-profile plan the phase is absent and the bracket is the
@@ -247,6 +248,14 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
         let seat_window = token_count_value(t: plan.profile.max_model_len)
         let alias = plan.profile.served_alias
         Present { value: SparkExperimentWorkloadPhase {
+          readiness_gate: SparkExperimentWorkloadLeg {
+            member: head,
+            plan: SparkPairHostApplyPlan {
+              host: head.host,
+              unit_name: head.unit_name,
+              script: systemd_workload_readiness_script(member: head, serve_port: plan.profile.serve_port, admitted_seconds: plan.max_runtime_seconds),
+            },
+          },
           prefill_seats: SparkExperimentWorkloadLeg {
             member: head,
             plan: SparkPairHostApplyPlan {
@@ -271,6 +280,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
               script: systemd_workload_sampling_script(member: head, serve_port: plan.profile.serve_port, window_seconds: window, cadence_seconds: spark_allocator_sample_cadence_seconds, request_timeout_seconds: spark_churn_request_timeout_seconds),
             },
           },
+          readiness_bounded_seconds: plan.max_runtime_seconds,
           churn_window_seconds: window,
           sample_cadence_seconds: spark_allocator_sample_cadence_seconds,
         } }
@@ -331,23 +341,29 @@ type SparkExperimentWorkloadLeg {
   plan: SparkPairHostApplyPlan
 }
 
-// THE WORKLOAD PHASE, all three legs on the head host, in route order: the prefill seats mint the
-// pool state, the churn driver runs beside the sampler, and the sampler folds the peak the receipt
-// mints from. The window and cadence ride beside the legs so the dry entry renders the bounds and
-// the witness asserts them without re-deriving.
+// THE WORKLOAD PHASE, all on the head host, in route order: the readiness gate waits the front
+// door (the profile anchors print before the API server binds — readback convergence says nothing
+// about endpoint liveness), the prefill seats mint the pool state, the churn driver runs beside
+// the sampler, and the sampler folds the peak the receipt mints from. The readiness bound, window
+// and cadence ride beside the legs so the dry entry renders the bounds and the witness asserts them
+// without re-deriving.
 type SparkExperimentWorkloadPhase {
+  readiness_gate: SparkExperimentWorkloadLeg
   prefill_seats: SparkExperimentWorkloadLeg
   churn: SparkExperimentWorkloadLeg
   sampling: SparkExperimentWorkloadLeg
+  readiness_bounded_seconds: Nat
   churn_window_seconds: Nat
   sample_cadence_seconds: Nat
 }
 
 // THE WORKLOAD HALT, carried beside the readback halt so each phase's refusal stays typed: the
-// endpoint dying mid-run, the churn driver failing its bounds, the sampler losing its instruments —
-// each is a located refusal on the head member, never a bare boolean in the receipt.
+// endpoint never ready at the budget, the prefill seats refusing, the churn driver failing its
+// bounds, the sampler losing its instruments — each is a located refusal on the head member, never
+// a bare boolean in the receipt.
 type SparkExperimentWorkloadRefusal
-  = SparkPrefillSeatsRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+  = SparkEndpointReadinessRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+  | SparkPrefillSeatsRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
   | SparkChurnRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
   | SparkAllocatorSamplingRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
 
@@ -568,6 +584,7 @@ fn spark_profile_readback_halt_wire(r: SparkProfileReadbackRefusal) -> String {
 // instruments each refuse located, beside the full outcome body the receipt already records.
 fn spark_workload_halt_wire(r: SparkExperimentWorkloadRefusal) -> String {
   match r {
+    SparkEndpointReadinessRefused { member: m, cause: c } => join(["workload halted at endpoint readiness on head ", m.host as String, ": ", c as String, "\n"], "")
     SparkPrefillSeatsRefused { member: m, cause: c } => join(["workload halted at prefill seats on head ", m.host as String, ": ", c as String, "\n"], "")
     SparkChurnRefused { member: m, cause: c } => join(["workload halted at churn launch on head ", m.host as String, ": ", c as String, "\n"], "")
     SparkAllocatorSamplingRefused { member: m, cause: c } => join(["workload halted at allocator sampling on head ", m.host as String, ": ", c as String, "\n"], "")
@@ -592,8 +609,10 @@ fn spark_stop_plan_of_member(member: SystemdExecutionMember) -> SparkPairHostApp
 // halt starts none; a partial activation rolls its started members back before the route refuses;
 // a converged activation takes the readback phase — the head's anchor leg, then one per-rank
 // profile leg, each issued only after the head's anchor has appeared — and then, when the plan
-// targets the fragmentation allowance AND the readbacks converged, the workload phase: the prefill
-// seats, then the churn driver launched beside the allocator sampler, each leg short-circuiting
+// targets the fragmentation allowance AND the readbacks converged, the workload phase: the
+// readiness gate first — the profile anchors print before the API server binds, so readback
+// convergence says nothing about the front door — then the prefill seats, then the churn driver
+// launched beside the allocator sampler, each leg short-circuiting
 // the rest on failure so the halt is located on the leg that refused. The stops come after all of
 // it and run however the measurement went: they are the deterministic end on convergence and the
 // rollback on a halt, they are the same legs either way, and a workload that halted never delays
@@ -612,28 +631,37 @@ type SparkWorkloadRun {
   workload_halt: SparkExperimentWorkloadRefusal?
 }
 
-// THE WORKLOAD PHASE, RUN. The three legs run in order on the head host through the same
-// transport as every other leg; the first failure short-circuits the phase with the located
-// refusal and the legs that never ran mint no outcomes, exactly as a failed head readback issues
-// no rank legs. All three legs' outcomes ride in the route's single outcome list, so the stop legs
-// still follow them however the phase went.
+// THE WORKLOAD PHASE, RUN. The legs run in order on the head host through the same transport as
+// every other leg: the readiness gate first — the front door is not live at readback convergence,
+// and driving requests at an unbound endpoint is how the first churn run failed — then the prefill
+// seats, the churn launch, the sampler. The first failure short-circuits the phase with the
+// located refusal and the legs that never ran mint no outcomes, exactly as a failed head readback
+// issues no rank legs. All legs' outcomes ride in the route's single outcome list, so the stop
+// legs still follow them however the phase went.
 fn spark_workload_run(phase: SparkExperimentWorkloadPhase, run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> SparkWorkloadRun {
-  let prefill_outcome = run_leg(phase.prefill_seats.plan)
-  match prefill_outcome {
+  let gate_outcome = run_leg(phase.readiness_gate.plan)
+  match gate_outcome {
     SparkPairHostApplyFailed { host: _, cause: c } =>
-      SparkWorkloadRun { outcomes: [prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
+      SparkWorkloadRun { outcomes: [gate_outcome], workload_halt: Present { value: SparkEndpointReadinessRefused { member: phase.readiness_gate.member, cause: c as NonEmptyStr } } }
     SparkPairHostApplied { host: _, detail: _, standing: _ } => {
-      let churn_outcome = run_leg(phase.churn.plan)
-      match churn_outcome {
+      let prefill_outcome = run_leg(phase.prefill_seats.plan)
+      match prefill_outcome {
         SparkPairHostApplyFailed { host: _, cause: c } =>
-          SparkWorkloadRun { outcomes: [prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
+          SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
         SparkPairHostApplied { host: _, detail: _, standing: _ } => {
-          let sampling_outcome = run_leg(phase.sampling.plan)
-          match sampling_outcome {
+          let churn_outcome = run_leg(phase.churn.plan)
+          match churn_outcome {
             SparkPairHostApplyFailed { host: _, cause: c } =>
-              SparkWorkloadRun { outcomes: [prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
-            SparkPairHostApplied { host: _, detail: _, standing: _ } =>
-              SparkWorkloadRun { outcomes: [prefill_outcome, churn_outcome, sampling_outcome], workload_halt: none }
+              SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
+            SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+              let sampling_outcome = run_leg(phase.sampling.plan)
+              match sampling_outcome {
+                SparkPairHostApplyFailed { host: _, cause: c } =>
+                  SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
+                SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+                  SparkWorkloadRun { outcomes: [gate_outcome, prefill_outcome, churn_outcome, sampling_outcome], workload_halt: none }
+              }
+            }
           }
         }
       }
@@ -721,7 +749,8 @@ fn spark_dry_actuation_line(a: ExecutionCellActuation<SystemdExecutionMember>) -
 // scripts the wet run would execute. The deterministic stop closes the cell either way.
 fn spark_workload_dry_lines(phase: SparkExperimentWorkloadPhase) -> String {
   join([
-    "WORKLOAD PHASE (fragmentation-targeted plan: cold full-window prefill seats, bounded churn, allocator sampling at the runbook cadence)\n",
+    "WORKLOAD PHASE (fragmentation-targeted plan: endpoint readiness, cold full-window prefill seats, bounded churn, allocator sampling at the runbook cadence)\n",
+    "WORKLOAD ENDPOINT READINESS ", phase.readiness_gate.member.host as String, " ", phase.readiness_gate.plan.unit_name as String, " bounded_seconds=", to_string(phase.readiness_bounded_seconds), "\n", phase.readiness_gate.plan.script, "\n",
     "WORKLOAD PREFILL SEATS ", phase.prefill_seats.member.host as String, " ", phase.prefill_seats.plan.unit_name as String, "\n", phase.prefill_seats.plan.script, "\n",
     "WORKLOAD CHURN ", phase.churn.member.host as String, " ", phase.churn.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " requests_per_client=", to_string(spark_churn_requests_per_seat), " band_floor_tokens=", to_string(spark_churn_band_floor_tokens), "\n", phase.churn.plan.script, "\n",
     "WORKLOAD ALLOCATOR SAMPLING ", phase.sampling.member.host as String, " ", phase.sampling.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " cadence_seconds=", to_string(phase.sample_cadence_seconds), "\n", phase.sampling.plan.script, "\n",

@@ -298,7 +298,8 @@ fn systemd_profile_readback_script(member: SystemdExecutionMember, profile_ancho
 // readback observes launch evidence, not serving behaviour. The fragmentation-churn experiment the
 // bracket plans when a plan targets ArmFragmentationAllowance (gunbc.spark.native_experiment_apply
 // spark_experiment_workload_phase) is the one consumer that must DRIVE the engine between the
-// profile readbacks and the deterministic stop, so its three scripts render here beside the profile
+// profile readbacks and the deterministic stop, so its scripts — the readiness gate, the prefill
+// seats, the churn driver, the sampler — render here beside the profile
 // readback, as this substrate's answer for "run a bounded workload on the head host and read the
 // allocator while it runs". They travel over the same privileged leg as every other script the
 // realization renders (sudo sh -s on the host), so their substrate assumptions are only what every
@@ -452,6 +453,32 @@ fn systemd_workload_churn_launch_script(member: SystemdExecutionMember, serve_po
     "nohup sh \"$state/churn_driver.sh\" > \"$state/churn_driver.log\" 2>&1 &\n",
     "printf '%s' $! > \"$state/churn_driver.pid\"\n",
     "echo \"churn-driver-launched pid=$(cat \"$state/churn_driver.pid\") window_seconds=", to_string(window_seconds), " clients=", to_string(clients), " requests_per_client=", to_string(requests_per_client), " band_tokens=", to_string(low_tokens), "-", to_string(high_tokens), "\"\n",
+  ], "")
+}
+
+// (0) THE ENDPOINT-READINESS GATE, run as the workload phase's first leg. THE RECEIPT THAT SENT IT
+// HERE: the first churn run failed its prefill leg with "Failed to connect to 127.0.0.1 port 30000"
+// — the profile lines the readback anchors wait on print during engine init, BEFORE the API server
+// binds, so readback convergence establishes the engine's memory evidence and nothing about the
+// front door. The gate polls GET /v1/models — the liveness read gunbc.serving.engine_progress
+// names — until the endpoint answers. THE BOUND IS THE PLAN'S ONE ADMITTED DURATION, shared not
+// re-minted: the iterations render from the same admitted_seconds with the same (seconds + 4) / 5
+// arithmetic and the same five-second sleep the profile readbacks use, so the cohort is charged one
+// experiment duration across every bounded wait in the cell and a budget move moves every bound
+// together. A unit that goes inactive mid-wait exits within one poll (the engines' RuntimeMaxSec
+// expiry is exactly that death); an endpoint still silent at the bound refuses located with the
+// budget named. The gate is readiness, not a failure classifier — every later refusal arm is
+// unchanged.
+fn systemd_workload_readiness_script(member: SystemdExecutionMember, serve_port: Port, admitted_seconds: Nat) -> String {
+  let iterations = nat_range_inclusive(lo: 1, hi: (admitted_seconds + 4) / 5)
+  let unit = member.unit_name as String
+  join([
+    "set -e\n",
+    "base=http://127.0.0.1:", to_string(serve_port), "\n",
+    "ready=0\n",
+    "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if curl -fsS -m 10 \"$base/v1/models\" >/dev/null 2>&1; then ready=1; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-endpoint-ready; exit 51; fi; sleep 5; done\n",
+    "if [ \"$ready\" != \"1\" ]; then echo \"endpoint-not-ready-after-", to_string(admitted_seconds), "s\"; exit 50; fi\n",
+    "echo \"endpoint-ready bounded_seconds=", to_string(admitted_seconds), "\"\n",
   ], "")
 }
 
