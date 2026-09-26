@@ -596,12 +596,38 @@ fn workload_footprint_judge(workload: HostCaptureWorkloadShape, out: List<String
   }
 }
 
-// A pending section is judged on its footprint only once it has stated one; before that line the
-// stage is still starting and nothing about the footprint is known.
+// A PENDING SECTION IS JUDGED ONLY ON WHAT IT HAS ALREADY PROVEN (review 5326655399). The stage
+// prints the footprint, then the two capacities, then its verdict line, so a poll can land between any
+// two of them. The completed-section judge treats a capacity not yet printed as Unreported and
+// refuses -- right for a closed section, wrong for one still being written. So, while pending:
+// no footprint yet is pending; a footprint that is malformed or not the declared total refuses; the
+// host's refused marker refuses; a capacity ALREADY printed that is unparsed or proves non-fit
+// refuses; a capacity not yet printed keeps it pending. Both capacities printed and holding: pending
+// on the writes, which the rc and stable-token reads that follow decide.
+fn workload_capacity_already_refuses(declared: ByteSize, r: WorkloadByteReading) -> Bool {
+  match r {
+    WorkloadBytesUnreported => false
+    other => !workload_capacity_holds(declared: declared, r: other)
+  }
+}
+
 fn workload_pending_footprint_judge(workload: HostCaptureWorkloadShape, out: List<String>) -> MtCollins1BootTerminalCause? {
-  match host_capture_output_value_after(output: out, token: host_capture_workload_bytes_token) {
-    Absent => none
-    Present { value: _ } => workload_footprint_judge(workload: workload, out: out)
+  let declared = host_capture_workload_total_bytes(workload: workload)
+  let observed = workload_byte_reading(out: out, token: host_capture_workload_bytes_token)
+  let shm = workload_byte_reading(out: out, token: host_capture_workload_shm_avail_token)
+  let mem = workload_byte_reading(out: out, token: host_capture_workload_mem_available_token)
+  match observed {
+    WorkloadBytesUnreported => none
+    _ =>
+      if !workload_reading_is(declared: declared, r: observed) {
+        Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
+      } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
+          || workload_capacity_already_refuses(declared: declared, r: shm)
+          || workload_capacity_already_refuses(declared: declared, r: mem) {
+        Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
+      } else {
+        none
+      }
   }
 }
 
