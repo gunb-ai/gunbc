@@ -711,6 +711,27 @@ type V41CapacityReport {
   kv_admission: V41Capacity
   engram_resident: V41Capacity
   sla_sustainable: V41Capacity
+  indexer_kernel: V41ImageExtensionStanding
+}
+
+// WHICH INDEXER TOP-K KERNEL THE CAPACITIES WERE MEASURED ON. A report's SLA and TTFT figures belong to
+// the kernel the ranks ran, so the report carries it: if any rank's DeepSelect import failed, the
+// report says so with that rank's logged line. A refused startup receipt leaves it unobserved.
+fn v41_report_indexer_kernel(s: V41StartupAdmission) -> V41ImageExtensionStanding {
+  match s {
+    StartupRefused { causes: _ } => ExtensionUnobserved
+    StartupAdmitted { receipt: r } => {
+      let failed = flat_map(r.ranks, k => match k.deepselect {
+        ExtensionImportFailed { logged: l } => [l]
+        ExtensionLoaded => [] as List<NonEmptyStr>
+        ExtensionUnobserved => [] as List<NonEmptyStr>
+      })
+      match list_at_optional(xs: failed, index: 0) {
+        Present { value: l } => ExtensionImportFailed { logged: l }
+        Absent => ExtensionLoaded
+      }
+    }
+  }
 }
 
 // KV ADMISSION: the largest planned concurrency whose max_model_len requests fit the MIN rank's pool.
@@ -805,6 +826,7 @@ fn v41_capacity_report(
     kv_admission: v41_kv_admission_capacity(s: startup),
     engram_resident: v41_engram_resident_capacity(verdicts: map(probes, p => v41_judge_probe(p: p))),
     sla_sustainable: v41_sla_capacity(o: staircase),
+    indexer_kernel: v41_report_indexer_kernel(s: startup),
   }
 }
 

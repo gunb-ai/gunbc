@@ -403,13 +403,13 @@ test fn the_measurement_serve_is_admitted_and_production_refuses_without_a_repor
 }
 
 test fn production_admits_the_minimum_of_three_capacities_and_refuses_on_any_refusal() -> Bool {
-  let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 } }
+  let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
   let admitted = match v41_serving_admission(realization: V41ProductionServe, report: Present { value: all }) {
     ProductionAdmitted { run_id: _, concurrency: c } => c == 4
     ProductionRefused { cause: _ } => false
     MeasurementServeAdmitted { run_id: _ } => false
   }
-  let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr } }
+  let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr }, indexer_kernel: ExtensionLoaded }
   let refused = match v41_serving_admission(realization: V41ProductionServe, report: Present { value: today }) {
     ProductionRefused { cause: c } => contains(c as String, "Engram resident")
     ProductionAdmitted { run_id: _, concurrency: _ } => false
@@ -483,4 +483,22 @@ test fn the_engram_arm_is_read_off_the_image_config_digest() -> Bool {
     Absent => true
   }
   a && none_bound
+}
+
+// THE REPORT NAMES THE INDEXER KERNEL ITS NUMBERS RAN ON: a failed DeepSelect import on the ranks
+// reaches the report with its logged line, and a refused startup receipt leaves it unobserved.
+test fn the_capacity_report_carries_the_indexer_kernel_standing() -> Bool {
+  let signed_empty = v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: [] as List<V41StaircaseStepReading>)
+  let failed = match v41_capacity_report(run_id: "run-1" as NonEmptyStr, startup: v41_admit_startup(readings: w_four_ranks()), probes: [] as List<V41ProbeReading>, staircase: signed_empty).indexer_kernel {
+    ExtensionImportFailed { logged: l } => contains(l as String, "_deepselect_C")
+    ExtensionLoaded => false
+    ExtensionUnobserved => false
+  }
+  let three = filter(w_four_ranks(), r => r.rank != 3)
+  let unobserved = match v41_capacity_report(run_id: "run-1" as NonEmptyStr, startup: v41_admit_startup(readings: three), probes: [] as List<V41ProbeReading>, staircase: signed_empty).indexer_kernel {
+    ExtensionUnobserved => true
+    ExtensionLoaded => false
+    ExtensionImportFailed { logged: _ } => false
+  }
+  failed && unobserved
 }
