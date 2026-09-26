@@ -1,5 +1,6 @@
 module extdeps.filesystem.filesystem_io
 
+import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, List, String }
@@ -668,6 +669,12 @@ data filesystem_absence_establishment_adoption_standing: String = "RUNG: structu
 // is declared on the two operations that have a consumer for it (Read and WriteCreateNew, both
 // consumed by extdeps.realization.materialization_store_local); an operation gains it when a
 // consumer needs it, since the transport answers it for every verb.
+//
+// WriteCreateNewWithMode: WriteCreateNew with the PUBLISHED MODE DECLARED rather than left to the process umask. The
+// canonical realization (extdeps.filesystem.rust_realization) sets these bits on the staged inode
+// before the hard_link publishes it, so the name never appears at any other mode. `mode` is the
+// permission-bit value of a modeled extdeps.access.posix FileMode (file_mode_bits), never a
+// literal; a value outside 0..=0o7777 refuses before anything is created.
 service Filesystem {
 
   operation Write {
@@ -702,6 +709,18 @@ service Filesystem {
       error_kind: String from "error_kind"
     }
     transport file { path: "{path}", verb: "write_create_new" }
+  }
+
+  operation WriteCreateNewWithMode {
+    input { path: String, content: String, mode: Int }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+      error_kind: String from "error_kind"
+    }
+    transport file { path: "{path}", verb: "write_create_new_with_mode" }
   }
 
   operation Read {

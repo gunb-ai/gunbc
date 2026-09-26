@@ -20,9 +20,11 @@ import std.fabric_storage {
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
 import gunbc.durable_cas_file_store {
-  observe_cas_slot_state, file_compare_and_set, DefaultAccessCreateOnly, cas_key_is_slot_addressable,
+  observe_cas_slot_state, file_compare_and_set, DefaultAccessCreateOnly, DeclaredModeCreateOnly, CasGenerationPublication, cas_key_is_slot_addressable,
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
+import extdeps.access.posix { FileMode, file_mode_bits }
+import v2.std.algebra { skip }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
@@ -48,15 +50,47 @@ import extdeps.filesystem.filesystem_io {
 // that defines the store's identity is a convergence decision, made by fabric_storage_file_root_ensure,
 // not a side effect of one write.
 
+// THE ENTRY MODE IS THE PLACEMENT'S FACT, NOT THIS REALIZATION'S. Who reads the store's files is
+// decided by who the placement declares as its writers and readers
+// (gunbc.fabric_storage_placement fabric_storage_placed_file_root); a root built with no declared
+// mode publishes at the writing process's umask, which is what a single-principal fixture wants and
+// what a store with two principals must not rely on.
 type FabricStorageFileRoot {
   objects: NonEmptyStr
   heads: NonEmptyStr
+  entry_mode: FileMode?
 }
 
 fn fabric_storage_file_root(root: NonEmptyStr) -> FabricStorageFileRoot {
+  fabric_storage_file_root_with(root: root, entry_mode: none)
+}
+
+fn fabric_storage_file_root_with(root: NonEmptyStr, entry_mode: FileMode?) -> FabricStorageFileRoot {
   FabricStorageFileRoot {
     objects: join([root as String, "/objects"], "") as NonEmptyStr,
     heads: join([root as String, "/heads"], "") as NonEmptyStr,
+    entry_mode: entry_mode,
+  }
+}
+
+fn fabric_storage_head_publication(root: FabricStorageFileRoot) -> CasGenerationPublication {
+  match root.entry_mode {
+    Absent => DefaultAccessCreateOnly
+    Present { value: m } => DeclaredModeCreateOnly { mode: m }
+  }
+}
+
+// ONE CREATE-NEW PUBLICATION EITHER WAY; the declared mode only decides the published bits.
+fn fabric_storage_object_create(root: FabricStorageFileRoot, path: String, content: String) -> FilesystemCreateNew {
+  match root.entry_mode {
+    Absent => {
+      let w = Filesystem.WriteCreateNew(path: path, content: content)
+      filesystem_create_new(path: w.path, success: w.success, error: w.error, error_kind: w.error_kind)
+    }
+    Present { value: m } => {
+      let w = Filesystem.WriteCreateNewWithMode(path: path, content: content, mode: file_mode_bits(mode: m))
+      filesystem_create_new(path: w.path, success: w.success, error: w.error, error_kind: w.error_kind)
+    }
   }
 }
 
@@ -141,8 +175,7 @@ fn fabric_storage_file_put(root: FabricStorageFileRoot, object: FabricObject) ->
   let a = fabric_object_addressed(object: object)
   let r = a.ref
   let path = fabric_storage_object_path(root: root, object: r)
-  let write = Filesystem.WriteCreateNew(path: path, content: fabric_object_preimage(object: a.object) as String)
-  let created = filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
+  let created = fabric_storage_object_create(root: root, path: path, content: fabric_object_preimage(object: a.object) as String)
   match created {
     FilesystemCreateTargetOccupied { path: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: fabric_storage_file_get(root: root, object: r))
     FilesystemCreated { path: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
@@ -205,7 +238,7 @@ fn fabric_storage_file_advance(root: FabricStorageFileRoot, name: NonEmptyStr, e
             match admit_cas_attempt_for_derived_payload(key: name, expected: fabric_storage_cas_expectation(reading: observed), proposed: fabric_object_ref_wire(object: target)) {
               DerivedPayloadKeyNotSlotAddressable { key: k } => FabricHeadAdvanceRefused { fault: FabricHeadNameRefused { name: k } }
               DerivedPayloadAdmitted { verified: v } =>
-                match file_compare_and_set(root: root.heads, publication: DefaultAccessCreateOnly, verified: v) {
+                match file_compare_and_set(root: root.heads, publication: fabric_storage_head_publication(root: root), verified: v) {
                   CasCommitted { committed: c } => FabricHeadAdvanced { object: target, generation: c.generation }
                   CasStoreRefused { cause: c } => FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: c } }
                   CasPreconditionFailed { expected: _, observed: _ } =>

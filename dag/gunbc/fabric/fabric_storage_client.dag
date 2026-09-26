@@ -18,9 +18,9 @@ import gunbc.fabric_storage_wire {
   FabricIdentityRead, FabricIdentityUnproxied, FabricIdentityReadRefused, fabric_storage_unwire_identity,
 }
 import gunbc.fabric_storage_file_store {
-  FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
+  FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced }
+import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 import product.placement_supply { HostIdentity, host_identity_eq }
 
 // THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of two
@@ -44,12 +44,18 @@ type FabricStorageBinding
   = FabricStorageLocalFiles { root: FabricStorageFileRoot }
   | FabricStorageServed { endpoint: NonEmptyStr }
   | FabricStorageBindingUnplaced
+  | FabricStorageBindingRefused { detail: NonEmptyStr }
 
 fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
   match placement {
     FabricStorageUnplaced => FabricStorageBindingUnplaced
     FabricStoragePlaced { host: h, store_root: r, endpoint: e } =>
-      if host_identity_eq(a: h, b: executor) { FabricStorageLocalFiles { root: fabric_storage_file_root(root: r) } } else { FabricStorageServed { endpoint: e } }
+      if host_identity_eq(a: h, b: executor) {
+        match fabric_storage_placed_file_root(store_root: r) {
+          FabricStoragePlacedRootReady { root } => FabricStorageLocalFiles { root: root }
+          FabricStoragePlacedRootRefused { detail } => FabricStorageBindingRefused { detail: detail }
+        }
+      } else { FabricStorageServed { endpoint: e } }
   }
 }
 
@@ -108,6 +114,7 @@ fn expectation_request_words(expected: FabricHeadExpectation) -> String {
 fn fabric_storage_head(binding: FabricStorageBinding, name: NonEmptyStr) -> FabricHeadRead {
   match binding {
     FabricStorageBindingUnplaced => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
+    FabricStorageBindingRefused { detail: d } => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_head(root: r, name: name)
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "head", request: name as String) {
@@ -120,6 +127,7 @@ fn fabric_storage_head(binding: FabricStorageBinding, name: NonEmptyStr) -> Fabr
 fn fabric_storage_put(binding: FabricStorageBinding, object: FabricObject) -> FabricPut {
   match binding {
     FabricStorageBindingUnplaced => FabricPutRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
+    FabricStorageBindingRefused { detail: d } => FabricPutRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_put(root: r, object: object)
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "put", request: fabric_object_preimage(object: object) as String) {
@@ -132,6 +140,7 @@ fn fabric_storage_put(binding: FabricStorageBinding, object: FabricObject) -> Fa
 fn fabric_storage_advance(binding: FabricStorageBinding, name: NonEmptyStr, expected: FabricHeadExpectation, target: FabricObjectRef) -> FabricHeadAdvance {
   match binding {
     FabricStorageBindingUnplaced => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
+    FabricStorageBindingRefused { detail: d } => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_advance(root: r, name: name, expected: expected, target: target)
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
@@ -144,6 +153,7 @@ fn fabric_storage_advance(binding: FabricStorageBinding, name: NonEmptyStr, expe
 fn fabric_storage_closure(binding: FabricStorageBinding, name: NonEmptyStr, bound: Nat) -> FabricClosureRead {
   match binding {
     FabricStorageBindingUnplaced => FabricClosureRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
+    FabricStorageBindingRefused { detail: d } => FabricClosureRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_closure(root: r, name: name, bound: bound)
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
@@ -161,6 +171,7 @@ fn fabric_storage_closure(binding: FabricStorageBinding, name: NonEmptyStr, boun
 fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIdentityRead {
   match binding {
     FabricStorageBindingUnplaced => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
+    FabricStorageBindingRefused { detail: d } => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: _ } => FabricIdentityUnproxied
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "identity", request: "") {

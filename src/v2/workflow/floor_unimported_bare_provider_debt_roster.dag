@@ -456,7 +456,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "any", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "length", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_storage_file_store.dag", name: "skip", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_storage_file_store.dag", name: "skip", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_storage_wire.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_storage_wire.dag", name: "skip", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_witness_run.dag", name: "append", standing: ActiveDebt },

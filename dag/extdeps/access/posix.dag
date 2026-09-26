@@ -131,6 +131,16 @@ fn file_mode_octal(mode: FileMode) -> String {
   ], "")
 }
 
+// The same mode as the NUMBER the kernel takes (chmod(2), open(2) mode argument): the four octal
+// digits above weighted 8^3..8^0. file_mode_octal is the spelling for an argv; this is the value for
+// an operation input, so neither consumer re-derives the digit layout.
+fn file_mode_bits(mode: FileMode) -> Int {
+  file_mode_special_octal_digit(mode: mode) * 512
+    + permission_bits_octal_digit(bits: mode.owner) * 64
+    + permission_bits_octal_digit(bits: mode.group) * 8
+    + permission_bits_octal_digit(bits: mode.other)
+}
+
 // THE SAME RELATION READ BACKWARD, which is why it lives here and not at the call site that wanted
 // it. file_mode_octal above renders a FileMode as chmod's numeric spelling; this reads that
 // spelling back. One grammar, two directions (DESIGN section 4) -- a parser authored beside a
