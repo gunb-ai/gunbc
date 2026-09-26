@@ -1,5 +1,6 @@
 module test.claim.mtcollins1_census_image_local_wet
 
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import extdeps.exec.command { LocalExec }
@@ -8,6 +9,12 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.shell.exec { ProcessObservation }
 import gunbc.machine_intake_host_capture_envelope {
+  BoundHostCaptureEnvelope,
+  host_capture_argv_open,
+  host_capture_envelope_rule,
+  host_capture_line_close,
+  host_capture_section_open,
+  HostCaptureWorkloadShape,
   HostCaptureBound,
   HostCaptureStage,
   HostCaptureUnbound, HostCaptureOpen, HostCaptureNotBegun,
@@ -16,12 +23,12 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_bound_nproc_exact,
   host_capture_bound_section_exit_zero,
   host_capture_bound_workload_stable,
-  host_capture_census_stages,
   host_capture_program,
   host_capture_workload_command,
 }
 import gunbc.machine_intake_host_capture_historical_binding {
-  bindings_hold_against_capture,
+  bindings_hold_against_capture_text,
+  census_stages_with_mutated_command,
   census_historical_capture,
 }
 import std.content_hash { Sha256Hash }
@@ -39,7 +46,6 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
 }
-import gunbc.machine_intake_host_capture_envelope { host_capture_census_stages }
 import gunbc.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
@@ -65,33 +71,115 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // attempt=3 was written by the program this grammar reconstructs, so the grammar must read it on
 // every axis the census verdict uses. A reconstruction that drifted from the real framing fails here.
 // attempt=3's capture must BIND -- one begin, the matching end for the same machine and run -- and
-// every verdict axis must read that bound envelope. This is the committed file, not a copy.
+// every verdict axis must read that bound envelope.
+//
+// THE AXES ARE ONE LIST, AND THE EXCERPT IS DERIVED FROM IT. Each axis names the section it reads;
+// the floor claim binds the committed bytes with every section NO axis reads removed by a pure
+// transform inside the claim -- attempt=3's dmesg-full alone was 205 KB of 270 KB and 76% of the bind.
+// An axis added here pulls its section back in; nothing else decides what is kept. The unmodified
+// full-file bind is the_attempt_three_full_capture_binds_by_real_execution below (local-wet).
+type AttemptThreeAxis
+  = AxisNprocExact { threads: String }
+  | AxisEdacClean { name: String }
+  | AxisWorkloadStable
+  | AxisSectionExitZero { name: String }
+
+data attempt_three_axes: List<AttemptThreeAxis> = [
+  AxisNprocExact { threads: "160" },
+  AxisEdacClean { name: "edac-before" },
+  AxisEdacClean { name: "edac-after" },
+  AxisWorkloadStable,
+  AxisSectionExitZero { name: "boot-media" },
+]
+
+fn attempt_three_axis_section(a: AttemptThreeAxis) -> String {
+  match a {
+    AxisNprocExact { threads: _ } => "nproc"
+    AxisEdacClean { name: n } => n
+    AxisWorkloadStable => "workload"
+    AxisSectionExitZero { name: n } => n
+  }
+}
+
+fn attempt_three_axis_holds(a: AttemptThreeAxis, e: BoundHostCaptureEnvelope) -> Bool {
+  match a {
+    AxisNprocExact { threads: t } => host_capture_bound_nproc_exact(envelope: e, threads: t)
+    AxisEdacClean { name: n } => host_capture_bound_edac_clean(envelope: e, name: n)
+    AxisWorkloadStable => host_capture_bound_workload_stable(envelope: e)
+    AxisSectionExitZero { name: n } => host_capture_bound_section_exit_zero(envelope: e, name: n)
+  }
+}
+
+// One section chunk of the capture text is `<name>----\n<body>`, the text after its `----SECTION `
+// opener. A chunk no axis reads keeps only the envelope's closing marker if it carries one, so the
+// begin/end framing -- the bind's own subject -- is never excised.
+fn attempt_three_chunk_kept(chunk: String) -> String {
+  let name = join(split(s: chunk, delimiter: host_capture_line_close).take(n: 1), "")
+  if any(attempt_three_axes, a => attempt_three_axis_section(a: a) == name) {
+    concat(host_capture_section_open, chunk)
+  } else {
+    let tail = split(s: chunk, delimiter: concat("\n", host_capture_envelope_rule))
+    if count(tail) < 2 { "" } else { concat("\n", host_capture_envelope_rule, join(tail.skip(n: 1), concat("\n", host_capture_envelope_rule))) }
+  }
+}
+
+fn attempt_three_axis_excerpt(capture: String) -> String {
+  let chunks = split(s: capture, delimiter: concat("\n", host_capture_section_open))
+  concat(
+    join(chunks.take(n: 1), ""),
+    join(map(chunks.skip(n: 1), c => concat("\n", attempt_three_chunk_kept(chunk: c))), ""),
+  )
+}
+
+fn attempt_three_axes_hold(capture: String) -> Bool {
+  match host_capture_bind(capture: capture, machine: "mtcollins1") {
+    HostCaptureBound { envelope: e } => all(attempt_three_axes, a => attempt_three_axis_holds(a: a, e: e))
+    _ => false
+  }
+}
+
+// THE RED IS ON A KEPT SECTION OF THE SAME BYTES: nproc's 160 edited to 159 must fail the excerpt,
+// so excising the unread sections cannot have excised what the claim asserts.
 test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
-  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
-    HostCaptureUnbound { reason: _ } => false
-    HostCaptureOpen { envelope: _ } => false
-    HostCaptureNotBegun => false
-    HostCaptureBound { envelope: e } =>
-      host_capture_bound_nproc_exact(envelope: e, threads: "160")
-        && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
-        && host_capture_bound_edac_clean(envelope: e, name: "edac-after")
-        && host_capture_bound_workload_stable(envelope: e)
-        && host_capture_bound_section_exit_zero(envelope: e, name: "boot-media")
+  let nproc_line = concat(host_capture_argv_open, "nproc: nproc\n")
+  let corrupted = join(split(s: read.content, delimiter: concat(nproc_line, "160\n")), concat(nproc_line, "159\n"))
+  read.success
+    && attempt_three_axes_hold(capture: attempt_three_axis_excerpt(capture: read.content))
+    && corrupted != read.content
+    && attempt_three_axes_hold(capture: attempt_three_axis_excerpt(capture: corrupted)) == false
+}
+
+// THE FULL COMMITTED FILE, UNEXCISED -- LOCAL-WET. It first confirms the bytes are the recorded
+// capture (sha256sum through a real process, which is also why it runs on the local-wet schedule and
+// not the hermetic floor), then binds all of them on every axis: the excerpt above is a transform of
+// exactly these bytes, and this is the claim that the whole file still binds.
+test fn the_attempt_three_full_capture_binds_by_real_execution() -> Bool {
+  let path = census_historical_capture.path
+  let identical = match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: observed } =>
+      match census_historical_capture.digest {
+        Sha256Hash(recorded) => (observed.hex as String) == (recorded.hex as String)
+        _ => false
+      }
   }
+  let read = Filesystem.Read(path: path as String)
+  identical && read.success && attempt_three_axes_hold(capture: read.content)
 }
 
 // THE HISTORICAL MAP IS CHECKED AGAINST THE BYTES, not by eye: every binding row's `original` must be
 // the ARGV line the committed capture actually carries, every Exact row's command must BE that line,
 // and the omitted section must be present in the file and absent from the roster.
+// The capture is READ, not re-bound: binding it is the_attempt_three_capture_binds_and_reads_by_real_execution's
+// subject, and this claim's is the ARGV lines (gunbc.machine_intake_host_capture_historical_binding
+// host_capture_text_section_argv). The RED is live on the same bytes: the roster with nproc's command
+// mutated fails against the file, so the claim still discriminates by execution.
 test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
-  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
-    HostCaptureUnbound { reason: _ } => false
-    HostCaptureOpen { envelope: _ } => false
-    HostCaptureNotBegun => false
-    HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: host_capture_census_stages)
-  }
+  read.success
+    && bindings_hold_against_capture_text(capture: read.content, stages: mtcollins1_census_stages)
+    && bindings_hold_against_capture_text(capture: read.content, stages: census_stages_with_mutated_command(name: "nproc", command: "nproc --all")) == false
 }
 
 // THE PRODUCER IS CONSTRAINED BY THE CAPTURE'S COMMITTED IDENTITY, not by its name. The bindings
@@ -166,7 +254,7 @@ data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  ver
 
 fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
   mtcollins1_seeded_image_input(
-    stages: host_capture_census_stages,
+    stages: mtcollins1_census_stages,
     image_stem: mtcollins1_census_image_stem,
     volume_id: mtcollins1_census_volume_id,
     user_data_body: census_user_data_fixture,
@@ -225,9 +313,9 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
 // them through two functions ran the program twice per case to learn what a single run already
 // reported -- eight executions where four suffice. It also made the disagreeing case incoherent:
 // that stub counts invocations, so a second spawn continued a sequence the first had started.
-fn workload_case(stubs: String) -> ProcessObservation {
+fn workload_case_of(stubs: String, workload: HostCaptureWorkloadShape) -> ProcessObservation {
   run_shell_command_observe(
-    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
+    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command(workload: workload) as String, "\n")),
     transport: LocalExec,
   )
 }
@@ -235,11 +323,21 @@ fn workload_case(stubs: String) -> ProcessObservation {
 // The token must be a WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX",
 // or the token inside an argv echo, may not satisfy this. Captured stdout carries no trailing
 // newline, so the capture is padded on BOTH sides before the line-delimited match.
+fn workload_case(stubs: String) -> ProcessObservation {
+  workload_case_of(stubs: stubs, workload: mtcollins1_one_socket_workload)
+}
+
 fn workload_emitted_the_token(o: ProcessObservation) -> Bool {
   string_contains(s: concat("\n", o.stdout, "\n"), pattern: "\nworkload-digest-stable=yes\n")
 }
 
-data workload_stub_dd: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
+// CAPACITY IS STUBBED TOO: 16 GiB free on /dev/shm and 16 GiB MemAvailable -- mtcollins1's one-socket
+// installed memory, so a fitting preflight here is the real machine's ceiling, not a generous one.
+data workload_stub_capacity_16gib: String = "df() { printf 'Avail\\n17179869184\\n'; }; awk() { printf 17179869184; };"
+
+data workload_stub_io: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
+
+data workload_stub_dd: String = concat(workload_stub_io, workload_stub_capacity_16gib)
 
 // Every named chunk hashes, both passes agree: the one case that may emit the token.
 data workload_stub_complete: String = "sha256sum() { for f in \"$@\"; do echo \"deadbeef  $f\"; done; };"
@@ -249,7 +347,7 @@ data workload_stub_complete: String = "sha256sum() { for f in \"$@\"; do echo \"
 data workload_stub_both_empty: String = "sha256sum() { return 1; };"
 
 // Both passes omit the same chunk and exit zero. The manifests agree again, over three files.
-data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk3) continue;; esac; echo \"deadbeef  $f\"; done; };"
+data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk1) continue;; esac; echo \"deadbeef  $f\"; done; };"
 
 // Complete passes that DISAGREE: the genuine instability this stage exists to detect.
 data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/gunbc-wl-counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };"
@@ -283,4 +381,38 @@ test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execu
     && partial.exit_code != 0
     && string_contains(s: disagree.stdout, pattern: "workload-digest-stable=yes") == false
     && disagree.exit_code != 0
+}
+
+
+// THE PREFLIGHT REFUSES A WORKLOAD LARGER THAN CAPACITY, BEFORE ANY WRITE, BY REAL EXECUTION. The
+// SAME 16 GiB capacity stubs run both shapes: the one-socket profile's 4 GiB passes the preflight and
+// writes; the dual-socket profile's 64 GiB -- the shape run 35808203121 wrote into this machine --
+// prints the refused token, exits nonzero, and never reaches dd (its stub leaves a marker that must
+// stay absent). Only the declared shape varies, so the refusal is the preflight's and nothing else's.
+data workload_stub_dd_marks: String = "dd() { echo dd-ran > /tmp/gunbc-wl-dd-marker; }; rm() { :; }; mkdir() { :; };"
+
+test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution() -> Bool {
+  let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-dd-marker")
+  let big = workload_case_of(stubs: concat(workload_stub_dd_marks, workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_dual_socket_workload)
+  let dd_after_big = Filesystem.Read(path: "/tmp/gunbc-wl-dd-marker").success
+  let small = workload_case_of(stubs: concat(workload_stub_dd_marks, workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_one_socket_workload)
+  let dd_after_small = Filesystem.Read(path: "/tmp/gunbc-wl-dd-marker").success
+  let cleaned = shell.Remove.FileForce(path: "/tmp/gunbc-wl-dd-marker")
+  string_contains(s: concat("\n", big.stdout, "\n"), pattern: "\nworkload-preflight=refused\n")
+    && string_contains(s: big.stdout, pattern: "workload-bytes=68719476736")
+    && string_contains(s: big.stdout, pattern: "workload-write-rc=") == false
+    && string_contains(s: big.stdout, pattern: "workload-digest-stable=yes") == false
+    && big.exit_code != 0
+    && dd_after_big == false
+    && string_contains(s: concat("\n", small.stdout, "\n"), pattern: "\nworkload-preflight=fits\n")
+    && string_contains(s: small.stdout, pattern: "workload-bytes=4294967296")
+    && workload_emitted_the_token(o: small) && small.exit_code == 0
+    && dd_after_small
+}
+
+// AN UNREADABLE CAPACITY REFUSES, it is not read as room: df printing no figure must not fit.
+test fn an_unreadable_capacity_refuses_at_preflight_by_real_execution() -> Bool {
+  let o = workload_case(stubs: concat(workload_stub_io, "df() { :; }; awk() { printf 17179869184; };", workload_stub_complete))
+  string_contains(s: o.stdout, pattern: "workload-preflight=refused") && o.exit_code != 0
+    && string_contains(s: o.stdout, pattern: "workload-digest-stable=yes") == false
 }

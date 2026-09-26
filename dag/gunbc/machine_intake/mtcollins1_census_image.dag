@@ -31,9 +31,9 @@ import gunbc.seeded_install_media_publish {
 }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
-  host_capture_census_stages,
   host_capture_program,
 }
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages }
 
 // THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
 // that runs the host-capture census in the LIVE environment and powers off. It is a derived artifact
@@ -158,7 +158,7 @@ fn mtcollins1_census_image_derivation(stages: List<HostCaptureStage>, image_stem
 }
 
 data mtcollins1_census_image: Mtcollins1CensusImage = mtcollins1_census_image_derivation(
-  stages: host_capture_census_stages,
+  stages: mtcollins1_census_stages,
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
 )
