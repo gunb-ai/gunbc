@@ -265,7 +265,7 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
   match n.kind {
     ComputationNode { behavior: Bind } =>
       if positional_child_count(children: n.children) == 3 {
-        match first(n.children) {
+        match first(bind_positional_edges(edges: n.children)) {
           Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
           Absent => acc
@@ -1747,19 +1747,16 @@ fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
 // ORDINAL 0 IS THE BINDER, AND IT PRODUCES THE INNER SCOPE. Ordinal 1 resolves under the outer
 // scope, which the binder does not touch, so it is observed whatever the binder did. Ordinal 2 and
 // beyond resolve under the scope the binder produced; when the binder was refused that scope would
-// be invented, so those sites are recorded ObservationIncomplete and NOT resolved. A let's
-// <type-annotation> edge (v2.std.type_binder) sorts after the positionals and resolves in the
-// type-role frame, which no value binder reaches, so it is observed whatever the binder did.
-fn resolve_bind_edges(
+// be invented, so those sites are recorded ObservationIncomplete and NOT resolved. The ordinal is a
+// POSITIONAL slot: resolve_bind_edges hands this walker the positionals only.
+fn resolve_bind_positional_edges(
   ctx: ResolveContext,
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope
 ) -> ChildWalk {
   fold(edges, init: child_walk_init(), f: fn(acc, e) {
-    if edge_is_type_annotation(e: e) {
-      child_walk_step(w: acc, e: e, r: resolve_type_role_target(ctx: ctx, target: e.target))
-    } else if acc.ordinal == 0 {
+    if acc.ordinal == 0 {
       child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target))
     } else if acc.ordinal == 1 {
       child_walk_step(
@@ -1777,6 +1774,53 @@ fn resolve_bind_edges(
       )
     }
   })
+}
+
+// A BIND'S SLOTS ARE ITS POSITIONAL EDGES, NEVER ITS EDGE ORDINALS. The <type-annotation> edge
+// (v2.std.type_binder) may stand anywhere among a producer's children -- content_hash canonicalizes
+// it last, but resolve walks the tree as produced -- so counting it would shift the value into the
+// binder's inner scope and admit an initializer that names its own binder. The positionals are
+// walked first under their slot rules; the annotation after, in the type-role frame.
+fn bind_positional_edges(edges: List<Edge>) -> List<Edge> {
+  filter(edges, fn(e) {
+    match e.label {
+      Positional => true
+      Named { name: _ } => false
+    }
+  })
+}
+
+fn resolve_bind_edges(
+  ctx: ResolveContext,
+  edges: List<Edge>,
+  scope_outer: Scope,
+  scope_inner: Scope
+) -> ChildWalk {
+  fold(
+    filter(edges, fn(e) {
+      match e.label {
+        Positional => false
+        Named { name: _ } => true
+      }
+    }),
+    init: resolve_bind_positional_edges(
+      ctx: ctx,
+      edges: bind_positional_edges(edges: edges),
+      scope_outer: scope_outer,
+      scope_inner: scope_inner
+    ),
+    f: fn(acc, e) {
+      if edge_is_type_annotation(e: e) {
+        child_walk_step(w: acc, e: e, r: resolve_type_role_target(ctx: ctx, target: e.target))
+      } else {
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer), n: e.target)
+        )
+      }
+    }
+  )
 }
 
 fn resolve_bind_node(
