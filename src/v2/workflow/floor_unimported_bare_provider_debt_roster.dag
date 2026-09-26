@@ -582,7 +582,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/list_membership_operation_gap.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/list_membership_operation_gap.dag", name: "fold_list", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/list_membership_operation_gap.dag", name: "length", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/live_deploy/repository_convergence_placement.dag", name: "host", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/live_deploy/repository_convergence_placement.dag", name: "host", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/live_deploy/srv1_residue_rehearsal.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/local_tidy_spec.dag", name: "ends_with", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/ampere_dram_console_observation.dag", name: "ends_with", standing: ActiveDebt },
