@@ -8,14 +8,26 @@ module test.claim.roadmap.roadmap_alignment_witness_test
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.decl_ref { DeclarationRef, decl_field_eq, WholeDeclaration }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_eq, WholeDeclaration }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentChain,
+  AlignmentChainLink,
   AlignmentChained, AlignmentChainAmbiguous, AlignmentChainRowUndeclared,
   alignment_chain, alignment_chain_for,
   AlignmentLevel,
   TaskContractLevel, ProjectIntentLevel, RootPrinciplesLevel,
+  AlignmentResolvedChain,
   alignment_levels, alignment_levels_due,
+  AlignmentRefusal,
+  AlignmentChainForked, AlignmentRowUndeclared,
+  alignment_refusal_reason,
+  AlignmentResolution,
+  AlignmentReady, AlignmentUnresolved,
+  alignment_resolve_chain, alignment_resolve,
+  alignment_chain_fingerprint,
+  alignment_base_cadence_state,
+  AlignmentBinding, alignment_binding_text, alignment_binding_decode,
+  AlignmentBindingDecoded, AlignmentBindingNotDecodable, alignment_binding_schema,
   AlignmentVerdict,
   Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict,
   alignment_verdict_key,
@@ -28,6 +40,10 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_cadence_state_text, alignment_cadence_state_decode,
   AlignmentCadenceStateDecoded, AlignmentCadenceStateNotDecodable,
   alignment_cadence_state_schema,
+}
+import gunbc.roadmap.roadmap_attempt_continuation {
+  continuation_alignment_l0_pointer,
+  continuation_alignment_ask,
 }
 import gunbc.roadmap_model { RoadmapEdge, RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Unsized }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
@@ -456,9 +472,37 @@ test fn an_unknown_verdict_kind_refuses() -> Bool {
 // ------------------------------------------------------------------------------------------------
 
 // THE DUE FIXTURE CHAIN: task-a -> arc-one -> arc-mid -> arc-two, then the root -- four levels
-// above the floor, five due slots including the root principles.
-fn four_level_chain() -> AlignmentChain {
-  alignment_chain(node_id: "task-a", edges: deep_linear_edges(), nodes: fixture_nodes())
+// above the floor, five due slots including the root principles. The levels math's domain is the
+// RESOLVED chain, so the fixture supplies the resolved record directly at the boundary (the chain
+// derivation claims above already discriminate the raw walk). The resolution claims consume the
+// same fixture as the Chained variant -- a record and its variant are different types, and the
+// claims pass the variant to the resolution fold, never the record.
+fn four_level_resolved() -> AlignmentResolvedChain {
+  AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  }
+}
+
+fn four_level_chained() -> AlignmentChain {
+  AlignmentChained {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  }
+}
+
+fn alignment_root_pointer_fixture() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.design_document", decl_name: "design_document")
 }
 
 fn base_state() -> AlignmentCadenceState {
@@ -469,7 +513,7 @@ fn base_state() -> AlignmentCadenceState {
 }
 
 test fn with_base_intervals_the_due_set_grows_by_magnitude() -> Bool {
-  let chain = four_level_chain()
+  let chain = four_level_resolved()
   count(alignment_levels_due(chain: chain, turns_elapsed: 20, state: base_state())) == 1
     && count(alignment_levels_due(chain: chain, turns_elapsed: 40, state: base_state())) == 1
     && count(alignment_levels_due(chain: chain, turns_elapsed: 200, state: base_state())) == 2
@@ -478,12 +522,12 @@ test fn with_base_intervals_the_due_set_grows_by_magnitude() -> Bool {
 }
 
 test fn turn_zero_is_dispatch_not_a_checkpoint_nothing_is_due() -> Bool {
-  count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 0, state: base_state())) == 0
-    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 0 - 5, state: base_state())) == 0
+  count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 0, state: base_state())) == 0
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 0 - 5, state: base_state())) == 0
 }
 
 test fn the_task_level_is_due_first_in_every_due_set() -> Bool {
-  let due = alignment_levels_due(chain: four_level_chain(), turns_elapsed: 2000, state: base_state())
+  let due = alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 2000, state: base_state())
   count(due) == 3
     && match due.first() {
       Present { value: TaskContractLevel { link } } => link.node_id == "task-a"
@@ -499,8 +543,8 @@ test fn the_adaptive_state_replaces_the_base_interval_a_shortened_level_comes_du
     level_intervals: [20, 196, 2000, 20000],
     last_verdicts: [Aligned, Misaligned { direction: "drift" }, Aligned, Aligned],
   }
-  count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 980, state: base_state())) == 1
-    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 980, state: adaptive)) == 2
+  count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 980, state: base_state())) == 1
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 980, state: adaptive)) == 2
 }
 
 // A STATE THAT PREDATES A LEVEL starts that level at its declared base: one recorded interval, so
@@ -511,13 +555,240 @@ test fn a_state_that_predates_a_level_starts_that_level_at_its_declared_base() -
     level_intervals: [10],
     last_verdicts: [Aligned],
   }
-  count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 200, state: partial)) == 2
-    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 20, state: partial)) == 1
-    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 2000, state: partial)) == 3
+  count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 200, state: partial)) == 2
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 20, state: partial)) == 1
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 2000, state: partial)) == 3
 }
 
-test fn a_chain_that_refused_has_no_levels_due() -> Bool {
-  let refused = alignment_chain(node_id: "task-a", edges: ambiguous_edges(), nodes: fixture_nodes())
-  count(alignment_levels_due(chain: refused, turns_elapsed: 200, state: base_state())) == 0
-    && count(alignment_levels(chain: refused)) == 0
+// THE REFUSAL-TO-NEUTRAL WALL, at the resolution boundary (review finding 2026-09-26;
+// docs/plans/harness-work-lifecycle.md conservation law 2). The old shape mapped BOTH refusal arms
+// of alignment_levels to [] — "the chain cannot be derived" read downstream as "no levels are due".
+// Now the levels functions take ONLY the resolved record (a refusal cannot be typed into them), and
+// the single crossing — alignment_resolve_chain — freezes a refused chain into AlignmentUnresolved
+// carrying the typed cause and no levels answer at all.
+test fn a_refused_chain_resolves_unresolved_naming_the_fork_by_its_dependents() -> Bool {
+  match alignment_resolve_chain(
+    chain: alignment_chain(node_id: "task-a", edges: ambiguous_edges(), nodes: fixture_nodes()),
+    turns_elapsed: 200,
+    state: base_state(),
+  ) {
+    AlignmentUnresolved { cause } =>
+      match cause {
+        AlignmentChainForked { at, dependents, walked } =>
+          at == "arc-mid"
+            && dependents == ["arc-two", "arc-three"]
+            && (map(walked, l => l.node_id)) == ["arc-one", "arc-mid"]
+        AlignmentRowUndeclared { node_id: _ } => false
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+  }
+}
+
+test fn an_undeclared_referenced_row_resolves_unresolved_refused_by_name() -> Bool {
+  let edges = [fixture_edge(child: "arc-missing", parent: "task-a")]
+  let refusal_text = alignment_refusal_reason(cause: AlignmentRowUndeclared { node_id: "arc-missing" })
+  match alignment_resolve_chain(
+    chain: alignment_chain(node_id: "task-a", edges: edges, nodes: fixture_nodes()),
+    turns_elapsed: 200,
+    state: base_state(),
+  ) {
+    AlignmentUnresolved { cause } =>
+      match cause {
+        AlignmentRowUndeclared { node_id } => node_id == "arc-missing"
+        AlignmentChainForked { at: _, dependents: _, walked: _ } => false
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+  }
+    && string_contains(s: refusal_text, pattern: "arc-missing")
+}
+
+// THE READY ARM CARRIES THE WHOLE ANSWER: the resolved chain, the levels due at the asked turn, and
+// the rendered prompt — one value, so the brief and the gate can never disagree about which
+// question was answered.
+test fn the_ready_resolution_carries_the_chain_the_due_levels_and_the_rendered_prompt() -> Bool {
+  match alignment_resolve_chain(chain: four_level_chained(), turns_elapsed: 200, state: base_state()) {
+    AlignmentReady { chain, due_levels, rendered_prompt } =>
+      chain.task.node_id == "task-a"
+        && (map(chain.projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two"]
+        && count(due_levels) == 2
+        && count(alignment_levels(chain: chain)) == 5
+        && rendered_prompt != ""
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+// THE RENDER LISTS EVERY LEVEL FROM THE NODE TO THE ROOT: the L0 pointer, each project level
+// nearest-first, then the task contract level, then the bounded ask. Order is load-bearing (the
+// ladder reads top-down), so the claim walks the rendered lines and pins each level's position.
+fn first_line_containing(lines: List<String>, needle: String, from: Int) -> Int? {
+  fold(lines, init: { seen: 0, hit: none }, f: fn(acc, line) {
+    let already = match acc.hit {
+      Present { value: _ } => true
+      Absent => false
+    }
+    if already {
+      acc
+    } else if acc.seen < from {
+      { seen: acc.seen + 1, hit: none }
+    } else if string_contains(s: line, pattern: needle) {
+      { seen: acc.seen + 1, hit: Present { value: acc.seen } }
+    } else {
+      { seen: acc.seen + 1, hit: none }
+    }
+  }).hit
+}
+
+fn render_lists_ids_in_order(rendered: String, ordered_ids: List<String>) -> Bool {
+  let lines = split(s: rendered, delimiter: "\n")
+  let scan = fold(ordered_ids, init: { from: 0, ok: true }, f: fn(acc, id) {
+    if !acc.ok {
+      acc
+    } else {
+      match first_line_containing(lines: lines, needle: id, from: acc.from) {
+        Present { value: idx } => {
+          { from: idx + 1, ok: true }
+        }
+        Absent => {
+          { from: acc.from, ok: false }
+        }
+      }
+    }
+  })
+  scan.ok
+}
+
+test fn the_rendered_prompt_carries_every_level_from_the_node_to_the_root_in_order() -> Bool {
+  match alignment_resolve_chain(chain: four_level_chained(), turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
+      string_contains(s: rendered_prompt, pattern: continuation_alignment_l0_pointer)
+        && string_contains(s: rendered_prompt, pattern: continuation_alignment_ask)
+        && string_contains(s: rendered_prompt, pattern: "this task serves project arc-one: Arc One headline -- boundary: Arc One boundary")
+        && string_contains(s: rendered_prompt, pattern: "this level serves project arc-mid: Arc Mid headline -- boundary: Arc Mid boundary")
+        && string_contains(s: rendered_prompt, pattern: "this level serves project arc-two: Arc Two headline -- boundary: Arc Two boundary")
+        && string_contains(s: rendered_prompt, pattern: "L2 task contract: task-a: Task A headline -- boundary: Task A boundary")
+        && render_lists_ids_in_order(rendered: rendered_prompt, ordered_ids: ["arc-one", "arc-mid", "arc-two", "task-a"])
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+test fn a_projectless_chain_renders_its_own_row_as_the_intent() -> Bool {
+  let standalone = AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "lone-task", purpose: "Lone headline", boundary: "Lone boundary" },
+    projects: [],
+    root: alignment_root_pointer_fixture(),
+  }
+  match alignment_resolve_chain(chain: AlignmentChained { task: standalone.task, projects: [], root: standalone.root }, turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
+      string_contains(s: rendered_prompt, pattern: "this node is a project of one, so its own declared row is the intent: Lone headline -- boundary: Lone boundary")
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+// THE FINGERPRINT IS THE BINDING'S DRIFT DETECTOR: identical chains derive identical fingerprints,
+// and ANY moved link — a retitled purpose, a reworded boundary, a renamed node, a reordered chain —
+// moves the fingerprint, so a continuation can prove the chain it is about to brief against is the
+// chain the lineage started with.
+test fn the_chain_fingerprint_moves_when_any_link_moves() -> Bool {
+  let base = alignment_chain_fingerprint(chain: four_level_resolved())
+  let retitled = alignment_chain_fingerprint(chain: AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One retitled", boundary: "Arc One boundary" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  })
+  let reordered = alignment_chain_fingerprint(chain: AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  })
+  base == alignment_chain_fingerprint(chain: four_level_resolved())
+    && base != retitled
+    && base != reordered
+    && base != ""
+}
+
+// THE PRODUCTION FORK, THROUGH THE ONE AUTHORITY. The real declared edges refuse the
+// shell-dag-cron-entry-line-builder chain at the shell-gate-migration fork; the resolution names
+// the fork and both dependents — and carries no levels answer any consumer could misread as
+// "nothing due" (the negative control the review finding demanded: the derived refusal is typed,
+// named, and reaches no worker-start effect downstream).
+test fn the_production_resolution_refuses_the_real_fork_by_name() -> Bool {
+  match alignment_resolve(node_id: "shell-dag-cron-entry-line-builder", turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentUnresolved { cause } =>
+      match cause {
+        AlignmentChainForked { at, dependents, walked } =>
+          at == "shell-gate-migration"
+            && dependents == ["shell-residue-zero", "fleet-closed-loop-converge"]
+            && (map(walked, l => l.node_id)) == ["shell-typed-invocation", "shell-effectplan-to-bash", "shell-gate-migration"]
+        AlignmentRowUndeclared { node_id: _ } => false
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+  }
+}
+
+// A CLEAN PRODUCTION CHAIN RESOLVES READY, EVERY LEVEL DERIVED: the corpus's real rows climb two
+// live arcs — extended-admission-cardinality serves accepted-extended-obligation-closure, which
+// serves guarantee-residual-prevalence, a standalone root — and the render carries each derived
+// level: the positive inhabitance claim pairing with the fork refusal above. (The roadmap-runtime
+// rows refuse instead: their chain walks through superseded rows, and the walk names the halt —
+// both answers are the one authority reading the live authority.)
+test fn a_clean_production_chain_resolves_ready_rendering_every_derived_level() -> Bool {
+  match alignment_resolve(node_id: "extended-admission-cardinality", turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain, due_levels: _, rendered_prompt } =>
+      chain.task.node_id == "extended-admission-cardinality"
+        && (map(chain.projects, p => p.node_id)) == ["accepted-extended-obligation-closure", "guarantee-residual-prevalence"]
+        && string_contains(s: rendered_prompt, pattern: "accepted-extended-obligation-closure")
+        && string_contains(s: rendered_prompt, pattern: "guarantee-residual-prevalence")
+        && string_contains(s: rendered_prompt, pattern: "extended-admission-cardinality")
+        && alignment_chain_fingerprint(chain: chain) != ""
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The attempt binding codec: the chain fingerprint bound to the attempt identity, on the
+// submission/receipt idiom — schema wall, typed decode envelope, text round-trip.
+// ------------------------------------------------------------------------------------------------
+
+fn sample_binding() -> AlignmentBinding {
+  AlignmentBinding { attempt_identity: "worker:task-a-deadbeef", fingerprint: alignment_chain_fingerprint(chain: four_level_resolved()) }
+}
+
+test fn the_binding_codec_round_trips_the_identity_and_fingerprint() -> Bool {
+  let binding = sample_binding()
+  match alignment_binding_decode(text: alignment_binding_text(binding: binding)) {
+    AlignmentBindingNotDecodable { reason: _ } => false
+    AlignmentBindingDecoded { binding: decoded } =>
+      decoded.attempt_identity == "worker:task-a-deadbeef"
+        && decoded.fingerprint == binding.fingerprint
+        && alignment_binding_text(binding: decoded) == alignment_binding_text(binding: binding)
+  }
+}
+
+test fn a_binding_without_the_schema_wall_refuses() -> Bool {
+  (match alignment_binding_decode(
+    text: "{\"attempt_identity\": \"worker:task-a-deadbeef\", \"fingerprint\": \"fp\"}",
+  ) {
+    AlignmentBindingNotDecodable { reason } => string_contains(s: reason, pattern: "schema")
+    AlignmentBindingDecoded { binding: _ } => false
+  })
+    && (match alignment_binding_decode(
+      text: "{\"schema\": \"roadmap-alignment-binding/v2\", \"attempt_identity\": \"worker:task-a-deadbeef\", \"fingerprint\": \"fp\"}",
+    ) {
+      AlignmentBindingNotDecodable { reason: _ } => true
+      AlignmentBindingDecoded { binding: _ } => false
+    })
+    && (match alignment_binding_decode(
+      text: join(["{\"schema\": \"", alignment_binding_schema as String, "\", \"attempt_identity\": \"worker:task-a-deadbeef\"}"], ""),
+    ) {
+      AlignmentBindingNotDecodable { reason: _ } => true
+      AlignmentBindingDecoded { binding: _ } => false
+    })
 }

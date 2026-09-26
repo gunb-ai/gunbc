@@ -32,6 +32,11 @@ import gunbc.roadmap.roadmap_project {
   MembershipAmbiguous,
   node_project_membership,
 }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  continuation_alignment_l0_pointer,
+  continuation_alignment_ask,
+}
+import std.content_hash { content_hash_atom }
 
 // THE ALIGNMENT LADDER, MODELED (docs/plans/harness-work-lifecycle.md, "Alignment ladder", owner
 // direction 2026-09-21). Alignment is a recurring workflow responsibility at every level of one
@@ -397,30 +402,38 @@ type AlignmentLevel
   | ProjectIntentLevel { link: AlignmentChainLink }
   | RootPrinciplesLevel
 
-fn alignment_levels(chain: AlignmentChain) -> List<AlignmentLevel> {
-  match chain {
-    AlignmentChained { task, projects, root: _ } =>
-      concat(
-        concat(
-          [TaskContractLevel { link: task }],
-          map(projects, p => ProjectIntentLevel { link: p }),
-        ),
-        [RootPrinciplesLevel],
-      )
-    AlignmentChainAmbiguous { walked: _, at: _, dependents: _ } => []
-    AlignmentChainRowUndeclared { node_id: _ } => []
-  }
+// THE LEVEL MATH'S DOMAIN IS THE RESOLVED CHAIN, and only it. This record IS the AlignmentChained
+// variant's payload under a type the refusal arms cannot inhabit: a chain that refused (ambiguous,
+// undeclared row) can no longer be passed where levels are computed, so "the chain cannot be
+// derived" can never again read downstream as "no levels are due" (review finding 2026-09-26;
+// conservation law 2 in docs/plans/harness-work-lifecycle.md — no refusal-to-neutral conversion).
+// The ONLY way across is alignment_resolve_chain, which matches the refusal arms FIRST and hands
+// them to AlignmentUnresolved, so a levels answer exists exclusively on the Ready arm.
+type AlignmentResolvedChain {
+  task: AlignmentChainLink
+  projects: List<AlignmentChainLink>
+  root: DeclarationRef
+}
+
+fn alignment_levels(chain: AlignmentResolvedChain) -> List<AlignmentLevel> {
+  concat(
+    concat(
+      [TaskContractLevel { link: chain.task }],
+      map(chain.projects, p => ProjectIntentLevel { link: p }),
+    ),
+    [RootPrinciplesLevel],
+  )
 }
 
 // DUE EVALUATION. A level is due when the elapsed turns land exactly on its interval -- so with the
 // initial (base) intervals, at turn 20 only the task is due, at turn 200 the task and the first
 // project, at turn 2000 the next level joins -- and the adaptive state replaces the base with the
 // per-lineage interval, so a level under a MISALIGNED streak comes due sooner without any level
-// ever aligning more often than one below it. The answer is ordered task level first, and a chain
-// that refused (ambiguous, undeclared row) has no levels to check. Turn 0 is dispatch, not a
-// checkpoint: orientation and the load phase own initial alignment, so nothing is due at zero
-// elapsed turns.
-fn alignment_levels_due(chain: AlignmentChain, turns_elapsed: Int, state: AlignmentCadenceState) -> List<AlignmentLevel> {
+// ever aligning more often than one below it. The answer is ordered task level first. Turn 0 is
+// dispatch, not a checkpoint: orientation and the load phase own initial alignment, so nothing is
+// due at zero elapsed turns. A chain that refused never reaches this function: its question was
+// already answered AlignmentUnresolved, above.
+fn alignment_levels_due(chain: AlignmentResolvedChain, turns_elapsed: Int, state: AlignmentCadenceState) -> List<AlignmentLevel> {
   if turns_elapsed <= 0 {
     []
   } else {
@@ -439,6 +452,239 @@ fn alignment_levels_due(chain: AlignmentChain, turns_elapsed: Int, state: Alignm
         },
       )
     due_fold.due
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The ONE AUTHORITY over alignment-consumers (review finding 2026-09-26: the typed chain used to be
+// PARALLEL to execution — the brief rendered its own prose answer while the chain's refusal arms
+// mapped to [], and execution proceeded on either). Everything a consumer needs is ONE resolution:
+// the derived chain, the levels due at this turn, and the rendered prompt — or a typed refusal
+// cause. No consumer may project a second answer from the raw rows: dispatch and the belt consume
+// this result whole, so the safe answer and the executed answer are the same value by construction.
+// ------------------------------------------------------------------------------------------------
+
+// WHY THE CHAIN COULD NOT BE READ, as data. AlignmentChainForked is "two declared owners for one
+// level" (docs/plans/one-namespace-hierarchy.md): the walk reached a node more than one arc depends
+// on, and choosing would invent which level's intent the work serves. AlignmentRowUndeclared names
+// the exact node whose row could not be projected. Both carry the derivation's facts — the fork
+// keeps the walked prefix, the halt names its subject — so the escalation route reads causes, never
+// prose.
+type AlignmentRefusal
+  = AlignmentChainForked { at: String, dependents: List<String>, walked: List<AlignmentChainLink> }
+  | AlignmentRowUndeclared { node_id: String }
+
+fn alignment_refusal_reason(cause: AlignmentRefusal) -> String {
+  match cause {
+    AlignmentChainForked { at, dependents, walked: _ } =>
+      join([
+        "the authority's dependency edges give node ", at,
+        " more than one dependent arc (", join(dependents, ", "),
+        "); the authority must say which arc owns the delivery before the alignment chain can be read",
+      ], "")
+    AlignmentRowUndeclared { node_id } =>
+      join([
+        "the authority declares no ticket row for node ", node_id,
+        " (or a row that is not a ticket), so that level's carried contribution cannot be projected",
+      ], "")
+  }
+}
+
+// THE RESOLUTION. Ready carries the whole answer — the resolved chain (every level, node to root),
+// the levels due at the asked turn under the asked cadence state, and the rendered prompt the
+// brief splices verbatim. Unresolved carries the typed cause and NOTHING else: there is no empty
+// chain, no empty due list, no rendered guess. A consumer that needs alignment matches this
+// coproduct; the refusal arm reaches no worker-start effect.
+type AlignmentResolution
+  = AlignmentReady {
+      chain: AlignmentResolvedChain,
+      due_levels: List<AlignmentLevel>,
+      rendered_prompt: String,
+    }
+  | AlignmentUnresolved { cause: AlignmentRefusal }
+
+// THE RENDER, one per level, node to root. L0 stays a pointer (the load phase carries the
+// principles' text; the prompt names their home and no more) and the ask stays bounded — both are
+// the continuation lane's authored cadence rows, imported, so this module owns the DERIVATION's
+// rendering and the continuation lane owns its standing text. Every level between the node and the
+// root renders with the row's carried contribution (headline and boundary brief), never a fresh
+// interpretation and never only the immediate L1: the whole derived chain is the brief's alignment
+// answer. Project levels render nearest-first (the walk's order); the task contract level closes
+// the ladder; a projectless node names its own row as the intent, the honest standalone shape.
+fn alignment_link_line(prefix: String, link: AlignmentChainLink) -> String {
+  join([prefix, link.node_id, ": ", link.purpose, " -- boundary: ", link.boundary], "")
+}
+
+fn alignment_project_lines(projects: List<AlignmentChainLink>) -> String {
+  let numbered = fold(projects, init: { out: "", index: 1 }, f: fn(acc, link) {
+    {
+      out: join([
+        acc.out,
+        alignment_link_line(
+          prefix: if acc.index == 1 {
+            "L1 project intent: this task serves project "
+          } else {
+            join(["L1 project intent (level ", to_string(value: acc.index), " above the task): this level serves project "], "")
+          },
+          link: link,
+        ),
+        "\n",
+      ], ""),
+      index: acc.index + 1,
+    }
+  })
+  numbered.out
+}
+
+fn alignment_chain_render(chain: AlignmentResolvedChain) -> String {
+  join([
+    "\nAlignment (re-checked at every continuation turn):\n",
+    continuation_alignment_l0_pointer, "\n",
+    if count(chain.projects) == 0 {
+      join([
+        "L1 project intent: this node is a project of one, so its own declared row is the intent: ",
+        chain.task.purpose, " -- boundary: ", chain.task.boundary, "\n",
+      ], "")
+    } else {
+      alignment_project_lines(projects: chain.projects)
+    },
+    alignment_link_line(prefix: "L2 task contract: ", link: chain.task), "\n",
+    continuation_alignment_ask, "\n\n",
+  ], "")
+}
+
+// THE CHAIN FINGERPRINT binds the chain to whatever identity carries it: a structural digest over
+// the canonical preimage of EVERY link (node id, carried purpose, carried boundary) and the root
+// pointer, so any authority edit that moves the chain — a rewired edge, a retitled row, a reworded
+// boundary — moves the fingerprint with it. Drift detection, not a security boundary: the
+// Fnv1a64Structural family is the corpus's structural-fingerprint family (std.content_hash), the
+// preimage is label-prefixed by construction (it begins with a constant), so the atom's NonEmptyStr
+// input is grounded, never asserted, and the unit separator cannot collide with a field's content.
+fn alignment_chain_canonical_text(chain: AlignmentResolvedChain) -> String {
+  join([
+      "alignment-chain/v1",
+      "task", chain.task.node_id, chain.task.purpose, chain.task.boundary,
+      fold(chain.projects, init: "", f: fn(acc, link) {
+        join([acc, "project", link.node_id, link.purpose, link.boundary], "\u{1f}")
+      }),
+      "root", chain.root.module_path as String, chain.root.decl_name as String,
+    ], "\u{1f}")
+}
+
+fn alignment_chain_fingerprint(chain: AlignmentResolvedChain) -> String {
+  content_hash_atom(value: alignment_chain_canonical_text(chain: chain) as NonEmptyStr).digest as String
+}
+
+// THE RESOLUTION FOLD, over one derived chain. This is the only crossing from AlignmentChain to a
+// consumer answer: the Chained arm builds Ready (levels and render computed from the resolved
+// record), the refusal arms freeze into Unresolved with their typed causes. Fuel, membership and
+// row projection are unchanged — this fold adds no second derivation.
+fn alignment_resolve_chain(chain: AlignmentChain, turns_elapsed: Int, state: AlignmentCadenceState) -> AlignmentResolution {
+  match chain {
+    AlignmentChained { task, projects, root } => {
+      let resolved = AlignmentResolvedChain { task: task, projects: projects, root: root }
+      AlignmentReady {
+        chain: resolved,
+        due_levels: alignment_levels_due(chain: resolved, turns_elapsed: turns_elapsed, state: state),
+        rendered_prompt: alignment_chain_render(chain: resolved),
+      }
+    }
+    AlignmentChainAmbiguous { walked, at, dependents } =>
+      AlignmentUnresolved { cause: AlignmentChainForked { at: at, dependents: dependents, walked: walked } }
+    AlignmentChainRowUndeclared { node_id } =>
+      AlignmentUnresolved { cause: AlignmentRowUndeclared { node_id: node_id } }
+  }
+}
+
+// THE AUTHORITY-BOUND RESOLUTION, the entry production consumers name. The edges and rows are the
+// declared authority's own, so the chain renders what the authority says NOW, not what a copy said
+// when it was written; the cadence state is the caller's per-lineage record (an empty state reads
+// every level at its declared magnitudinal base).
+fn alignment_resolve(node_id: String, turns_elapsed: Int, state: AlignmentCadenceState) -> AlignmentResolution {
+  alignment_resolve_chain(
+    chain: alignment_chain_for(node_id: node_id),
+    turns_elapsed: turns_elapsed,
+    state: state,
+  )
+}
+
+// THE EMPTY CADENCE STATE: no per-lineage intervals recorded, so every level reads its declared
+// magnitudinal base. Dispatch owns no lineage state at spawn; the cadence record lands on the
+// alignment receipt as checks produce verdicts.
+fn alignment_base_cadence_state() -> AlignmentCadenceState {
+  AlignmentCadenceState { level_intervals: [], last_verdicts: [] }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The attempt binding: the resolved chain's fingerprint bound to the attempt identity that spawned
+// with it (review finding 2026-09-26, attempt binding). Written at attempt-state initialization
+// and read back before a continuation spawns, so a lineage whose authority rows moved mid-flight
+// refuses instead of silently re-briefing against a changed chain. The codec is the submission/
+// receipt idiom: a schema wall (a document whose schema is not exactly this string is refused), a
+// typed decode envelope, and a text round-trip.
+// ------------------------------------------------------------------------------------------------
+
+data alignment_binding_schema: NonEmptyStr = "roadmap-alignment-binding/v1"
+
+type AlignmentBinding {
+  attempt_identity: String
+  fingerprint: String
+}
+
+fn alignment_binding_json(binding: AlignmentBinding) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: alignment_binding_schema as String)),
+    json_kv(key: "attempt_identity", value: json_string(s: binding.attempt_identity)),
+    json_kv(key: "fingerprint", value: json_string(s: binding.fingerprint)),
+  ])
+}
+
+fn alignment_binding_text(binding: AlignmentBinding) -> String {
+  serialize_json(v: alignment_binding_json(binding: binding))
+}
+
+type AlignmentBindingDecode
+  = AlignmentBindingDecoded { binding: AlignmentBinding }
+  | AlignmentBindingNotDecodable { reason: String }
+
+fn alignment_binding_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+fn alignment_binding_decode_document(doc: JsonValue) -> AlignmentBindingDecode {
+  match alignment_binding_member_string(doc: doc, key: "schema") {
+    Absent => AlignmentBindingNotDecodable { reason: "alignment binding has no schema member" }
+    Present { value: schema } =>
+      if schema != (alignment_binding_schema as String) {
+        AlignmentBindingNotDecodable {
+          reason: join(["alignment binding schema is ", schema, ", not ", alignment_binding_schema as String], ""),
+        }
+      } else {
+        match alignment_binding_member_string(doc: doc, key: "attempt_identity") {
+          Absent => AlignmentBindingNotDecodable { reason: "alignment binding attempt_identity member is absent, duplicated, or not a string" }
+          Present { value: attempt_identity } =>
+            match alignment_binding_member_string(doc: doc, key: "fingerprint") {
+              Absent => AlignmentBindingNotDecodable { reason: "alignment binding fingerprint member is absent, duplicated, or not a string" }
+              Present { value: fingerprint } =>
+                AlignmentBindingDecoded {
+                  binding: AlignmentBinding { attempt_identity: attempt_identity, fingerprint: fingerprint },
+                }
+            }
+        }
+      }
+  }
+}
+
+fn alignment_binding_decode(text: String) -> AlignmentBindingDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      AlignmentBindingNotDecodable {
+        reason: concat("the alignment binding is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => alignment_binding_decode_document(doc: doc)
   }
 }
 
