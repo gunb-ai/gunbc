@@ -34,10 +34,12 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
 }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live_over, host_effect_recover_over }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
-import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, ArgvRun, ArgvRan, ArgvLegDidNotRun, ClaimantStanding, ClaimantTerminated }
+import product.placement_supply { HostIdentity }
+import product.capacity.event_chain { EventId }
 
 // ══ V4.1 ENGRAM ACCESS PROBE: PRICE BOTH CUTOVER DESIGNS FROM ONE RUN ═══════════════════════════
 //
@@ -72,9 +74,10 @@ import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 
 // ── THE PROGRAM ─────────────────────────────────────────────────────────────────────────────────
 //
-// The program crosses as one argument to `python3 -c`, exactly as the runtime-image probe's does
-// (gunbc.spark.v41_runtime_image_probe v41_probe_privileged_argv), under `timeout` so a wedged
-// device read cannot outlive the step.
+// The program crosses as one argument, as the runtime-image probe's does
+// (gunbc.spark.v41_runtime_image_probe v41_probe_privileged_argv), but runs from a file the
+// bootstrap below writes, because Triton reads kernel source from the file. It runs under `timeout`
+// so a wedged device read cannot outlive the step.
 fn v41_access_probe_script() -> String {
   join([
     "import ctypes\n",
@@ -373,13 +376,19 @@ data v41_access_probe_time_bound_seconds: Nat = 2700
 // instead when #12331 lands.
 data v41_access_probe_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as NonEmptyStr
 
+// TRITON READS A KERNEL'S SOURCE FROM ITS FILE (`@jit functions should be defined in a Python file`,
+// run 36221850026), so the program cannot run as `python3 -c <program>`. It still crosses as one
+// argument, and this bootstrap writes it to a file inside the container and runs that file, which
+// leaves nothing on the host: the container is removed with it.
+data v41_access_probe_bootstrap: String = "import sys, runpy; path = '/var/tmp/gunbc_engram_access_probe.py'; open(path, 'w').write(sys.argv[1]); runpy.run_path(path, run_name='__main__')"
+
 fn v41_access_probe_argv(image: NonEmptyStr) -> List<String> {
   argv_words(command: docker_run_ephemeral_command(
     image: image,
     gpus_all: true,
     mounts: [],
     entrypoint: "timeout" as NonEmptyStr,
-    argv: [to_string(v41_access_probe_time_bound_seconds), "python3", "-c", v41_access_probe_script()],
+    argv: [to_string(v41_access_probe_time_bound_seconds), "python3", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
   ))
 }
 
@@ -644,6 +653,59 @@ fn v41_access_probe_host_residue(image: NonEmptyStr) -> HostEffectResidueSpec {
   HostEffectResidueSpec { process_pattern: image, container: Present { value: DockerPsByAncestor { image: image } } }
 }
 
+// THE OBSERVATION LEG FOR THIS LANE'S RESIDUE: the administrator route the container itself ran
+// through, so the release reads the docker socket the probe used (the fleet agent cannot).
+fn v41_access_probe_privileged_leg(ctx: SparkMaterializeContext, argv: List<String>) -> ArgvRun {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: why } => ArgvLegDidNotRun { cause: why as String }
+    RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
+  }
+}
+
+// A CLAIM THIS LANE LEFT LIVE, NAMED EXACTLY, with the claimant's typed standing and the receipt that
+// established it (gunbc.spark.host_commitment host_effect_recover_over). The mode recovers the rows
+// naming its target before it claims, over the privileged leg, and a row that no longer names a live
+// claim refuses, so a recovered row is deleted rather than left to accumulate.
+type V41AccessProbeClaimRecovery { host: HostIdentity, claim: EventId, standing: ClaimantStanding, receipt: NonEmptyStr }
+
+data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = [
+  V41AccessProbeClaimRecovery {
+    host: "srv8" as HostIdentity,
+    claim: ("6ce079b2a3889272" as NonEmptyStr) as EventId,
+    standing: ClaimantTerminated,
+    receipt: "fleet-converge run 36221850026 (spark_v41_engram_access_probe): the probe program exited on the Triton @jit source error, its container ran with --rm, and the step ended; the release's docker ps then ran as the fleet agent and was refused /var/run/docker.sock, so quiescence was unread" as NonEmptyStr,
+  },
+]
+
+fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
+  fold(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String)), init: ExitSuccess, f: (acc, r) =>
+    match acc {
+      ExitSuccess => host_effect_recover_over(host: r.host, claim: r.claim, standing: r.standing, receipt: r.receipt, run: fn(argv) { v41_access_probe_privileged_leg(ctx: ctx, argv: argv) })
+      std.process.ExitFailure { code: _, reason: _ } => acc
+    })
+}
+
+fn v41_access_probe_receipt_exit(at: String, host: HostIdentity, executor: String, anchor_receipt: String, outcome: V41EngramAccessProbeOutcome) -> ProcessExit {
+  let body = join([
+    join(["v41 engram access probe probed_at=", at, " host=", host as String, "\n"], ""),
+    v41_access_probe_body(o: outcome),
+    join(["executor=", executor, "\n"], ""),
+    anchor_receipt,
+  ], "")
+  let w = Filesystem.Write(path: v41_access_probe_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["v41 engram access probe receipt write failed: ", w.error], ""))
+  } else {
+    match outcome {
+      V41AccessProbeRead { image_config: _, attributes: _, timings: _, mmap_not_attempted: _ } => ExitSuccess
+      V41AccessProbeRefused { step: _, cause: _ } => exit_failure(reason: join(["the engram access probe refused:\n", body], ""))
+    }
+  }
+}
+
+// THE ORDER IS THE POINT: the administrator context exists before anything is claimed, so every
+// claim this entry lands is released over the same privileged leg that ran the container. Declared
+// recoveries for the target run first; the claim lands only on a recovered, admitted host.
 fn v41_engram_access_probe_ci_wet() -> ProcessExit
 {
   let now = clock_now_probed_at()
@@ -655,64 +717,59 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
       match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
         Present { value: why } => exit_failure(reason: why)
         Absent =>
-          match claim_host_effect_live(host: target_host, purpose: v41_access_probe_host_purpose, term: v41_access_probe_host_effect_term, residue: v41_access_probe_host_residue(image: v41_access_probe_image)) {
-            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
-            HostEffectClaimLanded { handle: handle } =>
-          release_host_effect_live(handle: Present { value: handle }, exit: {
-      match observe_executor_reach() {
-        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_engram_access_probe_ci: ", c], ""))
-        ExecutorReachKnown { short_hostname: executor, path: path } =>
-          match read_bootstrap_credential() {
-            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
-            BootstrapCredentialReady { secret: administrator } =>
-              match fleet_ssh_attempt_identity(raw: v41_access_probe_attempt_raw) {
-                Absent => exit_failure(reason: "attempt identity is not a safe path segment")
-                Present { value: attempt } => {
-                  let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-                  match fleet_openssh_trust_policy_of(outcome: materialization) {
-                    Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
-                    Present { value: trust } =>
-                      match with_materialized_ssh_key_file(
-                        identity_file_name: "gunbc-v41-engram-access-probe-admin-password" as NonEmptyStr,
-                        secret_bytes: administrator as Secret,
-                        use: fn(file) {
-                          v41_access_probe_on(
-                            ctx: SparkMaterializeContext {
-                              host: target_host,
-                              trust: trust,
-                              path: path,
-                              admin_credential: administrator as Secret,
-                              admin_credential_file: file,
-                              executor: HostCli,
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_engram_access_probe_ci: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: path } =>
+              match read_bootstrap_credential() {
+                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                BootstrapCredentialReady { secret: administrator } =>
+                  match fleet_ssh_attempt_identity(raw: v41_access_probe_attempt_raw) {
+                    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                    Present { value: attempt } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_openssh_trust_policy_of(outcome: materialization) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: trust } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-v41-engram-access-probe-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              let ctx = SparkMaterializeContext {
+                                host: target_host,
+                                trust: trust,
+                                path: path,
+                                admin_credential: administrator as Secret,
+                                admin_credential_file: file,
+                                executor: HostCli,
+                              }
+                              match v41_access_probe_recover(ctx: ctx, host: target_host) {
+                                std.process.ExitFailure { code: _, reason: why } => exit_failure(reason: join(["a declared recovery of this lane's claim on ", target_host as String, " did not complete, so nothing was claimed or run: ", why], ""))
+                                ExitSuccess =>
+                                  match claim_host_effect_live(host: target_host, purpose: v41_access_probe_host_purpose, term: v41_access_probe_host_effect_term, residue: v41_access_probe_host_residue(image: v41_access_probe_image)) {
+                                    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+                                    HostEffectClaimLanded { handle: handle } =>
+                                      release_host_effect_live_over(
+                                        handle: Present { value: handle },
+                                        run: fn(argv) { v41_access_probe_privileged_leg(ctx: ctx, argv: argv) },
+                                        exit: v41_access_probe_receipt_exit(
+                                          at: probed_at_word(reading: now) as String,
+                                          host: target_host,
+                                          executor: executor,
+                                          anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
+                                          outcome: v41_access_probe_on(ctx: ctx, image: v41_access_probe_image),
+                                        ),
+                                      )
+                                  }
+                              }
                             },
-                            image: v41_access_probe_image,
-                          )
-                        },
-                      ) {
-                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                        MaterializedSshKeyFileBracketCompleted { value: outcome } => {
-                          let body = join([
-                            join(["v41 engram access probe probed_at=", probed_at_word(reading: now) as String, " host=", target_host as String, "\n"], ""),
-                            v41_access_probe_body(o: outcome),
-                            join(["executor=", executor, "\n"], ""),
-                            known_hosts_materialization_receipt(outcome: materialization),
-                          ], "")
-                          let w = Filesystem.Write(path: v41_access_probe_receipt_path, content: body)
-                          if !w.success {
-                            exit_failure(reason: join(["v41 engram access probe receipt write failed: ", w.error], ""))
-                          } else {
-                            match outcome {
-                              V41AccessProbeRead { image_config: _, attributes: _, timings: _, mmap_not_attempted: _ } => ExitSuccess
-                              V41AccessProbeRefused { step: _, cause: _ } => exit_failure(reason: join(["the engram access probe refused:\n", body], ""))
-                            }
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: exit } => exit
                           }
-                        }
                       }
+                    }
                   }
-                }
               }
-          }
-      }})
           }
       }
   }

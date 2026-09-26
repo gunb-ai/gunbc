@@ -73,12 +73,14 @@ test fn a_failed_byte_check_or_no_done_refuses() -> Bool {
     && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: unfinished), needle: "did not reach DONE")
 }
 
-// THE PROGRAM IT SENDS: bounded by timeout, in the arm A image by config digest, reading the three
-// device attributes and establishing cold by dropping and reading back the page cache.
+// THE PROGRAM IT SENDS: bounded by timeout, in the arm A image by config digest, run from a file (Triton
+// reads kernel source from it), reading the three device attributes and establishing cold by dropping
+// and reading back the page cache.
 test fn the_probe_runs_the_bounded_program_in_the_arm_a_image() -> Bool {
   let argv = v41_access_probe_argv(image: v41_access_probe_image)
   let script = v41_access_probe_script()
-  contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 2700 python3 -c")
+  contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 2700 python3 -c import sys, runpy;")
+    && contains(join(argv, " "), "runpy.run_path(path, run_name='__main__')")
     && contains(script, "cudaDeviceGetAttribute")
     && contains(script, "POSIX_FADV_DONTNEED")
     && contains(script, "values = {}")
