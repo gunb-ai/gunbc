@@ -863,6 +863,21 @@ type InterpretationCacheDigestAuthority
       structure_digest: Hash
     }
 
+// A VERDICT IS REUSED ON CONTENT IDENTITY ONLY WHERE CONTENT IDENTITY DETERMINES THE RUN. A named
+// actual's position is not part of an application's identity (v2.std.node
+// canonicalize_positional_prefix_then_labeled sorts the named suffix), but it is part of its
+// EVALUATION ORDER, which is authored order. For pure evaluation the two coincide; with an effect
+// bundle present, f(a: e1(), b: e2()) and f(b: e2(), a: e1()) hash equal and perform their effects
+// in opposite orders, so a verdict keyed on the hash could be reused across two different runs. An
+// effectful evaluation context is therefore cache-ineligible (gunbc.recurring_failure_mode
+// argument_order_silently_orders_two_effects, until v2 carries uses facts and the order wall lands).
+fn eval_context_performs_effects(context: EvalContext) -> Bool {
+  match context.effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } => true
+  }
+}
+
 fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
   let authority = context.cache_authority
   let registry_witness = interpretation_registry_semantics_digest(
@@ -874,7 +889,17 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     interpretation: v2_evaluator_interpretation()
   )
   let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
-  if authority.runtime_identity == ^v2_evaluator_runtime_id
+  if eval_context_performs_effects(context: context) {
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: interpretation_algebra_executed_structure_digest(
+        runtime_identity: authority.runtime_identity,
+        interpretation: authority.interpretation,
+        structure_witness: authority.structure_witness
+      )
+    }
+  } else if authority.runtime_identity == ^v2_evaluator_runtime_id
     && interpretation_algebra_slot_identities_equal(a: authority.interpretation, b: v2_evaluator_interpretation())
     && authority.semantics_digest == registered_semantics
     && registry_witness == registered_semantics

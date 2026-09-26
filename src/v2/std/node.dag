@@ -936,6 +936,13 @@ fn canonicalize_labeled_for_content_hash<T>(
 
 // The positional prefix keeps its order; the named suffix sorts by label. So f(a: 1, b: 2) and
 // f(b: 2, a: 1) are one node, and f(1, 2) and f(2, 1) stay two.
+//
+// EVALUATION ORDER IS NEVER READ FROM A CANONICALIZED NODE. Actuals are evaluated in the stored
+// node's authored order (v2.compiler.eval eval_edge_is_runtime_argument); this ordering exists for
+// identity only. The identity claim rests on purity: for effectful actuals two hash-equal
+// applications perform their effects in different orders, so no consumer may reuse or dedupe a
+// result across hash-equal applications when an actual may be effectful
+// (gunbc.recurring_failure_mode argument_order_silently_orders_two_effects).
 fn canonicalize_positional_prefix_then_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
   concat(
     filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
