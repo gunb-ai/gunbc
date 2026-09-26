@@ -111,7 +111,25 @@ test fn a_refused_inference_blocks_every_identity_on_the_named_prerequisite_hold
   g_eval_blocked_on(engine: refused, declaration: "h1")
     && g_eval_blocked_on(engine: refused, declaration: "h2")
     && g_eval_blocked_on(engine: refused, declaration: "h3")
-    && length(xs: demand_engine_ready_queue(e: refused)) == 0
+    && g_ready_queue_is_only(
+         engine: refused,
+         key: demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
+       )
+}
+
+// THE READY QUEUE STILL HOLDS RESOLVE, AND ASSERTING IT EMPTY WAS THIS CLAIM'S OWN DEFECT. This
+// claim settles INFER refused without settling resolve, so resolve -- which has no prerequisite and
+// was ready before anything settled -- is legitimately still ready. An emptiness assertion therefore
+// asserted a falsehood about a demand this claim is not about, and it could never have been green;
+// the floor executing it is what surfaced that. What the claim exists to discriminate is that NO
+// EVAL becomes ready when its prerequisite refused, which this predicate states directly: the queue
+// holds exactly the named identity, so an eval leaking into it is red.
+fn g_ready_queue_is_only(engine: DemandEngine<NativeDemandValue>, key: String) -> Bool {
+  match demand_engine_ready_queue(e: engine) {
+    Cons { head: first, tail: rest } =>
+      (demand_identity_key(id: first) == key) && (length(xs: rest) == 0)
+    Empty => false
+  }
 }
 
 fn g_eval_blocked_on(engine: DemandEngine<NativeDemandValue>, declaration: String) -> Bool {
