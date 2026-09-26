@@ -318,7 +318,7 @@ fn host_capture_text_section_argv(capture: String, name: String) -> String? {
   if count(parts) != 2 {
     none
   } else {
-    get(xs: split(s: join(parts.skip(n: 1), ""), delimiter: "\n"), index: 0)
+    Present { value: join(split(s: join(parts.skip(n: 1), ""), delimiter: "\n").take(n: 1), "") }
   }
 }
 
