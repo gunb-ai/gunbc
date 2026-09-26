@@ -10,7 +10,7 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, residue_spec_members, residue_spec_decode }
 import gunbc.spark.v41_engram_access_probe {
   V41EngramAccessProbeOutcome, V41AccessProbeRead, V41AccessProbeRefused, v41_admit_access_reading,
-  v41_access_per_row, v41_last_phase, v41_access_probe_argv, v41_access_probe_image, v41_access_probe_script,
+  v41_access_per_row, v41_last_phase, v41_access_probe_argv, v41_access_probe_image,
   AccessMmapUnregistered, AccessPrefill262k, AccessCold, v41_access_probe_host_residue,
 }
 
@@ -79,19 +79,16 @@ test fn a_failed_byte_check_or_no_done_refuses() -> Bool {
     && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: unfinished), needle: "did not reach DONE")
 }
 
-// THE PROGRAM IT SENDS: bounded by timeout, in the arm A image by config digest, run from a file (Triton
-// reads kernel source from it), reading the three device attributes and establishing cold by dropping
-// and reading back the page cache.
+// THE COMMAND IT SENDS: bounded on the host and in the container, labelled for this lane, capped in
+// memory, in the arm A image by config digest, run from a file (Triton reads kernel source from it).
+// The program's own behaviour is established by execution on a Spark (the fleet mode's receipt, which
+// the admission above reads), not by searching its text here.
 test fn the_probe_runs_the_bounded_program_in_the_arm_a_image() -> Bool {
   let argv = v41_access_probe_argv(image: v41_access_probe_image, claim: "c1" as NonEmptyStr)
-  let script = v41_access_probe_script()
   contains(join(argv, " "), "timeout -k 30 1620 ")
     && contains(join(argv, " "), "--entrypoint timeout sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664 -k 30 1500 python3 -u -c import sys, runpy;")
     && contains(join(argv, " "), "runpy.run_path(path, run_name='__main__')")
-    && contains(join(argv, " "), "--label gunbc.lane=engram-access-probe --label gunbc.claim=c1 --entrypoint timeout")
-    && contains(script, "cudaDeviceGetAttribute")
-    && contains(script, "POSIX_FADV_DONTNEED")
-    && contains(script, "values = {}")
+    && contains(join(argv, " "), "--label gunbc.lane=engram-access-probe --label gunbc.claim=c1 --memory 17179869184 --memory-swap 17179869184 --entrypoint timeout")
 }
 
 // A RUN A BOUND CUT SHORT IS LOCATED BY THE LAST PHASE IT ANNOUNCED, and one killed before any phase

@@ -2,7 +2,8 @@ module extdeps.docker.cli
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, ByteSize, byte_size_count }
+import v2.std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -642,7 +643,17 @@ fn docker_short_mount_flag(m: DockerMount) -> List<String> {
 // .../v41_capability_probe.py`. A question about what an image CONTAINS is not a question its
 // entrypoint is equipped to answer, so the caller supplies the program and the image supplies only
 // the filesystem.
-fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, labels: List<DockerLabel>, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
+// docker run --memory <bytes> --memory-swap <bytes> (docs.docker.com/engine/containers/resource_constraints/):
+// the container's memory cgroup is capped at the limit, and setting --memory-swap to the same value
+// grants it no swap, so a runaway is OOM-killed inside its own cgroup rather than pressing the host.
+fn docker_memory_limit_flags(limit: ByteSize?) -> List<String> {
+  match limit {
+    Absent => [] as List<String>
+    Present { value: b } => ["--memory", to_string(byte_size_count(b: b)), "--memory-swap", to_string(byte_size_count(b: b))]
+  }
+}
+
+fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, labels: List<DockerLabel>, memory_limit: ByteSize?, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
   argv_command(
     program: docker_binary_path,
     arguments: concat(
@@ -652,7 +663,7 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
             concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
             flat_map(mounts, m => docker_short_mount_flag(m: m)),
           ),
-          flat_map(labels, l => ["--label", docker_label_wire(l: l)]),
+          concat(flat_map(labels, l => ["--label", docker_label_wire(l: l)]), docker_memory_limit_flags(limit: memory_limit)),
         ),
         ["--entrypoint", entrypoint as String],
       ),

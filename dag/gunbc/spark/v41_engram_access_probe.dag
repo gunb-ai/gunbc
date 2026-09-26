@@ -81,6 +81,7 @@ import product.capacity.event_chain { EventId }
 fn v41_access_probe_script() -> String {
   join([
     "import ctypes\n",
+    "import gc\n",
     "import ctypes.util\n",
     "import glob\n",
     "import mmap\n",
@@ -97,7 +98,7 @@ fn v41_access_probe_script() -> String {
     "RECORD = 264\n",
     "WEIGHT = 256\n",
     "QUANT_BLOCK = 32\n",
-    "ROWS = 32 * 1024 * 1024\n",
+    "ROWS = 16 * 1024 * 1024\n",
     "DECODE_ROWS = 16 * 6\n",
     "PREFILL_ROWS = 262144 * 6\n",
     "REPS = 3\n",
@@ -105,9 +106,42 @@ fn v41_access_probe_script() -> String {
     "STORE_DIR = \"/var/tmp/gunbc-engram-access-probe\"\n",
     "\n",
     "\n",
+    "def meminfo_kib(key):\n",
+    "    with open(\"/proc/meminfo\") as f:\n",
+    "        for line in f:\n",
+    "            if line.startswith(key + \":\"):\n",
+    "                return int(line.split()[1])\n",
+    "    return -1\n",
+    "\n",
+    "\n",
+    "def cgroup_bytes():\n",
+    "    try:\n",
+    "        with open(\"/sys/fs/cgroup/memory.current\") as f:\n",
+    "            return int(f.read().strip())\n",
+    "    except OSError:\n",
+    "        return -1\n",
+    "\n",
+    "\n",
     "def phase(name):\n",
     "    print(\"PHASE\", name)\n",
+    "    free, total = torch.cuda.mem_get_info()\n",
+    "    print(\"MEM\", name, \"host_available_kib\", meminfo_kib(\"MemAvailable\"), \"cgroup_current_bytes\", cgroup_bytes(), \"cuda_free_bytes\", free, \"cuda_total_bytes\", total)\n",
     "    sys.stdout.flush()\n",
+    "\n",
+    "\n",
+    "# PINNED MEMORY IS REGISTERED AND UNREGISTERED EXPLICITLY, as upstream DPSharedEngramStorage does, so\n",
+    "# it is returned when a phase ends: torch's caching host allocator keeps pin_memory=True blocks after\n",
+    "# `del`, which held the whole pinned table for the rest of run 36230564997.\n",
+    "def pinned_buffer(nbytes):\n",
+    "    owner = np.empty(nbytes, dtype=np.uint8)\n",
+    "    status = torch.cuda.cudart().cudaHostRegister(owner.ctypes.data, nbytes, 0)\n",
+    "    if status.value != 0:\n",
+    "        refuse(\"cudaHostRegister failed: \" + str(status))\n",
+    "    return owner\n",
+    "\n",
+    "\n",
+    "def unpin(owner):\n",
+    "    torch.cuda.cudart().cudaHostUnregister(owner.ctypes.data)\n",
     "\n",
     "\n",
     "def refuse(cause):\n",
@@ -284,12 +318,27 @@ fn v41_access_probe_script() -> String {
     "        refuse(path_label + \" returned rows that differ from the store's bytes\")\n",
     "\n",
     "\n",
+    "# THE PRE-FLIGHT COVERS WHAT THE CAP MAY NOT: the 16 GiB container cap, plus the device footprint that\n",
+    "# unified-memory CUDA allocations may place outside the cgroup (two 805 MB bf16 prefill outputs, a\n",
+    "# 415 MB device copy of the staged rows, index tensors and allocator slack, ~4 GiB), plus a 4 GiB\n",
+    "# margin. Clean page cache counts toward MemAvailable, so a host holding only reclaimable cache passes.\n",
+    "CAP_KIB = 16 * 1024 * 1024\n",
+    "DEVICE_ESTIMATE_KIB = 4 * 1024 * 1024\n",
+    "MARGIN_KIB = 4 * 1024 * 1024\n",
+    "PREFLIGHT_KIB = CAP_KIB + DEVICE_ESTIMATE_KIB + MARGIN_KIB\n",
+    "\n",
+    "\n",
     "def main():\n",
+    "    phase(\"preflight\")\n",
+    "    available = meminfo_kib(\"MemAvailable\")\n",
+    "    if available < PREFLIGHT_KIB:\n",
+    "        refuse(\"the host has \" + str(available) + \" KiB available, under the \" + str(PREFLIGHT_KIB) + \" KiB this probe requires before it allocates anything\")\n",
     "    phase(\"attributes\")\n",
     "    attrs = read_attrs()\n",
     "    path = os.path.join(STORE_DIR, \"store.bin\")\n",
     "    phase(\"write-store\")\n",
     "    write_store(path)\n",
+    "    drop_cache(path)\n",
     "    g = torch.Generator(device=\"cuda\").manual_seed(11)\n",
     "    batches = ((\"decode\", DECODE_ROWS), (\"prefill262k\", PREFILL_ROWS))\n",
     "    idx_of = \{label: torch.randint(0, ROWS, (n,), device=\"cuda\", generator=g, dtype=torch.int64) for label, n in batches\}\n",
@@ -302,10 +351,10 @@ fn v41_access_probe_script() -> String {
     "\n",
     "    phase(\"pinned\")\n",
     "    # (i) upstream layout: the whole table in pinned host memory, read by the kernel through UVA.\n",
-    "    pinned = torch.empty(ROWS * RECORD, dtype=torch.uint8, pin_memory=True)\n",
-    "    view = pinned.numpy()\n",
+    "    owner = pinned_buffer(ROWS * RECORD)\n",
+    "    pinned = torch.from_numpy(owner)\n",
     "    with open(path, \"rb\") as f:\n",
-    "        f.readinto(memoryview(view))\n",
+    "        f.readinto(memoryview(owner))\n",
     "    for label, n in batches:\n",
     "        idx = idx_of[label]\n",
     "        samples = []\n",
@@ -314,7 +363,12 @@ fn v41_access_probe_script() -> String {
     "            samples.append(us)\n",
     "        check(\"pinned\", out, idx, table_bytes)\n",
     "        report(\"pinned\", \"warm\", label, n, samples)\n",
-    "    del pinned, view\n",
+    "    del pinned, out\n",
+    "    unpin(owner)\n",
+    "    del owner\n",
+    "    gc.collect()\n",
+    "    torch.cuda.empty_cache()\n",
+    "    drop_cache(path)\n",
     "\n",
     "    # (ii) an UNREGISTERED read-only mmap read directly by the kernel, cold and warm.\n",
     "    if attrs[\"pageable_memory_access\"] != 1:\n",
@@ -346,7 +400,9 @@ fn v41_access_probe_script() -> String {
     "\n",
     "    phase(\"cpu-gather\")\n",
     "    # (iii) design B: hash ids to the host, CPU gather into pinned staging, copy up, dequantize.\n",
-    "    staging = torch.empty((PREFILL_ROWS, RECORD), dtype=torch.uint8, pin_memory=True)\n",
+    "    torch.cuda.empty_cache()\n",
+    "    staging_owner = pinned_buffer(PREFILL_ROWS * RECORD)\n",
+    "    staging = torch.from_numpy(staging_owner).view(PREFILL_ROWS, RECORD)\n",
     "\n",
     "    def cpu_gather(idx):\n",
     "        host_idx = idx.cpu()\n",
@@ -377,9 +433,15 @@ fn v41_access_probe_script() -> String {
     "            warm.append(us)\n",
     "        report(\"cpu_gather\", \"warm\", label, n, warm)\n",
     "\n",
+    "    del staging, out\n",
+    "    unpin(staging_owner)\n",
+    "    del staging_owner\n",
+    "    gc.collect()\n",
+    "    torch.cuda.empty_cache()\n",
     "    mm.close()\n",
     "    os.close(fd)\n",
     "    os.unlink(path)\n",
+    "    phase(\"done\")\n",
     "    print(\"DONE\")\n",
     "\n",
     "\n",
@@ -396,6 +458,15 @@ fn v41_access_probe_script() -> String {
 data v41_access_probe_time_bound: Second = second(count: 1500)
 data v41_access_probe_client_bound: Second = second(count: 1620)
 data v41_access_probe_kill_grace: Second = second(count: 30)
+
+// THE FOOTPRINT IS CAPPED, NOT HOPED FOR. Run 36230564997 left srv8 thrashing (ssh banner timeouts,
+// 75-118 ms LAN ping) with the probe's pinned table, its page cache and its mmap all resident, and
+// torch's caching host allocator holding the pinned table after `del`. The container now runs under a
+// 16 GiB memory cgroup with no swap, so a runaway is OOM-killed inside it; the program pins through
+// cudaHostRegister and unregisters each buffer when its phase ends, drops the store's page cache
+// between phases, keeps the store at 16M rows (~4.2 GB), refuses before allocating unless the host
+// reports 24 GiB available, and prints host and cgroup memory at every phase.
+data v41_access_probe_memory_cap: ByteSize = byte_size(count: 17179869184)
 
 // THE SUBJECT IMAGE: the arm A runtime image, by its config digest, which `docker run` accepts as an
 // image reference and which pins the bytes rather than a tag. Fleet-converge run 36207135528 built
@@ -425,6 +496,7 @@ fn v41_access_probe_argv(image: NonEmptyStr, claim: NonEmptyStr) -> List<String>
       gpus_all: true,
       mounts: [],
       labels: [v41_access_probe_lane_label, DockerLabel { key: "gunbc.claim" as NonEmptyStr, value: claim }],
+      memory_limit: Present { value: v41_access_probe_memory_cap },
       entrypoint: "timeout" as NonEmptyStr,
       argv: ["-k", to_string(second_count(s: v41_access_probe_kill_grace)), to_string(second_count(s: v41_access_probe_time_bound)), "python3", "-u", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
     )),
@@ -817,8 +889,14 @@ fn v41_access_probe_host_residue() -> HostEffectResidueSpec {
 // claim refuses, so a recovered row is deleted rather than left to accumulate.
 type V41AccessProbeClaimRecovery { host: HostIdentity, claim: EventId, standing: ClaimantStanding, receipt: NonEmptyStr }
 
-// Empty: be2cf3990cbf0e40 was recovered by run 36227645107, and 6ce079b2a3889272 by run 36223556832.
-data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = []
+data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = [
+  V41AccessProbeClaimRecovery {
+    host: "srv8" as HostIdentity,
+    claim: ("111fbe04d3012e4a" as NonEmptyStr) as EventId,
+    standing: ClaimantTerminated,
+    receipt: "fleet-converge run 36230564997 (spark_v41_engram_access_probe): srv8 became unresponsive mid-probe from ~09:24 (ssh banner timeouts, 75-118 ms LAN ping), no PHASE output was captured, and the container removal and release could not run" as NonEmptyStr,
+  },
+]
 
 fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
   if length(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String))) == 0 {

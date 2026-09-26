@@ -586,6 +586,7 @@ fn v41_probe_privileged_argv(image_reference: NonEmptyStr) -> List<String> {
     gpus_all: true,
     mounts: [],
     labels: [] as List<DockerLabel>,
+    memory_limit: Absent,
     entrypoint: v41_probe_interpreter,
     argv: ["-c", v41_probe_script()],
   ))
