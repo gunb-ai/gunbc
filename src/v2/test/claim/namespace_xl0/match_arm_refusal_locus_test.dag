@@ -1,0 +1,179 @@
+module v2.test.claim.namespace_xl0.match_arm_refusal_locus
+
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { IngestAssembly, assemble_program_from_ingest_located }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, NodeLocus, Rejected, Textual }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.provenance { node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REFUSAL IS LOCATED AT THE OFFENDING VALUE, IN EVERY ARM POSITION.
+//
+// v2.test.claim.namespace_xl0.match_arm_refusal_carried establishes that a refused arm keeps its own
+// CAUSE; its file-refusal verdict carries no locus, so it cannot establish WHERE the refusal points.
+// This module reads the refusal diagnostic itself, one level lower: each specimen is assembled
+// through v2.compiler.program_assembly assemble_program_from_ingest_located, the diagnostic whose
+// reason is the list literal's cause is taken from the refused program's chain (the chain's head is a
+// parse-stage residue advisory, so the head is not the refusal), its NodeLocus node is resolved
+// through the assembly's own SpanIndex to a Textual byte range, and that range is compared with the
+// offending literal's extent IN THAT SPECIMEN'S OWN SOURCE.
+//
+// THE EXPECTED EXTENT IS CONSTRUCTED, NOT TRANSCRIBED. Each specimen's source is written as a prefix,
+// the offending literal `[]`, and a suffix, so the literal starts at length(prefix) in that source
+// and no offset is compared across specimens or copied from a measurement. The fixtures are ASCII,
+// so a character count is a byte count. The locus resolves to the literal's opening bracket.
+//
+// THE WRONG-LOCUS MUTATION, AND WHY THERE IS NO "NOT AT THE ARM" CLAIM. The navigation refusal this
+// change removed located the ARM. Re-pointing the arm refusal at its enclosing arm while keeping its
+// cause (v2.compiler.body_lowering_fold body_lower_match_arm_wired answering the same reason at
+// arm_capture) reds all three located claims below while
+// v2.test.claim.namespace_xl0.match_arm_refusal_carried's cause claims stay green; that run is
+// recorded in gunbc#12321. A companion claim "not located at the arm's start" was written and
+// DELETED: under that exact mutation it stayed green for the comma-separated specimen, because a
+// comma arm's capture does not begin at its pattern, so it was fooled by the defect it named. The
+// exact-start claims are the discriminator.
+//
+data marl_prelude: String = "module v2.test.marl\n\nfn marl_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marl_probe(b: Bool, acc: List<Int>) -> List<Int> {\n"
+
+data marl_second_before_arm: String = "  match b {\n    false => acc\n    "
+data marl_second_arm_head: String = "true => marl_g(acc: "
+data marl_second_suffix: String = ")\n  }\n}\n"
+
+data marl_comma_before_arm: String = "  match b { false => acc, "
+data marl_comma_arm_head: String = "true => marl_g(acc: "
+data marl_comma_suffix: String = ") }\n}\n"
+
+data marl_first_before_arm: String = "  match b {\n    "
+data marl_first_arm_head: String = "true => marl_g(acc: "
+data marl_first_suffix: String = ")\n    false => acc\n  }\n}\n"
+
+data marl_literal: String = "[]"
+
+type MarlSpecimen {
+  source: String
+  literal_start: Int
+}
+
+fn marl_specimen(before_arm: String, arm_head: String, suffix: String) -> MarlSpecimen {
+  let arm_start = length(xs: marl_prelude) + length(xs: before_arm)
+  MarlSpecimen {
+    source: marl_prelude + before_arm + arm_head + marl_literal + suffix,
+    literal_start: arm_start + length(xs: arm_head)
+  }
+}
+
+fn marl_second() -> MarlSpecimen {
+  marl_specimen(before_arm: marl_second_before_arm, arm_head: marl_second_arm_head, suffix: marl_second_suffix)
+}
+
+fn marl_comma() -> MarlSpecimen {
+  marl_specimen(before_arm: marl_comma_before_arm, arm_head: marl_comma_arm_head, suffix: marl_comma_suffix)
+}
+
+fn marl_first() -> MarlSpecimen {
+  marl_specimen(before_arm: marl_first_before_arm, arm_head: marl_first_arm_head, suffix: marl_first_suffix)
+}
+
+// The offending refusal's resolved start, or Absent when the specimen did not refuse under the
+// literal's cause, or refused under it at a locus that does not resolve to a byte range.
+type MarlLocated
+  = MarlNotRefusedUnderTheCause
+  | MarlUnresolved
+  | MarlAt { start: Int, end: Int }
+
+fn marl_assemble(source: String) -> IngestAssembly {
+  assemble_program_from_ingest_located(
+    ingest: [DagSourceReadWitness {
+      source: Medium { carried: source, fidelity: Lossless },
+      artifact: Artifact { kind: SourceFile, id: ^marl_read, file_path: "src/v2/test/fixture/namespace_xl0/marl.dag" },
+      compilation_unit: ^marl_cu,
+      source_root: DagTree
+    }],
+    admission: Admission { subject: ResolutionSubject { name: [^v2, ^test, ^marl] }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn marl_resolve(a: IngestAssembly, d: Diagnostic) -> MarlLocated {
+  match d.at {
+    NodeLocus { anchor: an } =>
+      match node_occurrence_id_optional(node: an.at) {
+        Absent => MarlUnresolved
+        Present { value: id } =>
+          match span_index_textual_locus_optional(index: a.spans, id: id) {
+            Absent => MarlUnresolved
+            Present { value: l } =>
+              match l {
+                Textual { file: _, extent: ByteRange { start: s, end: e } } => MarlAt { start: s, end: e }
+                _ => MarlUnresolved
+              }
+          }
+      }
+    _ => MarlUnresolved
+  }
+}
+
+fn marl_located(source: String) -> MarlLocated {
+  let a = marl_assemble(source: source)
+  match a.program {
+    Accepted { value: _, diagnostics: _ } => MarlNotRefusedUnderTheCause
+    Rejected { diagnostics: ds } =>
+      fold_list(
+        xs: Cons { head: ds.head, tail: ds.tail },
+        empty: MarlNotRefusedUnderTheCause,
+        cons: fn(acc, d) {
+          match acc {
+            MarlNotRefusedUnderTheCause =>
+              if d.reason == ^body_lowering_reason_list_literal_unlowered { marl_resolve(a: a, d: d) } else { acc }
+            _ => acc
+          }
+        }
+      )
+  }
+}
+
+// One located verdict per specimen, computed once and shared by the claims below.
+type MarlOutcomes {
+  second: MarlLocated
+  comma: MarlLocated
+  first: MarlLocated
+}
+
+fn marl_outcomes() -> MarlOutcomes {
+  MarlOutcomes {
+    second: marl_located(source: marl_second().source),
+    comma: marl_located(source: marl_comma().source),
+    first: marl_located(source: marl_first().source)
+  }
+}
+
+fn marl_starts_at(v: MarlLocated, at: Int) -> Bool {
+  match v {
+    MarlAt { start: s, end: e } => (s == at) && (e > s)
+    _ => false
+  }
+}
+
+test fn a_second_arm_refusal_is_located_at_its_own_literal() -> Bool {
+  marl_starts_at(v: marl_outcomes().second, at: marl_second().literal_start)
+}
+
+test fn a_comma_separated_arm_refusal_is_located_at_its_own_literal() -> Bool {
+  marl_starts_at(v: marl_outcomes().comma, at: marl_comma().literal_start)
+}
+
+test fn a_first_arm_refusal_is_located_at_its_own_literal() -> Bool {
+  marl_starts_at(v: marl_outcomes().first, at: marl_first().literal_start)
+}
