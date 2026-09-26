@@ -83,6 +83,37 @@ data glm_native_engine_binary: NonEmptyStr = "/usr/local/bin/vllm" as NonEmptySt
 data glm_native_head_log_path: NonEmptyStr = "/var/log/gunbc/glm-native-head.log" as NonEmptyStr
 data glm_native_rank_log_path: NonEmptyStr = "/var/log/gunbc/glm-native-rank.log" as NonEmptyStr
 
+// ── WHAT A DEPLOYMENT'S UNITS ARE CALLED, AS ONE VALUE ─────────────────────────────────────────
+//
+// The four names above are GLM's, and the unit renderer below used to read them directly, so it could
+// only render GLM's units. A unit's name, its log and its description are the deployment's, not the
+// renderer's: the V4.1 arm on Group A renders through the same function under its own names
+// (gunbc.spark.v41_group_a_launch), which is what keeps a GLM unit still running on a host readable as
+// occupancy rather than as the new arm already installed.
+type ArmUnitIdentity {
+  head_unit_name: NonEmptyStr
+  rank_unit_name: NonEmptyStr
+  head_log_path: NonEmptyStr
+  rank_log_path: NonEmptyStr
+  description: NonEmptyStr
+}
+
+data glm_native_arm_units: ArmUnitIdentity = ArmUnitIdentity {
+  head_unit_name: glm_native_head_unit_name,
+  rank_unit_name: glm_native_rank_unit_name,
+  head_log_path: glm_native_head_log_path,
+  rank_log_path: glm_native_rank_log_path,
+  description: "gunbc GLM native four-rank arm" as NonEmptyStr,
+}
+
+fn arm_unit_name_for(units: ArmUnitIdentity, launch: ArmNodeLaunch) -> NonEmptyStr {
+  if launch.node.node_rank == 0 { units.head_unit_name } else { units.rank_unit_name }
+}
+
+fn arm_unit_log_path_for(units: ArmUnitIdentity, launch: ArmNodeLaunch) -> NonEmptyStr {
+  if launch.node.node_rank == 0 { units.head_log_path } else { units.rank_log_path }
+}
+
 // ── THE ARM'S PLAN, READ ONCE ─────────────────────────────────────────────────────────────────
 //
 // EVERY DERIVED ROSTER BELOW READS THIS, so the hosts the units are rendered for, the hosts the
@@ -157,8 +188,12 @@ fn glm_native_unit_refusal_cause(spec: DockerCreateSpec) -> NonEmptyStr {
 // address the container publishes as VLLM_HOST_IP -- plus the two this module owns: the unit's name
 // and its log path.
 fn glm_native_host_unit_file(launch: ArmNodeLaunch) -> GlmNativeUnitRender {
-  let is_head = launch.node.node_rank == 0
-  let unit_name = if is_head { glm_native_head_unit_name } else { glm_native_rank_unit_name }
+  arm_host_unit_file(launch: launch, units: glm_native_arm_units, served_alias: glm_native_concurrent_profile.served_alias)
+}
+
+fn arm_host_unit_file(launch: ArmNodeLaunch, units: ArmUnitIdentity, served_alias: NonEmptyStr) -> GlmNativeUnitRender {
+  let unit_name = arm_unit_name_for(units: units, launch: launch)
+  let log_path = arm_unit_log_path_for(units: units, launch: launch)
   match glm_native_unit_exec_words(spec: launch.container) {
     Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: glm_native_unit_refusal_cause(spec: launch.container) }
     Present { value: words } =>
@@ -169,7 +204,7 @@ fn glm_native_host_unit_file(launch: ArmNodeLaunch) -> GlmNativeUnitRender {
             unit_name: unit_name,
             text: serialize_systemd_unit_file(file: ServiceUnitFile {
               unit: [
-                Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(launch.node.node_rank), " (", glm_native_concurrent_profile.served_alias as String, ")"], "") as NonEmptyStr },
+                Description { text: join([units.description as String, ", rank ", to_string(launch.node.node_rank), " (", served_alias as String, ")"], "") as NonEmptyStr },
                 After { target: "docker.service network-online.target" as NonEmptyStr },
                 Requires { target: "docker.service" as NonEmptyStr },
               ],
@@ -181,8 +216,8 @@ fn glm_native_host_unit_file(launch: ArmNodeLaunch) -> GlmNativeUnitRender {
                 Restart { policy: "always" as NonEmptyStr },
                 RestartSec { duration: "30" as NonEmptyStr },
                 TimeoutStartSec { duration: "0" as NonEmptyStr },
-                ServiceStandardOutput { stream: OutputAppendFile { path: if is_head { glm_native_head_log_path } else { glm_native_rank_log_path } } },
-                ServiceStandardError { stream: OutputAppendFile { path: if is_head { glm_native_head_log_path } else { glm_native_rank_log_path } } },
+                ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
+                ServiceStandardError { stream: OutputAppendFile { path: log_path } },
               ],
               install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
             }),

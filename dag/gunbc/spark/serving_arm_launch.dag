@@ -5,10 +5,6 @@ import std.nat { Nat }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
-import extdeps.zhipu.glm_5_3_flash {
-  glm_5_3_flash_vllm_tool_call_parser,
-  glm_5_3_flash_vllm_reasoning_parser,
-}
 import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
 import gunbc.spark.fabric_switch_observed {
   FabricGroup,
@@ -21,6 +17,7 @@ import gunbc.spark.fabric_switch_observed {
 import extdeps.docker.cli {
   DockerCreateSpec,
   DockerEnvAssignment,
+  DockerMount,
   BindMount,
   NamespaceHost,
   RestartNo,
@@ -76,7 +73,7 @@ import std.measure {
   token_count_value,
 }
 import std.decl_ref { decl_ref }
-import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv }
 
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement,
@@ -84,7 +81,13 @@ import gunbc.spark.model_snapshot_acquisition {
   LocalDirectoryPlacement,
 }
 
-// ── THIS MODULE IS THE ONE GROUP-B LAUNCH AUTHORITY, AND BOTH ITS HANDLERS PROJECT FROM IT ────
+// ── THIS MODULE IS THE ONE mp-BACKEND MULTI-HOST LAUNCHER, AND EACH DEPLOYMENT IS A CALL SITE ──
+//
+// TWO DEPLOYMENTS PLAN THROUGH IT: Group B's GLM arm (gunbc.spark.glm_group_b_launch) and the V4.1
+// four-rank arm on Group A (gunbc.spark.v41_group_a_launch). What differs between them is data the
+// caller supplies -- the checkpoint and runtime rows, the profile, the deployment environment and the
+// ArmContainerIdentity -- never a branch in here. The paragraphs below were written when Group B was
+// the only caller and still describe its two realization handlers accurately.
 //
 // TWO CONSUMERS EXECUTE THIS PLAN, and they are two REALIZATION HANDLERS rather than two launchers.
 // gunbc.spark.glm_group_b_relaunch_cli creates and starts the containers directly, through the
@@ -248,6 +251,25 @@ fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
 
 // ── THE LAUNCH LINE ────────────────────────────────────────────────────────────────────────────
 
+// ── WHAT A DEPLOYMENT NAMES, AS ONE VALUE ─────────────────────────────────────────────────────
+//
+// THE PLANNER USED TO SPELL GLM'S DEPLOYMENT HERE AS MODULE CONSTANTS, which made the one multi-host
+// launcher a GLM launcher: every arm it planned was named glm-native-tp4, rendezvoused on GLM's port and
+// sized its shared memory from GLM's inspect. None of those is a fact about the launcher. They are what
+// ONE DEPLOYMENT calls its container, where its ranks meet, and what else it mounts -- so they arrive as
+// a value the caller names, and a second deployment on another group is a second value rather than a
+// second launcher (DESIGN section 3: one realization, parameterized).
+//
+// DISTINCT NAMES ARE THE POINT, NOT A NICETY. A host's occupancy is read by unit and container name, so
+// two deployments sharing a name would make one read as the other: an old arm still running would look
+// like the new one already launched.
+type ArmContainerIdentity {
+  container_name: NonEmptyStr
+  master_port: Port
+  shm_size: ByteSize
+  extra_mounts: List<DockerMount>
+}
+
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Port = 29501
 
@@ -369,20 +391,20 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // two endpoint names are seven spellings of ONE decision, so they are derived from
 // gunbc.spark.collective_transport_plan rather than listed here. A rank cannot now carry four of the
 // seven.
-fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> DockerCreateSpec {
+fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> DockerCreateSpec {
   let mount = arm_mount_plan(row: crow)
   DockerCreateSpec {
-    name: glm_native_container_name,
+    name: container.container_name,
     image: runtime_artifact_wire(a: rrow.artifact),
     network: NamespaceHost,
     ipc: NamespaceHost,
-    shm_size_bytes: byte_size_count(b: glm_native_shm_size),
+    shm_size_bytes: byte_size_count(b: container.shm_size),
     memlock_unlimited: transport_plan_memlock_unlimited(p: node.transport),
     gpus_all: true,
     devices: transport_plan_devices(p: node.transport),
     cap_add: transport_plan_cap_add(p: node.transport),
     restart: RestartNo,
-    mounts: [BindMount { host_path: mount.host_dir, container_path: mount.container_dir, readonly: true }],
+    mounts: concat([BindMount { host_path: mount.host_dir, container_path: mount.container_dir, readonly: true }], container.extra_mounts),
     env: concat(concat([
       DockerEnvAssignment { name: "NCCL_DEBUG" as NonEmptyStr, value: "INFO" },
       DockerEnvAssignment { name: "NCCL_DEBUG_SUBSYS" as NonEmptyStr, value: "INIT,NET" },
@@ -392,7 +414,7 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
       },
       DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: render_ipv4_address(addr: node.rail) as String },
     ], deployment_env), transport_plan_env(p: node.transport)),
-    command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
+    command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, master_port: container.master_port),
   }
 }
 // THE SHARED-MEMORY SIZE IS THIS ARM'S OBSERVED VALUE, NOT THE PAIR ROUTE'S.
@@ -411,6 +433,14 @@ fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
 // how it was found.
 data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
 
+// GROUP B'S GLM ARM, AS IT HAS ALWAYS BEEN NAMED; it mounts nothing beyond its weights.
+data glm_native_arm_container: ArmContainerIdentity = ArmContainerIdentity {
+  container_name: glm_native_container_name,
+  master_port: glm_native_master_port,
+  shm_size: glm_native_shm_size,
+  extra_mounts: [],
+}
+
 // ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
 //
 // THESE ARE TWO DIFFERENT LISTS AND A READBACK THAT CONFUSES THEM CANNOT EVER AGREE. The full launch line
@@ -419,7 +449,18 @@ data glm_native_shm_size: ByteSize = byte_size(count: 67108864)
 // revision compared the WHOLE line against what the container reports and refused every healthy rank with
 // "argv differs first at word 0 (planned 63 words, observed 36)" -- word zero being "docker" against the
 // model path. Splitting the list here gives the comparison a referent the observation can actually hold.
-fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile) -> List<String> {
+// THE PARSERS ARE READ OFF THE CHECKPOINT ROW, which is the model's authority for them
+// (gunbc.spark.serving_arm CheckpointVllmParsers); the tokenizer mode renders only where the model
+// asks for one. The Engram request is the profile's and renders nothing when omitted, so an arm that
+// asked for neither emits exactly the words it did before either existed.
+fn arm_tokenizer_mode_argv(crow: ServingCheckpointRow) -> List<String> {
+  match crow.parsers.tokenizer_mode {
+    Absent => []
+    Present { value: m } => ["--tokenizer-mode", m as String]
+  }
+}
+
+fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, master_port: Port) -> List<String> {
   concat([
     arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", profile.served_alias as String,
@@ -428,20 +469,21 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
     "--nnodes", to_string(ranks),
     "--node-rank", to_string(node.node_rank),
     "--master-addr", render_ipv4_address(addr: master) as String,
-    "--master-port", to_string(glm_native_master_port),
+    "--master-port", to_string(master_port),
     "--max-model-len", to_string(token_count_value(t: profile.max_model_len)),
     "--max-num-batched-tokens", to_string(token_count_value(t: profile.max_num_batched_tokens)),
     "--max-num-seqs", to_string(profile.max_num_seqs),
     "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: profile.kv_cache_dtype) as String,
     "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: profile.decided_gpu_memory_basis_points),
-    "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
-    "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
+    "--tool-call-parser", crow.parsers.tool_call_parser as String,
+    "--reasoning-parser", crow.parsers.reasoning_parser as String,
     "--enable-auto-tool-choice",
     "--host", "0.0.0.0",
     "--port", to_string(profile.serve_port),
   ], concat(
     vllm_prefix_caching_argv(r: profile.prefix_caching),
-    concat(checkpoint_quantization_argv(row: crow), arm_headless_argv(node: node))))
+    concat(checkpoint_quantization_argv(row: crow), concat(arm_headless_argv(node: node),
+      concat(arm_tokenizer_mode_argv(crow: crow), vllm_engram_config_argv(r: profile.engram))))))
 }
 
 // ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
@@ -493,8 +535,8 @@ type ArmNodeLaunch sole_constructor {
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
 // any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
 // known-impossible tuple, so it is consulted before anything renders.
-fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> ArmLaunchPlan {
-  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile, deployment_env: deployment_env)
+fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
+  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile, deployment_env: deployment_env, container: container)
 }
 
 // ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
@@ -573,7 +615,7 @@ fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEm
   }
 }
 
-fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> ArmLaunchPlan {
+fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
   if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
@@ -593,7 +635,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
               match arm_node_roster(group: group, expected_ranks: serving_topology_rank_count(t: topology)) {
                 ArmNodeRosterRefused { cause: c } => ArmLaunchRefused { cause: c }
                 ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
-                  lines: map(ns, n => arm_node_launch(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, deployment_env: deployment_env)),
+                  lines: map(ns, n => arm_node_launch(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, deployment_env: deployment_env, container: container)),
                   master: m,
                 },
               }
@@ -608,13 +650,13 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
 // the same value rather than two renderings that can drift. The engine argv is carried separately
 // because a running container remembers only that half -- the create flags were consumed by the daemon
 // -- so a readback comparing the whole line against a container's own arguments compares nothing.
-fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>) -> ArmNodeLaunch {
-  let spec = arm_container_spec(node: node, master: master, crow: crow, rrow: rrow, ranks: ranks, profile: profile, deployment_env: deployment_env)
+fn arm_node_launch(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmNodeLaunch {
+  let spec = arm_container_spec(node: node, master: master, crow: crow, rrow: rrow, ranks: ranks, profile: profile, deployment_env: deployment_env, container: container)
   ArmNodeLaunch {
     node: node,
     container: spec,
     create: docker_create_command(spec: spec),
-    engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile),
+    engine_argv: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, master_port: container.master_port),
     image_reference: runtime_artifact_wire(a: rrow.artifact),
     host_model_path: arm_mount_plan(row: crow).host_model_path,
   }

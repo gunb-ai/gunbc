@@ -292,20 +292,31 @@ fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjec
 // THE MOUNT IS THE PLACEMENT'S HOST PATH, so the CLI writes to and verifies exactly the tree the arm
 // declares, and the container path is where that tree appears to the CLI. Both come from the one
 // placement value rather than being spelled beside it.
+// A RUNTIME WITH NO HUB CLI READ INSIDE IT GETS THE SAME EXECUTOR AS AN UNMODELLED ONE: no path was
+// read, so none is spelled, and the sentinel the executor runs refuses on the absent program exactly
+// as it does for a runtime with no row.
+fn glm_canary_unmodelled_acquisition_executor() -> SnapshotAcquisitionExecutor {
+  ContainerizedCli {
+    image: "(unmodelled runtime)" as NonEmptyStr,
+    cli_path: "/nonexistent" as NonEmptyStr,
+    host_path: "/nonexistent" as NonEmptyStr,
+    container_path: "/out" as NonEmptyStr,
+  }
+}
+
 fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExecutor {
   match serving_runtime_row(r: arm.runtime) {
-    Absent => ContainerizedCli {
-      image: "(unmodelled runtime)" as NonEmptyStr,
-      cli_path: "/nonexistent" as NonEmptyStr,
-      host_path: "/nonexistent" as NonEmptyStr,
-      container_path: "/out" as NonEmptyStr,
-    }
-    Present { value: rrow } => ContainerizedCli {
-      image: runtime_artifact_wire(a: rrow.artifact),
-      cli_path: rrow.hub_cli_path,
-      host_path: glm_canary_host_path(arm: arm),
-      container_path: "/out" as NonEmptyStr,
-    }
+    Absent => glm_canary_unmodelled_acquisition_executor()
+    Present { value: rrow } =>
+      match rrow.hub_cli_path {
+        Absent => glm_canary_unmodelled_acquisition_executor()
+        Present { value: cli } => ContainerizedCli {
+          image: runtime_artifact_wire(a: rrow.artifact),
+          cli_path: cli,
+          host_path: glm_canary_host_path(arm: arm),
+          container_path: "/out" as NonEmptyStr,
+        }
+      }
   }
 }
 

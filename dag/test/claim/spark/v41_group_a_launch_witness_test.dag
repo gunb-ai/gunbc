@@ -1,0 +1,338 @@
+module test.claim.spark.v41_group_a_launch_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { token_count, basis_point }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale }
+import product.placement_supply { HostIdentity }
+import extdeps.container.oci.digest { oci_sha256_content_digest }
+import extdeps.vllm.engine_args { PrefixCachingExplicit }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryReading }
+import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun }
+import gunbc.spark.v41_source_patch_converge { v41_observed_source_identity_of }
+import gunbc.spark.v41_runtime_realized { V41ProducedRuntimeStanding, V41RuntimeProduced, v41_produced_runtime_image }
+import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateKeyed }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspendedForAuthorizedSuccessor,
+  PairRealizationKeyed, PairRealizationUnestablished,
+}
+import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
+import gunbc.spark.native_serving_realization { GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused }
+import gunbc.spark.v41_group_a_launch {
+  V41GroupALaunchInputs, V41MeasurementLaunchChoices,
+  V41GroupALaunchPlan, V41GroupALaunchPlanned, V41GroupALaunchUnestablished, V41GroupALaunchRefused,
+  V41LaunchAdmission, V41LaunchAdmitted, V41LaunchAdmissionRefused,
+  v41_group_a_launch_plan, v41_group_a_live_inputs, v41_group_a_unit_renders,
+  v41_group_a_launch_admission, v41_group_a_dry_run_report,
+  v41_group_a_container_name, v41_engram_manifest_env_name, v41_engram_touch_receipt_env_name,
+  v41_engram_manifest_dir, v41_engram_touch_receipt_dir,
+}
+
+// ── THE FIXTURES ARE SUPPLIED AT THE LAUNCH'S OWN INTERFACE ────────────────────────────────────
+//
+// The launch plan takes four inputs that are values on main's production route -- the produced image,
+// its registry reading, the measurement's choices and the manifest text -- so every claim below hands
+// them in rather than re-running the build lane, the probe, or the row-store encode. The PAIRING
+// OBLIGATION is w_the_live_route_reaches_the_planner_and_names_every_gap: it runs the real live inputs
+// through the same planner and asserts the ROUTE it refuses by, not only that it refuses.
+
+data w_config_hex: String = "2222222222222222222222222222222222222222222222222222222222222222"
+
+fn with_w_hashes(scenario: fn(ContentHash, ContentHash) -> Bool) -> Bool {
+  match sha256_hex_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: runtime_digest } =>
+      match sha256_hex_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333") {
+        Absent => false
+        Present { value: candidate_digest } => scenario(Sha256Hash(runtime_digest), Sha256Hash(candidate_digest))
+      }
+  }
+}
+
+fn w_produced(runtime_key: ContentHash) -> V41ProducedRuntimeStanding? {
+  match oci_sha256_content_digest(hex: w_config_hex) {
+    Absent => none
+    Present { value: d } =>
+      match sha256_hex_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444") {
+        Absent => none
+        Present { value: diff } => Present { value: V41RuntimeProduced {
+          specification_runtime_key: runtime_key,
+          image: v41_produced_runtime_image(
+            tag: "gunbc-vllm-v41-gb10:witness" as NonEmptyStr,
+            local_config_digest: d,
+            build_key: runtime_key,
+            observed: v41_observed_source_identity_of(revision_head: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr, worktree_diff_sha256: diff),
+            provenance: BuiltByThisRun,
+          ),
+        } }
+      }
+  }
+}
+
+fn w_registry() -> ArchitectureRegistryReading {
+  ArchitectureRegistryReading {
+    image_reference: join(["sha256:", w_config_hex], "") as NonEmptyStr,
+    host: "witness" as NonEmptyStr,
+    observed_at: "2026-09-26" as NonEmptyStr,
+    instrument: "witness" as NonEmptyStr,
+    architectures: ["DeepseekV41ForCausalLM" as NonEmptyStr],
+  }
+}
+
+fn w_choices() -> V41MeasurementLaunchChoices {
+  V41MeasurementLaunchChoices {
+    max_num_batched_tokens: token_count(count: 8192),
+    gpu_memory_basis_points: basis_point(count: 8000),
+    prefix_caching: PrefixCachingExplicit { enabled: false },
+  }
+}
+
+data w_manifest: String = "{\"magic_hex\": \"witness\", \"stores\": []}"
+
+fn w_inputs(runtime_key: ContentHash, registry: ArchitectureRegistryReading?) -> V41GroupALaunchInputs? {
+  match w_produced(runtime_key: runtime_key) {
+    Absent => none
+    Present { value: p } => Present { value: V41GroupALaunchInputs {
+      produced: p, registry_reading: registry, choices: Present { value: w_choices() }, manifest_text: Present { value: w_manifest },
+    } }
+  }
+}
+
+fn with_w_plan(f: fn(V41GroupALaunchPlan, ContentHash, ContentHash) -> Bool) -> Bool {
+  with_w_hashes(scenario: fn(rk, ck) {
+    match w_inputs(runtime_key: rk, registry: Present { value: w_registry() }) {
+      Absent => false
+      Present { value: i } => f(v41_group_a_launch_plan(inputs: i), rk, ck)
+    }
+  })
+}
+
+fn planned_lines(p: V41GroupALaunchPlan) -> List<ArmNodeLaunch> {
+  match p {
+    V41GroupALaunchPlanned { lines: ls, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => ls
+    V41GroupALaunchUnestablished { obligations: _ } => [] as List<ArmNodeLaunch>
+    V41GroupALaunchRefused { causes: _ } => [] as List<ArmNodeLaunch>
+  }
+}
+
+data argv_frame: String = "\u{1f}"
+
+fn argv_pair_is(argv: List<String>, flag: String, value: String) -> Bool {
+  string_contains(
+    s: join(concat([""], concat(argv, [""])), argv_frame),
+    pattern: join([argv_frame, flag, argv_frame, value, argv_frame], ""))
+}
+
+fn argv_has(argv: List<String>, word: String) -> Bool {
+  any(argv, w => w == word)
+}
+
+// ── THE PLAN: FOUR RANKS, TP4 OVER mp, THE V4.1 FLAGS ON EVERY RANK ────────────────────────────
+test fn w_the_plan_is_four_mp_ranks_with_the_v41_engine_flags() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let ls = planned_lines(p: p)
+    length(ls) == 4
+      && all(ls, l =>
+        argv_pair_is(argv: l.engine_argv, flag: "--tensor-parallel-size", value: "4")
+          && argv_pair_is(argv: l.engine_argv, flag: "--distributed-executor-backend", value: "mp")
+          && argv_pair_is(argv: l.engine_argv, flag: "--nnodes", value: "4")
+          && argv_pair_is(argv: l.engine_argv, flag: "--kv-cache-dtype", value: "fp8_ds_mla")
+          && argv_pair_is(argv: l.engine_argv, flag: "--engram-config.cpu_offload", value: "true")
+          && argv_pair_is(argv: l.engine_argv, flag: "--engram-config.dp_shared_memory", value: "false")
+          && argv_pair_is(argv: l.engine_argv, flag: "--max-model-len", value: "262144")
+          && argv_pair_is(argv: l.engine_argv, flag: "--max-num-seqs", value: "16")
+          && argv_pair_is(argv: l.engine_argv, flag: "--tokenizer-mode", value: "deepseek_v41")
+          && argv_pair_is(argv: l.engine_argv, flag: "--tool-call-parser", value: "deepseek_v41")
+          && argv_pair_is(argv: l.engine_argv, flag: "--master-port", value: "29500")
+          && argv_has(argv: l.engine_argv, word: "--no-enable-prefix-caching")
+          && (l.image_reference as String) == join(["sha256:", w_config_hex], ""))
+      && any(ls, l => l.node.node_rank == 0 && !argv_has(argv: l.engine_argv, word: "--headless"))
+      && length(filter(ls, l => argv_has(argv: l.engine_argv, word: "--headless"))) == 3
+  })
+}
+
+// THE FILE-BACKED ENGRAM PATH REACHES THE CONTAINER: both variables, the store mounted read-only at its
+// own path, the manifest directory read-only, the receipt directory writable -- and the container is
+// named for this arm, never the V4 pair's gunbc-spark-pair.
+test fn w_every_rank_carries_the_engram_env_and_mounts_under_its_own_name() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let ls = planned_lines(p: p)
+    length(ls) == 4 && all(ls, l =>
+      (l.container.name as String) == (v41_group_a_container_name as String)
+        && any(l.container.env, e => (e.name as String) == (v41_engram_manifest_env_name as String) && string_contains(s: e.value, pattern: v41_engram_manifest_dir as String))
+        && any(l.container.env, e => (e.name as String) == (v41_engram_touch_receipt_env_name as String) && e.value == (v41_engram_touch_receipt_dir as String))
+        && string_contains(s: join(l.create.arguments, " "), pattern: join(["src=", v41_engram_manifest_dir as String, ",dst=", v41_engram_manifest_dir as String, ",ro"], ""))
+        && string_contains(s: join(l.create.arguments, " "), pattern: join(["src=", v41_engram_touch_receipt_dir as String, ",dst=", v41_engram_touch_receipt_dir as String], ""))
+        && string_contains(s: join(l.create.arguments, " "), pattern: "/engram-row-stores,ro")
+        && !string_contains(s: join(l.create.arguments, " "), pattern: "gunbc-spark-pair"))
+  })
+}
+
+// THE UNITS ARE THIS ARM'S: a head unit on rank 0, rank units elsewhere, and neither is a name the V4
+// pair or the GLM arm uses -- so a unit still running under those names reads as occupancy, not as this.
+test fn w_the_units_render_under_names_no_other_arm_uses() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let rs = v41_group_a_unit_renders(p: p)
+    length(rs) == 4 && all(rs, r => match r {
+      GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
+      GlmNativeUnitRendered { unit_name: n, text: t } =>
+        string_contains(s: n as String, pattern: "gunbc-v41-tp4-")
+          && string_contains(s: t, pattern: "--name gunbc-v41-tp4 ")
+          && !string_contains(s: t, pattern: "glm-native")
+          && !string_contains(s: t, pattern: "gunbc-spark-pair")
+    })
+  })
+}
+
+// ── REFUSALS, EACH ASSERTING ITS REASON ───────────────────────────────────────────────────────
+
+// WITH NO REGISTRY READING INSIDE THE PRODUCED IMAGE, THE ARM WALL REFUSES -- and it is the arm wall's
+// own refusal (gunbc.spark.serving_arm serving_arm_admits), not an accident of this module.
+test fn w_an_unprobed_image_is_refused_by_the_arm_wall() -> Bool {
+  with_w_hashes(scenario: fn(rk, ck) {
+    match w_inputs(runtime_key: rk, registry: none) {
+      Absent => false
+      Present { value: i } => match v41_group_a_launch_plan(inputs: i) {
+        V41GroupALaunchRefused { causes: c } => any(c, x => string_contains(s: x, pattern: "no registry reading exists"))
+        V41GroupALaunchPlanned { lines: _, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => false
+        V41GroupALaunchUnestablished { obligations: _ } => false
+      }
+    }
+  })
+}
+
+// THE PAIRING OBLIGATION: THE LIVE ROUTE. Main carries no produced image, no launch choices and no
+// manifest, and the real live inputs must reach the planner and name all three -- the route, not just
+// the fact of a refusal.
+test fn w_the_live_route_reaches_the_planner_and_names_every_gap() -> Bool {
+  match v41_group_a_launch_plan(inputs: v41_group_a_live_inputs()) {
+    V41GroupALaunchUnestablished { obligations: o } =>
+      any(o, x => string_contains(s: x, pattern: "the V4.1 image"))
+        && any(o, x => string_contains(s: x, pattern: "#12371"))
+        && any(o, x => string_contains(s: x, pattern: "#12359"))
+    V41GroupALaunchPlanned { lines: _, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => false
+    V41GroupALaunchRefused { causes: _ } => false
+  }
+}
+
+// ── ADMISSION ─────────────────────────────────────────────────────────────────────────────────
+
+fn w_lease(h: ContentHash, stale: Bool) -> HeldLease {
+  held_lease(
+    epoch: LeaseEpoch { lease_key: "witness-lease" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 },
+    observed: if stale { LeaseRunningStale } else { LeaseRunningExpected })
+}
+
+fn w_suspended_for(successor: ContentHash, stale: Bool) -> PairServingGroupAuthority {
+  SuspendedForAuthorizedSuccessor {
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
+    authorization: "witness-escalation" as NonEmptyStr,
+    exact_candidate_realization: PairRealizationKeyed { key: successor },
+    lease: w_lease(h: successor, stale: stale),
+    cleanup: QuiescentReservedBaseline,
+  }
+}
+
+fn w_candidate(runtime_key: ContentHash, candidate: ContentHash) -> V41CandidateStanding {
+  V41CandidateKeyed {
+    runtime_artifact: runtime_key, model_source: candidate, engram_realization: candidate,
+    execution_profile: candidate, candidate: candidate,
+    authorization_obligation: "witness" as NonEmptyStr,
+  }
+}
+
+fn w_refused_with(a: V41LaunchAdmission, fragment: String) -> Bool {
+  match a {
+    V41LaunchAdmitted => false
+    V41LaunchAdmissionRefused { causes: c } => any(c, x => string_contains(s: x, pattern: fragment))
+  }
+}
+
+// THE POSITIVE CONTROL: suspended for exactly this candidate, lease running, the image built for the
+// candidate's runtime key, every host held. Each refusal below changes exactly one of those.
+test fn w_a_suspension_for_this_candidate_admits() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    match v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: ck, stale: false) }, candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA)) {
+      V41LaunchAdmitted => true
+      V41LaunchAdmissionRefused { causes: _ } => false
+    }
+  })
+}
+
+test fn w_an_active_incumbent_refuses() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    w_refused_with(
+      a: v41_group_a_launch_admission(plan: p,
+        authority: Present { value: PairServingActive { group: FabricGroupA, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } } },
+        candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA)),
+      fragment: "is Active for the incumbent")
+  })
+}
+
+test fn w_an_expired_lease_may_not_start_a_launch() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    w_refused_with(
+      a: v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: ck, stale: true) },
+        candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA)),
+      fragment: "lease is not running as expected")
+  })
+}
+
+test fn w_a_suspension_for_another_successor_refuses() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    w_refused_with(
+      a: v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: rk, stale: false) },
+        candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA)),
+      fragment: "not this candidate")
+  })
+}
+
+test fn w_an_image_built_for_another_runtime_key_refuses() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    w_refused_with(
+      a: v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: ck, stale: false) },
+        candidate: w_candidate(runtime_key: ck, candidate: ck), held: fabric_group_hosts(g: FabricGroupA)),
+      fragment: "admitted against runtime key")
+  })
+}
+
+test fn w_a_host_the_subject_does_not_hold_refuses() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    w_refused_with(
+      a: v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: ck, stale: false) },
+        candidate: w_candidate(runtime_key: rk, candidate: ck), held: filter(fabric_group_hosts(g: FabricGroupA), h => false)),
+      fragment: "is not held by")
+  })
+}
+
+// ── THE DRY RUN RENDERS EVERY HOST'S UNIT, LINE AND SCRIPTS ──────────────────────────────────
+test fn w_the_dry_run_renders_all_four_hosts() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let report = v41_group_a_dry_run_report(plan: p, admission: V41LaunchAdmitted)
+    length(split(report, "=== host ")) == 5
+      && length(split(report, "--- engram staging")) == 5
+      && length(split(report, "--- preflight")) == 5
+      && length(split(report, "--- apply")) == 5
+      && string_contains(s: report, pattern: "row-store-manifest.json")
+      && string_contains(s: report, pattern: "admission: ADMITTED")
+  })
+}
+
+test fn w_all_v41_group_a_launch_claims_hold() -> Bool {
+  w_the_plan_is_four_mp_ranks_with_the_v41_engine_flags()
+    && w_every_rank_carries_the_engram_env_and_mounts_under_its_own_name()
+    && w_the_units_render_under_names_no_other_arm_uses()
+    && w_an_unprobed_image_is_refused_by_the_arm_wall()
+    && w_the_live_route_reaches_the_planner_and_names_every_gap()
+    && w_a_suspension_for_this_candidate_admits()
+    && w_an_active_incumbent_refuses()
+    && w_an_expired_lease_may_not_start_a_launch()
+    && w_a_suspension_for_another_successor_refuses()
+    && w_an_image_built_for_another_runtime_key_refuses()
+    && w_a_host_the_subject_does_not_hold_refuses()
+    && w_the_dry_run_renders_all_four_hosts()
+}
