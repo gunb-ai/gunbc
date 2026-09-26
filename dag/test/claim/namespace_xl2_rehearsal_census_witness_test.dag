@@ -17,6 +17,9 @@ import gunbc.namespace_xl2_rehearsal_census {
   Xl2ResidualChain,
   Xl2ScopeUnobserved,
   Xl2Strip,
+  Xl2KernelCanonicalReferencesUncounted,
+  HeaderSegmentsNotRefusalSites,
+  NestingScopedReferencesUncounted,
   Xl2StrippedMember,
   xl2_rehearse_stripped,
   xl2_strip_members
@@ -56,6 +59,12 @@ data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nim
 
 data xl2_two_failure_control_source: String = "module v2.xl2_control_two\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag, xl2_control_provider_other }\n\nfn xl2_control_two_first(p: Bool) -> Bool { xl2_control_provider_flag }\n\nfn xl2_control_two_second(p: Bool) -> Bool { xl2_control_provider_other }\n"
 
+// THE NESTED CONTROL: a module declared UNDER the provider's namespace, naming the provider's
+// function through an import the strip removes. It is the specimen behind
+// NestingScopedReferencesUncounted: stripped, it still resolves, because nesting grants the
+// namespace's scope, so the cut leaves no residual row for its reference.
+data xl2_nested_control_source: String = "module v2.xl2_control_provider.nested\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_nested_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
+
 data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_clean_value(p: Bool) -> Bool { p }\n"
 
 fn xl2_control_source(path: String, content: String) -> FixtureSource {
@@ -87,9 +96,10 @@ type Xl2ControlRuns {
   two: Xl2RehearsalRun
   pre_cut: Xl2RehearsalRun
   duplicated: Xl2RehearsalRun
+  nesting: Xl2RehearsalRun
 }
 
-// ONE NULLARY PRODUCER, WARM, FOR ALL FOUR RUNS (v2.workflow.floor_pure_producer_share carries its
+// ONE NULLARY PRODUCER, WARM, FOR ALL FIVE RUNS (v2.workflow.floor_pure_producer_share carries its
 // row): each run is a front end plus its resolves, more than one claim's budget, and the first cut
 // of this file paid two of them inside claims and was refused over budget on the floor.
 fn xl2_control_runs() -> Xl2ControlRuns {
@@ -107,6 +117,10 @@ fn xl2_control_runs() -> Xl2ControlRuns {
       xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_residual_control_source),
       xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_clean_control_source),
       clean
+    ])),
+    nesting: xl2_control_rehearse(strip: xl2_strip_members(sources: [
+      provider,
+      xl2_control_source(path: "dag/xl2_control_nested.dag", content: xl2_nested_control_source)
     ]))
   }
 }
@@ -189,7 +203,11 @@ test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
 // completeness refusals (the refusal type cannot carry them).
 test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
   match xl2_control_runs().cut {
-    Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } => count(walls) == 2 && count(excluded) == 1
+    Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } =>
+      count(walls) == 2 && count(excluded) == 3
+        && any(excluded, e => e == Xl2KernelCanonicalReferencesUncounted)
+        && any(excluded, e => e == HeaderSegmentsNotRefusalSites)
+        && any(excluded, e => e == NestingScopedReferencesUncounted)
     _ => false
   }
 }
@@ -205,6 +223,16 @@ test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
              Xl2ScopeUnobserved { scope: Xl2MemberPathDuplicated { path: _ } } => true
              _ => false
            })) == 1
+    _ => false
+  }
+}
+
+// A NESTED MODULE'S REFERENCE SURVIVES THE STRIP: the provider and the module nested under its
+// namespace both resolve after the import is removed, and no residual row is emitted. This is why
+// NestingScopedReferencesUncounted is carried: the cut's residual cannot see this reference.
+test fn xl2_nested_reference_survives_the_strip_holds() -> Bool {
+  match xl2_control_runs().nesting {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 2
     _ => false
   }
 }

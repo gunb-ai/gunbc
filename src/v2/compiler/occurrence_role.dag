@@ -370,6 +370,22 @@ fn occurrence_role_index(roles: OccurrenceRoles) -> Map<OccurrenceId, AtomOccurr
   fold_list(xs: roles.roles, empty: empty_map(), cons: fn(acc, r) { map_insert(m: acc, key: r.occurrence, value: r) })
 }
 
+// The emitted identities of the `.dag` table's productions: the keys its per-production counters
+// (not_yet_read, reader_refused) can carry, derived from the grammar, so a consumer can total them.
+fn dag_name_production_emitted_symbols() -> List<Symbol> {
+  let listed = fold(dag_name_production_rows(), init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.production, value: true) })
+  fold(dag_grammar_root().productions, init: Empty, f: fn(acc, p) {
+    match map_lookup(m: listed, key: p.name) {
+      Absent => acc
+      Present { value: _ } =>
+        match node_atom_identity_optional(node: p.emitted) {
+          Present { value: e } => list_snoc_item(xs: acc, item: e)
+          Absent => acc
+        }
+    }
+  })
+}
+
 // The `.dag` language's roles for one parsed module.
 fn dag_occurrence_roles(artifact: ParseArtifact) -> OccurrenceRoleOutcome {
   occurrence_roles_of_tree(tree: artifact.tree, root: dag_grammar_root(), rows: dag_name_production_rows())
