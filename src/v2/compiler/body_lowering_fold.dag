@@ -7956,31 +7956,29 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
 // AN OPERATION NAME IS DECLARED ONCE PER SERVICE. The repeat is read once, over the finished
 // operation list, from v2.std.node_query repeated_name_edges; this only locates it, at the SECOND
 // operation shell carrying that name, so the refusal names the declaration that repeated it.
-fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: List<Node>, label: EdgeLabel, service: Node) -> Node {
-  match operations {
-    Empty => service
-    Cons { head: e, tail: rest } =>
-      match shells {
-        Empty => service
-        Cons { head: _, tail: more } =>
-          if e.label == label {
-            body_lower_service_next_operation_shell(operations: rest, shells: more, label: label, service: service)
-          } else {
-            body_lower_service_second_operation_shell(operations: rest, shells: more, label: label, service: service)
-          }
-      }
-  }
+type BodyLowerServiceRepeatScan {
+  shells: List<Node>,
+  matched: Int,
+  located: Optional<Node>,
 }
 
-fn body_lower_service_next_operation_shell(operations: List<Edge>, shells: List<Node>, label: EdgeLabel, service: Node) -> Node {
-  match operations {
-    Empty => service
-    Cons { head: e, tail: rest } =>
-      match shells {
-        Empty => service
-        Cons { head: sh, tail: more } =>
-          if e.label == label { sh } else { body_lower_service_next_operation_shell(operations: rest, shells: more, label: label, service: service) }
-      }
+fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: List<Node>, label: EdgeLabel, service: Node) -> Node {
+  let scanned = fold(operations, init: BodyLowerServiceRepeatScan { shells: shells, matched: 0, located: Absent }, f: fn(acc, e) {
+    match acc.shells {
+      Empty => acc
+      Cons { head: sh, tail: more } =>
+        if (e.label == label) && (acc.matched == 1) {
+          BodyLowerServiceRepeatScan { shells: more, matched: 2, located: Present { value: sh } }
+        } else if e.label == label {
+          BodyLowerServiceRepeatScan { shells: more, matched: acc.matched + 1, located: acc.located }
+        } else {
+          BodyLowerServiceRepeatScan { shells: more, matched: acc.matched, located: acc.located }
+        }
+    }
+  })
+  match scanned.located {
+    Absent => service
+    Present { value: sh } => sh
   }
 }
 
