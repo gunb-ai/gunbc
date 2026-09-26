@@ -1,39 +1,17 @@
 use im::vector as vec;
 use std::rc::Rc;
 use v1_compiled::v2_compiler_use_site_verdict as emitted;
-use v1_compiled::v2_std_node::{node_synthetic, Behavior, NodeKind};
-use v1_compiler::v2_compiler_use_site_verdict as seed;
-use v1_compiler::usv_pilot_v2_std_node::{
-    node_synthetic as seed_node_synthetic, Behavior as SeedBehavior, Node as SeedNode,
-    NodeKind as SeedNodeKind,
-};
+use v1_compiled::v2_compiler_use_site_verdict::{UseSiteVerdict, UseSiteVerdictLookup};
+use v1_compiled::v2_std_node::{node_synthetic, Behavior, Node, NodeKind};
 
-fn verdict_eq(e: &emitted::UseSiteVerdict, s: &seed::UseSiteVerdict) -> bool {
-    use emitted::UseSiteVerdict as E;
-    use seed::UseSiteVerdict as S;
-    match (e, s) {
-        (E::MoveWhole, S::MoveWhole)
-        | (E::Borrow, S::Borrow)
-        | (E::CloneShared, S::CloneShared)
-        | (E::Unclassified, S::Unclassified) => true,
-        (E::MoveField { field: ef, .. }, S::MoveField { field: sf, .. }) => ef == sf,
-        _ => false,
-    }
-}
+// NO SEED ORACLE, ON PURPOSE. This driver used to compare every lookup against a hand copy in
+// v1_compiler::v2_compiler_use_site_verdict, which asserted only that two realizations agreed.
+// The expected verdicts are read off the authority instead: src/v2/compiler/use_site_verdict.dag
+// use_site_verdict_lookup reads the ONE use_site_verdict edge through v2.std.node
+// named_edge_target_lookup -- an attached verdict round-trips, no edge is VerdictAbsent, and two
+// edges are VerdictAmbiguous, never a found verdict (neither attachment is the answer).
 
-fn lookup_eq(e: &emitted::UseSiteVerdictLookup, s: &seed::UseSiteVerdictLookup) -> bool {
-    use emitted::UseSiteVerdictLookup as E;
-    use seed::UseSiteVerdictLookup as S;
-    match (e, s) {
-        (E::VerdictAbsent, S::VerdictAbsent) | (E::VerdictAmbiguous, S::VerdictAmbiguous) => true,
-        (E::VerdictFound { verdict: ev, .. }, S::VerdictFound { verdict: sv, .. }) => {
-            verdict_eq(ev, sv)
-        }
-        _ => false,
-    }
-}
-
-fn bare_emitted_node() -> Rc<emitted::Node> {
+fn bare_node() -> Rc<Node> {
     node_synthetic(
         Rc::new(NodeKind::ComputationNode {
             behavior: Behavior::Value,
@@ -42,64 +20,50 @@ fn bare_emitted_node() -> Rc<emitted::Node> {
     )
 }
 
-fn bare_seed_node() -> Rc<SeedNode> {
-    seed_node_synthetic(
-        Rc::new(SeedNodeKind::ComputationNode {
-            behavior: SeedBehavior::Value,
-        }),
-        Rc::new(vec![]),
+fn round_trips(v: UseSiteVerdict) -> bool {
+    let decorated = emitted::attach_use_site_verdict(bare_node(), Rc::new(v.clone()));
+    matches!(&*emitted::use_site_verdict_lookup(decorated),
+        UseSiteVerdictLookup::VerdictFound { verdict } if **verdict == v)
+}
+
+fn doubly_attached_found() -> bool {
+    let once = emitted::attach_use_site_verdict(bare_node(), Rc::new(UseSiteVerdict::Borrow));
+    let twice = emitted::attach_use_site_verdict(once, Rc::new(UseSiteVerdict::MoveWhole));
+    matches!(
+        &*emitted::use_site_verdict_lookup(twice),
+        UseSiteVerdictLookup::VerdictFound { .. }
     )
 }
 
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): a node carrying two
+// verdict edges yields a found verdict. A correct module reds it; one that answers with either
+// attachment greens it, which the harness rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let mut all_pass = true;
-    let cases = [
-        emitted::UseSiteVerdict::MoveWhole,
-        emitted::UseSiteVerdict::Borrow,
-        emitted::UseSiteVerdict::CloneShared,
-        emitted::UseSiteVerdict::Unclassified,
-        emitted::UseSiteVerdict::MoveField {
-            field: "seen".to_string(),
-        },
-    ];
-
-    for (i, ev) in cases.iter().enumerate() {
-        let sv = match ev {
-            emitted::UseSiteVerdict::MoveWhole => seed::UseSiteVerdict::MoveWhole,
-            emitted::UseSiteVerdict::Borrow => seed::UseSiteVerdict::Borrow,
-            emitted::UseSiteVerdict::CloneShared => seed::UseSiteVerdict::CloneShared,
-            emitted::UseSiteVerdict::Unclassified => seed::UseSiteVerdict::Unclassified,
-            emitted::UseSiteVerdict::MoveField { field, .. } => seed::UseSiteVerdict::MoveField {
-                field: field.clone(),
+    let ambiguous_found = doubly_attached_found();
+    let all_pass = if inject_fault {
+        println!("use_site_verdict injected: two verdict edges found={ambiguous_found}");
+        ambiguous_found
+    } else {
+        let variants = [
+            UseSiteVerdict::MoveWhole,
+            UseSiteVerdict::Borrow,
+            UseSiteVerdict::CloneShared,
+            UseSiteVerdict::Unclassified,
+            UseSiteVerdict::MoveField {
+                field: "seen".to_string(),
             },
-        };
-        let bare_e = bare_emitted_node();
-        let bare_s = bare_seed_node();
-        let decorated_e = emitted::attach_use_site_verdict(
-            bare_e,
-            Rc::new(if inject_fault && i == 0 {
-                emitted::UseSiteVerdict::Borrow
-            } else {
-                ev.clone()
-            }),
+        ];
+        let every_variant = variants.iter().all(|v| round_trips(v.clone()));
+        let absent = matches!(
+            &*emitted::use_site_verdict_lookup(bare_node()),
+            UseSiteVerdictLookup::VerdictAbsent
         );
-        let decorated_s =
-            seed::attach_use_site_verdict(bare_s, Rc::new(sv));
-        let er = emitted::use_site_verdict_lookup(decorated_e);
-        let sr = seed::use_site_verdict_lookup(decorated_s);
-        let ok = lookup_eq(&er, &sr);
-        println!(
-            "case({i:?}) emitted={er:?} seed={sr:?} eq={ok}"
-        );
-        all_pass &= ok;
-    }
-
-    let absent_e = emitted::use_site_verdict_lookup(bare_emitted_node());
-    let absent_s = seed::use_site_verdict_lookup(bare_seed_node());
-    let absent_ok = lookup_eq(&absent_e, &absent_s);
-    println!("absent emitted={absent_e:?} seed={absent_s:?} eq={absent_ok}");
-    all_pass &= absent_ok;
+        println!("use_site_verdict every variant round-trips={every_variant}");
+        println!("use_site_verdict no edge absent={absent}");
+        println!("use_site_verdict two edges refused={}", !ambiguous_found);
+        every_variant && absent && !ambiguous_found
+    };
 
     if all_pass {
         println!("SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS");
