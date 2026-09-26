@@ -1187,80 +1187,25 @@ fn target_serialize_relation_row_from_model_bounded(
 // this same fold and is wrapped whole in one nest, spelled by the target (binding_spellings), so a
 // block's contents are indented exactly once and can never be left open.
 fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, tokens: List<Node>) -> Outcome<TargetText> {
-                    fold_list(
-                      xs: tokens,
-                      empty: Accepted { value: target_text_empty, diagnostics: None },
-                      cons: fn(acc, token_node) {
-                        match acc {
-                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                          Accepted { value: partial, diagnostics: ad } =>
-                            match token_sequence_item_kind(item: token_node) {
-                              Accepted { value: TokenSequenceConcreteToken, diagnostics: kd } =>
-                                match token_text_from_model(target: target, token: token_node) {
-                                  Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
-                                      value: target_text_seq(acc: partial, next: source),
-                                      diagnostics: diagnostics_merge(
-                                        outer: diagnostics_merge(outer: ad, inner: kd),
-                                        inner: td
-                                      )
-                                    }
-                                  Rejected { diagnostics: r } =>
-                                    Rejected {
-                                      diagnostics: rejected_with_pending(
-                                        pending: diagnostics_merge(outer: ad, inner: kd),
-                                        rejected: r
-                                      )
-                                    }
-                                }
-                              Accepted { value: TokenSequenceNestedBlock { unit: unit, tokens: inner }, diagnostics: kd } =>
-                                match serialize_relation_row_nested_bounded(remaining - 1, target, unit, inner) {
-                                  Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
-                                      value: target_text_seq(acc: partial, next: source),
-                                      diagnostics: diagnostics_merge(
-                                        outer: diagnostics_merge(outer: ad, inner: kd),
-                                        inner: td
-                                      )
-                                    }
-                                  Rejected { diagnostics: r } =>
-                                    Rejected {
-                                      diagnostics: rejected_with_pending(
-                                        pending: diagnostics_merge(outer: ad, inner: kd),
-                                        rejected: r
-                                      )
-                                    }
-                                }
-                              Accepted { value: TokenSequenceNonterminal, diagnostics: kd } =>
-                                match target_serialize_relation_row_from_model_bounded(
-                                  remaining - 1,
-                                  target,
-                                  token_node
-                                ) {
-                                  Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
-                                      value: target_text_seq(acc: partial, next: source),
-                                      diagnostics: diagnostics_merge(
-                                        outer: diagnostics_merge(outer: ad, inner: kd),
-                                        inner: td
-                                      )
-                                    }
-                                  Rejected { diagnostics: r } =>
-                                    Rejected {
-                                      diagnostics: rejected_with_pending(
-                                        pending: diagnostics_merge(outer: ad, inner: kd),
-                                        rejected: r
-                                      )
-                                    }
-                                }
-                              Rejected { diagnostics: r } =>
-                                Rejected {
-                                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                                }
-                            }
-                        }
-                      }
-                    )
+  fold_list(
+    xs: tokens,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, token_node) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match token_item_to_source_bounded(remaining, token_node, target) {
+            Accepted { value: source, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: source),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          }
+      }
+    }
+  )
 }
 
 fn serialize_relation_row_nested_bounded(
