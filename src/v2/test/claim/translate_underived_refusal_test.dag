@@ -1,8 +1,9 @@
 module v2.test.claim.translate_underived_refusal
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go { go_target_model }
 import v2.compiler.ingest { cross_language_compile }
@@ -127,7 +128,7 @@ fn translate_underived_value_node() -> Node {
 }
 
 fn translate_underived_value_specimen_facts() -> Optional<InferredFacts> {
-  match infer(tree: translate_underived_value_specimen) {
+  match infer_and_discharge(tree: translate_underived_value_specimen) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
     Rejected { diagnostics: _ } => optional_absent()
@@ -183,7 +184,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
 }
 
 fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<InferredFacts> {
-  match infer(tree: python_emitted_add_fn_node()) {
+  match infer_and_discharge(tree: python_emitted_add_fn_node()) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -313,7 +314,7 @@ data translate_underived_grammar_match_target: TargetModel = TargetModel {
 }
 
 fn translate_refuses_underived_root_for_target(root: Node, target: TargetModel) -> Bool {
-  match infer(tree: root) {
+  match infer_and_discharge(tree: root) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: target) {

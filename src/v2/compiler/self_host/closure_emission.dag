@@ -11,7 +11,7 @@ import extdeps.languages.json.emit {
   json_string,
   serialize_json
 }
-import v2.compiler.infer { infer }
+
 import v2.compiler.name_resolve {
   ResolutionContext,
   resolve_walk_with_admission_context_policy,
@@ -77,6 +77,7 @@ import v2.std.grammar { ParseTree }
 import v2.std.integer { Int }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 
 // THE DOOR'S EMISSION OF ONE ENTRY'S CLOSURE, IN TWO PHASES, BECAUSE THE TWO HALVES OF THE CORPUS OWE
 // DIFFERENT WORK (DESIGN section 2, demand minimisation). Resolution reads every module's
@@ -394,7 +395,7 @@ fn closure_member_emission(
         ReferenceClosureNeighboursRead { modules: reached } =>
           if fold_list(xs: reached, empty: true, cons: fn(ok, m) { ok && contains(xs: members, item: m, eq: fn(a, b) { a == b }) }) {
             bind_outcome(
-              o: infer(tree: resolved),
+              o: infer_and_discharge(tree: resolved),
               f: fn(inferred) {
                 emit_for_target(
                   program: inferred,

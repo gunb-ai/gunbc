@@ -1,7 +1,8 @@
 module v2.test.self_host.stage0_production_target
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.emit_module { emit_module_decl_separator }
-import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.infer { InferredTree }
 import v2.compiler.self_host.candidate_generation {
   generate_rust_module_emission_candidate
 }
@@ -81,7 +82,7 @@ fn stage0_boundary_emitted_source_for(target: TargetModel) -> Stage0BoundaryEmis
   match direct_rust_door_specimen_resolved() {
     Rejected { diagnostics: _ } => Stage0EmissionRefused
     Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
+      match infer_and_discharge(tree: resolved) {
         Rejected { diagnostics: _ } => Stage0EmissionRefused
         Accepted { value: inferred, diagnostics: _ } =>
           match generate_rust_module_emission_candidate(inferred: inferred, target: target) {

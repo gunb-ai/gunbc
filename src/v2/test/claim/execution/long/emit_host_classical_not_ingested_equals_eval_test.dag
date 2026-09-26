@@ -1,5 +1,6 @@
 module v2.test.long.emit_host_classical_not_ingested_equals_eval
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.emit_host {
@@ -16,12 +17,7 @@ import v2.compiler.eval {
   inputs_root_only
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.infer {
-  InferredFacts,
-  InferredTree,
-  infer,
-  inferred_facts_witness_for_node
-}
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_witness_for_node }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
@@ -159,7 +155,7 @@ fn ingested_canonical_inferred_tree_from_arrow(arrow: Outcome<Node>) -> Outcome<
   bind_outcome(
     o: arrow,
     f: fn(a) {
-      infer(tree: a)
+      infer_and_discharge(tree: a)
     }
   )
 }
@@ -181,7 +177,7 @@ fn ingested_staging_inferred_tree_from_arrow(arrow: Outcome<Node>) -> Outcome<In
     o: arrow,
     f: fn(a) {
       bind_outcome(
-        o: infer(tree: a),
+        o: infer_and_discharge(tree: a),
         f: fn(inferred) {
           outcome_accepted(
             value: InferredTree {
@@ -226,7 +222,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<I
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       bind_outcome(
-        o: infer(tree: arrow),
+        o: infer_and_discharge(tree: arrow),
         f: fn(inferred) {
           outcome_accepted(
             value: InferredTree {
@@ -645,7 +641,7 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
 test fn ingested_classical_not_real_infer_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
-      match infer(tree: arrow) {
+      match infer_and_discharge(tree: arrow) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -680,7 +676,7 @@ fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
 }
 
 fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: Node) -> Bool {
-  match infer(tree: tree) {
+  match infer_and_discharge(tree: tree) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }

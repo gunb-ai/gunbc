@@ -1,5 +1,6 @@
 module v2.test.long.self_host_module_emit_derisk
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
@@ -10,7 +11,7 @@ import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
@@ -71,7 +72,7 @@ fn derisk_assemble_accepts(src: String) -> Bool {
 }
 
 fn derisk_infer_outcome_for(src: String) -> Outcome<InferredTree> {
-  bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
+  bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer_and_discharge(tree: resolved) })
 }
 
 fn derisk_infer_accepts(src: String) -> Bool {

@@ -1,5 +1,6 @@
 module v2.test.long.accumulator_copy_compile_gate
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty }
 import v2.compiler.tokenize { tokenize }
@@ -10,7 +11,6 @@ import v2.compiler.compile {
   required_lenses_at_grain,
   run_required_lens_gates
 }
-import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.std.diagnostic {
@@ -193,7 +193,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
 // v2.test.lens_application.required_lens_coverage_join, triggered by a route that reaches Accepted
 // through the door.
 test fn door_root_roster_accepts_clean_inferred_tree() -> Bool {
-  match infer(tree: fixture_add_resolved_tree()) {
+  match infer_and_discharge(tree: fixture_add_resolved_tree()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match run_required_lens_gates(
