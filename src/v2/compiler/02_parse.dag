@@ -705,21 +705,6 @@ fn parse_table_join_furthest(table: ParseTable, furthest: ParseFurthestFailure) 
   parse_table_with_furthest(table: table, furthest: parse_furthest_join(left: table.furthest, right: furthest))
 }
 
-fn parse_expr_result_join_furthest(result: ParseExprResult, furthest: ParseFurthestFailure) -> ParseExprResult {
-  match result {
-    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov, table: table } =>
-      ParseExprAccepted {
-        remaining: remaining,
-        captured: captured,
-        diagnostics: diags,
-        prov: prov,
-        table: parse_table_join_furthest(table: table, furthest: furthest)
-      }
-    ParseExprRejected { diagnostics: diags, table: table } =>
-      ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table, furthest: furthest) }
-  }
-}
-
 fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
   parse_table_carry_analysis(
     table: table,
