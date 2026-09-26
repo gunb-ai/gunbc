@@ -1,6 +1,14 @@
 module test.claim.rust_item_host_observation_witness_test
 
+import gunbc.emitted_closure_artifact {
+  emitted_closure_rust_library_text,
+  emitted_closure_cargo_package,
+  EmittedArtifactSlug
+}
 import gunbc.rust_item_host_observation {
+  rust_source_namespace_rows,
+  rust_source_prefix_tooling,
+  RustSourceNamespaceRow,
   RustObservedTree,
   HunkRangeParsed,
   HunkRangeRefused,
@@ -51,7 +59,7 @@ import gunbc.capability_origin {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.algebra { any, length, list_map }
+import v2.std.algebra { any, fold_list, length, list_map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "0000000000000000000000000000000000000001", tree: "0000000000000000000000000000000000000002" }
@@ -730,4 +738,47 @@ test fn the_reference_population_is_empty_under_an_empty_token_list() -> Bool {
     RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: un } => count(rs) == 0 && count(u) == 0 && count(un) == 0
     RustReferenceHostRefused { detail: _ } => false
   }
+}
+
+
+// TRANSITIONAL GUARD OVER THE STRUCTURALLY DERIVED SHIM POPULATION, AND EVERY WORD OF THAT IS LOAD
+// BEARING. The population is the tooling PREFIX, not a hand list of shim directories, so a shim
+// added tomorrow is covered without anybody enrolling it -- which is the property a per-file roster
+// could not have. It reads MODELED ROWS and never file text, so prose mentioning the name cannot
+// make it red and cannot make it green. And it compares against the LIBRARY IDENTIFIER rather than
+// any package name, because a `use` line resolves the library and nothing else.
+// WHY IT IS TRANSITIONAL: it does not remove the restatements in authored shim bodies, it only makes
+// their drift unlandable. DISSOLUTION: it dissolves when authored Rust no longer spells the physical
+// library name at all -- when the artifact owner lands a generated stable alias through Cargo, a
+// shared adapter or a generated prelude -- because at that point no authored body carries the name
+// and there is nothing left to drift. The decisive witness for that state is that a second planted
+// rename touches one authority and its generated projections while requiring ZERO hand-authored Rust
+// edits; until that witness exists this guard stays enrolled.
+fn g_tooling_namespace_prefix() -> String {
+  fold_list(
+    xs: rust_source_namespace_rows,
+    empty: "",
+    cons: fn(acc, row) {
+      if row.repo_prefix == rust_source_prefix_tooling { row.namespace_prefix } else { acc }
+    }
+  )
+}
+
+test fn the_tooling_rust_namespace_derives_from_the_library_identifier_holds() -> Bool {
+  g_tooling_namespace_prefix() == concat(emitted_closure_rust_library_text(), ".")
+}
+
+// THE POPULATION MUST NOT BE EMPTY OR UNRESOLVED, because an empty fold above returns "" and an
+// equality against "" would make this suite green precisely when the row it guards had been deleted.
+test fn an_absent_tooling_namespace_row_is_refused_holds() -> Bool {
+  (g_tooling_namespace_prefix() != "") && (emitted_closure_rust_library_text() != "")
+}
+
+// THE GUARD COMPARES A LIBRARY IDENTIFIER AND NOT A PACKAGE NAME, and this is the discriminator that
+// says so rather than a comment claiming it. The route's package name is slug-derived and is a
+// DIFFERENT string from the library identifier, so a guard that had reached for a package name would
+// fail this claim instead of quietly comparing the wrong fact.
+test fn the_route_package_name_is_not_the_library_identifier_holds() -> Bool {
+  emitted_closure_cargo_package(slug: EmittedArtifactSlug { slug: "src-v2-cli-compile-cli-dag" as NonEmptyStr }).name
+    != emitted_closure_rust_library_text()
 }
