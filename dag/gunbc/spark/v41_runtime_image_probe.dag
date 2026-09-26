@@ -34,7 +34,7 @@ import gunbc.fleet_ssh_credential_verify {
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
-  SnapshotAcquisitionExecutor, HostCli,
+  SnapshotAcquisitionExecutor, HostCli, spark_remote_argv_run,
 }
 import gunbc.spark.grant_privileged_operation {
   read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
@@ -56,7 +56,7 @@ import gunbc.spark.serving_runtime_capability_probe {
   runtime_kernel_capability_label,
 }
 import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live_over }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
@@ -724,6 +724,25 @@ fn v41_probe_host_residue(reference: NonEmptyStr) -> HostEffectResidueSpec {
   HostEffectResidueSpec { process_pattern: reference, container: Present { value: DockerPsByAncestor { image: reference } } }
 }
 
+// THE ADMINISTRATOR CONTEXT EXISTS BEFORE THE CLAIM, so the claim is released over the same privileged
+// leg that ran the container (gunbc.spark.host_commitment release_host_effect_live_over): the fleet
+// agent cannot read the docker socket, and this lane declares its container as residue.
+fn v41_probe_receipt_exit(at: String, host: NonEmptyStr, executor: String, anchor_receipt: String, outcome: V41ProbeOutcome) -> ProcessExit {
+  let body = join([
+    v41_probe_ci_body(at: at, host: host, reference: v41_published_arm64_reference(), outcome: outcome),
+    join(["executor=", executor, "\n"], ""),
+    anchor_receipt,
+  ], "")
+  let w = Filesystem.Write(path: v41_probe_ci_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["v41 published image probe receipt write failed: ", w.error], ""))
+  } else if v41_probe_all_present(o: outcome) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["the published image does not carry every required capability:\n", body], ""))
+  }
+}
+
 fn v41_published_image_probe_ci_wet() -> ProcessExit
 {
   let now = clock_now_probed_at()
@@ -732,10 +751,6 @@ fn v41_published_image_probe_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
-      match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose, residue: v41_probe_host_residue(reference: v41_published_arm64_reference())) {
-        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
-        SparkHostAdmitted { host: _, claim: claim } =>
-          release_host_effect_live(handle: claim, exit: {
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_published_image_probe_ci: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -753,41 +768,38 @@ fn v41_published_image_probe_ci_wet() -> ProcessExit
                         identity_file_name: "gunbc-v41-published-image-probe-admin-password" as NonEmptyStr,
                         secret_bytes: administrator as Secret,
                         use: fn(file) {
-                          v41_probe_published_image(
-                            ctx: SparkMaterializeContext {
-                              host: target_host,
-                              trust: trust,
-                              path: path,
-                              admin_credential: administrator as Secret,
-                              admin_credential_file: file,
-                              executor: HostCli,
-                            },
-                            reference: v41_published_arm64_reference(),
-                          )
+                          let ctx = SparkMaterializeContext {
+                            host: target_host,
+                            trust: trust,
+                            path: path,
+                            admin_credential: administrator as Secret,
+                            admin_credential_file: file,
+                            executor: HostCli,
+                          }
+                          match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose, residue: v41_probe_host_residue(reference: v41_published_arm64_reference())) {
+                            SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+                            SparkHostAdmitted { host: _, claim: claim } =>
+                              release_host_effect_live_over(
+                                handle: claim,
+                                run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) },
+                                exit: v41_probe_receipt_exit(
+                                  at: probed_at_word(reading: now) as String,
+                                  host: target_host as NonEmptyStr,
+                                  executor: executor,
+                                  anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
+                                  outcome: v41_probe_published_image(ctx: ctx, reference: v41_published_arm64_reference()),
+                                ),
+                              )
+                          }
                         },
                       ) {
                         MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                        MaterializedSshKeyFileBracketCompleted { value: outcome } => {
-                          let body = join([
-                            v41_probe_ci_body(at: probed_at_word(reading: now) as String, host: target_host as NonEmptyStr, reference: v41_published_arm64_reference(), outcome: outcome),
-                            join(["executor=", executor, "\n"], ""),
-                            known_hosts_materialization_receipt(outcome: materialization),
-                          ], "")
-                          let w = Filesystem.Write(path: v41_probe_ci_receipt_path, content: body)
-                          if !w.success {
-                            exit_failure(reason: join(["v41 published image probe receipt write failed: ", w.error], ""))
-                          } else if v41_probe_all_present(o: outcome) {
-                            ExitSuccess
-                          } else {
-                            exit_failure(reason: join(["the published image does not carry every required capability:\n", body], ""))
-                          }
-                        }
+                        MaterializedSshKeyFileBracketCompleted { value: exit } => exit
                       }
                   }
                 }
               }
           }
-      }})
       }
   }
 }

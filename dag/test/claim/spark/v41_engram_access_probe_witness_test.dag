@@ -2,10 +2,11 @@ module test.claim.spark.v41_engram_access_probe_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.algebra { filter }
+import std.measure { nanosecond_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.spark.v41_engram_access_probe {
   V41EngramAccessProbeOutcome, V41AccessProbeRead, V41AccessProbeRefused, v41_admit_access_reading,
-  v41_access_nanoseconds_per_row, v41_access_probe_argv, v41_access_probe_image, v41_access_probe_script,
+  v41_access_per_row, v41_access_probe_argv, v41_access_probe_image, v41_access_probe_script,
   AccessMmapUnregistered, AccessPrefill262k, AccessCold,
 }
 
@@ -18,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data w_attrs_on: String = "ATTR pageable_memory_access 1\nATTR concurrent_managed_access 1\nATTR pageable_memory_access_uses_host_page_tables 1\n"
 data w_attrs_off: String = "ATTR pageable_memory_access 0\nATTR concurrent_managed_access 1\nATTR pageable_memory_access_uses_host_page_tables 0\n"
 data w_pinned: String = "TIME pinned warm decode 96 40 41 40 39\nTIME pinned warm prefill262k 1572864 9000 9000 9100 8990\nCHECK pinned ok\n"
-data w_mmap: String = "TIME mmap_unregistered cold decode 96 900 900 910 890\nTIME mmap_unregistered warm decode 96 50 50 51 49\nTIME mmap_unregistered cold prefill262k 1572864 4718592 4718592 4800000 4700000\nTIME mmap_unregistered warm prefill262k 1572864 12000 12000 12100 11900\nCHECK mmap_unregistered ok\n"
+data w_mmap: String = "TIME mmap_unregistered cold decode 96 900 900 910 890\nTIME mmap_unregistered warm decode 96 50 50 51 49\nTIME mmap_unregistered cold prefill262k 1572864 4718592000 4718592000 4800000000 4700000000\nTIME mmap_unregistered warm prefill262k 1572864 12000 12000 12100 11900\nCHECK mmap_unregistered ok\n"
 data w_gather: String = "TIME cpu_gather cold decode 96 1200 1200 1210 1190\nTIME cpu_gather warm decode 96 300 300 301 299\nTIME cpu_gather cold prefill262k 1572864 6000000 6000000 6100000 5900000\nTIME cpu_gather warm prefill262k 1572864 400000 400000 401000 399000\nCHECK cpu_gather ok\n"
 
 fn w_run(parts: List<String>) -> String {
@@ -37,7 +38,7 @@ test fn a_complete_run_is_admitted_with_every_cell_and_per_row_latency() -> Bool
     V41AccessProbeRead { image_config: _, attributes: a, timings: ts, mmap_not_attempted: skipped } => {
       let cold_prefill = filter(ts, t => match t.path { AccessMmapUnregistered => match t.batch { AccessPrefill262k => match t.temperature { AccessCold => true  gunbc.spark.v41_engram_access_probe.AccessWarm => false }  gunbc.spark.v41_engram_access_probe.AccessDecodeStep => false }  gunbc.spark.v41_engram_access_probe.AccessPinnedUva => false  gunbc.spark.v41_engram_access_probe.AccessCpuGather => false })
       a.pageable_memory_access == 1 && !skipped && length(ts) == 10 && length(cold_prefill) == 1
-        && length(filter(cold_prefill, t => v41_access_nanoseconds_per_row(t: t) == 3000)) == 1
+        && length(filter(cold_prefill, t => nanosecond_count(n: v41_access_per_row(t: t)) == 3000)) == 1
     }
     V41AccessProbeRefused { step: _, cause: _ } => false
   }

@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
-import std.measure { Microsecond, microsecond, microsecond_count, Second, second }
+import std.measure { Nanosecond, nanosecond, nanosecond_count, Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
@@ -22,7 +22,7 @@ import gunbc.fleet_known_hosts_anchor {
   fleet_openssh_trust_policy_of,
 }
 import gunbc.spark.model_snapshot_materialize {
-  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run, HostCli,
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run, spark_remote_argv_run, HostCli,
 }
 import gunbc.spark.grant_privileged_operation {
   read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
@@ -37,7 +37,7 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live_over, host_effect_recover_over }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
-import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, ArgvRun, ArgvRan, ArgvLegDidNotRun, ClaimantStanding, ClaimantTerminated }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, ClaimantStanding, ClaimantTerminated }
 import product.placement_supply { HostIdentity }
 import product.capacity.event_chain { EventId }
 
@@ -257,7 +257,7 @@ fn v41_access_probe_script() -> String {
     "    start = time.perf_counter_ns()\n",
     "    out = fn()\n",
     "    torch.cuda.synchronize()\n",
-    "    return out, (time.perf_counter_ns() - start) // 1000\n",
+    "    return out, time.perf_counter_ns() - start\n",
     "\n",
     "\n",
     "def report(path_label, temperature, batch_label, rows, samples):\n",
@@ -366,7 +366,7 @@ fn v41_access_probe_script() -> String {
   ], "")
 }
 
-data v41_access_probe_time_bound_seconds: Nat = 2700
+data v41_access_probe_time_bound: Second = second(count: 2700)
 
 // THE SUBJECT IMAGE: the arm A runtime image, by its config digest, which `docker run` accepts as an
 // image reference and which pins the bytes rather than a tag. Fleet-converge run 36207135528 built
@@ -388,7 +388,7 @@ fn v41_access_probe_argv(image: NonEmptyStr) -> List<String> {
     gpus_all: true,
     mounts: [],
     entrypoint: "timeout" as NonEmptyStr,
-    argv: [to_string(v41_access_probe_time_bound_seconds), "python3", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
+    argv: [to_string(second_count(s: v41_access_probe_time_bound)), "python3", "-c", v41_access_probe_bootstrap, v41_access_probe_script()],
   ))
 }
 
@@ -425,12 +425,13 @@ type V41AccessTiming sole_constructor {
   temperature: V41AccessTemperature
   batch: V41AccessBatch
   rows: Nat
-  median: Microsecond
+  median: Nanosecond
 }
 
-// PER TOKEN-ROW LATENCY is the median over the batch's rows, in nanoseconds, floored.
-fn v41_access_nanoseconds_per_row(t: V41AccessTiming) -> Nat {
-  if t.rows == 0 { t.rows } else { (microsecond_count(m: t.median) * 1000) / t.rows }
+// PER TOKEN-ROW LATENCY is the batch median divided over its rows, floored. The program reports
+// nanoseconds, so no scale is changed here.
+fn v41_access_per_row(t: V41AccessTiming) -> Nanosecond {
+  if t.rows == 0 { nanosecond(count: 0) } else { nanosecond(count: nanosecond_count(n: t.median) / t.rows) }
 }
 
 type V41DeviceAttributes sole_constructor {
@@ -491,7 +492,7 @@ fn v41_timing_of(ws: List<String>) -> V41AccessTiming? {
   match v41_access_batch_of(token: b) { Absent => none  Present { value: batch } =>
   match v41_nat_word(ws: ws, index: 4) { Absent => none  Present { value: rows } =>
   match v41_nat_word(ws: ws, index: 5) { Absent => none  Present { value: median } =>
-    Present { value: V41AccessTiming { path: path, temperature: temperature, batch: batch, rows: rows, median: microsecond(count: median) } }
+    Present { value: V41AccessTiming { path: path, temperature: temperature, batch: batch, rows: rows, median: nanosecond(count: median) } }
   } } } } } } } }
 }
 
@@ -587,7 +588,7 @@ fn v41_admit_access_reading(image_config: NonEmptyStr, stdout: String) -> V41Eng
 }
 
 fn v41_access_timing_line(t: V41AccessTiming) -> String {
-  join(["  ", v41_timing_key_wire(t: t), " rows=", to_string(t.rows), " median_us=", to_string(microsecond_count(m: t.median)), " ns_per_row=", to_string(v41_access_nanoseconds_per_row(t: t)), "\n"], "")
+  join(["  ", v41_timing_key_wire(t: t), " rows=", to_string(t.rows), " median_ns=", to_string(nanosecond_count(n: t.median)), " ns_per_row=", to_string(nanosecond_count(n: v41_access_per_row(t: t))), "\n"], "")
 }
 
 fn v41_access_probe_body(o: V41EngramAccessProbeOutcome) -> String {
@@ -627,7 +628,7 @@ fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr) -> V41E
                 if c == 0 || c == 3 {
                   v41_admit_access_reading(image_config: config_id, stdout: out)
                 } else if c == 124 {
-                  V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["the program exceeded its ", to_string(v41_access_probe_time_bound_seconds), " s bound"], "") as NonEmptyStr }
+                  V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["the program exceeded its ", to_string(second_count(s: v41_access_probe_time_bound)), " s bound"], "") as NonEmptyStr }
                 } else {
                   V41AccessProbeRefused { step: "probe-run" as NonEmptyStr, cause: join(["exit=", to_string(c), " stderr=", trim(s: e)], "") as NonEmptyStr }
                 }
@@ -653,15 +654,6 @@ fn v41_access_probe_host_residue(image: NonEmptyStr) -> HostEffectResidueSpec {
   HostEffectResidueSpec { process_pattern: image, container: Present { value: DockerPsByAncestor { image: image } } }
 }
 
-// THE OBSERVATION LEG FOR THIS LANE'S RESIDUE: the administrator route the container itself ran
-// through, so the release reads the docker socket the probe used (the fleet agent cannot).
-fn v41_access_probe_privileged_leg(ctx: SparkMaterializeContext, argv: List<String>) -> ArgvRun {
-  match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: why } => ArgvLegDidNotRun { cause: why as String }
-    RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
-  }
-}
-
 // A CLAIM THIS LANE LEFT LIVE, NAMED EXACTLY, with the claimant's typed standing and the receipt that
 // established it (gunbc.spark.host_commitment host_effect_recover_over). The mode recovers the rows
 // naming its target before it claims, over the privileged leg, and a row that no longer names a live
@@ -680,7 +672,7 @@ data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = [
 fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
   fold(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String)), init: ExitSuccess, f: (acc, r) =>
     match acc {
-      ExitSuccess => host_effect_recover_over(host: r.host, claim: r.claim, standing: r.standing, receipt: r.receipt, run: fn(argv) { v41_access_probe_privileged_leg(ctx: ctx, argv: argv) })
+      ExitSuccess => host_effect_recover_over(host: r.host, claim: r.claim, standing: r.standing, receipt: r.receipt, run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) })
       std.process.ExitFailure { code: _, reason: _ } => acc
     })
 }
@@ -750,7 +742,7 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
                                     HostEffectClaimLanded { handle: handle } =>
                                       release_host_effect_live_over(
                                         handle: Present { value: handle },
-                                        run: fn(argv) { v41_access_probe_privileged_leg(ctx: ctx, argv: argv) },
+                                        run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) },
                                         exit: v41_access_probe_receipt_exit(
                                           at: probed_at_word(reading: now) as String,
                                           host: target_host,
