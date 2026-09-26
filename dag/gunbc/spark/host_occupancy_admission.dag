@@ -9,7 +9,7 @@ import gunbc.compute.host_occupancy {
   HostOccupancyReading, HostOccupancyRead, HostOccupancyUnread,
   HostOccupancyAdmission, HostUnoccupied, HostOccupiedBy, HostMemoryShort, HostOccupancyNotRead,
   HostOperationLeg, HostOperationLegRead, HostOperationLegUnread, host_operation_leg,
-  UnitOccupancy, UnitOccupies, UnitVacant, UnitUnread, read_unit_occupancy,
+  UnitActivity, UnitOccupies, UnitVacant, UnitUnread, read_unit_activity,
   read_host_occupancy, admit_host_occupancy, host_occupancy_refusal, host_occupant_wire,
 }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
@@ -95,7 +95,7 @@ fn unit_leg_failure(leg: HostOperationLeg) -> List<String> {
 // (active or activating) is not restored, and says so.
 fn restore_spark_serving_units(run: fn(List<String>) -> ArgvRun, units: List<NonEmptyStr>) -> String? {
   let start_failures = flat_map(units, u => unit_leg_failure(leg: host_operation_leg(run: run, operation: SystemctlStart { unit: u }, accepted_exits: [0])))
-  let readback_failures = flat_map(units, u => match read_unit_occupancy(run: run, unit: u) {
+  let readback_failures = flat_map(units, u => match read_unit_activity(run: run, unit: u) {
     UnitOccupies { occupant: _ } => [] as List<String>
     UnitVacant => [join([u as String, " did not come back after start"], "")]
     UnitUnread { cause: c } => [c]

@@ -68,14 +68,14 @@ fn vacated() -> FakeHost {
   FakeHost { active_units: [] as List<String>, compute_apps: "", mem_available_kib: plenty, stop_succeeds: true }
 }
 
-fn admission(h: FakeHost) -> HostOccupancyAdmission {
+fn occupancy_admission_of(h: FakeHost) -> HostOccupancyAdmission {
   spark_host_occupancy_admission(run: fake_run(h: h), need: need_16_gib)
 }
 
 // RED: the srv8 morning. The pair worker unit is active and its process holds 99700 MiB; admission
 // refuses, names the unit first, and carries the GPU memory in use.
 test fn a_host_whose_pair_worker_holds_gpu_memory_refuses() -> Bool {
-  match admission(h: srv8_serving()) {
+  match occupancy_admission_of(h: srv8_serving()) {
     HostOccupiedBy { occupant: ServingUnitActive { unit: u, state: s }, others: rest, gpu_used: g } =>
       (u as String) == (spark_pair_worker_unit_name as String) && (s as String) == "active" && length(rest) == 1 && mebibyte_count(m: g) == 99700
     _ => false
@@ -85,7 +85,7 @@ test fn a_host_whose_pair_worker_holds_gpu_memory_refuses() -> Bool {
 // RED: occupancy is not limited to known units. No serving unit is active, but a stray GPU process is:
 // the host is occupied by that process, not vacant.
 test fn an_unattributed_gpu_process_occupies_the_host() -> Bool {
-  match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: stray_probe_row, mem_available_kib: plenty, stop_succeeds: true }) {
+  match occupancy_admission_of(h: FakeHost { active_units: [] as List<String>, compute_apps: stray_probe_row, mem_available_kib: plenty, stop_succeeds: true }) {
     HostOccupiedBy { occupant: GpuComputeProcess { pid: p, process_name: n, used: UsedMemoryReported { used: m } }, others: rest, gpu_used: _ } =>
       p == 52001 && n == "python3" && mebibyte_count(m: m) == 20480 && length(rest) == 0
     _ => false
@@ -94,7 +94,7 @@ test fn an_unattributed_gpu_process_occupies_the_host() -> Bool {
 
 // A withheld per-process figure is still an occupant, never a weightless one.
 test fn a_gpu_process_with_withheld_memory_still_occupies() -> Bool {
-  match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: "41237, VLLM::Worker_TP1, [N/A]\n", mem_available_kib: plenty, stop_succeeds: true }) {
+  match occupancy_admission_of(h: FakeHost { active_units: [] as List<String>, compute_apps: "41237, VLLM::Worker_TP1, [N/A]\n", mem_available_kib: plenty, stop_succeeds: true }) {
     HostOccupiedBy { occupant: GpuComputeProcess { pid: _, process_name: _, used: UsedMemoryWithheld { marker: k } }, others: _, gpu_used: g } =>
       (k as String) == "[N/A]" && mebibyte_count(m: g) == 0
     _ => false
@@ -103,7 +103,7 @@ test fn a_gpu_process_with_withheld_memory_still_occupies() -> Bool {
 
 // GREEN control: a vacated host -- no serving unit active, no compute process, memory to spare -- admits.
 test fn a_vacated_host_admits() -> Bool {
-  match admission(h: vacated()) {
+  match occupancy_admission_of(h: vacated()) {
     HostUnoccupied { available: a } => kibibyte_count(k: a) == 100000000
     _ => false
   }
@@ -111,7 +111,7 @@ test fn a_vacated_host_admits() -> Bool {
 
 // RED: nothing running, but less available than the effect declares.
 test fn a_host_short_of_the_declared_need_refuses_with_nothing_running() -> Bool {
-  match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: "", mem_available_kib: "15728640", stop_succeeds: true }) {
+  match occupancy_admission_of(h: FakeHost { active_units: [] as List<String>, compute_apps: "", mem_available_kib: "15728640", stop_succeeds: true }) {
     HostMemoryShort { available: a, need: n } => kibibyte_count(k: a) == 15728640 && kibibyte_count(k: n) == 16777216
     _ => false
   }
@@ -124,7 +124,7 @@ test fn an_unread_host_refuses() -> Bool {
     HostOccupancyNotRead { cause: c } => contains(c, "ssh: no route")
     _ => false
   }
-  let unparsed = match admission(h: FakeHost { active_units: [] as List<String>, compute_apps: "garbage without columns\n", mem_available_kib: plenty, stop_succeeds: true }) {
+  let unparsed = match occupancy_admission_of(h: FakeHost { active_units: [] as List<String>, compute_apps: "garbage without columns\n", mem_available_kib: plenty, stop_succeeds: true }) {
     HostOccupancyNotRead { cause: c } => contains(c, "garbage without columns")
     _ => false
   }

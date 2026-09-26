@@ -84,12 +84,12 @@ fn host_operation_leg(run: fn(List<String>) -> ArgvRun, operation: HostOperation
   }
 }
 
-type UnitOccupancy
+type UnitActivity
   = UnitOccupies { occupant: HostOccupant }
   | UnitVacant
   | UnitUnread { cause: String }
 
-fn read_unit_occupancy(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> UnitOccupancy {
+fn read_unit_activity(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> UnitActivity {
   match host_operation_leg(run: run, operation: SystemctlIsActive { unit: unit }, accepted_exits: [0, 3]) {
     HostOperationLegUnread { cause: c } => UnitUnread { cause: c }
     HostOperationLegRead { stdout: out } => {
@@ -104,7 +104,7 @@ fn read_unit_occupancy(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> U
 }
 
 fn read_host_occupancy(run: fn(List<String>) -> ArgvRun, units: List<NonEmptyStr>) -> HostOccupancyReading {
-  let unit_reads = map(units, u => read_unit_occupancy(run: run, unit: u))
+  let unit_reads = map(units, u => read_unit_activity(run: run, unit: u))
   let unit_unread = flat_map(unit_reads, r => match r { UnitUnread { cause: c } => [c]  _ => [] as List<String> })
   if length(unit_unread) != 0 {
     HostOccupancyUnread { cause: join(unit_unread, "; ") }
