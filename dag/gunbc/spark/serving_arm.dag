@@ -265,6 +265,23 @@ data glm_5_3_flash_vllm_parsers: CheckpointVllmParsers = CheckpointVllmParsers {
   tokenizer_mode: none,
 }
 
+// WHAT A LAUNCH HOLDS IN THE POOL BEYOND ITS WEIGHTS, AS A DECLARED ALLOWANCE. On a GB10 the host and
+// the accelerator share one unified pool, so memory a checkpoint's realization keeps resident outside
+// the engine's own allocation -- a file-backed table's page cache -- is charged against the same pool
+// the weights are. Most rows hold nothing beyond their weights. The file-backed Engram tables do: they
+// are read from row stores on disk, and the pages the prefetch path touches stay resident. Charging
+// them as zero makes the fit wall claim room that is not there; charging the whole table would refuse
+// a launch whose working set is a fraction of it.
+//
+// SO THE ALLOWANCE IS THE LAUNCH'S NON-KV HEADROOM, taken from the profile rather than written here:
+// the share of each rank's pool the profile's --gpu-memory-utilization leaves outside the engine. That is
+// the axis the capacity measurement already decided to leave for exactly this (its launch shape's memory
+// fraction), so the wall and the measurement charge one figure. It is a DECLARED ALLOWANCE, a bet in the
+// sense of DESIGN section 4d, and the row names the reading that confirms or falsifies it.
+type PoolResidentAllowance
+  = NoResidentBeyondWeights
+  | PageCacheFromNonKvHeadroom { reason: NonEmptyStr, confirmed_by: NonEmptyStr }
+
 type ServingCheckpointRow {
   checkpoint: ServingCheckpoint
   repo: HubRepoId
@@ -274,6 +291,7 @@ type ServingCheckpointRow {
   weight_gib: Gibibyte
   quantization: CheckpointQuantization
   parsers: CheckpointVllmParsers
+  resident_beyond_weights: PoolResidentAllowance
   provenance: NonEmptyStr
 }
 
@@ -286,6 +304,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
@@ -298,6 +317,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
@@ -315,6 +335,7 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_nvfp4_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject, and gunbc.spark.serving_fit_projection is its consumer" as NonEmptyStr,
 }
 
@@ -327,9 +348,10 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
 // this checkpoint is launched only through the file-backed Engram path -- the one V4.1 profile
 // (deepseek_v41_measurement_profile) fixes cpu_offload true and dp_shared_memory false, which is what
 // the file-backed overlay requires -- so the two Engram shards are served from row stores on disk and
-// never loaded into the pool. Counting them anyway put this checkpoint at 476 GiB against 484 GiB across
-// four GB10s and refused a launch that fits: an over-count that always refuses is not a safe screen,
-// it is a wall in the wrong place. The backbone rows are extdeps.deepseek.deepseek_v4_1_flash's own,
+// never loaded into the pool as weights. Counting the whole tables put this checkpoint at 476 GiB against
+// 484 GiB across four GB10s and refused a launch that fits. What the tables DO cost the pool is their
+// page cache, and that is charged separately and honestly as resident_beyond_weights below -- not zero,
+// and not the whole table. The backbone rows are extdeps.deepseek.deepseek_v4_1_flash's own,
 // rounded up; the finer per-rank budget, Engram relief included, is
 // gunbc.spark.serving_deployment_selection candidate_component_budget.
 //
@@ -348,6 +370,10 @@ data deepseek_v41_flash_row: ServingCheckpointRow = ServingCheckpointRow {
     tool_call_parser: vllm_recipe_deepseek_v4_1_flash_tool_call_parser,
     reasoning_parser: vllm_recipe_deepseek_v4_1_flash_reasoning_parser,
     tokenizer_mode: Present { value: vllm_recipe_deepseek_v4_1_flash_tokenizer_mode },
+  },
+  resident_beyond_weights: PageCacheFromNonKvHeadroom {
+    reason: "the file-backed Engram row stores are served through the page cache, which on a GB10 is the same unified pool as the weights; the side-chat stress model puts the resident working set at about 19 to 46 GiB per rank from x2 to x16 concurrency, and the launch deliberately leaves its non-KV headroom for it rather than charging it as zero or as the whole table" as NonEmptyStr,
+    confirmed_by: "gunbc.spark.v41_capacity_measurement v41_engram_resident_bets, judged against v41_after_requests_resident: each rank's mincore residency over its Engram files after requests at each staircase concurrency" as NonEmptyStr,
   },
   provenance: "repo, revision, architecture class, quantization and the weight byte population are extdeps.deepseek.deepseek_v4_1_flash, read from the Hub at that revision; the placement is the directory gunbc.spark.v41_checkpoint_materialize installs and verifies on srv5..srv8. NOT launched on this fleet: no engine has loaded this checkpoint here" as NonEmptyStr,
 }
@@ -720,9 +746,27 @@ type ServingArmVerdict
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 
-fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
+// WHAT THE ARM HOLDS IN THE POOL: its weights, plus its declared allowance. The page-cache allowance is
+// the non-KV share of every rank's pool under the profile's memory fraction, rounded up; with no profile
+// in hand it is unknown, and an unknown charge is Absent rather than zero -- the wall refuses on it.
+fn serving_arm_resident_gib(c: ServingCheckpointRow, t: ServingTopology, profile: ServingLaunchProfile?) -> Gibibyte? {
+  match c.resident_beyond_weights {
+    NoResidentBeyondWeights => Present { value: c.weight_gib }
+    PageCacheFromNonKvHeadroom { reason: _, confirmed_by: _ } =>
+      match profile {
+        Absent => none
+        Present { value: p } => {
+          let outside_bp = 10000 - basis_point_count(bp: p.decided_gpu_memory_basis_points)
+          let allowance = (serving_topology_aggregate_pool_gib(t: t) * outside_bp + 9999) / 10000
+          Present { value: gibibyte(count: gibibyte_count(c.weight_gib) + allowance) }
+        }
+      }
+  }
+}
+
+fn serving_arm_fits(resident: Gibibyte, t: ServingTopology) -> Bool {
   serving_topology_aggregate_pool_gib(t: t) * serving_arm_headroom_denominator
-    >= gibibyte_count(c.weight_gib) * serving_arm_headroom_numerator
+    >= gibibyte_count(resident) * serving_arm_headroom_numerator
 }
 
 // A CHECKPOINT LOADS WHEN THE RUNTIME REGISTERS ITS ARCHITECTURE, WHICH IS A MEMBERSHIP QUESTION.
@@ -789,6 +833,13 @@ fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
 // and a receipt that could not tell them apart would send a reader to re-probe an image that was never
 // probed, or to hunt a repin that never happened -- so this fold names which one it hit.
 fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
+  serving_arm_admits_under(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: none)
+}
+
+// THE SAME WALL WITH THE LAUNCH PROFILE IN HAND, which is what a row declaring a page-cache allowance
+// needs: its charge is a share of the pool the profile leaves outside the engine. The launch planner
+// always has the profile and asks this; a caller without one gets an honest refusal for such a row.
+fn serving_arm_admits_under(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, profile: ServingLaunchProfile?) -> ServingArmVerdict {
   match serving_checkpoint_row(c: checkpoint) {
     Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
     Present { value: crow } =>
@@ -819,15 +870,25 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
                 " and this is not one of them); no amount of weight transfer makes this tuple start",
               ], "") as NonEmptyStr }
             }
-          } else if !serving_arm_fits(c: crow, t: topology) {
-            ServingArmRefused { cause: join([
-              "the checkpoint does not fit the topology: ", to_string(gibibyte_count(crow.weight_gib)),
-              " GiB of weights against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
-              " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
-              " rank(s), before KV and activations",
-            ], "") as NonEmptyStr }
           } else {
-            ServingArmAdmitted
+            match serving_arm_resident_gib(c: crow, t: topology, profile: profile) {
+              Absent => ServingArmRefused { cause: "this checkpoint holds a page-cache allowance in the pool beyond its weights, taken from a launch profile's non-KV headroom, and no profile was supplied, so what it holds is unknown and the fit cannot be decided" as NonEmptyStr }
+              Present { value: resident } =>
+                if serving_arm_fits(resident: resident, t: topology) {
+                  ServingArmAdmitted
+                } else {
+                  ServingArmRefused { cause: join([
+                    "the checkpoint does not fit the topology: ", to_string(gibibyte_count(crow.weight_gib)),
+                    " GiB of weights",
+                    if gibibyte_count(resident) == gibibyte_count(crow.weight_gib) { "" } else {
+                      join([" plus a ", to_string(gibibyte_count(resident) - gibibyte_count(crow.weight_gib)), " GiB declared page-cache allowance"], "")
+                    },
+                    " against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
+                    " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
+                    " rank(s), before KV and activations",
+                  ], "") as NonEmptyStr }
+                }
+            }
           }
       }
   }

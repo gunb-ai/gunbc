@@ -51,7 +51,7 @@ import gunbc.spark.serving_arm {
   ArmIntent,
   ArmNormalServing,
   ArmBoundedExperiment,
-  serving_arm_admits,
+  serving_arm_admits_under,
   ServingLaunchProfile,
 }
 import gunbc.spark.serving_compatibility {
@@ -623,7 +623,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
     Present { value: c } => ArmLaunchRefused { cause: c }
     Absent =>
-  match serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology) {
+  match serving_arm_admits_under(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: Present { value: profile }) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
       match serving_checkpoint_row(c: checkpoint) {

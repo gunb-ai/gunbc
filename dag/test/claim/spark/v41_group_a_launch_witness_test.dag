@@ -21,12 +21,13 @@ import gunbc.spark.pair_serving_authority {
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
+import gunbc.spark.serving_arm { serving_arm_admits, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
 import gunbc.spark.native_serving_realization { GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused }
 import gunbc.spark.v41_group_a_launch {
   V41GroupALaunchInputs, V41MeasurementLaunchChoices,
   V41GroupALaunchPlan, V41GroupALaunchPlanned, V41GroupALaunchUnestablished, V41GroupALaunchRefused,
   V41LaunchAdmission, V41LaunchAdmitted, V41LaunchAdmissionRefused,
-  v41_group_a_launch_plan, v41_group_a_live_inputs, v41_group_a_unit_renders,
+  v41_group_a_launch_plan, v41_group_a_live_inputs, v41_group_a_unit_renders, v41_serving_runtime,
   v41_group_a_launch_admission, v41_group_a_dry_run_report,
   v41_group_a_container_name, v41_engram_manifest_env_name, v41_engram_touch_receipt_env_name,
   v41_engram_manifest_dir, v41_engram_touch_receipt_dir,
@@ -84,9 +85,13 @@ fn w_registry() -> ArchitectureRegistryReading {
 }
 
 fn w_choices() -> V41MeasurementLaunchChoices {
+  w_choices_at(utilization_bp: 8000)
+}
+
+fn w_choices_at(utilization_bp: Nat) -> V41MeasurementLaunchChoices {
   V41MeasurementLaunchChoices {
     max_num_batched_tokens: token_count(count: 8192),
-    gpu_memory_basis_points: basis_point(count: 8000),
+    gpu_memory_basis_points: basis_point(count: utilization_bp),
     prefix_caching: PrefixCachingExplicit { enabled: false },
   }
 }
@@ -94,10 +99,14 @@ fn w_choices() -> V41MeasurementLaunchChoices {
 data w_manifest: String = "{\"magic_hex\": \"witness\", \"stores\": []}"
 
 fn w_inputs(runtime_key: ContentHash, registry: ArchitectureRegistryReading?) -> V41GroupALaunchInputs? {
+  w_inputs_at(runtime_key: runtime_key, registry: registry, utilization_bp: 8000)
+}
+
+fn w_inputs_at(runtime_key: ContentHash, registry: ArchitectureRegistryReading?, utilization_bp: Nat) -> V41GroupALaunchInputs? {
   match w_produced(runtime_key: runtime_key) {
     Absent => none
     Present { value: p } => Present { value: V41GroupALaunchInputs {
-      produced: p, registry_reading: registry, choices: Present { value: w_choices() }, manifest_text: Present { value: w_manifest },
+      produced: p, registry_reading: registry, choices: Present { value: w_choices_at(utilization_bp: utilization_bp) }, manifest_text: Present { value: w_manifest },
     } }
   }
 }
@@ -200,6 +209,40 @@ test fn w_an_unprobed_image_is_refused_by_the_arm_wall() -> Bool {
         V41GroupALaunchRefused { causes: c } => any(c, x => string_contains(s: x, pattern: "no registry reading exists"))
         V41GroupALaunchPlanned { lines: _, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => false
         V41GroupALaunchUnestablished { obligations: _ } => false
+      }
+    }
+  })
+}
+
+// THE ENGRAM PAGE CACHE IS CHARGED TO THE POOL, NOT TREATED AS FREE. The allowance is the share of the
+// pool the profile leaves outside the engine: at 0.80 the arm fits (the planned claims above), and at
+// 0.50 the same checkpoint's allowance is half of every rank, which the aggregate pool cannot hold -- the
+// refusal names the allowance, so a wall that charged zero would not produce it.
+test fn w_the_engram_page_cache_allowance_is_charged_to_the_pool() -> Bool {
+  with_w_hashes(scenario: fn(rk, ck) {
+    match w_inputs_at(runtime_key: rk, registry: Present { value: w_registry() }, utilization_bp: 5000) {
+      Absent => false
+      Present { value: i } => match v41_group_a_launch_plan(inputs: i) {
+        V41GroupALaunchRefused { causes: c } => any(c, x => string_contains(s: x, pattern: "GiB declared page-cache allowance"))
+        V41GroupALaunchPlanned { lines: _, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => false
+        V41GroupALaunchUnestablished { obligations: _ } => false
+      }
+    }
+  })
+}
+
+// WITHOUT A PROFILE THE ALLOWANCE IS UNKNOWN, AND UNKNOWN IS NOT ZERO: the profile-less wall refuses
+// this checkpoint rather than fitting it on weights alone.
+test fn w_without_a_profile_the_allowance_is_unknown_and_refuses() -> Bool {
+  with_w_hashes(scenario: fn(rk, ck) {
+    match w_produced(runtime_key: rk) {
+      Absent => false
+      Present { value: p } => match v41_serving_runtime(produced: p, registry_reading: Present { value: w_registry() }) {
+        Absent => false
+        Present { value: r } => match serving_arm_admits(checkpoint: DeepseekV41FlashDba1be0a, runtime: r, topology: FourSparkTp4) {
+          ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "no profile was supplied")
+          ServingArmAdmitted => false
+        }
       }
     }
   })
@@ -335,4 +378,6 @@ test fn w_all_v41_group_a_launch_claims_hold() -> Bool {
     && w_an_image_built_for_another_runtime_key_refuses()
     && w_a_host_the_subject_does_not_hold_refuses()
     && w_the_dry_run_renders_all_four_hosts()
+    && w_the_engram_page_cache_allowance_is_charged_to_the_pool()
+    && w_without_a_profile_the_allowance_is_unknown_and_refuses()
 }
