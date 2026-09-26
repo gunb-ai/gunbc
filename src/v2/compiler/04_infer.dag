@@ -1,6 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.kind { Kind, kind_node, roster_member_kind }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_tail, zip_map }
 import std.algebra { Cons, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
@@ -28,10 +29,17 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
+  dag_declared_inhabitants_subject_field,
   dag_grammar_production_member_declared_type
 }
-import v2.extdeps.languages.python { python_declared_inhabitants_root }
-import v2.extdeps.languages.typescript { ts_declared_inhabitants_root }
+import v2.extdeps.languages.python {
+  python_declared_inhabitants_root,
+  python_declared_inhabitants_subject_field
+}
+import v2.extdeps.languages.typescript {
+  ts_declared_inhabitants_root,
+  ts_declared_inhabitants_subject_field
+}
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
@@ -517,9 +525,10 @@ fn concat_inferred_facts_entries(
 // and the python/typescript analogues) already fixes what its members denote — the add fn Arrow,
 // the int/number inhabitant Conj, and the inhabitant, surface-spelling, representation and
 // std-projection Atoms are all declared there — so a node that IS a roster member derives its
-// grounding by LOOKUP, never by invention: the roster is the evidence, which is the
-// intersubjective-grounding move DESIGN section 1 requires (point at the shared framework, never
-// an internal taxonomy). This is the derivation the self-host candidate-generation add-slice
+// grounding by LOOKUP, never by invention. Its derived type is its KIND (std.kind): the roster's
+// structure says whether a member denotes a type or states a fact about one, and the kind node is
+// the type; the roster root is where the member was found, not what it is, and never reaches
+// derived_type (DESIGN section 3). This is the derivation the self-host candidate-generation add-slice
 // stall's original trigger named, at specimen scope: the slice's Arrow, Conj and Atom nodes derive,
 // while the KINDS stay frontier — a non-member Arrow, Conj or Atom carries GroundingNotDerived
 // exactly as before, so the enrolled refusal witnesses pinning other shapes (the bodied arrow, the
@@ -536,35 +545,32 @@ fn concat_inferred_facts_entries(
 // namespace migration's completed state — at which point this lookup deletes in favor of consuming
 // resolution output.
 
-fn infer_language_inhabitants_roster_roots() -> List<Node> {
-  [
-    dag_declared_inhabitants_root(),
-    python_declared_inhabitants_root(),
-    ts_declared_inhabitants_root()
-  ]
-}
-
-// Returns the declaring roster ROOT as the evidence node (never the member itself, which would be
-// self-evidence), or Absent when no ingested language's roster declares the node.
-fn infer_node_declared_in_language_inhabitants(n: Node) -> Optional<Node> {
-  fold(
-    infer_language_inhabitants_roster_roots(),
-    init: optional_absent(),
-    f: fn(acc, roster_root) {
-      match acc {
-        Present { value: _ } => acc
+// Returns the member's KIND (std.kind roster_member_kind): a type-denotation member derives
+// TypeDenotationKind and a fact about a type derives TypeFactKind -- never the roster root, which
+// is where the member was found, not what it is. Absent when no ingested language's roster
+// declares the node.
+fn infer_node_declared_in_language_inhabitants(n: Node) -> Optional<Kind> {
+  match roster_member_kind(
+    roster: dag_declared_inhabitants_root(),
+    subject_field: dag_declared_inhabitants_subject_field(),
+    n: n
+  ) {
+    Present { value: k } => optional_present(value: k)
+    Absent =>
+      match roster_member_kind(
+        roster: python_declared_inhabitants_root(),
+        subject_field: python_declared_inhabitants_subject_field(),
+        n: n
+      ) {
+        Present { value: k } => optional_present(value: k)
         Absent =>
-          if any(
-            xs: node_subtree_nodes(root: roster_root),
-            predicate: fn(member) { member == n }
-          ) {
-            optional_present(value: roster_root)
-          } else {
-            acc
-          }
+          roster_member_kind(
+            roster: ts_declared_inhabitants_root(),
+            subject_field: ts_declared_inhabitants_subject_field(),
+            n: n
+          )
       }
-    }
-  )
+  }
 }
 
 fn infer_node_declared_in_language_inhabitants_bool(n: Node) -> Bool {
@@ -584,7 +590,7 @@ fn infer_node_declared_in_language_inhabitants_bool(n: Node) -> Bool {
 // construction). When ANY child is still on the frontier or absent from the entries, the node
 // stays on the frontier with its typed diagnostic — the derivation discharges only when the whole
 // child spine is evidenced, so a partially-derived product can never masquerade as grounded
-// (DESIGN section 5). Roster members keep their roster evidence (the authority's declaration
+// (DESIGN section 5). Roster members keep their declared kind (the authority's declaration
 // outranks composition for what the language itself declares), and a childless Conj or Arrow has
 // no evidence to compose and stays frontier. This discharges the frontier for these
 // two kinds: the kind-level rule the specimen-scope roster lookups stood in for.
@@ -700,10 +706,10 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
               )
             Rejected { diagnostics: _ } =>
               match infer_node_declared_in_language_inhabitants(n: n) {
-                Present { value: inhabitants_roster } =>
+                Present { value: member_kind } =>
                   inferred_facts_from_derived_type(
                     node: n,
-                    derived_type: inhabitants_roster,
+                    derived_type: kind_node(kind: member_kind),
                     descent: Holds { value: descent_proof }
                   )
                 Absent =>
