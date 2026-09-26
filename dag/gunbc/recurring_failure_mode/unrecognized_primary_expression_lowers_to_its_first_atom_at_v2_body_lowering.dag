@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
+  identity: "unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering" as NonEmptyStr,
+
+  receipts: [
+    "**a primary expression the v2 primary readers do not recognize lowers to its FIRST ATOM, and normalize ACCEPTS the module** (INVALID STATE: a map literal `{ \"k\": v, .. }` lowers to the single atom `dag_token_lbrace`, and a module-qualified constructor literal `a.b.T { f: v }` lowers to the single atom `a`, its head path segment. Every key, field, value, the tag and the rest of the path are gone, with no diagnostic.) A name inside never reaches resolve, so an undeclared one is accepted, and every consumer of the value reads a brace token or a bare module segment where the source wrote a construction. The unqualified constructor literal, the qualified value path `a.b.X` and the qualified call `a.b.f(x)` lower in full (fixtures at 8bf4b66774c), so the class is the fall-through, not qualification or braces as such.",
+    "RECEIPTS. Fixture, traced by a scratch normalized-tree dump over `v2.compiler.program_assembly` `program_assembly_phase_normalize` at main 8bf4b66774c: `data mp: Map<String, Bool> = { \"k1\": true, \"k2\": false }` lowers to arrow_body_edge -> Atom dag_token_lbrace. Census: `v2.compiler.reference_conservation_census` `reference_conservation_census_for_paths` over `reference_conservation_stratified_sample_paths` at 69e0bb7566e. About 43 of the 3,472 atoms absent in accepted modules are map-literal keys; this is a source-position heuristic. Qualified-constructor example: `v2.std.float` `v2.std.nat.Succ { prev: .. }` arms. Map example: the keyword tables of `extdeps.languages.rust.syntax`. The values in that census are mostly keyword atoms outside the reference population, so the census UNDERCOUNTS this class.",
+    "WHERE, BY READING, NOT BY INSTRUMENTATION. In `v2.compiler.body_lowering_fold` `body_lower_primary_expr`, `body_lower_try_record_literal` finds no constructor tag on a map literal, and the chain falls through to `body_lower_pattern_first_atom_optional`. That answers the first atom under the braces: the `{` token. This is the same brace-token fallback `call_expression_erased_at_v2_body_lowering` recorded for calls. It is a separate row because that row's subject is the call population and its trigger is call lowering: a fixed call path leaves this shape where it is, which our fixtures show (calls lower in full at 8bf4b66774c, maps do not).",
+    "RUNG FOUND AT: below the floor (silent wrongness). CEILING: structurally guaranteed. A map literal lowers to a construction carrying every key and value, or refuses at the literal. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 body lowering has a lowered form for map literals, or a typed refusal located at the literal. In either case a primary expression it cannot read refuses instead of answering its first atom. Owner: bright-boar-848's fold queue (quiet-seal-543, 2026-09-25). Pinned drops in `v2.test.claim.namespace_xl0.reference_conservation_accepted_drops`: `a_map_literal_value_is_reported_dropped_holds` and `a_qualified_constructor_literal_value_is_reported_dropped_holds`; each holds while the drop happens and reds when the repair lands.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops", decl_name: "a_map_literal_value_is_reported_dropped_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops", decl_name: "a_qualified_constructor_literal_value_is_reported_dropped_holds", field: WholeDeclaration },
+  ],
+}

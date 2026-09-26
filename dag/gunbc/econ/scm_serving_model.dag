@@ -18,7 +18,7 @@ import std.measure {
   byte_size_count,
   money_rate_micros,
 }
-import std.nat { Nat, nat_max, nat_min }
+import std.nat { Nat, nat_max, nat_min, nat_ceil_div }
 import std.types { Bool, List, NonEmptyStr, list_length }
 
 // How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly
@@ -437,7 +437,10 @@ fn packed_object_count(logical_node_ops: Nat, policy: PackingPolicy) -> Nat {
   match policy {
     UnpackedNodeGrain => logical_node_ops
     PackedObjects { nodes_per_object: n } =>
-      if n <= 0 { logical_node_ops } else { ((logical_node_ops + n) - 1) / n }
+      match nat_ceil_div(a: logical_node_ops, b: n) {
+        Present { value: objects } => objects
+        Absent => logical_node_ops
+      }
   }
 }
 

@@ -31,7 +31,7 @@ import gunbc.spark.v41_capacity_measurement {
   EngramCacheRetained, EngramCacheReleased, BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests, V41TorchMemory,
   V41ProbeCell, V41ProbeReading, V41ProbeRankReading, ProbeWarm, TouchCounterUnavailable, EngramLookupObserved,
   v41_touch_counter_frontier, v41_judge_probe, ProbeRefused, ProbeWorkingSetResident, ProbeWorkingSetFaulted,
-  V41CapacityPolicy, PolicyOperatorSigned, v41_capacity_policy, V41StaircaseStepReading, v41_run_staircase,
+  V41CapacityPolicy, PolicyOperatorSigned, PolicyProposed, V41TtftGate, v41_capacity_policy, V41StaircaseStepReading, v41_run_staircase,
   V41PolicyStanding, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StopKvPreemption, StopReadingMissing,
   StopSuperlinearRefault, StopPsiFullSustained, StopNvmeLatency, StopSloBreach, V41ResidencyPhase,
   V41Capacity, CapacityAt, CapacityBelowFirstStep, CapacityRefused, v41_capacity_wire,
@@ -336,7 +336,7 @@ test fn engram_resident_is_the_last_warm_cell_without_major_faults() -> Bool {
 fn w_signed() -> V41PolicyStanding {
   PolicyOperatorSigned {
     policy: V41CapacityPolicy {
-      ttft_ceiling: millisecond(count: 30000), tpot_ceiling: millisecond(count: 100),
+      ttft_gate: V41TtftGate { context: token_count(count: 32768), ceiling: millisecond(count: 30000) }, tpot_ceiling: millisecond(count: 100),
       psi_full_ceiling: basis_point(count: 1000), psi_window: microsecond(count: 60000000),
       nvme_read_await_ceiling: microsecond(count: 5000), refault_growth_ceiling: basis_point(count: 15000),
       production_pool_margin: basis_point(count: 1000),
@@ -360,12 +360,51 @@ fn w_step(c: Nat, preemptions: Nat) -> V41StaircaseStepReading {
   }
 }
 
+fn w_policy(gate_context: Nat) -> V41CapacityPolicy {
+  V41CapacityPolicy {
+    ttft_gate: V41TtftGate { context: token_count(count: gate_context), ceiling: millisecond(count: 30000) }, tpot_ceiling: millisecond(count: 100),
+    psi_full_ceiling: basis_point(count: 1000), psi_window: microsecond(count: 60000000),
+    nvme_read_await_ceiling: microsecond(count: 5000), refault_growth_ceiling: basis_point(count: 15000),
+    production_pool_margin: basis_point(count: 1000),
+  }
+}
+
+fn w_step_ttft(c: Nat, ttft: Nat) -> V41StaircaseStepReading {
+  let s = w_step(c: c, preemptions: 0)
+  V41StaircaseStepReading {
+    run_id: s.run_id, concurrency: s.concurrency, preemptions: s.preemptions,
+    refault_file_before: s.refault_file_before, refault_file_after: s.refault_file_after,
+    memory_pressure_before: s.memory_pressure_before, memory_pressure_after: s.memory_pressure_after,
+    nvme_before: s.nvme_before, nvme_after: s.nvme_after,
+    latency: w_latency(ttft: ttft),
+  }
+}
+
 test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool {
-  match v41_run_staircase(policy: v41_capacity_policy, run_id: "run-1" as NonEmptyStr, steps: map([1, 2, 4, 6, 8, 12, 16], c => w_step(c: c, preemptions: 0))) {
+  match v41_run_staircase(policy: PolicyProposed { proposal: w_policy(gate_context: 32768), reasons: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: map([1, 2, 4, 6, 8, 12, 16], c => w_step(c: c, preemptions: 0))) {
     StaircaseRefused { cause: _ } => true
     StaircaseCompleted { last_sustained: _ } => false
     StaircaseStopped { last_sustained: _, stop: _ } => false
   }
+}
+
+// THE SIGNED POLICY RECORDS TTFT AT 262k AND DOES NOT STOP ON IT: a 120 s prefill at every step
+// completes the staircase at x16. The discriminating control is the same readings under a gate that
+// covers 262k, which stops at x1 on TTFT -- so the completion is the gate's scope, not a TTFT the
+// fold ignores.
+test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool {
+  let steps = map([1, 2, 4, 6, 8, 12, 16], c => w_step_ttft(c: c, ttft: 120000))
+  let signed = match v41_run_staircase(policy: v41_capacity_policy, run_id: "run-1" as NonEmptyStr, steps: steps) {
+    StaircaseCompleted { last_sustained: l } => l == 16
+    StaircaseStopped { last_sustained: _, stop: _ } => false
+    StaircaseRefused { cause: _ } => false
+  }
+  let covering = match v41_run_staircase(policy: PolicyOperatorSigned { policy: w_policy(gate_context: 262144), ruling: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: steps) {
+    StaircaseStopped { last_sustained: l, stop: st } => match l { Absent => true  Present { value: _ } => false } && match st { StopSloBreach { concurrency: c, which: w, observed: _ } => c == 1 && (w as String) == "ttft"  StopKvPreemption { concurrency: _, preemptions: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopReadingMissing { concurrency: _, cause: _ } => false }
+    StaircaseCompleted { last_sustained: _ } => false
+    StaircaseRefused { cause: _ } => false
+  }
+  signed && covering
 }
 
 test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool {
@@ -421,7 +460,7 @@ test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditio
   contains(t, "x6 needs 1572864 tokens, x16 needs 4194304")
     && contains(t, "engram arms: unbound")
     && contains(t, "TouchCounterUnavailable")
-    && contains(t, "PROPOSED")
+    && contains(t, "staircase policy: signed")
 }
 
 // THE ENGRAM POINT BETS ARE JUDGED IN BYTES AGAINST THE AFTER-REQUESTS RESIDENCY, and a refused

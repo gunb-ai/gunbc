@@ -4,9 +4,11 @@
 use self::RealizationGround::*;
 use self::RealizationRefusalCause::*;
 use self::ReferenceIdentityUnavailableCause::*;
+use self::SubtractionRefinement::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
+pub use crate::std_decl_ref::DeclarationRef;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -127,6 +129,13 @@ pub struct CastRule {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementCastRule {
+    pub from_type: String,
+    pub to_type: String,
+    pub to_declaration: Rc<DeclarationRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
@@ -135,7 +144,7 @@ pub struct CastSyntax {
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Int\"}, {\"from_type\": \"Int\", \"to_type\": \"Float\"}, {\"from_type\": \"Float\", \"to_type\": \"Int\"}, {\"from_type\": \"Float\", \"to_type\": \"Float\"}, {\"from_type\": \"Bool\", \"to_type\": \"Int\"}]")
+            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Int\"}, {\"from_type\": \"Int\", \"to_type\": \"Float\"}, {\"from_type\": \"Float\", \"to_type\": \"Int\"}, {\"from_type\": \"Float\", \"to_type\": \"Float\"}, {\"from_type\": \"Bool\", \"to_type\": \"Bool\"}]")
                 .expect("valid data definition")
         };
     }
@@ -152,14 +161,17 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
-pub fn refinement_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
+pub fn refinement_cast_rules() -> Rc<Vec<Rc<RefinementCastRule>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_str("[{\"from_type\": \"Int\", \"to_type\": \"Nat\"}]")
-                .expect("valid data definition")
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+            static CACHED: Rc<Vec<Rc<RefinementCastRule>>> = {
+                Rc::new(vec![Rc::new(RefinementCastRule {
+        from_type: "Int".to_string(),
+        to_type: "Nat".to_string(),
+        to_declaration: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<RefinementCastRule>>>| c.clone())
 }
 
 pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool {
@@ -174,6 +186,53 @@ pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool
             }
         }
         __found
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SubtractionRefinement {
+    SubtractionStaysInOperandAlgebra,
+    SubtractionEscapesTo { from_type: String },
+    SubtractionRefinementAmbiguous { from_types: Rc<Vec<String>> },
+}
+
+pub fn dag_subtraction_refinement(operand: Rc<DeclarationRef>) -> Rc<SubtractionRefinement> {
+    {
+        let hits = Rc::new({
+            let mut __result = Vec::new();
+            for r in refinement_cast_rules().iter().cloned() {
+                if crate::std_decl_ref::declaration_ref_eq(
+                    r.to_declaration.clone(),
+                    operand.clone(),
+                ) {
+                    __result.push(r);
+                }
+            }
+            __result
+        });
+        match hits.clone().first().cloned() {
+            std::option::Option::None => {
+                Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+            }
+            Some(r) => {
+                if ((hits.clone().len() as i64) == 1) {
+                    Rc::new(SubtractionRefinement::SubtractionEscapesTo {
+                        from_type: r.from_type.clone(),
+                    })
+                } else {
+                    Rc::new(SubtractionRefinement::SubtractionRefinementAmbiguous {
+                        from_types: Rc::new({
+                            let mut __result = Vec::new();
+                            for h in hits.iter().cloned() {
+                                __result.push(h.from_type.clone());
+                            }
+                            __result
+                        }),
+                    })
+                }
+            }
+        }
     }
 }
 

@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
+  identity: "match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering" as NonEmptyStr,
+
+  receipts: [
+    "**a match arm whose body is a statement sequence lowers to its FIRST expression, and normalize ACCEPTS the module** (INVALID STATE: the arm body `let t = v` followed by `e` lowers to `v`. The binder `t` and every following statement, including a nested match, are gone, and there is no diagnostic.) The arm answers the let's bound value instead of what its last statement computes, and a name in any later statement never reaches resolve.",
+    "WHERE, cited by symbol. `v2.compiler.body_lowering_fold` `body_lower_match_arm_body_capture_optional` answers the arm body with the first `dag_surface_expr` it finds in the subtree (`body_lower_find_captured`, a pre-order first match). For a `dag_surface_match_arm_stmt_body`, the first expr is the let's value. The `let` and the continuation are never read. This is one of the first-match readers in bright-boar-848's fold-cleanup lane.",
+    "RECEIPTS. Fixture traced by the census at the #12313 head: `X => let t = zq / g(a: zr)` drops `t`, `g` and `zr`; with a nested match as the continuation, its scrutinee and arms are dropped too. Census: `v2.compiler.reference_conservation_census` `reference_conservation_census_for_paths` over `reference_conservation_stratified_sample_paths`, rerun on the #12313 lexer (exact loci). 29 of the 3,472 atoms absent in accepted modules have a production chain through `match_arm/stmt`, which is exact at chain grain; one of them is `test.claim.sql_create_table_fold_test` `sql_fold_fold_serialize`. DISTINGUISHING FACTS: not `lowering_rebuilds_an_authored_atom_without_its_occurrence`'s let binder, where the binder is kept at the let shell's occurrence; here the continuation is lost too. Not `match_arms_after_the_second_are_dropped_at_v2_body_lowering`: the arm is present, but its body is truncated.",
+    "RUNG FOUND AT: below the floor (silent wrongness). CEILING: structurally guaranteed. An arm body lowers to the bind-and-continue form its statements denote, or refuses at the statement it could not read. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 body lowering reads a match arm's statement body through the statement authority that fn bodies use, not by searching for an expression. Owner: bright-boar-848's fold queue. The pinned drop claim holds while the drop happens and reds when the repair lands.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops", decl_name: "a_statement_after_a_let_in_a_match_arm_is_reported_dropped_holds", field: WholeDeclaration },
+  ],
+}

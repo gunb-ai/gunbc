@@ -1,0 +1,96 @@
+module std.kind
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { any, filter }
+import v2.std.collection { List }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
+import v2.std.optional { Optional, optional_absent, optional_present }
+
+// THE KIND OF A TYPE-LEVEL NODE, AT ONE LEVEL (Type_0 only, no universe tower). A node that DENOTES
+// a type -- the Int inhabitant, a fn Arrow between inhabitants -- has a type too, and that type is
+// its kind, never itself (self-evidence) and never the roster it was found under (provenance, which
+// is not a type). Two kinds, because a language authority's declared-inhabitants roster carries two
+// different sorts of node: the types it declares, and the facts it states ABOUT each type (surface
+// spelling, representation, std projection). Giving both one kind would give that kind two
+// meanings (DESIGN section 3's meaning fork), so each has its own.
+//
+// Checked and rejected as a home: std.syllogism Proposition, an argument record (a String
+// statement with premises), which is a different concept from the kind of a fact node.
+type Kind
+  = TypeDenotationKind
+  | TypeFactKind
+
+fn kind_node(kind: Kind) -> Node {
+  match kind {
+    TypeDenotationKind =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^kind_type_denotation } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    TypeFactKind =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^kind_type_fact } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}
+
+// WHAT INHABITS EACH KIND, stated by structure so a new member's kind is derived, not chosen. A
+// TYPE-DENOTATION RECORD is a Conj carrying an edge labelled with its language's SUBJECT FIELD; that
+// edge's target is the type the record declares. Within a roster:
+//   - TypeFactKind: every node reachable through a record's OTHER edges -- a facts Conj and its
+//     atoms, or a spelling atom hung directly off the record. They describe the subject; none is a
+//     type.
+//   - TypeDenotationKind: every other member -- the records themselves, their subject atoms, and
+//     composites built from records (e.g. a fn Arrow whose positions are records).
+// A node that is not a member of the roster has no kind here (Absent).
+
+// LINEAR IN THE ROSTER. A record's facts are its subtree minus the record and its subject, and only
+// a RECORD (a member carrying the subject field) walks a subtree -- every other member answers at
+// the named-child lookup -- so a classification visits each record's subtree once, never a subtree
+// per member and never through a copied accumulator (DESIGN section 6, bare minimum cost). That
+// bound holds because records do not nest in the declared-inhabitants rosters; a record inside
+// another record's facts would be walked once per enclosing record. A record is
+// found through the canonical accessor v2.std.node_query named_child_lookup, which already requires
+// a Conj; an ambiguous subject field is not a record (the language authorities declare one subject
+// edge per record).
+
+fn kind_record_fact_nodes(record: Node, subject_field: Symbol) -> List<Node> {
+  match named_child_lookup(root: record, name: subject_field) {
+    NamedChildFound { target: subject } =>
+      filter(
+        xs: node_subtree_nodes(root: record),
+        predicate: fn(member) { !(member == record) && !(member == subject) }
+      )
+    NamedChildMissing => []
+    NamedChildAmbiguous => []
+  }
+}
+
+fn kind_node_is_fact_of_record(record: Node, subject_field: Symbol, n: Node) -> Bool {
+  any(
+    xs: kind_record_fact_nodes(record: record, subject_field: subject_field),
+    predicate: fn(fact) { fact == n }
+  )
+}
+
+fn roster_member_kind(roster: Node, subject_field: Symbol, n: Node) -> Optional<Kind> {
+  let members = node_subtree_nodes(root: roster)
+  if any(xs: members, predicate: fn(member) { member == n }) {
+    if any(
+      xs: members,
+      predicate: fn(record) {
+        kind_node_is_fact_of_record(record: record, subject_field: subject_field, n: n)
+      }
+    ) {
+      optional_present(value: TypeFactKind)
+    } else {
+      optional_present(value: TypeDenotationKind)
+    }
+  } else {
+    optional_absent()
+  }
+}

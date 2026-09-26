@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.content_hash { content_hash_atom }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -763,5 +764,16 @@ fn spark_materialize_seed(
           handler: spark_snapshot_handler(ctx: ctx, verify: model_snapshot_completion_check_argv(snapshot: snapshot)),
         ),
       }
+  }
+}
+
+// THE ADMINISTRATOR ROUTE AS AN OBSERVATION LEG. A lane that ran a container through spark_remote_run
+// declares that container as host-effect residue, and the fleet agent cannot read the docker socket,
+// so the lane hands this leg to gunbc.spark.host_commitment release_host_effect_live_over /
+// host_effect_recover_over and its release observes with the privilege its effect used.
+fn spark_remote_argv_run(ctx: SparkMaterializeContext, argv: List<String>) -> ArgvRun {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: why } => ArgvLegDidNotRun { cause: why as String }
+    RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
   }
 }

@@ -347,7 +347,7 @@ test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
 fn scm_image_objects_member_count(acc: Int, m: JsonKeyValue) -> Int {
   if m.key == "objects" {
     match m.value {
-      JsonArray { elements: es } => count(es)
+      JsonArray { elements: es } => count(es) as Int
       _ => acc
     }
   } else {
