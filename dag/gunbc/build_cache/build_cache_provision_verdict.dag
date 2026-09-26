@@ -2,7 +2,7 @@ module gunbc.build_cache_provision_verdict
 
 import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
@@ -23,7 +23,7 @@ import gunbc.build_cache_instance {
   RetiredRunnerSlot,
 }
 
-data build_cache_provision_verdict_scope_disposition: Disposition = SingleAuthority
+data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE ARMS ARE BuildCacheProvisionConverged / BuildCacheProvisionRefused BECAUSE THE BARE SPELLING
 // WAS A HOMONYM, and it refused the moment the fold entered a closure that already held the other

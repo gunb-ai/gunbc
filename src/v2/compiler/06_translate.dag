@@ -2,6 +2,7 @@ module v2.compiler.translate
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag {
+  namespace_graft_node_is_module_body,
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
   emit_import_decl_emitted_node,
@@ -70,7 +71,6 @@ import v2.std.diagnostic {
 }
 import v2.std.witness { Holds, Violates }
 import v2.std.node {
-  arrow_type_param_names,
   Arrow,
   Atom,
   Cardinality,
@@ -92,6 +92,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
+import v2.std.type_binder { type_param_names }
 import v2.std.node_query {
   find_arrow_body_child,
   find_named_child,
@@ -1051,7 +1052,7 @@ fn translate_project_transform_in_arrow_scope(
 
 // A GENERIC ARROW IS REFUSED HERE, NOT SERIALIZED WITHOUT ITS TYPE PARAMETERS. The signature
 // scaffold (grammar_relation_row_for_bodied_arrow_serialize) is built from the target's grammar
-// rows and reads nothing off the Arrow's ^arrow_type_params_edge, so serializing a `fn f<T>` would
+// rows and reads nothing off the Arrow's type-parameter edge (v2.std.type_binder), so serializing a `fn f<T>` would
 // emit `fn f(x: T) -> T` -- a target program naming a type its declaration never introduced, the
 // edge dropped with no diagnostic. Until the target grammar carries a type-parameter row this
 // path refuses translate_reason_generic_arrow_not_rendered, located at the Arrow; rendering is
@@ -1069,7 +1070,7 @@ fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetText> {
-  if count(arrow_type_param_names(n: emitted)) > 0 {
+  if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
   } else {
   bind_outcome(
@@ -1921,6 +1922,31 @@ type TypeExprTranslateAcc
   | TypeExprTranslatePositional { items: List<Node> }
   | TypeExprTranslateDone { node: Node }
 
+// A GENERIC TYPE DECLARATION'S MEMBER IS REFUSED HERE for the reason a generic Arrow is refused at
+// target_serialize_bodied_arrow_from_model: its target is the v2.std.type_binder wrapper, and the
+// record form below would render the wrapper's two edges as fields while dropping the parameter list. Until the target
+// grammar carries a type-parameter row translate_type_expression_project refuses
+// translate_reason_generic_type_decl_not_rendered, located at the member.
+fn translate_generic_type_decl_not_rendered_diagnostic(member: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_reason_generic_type_decl_not_rendered,
+    at: node_locus(node: member),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// PRE-ORDER, because the projection below is a catamorphism: it translates the binder Conj as a
+// child before any anchor is finalized, so a check at finalize never runs. The first node in the
+// subtree carrying binders is the refusal's locus.
+fn translate_type_param_carrier_optional(node: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, m) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if count(type_param_names(n: m)) > 0 { optional_present(value: m) } else { Absent }
+    }
+  })
+}
+
 fn translate_algebra_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
@@ -2242,6 +2268,17 @@ fn translate_algebra(
 }
 
 fn translate_type_expression_project(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match translate_type_param_carrier_optional(node: node) {
+    Present { value: member } => outcome_rejected(translate_generic_type_decl_not_rendered_diagnostic(member: member))
+    Absent => translate_type_expression_project_admitted(node: node, target: target, projection: projection)
+  }
+}
+
+fn translate_type_expression_project_admitted(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -3937,6 +3974,32 @@ fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> O
     f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
   )
 }
+// A MODULE IS NOT A TYPE EXPRESSION. A module body reaching this projection used to render as a
+// record of its members' types (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body): the type projection accepts any node no grammar
+// relation row matches, so it widened where it should have refused. A module is rendered only by
+// `v2.compiler.emit_produced` `emit_produced_module`, which the partition emit routes a module to
+// when every member is a bodied declaration; a module that reaches this projection is one that fold
+// cannot render whole, and it refuses here, located at its body, rather than printing a record.
+fn translate_module_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_module_not_a_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_first_module_body_optional(node: Node) -> Optional<Node> {
+  if namespace_graft_node_is_module_body(node: node) {
+    optional_present(value: node)
+  } else {
+    fold(node.children, init: optional_absent(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => translate_first_module_body_optional(node: e.target)
+      }
+    })
+  }
+}
 fn translate_type_expression_tree(
   node: Node,
   tree: InferredTree,
@@ -3949,6 +4012,10 @@ fn translate_type_expression_tree(
       if target_value_expr_arrow_has_value_expression_body(arrow: node) {
         translate_bodied_arrow_shortcut_after_subtree_gate(tree: tree, arrow: node)
       } else {
+      match translate_first_module_body_optional(node: node) {
+        Present { value: body } =>
+          outcome_rejected(translate_module_not_a_type_expression_diagnostic(node: body))
+        Absent =>
         bind_outcome(
           o: translate_fold_acc_rebuilt(
             o: fold_node(
@@ -3970,6 +4037,7 @@ fn translate_type_expression_tree(
             }
           }
         )
+      }
       }
     }
   )
@@ -4345,6 +4413,7 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
   | ArrowBodyNotATypeExpression
+  | ModuleNotATypeExpression
 
 fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   [
@@ -4365,7 +4434,8 @@ fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
     TargetTypeExprEmittedShapeMalformed,
-    ArrowBodyNotATypeExpression
+    ArrowBodyNotATypeExpression,
+    ModuleNotATypeExpression
   ]
 }
 
@@ -4389,6 +4459,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
     TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
     TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
     ArrowBodyNotATypeExpression => ^translate_arrow_body_not_a_type_expression
+    ModuleNotATypeExpression => ^translate_module_not_a_type_expression
   }
 }
 

@@ -1,0 +1,159 @@
+module test.claim.approval_device_enrolment_code_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp, List, Secret, Int }
+import std.process { ExitSuccess }
+import gunbc.auth.approval_device_routes {
+  EnrolmentCodeDeliveryReceipt, enrolment_code_delivery_line, enrolment_code_notification, approval_enrolment_code_notification_title,
+  issue_and_deliver_enrolment_code_until, deliver_enrolment_code, EnrolmentCodeIssued, EnrolmentCodeIssuanceRefused,
+  EnrolmentCodeDelivery, DeliveryAccepted, DeliveryRefused, DeliveryIndeterminate, enrolment_code_delivery_of, enrolment_code_issuance_response,
+  enrolment_code_of_entropy,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import extdeps.ntfy.ntfy { ntfy_publish_outcome_of, ntfy_publish_acceptance }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.auth.approval_request_submission { PublisherTokenLoaded, PublisherTokenUnavailable, NotificationAttempted }
+import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
+import extdeps.shell
+import gunbc.auth.approval_notification { approval_ntfy_topic }
+import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_argv, enrolment_code_issue_refuses_off_srv1 }
+import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet_converge_workflow {
+  ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
+}
+
+// THE CODE NEVER REACHES THE STEP LOG (decision msg_a1d8d1b9), asserted over the producer and not
+// over a receipt the claim builds: deliver_enrolment_code runs the publish through
+// ntfy.Publish.PublishMessage's hermetic arm, the Delivered receipt's message id is the published
+// message's id (wiring it to the code reds this), the line rendered from that receipt does NOT
+// contain the code while the notification body -- the one rendering the code is allowed -- does,
+// and without a publisher token the same fold reports DeliveryRefused rather than publishing.
+data fx_code: NonEmptyStr = "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
+data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
+
+test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code() -> Bool {
+  let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires)
+  (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }) {
+    EnrolmentCodeIssued { topic: t, expires_at: x, delivery: DeliveryAccepted { message_id: Present { value: m } } } => {
+      let line = enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: t, message_id: Present { value: m }, expires_at: x })
+      (m as String) == hermetic_ntfy_publish_message_id
+        && t == approval_ntfy_topic
+        && x == fx_expires
+        && !string_contains(s: line, pattern: fx_code as String)
+        && string_contains(s: line, pattern: "message_id=" + hermetic_ntfy_publish_message_id)
+        && string_contains(s: line, pattern: "expires=" + fx_expires)
+    }
+    _ => false
+  })
+    && (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }) {
+      EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: c } } => x == fx_expires && string_contains(s: c, pattern: "absent")
+      _ => false
+    })
+    && string_contains(s: message.body as String, pattern: fx_code as String)
+    && message.title == approval_enrolment_code_notification_title
+    && message.topic == approval_ntfy_topic
+}
+
+
+// The remote argv runs the release's own binary over the release's own tree, as the operator's
+// POSIX user under non-interactive sudo, and names the verb by its module and function.
+test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
+  let argv = enrolment_code_issue_remote_argv(revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" })
+  let joined = join(argv, " ")
+  string_contains(s: joined, pattern: "/usr/bin/sudo -n -u " + (fleet_posix_operator_user.name as String) + " ")
+    && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
+    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
+}
+
+// The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH
+// key like its keyring sibling.
+test fn the_mode_is_rostered_and_pinned_to_srv1() -> Bool {
+  (match enrolment_code_issue_refuses_off_srv1(host: operator_host_srv1 as String) {
+    ExitSuccess => true
+    _ => false
+  })
+    && (match enrolment_code_issue_refuses_off_srv1(host: "srv2") {
+      ExitSuccess => false
+      _ => true
+    })
+    && fleet_converge_workflow_mode_wire(mode: ApprovalDeviceEnrolmentCodeIssue) == "approval_device_enrolment_code_issue"
+    && any(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "approval_device_enrolment_code_issue")
+    && (match fleet_converge_mode_fleet_ssh_key_demand(mode: ApprovalDeviceEnrolmentCodeIssue) {
+      FleetSshKeyConsumed => true
+      _ => false
+    })
+}
+
+// A PUBLISH IS THREE ANSWERS, NOT TWO (review of gunbc#12013). Each transport outcome is supplied at
+// the ntfy fold's boundary and carried through the real acceptance fold, the enrolment delivery
+// fold and the one issuance rendering. A 200 whose body could not be read is ACCEPTED without a
+// message id, renders as a printable receipt, and never as "refused"/"never sent"; the
+// discriminating red is the explicit 401, which alone yields DeliveryRefused and the "never sent"
+// rendering. A transport refusal and a 503 are indeterminate and say the code may already be on
+// the device. Collapsing any non-RestOk arm into one negative reds this.
+fn fx_delivery_of_rest(rest: RestOutcome, id: String) -> EnrolmentCodeDelivery {
+  let p = ntfy_publish_outcome_of(rest: rest, message_id: id)
+  enrolment_code_delivery_of(publish: NotificationAttempted { publish: p, acceptance: ntfy_publish_acceptance(o: p) })
+}
+
+fn fx_rendered(d: EnrolmentCodeDelivery) -> CliWireResponse {
+  enrolment_code_issuance_response(i: EnrolmentCodeIssued { topic: approval_ntfy_topic as NonEmptyStr, expires_at: fx_expires, delivery: d })
+}
+
+test fn an_accepted_publish_with_an_unreadable_receipt_is_accepted_and_never_rendered_as_not_delivered() -> Bool {
+  let d = fx_delivery_of_rest(rest: RestBodyUndecodable { status: 200, cause: "unexpected end of JSON" }, id: "")
+  (match d {
+    DeliveryAccepted { message_id: Absent } => true
+    _ => false
+  })
+    && (match fx_rendered(d: d) {
+      CliWirePrintable { bytes: b, exit: _ } => string_contains(s: b, pattern: "accepted") && string_contains(s: b, pattern: "unread") && !string_contains(s: b, pattern: "never sent")
+      _ => false
+    })
+}
+
+test fn only_an_explicit_http_refusal_yields_delivery_refused() -> Bool {
+  let refused = fx_delivery_of_rest(rest: RestStatusRefused { status: 401, body: "unauthorized" }, id: "")
+  (match refused {
+    DeliveryRefused { detail: d } => string_contains(s: d, pattern: "401")
+    _ => false
+  })
+    && (match fx_rendered(d: refused) {
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "never sent")
+      _ => false
+    })
+}
+
+test fn a_transport_refusal_or_server_error_is_indeterminate_and_says_the_code_may_have_arrived() -> Bool {
+  let unreached = fx_delivery_of_rest(rest: RestTransportRefused { cause: "connection reset" }, id: "")
+  let five = fx_delivery_of_rest(rest: RestStatusRefused { status: 503, body: "busy" }, id: "")
+  (match unreached {
+    DeliveryIndeterminate { detail: _ } => true
+    _ => false
+  })
+    && (match five {
+      DeliveryIndeterminate { detail: _ } => true
+      _ => false
+    })
+    && (match fx_rendered(d: unreached) {
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "INDETERMINATE") && string_contains(s: c as String, pattern: "may already be on") && !string_contains(s: c as String, pattern: "never sent")
+      _ => false
+    })
+}
+
+// THE CODE ENCODES 128 BITS AS 32 LOWERCASE HEX, over SUPPLIED entropy (DESIGN section 3: the
+// claim's subject is the encoding, so its input is a value, not a read): sixteen fixed octets give
+// exactly their lowercase hex, and fifteen or seventeen octets refuse rather than minting a shorter
+// or longer code. The real read is paired on the wet lane:
+// test.claim.approval_device_enrolment_code_wet_witness_test.
+test fn the_enrolment_code_is_sixteen_supplied_octets_as_lowercase_hex() -> Bool {
+  (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuRqg==") {
+    Present { value: c } => (c as String) == "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
+    Absent => false
+  })
+    && (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuR") { Present { value: _ } => false  Absent => true })
+    && (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuRqgE=") { Present { value: _ } => false  Absent => true })
+}

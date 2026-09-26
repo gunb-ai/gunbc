@@ -1,6 +1,7 @@
 module v2.std.effect_reach
 
 import v2.std.collection { List }
+import v2.std.diagnostic { Diagnostic }
 import gunbc.guarantee_rung { GuaranteeRung, Mitigatable }
 
 // Phase 0 inference bridge (docs/plans/module-identity-storage-binding-design.md §3): a
@@ -26,9 +27,14 @@ type EffectReachFlow {
   init_literal_fp: String
 }
 
+// EffectReachRefused: the call walk met an application it could not read (v2.std.fn_index
+// CallReach.refusals), so the reachable set is not known to be complete and neither LocalEffect nor
+// a flow list may be asserted. It is its own arm rather than a widening to HostEffectReach, which
+// would make an unreadable call indistinguishable from a real host read (DESIGN §5).
 type EffectReachClassification
   = LocalEffect
   | HostEffectReach { flows: List<EffectReachFlow> }
+  | EffectReachRefused { refusals: List<Diagnostic> }
 
 data effect_reach_host_sink_callee_symbols_v0: List<String> = [
   "Read",

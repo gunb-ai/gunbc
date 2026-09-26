@@ -167,7 +167,7 @@ pub fn module_key(
 pub fn typed_module_key_note() -> NonEmptyStr {
     thread_local! {
         static CACHED: NonEmptyStr = {
-            serde_json::from_value(serde_json::json!("A typed module's content-key = its interface module_key (source hash + direct-import interface hashes) + the compiler's own identity. The compiler is itself an input to the typed result (a seed regen changes inference), so a memo keyed on module_key alone would serve a stale typed module across a rebuild. compiler_identity is consumed here, not authored here — its derivation is the store realization's concern. This is the pure key for the cross-entry typed-module memo (docs/plans/cross-entry-typed-module-memo-sketch.md); the store, eviction, and ComputationIdentity wrapping land downstream."))
+            serde_json::from_str("\"A typed module's content-key = its interface module_key (source hash + direct-import interface hashes) + the compiler's own identity. The compiler is itself an input to the typed result (a seed regen changes inference), so a memo keyed on module_key alone would serve a stale typed module across a rebuild. compiler_identity is consumed here, not authored here — its derivation is the store realization's concern. This is the pure key for the cross-entry typed-module memo (docs/plans/cross-entry-typed-module-memo-sketch.md); the store, eviction, and ComputationIdentity wrapping land downstream.\"")
                 .expect("valid data definition")
         };
     }

@@ -36,7 +36,8 @@ import v2.std.collection {
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent
 }
 import v2.std.algebra {
   fold_list,
@@ -60,6 +61,7 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.target_model {
+  IntLiteralUnwired,
   InfixToken,
   canonical_operation_op_add,
   Prepend,
@@ -612,14 +614,14 @@ fn c_by_value_type_identity_resolution_refusal(
   owners: List<CTypeOwner>
 ) -> Optional<String> {
   owners
-    |> fold(init: Absent, f: fn(acc, owner) {
+    |> fold(init: optional_absent(), f: fn(acc, owner) {
       match acc {
         Present { value: _ } => acc
         Absent =>
           match c_type_definition_for_owner(resolved: resolved, owner: owner) {
             Present { value: defn } =>
               c_type_atoms_by_value_in_node(node: defn)
-                |> fold(init: Absent, f: fn(inner_acc, sym) {
+                |> fold(init: optional_absent(), f: fn(inner_acc, sym) {
                   match inner_acc {
                     Present { value: _ } => inner_acc
                     Absent =>
@@ -694,7 +696,7 @@ fn c_dfs_by_value_type_cycle(
         false =>
           let next_path = c_list_snoc_type_owner(items: path, item: current)
           edges
-            |> fold(init: Absent, f: fn(acc, edge) {
+            |> fold(init: optional_absent(), f: fn(acc, edge) {
               match acc {
                 Present { value: _ } => acc
                 Absent =>
@@ -721,7 +723,7 @@ fn c_find_by_value_type_cycle_detail(
   owners: List<CTypeOwner>
 ) -> Optional<String> {
   owners
-    |> fold(init: Absent, f: fn(acc, owner) {
+    |> fold(init: optional_absent(), f: fn(acc, owner) {
       match acc {
         Present { value: _ } => acc
         Absent =>
@@ -1152,6 +1154,7 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^c_token_kw_true,
       false_token: ^c_token_kw_false
     },
+    int_literal_form: IntLiteralUnwired,
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon

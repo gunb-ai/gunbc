@@ -1,14 +1,11 @@
 module gunbc.machine_intake_mtcollins1_actuate
 
 import std.types { NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import v2.std.optional { Present, Absent }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof, unit_hold_proof_refusal, mtcollins1_unit_hold_key }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.bmc.endpoint { AmiMegaRac }
-import extdeps.bmc.capability {
-  BmcFirmwareReleaseCapabilityRow,
-  BmcFirmwareReleaseIdentity,
-  CapabilityBootSourceOverride,
-  CapabilityPowerControl,
-}
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
@@ -29,7 +26,6 @@ import gunbc.machine_intake_oob_boot_handoff {
 }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom,
-  IpmiBootPxe,
   IpmiBootSelection,
   aarch64_uefi_once_boot_selection,
 }
@@ -44,8 +40,6 @@ import extdeps.bmc.ipmi_boot_selection {
 // around a parameterized probe. It is NOT a per-host fork of the arm: everything host-specific here
 // is a value, and a second host is a second wrapper over the identical operation, never a second
 // operation. The one argument is the credential path, for the reason given on mtcollins1_password_file.
-data mtcollins1_netboot_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootPxe)
-
 data mtcollins1_cdrom_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
 
 // A CYCLE AND NOT A RESET, because the unit's own SEL is the evidence that a cycle takes effect
@@ -127,13 +121,29 @@ fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome)
   }
 }
 
+// THE OPERATOR ENTRIES ARE GONE (gunbc#12101, side-chat review 5286225278): mtcollins1_netboot_handoff,
+// mtcollins1_cdrom_handoff and mtcollins1_denied_admission_control each reached a power cycle of this
+// unit from an operator session with no interlock, and nothing consumed them -- the boot mode
+// (gunbc.machine_intake_mtcollins1_boot_run) is the CD route's production root and nothing serves
+// PXE on this segment. drive_handoff is now sealed to the boot's actuation and takes the unit-hold
+// proof, so the only roots that reach this unit's boot device or power are the ones rostered in
+// gunbc.machine_intake_mtcollins1_maintenance_hold mtcollins1_bmc_write_roots.
+//
 fn mtcollins1_drive_handoff(
+  proof: UnitHoldProof,
   label: NonEmptyStr,
   password_file_raw: String,
   capability_row: BmcFirmwareReleaseCapabilityRow,
   selection: IpmiBootSelection,
 ) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
 {
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: label as String) {
+    Present { value: why } => return exit_failure(reason: why)
+    Absent => {}
+  }
   match mtcollins1_bmc_username {
     Absent =>
       exit_failure(reason: concat(label as String, ": BMC is not BmcSecured; refusing before any controller write"))
@@ -155,77 +165,4 @@ fn mtcollins1_drive_handoff(
           )
       }
   }
-}
-
-fn mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
-{
-  mtcollins1_drive_handoff(
-    label: "mtcollins1 handoff",
-    password_file_raw: password_file_raw,
-    capability_row: mtcollins1_capability_row,
-    selection: mtcollins1_netboot_selection,
-  )
-}
-
-// THE SECOND BOOT ROUTE FOR THE SAME UNIT, and it is the shape this module predicted: a second
-// wrapper over the IDENTICAL operation, not a second operation. Everything that differs between
-// netbooting and booting the BMC's virtual CD is a value — the device word and the text ipmitool
-// renders for it — so oob_boot_handoff is reused unchanged.
-//
-// WHY A CD ROUTE EXISTS AT ALL ON A UNIT THAT DEMONSTRABLY PXE-BOOTS. Measured 2026-09-05, the
-// controller answers `local_media_support: 0` and `sd_media: 0`, so it cannot HOLD a boot image;
-// it answers `remote_media_support: 1` and enumerates images from an NFS share, so it can PRESENT
-// one. That split is the whole reason this route matters: the host reaches a bootstrap without any
-// PXE server on the segment, because the controller fetches the image itself and offers it as
-// removable media. The DHCP capture in gunbc.machine_intake_mtcollins1_netboot_client_observation
-// records the other half — the host asks for a boot file over PXE and nothing on the segment
-// answers — so today this is the only delivery route that reaches this machine at all.
-
-fn mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
-{
-  mtcollins1_drive_handoff(
-    label: "mtcollins1 cdrom handoff",
-    password_file_raw: password_file_raw,
-    capability_row: mtcollins1_capability_row,
-    selection: mtcollins1_cdrom_selection,
-  )
-}
-
-// THE ENFORCEMENT CONTROL, and it is deliberately not a test of the admission fold. That fold is
-// pure and already exercised by gunbc.machine_intake_mtcollins1_handoff_probe; what it cannot show
-// is that a REFUSAL HAPPENS BEFORE ANY WRITE. Classification and enforcement are different claims,
-// and only the second is what a caller driving real hardware depends on.
-//
-// The capability row below carries the same capabilities the measured one does and a DIFFERENT
-// firmware release, so admission refuses on OobHandoffFirmwareMismatch — the arm that exists
-// because a capability row for release A could otherwise be handed beside an observation for
-// release B. Everything else about the call is the real thing: the real endpoint, the real
-// credential, the real operation.
-//
-// HOW TO READ THE RESULT. A non-zero exit naming "not admitted" is necessary but not sufficient:
-// the load-bearing observation is EXTERNAL, that boot parameter 5 is unchanged after this runs.
-// Reset it to a known value first, run this, and read it back. If the selector moved, the refusal
-// came after a write and the ordering is decorative.
-data mtcollins1_mismatched_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentity {
-  family: AmiMegaRac,
-  raw_version: "0.31-not-this-unit",
-  semantic_version: none,
-}
-
-data mtcollins1_mismatched_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
-  firmware: mtcollins1_mismatched_firmware,
-  capabilities: [
-    CapabilityBootSourceOverride,
-    CapabilityPowerControl,
-  ],
-}
-
-fn mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
-{
-  mtcollins1_drive_handoff(
-    label: "mtcollins1 denied-admission control",
-    password_file_raw: password_file_raw,
-    capability_row: mtcollins1_mismatched_capability_row,
-    selection: mtcollins1_netboot_selection,
-  )
 }

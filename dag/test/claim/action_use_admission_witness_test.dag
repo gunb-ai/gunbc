@@ -216,7 +216,7 @@ fn one_step_workflow(action_release: ActionRelease) -> Workflow {
   Workflow {
     name: "fixture", run_name: none, on: [WorkflowDispatch { inputs: [] }], concurrency: none,
     jobs: [Job {
-      id: "j", name: none, runner: HostedRunner { label: UbuntuLatest },
+      id: "j", name: none, runner: HostedRunner { label: UbuntuLatest }, environment: none,
       steps: [UsesStep { name: none, id: none, uses: action_release, with: none, env: none, if_condition: none, continue_on_error: none, timeout_minutes: none }],
       needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none, continue_on_error: none, concurrency: none, permissions: none,
     }],
@@ -280,7 +280,7 @@ fn census_holds(c: RealizedCensus) -> Bool {
 // eval-step budget. This join is what makes the per-file claims the census: a workflow added without
 // a claim, or a claim naming a file that is gone, refuses here, by name.
 data realized_workflow_files: List<String> = [
-  "fleet-converge.yml", "fleet-desired.yml", "heal-publish.yml", "heal.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "witnesses.yml"
+  "fleet-converge.yml", "fleet-desired.yml", "heal-publish.yml", "heal.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "native-frontier.yml", "witnesses.yml"
 ]
 
 fn listed_workflow_files() -> List<String> {
@@ -354,6 +354,16 @@ test fn census_heal_uses_are_modeled_and_executed_exactly() -> Bool {
 test fn census_microvm_shakedown_uses_are_modeled_and_executed_exactly() -> Bool {
   let c = census_file(name: "microvm-shakedown.yml")
   ((c.refused |> count) == 0) && (c.uses == 0)
+}
+
+// The nightly native frontier run (gunbc.native_frontier_workflow): its checkout and the
+// upload-artifact step that publishes the proposed roster are among the admitted uses, so the join
+// ran over real structure, not an empty file.
+test fn census_native_frontier_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "native-frontier.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
 }
 
 // The hand-authored canary: its checkout and github-script steps are among the admitted uses, so

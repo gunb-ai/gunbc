@@ -2,6 +2,7 @@
 // Source module: std.compiler_entry
 
 use self::CompilerEntryDriver::*;
+use self::NativeClaimTerminal::*;
 use self::NativeDriverChildStanding::*;
 use self::NativeDriverCostAccounting::*;
 use self::NativeDriverCostRowStanding::*;
@@ -17,6 +18,29 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeClaimTerminal {
+    NativeClaimHeld,
+    NativeClaimNotHeld { reason: String },
+    NativeClaimNoObservation { reason: String },
+}
+impl NativeClaimTerminal {
+    pub fn reason(&self) -> String {
+        match self {
+            NativeClaimTerminal::NativeClaimHeld => panic!("no reason on unit variant"),
+            NativeClaimTerminal::NativeClaimNotHeld { reason: __val, .. } => __val.clone(),
+            NativeClaimTerminal::NativeClaimNoObservation { reason: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeClaimReport {
+    pub stdout: String,
+    pub terminal: Rc<NativeClaimTerminal>,
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -26,6 +50,7 @@ pub enum CompilerEntryDriver {
     DirectIngestDriver,
     SourceRootEvalDriver,
     NativeCliDriver,
+    NativeClaimDriver,
 }
 
 #[derive(
@@ -132,7 +157,7 @@ pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> Nanos
     crate::std_measure::nanosecond(rows.rows.clone().iter().cloned().fold(
         0,
         |acc: i64, r: Rc<NativeDriverExclusiveRow>| {
-            (acc + crate::std_measure::nanosecond_count(r.nanos.clone()))
+            v1_rt::int_add(acc, crate::std_measure::nanosecond_count(r.nanos.clone()))
         },
     ))
 }
@@ -153,10 +178,10 @@ pub fn native_driver_cost_account(
             })
         } else {
             {
-                let residual = crate::std_measure::nanosecond(
-                    (crate::std_measure::nanosecond_count(parent_span.clone())
-                        - crate::std_measure::nanosecond_count(sum.clone())),
-                );
+                let residual = crate::std_measure::nanosecond(v1_rt::int_sub(
+                    crate::std_measure::nanosecond_count(parent_span.clone()),
+                    crate::std_measure::nanosecond_count(sum.clone()),
+                ));
                 if (crate::std_measure::nanosecond_count(residual.clone())
                     > crate::std_measure::nanosecond_count(tolerance.clone()))
                 {
@@ -231,6 +256,8 @@ pub struct DirectIngestDriver;
 pub struct SourceRootEvalDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeCliDriver;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeClaimDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveLoad;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

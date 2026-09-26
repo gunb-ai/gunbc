@@ -73,7 +73,7 @@ pub fn checkpoint_row_migration_rows() -> Rc<Vec<Rc<CheckpointRowMigration>>> {
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Float".to_string(),
     disposition: Rc::new(CheckpointRowDisposition::StillBareNameDebt {
-    reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Float64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row.".to_string(),
+    reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Binary64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row.".to_string(),
     restoration_trigger: "The same ruling as Int, for v2.std.float Float; then ProvenUniqueKernelBinding on the f64 primitive token.".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {

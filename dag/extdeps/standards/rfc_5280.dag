@@ -2,7 +2,6 @@ module extdeps.standards.rfc_5280
 
 import std.types { Int, String, List, Timestamp }
 import std.logic { Bool }
-import std.integer { UInt8 }
 import std.bignat { bignat_pad_front }
 import std.decimal { decimal_digits_only }
 import extdeps.external_authority { ExternalAuthority }
@@ -52,7 +51,7 @@ data oid_ecdsa_with_sha384: String = "1.2.840.10045.4.3.3"
 type X509Extension {
   oid: String
   critical: Bool
-  value: List<UInt8>
+  value: List<Int>
 }
 
 // Names are kept as their DER (the whole Name TLV): the profile's issuer/subject join is byte
@@ -64,23 +63,23 @@ type X509Extension {
 // constructor (review 69626 of gunbc#11975), and X509Certificate carries that record rather than
 // re-declaring its fields (review 69648: two declarations of one field set drift).
 type X509TbsFields {
-  tbs_octets: List<UInt8>
-  serial: List<UInt8>
+  tbs_octets: List<Int>
+  serial: List<Int>
   tbs_signature_algorithm: String
-  issuer_octets: List<UInt8>
+  issuer_octets: List<Int>
   not_before: X509Time
   not_after: X509Time
-  subject_octets: List<UInt8>
+  subject_octets: List<Int>
   spki_algorithm: String
   spki_named_curve: String?
-  spki_public_key: List<UInt8>
+  spki_public_key: List<Int>
   extensions: List<X509Extension>
 }
 
 type X509Certificate {
   tbs: X509TbsFields
   signature_algorithm: String
-  signature_octets: List<UInt8>
+  signature_octets: List<Int>
 }
 
 type X509Refusal
@@ -103,7 +102,7 @@ type AlgorithmIdentifier
   = AlgorithmIdentifierRead { algorithm: String, parameters_oid: String? }
   | AlgorithmIdentifierRefused { cause: DerRefusal }
 
-fn read_algorithm_identifier(octets: List<UInt8>, e: DerElement) -> AlgorithmIdentifier {
+fn read_algorithm_identifier(octets: List<Int>, e: DerElement) -> AlgorithmIdentifier {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
     DerChildrenRead { elements: kids } =>
@@ -132,7 +131,7 @@ fn read_algorithm_identifier(octets: List<UInt8>, e: DerElement) -> AlgorithmIde
   }
 }
 
-fn ascii_of(octets: List<UInt8>) -> String {
+fn ascii_of(octets: List<Int>) -> String {
   fold(octets, init: "", f: (acc, o) => acc + from_code_point(cp: o))
 }
 
@@ -151,7 +150,7 @@ type X509TimeRead
   = X509TimeOk { time: X509Time }
   | X509TimeRefused { cause: X509Refusal }
 
-fn read_time(octets: List<UInt8>, e: DerElement) -> X509TimeRead {
+fn read_time(octets: List<Int>, e: DerElement) -> X509TimeRead {
   match der_element_expect_universal(e: e, tag_number: der_tag_utc_time) {
     Absent => X509TimeOk { time: UtcTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
     Present { value: _ } =>
@@ -166,7 +165,7 @@ type X509Validity
   = X509ValidityRead { not_before: X509Time, not_after: X509Time }
   | X509ValidityRefused { cause: X509Refusal }
 
-fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
+fn read_validity(octets: List<Int>, e: DerElement) -> X509Validity {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
     DerChildrenRead { elements: kids } =>
@@ -199,7 +198,7 @@ type X509ExtensionRead
   = X509ExtensionOk { extension: X509Extension }
   | X509ExtensionRefused { cause: X509Refusal }
 
-fn read_extension(octets: List<UInt8>, e: DerElement) -> X509ExtensionRead {
+fn read_extension(octets: List<Int>, e: DerElement) -> X509ExtensionRead {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
     DerChildrenRead { elements: kids } =>
@@ -242,7 +241,7 @@ type X509Extensions
   = X509ExtensionsRead { extensions: List<X509Extension> }
   | X509ExtensionsRefused { cause: X509Refusal }
 
-fn read_extensions_list(octets: List<UInt8>, kids: List<DerElement>, i: Int, acc: List<X509Extension>) -> X509Extensions {
+fn read_extensions_list(octets: List<Int>, kids: List<DerElement>, i: Int, acc: List<X509Extension>) -> X509Extensions {
   if i >= count(kids) { X509ExtensionsRead { extensions: acc } } else {
     match kids |> get(i) {
       null => X509ExtensionsRead { extensions: acc }
@@ -256,7 +255,7 @@ fn read_extensions_list(octets: List<UInt8>, kids: List<DerElement>, i: Int, acc
 }
 
 // extensions [3] EXPLICIT Extensions: the context tag wraps one SEQUENCE OF Extension.
-fn read_tbs_extensions(octets: List<UInt8>, wrapper: DerElement) -> X509Extensions {
+fn read_tbs_extensions(octets: List<Int>, wrapper: DerElement) -> X509Extensions {
   match der_expect_sequence(octets: octets, at: wrapper.value_at) {
     DerRefused { cause: c } => X509ExtensionsRefused { cause: X509DerRefused { cause: c } }
     DerElementRead { element: seq } =>
@@ -311,10 +310,10 @@ fn tbs_tail(kids: List<DerElement>, from: Int) -> TbsTail {
 }
 
 type SubjectPublicKeyInfo
-  = SpkiRead { algorithm: String, named_curve: String?, public_key: List<UInt8> }
+  = SpkiRead { algorithm: String, named_curve: String?, public_key: List<Int> }
   | SpkiRefused { cause: DerRefusal }
 
-fn read_spki(octets: List<UInt8>, e: DerElement) -> SubjectPublicKeyInfo {
+fn read_spki(octets: List<Int>, e: DerElement) -> SubjectPublicKeyInfo {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => SpkiRefused { cause: c }
     DerChildrenRead { elements: kids } =>
@@ -360,7 +359,7 @@ type TbsRead
   = TbsOk { fields: X509TbsFields }
   | TbsRefused { cause: X509Refusal }
 
-fn read_tbs(octets: List<UInt8>, tbs: DerElement) -> TbsRead {
+fn read_tbs(octets: List<Int>, tbs: DerElement) -> TbsRead {
   match der_children(octets: octets, parent: tbs) {
     DerChildrenRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
     DerChildrenRead { elements: kids } => {
@@ -431,7 +430,7 @@ fn read_tbs(octets: List<UInt8>, tbs: DerElement) -> TbsRead {
 // Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signatureValue BIT STRING }. The
 // outer signatureAlgorithm must equal the TBS's (§4.1.1.2), which is what keeps an attacker from
 // naming a weaker algorithm outside the signed bytes.
-fn decode_certificate(octets: List<UInt8>) -> X509Decode {
+fn decode_certificate(octets: List<Int>) -> X509Decode {
   match der_read_document(octets: octets) {
     DerDocumentRefused { cause: c } => x509_der(c: c)
     DerDocumentRead { element: outer } =>
@@ -536,7 +535,7 @@ type X509BasicConstraintsRead
 
 // BasicConstraints ::= SEQUENCE { cA BOOLEAN DEFAULT FALSE, pathLenConstraint INTEGER (0..MAX)
 // OPTIONAL }. Under DER a DEFAULT value is omitted (X.690 §11.5), so an encoded FALSE refuses.
-fn read_basic_constraints(octets: List<UInt8>) -> X509BasicConstraintsRead {
+fn read_basic_constraints(octets: List<Int>) -> X509BasicConstraintsRead {
   match der_read_document(octets: octets) {
     DerDocumentRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
     DerDocumentRead { element: seq } =>
@@ -577,7 +576,7 @@ fn read_basic_constraints(octets: List<UInt8>) -> X509BasicConstraintsRead {
   }
 }
 
-fn basic_constraints_path_len(octets: List<UInt8>, e: DerElement, ca: Bool) -> X509BasicConstraintsRead {
+fn basic_constraints_path_len(octets: List<Int>, e: DerElement, ca: Bool) -> X509BasicConstraintsRead {
   match der_element_expect_universal(e: e, tag_number: der_tag_integer) {
     Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
     Absent =>
@@ -591,7 +590,7 @@ fn basic_constraints_path_len(octets: List<UInt8>, e: DerElement, ca: Bool) -> X
 
 // The carrier is a signed 64-bit Int: a magnitude of at most 8 octets whose top bit is clear
 // fits it; anything wider is above it.
-fn path_length_of_magnitude(m: List<UInt8>) -> X509PathLength {
+fn path_length_of_magnitude(m: List<Int>) -> X509PathLength {
   let top = match m |> get(0) {
     null => 0
     o => o
@@ -601,7 +600,7 @@ fn path_length_of_magnitude(m: List<UInt8>) -> X509PathLength {
 }
 
 type X509KeyUsageRead
-  = X509KeyUsageBits { meaningful: Int, bits: List<UInt8> }
+  = X509KeyUsageBits { meaningful: Int, bits: List<Int> }
   | X509KeyUsageRefused { cause: DerRefusal }
 
 // KeyUsage ::= BIT STRING. Unlike a key or a signature, a named-bit list legitimately carries
@@ -610,7 +609,7 @@ type X509KeyUsageRead
 // are zero (X.690 §11.2.1), and a named-bit list ends at its last asserted bit with no trailing
 // zero octet (X.690 §11.2.2), so the lowest meaningful bit of the last octet is set. What it hands
 // out is the MEANINGFUL bit count, so a padding bit can never be read as a named bit.
-fn read_key_usage(octets: List<UInt8>) -> X509KeyUsageRead {
+fn read_key_usage(octets: List<Int>) -> X509KeyUsageRead {
   match der_read_document(octets: octets) {
     DerDocumentRefused { cause: c } => X509KeyUsageRefused { cause: c }
     DerDocumentRead { element: e } =>
@@ -645,7 +644,7 @@ fn key_usage_bit_weight(position: Int) -> Int {
 
 // Named bit `bit` counts from the HIGH bit of the first octet; a bit at or beyond the meaningful
 // count is not asserted, whatever the padding holds.
-fn key_usage_bit_set(meaningful: Int, bits: List<UInt8>, bit: Int) -> Bool {
+fn key_usage_bit_set(meaningful: Int, bits: List<Int>, bit: Int) -> Bool {
   if bit < 0 || bit >= meaningful { false }
   else {
     match bits |> get(bit / 8) {
@@ -703,17 +702,17 @@ fn x509_ca_authority_counted(cert: X509Certificate, intermediates_below: Int) ->
 // curve verifiers take (P1363), each coordinate left-padded to `width` octets. A magnitude wider
 // than the coordinate refuses: it is not an element of the order.
 type EcdsaSigValue
-  = EcdsaSigValueRead { r_s_fixed: List<UInt8> }
+  = EcdsaSigValueRead { r_s_fixed: List<Int> }
   | EcdsaSigValueRefused { cause: DerRefusal }
   | EcdsaSigValueTooWide { component_octets: Int, width: Int }
 
 // Left-padding is std.bignat's bignat_pad_front, the one zero-fill the corpus already owns
 // (review 69626 of gunbc#11975: a private copy here was a re-mint).
-fn left_pad(m: List<UInt8>, width: Int) -> List<UInt8> {
+fn left_pad(m: List<Int>, width: Int) -> List<Int> {
   bignat_pad_front(octets: m, zeros: width - count(m))
 }
 
-fn ecdsa_sig_value(octets: List<UInt8>, width: Int) -> EcdsaSigValue {
+fn ecdsa_sig_value(octets: List<Int>, width: Int) -> EcdsaSigValue {
   match der_read_document(octets: octets) {
     DerDocumentRefused { cause: c } => EcdsaSigValueRefused { cause: c }
     DerDocumentRead { element: seq } =>
