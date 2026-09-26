@@ -8,6 +8,7 @@ import v2.std.optional { Optional, Present, Absent, optional_present, optional_a
 import v2.std.node {
   Arrow,
   Behavior,
+  Bind,
   ComputationNode,
   Conj,
   Edge,
@@ -244,15 +245,56 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
   }
 }
 
-// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform by SHAPE
-// (PositionalPlusOneNamedEdges); this is the label half, and it is asked of a Transform ONLY. Every
-// other behavior's Named edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge
-// discipline (loop_behavior_edges_conform), and a second, blanket rule here refusing labels that
-// authority requires would fork it. A Bind admits no Named edge by shape until the let-annotation
-// carrier widens it together with its producer and adds its arm here.
+// THE EDGE THAT CARRIES A LET'S TYPE ANNOTATION. `let x: T = e` lowers to Bind[binder, value,
+// body] with this edge -> T beside its three positionals (v2.compiler.body_lowering_fold). It is a
+// static ASCRIPTION -- the bound value must already inhabit T, nothing is converted -- so it is its
+// own label beside <cast-target> and never shares one with the coercion. Unauthorable for the
+// reason type_params_marker is.
+fn type_annotation_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<type-annotation>")
+}
+
+// THE ONE PRODUCER of the edge.
+fn type_annotation_edge(annotation: Node) -> Edge {
+  Edge { label: Named { name: type_annotation_marker() }, target: annotation }
+}
+
+// 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the
+// trigger of gunbc.recurring_failure_mode behavior_named_edge_label_validated_not_constructed (owner:
+// the v2 type-binders lane under neat-boar-16, coordinated with the named-arguments edge-discipline
+// coproduct). Until then an edge's marker is a Named Symbol and this compare is the one place a
+// <type-annotation> edge is recognized, the same shape as edge_is_type_params and edge_is_cast_target;
+// with typed labels it dissolves into a match on the label arm.
+fn edge_is_type_annotation(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == type_annotation_marker()
+    Positional => false
+  }
+}
+
+// THE ONE ACCESSOR: the annotation a Bind carries, Absent on an unannotated Bind and on any other
+// node. A reader that walks a Bind's children by ordinal views them as positionals; this edge is
+// never the binder, the value or the body.
+fn type_annotation_optional(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold(n.children, init: optional_absent(), f: fn(acc, e) {
+        if edge_is_type_annotation(e: e) { optional_present(value: e.target) } else { acc }
+      })
+    _ => optional_absent()
+  }
+}
+
+// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform or Bind
+// by SHAPE (PositionalPlusOneNamedEdges); this is the label half, and it is asked of those two
+// behaviors ONLY: a Transform's cast target, a Bind's let annotation. Every other behavior's Named
+// edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge discipline
+// (loop_behavior_edges_conform), and a second, blanket rule here refusing labels that authority
+// requires would fork it.
 fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
   match b {
     Transform => optional_present(value: cast_target_marker())
+    Bind => optional_present(value: type_annotation_marker())
     _ => optional_absent()
   }
 }
@@ -288,6 +330,7 @@ fn type_binder_node_conforms(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
     ComputationNode { behavior: Transform } => (params == 0) && (bodies == 0) && computation_named_labels_conform(n: n, b: Transform)
+    ComputationNode { behavior: Bind } => (params == 0) && (bodies == 0) && computation_named_labels_conform(n: n, b: Bind)
     _ =>
       match type_decl_view(target: n) {
         PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)

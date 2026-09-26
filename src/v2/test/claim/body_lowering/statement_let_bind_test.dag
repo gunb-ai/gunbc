@@ -9,7 +9,7 @@ import v2.compiler.reference_conservation_admission {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
-import v2.test.claim.body_type_annotation_refusal { btar_refusal_at_authored }
+import v2.std.type_binder { type_annotation_optional }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
 import v2.std.node { Bind, ComputationNode, Named, Node, Positional, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -147,17 +147,23 @@ test fn let_in_form_binds_the_literal_value_holds() -> Bool {
   let_in_bind_values_with_magnitude() == [true]
 }
 
-// A TYPED STATEMENT LET REFUSES AT ITS ANNOTATION, FOR THE DURATION OF A DECLARED GAP. This row
-// asserted the annotated let LOWERS; it did so by dropping `: Int` before resolve
-// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2), and the drop is
-// now a typed refusal located at the authored type. RESTORATION TRIGGER, naming the capability: a
-// v2.std.node Bind carrier for the let annotation (v2.std.type_binder `<type-annotation>`), read by
-// resolve in a type-position frame -- when it lands this row flips back to asserting the typed let
-// lowers, with its annotation CARRIED rather than explained as dropped.
-test fn typed_statement_let_refuses_at_its_annotation_holds() -> Bool {
-  match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 36, end: 39), tail: Empty } }) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => btar_refusal_at_authored(d: d, id: ^Int)
+// A TYPED STATEMENT LET LOWERS WITH ITS ANNOTATION CARRIED. `let x: Int = 1` lowers to a Bind with
+// the v2.std.type_binder <type-annotation> edge -> Int beside its three positionals, and only the
+// binder is an explained drop: the annotation is NOT explained away, so reference conservation
+// holds only because `Int` reached the lowered tree. It retired the declared rung drop
+// gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, under which this row
+// asserted the let refused at its annotation. A lowering that dropped the edge again fails both
+// halves: conservation refuses the dropped `Int`, and no Bind carries an annotation.
+test fn typed_statement_let_lowers_with_its_annotation_carried_holds() -> Bool {
+  match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+        match type_annotation_optional(n: n) {
+          Present { value: _ } => acc + 1
+          Absent => acc
+        }
+      }) == 1
   }
 }
 

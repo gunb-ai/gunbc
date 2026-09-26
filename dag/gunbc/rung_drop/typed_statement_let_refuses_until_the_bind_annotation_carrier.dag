@@ -1,7 +1,7 @@
 module gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for the typed statement-form let on the v2 route (DESIGN 4b(3)), landed by
@@ -24,7 +24,7 @@ data typed_statement_let_refuses_until_the_bind_annotation_carrier: RungDrop = R
 
   declared: "2026-09-25",
 
-  standing: Standing,
+  standing: Retired { trigger_fired: "2026-09-25 -- the capability, observed on the production route (v2.test.claim.type_param_binder_frame tpb_assemble): a statement let's annotation lowers onto its Bind as the v2.std.type_binder <type-annotation> edge (v2.std.compilers.body_lowering lower_bind_annotated), v2.compiler.resolve resolve_bind_edges walks it through resolve_type_role_target so a body annotation's `T` binds the enclosing fn's <T> (v2.test.claim.body_let_annotation bla_generic_annotation_binds_the_type_parameter) while a type parameter in value position still refuses resolve_reason_type_parameter_in_value_position, located (bla_type_parameter_in_value_position_refuses_located), and v2.compiler.infer infer_bind_annotation_check asks v2.std.coercion whether the bound value inhabits the annotation (bla_infer_refuses_int_sum_ascribed_bool). The restated row flipped back: v2.test.claim.body_lowering.statement_let_bind typed_statement_let_lowers_with_its_annotation_carried_holds asserts the typed let lowers with only its binder explained and exactly one annotation carried. The refusal body_lowering_reason_type_annotation_not_carried is deleted from the let route, not narrowed; it survives only where a written annotation's type expression cannot be read, and on the fn-literal return route (gunbc#12210). Translate refuses an annotated Bind (target_value_expr_reason_bind_annotation_not_modeled) until a target realization row carries it, which is a located refusal and not this drop." as NonEmptyStr },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,

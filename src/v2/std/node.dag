@@ -295,6 +295,17 @@ fn is_positional(e: Edge) -> Bool {
   }
 }
 
+// A NODE'S SLOTS ARE ITS POSITIONAL EDGES, in the order the producer wrote them; its Named edges are
+// the markers beside them. Readers that index a Bind's binder, value and body take the slots from
+// here, so one fact decides what a slot is.
+fn positional_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { is_positional(e: e) })
+}
+
+fn named_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { !is_positional(e: e) })
+}
+
 fn all_edges_named(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     acc && is_named(e: e)
@@ -646,7 +657,8 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
       edges_conform(children: children, d: PositionalPlusOneNamedEdges) && (positional_child_count(children: children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
-    Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
+    Bind =>
+      edges_conform(children: children, d: PositionalPlusOneNamedEdges) && (positional_child_count(children: children) == 3)
     Match =>
       edges_conform(children: children, d: PositionalEdges)
         && (positional_child_count(children: children) >= 2)
@@ -686,7 +698,7 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
     Transform => PositionalPlusOneNamedEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
-    Bind => PositionalEdges
+    Bind => PositionalPlusOneNamedEdges
     Match => PositionalEdges
   }
 }
@@ -770,9 +782,8 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
   )
 }
 
-// A TRANSFORM CARRIES ITS POSITIONAL CHILDREN IN ORDER AND AT MOST ONE NAMED EDGE BESIDE THEM. The
-// named edge is a v2.std.type_binder marker (a cast's target). A Bind stays PositionalEdges until the
-// let-annotation carrier lands its producer and widens it in the same change. This module states
+// A TRANSFORM OR BIND CARRIES ITS POSITIONAL CHILDREN IN ORDER AND AT MOST ONE NAMED EDGE BESIDE
+// THEM. The named edge is a v2.std.type_binder marker (a cast's target, a let's annotation). This module states
 // the SHAPE only, because it cannot intern the marker lexemes (v2.std.compilers.lexing imports it),
 // and type_binder_labels_conform states which label a behavior admits -- the split
 // arrow_signature_edges_conform already makes. Positional order is
