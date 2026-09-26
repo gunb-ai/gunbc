@@ -355,13 +355,14 @@ fn coercion_fold_exact_structural(
 // multiplicity is UniqueOnly and no target-selection policy applies -- answered by the same
 // procedure (find_witness under exact structural equality) and refused with the same typed
 // mismatch (coercion_wrap_find_witness_rejection). Only an Identity or Exact crossing is admitted.
-// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where non_empty`) is never structurally
-// equal to the operand's derived type -- v2.compiler.infer grounds a refinement-typed value as its
-// carrier -- so every cast INTO a refinement refuses here, the identity cast `x as Pos` from
-// `x: Pos` included; a cast from a refinement-typed value to its carrier crosses carrier to carrier
-// and is admitted. v2.std.coercion models refinement crossings only with a value-set predicate
-// supplied per domain (coercion_fold_refinement_widening), so the cast refuses rather than being
-// admitted by name. This is v2.compiler.infer's authority for `e as T`; the
+// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where non_empty`) is structurally equal
+// only to an operand whose derived type is that same refinement: v2.compiler.infer grounds a
+// parameter by its enclosing Arrow's declared type, so the identity cast `x as Pos` from `x: Pos` is
+// admitted, and a literal cast into Pos refuses (its predicate is not decided here). A cast from a
+// refinement to its carrier (`x as Int` from `x: Pos`) also refuses: v2.std.coercion models
+// refinement crossings only with a value-set predicate supplied per domain
+// (coercion_fold_refinement_widening), so no crossing is admitted by name or by a declared carrier
+// alone. This is v2.compiler.infer's authority for `e as T`; the
 // name-keyed std.coercion dag_cast_rules is not consulted
 // (gunbc.guarantee_stall coercion_two_algebras_answer_one_question_stall).
 fn coercion_cast_target_singleton(target: Node) -> CandidateSet {
