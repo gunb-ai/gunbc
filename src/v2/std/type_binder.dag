@@ -36,6 +36,22 @@ fn type_body_marker() -> Symbol {
   symbol_intern_lexeme(lexeme: "<type-body>")
 }
 
+// The alias wrapper's other edge: the aliased type expression (`type List<T> = FreeMonoid<T>`). A
+// distinct label from <type-body>, because an aliased expression is not a member -- it declares no
+// fields or variants -- and a reader telling the two apart by the target's KIND would be the hidden
+// sum gunbc#12240 review 71065 refused (a qualified head can lower to a Conj spine that reads as a
+// record).
+fn type_alias_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<type-alias>")
+}
+
+fn edge_is_type_alias(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == type_alias_marker()
+    Positional => false
+  }
+}
+
 fn edge_is_type_params(e: Edge) -> Bool {
   match e.label {
     Named { name: sym } => sym == type_params_marker()
@@ -77,40 +93,94 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
 // the only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
 // v2.compiler.symbol_index_fill (which indexes the member, never the wrapper) and
 // v2.std.compilers.semantic_decl_emission (which refuses a generic declaration).
+//
+// THREE GENERIC SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a member
+// (<type-body>), an aliased type expression (<type-alias>, type_alias_wrapper), and a bodyless
+// declaration carrying its binders alone (type_opaque_wrapper). THIS VIEW IS THE ONLY PLACE A READER
+// MAY TELL A LOWERED GENERIC ALIAS FROM A PLAIN ONE: a plain alias or plain bodyless declaration is
+// still its parse shell (PlainTypeDecl), so 'alias' has two representations until
+// gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2 is discharged, and no other
+// reader pattern-matches either.
 type TypeDeclView
   = GenericTypeDecl { binders: Node, member: Node }
+  | GenericTypeAlias { binders: Node, aliased: Node }
+  | GenericOpaqueTypeDecl { binders: Node }
   | PlainTypeDecl { member: Node }
 
-fn type_decl_wrapper_is(n: Node) -> Bool {
+// `type List<T> = std.algebra.FreeMonoid<T>` lowers its declaration edge to
+// Conj { <type-parameters>: Conj { T: T }, <type-alias>: <the lowered type expression> }. THE ONE
+// PRODUCER of the alias wrapper.
+fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: type_params_marker() }, target: binders },
+      Edge { label: Named { name: type_alias_marker() }, target: aliased }
+    ]
+  )
+}
+
+// `type MachineWidth<bits>` declares binders and no body: Conj { <type-parameters>: Conj { bits: bits } }.
+// Not an empty member: an empty Conj body would assert a record with no fields, a different fact. The
+// binders are carried because a use's arity (`MachineWidth<64>`) is checked against them. THE ONE
+// PRODUCER of the opaque wrapper.
+fn type_opaque_wrapper(binders: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: type_params_marker() }, target: binders }]
+  )
+}
+
+fn type_wrapper_edge_count(n: Node, pick: fn(Edge) -> Bool) -> Int {
+  fold(n.children, init: 0, f: fn(acc, e) { if pick(e) { acc + 1 } else { acc } })
+}
+
+fn type_decl_wrapper_params_once(n: Node) -> Bool {
   match n.kind {
-    TypeNode { connective: Conj } =>
-      (count(n.children) == 2)
-        && (fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_params(e: e) { acc + 1 } else { acc } }) == 1)
-        && (fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_body(e: e) { acc + 1 } else { acc } }) == 1)
+    TypeNode { connective: Conj } => type_wrapper_edge_count(n: n, pick: fn(e) { edge_is_type_params(e: e) }) == 1
     _ => false
   }
+}
+
+fn type_decl_wrapper_is(n: Node) -> Bool {
+  type_decl_wrapper_params_once(n: n)
+    && (count(n.children) == 2)
+    && (type_wrapper_edge_count(n: n, pick: fn(e) { edge_is_type_body(e: e) }) == 1)
+}
+
+fn type_alias_wrapper_is(n: Node) -> Bool {
+  type_decl_wrapper_params_once(n: n)
+    && (count(n.children) == 2)
+    && (type_wrapper_edge_count(n: n, pick: fn(e) { edge_is_type_alias(e: e) }) == 1)
+}
+
+fn type_opaque_wrapper_is(n: Node) -> Bool {
+  type_decl_wrapper_params_once(n: n) && (count(n.children) == 1)
 }
 
 fn type_decl_view(target: Node) -> TypeDeclView {
   if type_decl_wrapper_is(n: target) {
     GenericTypeDecl {
-      binders: type_decl_wrapper_target(wrapper: target, params: true),
-      member: type_decl_wrapper_target(wrapper: target, params: false)
+      binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) }),
+      member: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_body(e: e) })
+    }
+  } else if type_alias_wrapper_is(n: target) {
+    GenericTypeAlias {
+      binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) }),
+      aliased: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_alias(e: e) })
+    }
+  } else if type_opaque_wrapper_is(n: target) {
+    GenericOpaqueTypeDecl {
+      binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) })
     }
   } else {
     PlainTypeDecl { member: target }
   }
 }
 
-fn type_decl_wrapper_target(wrapper: Node, params: Bool) -> Node {
+fn type_decl_wrapper_target(wrapper: Node, pick: fn(Edge) -> Bool) -> Node {
   fold(wrapper.children, init: wrapper, f: fn(acc, e) {
-    if params && edge_is_type_params(e: e) {
-      e.target
-    } else if !params && edge_is_type_body(e: e) {
-      e.target
-    } else {
-      acc
-    }
+    if pick(e) { e.target } else { acc }
   })
 }
 
@@ -137,23 +207,29 @@ fn binder_conj_names(conj: Node) -> List<Symbol> {
   })
 }
 
-// WHERE THE MARKERS MAY STAND, stated over the whole tree. The type-parameter edge sits only on an
+// WHERE THE MARKERS MAY STAND, stated over the whole tree. Which wrapper a node is, is decided ONCE,
+// by type_decl_view: a node the view classifies as none of the three generic shapes is PlainTypeDecl,
+// and a plain node carries no marker at all -- so a Conj holding <type-parameters> beside an
+// unrelated edge is refused here because the view gives it no wrapper arm, not by a second list. The type-parameter edge sits only on an
 // Arrow (a fn's signature) or in a type-declaration wrapper, once, targeting a well-formed binder
-// Conj; the type-body edge sits only in a wrapper; and an Arrow's non-body Named edge -- which
+// Conj; the type-body and type-alias edges sit only in a wrapper; and an Arrow's non-body Named edge -- which
 // v2.std.node admits by SHAPE -- is the type-parameter edge. So a member carrying a binder among its
 // fields or variants is refused here, on the tree v2.compiler.resolve checks beside v2.std.node
 // well_formed, not filtered by its readers.
 fn type_binder_node_conforms(n: Node) -> Bool {
   let params = fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_params(e: e) { acc + 1 } else { acc } })
-  let bodies = fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_body(e: e) { acc + 1 } else { acc } })
+  let bodies = fold(n.children, init: 0, f: fn(acc, e) {
+    if edge_is_type_body(e: e) || edge_is_type_alias(e: e) { acc + 1 } else { acc }
+  })
   let params_ok = (params == 0) || ((params == 1) && marker_targets_conform(n: n))
   match n.kind {
     TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
     _ =>
-      if type_decl_wrapper_is(n: n) {
-        params_ok
-      } else {
-        (params == 0) && (bodies == 0)
+      match type_decl_view(target: n) {
+        PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
+        GenericTypeDecl { binders: _, member: _ } => params_ok
+        GenericTypeAlias { binders: _, aliased: _ } => params_ok
+        GenericOpaqueTypeDecl { binders: _ } => params_ok
       }
   }
 }
