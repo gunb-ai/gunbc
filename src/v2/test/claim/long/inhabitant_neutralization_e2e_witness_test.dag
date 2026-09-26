@@ -1,7 +1,7 @@
 module v2.test.long.inhabitant_neutralization_e2e_witness
 
 import v2.compiler.emit { emit }
-import v2.compiler.ingest { cross_language_compile }
+import v2.compiler.ingest { cross_language_compile, parse_tree_to_target_model_bridge }
 import v2.compiler.infer { infer }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go { go_source_text, go_target_model }
@@ -12,6 +12,7 @@ import v2.extdeps.languages.python {
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { ParseTree }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
@@ -34,18 +35,43 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fn byte-identical to ts_source_text. It stands as the permanent regression control for that
 // acceptance; the python→go member below stays a refusal guard because go is outside the closed ingest
 // set and its inhabitants remain frontier.
+//
+// THE ONE INHABITANCE CLAIM FOR THE PYTHON->TYPESCRIPT CHAIN (DESIGN section 3, a witness
+// discriminates at one interface). The claims in
+// v2.test.manual.cross_language_add_python_to_typescript start from a SUPPLIED core,
+// python_emitted_add_fn_node; this claim is what keeps that supply honest. It asserts the ROUTE as
+// well as the answer: the real parse through the real bridge produces exactly that supplied core,
+// AND the real end-to-end compile of that parse emits ts_source_text. A compile reaching the same
+// bytes by a different mechanism fails the first conjunct. It is the only claim that pays for the
+// whole compile. Two copies of the same call and assertion were deleted
+// (v2.test.claim.translate_underived_refusal and the chain-status claim of the manual module,
+// whose route conjunct moved here), since this claim implies both. Its cost is over the
+// new-witness envelope, so it stays in this long home under the declared drop
+// `gunbc.rung_drop` `python_to_typescript_compile_inhabitance_off_the_required_gate`.
 test fn inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
-      match cross_language_compile(
+      match parse_tree_to_target_model_bridge(
         parse_tree: python_parse_tree,
-        source_model: python_target_model(),
-        target_model: ts_target_model()
+        source_model: python_target_model()
       ) {
-        Accepted { value: source, diagnostics: _ } =>
-          source.carried == ts_source_text
+        Accepted { value: python_core, diagnostics: _ } =>
+          (python_core == python_emitted_add_fn_node())
+            && python_to_ts_compile_emits_canonical_add(python_parse_tree: python_parse_tree)
         Rejected { diagnostics: _ } => false
       }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn python_to_ts_compile_emits_canonical_add(python_parse_tree: ParseTree) -> Bool {
+  match cross_language_compile(
+    parse_tree: python_parse_tree,
+    source_model: python_target_model(),
+    target_model: ts_target_model()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried == ts_source_text
     Rejected { diagnostics: _ } => false
   }
 }

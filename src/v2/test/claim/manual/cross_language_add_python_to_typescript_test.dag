@@ -1,19 +1,12 @@
 module v2.test.manual.cross_language_add_python_to_typescript
 
-import v2.test.manual.python_grammar_claim {
-  python_grammar_parse_fixture
-}
 import v2.test.manual.ingest_bridge {
   ingest_bridge_realized
 }
 
 import v2.std.text { string_is_empty }
 import std.algebra { Cons, Empty }
-import v2.compiler.ingest {
-  cross_language_compile,
-  parse_tree_to_emitted_node,
-  parse_tree_to_target_model_bridge
-}
+import v2.compiler.ingest { parse_tree_to_emitted_node }
 
 import v2.compiler.infer { infer }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
@@ -24,7 +17,6 @@ import v2.extdeps.languages.python {
 }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 
-import v2.std.grammar { ParseTree }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.diagnostic {
@@ -128,40 +120,12 @@ test fn cross_language_emit_inhabitant_neutralization_round_trip_holds() -> Bool
   }
 }
 
-test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
-
-  match python_grammar_parse_fixture() {
-    Accepted { value: python_parse_tree, diagnostics: _ } =>
-
-      match parse_tree_to_target_model_bridge(
-        parse_tree: python_parse_tree,
-        source_model: python_target_model()
-      ) {
-        Accepted { value: python_core, diagnostics: _ } =>
-          python_core == python_emitted_add_fn_node()
-
-            && cross_language_compile_on_real_tree_round_trip_holds(parse_tree: python_parse_tree)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// FLIPPED 2026-09-07 per DESIGN 4b(4): the real-tree python→typescript compile refused headed by
-// infer_grounding_not_derived until the declared-inhabitant membership derivation widened to the
-// closed ingest set; it now accepts byte-identical to ts_source_text, and this helper is the
-// regression control for that acceptance.
-fn cross_language_compile_on_real_tree_round_trip_holds(parse_tree: ParseTree) -> Bool {
-  match cross_language_compile(
-    parse_tree: parse_tree,
-    source_model: python_target_model(),
-    target_model: ts_target_model()
-  ) {
-    Accepted { value: source, diagnostics: _ } =>
-      source.carried == ts_source_text
-    Rejected { diagnostics: _ } => false
-  }
-}
+// THE END-TO-END PYTHON->TYPESCRIPT COMPILE IS NOT RUN HERE. It lives, once, in
+// v2.test.long.inhabitant_neutralization_e2e_witness
+// inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds, which asserts the
+// ROUTE (the bridge's core is the supplied python_emitted_add_fn_node) as well as the bytes. The
+// claims above each discriminate at one interface over that supplied core, and their inhabitance
+// claim is that long witness (DESIGN section 3, a witness discriminates at one interface).
 
 type CrossLanguageEmitCellStatus
   = ChainProven
@@ -176,8 +140,8 @@ type CrossLanguageEmitMatrixRow {
 
 // The python→typescript row of this matrix moved ChainFailsClosedAtCheck { check:
 // ^infer_grounding_not_derived } → ChainProven on 2026-09-07 when the declared-inhabitant
-// membership derivation widened to the closed ingest set; the round-trip witnesses above are the
-// executing evidence.
+// membership derivation widened to the closed ingest set; the executing evidence is the round-trip
+// witness above over the supplied core, and the long end-to-end witness named above for the route.
 data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
 
   CrossLanguageEmitMatrixRow {

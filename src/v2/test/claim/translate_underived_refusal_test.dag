@@ -400,31 +400,13 @@ fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   }
 }
 
-// FLIPPED 2026-09-07 per DESIGN 4b(4). This was the pipeline-level frontier guard
-// `cross_language_compile_refuses_canonical_underived_holds`, asserting the python→typescript
-// compile refused headed by `infer_grounding_not_derived` while the python inhabitants sat on the
-// grounding frontier — the control the add-slice stall cited as confirming the refusal persisted.
-// The declared-inhabitant membership derivation widening to the closed ingest set
-// (v2.compiler.infer infer_node_declared_in_language_inhabitants) grounded the python and
-// typescript inhabitant fact atoms, so the compile now ACCEPTS and emits the canonical typescript
-// add fn byte-identical to `ts_source_text` — verified by execution. It stands as the permanent
-// regression control for that acceptance; the translate-level grounding-gate refusal class stays
-// covered by the synthetic underived controls in this file.
-test fn cross_language_compile_python_to_typescript_round_trip_holds() -> Bool {
-  match python_grammar_parse_fixture() {
-    Accepted { value: parse_tree, diagnostics: _ } =>
-      match cross_language_compile(
-        parse_tree: parse_tree,
-        source_model: python_target_model(),
-        target_model: ts_target_model()
-      ) {
-        Accepted { value: source, diagnostics: _ } =>
-          source.carried == ts_source_text
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
+// The python->typescript acceptance control that stood here was deleted as a duplicate: it made the
+// same end-to-end compile and asserted the same bytes as
+// v2.test.long.inhabitant_neutralization_e2e_witness
+// inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds, which also
+// asserts the route (DESIGN section 3, a witness discriminates at one interface). The
+// translate-level grounding-gate refusal class stays covered by the synthetic underived controls in
+// this file.
 
 fn translate_accepts_derived_rust_add_tree() -> Bool {
   match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
