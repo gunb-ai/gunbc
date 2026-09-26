@@ -8,6 +8,7 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
 import v2.std.logic { Bool }
+import std.unicode.types { unicode_char_code_point, unicode_scalar_utf8_octet_count }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, advance_line_prefix_indent_only, placement_from_line_prefix }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -620,6 +621,19 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: v2.std.text.String) -> Le
 }
 
 // The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token.
+// A lexeme's extent in UTF-8 OCTETS. Every walk offset (`pos`, Token and annotation start/end) is
+// carried as v2.std.diagnostic ByteRange, so it advances by the encoding form's octet count per
+// scalar, never by the scalar count: counting scalars made ByteRange hold character offsets on any
+// non-ASCII source, a name carrying two meanings. The per-scalar count is the one UTF-8 table,
+// std.unicode.types unicode_scalar_utf8_octet_count.
+fn lexeme_utf8_octet_count(lexeme: v2.std.text.String) -> Int {
+  fold_list(
+    xs: lexeme,
+    empty: 0,
+    cons: fn(total, c) { total + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c)) }
+  )
+}
+
 type LexWalkAcc {
   remaining: v2.std.text.String
   tokens: List<Token>
@@ -698,7 +712,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 tokens: acc.tokens,
                 annotations: acc.annotations,
                 line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
@@ -728,13 +742,13 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                     lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
                     file: acc.file,
                     start: acc.pos,
-                    end: acc.pos + length(xs: lexeme)
+                    end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
                   },
                   tail: acc.tokens
                 },
                 annotations: acc.annotations,
                 line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
@@ -766,12 +780,12 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,
-                    end: acc.pos + length(xs: lexeme)
+                    end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
                   },
                   tail: acc.annotations
                 },
                 line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + length(xs: lexeme),
+                pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
                 file: acc.file,
@@ -790,8 +804,16 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
   }
 }
 
+// The unmatched scalar's width in octets, so the refusal extent covers exactly that one scalar.
+fn lex_unmatched_scalar_octets(remaining: v2.std.text.String) -> Int {
+  match string_head(s: remaining) {
+    CharFound { value: c } => unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c))
+    CharAbsent => 0
+  }
+}
+
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
-// Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar when remaining is nonempty.
+// Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar, in octets, when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
@@ -799,7 +821,7 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
   )
   let at = match string_is_empty(s: result.remaining) {
     true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
-    false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + 1 } }
+    false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + lex_unmatched_scalar_octets(remaining: result.remaining) } }
   }
   if result.error {
     v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }

@@ -21,7 +21,6 @@ pub const SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES: &[&str] = &[
     "derived_realization_schedule.rs",
     "memory_governor.rs",
     "v2_compiler_body_producer.rs",
-    "v2_compiler_normalize.rs",
     "v2_compiler_target_carriers.rs",
     "v2_compiler_discovery_enumeration.rs",
     "v2_compiler_parse_engine_hooks.rs",

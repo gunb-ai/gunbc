@@ -4,6 +4,7 @@ import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
 import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
+import std.unicode.types { unicode_scalar_utf8_octet_count }
 type String = FreeMonoid<Char>
 
 type HostStringText {
@@ -192,4 +193,55 @@ fn string_all_chars_in(s: String, alphabet: String) -> Bool {
 
 fn string_any_char_in(s: String, alphabet: String) -> Bool {
   any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+
+// A UTF-8 OCTET offset (the unit of v2.std.diagnostic ByteRange) read against a scalar sequence.
+// Three arms, because an octet offset that falls inside one scalar's encoding names no scalar
+// boundary: a consumer slicing by it must refuse rather than round, and an offset past the end is
+// a different fact from a mid-scalar one.
+type OctetScalarIndex
+  = OctetAtScalarBoundary { index: Int }
+  | OctetInsideScalar
+  | OctetBeyondEnd
+
+// `found` stays OctetBeyondEnd while the walk has not yet reached `octet`.
+type OctetScalarWalk {
+  octets: Int
+  index: Int
+  found: OctetScalarIndex
+}
+
+fn octet_scalar_walk_step(w: OctetScalarWalk, code_point: Int, octet: Int) -> OctetScalarWalk {
+  match w.found {
+    OctetBeyondEnd =>
+      if w.octets == octet {
+        OctetScalarWalk { octets: w.octets, index: w.index, found: OctetAtScalarBoundary { index: w.index } }
+      } else {
+        let next = w.octets + unicode_scalar_utf8_octet_count(code_point: code_point)
+        OctetScalarWalk {
+          octets: next,
+          index: w.index + 1,
+          found: if next > octet { OctetInsideScalar } else { OctetBeyondEnd }
+        }
+      }
+    _ => w
+  }
+}
+
+// `code_points` is the scalar image host `chars` yields. The scalar index at which `octet` UTF-8
+// octets have been consumed, when that is a scalar
+// boundary. The per-scalar width is the one UTF-8 table, std.unicode.types
+// unicode_scalar_utf8_octet_count, the same one v2.compiler.tokenize advances ByteRange by.
+fn string_scalar_index_of_octet(code_points: FreeMonoid<Int>, octet: Int) -> OctetScalarIndex {
+  let walked = fold_list(
+    xs: code_points,
+    empty: OctetScalarWalk { octets: 0, index: 0, found: OctetBeyondEnd },
+    cons: fn(w, cp) { octet_scalar_walk_step(w: w, code_point: cp, octet: octet) }
+  )
+  match walked.found {
+    OctetBeyondEnd =>
+      if walked.octets == octet { OctetAtScalarBoundary { index: walked.index } } else { OctetBeyondEnd }
+    OctetAtScalarBoundary { index: i } => OctetAtScalarBoundary { index: i }
+    OctetInsideScalar => OctetInsideScalar
+  }
 }
