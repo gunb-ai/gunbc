@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
-import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count, kibibyte, kibibyte_to_byte_size }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
@@ -96,7 +96,7 @@ data v41_differential_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c
 data v41_differential_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "engram-differential" as NonEmptyStr }
 data v41_differential_process_pattern: NonEmptyStr = "gunbc_engram_file_backed" as NonEmptyStr
 data v41_differential_memory_cap: ByteSize = byte_size(count: 17179869184)
-data v41_differential_min_available_kib: Nat = 33554432
+data v41_differential_min_available: ByteSize = byte_size(count: 34359738368)
 data v41_differential_time_bound: Second = second(count: 1500)
 data v41_differential_client_bound: Second = second(count: 1620)
 data v41_differential_kill_grace: Second = second(count: 30)
@@ -105,6 +105,15 @@ data v41_differential_tokens: Nat = 2048
 
 // The bootstrap writes the program and the manifest inside the container and runs the program's
 // `--differential` entry from its file (Triton reads kernel source from the file).
+//
+// 🟡 dissolve-on: v41_differential_bootstrap -- A SHORT PYTHON PROGRAM CARRIED AS TEXT (medium-as-string):
+// two file writes and one entry call. It exists because the only image on the stores' host predates
+// this overlay, so the overlay module is not importable there and must be shipped in, and Triton will
+// not compile a kernel whose source is not in a file. DISSOLVES WHEN the differential runs inside an
+// image built from this patch (the production V4.1 image built from main after the cutover lands),
+// where the module is importable: the argv becomes `python3 -m
+// vllm.models.deepseek_v4_1.nvidia.engram_file_backed --differential <manifest>` with the manifest
+// bind-mounted, and this string, v41_overlay_program_of and the program argument are deleted together.
 data v41_differential_bootstrap: String = "import sys, runpy; p = '/var/tmp/gunbc_engram_file_backed.py'; mpath = '/var/tmp/gunbc_engram_manifest.json'; open(p, 'w').write(sys.argv[1]); open(mpath, 'w').write(sys.argv[2]); sys.argv = [p, '--differential', mpath] + sys.argv[3:]; runpy.run_path(p, run_name='__main__')"
 
 fn v41_differential_argv(image: NonEmptyStr, claim: NonEmptyStr, program: String, manifest: String) -> List<String> {
@@ -210,13 +219,17 @@ fn v41_differential_body(o: V41DifferentialOutcome) -> String {
 
 // ── OCCUPANCY: REFUSE BEFORE CLAIMING A HOST SOMETHING ELSE IS USING ────────────────────────────
 type V41HostOccupancy
-  = V41HostFree { available_kib: Nat }
+  = V41HostFree { available: ByteSize }
   | V41HostOccupied { cause: NonEmptyStr }
 
-fn v41_meminfo_available_kib(meminfo: String) -> Nat? {
+// /proc/meminfo reports kB meaning KiB (proc_meminfo(5)); the reading converts through std.measure.
+fn v41_meminfo_available(meminfo: String) -> ByteSize? {
   match list_at_optional(xs: filter(split(s: meminfo, delimiter: "\n"), l => starts_with(s: l, prefix: "MemAvailable:")), index: 0) {
     Absent => none
-    Present { value: l } => v41_nat_at(ws: v41_words(line: l), index: 1)
+    Present { value: l } => match v41_nat_at(ws: v41_words(line: l), index: 1) {
+      Absent => none
+      Present { value: kib } => Present { value: kibibyte_to_byte_size(k: kibibyte(count: kib)) }
+    }
   }
 }
 
@@ -230,12 +243,12 @@ fn v41_judge_occupancy(meminfo: String, compute_csv: String) -> V41HostOccupancy
   if length(apps) != 0 {
     V41HostOccupied { cause: join(["GPU compute processes are running: ", join(apps, "; ")], "") as NonEmptyStr }
   } else {
-    match v41_meminfo_available_kib(meminfo: meminfo) {
+    match v41_meminfo_available(meminfo: meminfo) {
       Absent => V41HostOccupied { cause: "MemAvailable could not be read, so occupancy is not established" as NonEmptyStr }
-      Present { value: kib } =>
-        if kib < v41_differential_min_available_kib {
-          V41HostOccupied { cause: join(["the host reports ", to_string(kib), " KiB available, under the ", to_string(v41_differential_min_available_kib), " KiB this run requires"], "") as NonEmptyStr }
-        } else { V41HostFree { available_kib: kib } }
+      Present { value: avail } =>
+        if byte_size_count(b: avail) < byte_size_count(b: v41_differential_min_available) {
+          V41HostOccupied { cause: join(["the host reports ", to_string(byte_size_count(b: avail)), " bytes available, under the ", to_string(byte_size_count(b: v41_differential_min_available)), " bytes this run requires"], "") as NonEmptyStr }
+        } else { V41HostFree { available: avail } }
     }
   }
 }
@@ -387,7 +400,7 @@ fn v41_differential_on_target(now_word: String, program: String, manifest: Strin
                               let ctx = SparkMaterializeContext { host: target_host, trust: trust, path: path, admin_credential: administrator as Secret, admin_credential_file: file, executor: HostCli }
                               match v41_read_occupancy(ctx: ctx) {
                                 V41HostOccupied { cause: why } => exit_failure(reason: join([target_host as String, " is occupied, so nothing was claimed or run: ", why as String], ""))
-                                V41HostFree { available_kib: _ } =>
+                                V41HostFree { available: _ } =>
                                   match claim_host_effect_live(host: target_host, purpose: v41_differential_host_purpose, term: v41_differential_host_effect_term, residue: v41_differential_residue()) {
                                     HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
                                     HostEffectClaimLanded { handle: handle } =>

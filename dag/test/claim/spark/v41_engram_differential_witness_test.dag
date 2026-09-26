@@ -1,6 +1,7 @@
 module test.claim.spark.v41_engram_differential_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { byte_size_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -60,9 +61,9 @@ test fn an_occupied_host_refuses_and_a_free_one_is_admitted() -> Bool {
   let low_mem = "MemTotal: 127000000 kB\nMemAvailable: 16000000 kB\n"
   let no_apps = "pid, process_name, used_gpu_memory [MiB]\n"
   let pair = "pid, process_name, used_gpu_memory [MiB]\n4242, ray::RayWorkerWrapper, 99700 MiB\n"
-  let free = match v41_judge_occupancy(meminfo: free_mem, compute_csv: no_apps) { V41HostFree { available_kib: k } => k == 120000000  V41HostOccupied { cause: _ } => false }
-  let gpu = match v41_judge_occupancy(meminfo: free_mem, compute_csv: pair) { V41HostOccupied { cause: c } => contains(c as String, "RayWorkerWrapper")  V41HostFree { available_kib: _ } => false }
-  let mem = match v41_judge_occupancy(meminfo: low_mem, compute_csv: no_apps) { V41HostOccupied { cause: c } => contains(c as String, "16000000 KiB available")  V41HostFree { available_kib: _ } => false }
+  let free = match v41_judge_occupancy(meminfo: free_mem, compute_csv: no_apps) { V41HostFree { available: a } => byte_size_count(b: a) == 120000000 * 1024  V41HostOccupied { cause: _ } => false }
+  let gpu = match v41_judge_occupancy(meminfo: free_mem, compute_csv: pair) { V41HostOccupied { cause: c } => contains(c as String, "RayWorkerWrapper")  V41HostFree { available: _ } => false }
+  let mem = match v41_judge_occupancy(meminfo: low_mem, compute_csv: no_apps) { V41HostOccupied { cause: c } => contains(c as String, "16384000000 bytes available")  V41HostFree { available: _ } => false }
   free && gpu && mem
 }
 
