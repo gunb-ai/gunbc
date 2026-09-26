@@ -22,6 +22,7 @@ import v2.std.node {
   ComputationBody,
   ComputationNode,
   Conj,
+  DeclarationReferenceBody,
   DirectAtomBody,
   Disj,
   Edge,
@@ -42,10 +43,12 @@ import v2.std.node {
   node_synthetic,
   well_formed,
 }
+import v2.std.qualified_name { declaration_reference_body_label_conforms, declaration_reference_node }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   ArrowBodyFormAdmissionProduction,
   ArrowBodyFormAdmissionRedNoComputationBody,
+  ArrowBodyFormAdmissionRedNoDeclarationReference,
   ArrowBodyFormAdmissionRedNoDirectAtom,
   arrow_body_form_admits_body_with_mirror,
   arrow_body_form_eval_binary_int_holds,
@@ -332,4 +335,64 @@ test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
       )
     Absent => false
   }
+}
+
+// ── a resolved declaration reference is an arrow body in its own right ─────────────────────────
+// `data d: D = A` lowers to a nullary Arrow whose body is the initializer, and resolve mints the
+// reference A as v2.std.qualified_name declaration_reference_node. Before DeclarationReferenceBody the
+// classifier read that Conj as a record construct whose first field did not target an Atom, so every
+// module holding such a declaration failed well_formed and eval refused all of its tests -- the
+// native lane canary v2.test.native_lane_smoke, refused eval_rejected_invalid_node (2026-09-26).
+
+fn abf_declaration_reference() -> Node {
+  declaration_reference_node(qn: [^abf_module, ^abf_constructor], occurrence_id: OccurrenceSynthetic)
+}
+
+// The same shape under an authored label: a one-field record whose value is itself a record.
+fn abf_reference_shaped_record() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^abf_authored_field },
+        target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+      }
+    ]
+  )
+}
+
+test fn arrow_body_form_classify_declaration_reference_holds() -> Bool {
+  match classify_arrow_body_form(target: abf_declaration_reference()) {
+    DeclarationReferenceBody => true
+    _ => false
+  }
+}
+
+test fn arrow_body_form_declaration_reference_arrow_well_formed_holds() -> Bool {
+  let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_declaration_reference())
+  well_formed(n: arrow) && declaration_reference_body_label_conforms(n: arrow)
+}
+
+// THE MUTATION: the classifier with the arm deleted reads the reference as a record construct and
+// refuses it -- the fault the canary observed.
+test fn arrow_body_form_RED_no_declaration_reference_refuses_reference_body_holds() -> Bool {
+  arrow_body_form_admits_body_with_mirror(
+    target: abf_declaration_reference(),
+    mirror: ArrowBodyFormAdmissionProduction
+  )
+    && !arrow_body_form_admits_body_with_mirror(
+      target: abf_declaration_reference(),
+      mirror: ArrowBodyFormAdmissionRedNoDeclarationReference
+    )
+}
+
+// The label half: the shape alone does not make a reference. An authored label over the same shape
+// is refused by v2.std.qualified_name, so the new arm admits nothing the record gate refused before.
+test fn arrow_body_form_reference_shape_without_marker_refused_holds() -> Bool {
+  let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record())
+  !declaration_reference_body_label_conforms(n: arrow)
+}
+
+test fn arrow_body_form_declaration_reference_not_an_eval_entry_holds() -> Bool {
+  !arrow_body_admits_eval_entry(form: DeclarationReferenceBody)
 }

@@ -34,6 +34,7 @@ import v2.std.node {
   arrow_body_record_construct_conforms,
   arrow_body_target_is_valid_realization,
   classify_arrow_body_form,
+  DeclarationReferenceBody,
 }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.optional { Optional, Present, optional_absent, optional_present }
@@ -48,6 +49,7 @@ type ArrowBodyFormAdmissionMirror
   = ArrowBodyFormAdmissionProduction
   | ArrowBodyFormAdmissionRedNoDirectAtom
   | ArrowBodyFormAdmissionRedNoComputationBody
+  | ArrowBodyFormAdmissionRedNoDeclarationReference
 
 fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
   match target.kind {
@@ -67,6 +69,17 @@ fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyFo
   }
 }
 
+// THE CANARY MUTATION (gunbc native lane, 2026-09-26): the classifier as it stood before
+// DeclarationReferenceBody, reading every Conj body as a record construct.
+fn classify_arrow_body_form_red_no_declaration_reference(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    _ => UnsupportedArrowBody
+  }
+}
+
 fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAdmissionMirror) -> Bool {
   match mirror {
     ArrowBodyFormAdmissionProduction => arrow_body_target_is_valid_realization(target: target)
@@ -74,6 +87,7 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
       match classify_arrow_body_form_red_no_direct_atom(target: target) {
         UnsupportedArrowBody => false
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
         DirectAtomBody => true
         ComputationBody { behavior: _ } => true
       }
@@ -81,6 +95,15 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
       match classify_arrow_body_form_red_no_computation_body(target: target) {
         UnsupportedArrowBody => false
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
+        DirectAtomBody => true
+        ComputationBody { behavior: _ } => true
+      }
+    ArrowBodyFormAdmissionRedNoDeclarationReference =>
+      match classify_arrow_body_form_red_no_declaration_reference(target: target) {
+        UnsupportedArrowBody => false
+        RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DeclarationReferenceBody => true
         DirectAtomBody => true
         ComputationBody { behavior: _ } => true
       }

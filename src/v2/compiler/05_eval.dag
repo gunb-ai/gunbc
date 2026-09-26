@@ -23,7 +23,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_body_label_conforms, declaration_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -110,6 +110,7 @@ import v2.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
+  locally_well_formed,
   node_for_structural_equality,
   well_formed,
 }
@@ -2579,13 +2580,53 @@ fn eval_runtime_node(
   }
 }
 
+// THE EVAL GATE NAMES THE NODE THAT FAILED, NOT THE ROOT IT SAT UNDER. v2.std.node well_formed is a
+// conjunction of locally_well_formed over the subtree, so its refusal has a first witness, and
+// that witness is the only fact that tells a reader what to repair: anchoring the refusal at the
+// prepared module's root made one ill-formed declaration refuse every test in the module under an
+// occurrence that located nothing (the native lane canary, 2026-09-26). The walk is the same
+// preorder fold_node well_formed takes, and each node is held to both halves of the arrow-body
+// form: v2.std.node's shape and v2.std.qualified_name's declaration-reference label.
+fn eval_first_ill_formed_node(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        if locally_well_formed(n: n0) && declaration_reference_body_label_conforms(n: n0) {
+          optional_absent()
+        } else {
+          optional_present(value: n0)
+        }
+      },
+      step: fn(acc, _, child) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child
+        }
+      }
+    }
+  )
+}
+
+fn eval_ill_formed_input(tree: InferredTree, inputs: Inputs) -> Optional<Node> {
+  match eval_first_ill_formed_node(n: tree.root) {
+    Present { value: bad } => optional_present(value: bad)
+    Absent => eval_first_ill_formed_node(n: inputs.root)
+  }
+}
+
+fn eval_ill_formed_refusal(at: Node) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)) }
+}
+
 fn eval_with_context(
   tree: InferredTree,
   context: EvalContext,
   inputs: Inputs
 ) -> Outcome<RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2594,17 +2635,13 @@ fn eval_with_context(
         runtime: eval_runtime(),
         effect_io: eval_context_effect_io(context: context)
       )
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
 fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2613,11 +2650,6 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
         runtime: eval_runtime(),
         effect_io: EffectIoEvalAbsent
       )
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
