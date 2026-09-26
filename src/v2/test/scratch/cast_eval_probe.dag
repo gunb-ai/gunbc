@@ -1,0 +1,62 @@
+module v2.test.scratch.cast_eval_probe
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme, dag_type_atom_node }
+import v2.std.optional { Optional, optional_present }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
+import v2.std.node { Arrow, TypeNode, ComputationNode, Edge, Node, Positional, Transform, node_synthetic }
+import v2.std.type_binder { cast_target_edge }
+import v2.std.runtime { RuntimeValue }
+
+fn cvp_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
+    resolved: key,
+    algebra: dag_type_atom_node(identity: ^dag_binding_type_int),
+    descent: termination_proof_witness_for_node(n: key)
+  ))
+}
+
+fn cvp_lit(s: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: s, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } => dag_type_atom_node(identity: ^cvp_bad)
+  }
+}
+
+fn cvp_run(root: Node) -> Outcome<RuntimeValue> {
+  eval(tree: InferredTree { root: root, facts: PartialFunction { lookup: cvp_lookup } },
+       interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: root))
+}
+
+fn cvp_cast(children: List<Edge>) -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Transform }, children: children)
+}
+
+fn cvp_verdict(o: Outcome<RuntimeValue>, expect: Outcome<RuntimeValue>) -> String {
+  match o {
+    Accepted { value: v, diagnostics: _ } =>
+      match expect {
+        Accepted { value: e, diagnostics: _ } => if v == e { "ACC-EQ" } else { "ACC-NE" }
+        Rejected { diagnostics: _ } => "ACC-?"
+      }
+    Rejected { diagnostics: d } => concat("REJ ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+fn run() -> String {
+  let op = Edge { label: Positional, target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_coerce()) }
+  let seven = Edge { label: Positional, target: cvp_lit(s: "7") }
+  let eight = Edge { label: Positional, target: cvp_lit(s: "8") }
+  let t = cast_target_edge(target_type: node_synthetic(kind: TypeNode { connective: Arrow }, children: [Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) }, Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) }]))
+  let base = cvp_run(root: cvp_lit(s: "7"))
+  concat(concat("cast7: ", cvp_verdict(o: cvp_run(root: cvp_cast(children: [op, seven, t])), expect: base)),
+    concat(concat(" two_operand: ", cvp_verdict(o: cvp_run(root: cvp_cast(children: [op, seven, eight, t])), expect: base)),
+      concat(" cast8_vs7: ", cvp_verdict(o: cvp_run(root: cvp_cast(children: [op, eight, t])), expect: base))))
+}

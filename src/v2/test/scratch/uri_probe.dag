@@ -1,0 +1,42 @@
+module v2.test.scratch.uri_probe
+
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation { reference_conservation_subject_of_read }
+import v2.compiler.reference_conservation_admission { conservation_read_of }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected, Diagnostic, NodeLocus }
+import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
+
+fn up_atoms(n: Node) -> String {
+  fold(node_subtree_nodes(root: n), init: "", f: fn(acc, x) {
+    match x.kind {
+      TypeNode { connective: Atom { identity: id } } => concat(acc, concat(" ", symbol_lexeme(sym: id)))
+      _ => acc
+    }
+  })
+}
+
+fn up_diag(d: Diagnostic) -> String {
+  concat(symbol_lexeme(sym: d.reason), match d.at {
+    NodeLocus { anchor: a } => concat(" @", up_atoms(n: a.at))
+    _ => " @?"
+  })
+}
+
+fn run(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => "unreadable"
+    FilesystemReadSucceeded { content: text } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => "grammar"
+        Accepted { value: prepared, diagnostics: residue } =>
+          match reference_conservation_subject_of_read(read: conservation_read_of(path: path, text: text), lm: dag_language_model(), prepared: prepared, residue: residue).normalized {
+            Accepted { value: _, diagnostics: _ } => "NORMALIZED-ACC"
+            Rejected { diagnostics: d } => fold(d.tail, init: up_diag(d: d.head), f: fn(acc, x) { concat(acc, concat("\n", up_diag(d: x))) })
+          }
+      }
+  }
+}

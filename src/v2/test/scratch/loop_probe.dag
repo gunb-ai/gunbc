@@ -1,0 +1,17 @@
+module v2.test.scratch.loop_probe
+
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node }
+import v2.std.compilers.lexing { symbol_lexeme }
+
+fn cp_case(name: String, src: String) -> String {
+  concat(name, concat(": ", concat(match tpb_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => "ACC"
+    Rejected { diagnostics: d } => concat("REJ ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }, "\n")))
+}
+
+fn run() -> String {
+  cp_case(name: "fold_named", src: "module p\n\nfn step(acc: Int, x: Int) -> Int { acc + x }\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n")
+}

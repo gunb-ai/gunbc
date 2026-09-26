@@ -1,0 +1,59 @@
+module v2.test.scratch.cast_probe
+
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Atom, ComputationNode, Node, Transform, TypeNode, node_subtree_nodes }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { list_at_optional }
+import v2.compiler.infer { infer }
+import v2.std.type_binder { cast_target_optional }
+import v2.std.optional { Present, Absent }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.integer { integer_int_to_decimal_string }
+
+fn cp_count_casts(n: Node) -> Int {
+  fold(node_subtree_nodes(root: n), init: 0, f: fn(acc, x) {
+    match cast_target_optional(n: x) {
+      Present { value: _ } => acc + 1
+      Absent => acc
+    }
+  })
+}
+
+fn cp_operand_kind(n: Node) -> String {
+  fold(node_subtree_nodes(root: n), init: "", f: fn(acc, x) {
+    match cast_target_optional(n: x) {
+      Present { value: _ } =>
+        match list_at_optional(xs: node_positional_child_targets(node: x), index: 1) {
+          Present { value: operand } =>
+            match operand.kind {
+              ComputationNode { behavior: Transform } => concat(acc, concat(" op=Transform/", integer_int_to_decimal_string(value: count(operand.children))))
+              TypeNode { connective: Atom { identity: id } } => concat(acc, concat(" op=Atom:", symbol_lexeme(sym: id)))
+              _ => concat(acc, " op=other")
+            }
+          Absent => concat(acc, " op=none")
+        }
+      Absent => acc
+    }
+  })
+}
+
+fn cp_verdict(o: Outcome<Node>) -> String {
+  match o {
+    Accepted { value: v, diagnostics: _ } =>
+      concat(concat(concat("ACC casts=", integer_int_to_decimal_string(value: cp_count_casts(n: v))), cp_operand_kind(n: v)),
+        match infer(tree: v) {
+          Accepted { value: _, diagnostics: _ } => " INFER-ACC"
+          Rejected { diagnostics: d } => concat(" INFER-REJ ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+        })
+    Rejected { diagnostics: d } => concat("REJ ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+fn cp_case(name: String, src: String) -> String {
+  concat(name, concat(": ", concat(cp_verdict(o: tpb_assemble(src: src)), "\n")))
+}
+
+fn run() -> String {
+  concat(cp_case(name: "pos_param_as_bool", src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Bool {\n  x as Bool\n}\n"), concat(cp_case(name: "pos_param_as_pos", src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n"), cp_case(name: "int_param_as_bool", src: "module p\n\nfn f(x: Int) -> Bool {\n  x as Bool\n}\n")))
+}

@@ -1,0 +1,71 @@
+module v2.test.scratch.cast_emit_probe
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
+import v2.extdeps.languages.rust { rust_operator_realizations_catalog_node, rust_value_expression_projection, rust_fn_add_lex }
+import v2.extdeps.languages.rust_test { rust_binop_target_model_staging, rust_target_model_with_operators_and_lex }
+import v2.std.optional { Optional, optional_absent }
+import v2.std.compilers.target_model {
+  canonical_operation_op_coerce,
+  target_value_expression_binding_ref,
+  target_value_expression_primitive_apply,
+  target_value_expression_primitive_apply_to_concrete_tokens
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.node { ComputationNode, Edge, Node, Positional, Transform, node_synthetic }
+import v2.std.type_binder { cast_target_edge }
+import v2.std.compilers.lexing { symbol_lexeme }
+
+fn cep_miss(key: Node) -> Optional<InferredFacts> { optional_absent() }
+
+fn cep_cast_body() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_token_kw_as) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) },
+      cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int))
+    ]
+  )
+}
+
+fn cep_producer() -> String {
+  match emit(
+    tree: InferredTree {
+      root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: cep_cast_body()),
+      facts: PartialFunction { lookup: cep_miss }
+    },
+    target: rust_binop_target_model_staging()
+  ) {
+    Accepted { value: m, diagnostics: _ } => concat("PRODUCER ", m.carried)
+    Rejected { diagnostics: d } => concat("PRODUCER-REJ ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+fn cep_vep() -> String {
+  match bind_outcome(
+    o: target_value_expression_primitive_apply_to_concrete_tokens(
+      expr: target_value_expression_primitive_apply(
+        operation: canonical_operation_op_coerce(),
+        operands: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+      ),
+      projection: rust_value_expression_projection(),
+      catalog: rust_operator_realizations_catalog_node()
+    ),
+    f: fn(tokens) {
+      serialize_concrete_syntax_tokens_to_source_string(
+        target: rust_target_model_with_operators_and_lex(operator_catalog: rust_operator_realizations_catalog_node(), lex: rust_fn_add_lex()),
+        tokens: tokens
+      )
+    }
+  ) {
+    Accepted { value: s, diagnostics: _ } => concat("VEP ", s)
+    Rejected { diagnostics: d } => concat("VEP-REJ ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+fn run() -> String {
+  concat(cep_vep(), concat(" || ", cep_producer()))
+}
