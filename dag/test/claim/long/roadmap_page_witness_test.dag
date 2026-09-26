@@ -2044,11 +2044,12 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
   }
 }
 
-// The assignment mapping stays honest: when an attempt exists, the assignee field shows the
-// attempt's session identity (its short key); with no attempt it falls back to the standing's
-// holder. The fixture view carries a claimed standing AND one supplied attempt here, so the
-// attempt identity wins.
-test fn witness_issue_detail_assignee_shows_attempt_identity() -> Bool {
+// The assignment mapping after the legacy-session cleanup (owner 2026-09-26): when an attempt
+// exists, the assignee renders as the WORKFLOW principal — a session or attempt key is not an
+// identity and never surfaces as one (the attempt evidence lives in the Work tab); with no
+// attempt it falls back to the standing's holder. The fixture view carries a claimed standing AND
+// one supplied attempt here, so the Fabric chip wins.
+test fn witness_issue_detail_assignee_shows_the_workflow_principal_for_live_attempts() -> Bool {
   match try_serialize_html_source(node: issue_detail_page_launch(
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
@@ -2060,7 +2061,10 @@ test fn witness_issue_detail_assignee_shows_attempt_identity() -> Bool {
     expected_revision: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "title=\"feedface… — feedface… (legacy, unverified)\"") == 1
+      let region = string_at(parts: split(s: string_at(parts: split(s: h, delimiter: "issue-field-label\">assignee"), index: 1), delimiter: "</form>"), index: 0)
+      string_contains(s: region, pattern: "title=\"Fabric — fabric@gunb.ai\"")
+        && string_contains(s: region, pattern: "issue-avatar issue-avatar-workflow")
+        && !string_contains(s: region, pattern: "feedface")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
   }
 }
@@ -2338,3 +2342,4 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
       occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>Current plan</summary>") == 1
   }
 }
+

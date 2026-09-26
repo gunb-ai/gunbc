@@ -1464,7 +1464,10 @@ fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
 // string, so the chip and the rail render through the display projection. Absent names no holder.
 fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> EventPrincipal? {
   match attempts.first() {
-    Present { value: p } => Present { value: LegacyEmailPrincipal { email: attempt_key_short_form(key: p.attempt_key) as NonEmptyStr, authentication_unestablished: true } }
+    // A live attempt's holder is the WORKFLOW principal, never the attempt key — a session or
+    // attempt string is not an identity (owner 2026-09-26: "get off the legacy session thing";
+    // the identity ruling's PrincipalRef law). The attempt evidence itself lives in the Work tab.
+    Present { value: _ } => Present { value: EventPrincipalAuthenticated { ref: fabric_workflow_principal } }
     Absent =>
       match view.standing {
         Absent => none

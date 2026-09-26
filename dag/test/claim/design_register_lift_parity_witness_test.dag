@@ -420,7 +420,7 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_issue_current_plan_collapses_once_done, the register censuses unchanged. Derived by
 // execution (roadmap_css_derived_digest on this tree, f90047404631dff2); this digest only pins
 // bytes.
-data roadmap_css_lift_parity_digest: String = "f90047404631dff2"
+data roadmap_css_lift_parity_digest: String = "ffd1d647dcc0cfa4"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

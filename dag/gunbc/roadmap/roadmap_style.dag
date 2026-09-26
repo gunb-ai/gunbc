@@ -1239,6 +1239,19 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_2, b: space_4)),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Flex, value: "1"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-submit, .issue-comment-submit" }, decls: [
+      decl(prop: Width, value: "fit-content"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-action-text" }, decls: [
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-action-text:hover" }, decls: [
+      decl(prop: BorderColor, value: "var(--issue-action)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-assign-suggestions" }, decls: [
       decl(prop: Display, value: "none"),
