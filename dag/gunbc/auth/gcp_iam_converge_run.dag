@@ -1,26 +1,26 @@
 module gunbc.auth.gcp_iam_converge_run
 
-import std.types { Int, List, NonEmptyStr, String, Secret, Bool }
+import std.types { Int, List, NonEmptyStr, String, Secret, Bool, Timestamp }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import v2.std.optional { Present, Absent }
+import std.decimal { decimal_digits_only }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.github.actions_environment { github_run_id_variable_name, github_output_variable_name }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_output_variable_name }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { ensure_access_token, WorkloadIdentityToken, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused }
 import gunbc.auth.approval_gate {
-  approval_refusal_text, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll,
+  approval_refusal_text, ApprovalGate, GateAdmitted, GateRefused, approval_gate_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
   approval_standing_read, StandingReadAt, StandingClockUnreadable,
 }
-import gunbc.auth.approval_request_client { stored_request_from_authorization }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, provision_dedicated_federation }
+import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
 import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstateRefused,
   GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
-  gcp_iam_converge_targets, gcp_iam_converge_request, observe_and_plan_estate, diff_targets,
+  gcp_iam_converge_request, observe_and_plan_estate, diff_targets, execute_approved_estate,
 }
 
 // ── THE CONVERGING RUN (fleet-converge mode gcp_iam_converge, its own job on srv1) ────────────
@@ -80,9 +80,33 @@ fn converge_token() -> Secret? {
   if t == "" { none } else { Present { value: t as Secret } }
 }
 
+// THE ATTEMPT IS THE RUN AND ITS ATTEMPT NUMBER (HOLD review 5326329930, finding 3). GitHub keeps
+// GITHUB_RUN_ID across a re-run and increments GITHUB_RUN_ATTEMPT
+// (https://docs.github.com/en/actions/reference/workflows-and-actions/variables), so an identity of
+// the run id alone would let attempt 2 of an identical diff find attempt 1's approval under the same
+// escalation id. Both parts are required and both must be decimal; anything else refuses.
+fn attempt_identity_of(run_id: String, run_attempt: String) -> AttemptIdentity? {
+  if run_id != "" && run_attempt != "" && decimal_digits_only(s: run_id) && decimal_digits_only(s: run_attempt) {
+    Present { value: join(["run-", run_id, "-attempt-", run_attempt], "") as AttemptIdentity }
+  } else {
+    none
+  }
+}
+
 fn run_attempt() -> AttemptIdentity? {
-  let id = actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr)
-  if id == "" { none } else { Present { value: concat("run-", id) as AttemptIdentity } }
+  attempt_identity_of(
+    run_id: actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr),
+    run_attempt: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr),
+  )
+}
+
+// THE ONE ADMISSION FOLD, used before the approval output is published AND before any effect
+// (HOLD review 5326329930, finding 2). approval_gate_from_poll is the live gate: it derives the
+// grant for exactly this request and then asks std.scoped_authorization to permit it at the observed
+// instant, so an approval whose execute_by has passed, or that is not yet valid, refuses here. The
+// recorded-only fold conveys no right to begin and is not used on this route.
+fn gcp_iam_converge_admission(poll: ApprovalPollStanding, request: AuthorizationRequest<GcpIamEstateDiff>, observed_at: Timestamp) -> ApprovalGate<GcpIamEstateDiff> {
+  approval_gate_from_poll(poll: poll, request: request, observed_at: observed_at)
 }
 
 // ── The request step ─────────────────────────────────────────────────────────────────────────
@@ -111,10 +135,10 @@ fn request_and_wait(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessE
           match approval_poll_ticks(remaining: gcp_iam_converge_poll_ticks(), cadence: gcp_iam_converge_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
             PollClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable while waiting for the decision")
             PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "gcp iam converge: filed; no decision within the window, nothing applied")
-            PollObservedAt { standing: s, observed_at: _ } =>
-              match approval_recorded_from_poll(poll: s, request: request) {
-                ApprovalNotRecorded { cause: c } => exit_failure(reason: concat("gcp iam converge: not approved, nothing applied: ", approval_refusal_text(cause: c)))
-                ApprovalRecorded { authorization: _ } => mark_approved(request: request)
+            PollObservedAt { standing: s, observed_at: at } =>
+              match gcp_iam_converge_admission(poll: s, request: request, observed_at: at) {
+                GateRefused { cause: c } => exit_failure(reason: concat("gcp iam converge: not admitted, nothing applied: ", approval_refusal_text(cause: c)))
+                GateAdmitted { authorization: _ } => mark_approved(request: request)
               }
           }
       }
@@ -147,22 +171,6 @@ fn gcp_iam_converge_request_wet() -> ProcessExit
 
 // ── The apply step ───────────────────────────────────────────────────────────────────────────
 
-fn target_approved(f: DedicatedFederation, d: GcpIamEstateDiff) -> Bool {
-  fold(diff_targets(d: d), init: false, f: (acc, t) => acc || t == f.label)
-}
-
-// THE APPROVED TARGETS, in declaration order, each under the one provisioning protocol. The first
-// failure stops the fold: a later target is not attempted on a half-converged estate.
-fn actuate_approved(d: GcpIamEstateDiff, token: Secret) -> ProcessExit
-{
-  fold(filter(gcp_iam_converge_targets, f => target_approved(f: f, d: d)), init: ExitSuccess, f: (acc, f) =>
-    match acc {
-      ExitSuccess => provision_dedicated_federation(f: f, token: token)
-      failed => failed
-    }
-  )
-}
-
 fn readback_converged(observe: Secret) -> ProcessExit
 {
   match observe_and_plan_estate(token: observe) {
@@ -172,10 +180,12 @@ fn readback_converged(observe: Secret) -> ProcessExit
   }
 }
 
-// THE RECORDED APPROVAL IS RE-READ HERE, not taken from the step output: the request this step derives
-// NOW -- from a fresh plan, for this run's attempt -- must be the one the store holds an approval for.
-// A diff that moved after the tap derives a different revision, and approval_recorded_from_poll
-// refuses a decision for another revision.
+// THE APPROVAL IS RE-ADMITTED HERE, not taken from the step output: the request this step derives
+// NOW -- from a fresh plan, for this run's attempt -- must be the one the store holds an approval
+// for, and that approval must be live at this instant. A diff that moved after the tap derives a
+// different revision and refuses; an approval past its execute_by refuses. Then EXACTLY the approved
+// effects are executed (gunbc.auth.gcp_iam_converge execute_approved_estate): request.subject is the
+// approved diff, because its revision is the approved one.
 fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret) -> ProcessExit
 {
   match approval_instant_now() {
@@ -183,17 +193,20 @@ fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>
     Present { value: now } =>
       match approval_standing_read(escalation_id: request.escalation_id, expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
         StandingClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable at the recorded-approval read")
-        StandingReadAt { standing: s, observed_at: _ } =>
-          match approval_recorded_from_poll(poll: s, request: request) {
-            ApprovalNotRecorded { cause: c } => exit_failure(reason: concat("gcp iam converge: no recorded approval for the diff as it stands now; nothing applied: ", approval_refusal_text(cause: c)))
-            ApprovalRecorded { authorization: _ } =>
+        StandingReadAt { standing: s, observed_at: at } =>
+          match gcp_iam_converge_admission(poll: s, request: request, observed_at: at) {
+            GateRefused { cause: c } => exit_failure(reason: concat("gcp iam converge: no live approval for the diff as it stands now; nothing applied: ", approval_refusal_text(cause: c)))
+            GateAdmitted { authorization: _ } =>
               match converge_token() {
                 Absent => exit_failure(reason: concat("gcp iam converge: approved, but no iam-converge token reached this step; nothing applied (", concat(iam_converge_token_env as String, " unset)")))
-                Present { value: t } =>
-                  match actuate_approved(d: request.subject, token: t) {
-                    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-                    ExitSuccess => readback_converged(observe: observe)
+                Present { value: t } => {
+                  let refused = execute_approved_estate(d: request.subject, token: t)
+                  if refused != "" {
+                    exit_failure(reason: concat("gcp iam converge: an approved effect refused; nothing after it was applied: ", refused))
+                  } else {
+                    readback_converged(observe: observe)
                   }
+                }
               }
           }
       }

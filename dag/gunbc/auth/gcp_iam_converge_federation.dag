@@ -11,12 +11,17 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 // Mt. Collins boot's construction (gunbc.auth.mtcollins1_boot_federation) for the same reasons -- a
 // DEDICATED POOL WITH ONE PROVIDER, the job pinned by its `environment` claim beside the workflow
 // file at main and a dispatch on main, never the repo-wide pool whose principals every job in the
-// repository can become. The account it reaches is iam-observe (gunbc.auth.gcp_iam_converge), which
-// reads policies and changes nothing.
+// repository can become. The accounts it reaches are iam-observe, which reads policies and changes
+// nothing, and iam-converge, which the job impersonates only after a live approval.
 //
-// WHAT THIS JOB CAN NEVER BECOME: iam-converge. Its policy names only the approval broker's minter,
-// so no federated identity -- this one included -- holds a path to the actuation credential except
-// through an approval.
+// THIS POOL'S PRINCIPAL SET IS ALSO THE ONE PATH TO iam-converge (operator decision B, 2026-09-25):
+// the bootstrap binds workloadIdentityUser for this set on iam-converge's own policy and on
+// iam-observe's, and on nothing else. Approval-necessity is enforced by the job's reviewed code
+// (gunbc.auth.gcp_iam_converge_run), not by this credential boundary -- the census states that rung
+// (gunbc.auth.privileged_effect_census gcp_iam_approval_enforced_in_reviewed_code). Because the set is
+// the whole pool (`/*`), a second provider in this pool would admit new identities into it, so the
+// pool and its provider are bootstrap-only and outside every population iam-converge can write or
+// create in (gunbc.auth.gcp_iam_converge iam_converge_reach_excludes_its_own_trust).
 
 data gcp_iam_converge_environment: NonEmptyStr = "gcp-iam-converge"
 
