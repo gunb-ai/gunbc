@@ -242,6 +242,21 @@ pub struct FinitePowerSet<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
+pub fn freemonoid_empty<T: Clone>() -> Rc<FreeMonoid<T>> {
+    Rc::new(vec![])
+}
+
+pub fn list_append<T: Clone>(
+    left: Rc<FreeMonoid<T>>,
+    right: Rc<FreeMonoid<T>>,
+) -> Rc<FreeMonoid<T>> {
+    v1_rt::concat(left.clone(), right.clone())
+}
+
+pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
+    v1_rt::rc_list_push(xs.clone(), item.clone())
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound(
     serialize = "T: Clone + serde::Serialize",
@@ -1267,7 +1282,7 @@ pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: Some(CostShape::ShapeLinearScan),
@@ -1277,7 +1292,7 @@ pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "length".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: Some(CostShape::ShapeLinearScan),
@@ -1341,7 +1356,7 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "length".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: std::option::Option::None,
@@ -1351,7 +1366,7 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: std::option::Option::None,
@@ -1647,7 +1662,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: Some(CostShape::ShapeLinearScan),
@@ -1819,7 +1834,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "length".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: Some(CostShape::ShapeLinearScan),
@@ -2027,7 +2042,7 @@ pub fn finitely_supported_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate
             name: "length".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: std::option::Option::None,
@@ -2037,7 +2052,7 @@ pub fn finitely_supported_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate
             name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
+                name: "std.nat.Nat".to_string(),
             }),
             size_effect: std::option::Option::None,
             cost_shape: std::option::Option::None,

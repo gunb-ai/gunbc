@@ -3,8 +3,7 @@ module product.compute_board.spice_projection
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { measure_count }
-import std.algebra { Empty }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { Empty, list_snoc_item }
 import v2.extdeps.formats.spice {
   Capacitor,
   DeckComponent,

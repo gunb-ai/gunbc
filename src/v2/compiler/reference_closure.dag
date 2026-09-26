@@ -1,7 +1,7 @@
 module v2.compiler.reference_closure
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { contains, fold_list, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { contains, fold_list }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -48,13 +48,24 @@ import v2.std.qualified_name {
 // cause. Substituting the whole roster for an unreadable member would be the absorbing arm DESIGN
 // section 5 forbids.
 
-type ReferenceClosureMember {
+// WHAT THE SUPPLIER HANDS BACK FOR ONE MEMBER, and what the fold hands back for every member it
+// reached. `payload` is whatever the caller produced on the way to `resolved` (the door carries the
+// member's normalized tree), returned beside the module identity so a consumer that needs it again
+// reads it here instead of producing it a second time (DESIGN section 2).
+type ReferenceClosureMember<P> {
   resolved: Node
   import_targets: FreeMonoid<QualifiedName>
+  payload: P
 }
 
-type ReferenceClosureState {
+type ReferenceClosureVisit<P> {
+  module: QualifiedName
+  member: ReferenceClosureMember<P>
+}
+
+type ReferenceClosureState<P> {
   reached: FreeMonoid<QualifiedName>
+  visits: FreeMonoid<ReferenceClosureVisit<P>>
   queue: FreeMonoid<QualifiedName>
 }
 
@@ -87,6 +98,7 @@ fn reference_closure_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // builds a path as a cons list, so every TAIL of a spine is itself spine-shaped: descending would
 // read `v2.std.node.Node` as `std.node.Node` too and attribute an edge to a module the reference
 // never named.
+
 fn reference_closure_declaring_paths(
   n: Node,
   acc: FreeMonoid<QualifiedName>
@@ -121,8 +133,8 @@ fn reference_closure_absorb_owner(
   }
 }
 
-fn reference_closure_neighbours(
-  member: ReferenceClosureMember,
+fn reference_closure_neighbours<P>(
+  member: ReferenceClosureMember<P>,
   roster: FreeMonoid<QualifiedName>
 ) -> ReferenceClosureNeighbours {
   let referenced = fold_list(
@@ -141,10 +153,10 @@ fn reference_closure_neighbours(
   )
 }
 
-fn reference_closure_enqueue(
-  state: ReferenceClosureState,
+fn reference_closure_enqueue<P>(
+  state: ReferenceClosureState<P>,
   modules: FreeMonoid<QualifiedName>
-) -> ReferenceClosureState {
+) -> ReferenceClosureState<P> {
   fold_list(
     xs: modules,
     empty: state,
@@ -154,7 +166,11 @@ fn reference_closure_enqueue(
       } else if contains(xs: s.queue, item: m, eq: reference_closure_qn_eq) {
         s
       } else {
-        ReferenceClosureState { reached: s.reached, queue: list_snoc_item(xs: s.queue, item: m) }
+        ReferenceClosureState {
+          reached: s.reached,
+          visits: s.visits,
+          queue: list_snoc_item(xs: s.queue, item: m)
+        }
       }
     }
   )
@@ -163,13 +179,13 @@ fn reference_closure_enqueue(
 // Terminates because a module enters the queue only when it is neither reached nor queued, every
 // step moves one module from the queue to `reached`, and every module that can be enqueued is an
 // owner drawn from the finite roster.
-fn reference_closure_walk(
-  state: ReferenceClosureState,
+fn reference_closure_walk<P>(
+  state: ReferenceClosureState<P>,
   roster: FreeMonoid<QualifiedName>,
-  resolve_member: fn(QualifiedName) -> Outcome<ReferenceClosureMember>
-) -> Outcome<FreeMonoid<QualifiedName>> {
+  resolve_member: fn(QualifiedName) -> Outcome<ReferenceClosureMember<P>>
+) -> Outcome<FreeMonoid<ReferenceClosureVisit<P>>> {
   match state.queue {
-    Empty => outcome_accepted(value: state.reached)
+    Empty => outcome_accepted(value: state.visits)
     Cons { head: member_module, tail: rest } =>
       bind_outcome(
         o: resolve_member(member_module),
@@ -185,6 +201,10 @@ fn reference_closure_walk(
                 state: reference_closure_enqueue(
                   state: ReferenceClosureState {
                     reached: list_snoc_item(xs: state.reached, item: member_module),
+                    visits: list_snoc_item(
+                      xs: state.visits,
+                      item: ReferenceClosureVisit { module: member_module, member: member }
+                    ),
                     queue: rest
                   },
                   modules: modules
@@ -198,15 +218,19 @@ fn reference_closure_walk(
   }
 }
 
-fn reference_derived_closure(
+fn reference_derived_closure<P>(
   entry: QualifiedName,
   entry_locus: Node,
   roster: FreeMonoid<QualifiedName>,
-  resolve_member: fn(QualifiedName) -> Outcome<ReferenceClosureMember>
-) -> Outcome<FreeMonoid<QualifiedName>> {
+  resolve_member: fn(QualifiedName) -> Outcome<ReferenceClosureMember<P>>
+) -> Outcome<FreeMonoid<ReferenceClosureVisit<P>>> {
   if contains(xs: roster, item: entry, eq: reference_closure_qn_eq) {
     reference_closure_walk(
-      state: ReferenceClosureState { reached: Empty, queue: Cons { head: entry, tail: Empty } },
+      state: ReferenceClosureState {
+        reached: Empty,
+        visits: Empty,
+        queue: Cons { head: entry, tail: Empty }
+      },
       roster: roster,
       resolve_member: resolve_member
     )
@@ -216,4 +240,9 @@ fn reference_derived_closure(
       at: entry_locus
     ))
   }
+}
+
+// The reached modules alone, in visit order, for a consumer that asks only which modules.
+fn reference_closure_modules<P>(visits: FreeMonoid<ReferenceClosureVisit<P>>) -> FreeMonoid<QualifiedName> {
+  fold_list(xs: visits, empty: Empty, cons: fn(acc, v) { list_snoc_item(xs: acc, item: v.module) })
 }

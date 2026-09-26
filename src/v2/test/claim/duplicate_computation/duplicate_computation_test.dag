@@ -9,7 +9,8 @@ import v2.lens.duplicate_computation {
   duplicate_computation_violation_count,
   duplicate_computation_clean_holds
 }
-import v2.std.algebra { list_append, length }
+import v2.std.algebra { length }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }

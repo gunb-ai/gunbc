@@ -2,10 +2,11 @@ module v2.test.claim.namespace_xl0.reference_conservation
 
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.reference_conservation {
-  RefusalNotAtOrAbove,
   ReferenceConservationReport,
   ReferenceConservationSubject,
   dag_declared_token_classes,
+  reference_conservation_accepted,
+  reference_conservation_admitted,
   reference_conservation_holds,
   reference_conservation_of_subject,
   reference_conservation_subject_of_read
@@ -21,8 +22,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
-import v2.std.integer { Int }
+import v2.std.integer { Int, integer_int_to_decimal_string }
 import extdeps.communication.medium { Lossless, Medium }
+import std.process { ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -100,7 +102,7 @@ fn clean_control_report() -> ReferenceConservationReport {
 }
 
 test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
-  reference_conservation_holds(report: clean_control_report())
+  reference_conservation_admitted(report: clean_control_report())
 }
 
 // The three numbers are separate and together account for the whole population: a check that
@@ -120,8 +122,18 @@ test fn the_clean_control_routes_the_test_marker_to_its_channel_holds() -> Bool 
   clean_control_report().test_marker_channel == 1
 }
 
-// ---- drop 1: the second statement of a block ---------------------------------------------------
+// ---- former drop 1: the second statement of a block (now a located refusal, gunbc#12221) -------
 
+// MEASURED BOTH WAYS, AND THE SECOND WAY WAS HIDDEN. Before gunbc#12221 this body lowered and its
+// second statement reached no reference site: one DroppedReference. #12221 made a statement followed
+// by another REFUSE, located, so this module is no longer accepted. The old claim
+// (the_block_second_statement_is_reported_dropped_holds) kept passing because
+// reference_conservation_holds admits refused atoms: the refusal stood in for the drop. With
+// reference_conservation_accepted asked, it went red (seed-interpreted at 1204ef3922, fierce-gull-556).
+// Restated as what is true now: the module is refused, and neither accepted nor admitted. This is also
+// the shared mutation for every "lowered, and ..." control in this file: on a refusing report the
+// predicates they all ask are false, so each of them would be red. When a block's later statements
+// lower, this reds and is restated as a conserved control.
 data block_second_statement_source: String = "module v2.test.reference_conservation_block\n\nfn rc_block() -> Int { 1 \n 2 }\n"
 
 fn block_second_statement_subject() -> ReferenceConservationSubject {
@@ -132,15 +144,32 @@ fn block_second_statement_report() -> ReferenceConservationReport {
   conservation_report_of(subject: block_second_statement_subject())
 }
 
-test fn the_block_second_statement_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: block_second_statement_report(), wanted: ^dag_token_int_literal) == 1
+test fn a_block_with_a_second_statement_is_refused_not_accepted_holds() -> Bool {
+  let r = block_second_statement_report()
+  (r.refused > 0)
+    && !reference_conservation_accepted(report: r)
+    && !reference_conservation_admitted(report: r)
 }
 
-// ---- drop 2: a call argument inside an if-arm --------------------------------------------------
+// A REPORT, NOT A CLAIM: the block fixture's four numbers through the process exit, so a run shows
+// how the report counts a refused body.
+fn block_second_statement_numbers() -> ProcessExit {
+  let r = block_second_statement_report()
+  exit_failure(reason: "authored=" + integer_int_to_decimal_string(value: r.authored) + " conserved=" + integer_int_to_decimal_string(value: r.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: r.locus_erased) + " refused=" + integer_int_to_decimal_string(value: r.refused) + " dropped=" + integer_int_to_decimal_string(value: length(xs: r.dropped)))
+}
 
-// The argument's spelling is used NOWHERE else in its declaration, so the declaration-scoped pool
-// cannot account for it and the red names exactly it.
-data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(probe: rc_arm_arg) } else { c } }\n"
+// ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ---------------------
+
+// MEASURED BOTH WAYS. Before gunbc#12221 the if-arm's call argument `rc_arm_arg` reached no reference
+// site and this check reported it as exactly one DroppedReference. After #12221 (if-arms lower
+// through the statement authority) the argument keeps its occurrence, and the pinned-drop claim went
+// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (DESIGN
+// section 4b(4)): it is now the permanent regression control that the if-arm argument is conserved.
+// The argument is POSITIONAL on purpose: a named argument's label is its own, separately rostered
+// drop (a_named_argument_label_is_reported_dropped_holds below), which would red this control for a
+// reason that is not the if-arm. The argument's spelling is used NOWHERE else in its declaration, so
+// the declaration-scoped pool cannot account for it: a regression drops it and names exactly it.
+data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(rc_arm_arg) } else { c } }\n"
 
 fn if_arm_call_argument_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "if_arm_call_argument", source: if_arm_call_argument_source)
@@ -150,8 +179,9 @@ fn if_arm_call_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: if_arm_call_argument_subject())
 }
 
-test fn the_if_arm_call_argument_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: if_arm_call_argument_report(), wanted: ^rc_arm_arg) == 1
+test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
+  let r = if_arm_call_argument_report()
+  reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
 }
 
 // ---- former drop 3: a later operand of an operator chain (repaired by #12145) ------------------
@@ -172,7 +202,7 @@ fn infix_right_operand_report() -> ReferenceConservationReport {
 
 test fn the_infix_right_operand_is_conserved_holds() -> Bool {
   let r = infix_right_operand_report()
-  reference_conservation_holds(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
+  reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
 }
 
 // ---- a measured drop outside the brief: the named-argument label ------------------------------
@@ -193,19 +223,21 @@ fn named_argument_label_report() -> ReferenceConservationReport {
 
 test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
   let r = named_argument_label_report()
-  report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
 }
 
-// ---- a module-wide refusal: a list-literal call argument (main after #12145) -------------------
+// ---- a list-literal call argument: conserved (was a module-wide refusal) ---------------------
 
-// Measured on main 1b2f64fd49: a call argument whose value is a list literal (or a call) is not
-// read by v2.compiler.body_lowering_fold body_lower_operand_ref_optional, so
-// body_lower_call_arg_value refuses with body_lowering_reason_call_argument_unread and the WHOLE
-// module fails normalize. The refusal is located at the argument, so the atoms under it are
-// `refused`; every other atom of the module is lost with no refusal at or above it, and is a
-// RefusalNotAtOrAbove row. Stated as today's measurement: when the argument reader learns list
-// literals and calls, this reds and is restated as a conserved control.
-data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\nfn rc_list_caller() -> Int { rc_list_callee(xs: [rc_elsewhere]) }\n"
+// Measured on main 1b2f64fd49: a call argument whose value was a list literal refused the WHOLE
+// module at normalize, so every atom of the module was lost with no refusal at or above it
+// (RefusalNotAtOrAbove rows). v2.compiler.body_lowering_fold body_lower_list_literal now lowers the
+// literal as its free-monoid construction with every element whole, so this is restated as a
+// conserved control (DESIGN section 4b(4)): both elements, and the callee, reach the lowered tree.
+// A producer that kept only the first element drops `rc_list_second` and reds this. The argument
+// is POSITIONAL on purpose: a named argument's label is a separate, already-rostered drop
+// (a_named_argument_label_is_reported_dropped_holds below), and carrying it here would make this
+// control red for a reason that is not the list.
+data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\ndata rc_list_second: Int = 4\n\nfn rc_list_caller() -> Int { rc_list_callee([rc_elsewhere, rc_list_second]) }\n"
 
 fn list_literal_argument_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "list_literal_argument", source: list_literal_argument_source)
@@ -215,32 +247,29 @@ fn list_literal_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: list_literal_argument_subject())
 }
 
-fn report_every_drop_is_an_unlocated_refusal(report: ReferenceConservationReport) -> Bool {
-  fold_list(
-    xs: report.dropped,
-    empty: true,
-    cons: fn(acc, row) {
-      acc && match row.cause {
-        RefusalNotAtOrAbove => true
-        _ => false
-      }
-    }
-  )
-}
-
-test fn a_list_literal_call_argument_refuses_its_whole_module_holds() -> Bool {
+test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
   let r = list_literal_argument_report()
-  r.refused > 0 && length(xs: r.dropped) > 0 && report_every_drop_is_an_unlocated_refusal(report: r)
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_elsewhere) == 0
+    && report_drop_count(report: r, wanted: ^rc_list_second) == 0
+    && report_drop_count(report: r, wanted: ^rc_list_callee) == 0
 }
 
 // ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
 
-// `rc_rep` is spelled three times in one declaration: as the parameter binder (rebuilt into an
-// edge label, so LocusErased against the pool's one label), as the first block statement (its
-// occurrence survives), and as the second block statement (dropped). The pool holds one copy and
-// the binder consumes it, so exactly ONE DroppedReference remains -- neither zero (a pool that
-// failed to consume) nor two (a pool that was never read).
-data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_rep \n rc_rep }\n"
+// `rc_rep` is spelled three times in the declaration `rc_repeat`: as its parameter binder (rebuilt
+// into an edge label, so LocusErased against the pool's one label), as the named argument's LABEL at
+// the call (dropped: a call lowers its arguments positionally -- the rostered NamedArgumentLabel
+// shape), and as the argument's VALUE (its occurrence survives). The pool is declaration-scoped and
+// holds one copy, which the binder consumes, so exactly ONE DroppedReference remains -- neither zero
+// (a pool that failed to consume) nor two (a pool that was never read). `rc_callee`'s own `rc_rep`
+// binder and body use sit in a different declaration and cannot feed this pool.
+// RE-PINNED after gunbc#12221: the previous fixture dropped its repeated copy as the second of two
+// block statements (`{ rc_rep \n rc_rep }`), and #12221 made a statement followed by another refuse
+// located, so it no longer dropped one copy (red on origin/main 53828ae4b2). The multiset property is
+// the subject, not the statement shape, so the fixture now drops through the one shape still
+// rostered as a known drop.
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_rep: Bool) -> Bool { rc_rep }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_callee(rc_rep: rc_rep) }\n"
 
 fn repeated_spelling_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)
@@ -252,7 +281,7 @@ fn repeated_spelling_report() -> ReferenceConservationReport {
 
 test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
   let r = repeated_spelling_report()
-  report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
 }
 
 // ---- a measured drop found by admission: the where-refinement predicate -----------------------
@@ -270,7 +299,7 @@ fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
 
 test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
   let r = conservation_report_of(subject: where_refinement_predicate_subject())
-  report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
 }
 
 // ---- measured drops found by admission: a later match arm, a statement-let binder -------------
@@ -282,7 +311,8 @@ test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
 
 test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
-  report_drops_identity(report: conservation_report_of(subject: match_later_arm_subject()), wanted: ^rc_third)
+  let r = conservation_report_of(subject: match_later_arm_subject())
+  reference_conservation_accepted(report: r) && report_drops_identity(report: r, wanted: ^rc_third)
 }
 
 // Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
@@ -292,7 +322,7 @@ data statement_let_binder_source: String = "module v2.test.reference_conservatio
 
 test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
   let r = conservation_report_of(subject: statement_let_binder_subject())
-  report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
 }
 
 fn match_later_arm_subject() -> ReferenceConservationSubject {
@@ -301,6 +331,25 @@ fn match_later_arm_subject() -> ReferenceConservationSubject {
 
 fn statement_let_binder_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source)
+}
+
+// ---- constructor tags keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 3) -----
+
+// A record-literal tag (`RcRow { v: n }`) and a constructor pattern (`RcRow { v: x } =>`) each
+// lower to a construct whose tag atom v2.std.node_query construct_tag_edge builds. Before the
+// repair that atom was lowered from the enclosing capture, so it carried the shell's occurrence and
+// both mentions were counted locus-erased. MEASURED on this fixture: 9 conserved / 13 locus-erased
+// before, 11 / 11 after -- the two tags and nothing else moved. Every other atom here is a binder,
+// a field name or a type position, so the counts are the fixture's own, not a corpus literal.
+data construct_tags_source: String = "module v2.test.reference_conservation_construct_tags\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: n } }\n\nfn rc_read(r: RcRow) -> Int {\n  match r {\n    RcRow { v: x } => x\n  }\n}\n"
+
+fn construct_tags_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "construct_tags", source: construct_tags_source)
+}
+
+test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tags_subject())
+  r.authored == 22 && r.conserved == 11 && r.locus_erased == 11 && length(xs: r.dropped) == 0
 }
 
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------
@@ -317,7 +366,7 @@ fn anonymous_slots_subject() -> ReferenceConservationSubject {
 
 test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -> Bool {
   let r = conservation_report_of(subject: anonymous_slots_subject())
-  reference_conservation_holds(report: r)
+  reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
     && r.authored > 0
 }

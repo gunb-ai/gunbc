@@ -7,7 +7,8 @@ import v2.workflow.regen_convergence_transaction {
   RegenFixedPointRefused
 }
 
-import v2.std.algebra { Cons, Empty, fold_list, length, list_append }
+import v2.std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 

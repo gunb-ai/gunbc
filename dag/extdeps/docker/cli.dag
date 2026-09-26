@@ -2,7 +2,8 @@ module extdeps.docker.cli
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, ByteSize, byte_size_count }
+import v2.std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -384,14 +385,26 @@ fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
 // residue question) and `ancestor=<image>` (containers created from that image reference, for an
 // effect that starts an unnamed container). `--quiet` rather than a `--format` template because
 // the argv crosses an ssh leg whose portable word alphabet has no braces.
+// A THIRD FILTER, `label=<key>=<value>`, selects the containers an effect created and marked, and no
+// others: an image filter also matches every other container started from the same image, which is
+// the wrong population once serving and a probe share an image on one host.
 type DockerPsFilter
   = DockerPsByName { name: NonEmptyStr }
   | DockerPsByAncestor { image: NonEmptyStr }
+  | DockerPsByLabel { label: DockerLabel }
+
+// docker run --label <key>=<value> (docs.docker.com/reference/cli/docker/container/run/#label).
+type DockerLabel { key: NonEmptyStr, value: NonEmptyStr }
+
+fn docker_label_wire(l: DockerLabel) -> String {
+  join([l.key as String, "=", l.value as String], "")
+}
 
 fn docker_ps_filter_wire(f: DockerPsFilter) -> String {
   match f {
     DockerPsByName { name: n } => join(["name=", n as String], "")
     DockerPsByAncestor { image: i } => join(["ancestor=", i as String], "")
+    DockerPsByLabel { label: l } => join(["label=", docker_label_wire(l: l)], "")
   }
 }
 
@@ -469,6 +482,95 @@ fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRe
             }
           }
       }
+  }
+}
+
+// THE IMAGE'S SIZE, READ OFF THE SAME INSPECT DOCUMENT AS ITS Id. `Size` is the image's total
+// uncompressed layer bytes (docs.docker.com/reference/api/engine/version/v1.47/#tag/Image/operation/ImageInspect:
+// "Total size of the image including all layers it is composed of"), a JSON integer. It is what a
+// `docker save` tar of the image carries, give or take the tar's own headers and the config and
+// manifest members, and what a `docker load` on a host holding none of its layers writes -- so it is
+// the byte requirement a byte transport between daemons states before moving anything. A member that
+// is absent, duplicated, not an integer or negative is Unreadable, never a zero.
+type DockerImageInspectSizeRead
+  = DockerImageInspectSize { bytes: Int }
+  | DockerImageInspectSizeUnreadable { cause: String }
+
+fn docker_image_inspect_size_from_stdout(stdout: String) -> DockerImageInspectSizeRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerImageInspectSizeUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Size") {
+            JsonMemberAbsent => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON names no Size" }
+            JsonMemberNotAnObject => DockerImageInspectSizeUnreadable { cause: "docker image inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerImageInspectSizeUnreadable { cause: join(["docker image inspect JSON names Size ", to_string(n), " times"], "") }
+            JsonMemberFound { value: sv } =>
+              match sv {
+                JsonNumber { lexeme: l } =>
+                  match parse_int(s: l) {
+                    Absent => DockerImageInspectSizeUnreadable { cause: join(["docker image inspect Size is not an integer: ", l], "") }
+                    Present { value: n } =>
+                      if n < 0 {
+                        DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is negative" }
+                      } else {
+                        DockerImageInspectSize { bytes: n }
+                      }
+                  }
+                JsonNull => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonBool { value: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonString { value: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonArray { elements: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+                JsonObject { members: _ } => DockerImageInspectSizeUnreadable { cause: "docker image inspect Size is not a number" }
+              }
+          }
+      }
+  }
+}
+
+// THE DAEMON'S DATA ROOT, WHERE `docker load` WRITES LAYERS, READ FROM THE DAEMON. dockerd's
+// --data-root defaults to /var/lib/docker (docs.docker.com/reference/cli/dockerd/) and daemon.json can
+// move it, so the default is not a reading: a free-space read of the default path on a host whose
+// root moved answers for the wrong filesystem. `docker info` with no template prints the server's
+// state as text, one ` Docker Root Dir: <path>` line among them
+// (docs.docker.com/reference/cli/docker/system/info/); no --format, for the portable-word reason
+// docker_image_inspect_command states. A document with no such line, two of them, or a value that is
+// not an absolute path is Unreadable -- never the default.
+fn docker_info_command() -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["info"])
+}
+
+data docker_info_root_dir_label: String = "Docker Root Dir:"
+
+type DockerRootDirRead
+  = DockerRootDir { path: NonEmptyStr }
+  | DockerRootDirUnreadable { cause: String }
+
+fn docker_info_root_dir_from_stdout(stdout: String) -> DockerRootDirRead {
+  let values = flat_map(split(s: stdout, delimiter: "\n"), l => {
+    let t = trim(s: l)
+    if starts_with(s: t, prefix: docker_info_root_dir_label) {
+      [trim(s: substring(s: t, start: docker_info_root_dir_label.length(), end: t.length()))]
+    } else {
+      [] as List<String>
+    }
+  })
+  if count(values) != 1 {
+    DockerRootDirUnreadable { cause: join(["docker info names the Docker Root Dir ", to_string(count(values)), " times"], "") }
+  } else {
+    match first(values) {
+      Absent => DockerRootDirUnreadable { cause: "docker info names no Docker Root Dir" }
+      Present { value: v } =>
+        if starts_with(s: v, prefix: "/") {
+          DockerRootDir { path: v as NonEmptyStr }
+        } else {
+          DockerRootDirUnreadable { cause: join(["docker info's Docker Root Dir is not an absolute path: ", v], "") }
+        }
+    }
   }
 }
 
@@ -630,14 +732,27 @@ fn docker_short_mount_flag(m: DockerMount) -> List<String> {
 // .../v41_capability_probe.py`. A question about what an image CONTAINS is not a question its
 // entrypoint is equipped to answer, so the caller supplies the program and the image supplies only
 // the filesystem.
-fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
+// docker run --memory <bytes> --memory-swap <bytes> (docs.docker.com/engine/containers/resource_constraints/):
+// the container's memory cgroup is capped at the limit, and setting --memory-swap to the same value
+// grants it no swap, so a runaway is OOM-killed inside its own cgroup rather than pressing the host.
+fn docker_memory_limit_flags(limit: ByteSize?) -> List<String> {
+  match limit {
+    Absent => [] as List<String>
+    Present { value: b } => ["--memory", to_string(byte_size_count(b: b)), "--memory-swap", to_string(byte_size_count(b: b))]
+  }
+}
+
+fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, labels: List<DockerLabel>, memory_limit: ByteSize?, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
   argv_command(
     program: docker_binary_path,
     arguments: concat(
       concat(
         concat(
-          concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
-          flat_map(mounts, m => docker_short_mount_flag(m: m)),
+          concat(
+            concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
+            flat_map(mounts, m => docker_short_mount_flag(m: m)),
+          ),
+          concat(flat_map(labels, l => ["--label", docker_label_wire(l: l)]), docker_memory_limit_flags(limit: memory_limit)),
         ),
         ["--entrypoint", entrypoint as String],
       ),

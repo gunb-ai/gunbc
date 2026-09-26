@@ -133,6 +133,8 @@ import v2.std.compilers.target_model {
   ValueStringLiteral,
   CanonicalOperation,
   InfixToken,
+  OperandUnchanged,
+  canonical_operation_op_coerce,
   canonical_operation_op_add,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
@@ -198,8 +200,8 @@ import v2.std.host_transport {
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, fold_list, free_monoid_type_node, list_append, list_snoc_item, ordered_ring_type_node }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import v2.std.algebra { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, fold_list, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
 
 type TsNumberPrimitiveFacts {
@@ -452,6 +454,12 @@ fn ts_inhabitant_boolean_node() -> Node {
   ts_bool_inhabitant_node(id: ^ts_inhabitant_boolean, facts: ts_facts_boolean)
 }
 
+// The field of an inhabitant record whose target is the type the record declares; every other
+// field states a fact about that type (std.kind roster_member_kind).
+fn ts_declared_inhabitants_subject_field() -> Symbol {
+  ^ts_inhabitant_field_atom
+}
+
 fn ts_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -680,8 +688,19 @@ fn ts_add_operator_realization_row() -> Node {
   )
 }
 
+// A CAST'S CROSSING IS SPELLED AS ITS OPERAND. v2.compiler.infer admits only an Identity or Exact
+// crossing (v2.std.coercion coercion_cast_crossing), so source and target share one representation
+// and TypeScript needs no conversion; its own `as` would claim a numeric conversion the model did not
+// make.
+fn ts_coerce_operator_realization_row() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_coerce(),
+    shape: OperandUnchanged
+  )
+}
+
 fn ts_operator_realizations_catalog_node() -> Node {
-  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
+  target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row(), ts_coerce_operator_realization_row()])
 }
 
 fn ts_block_evaluation_mode() -> BlockEvaluationMode {
