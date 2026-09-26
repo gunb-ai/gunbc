@@ -1,6 +1,7 @@
 module extdeps.nvidia.system_management_interface
 
-import std.types { NonEmptyStr, String, Bool, Int, List, Unit }
+import std.types { NonEmptyStr, Bool, Int, List, Unit }
+import std.string_type { String }
 import std.nat { Nat }
 import std.measure { Mebibyte, mebibyte }
 import std.algebra { trim }
