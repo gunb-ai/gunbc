@@ -38,8 +38,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //       crossing exactly when source and target are the SAME model, and admits it at quality
 //       Identity. Nothing in that side spells a non-identity crossing at all.
 //
-// A row can therefore report BOTH AGREE AND BOTH ARE WRONG, or either algebra deviating from its
-// own declared contract, rather than only "the two folds match".
+// A row can therefore report either algebra deviating from its OWN declared contract, rather than
+// only "the two folds match". It CANNOT report that both agree and are both semantically wrong:
+// each expectation column is transcribed from its own algebra's declaration, so there is no
+// independent semantic oracle here (gunbc.representation_boundary coercions_boundary records the
+// same limit).
 
 type CoercionAdmission
   = CrossingAdmitted
