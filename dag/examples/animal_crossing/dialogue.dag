@@ -31,6 +31,10 @@ import examples.animal_crossing.acmsg {
 import extdeps.games.animal_crossing.font {
   LineWidthLimit, LineWidthMeasured, LineWidthUncalibrated, message_octet_limit, message_window_line_width, page_line_limit,
 }
+import extdeps.games.animal_crossing.dialogue_catalog {
+  CatalogEntry, CatalogEvidence, DialogueTable, MailTable, MessageDataTable, Personality, PersonalityRange, TextVerified, FormulaOnly,
+  catalog_range, dialogue_catalog, personalities, personality_name,
+}
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_build_image_sha1, deluxe_control_codes }
 
 // Dialogue patching for Animal Crossing on the GameCube. A patch set is a directory holding BASE
@@ -725,6 +729,104 @@ fn dump(base: String, from: String, number: String) -> ProcessExit {
                     else { say_blocks(comments: [join(["messages ", to_string(first_id), "..", to_string(first_id + n - 1), " of base ", b.sha1], "")], blocks: r.blocks) }
                   }
                 }
+              }
+          }
+      }
+  }
+}
+
+// ---- the catalog ----
+
+fn evidence_word(e: CatalogEvidence) -> String {
+  match e {
+    TextVerified => "text-verified"
+    FormulaOnly => "formula-only"
+  }
+}
+
+fn table_word(t: DialogueTable) -> String {
+  match t {
+    MessageDataTable => "message_data"
+    MailTable => "mail"
+  }
+}
+
+fn range_word(entry: CatalogEntry, p: Personality) -> String {
+  match catalog_range(entry: entry, p: p) {
+    Absent => join([personality_name(p: p), " -"], "")
+    Present { value: r } => join([personality_name(p: p), " ", to_string(r.first_id), "+", to_string(r.count)], "")
+  }
+}
+
+fn topic_line(entry: CatalogEntry) -> String {
+  join([
+    entry.topic, "\n",
+    "  ", entry.context, "\n",
+    "  ", table_word(t: entry.table), ", ", evidence_word(e: entry.evidence), ": ",
+    personalities |> map(p => range_word(entry: entry, p: p)) |> join(separator: ", "), "\n",
+  ], "")
+}
+
+fn topic_matches(entry: CatalogEntry, search: String) -> Bool {
+  search == "" || string_contains(s: entry.topic, pattern: search) || string_contains(s: entry.context, pattern: search)
+}
+
+// Catalog entries whose topic or context contains `search` ("" lists all).
+fn topics(search: String) -> ProcessExit {
+  let found = dialogue_catalog |> filter(e => topic_matches(entry: e, search: search))
+  say(text: join([found |> map(e => topic_line(entry: e)) |> join(separator: ""), to_string(count(found)), " of ", to_string(count(dialogue_catalog)), " entries\n"], ""))
+}
+
+fn personality_named(name: String) -> Personality? {
+  match personalities |> filter(p => personality_name(p: p) == name) |> first {
+    null => none
+    other => Present { value: other }
+  }
+}
+
+fn label_block(acc: List<AcmsgBlock>, b: AcmsgBlock, topic: String, p: Personality, total: Int) -> List<AcmsgBlock> {
+  list_push(acc, AcmsgBlock { id: b.id, label: join([topic, " / ", personality_name(p: p), " ", to_string(count(acc) + 1), " of ", to_string(total)], ""), text: b.text })
+}
+
+fn label_blocks(blocks: List<AcmsgBlock>, topic: String, p: Personality) -> List<AcmsgBlock> {
+  fold(blocks, init: [], f: (acc, b) => label_block(acc: acc, b: b, topic: topic, p: p, total: count(blocks)))
+}
+
+// Every entry message one personality can hear for one catalog topic (named exactly), as .acmsg
+// blocks labelled with the topic, ready to rewrite into a patch set.
+fn dump_topic(base: String, topic: String, personality: String) -> ProcessExit {
+  match dialogue_catalog |> filter(e => e.topic == topic) |> first {
+    null => exit_failure(reason: join(["no catalog topic named '", topic, "' (list them with the topics entry point)"], ""))
+    entry =>
+      match personality_named(name: personality) {
+        Absent => exit_failure(reason: join(["not a personality: ", personality, " (normal, peppy, lazy, jock, cranky, snooty)"], ""))
+        Present { value: p } =>
+          match entry.table {
+            MailTable => exit_failure(reason: "letters live in the mail tables, which this workflow does not read yet")
+            MessageDataTable =>
+              match catalog_range(entry: entry, p: p) {
+                Absent => exit_failure(reason: "the catalog has no range for that personality")
+                Present { value: r } =>
+                  match load_base(path: base) {
+                    LoadRefused { reason: why } => exit_failure(reason: why)
+                    LoadedOk { value: b } => {
+                      let start = message_start(ends: b.ends, id: r.first_id)
+                      let end = message_end(ends: b.ends, id: r.first_id + r.count - 1)
+                      match read_range(path: b.path, offset: message_data_offset(base: b) + start, length: end - start) {
+                        Absent => exit_failure(reason: "could not read the message range")
+                        Present { value: octets } => {
+                          let d = fold(zeros(n: r.count), init: DumpFold { blocks: [], id: r.first_id, refusal: "" }, f: (acc, _) => dump_step(base: b, octets: octets, first_start: start, acc: acc))
+                          if d.refusal != "" { exit_failure(reason: d.refusal) }
+                          else {
+                            say_blocks(
+                              comments: [entry.topic, entry.context, join(["source: ", entry.source], ""), join(["personality: ", personality_name(p: p), "; evidence: ", evidence_word(e: entry.evidence)], "")],
+                              blocks: label_blocks(blocks: d.blocks, topic: entry.topic, p: p),
+                            )
+                          }
+                        }
+                      }
+                    }
+                  }
               }
           }
       }

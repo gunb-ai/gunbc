@@ -8,6 +8,8 @@ import extdeps.games.animal_crossing.message {
 }
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
 import examples.animal_crossing.acmsg { AcmsgBlock, AcmsgEdit, AcmsgAccepted, AcmsgRefused, parse_acmsg, render_acmsg }
+import extdeps.games.animal_crossing.dialogue_catalog { CatalogEntry, Personality, Cranky, dialogue_catalog, personalities, personality_looks, personality_of_looks }
+import examples.animal_crossing.dialogue { label_blocks }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -208,4 +210,27 @@ test fn a_scaled_line_is_not_measured() -> Bool {
       LineWidthRange { min: _, max: _ } => false
     }
   }
+}
+
+test fn personalities_follow_looks_order() -> Bool {
+  return count(personalities) == 6
+    && (personalities |> all(p => personality_of_looks(looks: personality_looks(p: p)) == Present { value: p }))
+    && personality_of_looks(looks: 6) == none
+}
+
+fn has_one_range_per_personality(entry: CatalogEntry) -> Bool {
+  (entry.ranges |> map(r => r.looks)) == [0, 1, 2, 3, 4, 5] && (entry.ranges |> all(r => r.first_id >= 0 && r.count > 0))
+}
+
+test fn every_catalog_entry_covers_each_personality_once() -> Bool {
+  return count(dialogue_catalog) > 0 && (dialogue_catalog |> all(e => has_one_range_per_personality(entry: e)))
+}
+
+test fn catalog_topics_are_unique() -> Bool {
+  return fold(dialogue_catalog, init: [], f: (seen, e) => if seen |> any(t => t == e.topic) { list_push(seen, "") } else { list_push(seen, e.topic) }) |> all(t => t != "")
+}
+
+test fn dumped_blocks_are_labelled_with_topic_personality_and_position() -> Bool {
+  let blocks = [AcmsgBlock { id: 10, label: "", text: "a" }, AcmsgBlock { id: 11, label: "", text: "b" }]
+  return (label_blocks(blocks: blocks, topic: "chat", p: Cranky) |> map(b => b.label)) == ["chat / cranky 1 of 2", "chat / cranky 2 of 2"]
 }
