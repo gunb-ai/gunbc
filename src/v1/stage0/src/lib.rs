@@ -803,15 +803,7 @@ pub mod release_locus_seed_constants_generated;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
 pub mod std_logic;
-pub mod usv_pilot_v2_std_algebra;
-pub mod usv_pilot_v2_std_collection;
-pub mod usv_pilot_v2_std_node;
 pub mod v1_interpreter;
-pub mod v2_compiler_body_producer;
-pub mod v2_compiler_compile;
-pub mod v2_compiler_parse_engine_hooks;
-pub mod v2_compiler_tokenize;
-pub mod v2_compiler_use_site_verdict;
 
 pub struct NonEmptyVec<T>(Vec<T>);
 

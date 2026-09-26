@@ -71,7 +71,6 @@ import v2.std.text { String }
 
 type SeedRetentionCause
   = SeedRetainedIntrinsicSource
-  | QuarantineScaffoldSource
   | WetActuatorGeneratedSource
   | EmitterProducedDivergentSource
   | SupportDirectoryMemberSource
@@ -180,20 +179,12 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/census_exclude_derive.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/derived_realization_schedule.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/memory_governor.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_body_producer.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_parse_engine_hooks.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/v2_compiler_use_site_verdict.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/cssl_seed_linked_closure_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/required_regen_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/evaluation_budget_consequence_falsifier_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.evaluation_budget_falsifier_seed_growth", decl_name: "evaluation_budget_falsifier_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/process_group.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.evaluation_budget_falsifier_seed_growth", decl_name: "evaluation_budget_falsifier_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/behavioral_receipt_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.target_invocation_seed_growth", decl_name: "target_invocation_seed_growth_justification"),
-  retained_reason_elsewhere(path: "src/v2_compiler_compile.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/std_logic.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "std_logic_seed_oracle_retention_note"),
-  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_algebra.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_collection.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_node.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
-  retained_reason_elsewhere(path: "src/v2_compiler_tokenize.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
   retained_reason_elsewhere(path: "src/bootstrap_stage0_crate_layout_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/bootstrap_seed_retention_frontier_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/v1_interpreter_dispatch_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "v1_interpreter_dispatch_generated_family_note"),

@@ -23,10 +23,6 @@ type SeedRetainedIntrinsicRegistration {
   is_dir: Bool
 }
 
-type SeedRetainedScaffoldRegistration {
-  basename: String
-}
-
 type SeedRetainedSupportDirRegistration {
   basename: String
 }
@@ -85,9 +81,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "namespace_baseline", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cssl_seed_linked_closure_assembly", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "required_regen_host", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "target_invocation_host", has_pub_mod: false, is_dir: false },
@@ -97,7 +90,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "emitted_closure_compile_host", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "evaluation_budget_consequence_falsifier_host", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "process_group", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_compile", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "std_logic", has_pub_mod: true, is_dir: false }
 ]
 
@@ -109,14 +101,6 @@ data std_logic_seed_oracle_retention_note: String = "src/std_logic.rs is no long
 
 data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistration> = [
   SeedRetainedSupportDirRegistration { basename: "cli_run" }
-]
-
-data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472, count corrected to the live seven 2026-08-21 (it read six against eight rows, and one of those eight has since moved to the wet-actuator family where its producer actually lives): seven quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip without pub mod — listed in HAND_MAINTAINED_STAGE0_FILES (has_pub_mod: false) so crate layout authority matches filesystem. Dissolve-on: witness-realization enables EmitterProduced and rows return to generated pub mod roster."
-data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
-  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
-  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
-  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
@@ -159,26 +143,6 @@ fn seed_retained_intrinsic_stage0_files() -> List<String> {
     init: [],
     f: fn(acc, row) {
       concat(acc, intrinsic_stage0_filename_from_row(row: row))
-    }
-  )
-}
-
-fn seed_retained_scaffold_pub_mod_basenames() -> List<String> {
-  fold(
-    seed_retained_scaffold_registrations,
-    init: [],
-    f: fn(acc, row) {
-      concat(acc, [row.basename])
-    }
-  )
-}
-
-fn seed_retained_scaffold_stage0_files() -> List<String> {
-  fold(
-    seed_retained_scaffold_registrations,
-    init: [],
-    f: fn(acc, row) {
-      concat(acc, [concat(row.basename, ".rs")])
     }
   )
 }
@@ -271,7 +235,7 @@ fn basenames_to_stage0_filenames(basenames: List<String>) -> List<String> {
 // or someone adds a false retention row to make the census green. A misleading name is a smaller
 // defect than a population that answers a lifecycle question it cannot answer.
 fn hand_maintained_pub_mod_basenames() -> List<String> {
-  concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames())
+  seed_retained_intrinsic_pub_mod_basenames()
 }
 
 // THE RENDERING QUESTION AND THE ROOT-MODULE QUESTION ARE TWO QUESTIONS, and the narrow one may not
@@ -306,7 +270,7 @@ fn stage0_lib_declared_module_basenames() -> List<String> {
 fn hand_maintained_stage0_filenames() -> List<String> {
   concat(
     concat(
-      concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
+      seed_retained_intrinsic_stage0_files(),
       wet_actuator_generated_stage0_files()
     ),
     emitter_produced_divergent_stage0_files()
