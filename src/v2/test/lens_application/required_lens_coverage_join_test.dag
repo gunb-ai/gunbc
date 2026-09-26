@@ -48,7 +48,8 @@ import v2.compiler.compile {
   required_lens_roster_digest
 }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { Cons, Empty, fold_list, length, list_append, list_reverse }
+import v2.std.algebra { Cons, Empty, fold_list, length, list_reverse }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }

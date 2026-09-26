@@ -1,6 +1,7 @@
 module gunbc.auth.approval_device_routes
 
-import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus }
+import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus, CommitSha }
+import gunbc.live_deploy.emit { RevisionBoundAtEmission }
 import std.resources { Network }
 import std.logic { Bool }
 import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
@@ -753,12 +754,15 @@ fn enrolment_code_delivery_of(publish: NotificationPublish) -> EnrolmentCodeDeli
 //
 // THE FIRST THING IT DOES is the live reading (gunbc.auth.approval_ntfy_access_readback
 // approval_ntfy_runtime_reading: modeled reads of the running server, sealed to this function), and
-// the first match is that reading's verdict. Nothing is accepted from a caller: no standing, no verdict, no listing. A
-// refusal returns before the clock, the entropy, the slot, the token and the publish.
-fn issue_device_enrolment_code() -> CliWireResponse
+// the first match is that reading's verdict. Nothing is accepted from a caller but the release
+// revision it runs as (`--arg revision=<sha>`), which only names the one per-release observation
+// helper the reading runs (gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_command): no
+// standing, no verdict, no listing. A revision naming no installed helper is a failed read and a
+// refusal. A refusal returns before the clock, the entropy, the slot, the token and the publish.
+fn issue_device_enrolment_code(revision: String) -> CliWireResponse
   uses net: Network
 {
-  match approval_ntfy_channel_verdict(reading: approval_ntfy_runtime_reading()) {
+  match approval_ntfy_channel_verdict(reading: approval_ntfy_runtime_reading(revision: RevisionBoundAtEmission { revision: revision as CommitSha })) {
     AclRefused { deviation: d } => CliWireUnprintable { cause: ("refused before any code was minted: the ntfy channel is not established private: " + approval_ntfy_acl_deviation_sentence(d: d)) as NonEmptyStr }
     AclEstablished =>
       match device_observed_at() {

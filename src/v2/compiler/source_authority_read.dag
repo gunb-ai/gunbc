@@ -1,7 +1,7 @@
 module v2.compiler.source_authority_read
 
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { Empty }
+import std.algebra { Empty, list_snoc_item }
 import std.content_hash {
   ContentHash,
   ContentHashEqual,
@@ -17,7 +17,7 @@ import v2.compiler.source_authority {
   source_root_for_storage_path
 }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }

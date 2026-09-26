@@ -1,6 +1,7 @@
 module v2.std.compilers.target_model
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution {
   DissolutionCondition,
   unbound_dissolution
@@ -10,7 +11,9 @@ import std.algebra {
   Cons,
   Empty,
   FreeMonoid,
-  FreeSemigroup
+  FreeSemigroup,
+  list_append,
+  list_snoc_item
 }
 import v2.std.text { String, string_replace }
 import v2.std.algebra {
@@ -26,8 +29,6 @@ import v2.std.algebra {
   fold_list_right,
   is_empty,
   length,
-  list_append,
-  list_snoc_item,
   list_tail
 }
 import v2.std.collection {
@@ -595,6 +596,7 @@ type TokenClassEmitTransform
   | EmitSpellingConstant { value: String }
   | EmitSpellingWrap { prefix: String, suffix: String }
   | EmitSpellingQuote { prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape> }
+  | EmitLineBreaks { before: Int, after: Int }
 
 type TargetModel {
   bundle: Node
@@ -938,24 +940,47 @@ fn bound_spelling_from_map(
 
 data target_text_carrier_scaffold_note: String = "TargetText emit-seam carrier (Slice A1): TargetText is the typed emit-seam carrier -- a nominal newtype over emitted source text, DISTINCT from String at the model layer, so emitted content flows as TargetText and a framing String fragment is a DIFFERENT type from it. ENFORCEMENT (corrected 2026-07-15, proven by execution): the type-level compile wall does NOT fire today -- neither the v1 seed nor v2 04_infer typechecks function-application argument types (04_infer carrier-checks only Branch/Match/Loop; there is no arg-vs-param unification), so a raw String passed where TargetText is declared compiles CLEAN (verified: injected smuggle at a live serialize site, full gate compile returned 0 diagnostics). Therefore this is a DESIGN.md §5 wall-AFTER-grounding (decidable, types declared and threaded, enforcement pending), NOT a wall-by-construction. Runtime guard only: .source field-access on a String fails at eval, fail-closed at runtime. The retired no-smuggled-programs / medium_structure_containment lens (#6831) is not live enforcement. Declared FRONTIER ROW, counted and prioritizable, not a silent escape hatch: DISSOLUTION TRIGGER = application-argument typechecking in 04_infer (does not exist today; its absence means EVERY type-based construction guarantee is unenforced at the call boundary -- the real root this frontier waits on). The language is NOT carried on the carrier -- it is already determined by the target: TargetModel the serialize fold holds (operator ruling 2026-07-14: a lang tag would be a §3 nickname for the extdeps.languages module). Home is std/compilers BESIDE bound_tokens_source_text (operator ruling 2026-07-15) so that fold is carrier-NATIVE: the SINGLE String->carrier introduction is text_atom (one grammar-classified token = an atom), introduced INSIDE the token fold; the ONLY join is the grammar-owned token-sequence combinator target_text_seq (folding the grammar row's declared token order); the ONLY carrier->String exit is render_target_text (whole-value render at the artifact lift + at genuine String sinks like authority_source_text). There is deliberately NO String->TargetText lift of an already-composed unit -- that direction is the smuggle the wall closes. Scaffold (seed-layer forward subset of the v2 TargetModel grammar rows, serialize_target's inverse); dissolution trigger for the scaffold itself = the grammar-row inverse subsuming it at self-host."
 
-type TargetText { source: String }
+// LAYOUT IS std.layout's, NOT A SECOND AUTHORITY. The carrier is a std.layout document: an atom is
+// DocText, the join adds the next text as ONE part (a persistent push, so a module's token stream
+// is not re-copied per token), and the one exit renders through std.layout render. Two sources of
+// layout, both unable to leave a block open: a token class whose emit transform is EmitLineBreaks
+// puts DocLines around its lexeme, and a grammar_formal_nested_occurrence wraps exactly its child's
+// text in one std.layout nest by the target's spelled unit (target_text_nested). A document with neither renders to the concatenation of
+// its atoms, byte for byte what the String carrier produced.
+// `empty` is whether the text renders to nothing, set where each part is made and joined by `and`, so
+// the emptiness the serializer's folds ask at every step is O(1) rather than a render or a walk.
+type TargetText { parts: List<Doc>, empty: Bool }
 
-data target_text_empty: TargetText = TargetText { source: "" }
+data target_text_empty: TargetText = TargetText { parts: [], empty: true }
+
+data target_text_render_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 fn text_atom(lexeme: String) -> TargetText {
-  TargetText { source: lexeme }
+  TargetText { parts: [DocText { text: lexeme }], empty: lexeme == "" }
 }
 
 fn target_text_seq(acc: TargetText, next: TargetText) -> TargetText {
-  TargetText { source: concat(acc.source, next.source) }
+  TargetText { parts: list_snoc_item(xs: acc.parts, item: DocConcat { parts: next.parts }), empty: acc.empty && next.empty }
+}
+
+fn target_text_nested(unit: String, body: TargetText) -> TargetText {
+  TargetText { parts: [doc_nest_by(unit: unit, body: DocConcat { parts: body.parts })], empty: body.empty }
+}
+
+fn target_text_line_breaks(before: Int, lexeme: String, after: Int) -> TargetText {
+  TargetText { parts: list_append(left: list_append(left: repeat_line(n: before), right: [DocText { text: lexeme }]), right: repeat_line(n: after)), empty: before <= 0 && after <= 0 && lexeme == "" }
+}
+
+fn repeat_line(n: Int) -> List<Doc> {
+  if n <= 0 { [] } else { list_snoc_item(xs: repeat_line(n: n - 1), item: DocLine) }
 }
 
 fn render_target_text(t: TargetText) -> String {
-  t.source
+  render(doc: DocConcat { parts: t.parts }, proto: target_text_render_protocol)
 }
 
 fn target_text_is_empty(t: TargetText) -> Bool {
-  is_empty(xs: chars(s: t.source))
+  t.empty
 }
 
 fn bound_tokens_source_text(
@@ -1024,18 +1049,38 @@ fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitS
   )
 }
 
+// A layout token class spelled as a flat String would lose its line breaks and nesting silently, so
+// the flat spelling refuses it; the carrier path (token_text_from_model) is where it belongs.
+fn target_layout_token_spelled_flat_diagnostic(token_class: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_layout_token_spelled_flat,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: token_class } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn apply_emit_spelling_quote(prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape>, spelling: String) -> String {
+  let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: escapes)
+  concat(prefix, concat(open, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), close)))
+}
+
 fn apply_emit_spelling_transform(
   transform: TokenClassEmitTransform,
+  token_class: Symbol,
   spelling: String
-) -> String {
+) -> Outcome<String> {
   match transform {
-    EmitSpellingIdentity => spelling
-    EmitSpellingConstant { value: v } => v
-    EmitSpellingWrap { prefix: p, suffix: s } => concat(p, concat(spelling, s))
-    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } => {
-      let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: es)
-      concat(p, concat(o, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), c)))
-    }
+    EmitSpellingIdentity => outcome_accepted(value: spelling)
+    EmitSpellingConstant { value: v } => outcome_accepted(value: v)
+    EmitSpellingWrap { prefix: p, suffix: s } => outcome_accepted(value: concat(p, concat(spelling, s)))
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
+      outcome_accepted(value: apply_emit_spelling_quote(prefix: p, open: o, close: c, escapes: es, spelling: spelling))
+    EmitLineBreaks { before: _, after: _ } =>
+      outcome_rejected(target_layout_token_spelled_flat_diagnostic(token_class: token_class))
   }
 }
 
@@ -1057,9 +1102,9 @@ fn fixed_token_spelling_from_model(
     f: fn(spelling) {
       match map_get(target.token_class_emit_transforms, token_class) {
         Accepted { value: Present { value: transform }, diagnostics: d } =>
-          outcome_with_diagnostics(
-            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
-            diagnostics: d
+          bind_outcome(
+            o: apply_emit_spelling_transform(transform: transform, token_class: token_class, spelling: spelling),
+            f: fn(spelled) { outcome_with_diagnostics(value: spelled, diagnostics: d) }
           )
         Accepted { value: Absent, diagnostics: d } =>
           outcome_with_diagnostics(value: spelling, diagnostics: d)
@@ -1079,13 +1124,54 @@ fn bound_token_spelling_from_model(
     f: fn(spelling) {
       match map_get(target.token_class_emit_transforms, token_class) {
         Accepted { value: Present { value: transform }, diagnostics: d } =>
-          outcome_with_diagnostics(
-            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
-            diagnostics: d
+          bind_outcome(
+            o: apply_emit_spelling_transform(transform: transform, token_class: token_class, spelling: spelling),
+            f: fn(spelled) { outcome_with_diagnostics(value: spelled, diagnostics: d) }
           )
         Accepted { value: Absent, diagnostics: d } =>
           outcome_with_diagnostics(value: spelling, diagnostics: d)
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+
+fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) -> Outcome<TargetText> {
+  match map_get(target.token_class_emit_transforms, token_class) {
+    Accepted { value: Present { value: transform }, diagnostics: d } =>
+      match transform {
+        EmitLineBreaks { before: b, after: a } =>
+          outcome_with_diagnostics(value: target_text_line_breaks(before: b, lexeme: spelling, after: a), diagnostics: d)
+        _ =>
+          bind_outcome(
+            o: apply_emit_spelling_transform(transform: transform, token_class: token_class, spelling: spelling),
+            f: fn(spelled) { outcome_with_diagnostics(value: text_atom(lexeme: spelled), diagnostics: d) }
+          )
+      }
+    Accepted { value: Absent, diagnostics: d } =>
+      outcome_with_diagnostics(value: text_atom(lexeme: spelling), diagnostics: d)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// THE CARRIER-NATIVE TOKEN SPELLING: the lexeme (fixed: the lex literal; bound: the binding's
+// spelling) under the token class's emit transform, as TargetText, so an EmitLineBreaks class keeps
+// its line breaks.
+fn token_text_from_model(target: TargetModel, token: Node) -> Outcome<TargetText> {
+  bind_outcome(
+    o: concrete_syntax_token_from_node(token: token),
+    f: fn(decoded) {
+      match decoded {
+        FixedToken { token_class: token_class } =>
+          bind_outcome(
+            o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+            f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
+          )
+        BoundToken { token_class: token_class, binding: binding } =>
+          bind_outcome(
+            o: target_binding_spelling_lookup(target: target, binding: binding),
+            f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
+          )
       }
     }
   )
@@ -1753,6 +1839,86 @@ fn target_model_canonical_operations_roster_root() -> Node {
     ],
     occurrence_id: OccurrenceSynthetic
   }
+}
+
+// THE DECLARED TYPE OF A CANONICAL-OPERATION WIRE NODE. Every wire node the roster above gathers
+// renders one CanonicalOperation value, so its declared type is CanonicalOperation, named here by
+// the authority that declares that type. This is what an inference rule reads for a roster member
+// -- never the roster root, which is where the member was FOUND, not what it IS.
+
+fn target_model_canonical_operation_type_node() -> Node {
+  target_model_type_atom_node(identity: ^canonical_operation_type_atom)
+}
+
+// A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
+// under it carries the variant field's declared type, Symbol (symbol_kernel_type_node). A predicate
+// atom encodes an OrderingPredicate or EqualityPredicate, and this authority names no type node for
+// either, so it answers Absent rather than fabricating one. Absent derives nothing here: infer
+// falls through to its remaining rules (the arrow-domain binding lookup), which end in the typed
+// GroundingNotDerived frontier unless the tree binds that very symbol.
+
+fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Optional<Node> {
+  match edge.label {
+    Named { name: field } =>
+      if field == ^target_canonical_operation_field_predicate {
+        optional_absent()
+      } else {
+        optional_present(value: symbol_kernel_type_node())
+      }
+    _ => optional_absent()
+  }
+}
+
+fn target_model_canonical_operation_wire_child_member_type(
+  acc: Optional<Node>,
+  child_edge: Edge,
+  n: Node
+) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if child_edge.target == n {
+        target_model_canonical_operation_wire_child_declared_type(edge: child_edge)
+      } else {
+        acc
+      }
+  }
+}
+
+fn target_model_canonical_operation_roster_member_type(
+  acc: Optional<Node>,
+  roster_edge: Edge,
+  n: Node
+) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if roster_edge.target == n {
+        optional_present(value: target_model_canonical_operation_type_node())
+      } else {
+        fold_list(
+          xs: roster_edge.target.children,
+          empty: optional_absent(),
+          cons: fn(inner, child_edge) {
+            target_model_canonical_operation_wire_child_member_type(
+              acc: inner,
+              child_edge: child_edge,
+              n: n
+            )
+          }
+        )
+      }
+  }
+}
+
+fn target_model_canonical_operation_member_declared_type(n: Node) -> Optional<Node> {
+  fold_list(
+    xs: target_model_canonical_operations_roster_root().children,
+    empty: optional_absent(),
+    cons: fn(acc, roster_edge) {
+      target_model_canonical_operation_roster_member_type(acc: acc, roster_edge: roster_edge, n: n)
+    }
+  )
 }
 
 fn canonical_operation_equal(
@@ -3741,6 +3907,8 @@ fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List
   }
 }
 
+// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: nesting
+// is layout, and a token spine carries none.
 fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
@@ -3752,14 +3920,22 @@ fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<Concret
           match acc {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: partial, diagnostics: ad } =>
-              bind_outcome(
-                o: concrete_syntax_token_from_wire_node(token: token_node),
-                f: fn(tok) {
-                  outcome_accepted(
-                    list_snoc_item(xs: partial, item: tok)
+              match find_named_child(root: token_node, name: ^grammar_nested_block_tokens) {
+                Accepted { value: inner, diagnostics: _ } =>
+                  bind_outcome(
+                    o: concrete_syntax_token_list_from_node(list_node: inner),
+                    f: fn(inner_tokens) { outcome_accepted(list_append(left: partial, right: inner_tokens)) }
                   )
-                }
-              )
+                Rejected { diagnostics: _ } =>
+                  bind_outcome(
+                    o: concrete_syntax_token_from_wire_node(token: token_node),
+                    f: fn(tok) {
+                      outcome_accepted(
+                        list_snoc_item(xs: partial, item: tok)
+                      )
+                    }
+                  )
+              }
           }
         }
       )

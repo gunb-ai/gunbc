@@ -21,7 +21,7 @@ import v2.std.node {
   node_rebuild,
   well_formed
 }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 
 fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
