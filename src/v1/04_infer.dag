@@ -8428,24 +8428,26 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
       let declared_callable_elem = declared_callable_list_element(elem_expected: elem_expected, elements: elements)
-      let elem_type_node = if declared_callable_elem != none {
-        match declared_callable_elem { Present { value: de } => de  Absent => unit_type }
-      } else if count(elem_results) > 0 {
-        match first(elem_results) {
-          Present { value: r } => resolved_type(n: r.typed)
-          Absent => unit_type
-        }
-      } else {
-        match expected {
-          Present { value: exp } =>
-            if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
-              match exp.children |> first {
-                Present { value: elem } => child_type_node(ch: elem)
-                Absent => unit_type
-              }
-            } else { unit_type }
-          Absent => type_variable_node(id: "empty_list_element")
-        }
+      let elem_type_node = match declared_callable_elem {
+        Present { value: de } => de
+        Absent =>
+          if count(elem_results) > 0 {
+            match first(elem_results) {
+              Present { value: r } => resolved_type(n: r.typed)
+              Absent => unit_type
+            }
+          } else {
+            match expected {
+              Present { value: exp } =>
+                if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
+                  match exp.children |> first {
+                    Present { value: elem } => child_type_node(ch: elem)
+                    Absent => unit_type
+                  }
+                } else { unit_type }
+              Absent => type_variable_node(id: "empty_list_element")
+            }
+          }
       }
       let empty_list_diags = if count(elem_results) == 0 {
         match expected {
