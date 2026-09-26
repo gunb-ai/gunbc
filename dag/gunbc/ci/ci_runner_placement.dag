@@ -667,7 +667,7 @@ fn host_standing_at_width(
             host: host_ram,
             overhead: overhead,
             headroom: headroom,
-            runner_pool: gunbc_runner_slice_cap_for_width(slots: slots),
+            runner_pool: host_runner_pool_charge(host: host_id, slots: slots),
             session_pool: session_pool,
             compile_pool: compile_pool,
             control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement),

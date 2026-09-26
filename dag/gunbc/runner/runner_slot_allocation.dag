@@ -579,7 +579,7 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
   memory_admitted_width_of_envelope(
     envelope: host_runner_memory_envelope(host: host),
-    carries_shakedown_slot: (host as String) == (srv1_microvm_shakedown_slot().host as String),
+    carries_shakedown_slot: host_carries_microvm_shakedown_slot(host: host),
   )
 }
 
@@ -1002,6 +1002,29 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
     slots: slots,
     per_slot: gunbc_runner_slot_desired().memory_max
   )
+}
+
+fn host_carries_microvm_shakedown_slot(host: HostIdentity) -> Bool {
+  (host as String) == (srv1_microvm_shakedown_slot().host as String)
+}
+
+// WHAT A HOST'S COMMITTED RUNNERS COST ITS MEMORY BUDGET, AND THE ONE PLACE IT IS ANSWERED. The width
+// above charges the shakedown slot at gunbc_microvm_shakedown_slot_charge (its 28 GiB MemoryMax plus
+// the controller slice) before dividing the rest by the fleet row; the conservation verdict in
+// gunbc.ci_runner_placement used to charge slots x the fleet row instead, so on srv1 it counted the
+// shakedown slot as one ordinary 26 GiB slot and undercharged the host by the difference -- the
+// direction that hides demand. Both now read the shakedown charge from the same declaration.
+// This is the BUDGET charge, not the runner slice's systemd cap (gunbc_runner_slice_cap_for_width):
+// the controller slice is its own unit and is charged here, not inside the runner slice.
+fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
+  if host_carries_microvm_shakedown_slot(host: host) && slots > 0 {
+    measure_add(
+      a: gunbc_runner_slice_cap_for_width(slots: slots - 1),
+      b: gunbc_microvm_shakedown_slot_charge()
+    )
+  } else {
+    gunbc_runner_slice_cap_for_width(slots: slots)
+  }
 }
 
 fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
