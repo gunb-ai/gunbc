@@ -1528,10 +1528,18 @@ fn cli_door_member_arm(stdout: &str, module: &str) -> Result<CliDoorMemberArm, S
             arms.len()
         ));
     };
-    match (
-        arm.get("emitted").and_then(|t| t.as_str()),
-        arm.get("refused").and_then(|r| r.as_str()),
-    ) {
+    // A PRESENT FIELD OF THE WRONG TYPE REFUSES: reading it as absent would let `"emitted": 5`
+    // beside a `refused` string pass as a clean refusal.
+    let field = |key: &str| -> Result<Option<&str>, String> {
+        match arm.get(key) {
+            None => Ok(None),
+            Some(v) => v
+                .as_str()
+                .map(Some)
+                .ok_or_else(|| format!("the arm for {module} carries a non-string `{key}`: {v}")),
+        }
+    };
+    match (field("emitted")?, field("refused")?) {
         (Some(text), None) => Ok(CliDoorMemberArm::Emitted(text.to_string())),
         (None, Some(reason)) => Ok(CliDoorMemberArm::Refused(reason.to_string())),
         _ => Err(format!(
@@ -2721,6 +2729,26 @@ mod cli_emit_probe_tests {
             "modules": [{ "module": CLI_DOOR_ENTRY_MODULE, "refused": reason }]
         })
         .to_string()
+    }
+
+    /// A WRONG-TYPED ARM FIELD REFUSES; IT IS NEVER READ AS ABSENT. `"emitted": 5` beside a
+    /// `refused` string would otherwise decode as a clean refusal. The positive control is the
+    /// same arm with the stray field removed.
+    #[test]
+    fn a_wrong_typed_arm_field_refuses_rather_than_reading_as_absent() {
+        let stray = serde_json::json!({
+            "modules": [{ "module": CLI_DOOR_ENTRY_MODULE, "emitted": 5, "refused": "r" }]
+        })
+        .to_string();
+        let cause = match cli_door_member_arm(&stray, CLI_DOOR_ENTRY_MODULE) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a non-string `emitted` must refuse"),
+        };
+        assert!(cause.contains("non-string `emitted`"), "got: {cause}");
+        assert!(matches!(
+            cli_door_member_arm(&carrier_refused("r"), CLI_DOOR_ENTRY_MODULE),
+            Ok(CliDoorMemberArm::Refused(r)) if r == "r"
+        ));
     }
 
     fn located_pinned_refusal() -> String {
