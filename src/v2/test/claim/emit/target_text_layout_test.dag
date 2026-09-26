@@ -1,6 +1,6 @@
 module v2.test.emit.target_text_layout
 
-import std.layout { DocNestBy, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_is_empty }
+import std.layout { DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest, doc_nest_by }
 import v2.std.node { Node, Symbol }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { Holds, Violates }
@@ -39,18 +39,25 @@ fn layout_line() -> TargetText {
 }
 
 test fn nests_stack_their_units_in_std_layout() -> Bool {
-  render(doc: DocConcat { parts: [DocText { text: "a" }, DocNestBy { unit: "  ", body: DocConcat { parts: [DocLine, DocText { text: "b" }, DocNestBy { unit: "    ", body: DocConcat { parts: [DocLine, DocText { text: "c" }] } }] } }, DocLine, DocText { text: "d" }] }, proto: LayoutProtocol { indent_unit: "" })
+  render(doc: DocConcat { parts: [DocText { text: "a" }, doc_nest_by(unit: "  ", body: DocConcat { parts: [DocLine, DocText { text: "b" }, doc_nest_by(unit: "    ", body: DocConcat { parts: [DocLine, DocText { text: "c" }] })] }), DocLine, DocText { text: "d" }] }, proto: LayoutProtocol { indent_unit: "" })
     == "a\n  b\n      c\nd"
+}
+
+// The one nest takes its unit from either source, and they compose: a protocol level inside a
+// spelled unit indents by the spelled unit, then the protocol's.
+test fn protocol_and_spelled_indents_are_one_nest() -> Bool {
+  render(doc: doc_nest_by(unit: "> ", body: DocConcat { parts: [DocText { text: "a" }, doc_nest(levels: 2, body: DocConcat { parts: [DocLine, DocText { text: "b" }] })] }), proto: LayoutProtocol { indent_unit: "-" })
+    == "> a\n> --b"
 }
 
 test fn without_layout_parts_the_carrier_is_concatenation() -> Bool {
   render_target_text(t: target_text_seq(acc: text_atom(lexeme: "fn "), next: target_text_seq(acc: text_atom(lexeme: "add"), next: text_atom(lexeme: "(x)\n  y")))) == "fn add(x)\n  y"
 }
 
-test fn emptiness_is_read_without_rendering() -> Bool {
+test fn emptiness_is_the_rendered_text_being_empty() -> Bool {
   target_text_is_empty(t: target_text_seq(acc: target_text_empty, next: text_atom(lexeme: "")))
+    && target_text_is_empty(t: target_text_nested(unit: "  ", body: text_atom(lexeme: "")))
     && !target_text_is_empty(t: target_text_nested(unit: "  ", body: text_atom(lexeme: "x")))
-    && doc_is_empty(doc: DocNestBy { unit: "  ", body: DocText { text: "" } })
 }
 
 // THE REFUSALS, on the real route with the consuming target (v2.extdeps.languages.verilog).

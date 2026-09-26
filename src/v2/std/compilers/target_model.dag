@@ -1,7 +1,7 @@
 module v2.std.compilers.target_model
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.layout { Doc, DocText, DocLine, DocConcat, DocNestBy, LayoutProtocol, render, doc_is_empty }
+import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution {
   DissolutionCondition,
   unbound_dissolution
@@ -944,7 +944,7 @@ data target_text_carrier_scaffold_note: String = "TargetText emit-seam carrier (
 // is not re-copied per token), and the one exit renders through std.layout render. Two sources of
 // layout, both unable to leave a block open: a token class whose emit transform is EmitLineBreaks
 // puts DocLines around its lexeme, and a grammar_formal_nested_occurrence wraps exactly its child's
-// text in DocNestBy (target_text_nested). A document with neither renders to the concatenation of
+// text in one std.layout nest by the target's spelled unit (target_text_nested). A document with neither renders to the concatenation of
 // its atoms, byte for byte what the String carrier produced.
 type TargetText { parts: List<Doc> }
 
@@ -961,7 +961,7 @@ fn target_text_seq(acc: TargetText, next: TargetText) -> TargetText {
 }
 
 fn target_text_nested(unit: String, body: TargetText) -> TargetText {
-  TargetText { parts: [DocNestBy { unit: unit, body: DocConcat { parts: body.parts } }] }
+  TargetText { parts: [doc_nest_by(unit: unit, body: DocConcat { parts: body.parts })] }
 }
 
 fn target_text_line_breaks(before: Int, lexeme: String, after: Int) -> TargetText {
@@ -977,7 +977,7 @@ fn render_target_text(t: TargetText) -> String {
 }
 
 fn target_text_is_empty(t: TargetText) -> Bool {
-  doc_is_empty(doc: DocConcat { parts: t.parts })
+  render_target_text(t: t) == ""
 }
 
 fn bound_tokens_source_text(
