@@ -11,6 +11,7 @@ import v2.lens.witness_cost_locality { witness_import_closure }
 // module used to carry its own copy of now has one home in v2.std.fn_index, beside the FnArrowDecl
 // type it ranges over, and a bare reference here would resolve only on pool-membership coincidence.
 import v2.std.fn_index {
+  CallReach,
   FnArrowDecl,
   atom_identities_in_node,
   call_reachable_decls,
@@ -27,6 +28,8 @@ import v2.lens.module_graph {
   module_declaration_facts_live,
   path_matches_touched
 }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.live_read { LiveReadUnestablished }
 import v2.std.text { string_eq }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
@@ -340,6 +343,21 @@ data g2_carrier_homes_parameter_role_note: String = "WHY carrier_homes IS STILL 
 
 G1 IS NOW EVIDENCE, NOT AN ANSWER. A COMPLETED G2 classification is derived from reachable carrier invocations only, so this parameter is deliberately unread on that path. It is retained rather than deleted because the classified/refused projection still to land needs it on the OTHER path: when the fn-arrow facts required to establish G2 are unavailable or incomplete, carrier-home reachability is the evidence that decides between refusing loudly and refusing at all — it must never silently become a successful classification, because an unavailable G2 producer would then be observationally identical to the defect just repaired. Deleting the parameter now and reintroducing it with that seam would be churn; leaving it undocumented would read as an oversight. This row is the difference."
 
+// Refusals decide first: an unreadable call may be the one that reaches a carrier, so neither
+// LocalRead nor a carrier set is established while any stands.
+fn g2_classification_of_reach(reach: CallReach) -> LiveReadClassification {
+  if length(xs: reach.refusals) > 0 {
+    LiveReadUnestablished { refusals: reach.refusals }
+  } else {
+    let carriers = carriers_from_reachable_decls(reachable: reach.reached)
+    if length(xs: carriers) == 0 {
+      LocalRead
+    } else {
+      RuntimeRead { carriers: carriers }
+    }
+  }
+}
+
 fn live_read_classification_g2_from_facts(
   entry_module: String,
   facts: List<ModuleImportFact>,
@@ -353,12 +371,7 @@ fn live_read_classification_g2_from_facts(
     closure_modules: closure_modules,
     decls: decls
   )
-  let carriers = carriers_from_reachable_decls(reachable: reachable)
-  if length(xs: carriers) == 0 {
-    LocalRead
-  } else {
-    RuntimeRead { carriers: carriers }
-  }
+  g2_classification_of_reach(reach: reachable)
 }
 
 data g2_manifest_shape_law: String = "ONE EVAL, MANY ROWS, and the shape is forced by cost rather than taste. The obvious wiring calls the projection once per enrolled declaration, which recomputes the dependency edges, declaration facts, and fn-arrow facts on every call — restoring correctness while making selection itself unaffordable, which is precisely the trade the live-read design names when it pairs G2 path-intersection with carrier memoization. The requests are small (a triple per enrolled row) and the facts are large, so the fold inverts: derive the three fact sets ONCE, then classify every request against them.
@@ -471,12 +484,7 @@ fn live_read_classification_g2_from_edges(
     closure_modules: closure_modules,
     decls: decls
   )
-  let carriers = carriers_from_reachable_decls(reachable: reachable)
-  if length(xs: carriers) == 0 {
-    LocalRead
-  } else {
-    RuntimeRead { carriers: carriers }
-  }
+  g2_classification_of_reach(reach: reachable)
 }
 
 data live_read_selection_projection_law: String = "THE SELECTION SEAM, and the state the classification type cannot express. LiveReadClassification answers what an entry reads; it has no arm for we could not establish what this entry reads. That third state is not cosmetic: an unavailable G2 producer that silently answered LocalRead would be observationally identical to the G1-only defect this lane repairs, except failing in the opposite and more dangerous direction — under-selection, which looks like a faster green floor rather than a failure. So the seam carries a projection around the existing authority rather than a second classification type (DESIGN section 3: no parallel representation of one fact).
@@ -503,6 +511,7 @@ fn classification_is_local_read(c: LiveReadClassification) -> Bool {
   match c {
     LocalRead => true
     RuntimeRead { carriers: _ } => false
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 
@@ -524,6 +533,21 @@ fn classification_diagnostic_label(c: LiveReadClassification) -> String {
   match c {
     LocalRead => "LocalRead"
     RuntimeRead { carriers: _ } => "RuntimeRead"
+    LiveReadUnestablished { refusals: _ } => "LiveReadUnestablished"
+  }
+}
+
+// An unestablished classification may not decide a skip, so it projects to the refusal arm.
+fn live_read_selection_of(classification: LiveReadClassification) -> LiveReadSelectionProjection {
+  match classification {
+    LiveReadUnestablished { refusals: r } =>
+      LiveReadSelectionRefused {
+        cause: concat(
+          "G2 call walk met applications it could not read, so no classification was established: ",
+          integer_int_to_decimal_string(value: length(xs: r))
+        )
+      }
+    _ => LiveReadSelectionClassified { classification: classification }
   }
 }
 
@@ -532,8 +556,7 @@ fn live_read_selection_projection_for_subject(
   classification: LiveReadClassification
 ) -> LiveReadSelectionProjection {
   match subject {
-    WholeTreeFactSubject =>
-      LiveReadSelectionClassified { classification: classification }
+    WholeTreeFactSubject => live_read_selection_of(classification: classification)
     PartialFactSubject { cause: cause } =>
       LiveReadSelectionRefused {
         cause: concat(
@@ -587,14 +610,14 @@ fn live_read_selection_projection_from_facts(
     carrier_homes: carrier_homes,
     decls: decls
   ) {
-    LiveReadSelectionClassified {
+    live_read_selection_of(
       classification: live_read_classification_g2_from_facts(
         entry_module: entry_module,
         facts: facts,
         decls: decls,
         carrier_homes: carrier_homes
       )
-    }
+    )
   } else {
     LiveReadSelectionRefused {
       cause: concat(
@@ -642,11 +665,16 @@ fn classification_is_local(classification: LiveReadClassification) -> Bool {
   match classification {
     LocalRead => true
     RuntimeRead { carriers: _ } => false
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 
 fn classification_has_runtime_read(classification: LiveReadClassification) -> Bool {
-  !classification_is_local(classification: classification)
+  match classification {
+    LocalRead => false
+    RuntimeRead { carriers: _ } => true
+    LiveReadUnestablished { refusals: _ } => false
+  }
 }
 
 fn classification_has_corpus_scan_carrier(classification: LiveReadClassification) -> Bool {
@@ -663,6 +691,7 @@ fn classification_has_corpus_scan_carrier(classification: LiveReadClassification
           }
         }
       )
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 
@@ -680,6 +709,7 @@ fn classification_has_filesystem_read_carrier(classification: LiveReadClassifica
           }
         }
       )
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 
@@ -698,6 +728,7 @@ fn classification_has_literal_path(
           DeclFactsReflection { home: _ } => false
         }
       })
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 
@@ -717,6 +748,7 @@ fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> 
             }
         }
       })
+    LiveReadUnestablished { refusals: _ } => empty_string_list
   }
 }
 
@@ -730,6 +762,7 @@ fn runtime_read_touched_by_path_g1(
     match classification {
       LocalRead => false
       RuntimeRead { carriers: _ } => true
+      LiveReadUnestablished { refusals: _ } => false
     }
   }
 }
@@ -770,6 +803,7 @@ fn runtime_read_touched_by_path_g2(
         any(xs: carriers, predicate: fn(carrier) {
           live_read_carrier_touched_by_path(carrier: carrier, touched_path: touched_path)
         })
+      LiveReadUnestablished { refusals: _ } => false
     }
   }
 }

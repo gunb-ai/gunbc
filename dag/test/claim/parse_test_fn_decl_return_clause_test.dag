@@ -1,12 +1,15 @@
 module test.claim.parse_test_fn_decl_return_clause
 
 import v2.compiler.body_lowering_fold {
+  BodyLowered,
   body_lower_fn_decl_to_arrow,
+  body_lower_fn_decl_to_census_arrow,
   body_lower_outcome_is_wrapper_retained,
   body_lower_return_type_from_fn_captured,
   body_lower_unwrap_captured
 }
 import v2.compiler.normalize { normalize }
+import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -15,9 +18,9 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, NodeLocus, None, Rejected, Unavailable }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +312,140 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
           fold(ne.tail, init: nfbcp_is_door_retention(d: ne.head) && nfbcp_retention_anchored_at_fn_decl(d: ne.head), f: fn(found, d) {
             found || (nfbcp_is_door_retention(d: d) && nfbcp_retention_anchored_at_fn_decl(d: d))
           })
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A REPEATED PARAMETER BINDING REFUSES AT THE SECOND BINDING, NOT AT THE MODULE ROOT.
+//
+// The Arrow domain is a Conj keyed by binding name, so a repeated binding has no well-formed domain.
+// Before v2.compiler.body_lowering_fold body_lower_fn_signature_bindings_refusal the lowering built
+// that Conj, and normalize's recursive well_formed gate refused the module with
+// normalize_reason_post_normalize_not_well_formed at the module root (gen-two census:
+// std.key_relation global_key_scope_eq, provider_readiness_independence_claim). These rows parse a
+// real fn and run the fn_decl producer itself, body_lower_fn_decl_to_arrow, the same entry
+// nfbcp_hazard_no_return_type_retains_wrapper_holds uses; the normalize chain that reaches it is
+// already run end to end by nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds,
+// so these rows do not pay for it again (DESIGN section 3, a witness discriminates at one interface).
+// Each asserts the cause and that the locus is the SECOND binding's type (B; the first is A).
+// Answering optional_absent from the bindings arm restores the ill-formed domain and reds both.
+// Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
+// A repeated `_` is its own cause: a v2-behind-v1 frontier (v1 admits it), not an authoring error.
+data nfbcp_anonymous_repeat_source: String = "module m\nfn g(_: A, _: B) -> A { a }\n"
+data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A { a }\n"
+
+fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => id == atom
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Bool {
+  match nfbcp_fn_decl_shell(text: text) {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_decl_to_arrow(shell: shell) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: (ne.head.reason == reason) && nfbcp_locus_is_atom(d: ne.head, atom: atom), f: fn(found, d) {
+            found || ((d.reason == reason) && nfbcp_locus_is_atom(d: d, atom: atom))
+          })
+      }
+  }
+}
+
+// The `_` class also asserts its correction arm: CorrectionNotModeled, because the missing piece is a
+// compiler capability, not an authoring error. A diagnostic answering UserInputBoundary here would
+// tell the author to rename a source v1 accepts.
+fn nfbcp_correction_is_not_modeled(d: Diagnostic) -> Bool {
+  match d.correction {
+    Unavailable { reason: CorrectionNotModeled } => true
+    _ => false
+  }
+}
+
+test fn nfbcp_repeated_anonymous_param_refuses_at_the_second_binding_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_anonymous_repeat_source) {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_decl_to_arrow(shell: shell) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          (ne.head.reason == ^body_lowering_reason_arrow_domain_anonymous_param_repeated)
+            && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
+            && nfbcp_correction_is_not_modeled(d: ne.head)
+      }
+  }
+}
+
+test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {
+  nfbcp_fn_decl_refuses_with(
+    text: nfbcp_named_repeat_source,
+    reason: ^body_lowering_reason_arrow_domain_param_binding_repeated,
+    atom: ^B
+  )
+}
+
+// A REPEATED DECLARATION NAME REFUSES AT THE GRAFT, AT THE SECOND DECLARATION. The module body is a
+// Conj keyed by declaration name; v2.compiler.namespace_graft module_header_containment_graft now
+// refuses a repeated name (gen-two census: two `data fixture_v3_tick_wire` in the roadmap launch
+// witness) instead of building a body the well_formed gate refuses at the root. This row hands the
+// parsed module to the graft itself. The locus is the second declaration's member, discriminated by
+// its declared type (B; the first is A).
+data nfbcp_repeated_decl_source: String = "module m\ndata x: A = a\ndata x: B = a\n"
+
+fn nfbcp_node_mentions_atom(n: Node, atom: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => id == atom
+    Absent => fold(n.children, init: false, f: fn(found, e) { found || nfbcp_node_mentions_atom(n: e.target, atom: atom) })
+  }
+}
+
+fn nfbcp_locus_mentions_atom(d: Diagnostic, atom: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } => nfbcp_node_mentions_atom(n: a.at, atom: atom)
+    _ => false
+  }
+}
+
+test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_repeated_decl_source) {
+    Absent => false
+    Present { value: tree } =>
+      match module_header_containment_graft(root: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          (ne.head.reason == ^namespace_graft_declaration_name_repeated)
+            && nfbcp_locus_mentions_atom(d: ne.head, atom: ^B)
+            && !nfbcp_locus_mentions_atom(d: ne.head, atom: ^A)
+      }
+  }
+}
+
+// AN ANONYMOUS RECORD RETURN TYPE LOWERS; IT IS NOT RETAINED. `-> { s: B }` is a type expression
+// whose captured is a field_decl_block. v2.compiler.body_lowering_fold
+// body_lower_anonymous_record_type_optional reads it through the record declaration's own field-block
+// reader, so the signature is readable and the fn_decl producer lowers it. The row runs the
+// census-grade producer, which reads the same signature (body_lower_fn_signature_optional) and
+// skips the body, so it pays for the fact under test and nothing else. Before that arm the reader
+// answered Absent and the whole fn_decl was retained, refused by the normalized-tree door (gen-two
+// census: gunbc.tools.cron_tag upsert_tagged_cron_tab). Deleting the arm restores the retention and
+// reds this row.
+data nfbcp_anonymous_record_return_source: String = "module m\nfn g() -> { s: B } { a }\n"
+
+test fn nfbcp_anonymous_record_return_type_lowers_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_anonymous_record_return_source) {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_decl_to_census_arrow(shell: shell) {
+        Accepted { value: BodyLowered { node: _ }, diagnostics: _ } => true
+        _ => false
       }
   }
 }

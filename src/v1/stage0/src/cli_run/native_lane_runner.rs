@@ -621,6 +621,9 @@ struct NativeTerminalMarker {
     file_refusals: u64,
     admitted: bool,
     summary: String,
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
+    /// census marker, which carries no population to judge; nothing reads it there.
+    frontier: String,
 }
 
 /// `v2.compiler.native_test_vocabulary` `NativeTestVerdict`, mirrored at the discriminant only.
@@ -771,8 +774,10 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                     file_refusals,
                     admitted: false,
                     summary: String::new(),
+                    frontier: String::new(),
                 },
                 "adjudicate" => NativeTerminalMarker {
+                    frontier: need_str("frontier")?,
                     rows: need_u64("rows")?,
                     universe: need_u64("universe")?,
                     admitted: value
@@ -1523,10 +1528,18 @@ fn cli_door_member_arm(stdout: &str, module: &str) -> Result<CliDoorMemberArm, S
             arms.len()
         ));
     };
-    match (
-        arm.get("emitted").and_then(|t| t.as_str()),
-        arm.get("refused").and_then(|r| r.as_str()),
-    ) {
+    // A PRESENT FIELD OF THE WRONG TYPE REFUSES: reading it as absent would let `"emitted": 5`
+    // beside a `refused` string pass as a clean refusal.
+    let field = |key: &str| -> Result<Option<&str>, String> {
+        match arm.get(key) {
+            None => Ok(None),
+            Some(v) => v
+                .as_str()
+                .map(Some)
+                .ok_or_else(|| format!("the arm for {module} carries a non-string `{key}`: {v}")),
+        }
+    };
+    match (field("emitted")?, field("refused")?) {
         (Some(text), None) => Ok(CliDoorMemberArm::Emitted(text.to_string())),
         (None, Some(reason)) => Ok(CliDoorMemberArm::Refused(reason.to_string())),
         _ => Err(format!(
@@ -2102,6 +2115,52 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
+/// ONE RUN OF A `std.compiler_entry` `NativeClaimDriver` PROGRAM, as the observation the reader
+/// needs and nothing it decides. `gunbc.native_claim_program` `native_claim_program_standing` reads
+/// `stdout` and `status` and answers held / not held / no observation; this struct carries them
+/// there unjudged. `status` is `None` when the process ended on a signal, which the reader receives
+/// as a negative status and treats as no observation.
+pub struct NativeClaimProgramRun {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub warning_count: i64,
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// EMIT, BUILD AND RUN ONE `NativeClaimDriver` ENTRY. The emission and build are the preparation
+/// every native route already uses (`prepare_emitted_compiler_for_entry`), so there is one answer to
+/// what "the emitted program" is; the one thing added is spawning it and keeping what it wrote.
+/// A refusal here -- emission refused, build failed, spawn failed -- is the subject never having
+/// been reached, and the caller reports it as such rather than as a case that did not hold.
+pub fn run_native_claim_program(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<NativeClaimProgramRun, String> {
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
+    eprintln!(
+        "native-claim: {entry} built (closure {}) -- running {}",
+        prepared.closure_identity,
+        prepared.binary_path.display()
+    );
+    let output = std::process::Command::new(&prepared.binary_path)
+        .output()
+        .map_err(|cause| {
+            format!("NATIVE-CLAIM REFUSAL cause=SpawnFailed entry={entry} — {cause}")
+        })?;
+    Ok(NativeClaimProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        status: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
 /// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
 ///
 /// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
@@ -2161,11 +2220,34 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
     }
 }
 
+/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `gunbc.native_frontier_ratchet`
+/// `native_frontier_verdict_word` rendered it inside the emitted binary. The host decides nothing
+/// here: it carries the word, and the lane's own qualification summary beside it for the reader.
+/// Which words pass is the instrument's single match, `target_invocation_host`
+/// `run_v2_native_frontier`.
+pub struct NativeFrontierRun {
+    pub frontier: String,
+    pub admission_summary: String,
+}
+
+/// The same adjudicating run the lane and `gunbc test` spawn. The caller passes the default pattern
+/// (the whole planned universe); over a narrower one the ratchet answers `not-a-measurement`.
+pub fn run_v2_native_frontier(
+    source_roots: &[String],
+    pattern: &str,
+) -> Result<NativeFrontierRun, String> {
+    run_required_v2_native_inner(source_roots, pattern).map(|admission| NativeFrontierRun {
+        frontier: admission.frontier,
+        admission_summary: admission.summary,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
     summary: String,
     members: NativeMemberTermination,
+    frontier: String,
 }
 
 fn run_required_v2_native_inner(
@@ -2320,6 +2402,7 @@ fn run_required_v2_native_inner(
     // THE MEMBER FOLD IS APPLIED HERE, ON THE POPULATION THIS RUN ACTUALLY EMITTED, so the value
     // that leaves this function already answers both questions and no consumer re-derives either.
     Ok(NativeRunAdmission {
+        frontier: run.terminal.frontier.clone(),
         admitted: run.terminal.admitted,
         summary: run.terminal.summary,
         members: native_member_termination(
@@ -2349,7 +2432,7 @@ mod tests {
         let stdout = format!(
             "{REAL_REFUSED_ROW}\n{}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":1,\"universe\":1,\
-             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}"
+             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}"
         );
         let out = parse_native_run_output(&stdout).expect("the real row must decode");
         assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
@@ -2480,7 +2563,7 @@ mod tests {
     /// fire, which is the state this PR has already had to repair twice.
     #[test]
     fn a_nonzero_exit_claiming_admitted_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 1")],
@@ -2500,7 +2583,7 @@ mod tests {
     /// discriminates on the disagreement rather than on the fixture.
     #[test]
     fn a_zero_exit_claiming_admitted_is_accepted() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let parsed = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2514,7 +2597,7 @@ mod tests {
     /// carrying a REFUSED receipt is equally a disagreement between two observations of one run.
     #[test]
     fn a_zero_exit_claiming_refused_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2560,7 +2643,7 @@ mod tests {
         let stdout = concat!(
             "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\"}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
-            "\"file_refusals\":1,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\"}\n"
+            "\"file_refusals\":1,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
         let parsed = parse_native_run_output(stdout).expect("the marker parses");
         assert!(!parsed.terminal.admitted);
@@ -2580,6 +2663,20 @@ mod tests {
         let stdout =
             "{\"identity\":{\"module\":\"v2.test.a\",\"declaration\":\"t\"},\"verdict\":\"NativeTestPassed\"}\n";
         assert!(parse_native_run_output(stdout).is_err());
+    }
+
+    /// AN ADJUDICATE MARKER WITHOUT THE FRONTIER WORD REFUSES. The emitted main always prints
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
+    /// the binary is not the one this host was built against; defaulting it would be the
+    /// absorbing arm.
+    #[test]
+    fn an_adjudicate_marker_without_frontier_refuses() {
+        let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}\n";
+        let cause = match parse_native_run_output(stdout) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a marker without frontier must refuse"),
+        };
+        assert!(cause.contains("carries no frontier"), "got: {cause}");
     }
 }
 
@@ -2632,6 +2729,26 @@ mod cli_emit_probe_tests {
             "modules": [{ "module": CLI_DOOR_ENTRY_MODULE, "refused": reason }]
         })
         .to_string()
+    }
+
+    /// A WRONG-TYPED ARM FIELD REFUSES; IT IS NEVER READ AS ABSENT. `"emitted": 5` beside a
+    /// `refused` string would otherwise decode as a clean refusal. The positive control is the
+    /// same arm with the stray field removed.
+    #[test]
+    fn a_wrong_typed_arm_field_refuses_rather_than_reading_as_absent() {
+        let stray = serde_json::json!({
+            "modules": [{ "module": CLI_DOOR_ENTRY_MODULE, "emitted": 5, "refused": "r" }]
+        })
+        .to_string();
+        let cause = match cli_door_member_arm(&stray, CLI_DOOR_ENTRY_MODULE) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a non-string `emitted` must refuse"),
+        };
+        assert!(cause.contains("non-string `emitted`"), "got: {cause}");
+        assert!(matches!(
+            cli_door_member_arm(&carrier_refused("r"), CLI_DOOR_ENTRY_MODULE),
+            Ok(CliDoorMemberArm::Refused(r)) if r == "r"
+        ));
     }
 
     fn located_pinned_refusal() -> String {

@@ -1,0 +1,35 @@
+module extdeps.standards.fips_180
+
+import std.types { List, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// FIPS 180 (Secure Hash Standard) EXAMPLE VECTORS as NIST publishes them with intermediate values:
+// the one-block message "abc", the two-block message that pushes the padding into a second block,
+// and, for each algorithm, the empty message, whose whole content is padding. Each digest is the
+// published lower-case hex, transcribed rather than derived. The messages are ASCII text; their
+// octets are the consumer's encoding step, not a fact of this file.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values"
+  }
+}
+
+type Fips180DigestVector {
+  case_name: String
+  message: String
+  digest_hex: String
+}
+
+data fips180_sha256_vectors: List<Fips180DigestVector> = [
+  Fips180DigestVector { case_name: "sha256_empty", message: "", digest_hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
+  Fips180DigestVector { case_name: "sha256_abc", message: "abc", digest_hex: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+  Fips180DigestVector { case_name: "sha256_448_bit", message: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", digest_hex: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1" }
+]
+
+data fips180_sha384_vectors: List<Fips180DigestVector> = [
+  Fips180DigestVector { case_name: "sha384_empty", message: "", digest_hex: "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b" },
+  Fips180DigestVector { case_name: "sha384_abc", message: "abc", digest_hex: "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7" },
+  Fips180DigestVector { case_name: "sha384_896_bit", message: "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", digest_hex: "09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039" }
+]

@@ -1,0 +1,33 @@
+module gunbc.native_claim_program_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data native_claim_program_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "NativeClaimProgramRun",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "run_native_claim_program",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "run_native_claim_program",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The one producer arm for std.compiler_entry NativeClaimDriver programs (gunbc.target_binding NativeClaimProgramProducer { entry }). Its host part is only what no .dag fold can do: emit and build through the existing prepare_emitted_compiler_for_entry, spawn the built binary, and carry its stdout and status out unjudged. Every decision about what the run established -- the roster-to-row identity join, the status/rows agreement, held versus not held versus no observation -- is gunbc.native_claim_program native_claim_program_standing, evaluated by the host and mapped through cli_run classify_exit, so the host adds no verdict. It is ONE arm generic over its entry: the next NativeClaimDriver program (the App Attest attestation fold on Apple's sample) is a binding row, not another arm. The host file it sits in is the hand mirror gunbc.target_invocation_seed_growth already declares.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can spawn a built program and hand its stdout and status to a .dag fold, SUFFICIENT FOR //gunbc/instruments:native-crypto-vectors to run with no hand-authored producer body. WHAT DOES NOT RETIRE IT: moving the spawn to another host file; folding the reader into Rust.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_native_claim_program and NativeClaimProgramRun, called once from src/v1/stage0/src/target_invocation_host.rs run_native_claim_program, behind gunbc test //gunbc/instruments:native-crypto-vectors"
+}

@@ -20,6 +20,7 @@
 .github/workflows/heal-publish.yml merge=generated-artifact
 .github/workflows/heal.yml merge=generated-artifact
 .github/workflows/microvm-shakedown.yml merge=generated-artifact
+.github/workflows/native-frontier.yml merge=generated-artifact
 .github/workflows/witnesses.yml merge=generated-artifact
 .gitignore merge=generated-artifact
 DESIGN.md merge=generated-artifact
