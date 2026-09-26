@@ -1,6 +1,6 @@
 # mtcollins1 boot: observe and publish capacity; health separate from the boot verdict
 
-Status: DESIGN NOTE, sent to eager-owl-205 before any build (work item adhoc-0e07aa33-b20).
+Status: APPROVED by eager-owl-205 (2026-09-26) with the frontier answer below; work item adhoc-0e07aa33-b20.
 Off the #12362 → publish → repin → boot critical path: nothing here lands before #12362.
 
 ## The defect, read as a chain (DESIGN §6b)
@@ -67,3 +67,30 @@ a capture missing boot-media does not boot; EDAC UE>0 boots but health restricts
 exercises the real `mtcollins1_boot_terminal_verdict` path (§3 pairing obligation).
 
 No live hardware is touched.
+
+## Correction after reading the homes: in-band health is not `product.host_health`
+
+`product.host_health` is built on a standing rule that its signals are read OUT OF BAND ("a count
+the BMC does not expose is an unknown, never a host-OS read"). nproc, numactl and in-band EDAC
+from the census image are host-OS reads. So the topology health assessment is a sibling
+instance of the shared authority, `std.goal_assessment`, over an in-band subject, in
+`gunbc.machine_intake_host_resource_observation`. It is a stated divergence from
+`product.host_health`, not a silent fork. In-band EDAC follows the same route at the cut (below):
+`product.host_health` `MemoryErrorCounters` / `counter_window_standing` are reused as values,
+without the out-of-band epoch claim.
+
+## Staging (parent ruling: nothing touches the #12362 → publish → repin → boot path until that boot has run)
+
+- **PR 1 (this change).** Questions 2–4 as new modules:
+  `gunbc.machine_intake_host_resource_observation` (observation → `host_topology_assessment` →
+  `topology_health_admission` → `host_offered_shape` → `host_workload_eligibility` over
+  `product.fabric.supply` `unmet_shape_axes`), and `gunbc.machine_intake_mtcollins1_topology_goal`.
+  The numa parser is imported from the milestone module, not copied. It moves at the cut.
+- **PR 2 (the cut), after the #12362 boot has run.** Delete the milestone module and the
+  nproc/numa verdict arms. Retire the rung drop. `mtcollins1_boot_run` feeds its envelope's
+  sections into `host_resource_observation`, so the boot run becomes the production consumer.
+  EDAC and workload move out of the verdict.
+- **PR 3, after #12362 lands.** Memory-test sizing policy.
+- **Declared frontier.** Pool publication into `product.capacity.pool` via
+  `gunbc.compute.host_capacity`. Trigger: mtcollins1's fabric enrolment (a `HostDashboardInstance`
+  naming it). No enrolment home is invented here.
