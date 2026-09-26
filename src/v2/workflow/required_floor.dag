@@ -763,8 +763,9 @@ fn required_gate_prefixes() -> List<String> {
 // into the module's own closed form, had also kept
 // `saturation_refuses_rather_than_reporting_the_ceiling` red with no reader. An over-commit is a
 // silent capacity lie until the kernel OOM-kills something, so its wall has to run where merges are
-// decided. Measured locally with claim_batch: every claim in the module is under the new-witness
-// step ceiling, the largest at 55,787 eval_steps. Preparation growth is gunbc.fleet_host_budget,
+// decided. Every claim in the module was measured under the new-witness step ceiling with a local
+// claim_batch run over the module (its [witness] eval_steps lines re-derive the figures, which are
+// not transcribed here). Preparation growth is gunbc.fleet_host_budget,
 // gunbc.ci_runner_placement and gunbc.live_deploy.served_slice_charge beyond what the runner-capacity
 // rows already carry. The module declares SubstrateInputsOnly. The first required run after
 // admission is the priced receipt; read its identity-grained disposition.
