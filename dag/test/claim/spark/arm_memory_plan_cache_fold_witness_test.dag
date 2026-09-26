@@ -25,6 +25,8 @@ import gunbc.spark.arm_memory_fit {
   RequestBlockCostProved, RequestBlockCostRefused, request_block_cost,
   CacheAdmissionProved, CacheAdmissionRefused, cache_admission_verdict,
   CacheCapacityCandidate, cache_capacity_candidate,
+  CacheFrontierRung, CacheFrontierRungProved, CacheFrontierRungRefused, CacheFrontier, CacheFrontierUnestablished, cache_frontier_from_plan,
+  ArmMemoryFitUnestablished, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
   pool_construction_per_rank,
   SharedPoolByteClaimConsistent, SharedPoolByteClaimRefused, shared_pool_byte_claim_red,
 }
@@ -712,3 +714,168 @@ test fn the_proved_verdict_carries_the_block_equivalent_spelling_on_the_v2_plan(
   }
 }
 
+// ── THE CACHE FRONTIER: THE LADDER, THE RESERVE SELECTION, AND THE WHOLE-ARM STANDING ────────────
+
+// THE FRONTIER LADDER ON THE REAL PLAN, one fold, the doctrine's table computed: 6/738, 7/861,
+// 8/984 prove at the block wall, 9/1107 refuses — shares of the already-allocated 1035-block
+// inventory, not additional allocations (vLLM allocated the whole pool at startup). Under the
+// first production reserve candidate (ReserveFullLengthSeats{1}: 123 blocks held back) the
+// guaranteed seat count is 7 of the hard ceiling 8; six remains the conservative restoration
+// point, leaving 297 blocks = 28.70% of the inventory. THE RUNGS RIDE IN ORDER (ceiling − 2
+// through ceiling + 1), so the ladder is read by position, each rung discriminated on its own.
+test fn the_cache_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_frontier_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
+        rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
+        CacheFrontier { limiting_rank: lr, length: l, blocks_per_seat: bps, inventory: inv, hard_ceiling: hc, reserve_policy: _, blocks_reserved: br, guaranteed_seats: gs, rungs: rungs, block_equivalent_bytes_per_seat: be } =>
+          lr == 3
+            && token_count_value(t: l) == 262144
+            && allocator_block_count_value(c: bps) == 123
+            && allocator_block_count_value(c: inv) == 1035
+            && hc == 8
+            && allocator_block_count_value(c: br) == 123
+            && gs == 7
+            && length(rungs) == 4
+            && (match be {
+              Absent => true
+              Present { value: _ } => false
+            })
+            && w_rung_proved(rungs: rungs, index: 0, seats: 6, used: 738, left: 297)
+            && w_rung_proved(rungs: rungs, index: 1, seats: 7, used: 861, left: 174)
+            && w_rung_proved(rungs: rungs, index: 2, seats: 8, used: 984, left: 51)
+            && (match w_rung_at(rungs: rungs, index: 3) {
+              Present { value: CacheFrontierRungRefused { seats: s9, blocks_used: u9, cause: _ } } =>
+                s9 == 9 && allocator_block_count_value(c: u9) == 1107
+              _ => false
+            })
+        _ => false
+      }
+  }
+}
+
+fn w_rung_at(rungs: List<CacheFrontierRung>, index: Nat) -> CacheFrontierRung? {
+  first(skip(rungs, index))
+}
+
+fn w_rung_proved(rungs: List<CacheFrontierRung>, index: Nat, seats: Nat, used: Nat, left: Nat) -> Bool {
+  match w_rung_at(rungs: rungs, index: index) {
+    Present { value: CacheFrontierRungProved { seats: s, blocks_used: u, blocks_left: l } } =>
+      s == seats && allocator_block_count_value(c: u) == used && allocator_block_count_value(c: l) == left
+    _ => false
+  }
+}
+
+fn w_frontier_guaranteed(p: ResolvedKvAllocationPlan, supplies: List<ArmRankCacheSupply>, policy: CacheReservePolicy) -> Nat {
+  match cache_frontier_from_plan(
+    plan: p, shape: glm_5_3_flash_hybrid_shape,
+    supplies: supplies,
+    rank_count: 4, limiting_rank: 3, reserve_policy: policy) {
+    CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: _, reserve_policy: _, blocks_reserved: _, guaranteed_seats: g, rungs: _, block_equivalent_bytes_per_seat: _ } => g
+    CacheFrontierUnestablished { obligations: _ } => 9999
+  }
+}
+
+fn w_frontier_reserved(p: ResolvedKvAllocationPlan, supplies: List<ArmRankCacheSupply>, policy: CacheReservePolicy) -> Nat {
+  match cache_frontier_from_plan(
+    plan: p, shape: glm_5_3_flash_hybrid_shape,
+    supplies: supplies,
+    rank_count: 4, limiting_rank: 3, reserve_policy: policy) {
+    CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: _, reserve_policy: _, blocks_reserved: br, guaranteed_seats: _, rungs: _, block_equivalent_bytes_per_seat: _ } => allocator_block_count_value(c: br)
+    CacheFrontierUnestablished { obligations: _ } => 9999
+  }
+}
+
+// THE THREE STANDINGS, PINNED: hard ceiling 8 (inventory alone, no reserve); guaranteed seats by
+// policy — NoOperationalReserve guarantees to the wall (8), ReserveFullLengthSeats{1} selects 7,
+// ReserveBlocks{174} selects 7, ReserveBasisPoints{1681} (the 7-seat leftover share) selects 7;
+// and six as the conservative restoration point with its 28.7% reserve — ReserveBasisPoints{2870}
+// holds 297 blocks back and selects exactly 6. The reserve SHARES, at two-decimal percent:
+// 297/1035 = 28.70%, 174/1035 = 16.81%, 51/1035 = 4.93% of the inventory left at 6/7/8 seats.
+test fn the_frontier_reserve_policies_select_their_guaranteed_seats() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      let supplies = w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703))
+      (w_frontier_guaranteed(p: p, supplies: supplies, policy: NoOperationalReserve) == 8)
+        && (w_frontier_guaranteed(p: p, supplies: supplies, policy: ReserveFullLengthSeats { seats: 1 }) == 7)
+        && (w_frontier_guaranteed(p: p, supplies: supplies, policy: ReserveBlocks { blocks: allocator_block_count(count: 174) }) == 7)
+        && (w_frontier_guaranteed(p: p, supplies: supplies, policy: ReserveBasisPoints { basis_points: 1681 }) == 7)
+        && (w_frontier_guaranteed(p: p, supplies: supplies, policy: ReserveBasisPoints { basis_points: 2870 }) == 6)
+        && (w_frontier_reserved(p: p, supplies: supplies, policy: ReserveFullLengthSeats { seats: 1 }) == 123)
+        && (w_frontier_reserved(p: p, supplies: supplies, policy: ReserveBasisPoints { basis_points: 2870 }) == 297)
+        && (297 * 10000 + 1035 / 2) / 1035 == 2870
+        && 174 * 10000 / 1035 == 1681
+        && 51 * 10000 / 1035 == 492
+  }
+}
+
+// THE FRONTIER NAMES THE BLOCK-EQUIVALENT PER SEAT ON THE v2 PLAN: 123 blocks per seat at
+// 17,937,194 bytes per block = 2,206,274,862 block-equivalent bytes per seat — the frontier's
+// only byte figure, named block_equivalent_bytes_per_seat, absent on the v1 vintage.
+test fn the_frontier_carries_the_block_equivalent_per_seat_on_the_v2_plan() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_frontier_from_plan(
+        plan: w_plan_with_carve(p: p), shape: glm_5_3_flash_hybrid_shape,
+        supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1729)),
+        rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
+        CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: _, reserve_policy: _, blocks_reserved: _, guaranteed_seats: gs, rungs: _, block_equivalent_bytes_per_seat: be } =>
+          gs == 7
+            && (match be {
+              Present { value: b } => byte_size_count(b: b) == 2206274862
+              Absent => false
+            })
+        _ => false
+      }
+  }
+}
+
+// THE WHOLE ARM STAYS UNESTABLISHED WHILE THE 262K PREFILL TRANSIENT IS OPEN: the frontier proves
+// 6/7/8 and refuses 9 at the block wall, and even a Proved cache verdict beside it names the open
+// prefill transient in the standing — a proved cache frontier is not a whole-arm fit, and no
+// eight-seat persistent service follows from cache capacity alone (the adoption gate the
+// doctrine pins: prefill derivation, profile-shape binding, falsification run, SLO evidence).
+test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      let supplies = w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703))
+      let frontier_proves_eight = match cache_frontier_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        supplies: supplies,
+        rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
+        CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: hc, reserve_policy: _, blocks_reserved: _, guaranteed_seats: _, rungs: rungs, block_equivalent_bytes_per_seat: _ } =>
+          hc == 8 && any(rungs, r => match r {
+            CacheFrontierRungProved { seats: s, blocks_used: _, blocks_left: _ } => s == 8
+            CacheFrontierRungRefused { seats: _, blocks_used: _, cause: _ } => false
+          })
+        CacheFrontierUnestablished { obligations: _ } => false
+      }
+      let cache = cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: supplies,
+        rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve)
+      let arm = ArmMemoryFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] }
+      let standing = arm_memory_fit_whole_standing(cache: cache, arm: arm, subject_length: token_count(count: 262144))
+      frontier_proves_eight
+        && (match cache {
+          CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
+            s == 6 && (match be {
+              Absent => true
+              Present { value: _ } => false
+            })
+          _ => false
+        })
+        && (match standing.arm_verdict {
+          ArmMemoryFitUnestablished { obligations: _ } => true
+          _ => false
+        })
+        && any(standing.open_obligations, o => string_contains(s: o as String, pattern: "prefill-transient-fit"))
+  }
+}

@@ -2794,3 +2794,120 @@ fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, arm: ArmMemoryFitVerdic
 
 data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "DISCHARGED 2026-09-24: the typed receipt join (ArmComponentReceipt, arm_memory_fit_subject_with_receipts) replaced the wire-containment provenance check with a construction-level join -- receipts name their term by (rank, component) and the measurement contract governs discharge. WHAT REMAINS: the receipt TEXT still carries the identity wires for provenance; the typed identity ride-along (a receipt record carrying checkpoint/runtime/topology as fields, compared by equality) is the remaining rung, landed when the bounded-experiment observer's capture leg mints receipts from live captures instead of witness fixtures. THE MoA RUNG (owner directive 2026-09-25): MemoryProofSubject and the MemoryTerm census bind every term to the seven-axis subject, and the wet-receipt admission (arm_admit_wet_binding) enforces the receipt-subject compatibility law -- the typed identity ride-along lands with the same observer work, at which point the measured_on wires become subject equality rather than containment." as NonEmptyStr)
 
+// ── THE CACHE FRONTIER: ONE FOLD, THE WHOLE SEAT LADDER ──────────────────────────────────────────
+//
+// THE FRONTIER IS THE DELIVERABLE'S SHAPE, not only a verdict (docs/plans/shared-pool-byte-
+// correction.md): one fold evaluates the seat ladder at the plan's requested length and returns
+// every rung — the doctrine's table, computed. Rungs prove at the BLOCK WALL against the raw
+// inventory (a rung is a capacity fact), while the reserve policy selects the GUARANTEED seat
+// count below the ceiling (a service standing): hard ceiling = floor(inventory / blocks_per_seat)
+// is a property of the inventory alone; guaranteed seats = the most seats the inventory admits
+// with the policy's reserve held back. Eight of 1035/123 is therefore provable at the wall AND not
+// guaranteed under ReserveFullLengthSeats{1} at once — the ceiling is burst/cache-only capacity,
+// and no rung's proof is a promise of persistent service (the whole-arm standing keeps that gate).
+type CacheFrontierRung
+  = CacheFrontierRungProved { seats: Nat, blocks_used: AllocatorBlockCount, blocks_left: AllocatorBlockCount }
+  | CacheFrontierRungRefused { seats: Nat, blocks_used: AllocatorBlockCount, cause: NonEmptyStr }
+
+type CacheFrontierVerdict
+  = CacheFrontier {
+      limiting_rank: Nat
+      length: TokenCount
+      blocks_per_seat: AllocatorBlockCount
+      inventory: AllocatorBlockCount
+      hard_ceiling: Nat
+      reserve_policy: CacheReservePolicy
+      blocks_reserved: AllocatorBlockCount
+      guaranteed_seats: Nat
+      rungs: List<CacheFrontierRung>
+      block_equivalent_bytes_per_seat: ByteSize?
+    }
+  | CacheFrontierUnestablished { obligations: List<NonEmptyStr> }
+
+// THE LADDER'S RUNGS: the ceiling's two seats below through the first seat above it — the
+// doctrine's table row count, derived from the inventory alone (clipped at one seat for tiny
+// inventories, where the ladder degenerates rather than pricing negative seats).
+fn cache_frontier_rung_seats(hard_ceiling: Nat) -> List<Nat> {
+  let lo = match hard_ceiling > 2 {
+    true => hard_ceiling - 2
+    false => 1
+  }
+  nat_range_inclusive(lo: lo, hi: hard_ceiling + 1)
+}
+
+fn cache_frontier_from_plan(
+  plan: ResolvedKvAllocationPlan,
+  shape: Glm53FlashHybridShape,
+  supplies: List<ArmRankCacheSupply>,
+  rank_count: Nat,
+  limiting_rank: Nat,
+  reserve_policy: CacheReservePolicy,
+) -> CacheFrontierVerdict {
+  let roster_obligations = cache_plan_roster_obligations(plan: plan, shape: shape)
+  let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
+  let rank_obligations = match limiting_rank < rank_count {
+    true => [] as List<NonEmptyStr>
+    false => [join([
+      "the named limiting rank ", to_string(limiting_rank), " is outside the ", to_string(rank_count),
+      "-rank topology: the rank the evidence binds as limiting is part of the supply side, and a limiting rank the roster does not contain names no rank",
+    ], "") as NonEmptyStr]
+  }
+  let obligations = concat(concat(roster_obligations, supply_obligations), rank_obligations)
+  match length(obligations) > 0 {
+    true => CacheFrontierUnestablished { obligations: obligations }
+    false => {
+      let per_seat_blocks = fold(plan.groups, init: 0, f: (acc, g) => acc + allocator_block_count_value(c: g.blocks_at_requested_length))
+      match per_seat_blocks == 0 {
+        true => CacheFrontierUnestablished { obligations: ["the plan's groups sum to no blocks for a full-context request, so the seat ladder prices no rungs" as NonEmptyStr] }
+        false => {
+          let per_seat = allocator_block_count(count: per_seat_blocks)
+          let inventory = plan.allocator_blocks
+          let hard_ceiling = allocator_block_count_value(c: inventory) / per_seat_blocks
+          let reserve = cache_reserve_blocks(policy: reserve_policy, blocks_per_seat: per_seat, inventory: inventory)
+          let guaranteed = match allocator_block_count_value(c: reserve) >= allocator_block_count_value(c: inventory) {
+            true => 0
+            false => (allocator_block_count_value(c: inventory) - allocator_block_count_value(c: reserve)) / per_seat_blocks
+          }
+          CacheFrontier {
+            limiting_rank: limiting_rank,
+            length: plan.requested_length,
+            blocks_per_seat: per_seat,
+            inventory: inventory,
+            hard_ceiling: hard_ceiling,
+            reserve_policy: reserve_policy,
+            blocks_reserved: reserve,
+            guaranteed_seats: guaranteed,
+            rungs: map(cache_frontier_rung_seats(hard_ceiling: hard_ceiling), s => {
+              let used = per_seat_blocks * s
+              match used <= allocator_block_count_value(c: inventory) {
+                true => CacheFrontierRungProved {
+                  seats: s,
+                  blocks_used: allocator_block_count(count: used),
+                  blocks_left: allocator_block_count(count: allocator_block_count_value(c: inventory) - used),
+                }
+                false =>
+                  CacheFrontierRungRefused {
+                    seats: s,
+                    blocks_used: allocator_block_count(count: used),
+                    cause: join([
+                      "cache frontier rung REFUSED at ", to_string(s), " seats: the population requires ",
+                      to_string(used), " shared-pool blocks, which exceeds the inventory of ",
+                      to_string(allocator_block_count_value(c: inventory)), " blocks — the block wall is the capacity authority, and the first seat past the ceiling has no spelling",
+                    ], "") as NonEmptyStr,
+                  }
+              }
+            }),
+            block_equivalent_bytes_per_seat: match kv_allocator_carve_from_plan(plan: plan) {
+              Present { value: carve } =>
+                Present { value: request_block_equivalent_bytes(
+                  demand: KvAdmissionDemand { population_blocks: per_seat },
+                  carve: carve,
+                ) }
+              Absent => none
+            },
+          }
+        }
+      }
+    }
+  }
+}
