@@ -1,7 +1,7 @@
 module gunbc.spark.arm_memory_experiment_observed
 
-import std.types { NonEmptyStr, List }
-import std.nat { Nat }
+import std.types { Bool, NonEmptyStr, List }
+import std.nat { Nat, nat_max, nat_min }
 import std.checked_arithmetic { nat_magnitude }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
@@ -19,7 +19,12 @@ import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAd
 import extdeps.vllm.kv_layout {
   VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
 }
-import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4 }
+import extdeps.vllm.sparse_prefill_transient { sparse_topk_indices_buffer_bytes }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+}
 import gunbc.spark.serving_capacity_intent {
   uniform_cold_seats, profile_for_intent,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
@@ -32,12 +37,14 @@ import gunbc.spark.arm_memory_fit {
   MemoryPlacementRankResident, MemoryPlacementAllocatorCarve,
   MemoryLifetime, MemoryLifetimeProcess, MemoryLifetimeLaunch, MemoryLifetimePhase,
   ArmMemoryComponent, ArmCheckpointResidency, ArmActivationWorkspace, ArmGraphCapture, ArmKvCache,
-  ArmComponentBound, ComponentBoundOpen,
+  ArmComponentBound, ComponentBoundOpen, ComponentBoundExact, ComponentBoundInterval,
+  component_bound_interval, ArmComponentBoundReady, ArmComponentBoundRefused,
   ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseGraphCapture, ArmPhaseIdleServing,
   ArmWetStanding, ArmWetObservedInterval, ArmWetObservationOnly, ArmWetCompositeObservation,
   ArmWetGraphAttributionUnestablished, ArmWetBindingAdmission,
   ArmWetReceiptBinding, arm_admit_wet_binding,
   ArmRankCacheSupply,
+  ArmRankDemand, ArmSupplyDeductions,
   CacheCapacityCandidate, cache_capacity_candidate,
 }
 
@@ -807,4 +814,313 @@ fn arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: Allocato
     allocator_blocks: allocator_blocks,
     admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: r.kv_arena_hundredths_gib),
   })
+}
+
+
+// ── THE LAUNCH-WALL CARRIES AT THE 262144x6 SUBJECT ──────────────────────────────────────────────
+//
+// THE WHOLE-ARM VERDICT'S OPEN TERMS, discharged or carried honestly from THIS LAUNCH's own
+// evidence (docs/plans/moa-memory-modeling.md's three admissible uses of measurement: validate a
+// derived bound, fill a narrowly named underivable term, falsify the model). Every carry below is
+// built from the v2-plan bundle's own rows or the launch's own profile lines, and every carry's
+// text names what it establishes and what it deliberately leaves open. NOTHING here promotes the
+// whole arm: the loader transient and the fragmentation allowance stay open, and the composite
+// carries name their composite-ness wherever they lean on the weights+nontorch reading.
+//
+// THE BOOT READINGS the "Free memory on device" profile lines carried beside the usage figures
+// (gpu_worker.py:867, 2026-09-26T05:42:33Z, receipt target/spark-native-experiment-apply-receipt.txt):
+// the device's total and its free memory at startup. THE FOREIGN OCCUPANCY at boot is their
+// difference — 14.49 / 13.17 / 12.80 / 10.58 GiB across the four hosts, the "~11-15 GiB" the
+// deduction carry prices. THE FREE FIGURE'S PRECISION is the print's own: format_gib renders two
+// decimals and strips the trailing zero, so "107.2" is a 107.20-hundredths reading and rides at
+// the same reporter's unit as every other figure in this bundle.
+
+type ArmExperimentBootReading {
+  rank: Nat
+  host: NonEmptyStr
+  free_hundredths_gib: Nat
+  total_hundredths_gib: Nat
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_boot_readings: List<ArmExperimentBootReading> = [
+  ArmExperimentBootReading { rank: 0, host: "srv9" as NonEmptyStr, free_hundredths_gib: 10720, total_hundredths_gib: 12169 },
+  ArmExperimentBootReading { rank: 1, host: "srv10" as NonEmptyStr, free_hundredths_gib: 10852, total_hundredths_gib: 12169 },
+  ArmExperimentBootReading { rank: 2, host: "srv12" as NonEmptyStr, free_hundredths_gib: 10889, total_hundredths_gib: 12169 },
+  ArmExperimentBootReading { rank: 3, host: "srv11" as NonEmptyStr, free_hundredths_gib: 10911, total_hundredths_gib: 11969 },
+]
+
+// THE BOOT DERIVATION, CHECKED NOT TRUSTED: foreign occupancy at boot = total - free in the
+// hundredths arithmetic the lines were reported at, and the observed foreign band names the whole
+// span the four hosts evidenced.
+fn arm_experiment_kvplan_v2_2026_09_26_boot_derivation_holds() -> Bool {
+  all(arm_experiment_kvplan_v2_2026_09_26_boot_readings, r =>
+    r.free_hundredths_gib <= r.total_hundredths_gib
+      && arm_experiment_kvplan_v2_2026_09_26_foreign_hundredths(r) == r.total_hundredths_gib - r.free_hundredths_gib)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_foreign_hundredths(r: ArmExperimentBootReading) -> Nat {
+  r.total_hundredths_gib - r.free_hundredths_gib
+}
+
+// THE POOL CARVE THE LAUNCH CONSTRUCTED, carried with the plan-capture provenance: the v2
+// emission vouched allocator_blocks 1012 x physical_pool_bytes_per_block 13,602,816 =
+// 13,766,049,792 bytes (dag/test/fixture/kv_allocation_plan_emission real_262144x6_v2_line, the
+// engine's own startup line at this launch). The cache fold prices capacity against it; the
+// launch wall charges it as the persistent KV residency term, exact because the engine vouched it.
+data arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes: ByteSize = byte_size(count: 13766049792)
+
+// THE SHAPE CONSTANTS the persistent-residency derivation reads: the launch's batch ceiling (the
+// same 2048 every subject mint at this bundle spells) and the engine-pinned index_topk 2048
+// (FLASHINFER_MLA_SPARSE_SM120 requires it, flashinfer_mla_sparse.py lines 216-227 at 8d09804c8,
+// cited through extdeps.vllm.sparse_prefill_transient's term 3); the KPool interval is the
+// model's own (glm_5_3_flash_hybrid_shape.index_kpool).
+data arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens: Nat = 2048
+data arm_experiment_kvplan_v2_2026_09_26_index_topk: Nat = 2048
+
+// THE INTERVAL MINT, localized: a reversed derived pair is an Open carrying the refusal cause,
+// never a silently swapped pair (std.interval's law, through gunbc.spark.arm_memory_fit's mint).
+fn arm_experiment_component_interval(lower: ByteSize, upper: ByteSize, how: NonEmptyStr) -> ArmComponentBound {
+  match component_bound_interval(lower: lower, upper: upper, how: how) {
+    ArmComponentBoundReady { bound: b } => b
+    ArmComponentBoundRefused { cause: c } => ComponentBoundOpen { obligation: c }
+  }
+}
+
+// THE IDENTITY WIRES every non-open carry names, as the fit subject's provenance check requires.
+fn arm_experiment_kvplan_v2_2026_09_26_carry_identity() -> NonEmptyStr {
+  join([
+    serving_checkpoint_wire(c: Glm53NativeFp8) as String, " x ",
+    serving_runtime_wire(r: GunbcGlm53NopeDerivedGb10) as String, " x ",
+    serving_topology_wire(t: FourSparkTp4) as String,
+  ], "") as NonEmptyStr
+}
+
+// ── TERM: CHECKPOINT PLACEMENT, CARRIED AS A DERIVED CONSERVATIVE INTERVAL ───────────────────────
+//
+// THE DOCTRINE'S FORBIDDEN-MOVE LAW (docs/plans/moa-memory-modeling.md): weights+nontorch is a
+// COMPOSITE profile term, NOT a checkpoint-placement receipt -- it does not separate checkpoint
+// tensors from runtime-fixed, allocator, communication or other non-Torch allocations, so it can
+// never discharge the placement obligation by itself. WHAT THE COMPOSITE OBSERVATION DOES
+// ESTABLISH, soundly: the rank's checkpoint residency is BOUNDED ABOVE by the composite floor
+// (every checkpoint byte is either a torch weight or a non-torch allocation at the profiling
+// phase, so checkpoint_r <= composite_r), and the rank-to-rank spread (77.62 / 80.57 / 81.63 /
+// 82.42 GiB at this launch) is the genuinely observational part: placement is NOT an even
+// quarter, and the carry's per-rank upper endpoints carry that asymmetry verbatim. THE LOWER
+// ENDPOINT IS ZERO, and that is the honest scalar: no positive per-rank lower bound is derivable
+// without the per-tensor safetensors index (the aggregate pigeonhole bounds only the MAX-loaded
+// rank, which the subject's checkpoint_total interval already carries). THE AGGREGATE GAP, named
+// because a reader will trip on it: the manifest's safetensors total (328,337,455,672 bytes at
+// revision eb9eb208, extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest) EXCEEDS the sum of
+// the four composite floors (322.24 GiB) by ~6.1 GiB, so at least that many manifest bytes are not
+// resident in weights+nontorch at any rank at this launch -- an unloaded tower, index tensors, or
+// scales the composite cannot place. THE COMPLETING ACT, named: a per-tensor read of the
+// checkpoint's safetensors index (model.safetensors.index.json at /weights on any group B host)
+// lets the exact TP4 placement projection bound every rank's checkpoint residency from the
+// manifest x the loader's placement rules, replacing this carry.
+
+fn arm_experiment_kvplan_v2_2026_09_26_checkpoint_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: byte_size(count: 0),
+    upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    how: join([
+      "checkpoint residency carried as a derived conservative interval from the weights+nontorch COMPOSITE observation at this launch (gpu_worker.py:867 profile line, ", r.host as String,
+      "): the composite bounds checkpoint residency above -- every checkpoint byte is a torch weight or a non-torch allocation at the profiling phase -- and the composite-ness is NAMED: the reading does not separate checkpoint tensors from runtime-fixed, communication or other non-Torch allocations, so this interval is NOT a checkpoint-placement receipt and the lower endpoint is zero (no positive per-rank lower is derivable without the per-tensor safetensors index; the aggregate pigeonhole bounds only the max-loaded rank and rides on the subject's checkpoint_total interval). The manifest (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, revision eb9eb208) totals 328,337,455,672 bytes against the four composites' 322.24 GiB -- ~6.1 GiB of manifest bytes are not resident in weights+nontorch at any rank here, unplaced. Completing act: a safetensors-index read at /weights on a group B host prices the exact TP4 placement projection from the manifest. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: RUNTIME-FIXED, BOUNDED FROM THE PINNED SOURCE AND THE COMPOSITE DECOMPOSITION ──────────
+//
+// THE LOWER ENDPOINT IS DERIVED, not measured: the sparse-attention top-k index buffer,
+// (max_num_batched_tokens, buffer_width) int32 allocated ONCE at model init
+// (glm5next/nvidia/model.py lines 588-606 at 8d09804c8, cited through extdeps.vllm.
+// sparse_prefill_transient's term 3: buffer_width = round_up(index_topk + index_kpool - 1, 128) =
+// round_up(2048 + 4 - 1, 128) = 2176), rides in the persistent residency for the process life,
+// so runtime-fixed >= 2048 x 2176 x 4 = 17,825,792 bytes exactly. THE UPPER ENDPOINT is the
+// composite floor under the same decomposition the checkpoint carry names: runtime-fixed (engine
+// structures, allocator metadata) is a subset of the composite's non-checkpoint residue, and with
+// the checkpoint residency unseparated the sound scalar upper is the composite floor itself.
+// WHAT REMAINS OPEN, named: the full persistent-allocation census above the pinned buffer
+// (sampler buffers, logits reservations, allocator metadata) is not derived in this corpus; a
+// source walk at the pinned revision or a RuntimeFixedAllocationBound measurement tightens it.
+
+fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower() -> ByteSize {
+  sparse_topk_indices_buffer_bytes(
+    max_num_batched_tokens: arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens,
+    index_topk: arm_experiment_kvplan_v2_2026_09_26_index_topk,
+    index_kpool: glm_5_3_flash_hybrid_shape.index_kpool)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower(),
+    upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    how: join([
+      "runtime-fixed bounded from the pinned source and the composite decomposition: the sparse top-k index buffer (max_num_batched_tokens ", to_string(arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens),
+      " x buffer_width 2176 int32, allocated once at model init per glm5next/nvidia/model.py lines 588-606 at 8d09804c8) is persistent residency, so the lower endpoint is exactly 17,825,792 bytes (extdeps.vllm.sparse_prefill_transient term 3); the upper endpoint is the weights+nontorch composite floor at ", r.host as String,
+      " -- engine structures and allocator metadata are a subset of the composite's non-checkpoint residue, and with the checkpoint unseparated the sound scalar upper is the composite floor. Composite-ness named: the composite observation does not separate these mechanisms. Open above the pinned buffer: the full persistent-allocation census (sampler buffers, logits reservations, allocator metadata) awaits a source walk at the pinned revision or a RuntimeFixedAllocationBound measurement. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: COLLECTIVE WORKSPACE, DISCHARGED BY INCLUSION WITH THE RESIDUAL NAMED ──────────────────
+//
+// THE PREFILL LANE'S DISCHARGE, VERIFIED AT THE LAUNCH WALL: the collective communication
+// workspace (NCCL's communicator buffers) is NON-TORCH memory, and the profiler's own
+// three-category accounting (vllm/utils/mem_utils.py lines 246-275 at 8d09804c8: category 3,
+// "memory used in the current vLLM instance, but not by torch", with NCCL named as the example)
+// lands it INSIDE the consumed (weights + non-torch) figure the composite observation reads. The
+// composite is resident at every phase from profiling onward -- the same reading the prefill
+// subproof deducted as persistent residency at this very launch -- so the launch-wall subject
+// prices the collective workspace by that inclusion: no second, separate NCCL figure exists to
+// charge, and charging the composite twice would double-count. THE RESIDUAL, named: the inclusion
+// bounds the collective workspace by the composite but does not SEPARATE it -- a per-rank
+// CollectiveWorkspaceBound measurement (or the same source walk) would price NCCL alone, and
+// until then the composite floor is the conservative scalar upper.
+
+fn arm_experiment_kvplan_v2_2026_09_26_collective_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: byte_size(count: 0),
+    upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    how: join([
+      "collective workspace discharged by inclusion at the launch wall: NCCL's communicator buffers are non-torch memory inside the profiler's consumed figure (vllm/utils/mem_utils.py lines 246-275 at 8d09804c8, category 3 with NCCL the named example), so the weights+nontorch composite observation at ", r.host as String,
+      " already contains this launch's collective residency, resident from the profiling phase onward -- the same composite the prefill subproof priced as persistent residency. The upper endpoint is the composite floor; the lower is zero. Residual, named: the inclusion does not SEPARATE NCCL from the composite -- a CollectiveWorkspaceBound measurement prices it alone, and until then the composite floor is the conservative scalar upper; charging a separate NCCL figure on top of the composite would double-count. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: ACTIVATION WORKSPACE, BOUNDED BY THE ENGINE'S OWN CONSERVATION ─────────────────────────
+//
+// THE DERIVATION: this launch's own arithmetic bounds the profiling-phase activation above. The
+// profile line's four usage figures sum with the constructed pool inside the decided envelope:
+// envelope - composite - activation - graph >= the pool carve (the arena derivation this bundle
+// checks row by row, and the pool-construction fit half proves the pool is admitted at every
+// arena). Solving for activation at conservative endpoints -- envelope HIGH, composite LOW,
+// graph LOW, the engine-vouched pool -- gives an activation upper that is SOUND regardless of
+// where the true readings sit inside their rounding bands. THE LOWER IS ZERO: the profiling
+// forward's transient peak is phase memory, not a residency floor.
+
+fn arm_experiment_kvplan_v2_2026_09_26_activation_upper(r: ArmExperimentEnvelopeDerivedArenaReading) -> ByteSize {
+  let envelope_high = byte_size_count(b: arm_experiment_gib_hundredths_upper(hundredths: r.envelope_hundredths_gib))
+  let composite_low = byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib))
+  let graph_low = byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: r.graph_hundredths_gib))
+  let pool = byte_size_count(b: arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes)
+  byte_size(count: envelope_high - composite_low - graph_low - pool)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_activation_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: byte_size(count: 0),
+    upper: arm_experiment_kvplan_v2_2026_09_26_activation_upper(r),
+    how: join([
+      "activation workspace bounded by the engine's own conservation at this launch: the profile line's arithmetic (envelope - composite - activation - graph = the derived arena, checked row by row in this bundle) keeps the constructed pool inside the envelope at every rank, so activation <= envelope high - composite low - graph low - the engine-vouched pool carve (13,766,049,792 bytes) -- sound wherever the true readings sit inside their rounding bands. Lower endpoint zero: the profiling transient is phase memory, not a residency floor. Observation, not yet a bound: the printed activation column (", to_string(r.activation_hundredths_gib),
+      " hundredths GiB at ", r.host as String,
+      ") is a single sample and bounds nothing until a bounding protocol promotes it -- the prefill transient subproof prices the serving-phase activation peak separately. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: GRAPH CAPTURE, CARRIED AT THE REPORTER'S ROUNDING UNIT ─────────────────────────────────
+//
+// THE PRINTED GRAPH COLUMN (0.05 / 0.10 / 0.10 / 0.10 GiB at this launch) rides as an observed
+// interval at the reporter's two-decimal unit -- the same standing every bundle figure carries.
+// A single sample is not a bound (the measurement contract stands beside this), but the interval
+// is the conservative construction the demand fold prices, and the prefill lane's pinned fact
+// already absorbed the graph term into the printed activation's coverage.
+
+fn arm_experiment_kvplan_v2_2026_09_26_graph_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: arm_experiment_gib_hundredths_floor(hundredths: r.graph_hundredths_gib),
+    upper: arm_experiment_gib_hundredths_upper(hundredths: r.graph_hundredths_gib),
+    how: join([
+      "CUDA graph capture carried at the reporter's rounding unit from the profile line's graph column (", to_string(r.graph_hundredths_gib),
+      " hundredths GiB at ", r.host as String,
+      "): the observed interval, not a bounding-protocol measurement -- the prefill lane's pinned coverage fact (the printed peak activation contains the CUDA-graph estimate, which over-reserves the actual captured pool 1.82 GiB to 0.1 GiB) already prices the graph term inside the activation coverage, so this carry rides for the arm record's completeness. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: THE POOL CARVE AS THE KV RESIDENCY, EXACT BECAUSE THE ENGINE VOUCHED IT ────────────────
+
+fn arm_experiment_kvplan_v2_2026_09_26_kv_carry() -> ArmComponentBound {
+  ComponentBoundExact {
+    bytes: arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes,
+    how: join([
+      "the persistent KV residency is the shared pool the engine constructed at this launch: allocator_blocks 1012 x physical_pool_bytes_per_block 13,602,816 = 13,766,049,792 bytes, vouched by the v2 allocation-plan emission (KV_ALLOCATION_PLAN_JSON, image derived-kvplan-v2-20260926, engine self-report v0.1.dev1+g8d09804c8); the cache subproof prices the six-seat demand against this pool at the block wall and the pool-construction controls verify its byte conservation. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr,
+  }
+}
+
+// ── TERMS LEFT OPEN, WITH THEIR COMPLETING ACTS NAMED ────────────────────────────────────────────
+
+fn arm_experiment_kvplan_v2_2026_09_26_loader_obligation() -> NonEmptyStr {
+  join([
+    "the loader's padding, repacking and temporary copies on top of the resident checkpoint at this subject are unmeasured: the composite readings at this launch are from the profiling phase, DOWNSTREAM of the load, so they cannot price the load transient; a bounded load-transient falsification run at this exact subject (the 262144x6 launch wall, peak-over-loads protocol, a per-rank memory trace bracketing the load) is the completing wet act that mints a CheckpointRankResidencyBound receipt for this term. Subject: ",
+    arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr {
+  join([
+    "allocator fragmentation under churn admits no conservative construction in this corpus and no churn-protocol measurement exists at this subject: a bounded churn run at the launch wall (six 262144 seats driven through allocation churn, peak-over-runs) or a conservative fragmentation construction from the allocator's block accounting is the completing act. Subject: ",
+    arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+  ], "") as NonEmptyStr
+}
+
+// ── THE LAUNCH-WALL RANK RECORD, ONE ROW PER RANK, THE CENSUS COMPLETE ───────────────────────────
+
+fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: r.rank,
+    checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_carry(r),
+    loader_transform: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_loader_obligation() },
+    runtime_fixed: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r),
+    collective_workspace: arm_experiment_kvplan_v2_2026_09_26_collective_carry(r),
+    activation_workspace: arm_experiment_kvplan_v2_2026_09_26_activation_carry(r),
+    graph_capture: arm_experiment_kvplan_v2_2026_09_26_graph_carry(r),
+    kv_cache: arm_experiment_kvplan_v2_2026_09_26_kv_carry(),
+    fragmentation_allowance: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() },
+  }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks() -> List<ArmRankDemand> {
+  map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r))
+}
+
+// ── THE SUPPLY DEDUCTIONS, CARRIED FROM THE CARVE AND THE BOOT READINGS ──────────────────────────
+//
+// THE HOST/OS RESERVE BASIS is the 0.8567 envelope's host-reserve carve: the engine's decided
+// envelope claims 8567 basis points of the pool, so the remaining 1433 basis points --
+// everything outside the envelope -- is host/OS/control-plane/co-tenant territory the arm does
+// not claim, and the deduction's upper endpoint is that carve at the pool span's HIGH reading.
+// THE TWO DEDUCTIONS ARE DEVICE-COUPLED on the real devices: at every host the carve splits into
+// the observed foreign occupancy plus a host residue, and the observed pairs (14.49/2.95,
+// 13.17/4.27, 12.80/4.64, 10.58/6.57 GiB) all sum back under the host's carve. A SUBJECT-LEVEL
+// SCALAR PAIR cannot express that per-device coupling, so the pair below carries foreign at its
+// observed band high (sound at every device) and host at carve-high minus foreign-low (sound:
+// every device's host residue is at most carve_high - that device's foreign, hence at most
+// carve_high - foreign_low); the scalar pair's sum exceeding any single device's carve is the
+// honest price of the coupling, and the launch wall's conservation obligation names it.
+
+fn arm_experiment_kvplan_v2_2026_09_26_carve_high(pool_high: ByteSize) -> ByteSize {
+  byte_size(count: byte_size_count(b: pool_high) * 1433 / 10000)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: ByteSize) -> ArmSupplyDeductions {
+  let foreign_readings = map(arm_experiment_kvplan_v2_2026_09_26_boot_readings, r => arm_experiment_kvplan_v2_2026_09_26_foreign_hundredths(r))
+  let foreign_high_hundredths = fold(foreign_readings, init: 0, f: (acc, h) => nat_max(acc, h))
+  let foreign_low_hundredths = fold(foreign_readings, init: 12169, f: (acc, h) => nat_min(acc, h))
+  let foreign_high = arm_experiment_gib_hundredths_upper(hundredths: foreign_high_hundredths)
+  let foreign_low = arm_experiment_gib_hundredths_lower(hundredths: foreign_low_hundredths)
+  ArmSupplyDeductions {
+    host_os_control_reserve: arm_experiment_component_interval(
+      lower: byte_size(count: 0),
+      upper: byte_size(count: byte_size_count(b: arm_experiment_kvplan_v2_2026_09_26_carve_high(pool_high: pool_high)) - byte_size_count(b: foreign_low)),
+      how: "the 0.8567 envelope's host-reserve carve: the engine claims 8567 basis points of the pool, so the remaining 1433 basis points are host/OS/control-plane/co-tenant territory the arm does not claim; the upper endpoint is the carve at the pool span's high reading minus the observed foreign floor -- every device's host residue (carve minus that device's foreign occupancy) is bounded above by carve_high - foreign_low, the observed per-device pairs summing back under each host's own carve. The scalar subject-level pair cannot express the per-device coupling; the launch wall's conservation obligation names the byte-exact pool producer as the resolver" as NonEmptyStr),
+    foreign_residency: arm_experiment_component_interval(
+      lower: byte_size(count: 0),
+      upper: foreign_high,
+      how: "observed foreign occupancy at this launch's own boot readings: device total minus free memory at the 'Free memory on device' profile lines (gpu_worker.py:867, 2026-09-26T05:42:33Z), 14.49 / 13.17 / 12.80 / 10.58 GiB across srv9/srv10/srv12/srv11; the upper endpoint is the observed band's high at the reporter's rounding unit, sound at every device the arm can land on" as NonEmptyStr),
+  }
 }
