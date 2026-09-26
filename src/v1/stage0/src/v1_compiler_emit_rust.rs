@@ -37703,6 +37703,7 @@ pub fn file_write_create_new_expr() -> String {
     }
     CACHED.with(|c: &String| c.clone())
 }
+
 pub fn file_write_create_new_with_mode_expr() -> String {
     thread_local! {
         static CACHED: String = {
