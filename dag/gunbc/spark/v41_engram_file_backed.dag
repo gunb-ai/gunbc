@@ -3,9 +3,9 @@ module gunbc.spark.v41_engram_file_backed
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { UInt8 }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, Microsecond, microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { filter, length, skip }
+import v2.std.algebra { filter, length, skip, contains }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, V41CompleteStore,
   v41_row_bytes, v41_row_store_magic_size,
@@ -88,5 +88,72 @@ fn v41_gather_rows(store: V41CompleteStore, spec: V41RowStoreEncodingSpec, offse
   match first(misaligned) {
     Present { value: o } => V41GatherRefused { defect: join(["offset ", to_string(byte_size_count(b: o)), " is not magic + k * ", to_string(record), " inside a ", to_string(n), "-byte store"], "") as NonEmptyStr }
     Absent => V41Gathered { rows: map(offsets, o => store.bytes |> skip(n: byte_size_count(b: o)) |> take(n: record)) }
+  }
+}
+
+// ── THE TOUCH COUNTER: DISTINCT (FILE, PAGE) PAIRS A GATHER READ ────────────────────────────────
+//
+// A row at offset o reads bytes [o, o + record), so it touches every page from o / page to
+// (o + record - 1) / page: a row straddling a page boundary touches both pages, and a repeated
+// offset touches nothing new. The count is over page indices only; no row content is observed.
+// FileBackedEngramStorage._note_touches realizes this fold as a bit-packed bitmap over the file's
+// page count (one bit per page, ~1.5 MiB for a 47 GiB file at 4 KiB pages), vectorized over the
+// batch with no per-row Python loop, and after the gather so it cannot change the returned bytes.
+// Distinct pages are per file; (file, page) pairs across a rank's files are the sum of per-file
+// counts, because pages of different files are different pairs.
+//
+// V41FetchTouchReceipt is EngramFetchTouchObservation's fields: the cumulative reading since open
+// or the last reset. snapshot_touches(reset) takes it atomically with the reset, so one staircase
+// step is one snapshot-and-reset; write_touch_receipt writes a rank's per-file readings as one
+// JSON receipt by temp + rename.
+//
+// CONSUMER: A DECLARED FRONTIER. gunbc.spark.v41_capacity_measurement V41EngramLookupObservable's
+// EngramLookupObserved arm (owner of that module: the capacity-measurement lane) reads a rank's
+// receipts through v41_rank_touches, which dissolves TouchCounterUnavailable there; and the rank-side
+// call to write_touch_receipt at a step boundary is the same wiring trigger this module already
+// names for the open receipt. Until then, test.claim.spark.v41_engram_file_backed_witness exercises
+// the fold and the rank sum over supplied offsets and receipts.
+
+type V41FetchTouchReceipt sole_constructor {
+  page_bytes: ByteSize
+  page_count: Nat
+  distinct_pages_touched: Nat
+  fetch_rows_calls: Nat
+  rows_fetched: Nat
+  fetch_rows_time: Microsecond
+}
+
+fn v41_fetch_touch_receipt(page_bytes: ByteSize, page_count: Nat, distinct_pages_touched: Nat, fetch_rows_calls: Nat, rows_fetched: Nat, fetch_rows_time: Microsecond) -> V41FetchTouchReceipt {
+  V41FetchTouchReceipt { page_bytes: page_bytes, page_count: page_count, distinct_pages_touched: distinct_pages_touched, fetch_rows_calls: fetch_rows_calls, rows_fetched: rows_fetched, fetch_rows_time: fetch_rows_time }
+}
+
+fn v41_mark_pages(seen: List<Nat>, page: Nat, remaining: Int) -> List<Nat> {
+  if remaining <= 0 { seen } else {
+    v41_mark_pages(seen: if contains(xs: seen, item: page, eq: (a, b) => a == b) { seen } else { seen |> list_push(page) }, page: page + 1, remaining: remaining - 1)
+  }
+}
+
+// The distinct pages a batch of record-aligned offsets touches, record >= 1 and page >= 1.
+fn v41_touched_pages(offsets: List<ByteSize>, record: Nat, page: Nat) -> List<Nat> {
+  fold(offsets, init: [] as List<Nat>, f: (seen, o) => {
+    let first = byte_size_count(b: o) / page
+    let last = (byte_size_count(b: o) + record - 1) / page
+    v41_mark_pages(seen: seen, page: first, remaining: last - first + 1)
+  })
+}
+
+type V41RankTouches {
+  distinct_pages_touched: Nat
+  fetch_rows_calls: Nat
+  rows_fetched: Nat
+  fetch_rows_time: Microsecond
+}
+
+fn v41_rank_touches(files: List<V41FetchTouchReceipt>) -> V41RankTouches {
+  V41RankTouches {
+    distinct_pages_touched: fold(files, init: 0, f: (acc, r) => acc + r.distinct_pages_touched),
+    fetch_rows_calls: fold(files, init: 0, f: (acc, r) => acc + r.fetch_rows_calls),
+    rows_fetched: fold(files, init: 0, f: (acc, r) => acc + r.rows_fetched),
+    fetch_rows_time: microsecond(count: fold(files, init: 0, f: (acc, r) => acc + microsecond_count(m: r.fetch_rows_time))),
   }
 }
