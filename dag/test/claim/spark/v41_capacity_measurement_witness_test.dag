@@ -39,7 +39,8 @@ import gunbc.spark.v41_capacity_measurement {
   V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
   MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
   v41_capacity_measurement_plan_text, v41_measurement_ranks,
-  v41_engram_resident_bets, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable,
+  v41_engram_resident_bets, V41RankStartupReceipt, RankStartupAdmitted, RankStartupRefused, v41_admit_rank_startup,
+  ExtensionLoaded, ExtensionImportFailed, ExtensionUnobserved, v41_engram_arm_of, v41_engram_arm_bindings, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -97,6 +98,7 @@ fn w_rank(rank: Nat, tokens: Int, rev: VllmSourceRevision) -> V41RankStartupRead
     reported: w_reported(tokens: tokens, rev: rev),
     num_gpu_blocks: Present { value: 1000 },
     kv_cache_groups: Present { value: 2 },
+    deepselect: ExtensionImportFailed { logged: "Failed to import the DeepSelect extension (vllm._deepselect_C)" as NonEmptyStr },
   }
 }
 
@@ -108,7 +110,7 @@ fn w_rank_broken(rank: Nat) -> V41RankStartupReading {
     parallelism: r.parallelism, kv_format: ResolvedUnobserved, block_size: r.block_size,
     max_model_len: r.max_model_len, max_num_seqs: r.max_num_seqs, max_num_batched_tokens: r.max_num_batched_tokens,
     spec_decode_config: r.spec_decode_config, memory: none, reported: r.reported,
-    num_gpu_blocks: r.num_gpu_blocks, kv_cache_groups: r.kv_cache_groups,
+    num_gpu_blocks: r.num_gpu_blocks, kv_cache_groups: r.kv_cache_groups, deepselect: r.deepselect,
   }
 }
 
@@ -419,7 +421,7 @@ test fn production_admits_the_minimum_of_three_capacities_and_refuses_on_any_ref
 test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditions() -> Bool {
   let t = v41_capacity_measurement_plan_text()
   contains(t, "x6 needs 1572864 tokens, x16 needs 4194304")
-    && contains(t, "engram arms: unbound")
+    && contains(t, "engram arms: A-cache-retained")
     && contains(t, "TouchCounterUnavailable")
     && contains(t, "PROPOSED")
 }
@@ -443,4 +445,42 @@ test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> 
       observed && unreadable
     }
   }
+}
+
+// A FAILED DeepSelect IMPORT IS RECORDED AND ADMITTED; A RANK WHOSE LOG WAS NOT READ FOR IT REFUSES.
+test fn a_deepselect_import_failure_is_recorded_and_an_unobserved_one_refuses() -> Bool {
+  let r = w_rank(rank: 0, tokens: 2000000, rev: w_rev())
+  let recorded = match v41_admit_rank_startup(r: r) {
+    RankStartupAdmitted { receipt: x } => match x.deepselect { ExtensionImportFailed { logged: _ } => true  ExtensionLoaded => false  ExtensionUnobserved => false }
+    RankStartupRefused { rank: _, missing: _ } => false
+  }
+  let unread = V41RankStartupReading {
+    run_id: r.run_id, rank: r.rank, host: r.host, image: r.image, vllm_revision: r.vllm_revision,
+    parallelism: r.parallelism, kv_format: r.kv_format, block_size: r.block_size,
+    max_model_len: r.max_model_len, max_num_seqs: r.max_num_seqs, max_num_batched_tokens: r.max_num_batched_tokens,
+    spec_decode_config: r.spec_decode_config, memory: r.memory, reported: r.reported,
+    num_gpu_blocks: r.num_gpu_blocks, kv_cache_groups: r.kv_cache_groups, deepselect: ExtensionUnobserved,
+  }
+  let refused = match v41_admit_rank_startup(r: unread) {
+    RankStartupRefused { rank: _, missing: m } => m == ["DeepSelect extension import (vllm._deepselect_C)"]
+    RankStartupAdmitted { receipt: _ } => false
+  }
+  recorded && refused
+}
+
+// ARM A RESOLVES FROM ITS IMAGE CONFIG DIGEST; THE FIXTURE IMAGE, WHICH NO BINDING NAMES, HAS NO ARM.
+test fn the_engram_arm_is_read_off_the_image_config_digest() -> Bool {
+  let arm_a_image = v41_oci_image_digest(
+    manifest: OciSha256Digest(Sha256Digest { hex: "3333333333333333333333333333333333333333333333333333333333333333" as Sha256DigestHex }),
+    config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
+  )
+  let a = match v41_engram_arm_of(image: arm_a_image, bindings: v41_engram_arm_bindings) {
+    Present { value: arm } => match arm { EngramCacheRetained => true  EngramCacheReleased => false }
+    Absent => false
+  }
+  let none_bound = match v41_engram_arm_of(image: w_image(), bindings: v41_engram_arm_bindings) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  a && none_bound
 }
