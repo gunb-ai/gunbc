@@ -10,13 +10,6 @@ fn live_derived() -> List<RunnerHostDeployment> {
   plan_derived_deployments(p: live_plan())
 }
 
-fn host_is_derived(host: HostIdentity) -> Bool {
-  match runner_host_deployment_for(p: live_plan(), host: host) {
-    HostRunnerDeploymentDerived { deployment: _ } => true
-    HostRunnerDeploymentRefused { refusal: _ } => false
-  }
-}
-
 // THE CONSERVATION PROPERTIES ARE ASSERTED OVER THE HOSTS THAT DERIVED, and the roster is no longer
 // required to be the whole fleet. That is the substantive change: a host whose premise is missing
 // refuses on its own, and the hosts that did derive must still each be internally sound. Asserting
