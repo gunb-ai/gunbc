@@ -25,6 +25,8 @@ import gunbc.tailscale_acl_emit { tailscale_acl_policy_json }
 import gunbc.auth.session {
   AuthenticatedSession, CsrfAdmitted, CsrfRefused, CsrfRefusalCause, CsrfTokenAbsent,
   CsrfTokenMismatch, csrf_decision, session_not_expired,
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
+  SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed, session_cookie_standing_reason,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
@@ -63,7 +65,21 @@ import gunbc.principal_projection {
 type RequestAuthenticationEvidence
   = GoogleOidcSession { session: AuthenticatedSession }
   | FabricServiceEvidence { kind: FabricServiceEvidenceKind, authenticated_at: Timestamp }
+  | SessionStandingInvalid { standing: SessionCookieStanding }
   | AuthAbsent
+
+// A COOKIE THAT DID NOT RESOLVE TO A LIVE SESSION IS EVIDENCE TO REFUSE WITH, never silently
+// the same as absence: the standing carries WHICH non-valid arm arrived (a forged cookie, an
+// expired session, an unreadable store), and the authentication decision below refuses with
+// that arm's own remedy rather than collapsing all of them into "no session". AuthAbsent stays
+// the answer to an ABSENT cookie header only — the seam (gunbc.roadmap_serve) parses the wire
+// cookie, resolves it through the session store, and seats exactly one of these constructors.
+fn request_authentication_evidence_of_standing(standing: SessionCookieStanding) -> RequestAuthenticationEvidence {
+  match standing {
+    SessionCookieValid { session } => GoogleOidcSession { session }
+    _ => SessionStandingInvalid { standing }
+  }
+}
 
 // FABRIC'S OWN SERVICE EVIDENCE, one arm per service mechanism. Today: the submission MAC the
 // /approvals filing route verifies (gunbc.auth.approval_request_submission) -- the filing run
@@ -210,8 +226,9 @@ fn human_write_admission(
 }
 
 // AUTHENTICATION IS SESSION-EVIDENCE ONLY. A Google OIDC session that is present and unexpired
-// permits; absence, an expired session, and service evidence on a human route all refuse with
-// distinct causes -- no arm delegates to the access path, and no arm defaults.
+// permits; absence, an invalid cookie standing (forged, expired, malformed, or unread — each its
+// own refusal cause), and service evidence on a human route all refuse with distinct causes --
+// no arm delegates to the access path, and no arm defaults.
 fn human_authentication_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
@@ -225,6 +242,13 @@ fn human_authentication_decision(
         action: action,
         security: security,
         cause: AccessEvidenceAbsent { evidence: "google-oidc-session: the request presented no authenticated session; tailnet transport is not authentication" },
+      )
+    SessionStandingInvalid { standing } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "google-oidc-session", reason: session_cookie_standing_reason(standing: standing) },
       )
     FabricServiceEvidence { kind: _, authenticated_at: _ } =>
       write_refused(
@@ -273,7 +297,21 @@ fn human_action_authorization_decision(
             )
           }
       }
-    _ =>
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessSubjectNotRecognized { subject: "no authenticated human principal presented" },
+      )
+    SessionStandingInvalid { standing: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessSubjectNotRecognized { subject: "no authenticated human principal presented" },
+      )
+    AuthAbsent =>
       write_refused(
         route_path: route_path,
         action: action,
@@ -304,7 +342,21 @@ fn csrf_write_decision(
             cause: AccessEvidenceRejected { evidence: "csrf-token", reason: csrf_refusal_reason(c: c) },
           )
       }
-    _ =>
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "csrf-token: no authenticated session, so no CSRF proof can be presented" },
+      )
+    SessionStandingInvalid { standing: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "csrf-token: no authenticated session, so no CSRF proof can be presented" },
+      )
+    AuthAbsent =>
       write_refused(
         route_path: route_path,
         action: action,
@@ -359,6 +411,13 @@ fn service_write_authentication_decision(
         security: security,
         cause: AccessEvidenceRejected { evidence: "google-oidc-session", reason: "a human Google session is not Fabric service evidence and authorizes no service write" },
       )
+    SessionStandingInvalid { standing: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "google-oidc-session", reason: "a human session standing, valid or not, is not Fabric service evidence and authorizes no service write" },
+      )
     AuthAbsent =>
       write_refused(
         route_path: route_path,
@@ -409,6 +468,7 @@ fn evidence_subject_label(evidence: RequestAuthenticationEvidence) -> String {
   match evidence {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal)
     FabricServiceEvidence { kind: _, authenticated_at: _ } => "fabric-service-evidence" as String
+    SessionStandingInvalid { standing: _ } => "session-standing-invalid" as String
     AuthAbsent => "auth-absent" as String
   }
 }
@@ -440,6 +500,7 @@ fn authenticated_viewer_label(evidence: RequestAuthenticationEvidence) -> String
   match evidence {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal)
     FabricServiceEvidence { kind: _, authenticated_at: _ } => fabric_display_alias as String
+    SessionStandingInvalid { standing: _ } => ""
     AuthAbsent => ""
   }
 }

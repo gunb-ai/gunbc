@@ -30,15 +30,19 @@ import gunbc.auth.session {
   AuthenticatedSession, SessionMint, SessionMinted, SessionRefused,
   mint_authenticated_session,
   SessionClientTrackerWeb,
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
+  SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
+  SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision,
   ServeWriteAuthorizationPolicy,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
+  request_authentication_evidence_of_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -444,4 +448,138 @@ test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
 // is exercised by every write-law control above, which builds sessions through the mint.)
 test fn the_viewer_label_is_nobody_when_authentication_is_absent() -> Bool {
   authenticated_viewer_label(evidence: AuthAbsent) == ""
+}
+
+// ── The cookie channel at the write law (lane A3 frontier 1) ───────────────────────────────────
+
+// THE SEAM'S EVIDENCE FOLD seats exactly one constructor per standing: a valid standing is a
+// Google session; every non-valid standing is SessionStandingInvalid carrying WHICH arm
+// arrived, so the write law can refuse with the arm's own remedy instead of collapsing all of
+// them into "no session".
+test fn a_valid_standing_seats_a_google_session_and_invalid_standings_carry_their_arm() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match request_authentication_evidence_of_standing(standing: SessionCookieValid { session: s }) {
+        GoogleOidcSession { session: seated } => (seated.session_id as String) == (s.session_id as String)
+        _ => false
+      }
+        && match request_authentication_evidence_of_standing(standing: SessionCookieUnknown { session_id: "forged" as NonEmptyStr }) {
+          SessionStandingInvalid { standing: SessionCookieUnknown { session_id: id } } => (id as String) == "forged"
+          _ => false
+        }
+        && match request_authentication_evidence_of_standing(standing: SessionCookieUnread { detail: "probe" }) {
+          SessionStandingInvalid { standing: SessionCookieUnread { detail: d } } => d == "probe"
+          _ => false
+        }
+        && match request_authentication_evidence_of_standing(standing: SessionCookieMalformed { detail: "syntax" }) {
+          SessionStandingInvalid { standing: SessionCookieMalformed { detail: d } } => d == "syntax"
+          _ => false
+        }
+        && match request_authentication_evidence_of_standing(standing: SessionCookieAbsent) {
+          SessionStandingInvalid { standing: SessionCookieAbsent } => true
+          _ => false
+        }
+  }
+}
+
+// THE WRITE LAW NOW PASSES FOR AN AUTHENTICATED WRITE: a fixture session seated through the
+// cookie standing (a present, unexpired store entry) admits the assign route on the full
+// conjunction — the green control the cookie channel exists to make reachable.
+test fn the_write_law_admits_a_fixture_session_seated_through_the_cookie_standing() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      human_write_admission(
+        route_path: "/issue/demo/assign" as NonEmptyStr,
+        action: ServeActionAssignIssue,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) == Permit
+  }
+}
+
+// THE STANDING-WRITE PROJECTION the forged-cookie control drives: the same write law, with the
+// authentication evidence seated from a supplied cookie standing.
+fn witness_standing_write(standing: SessionCookieStanding) -> AccessDecision {
+  human_write_admission(
+    route_path: "/issue/demo/assign" as NonEmptyStr,
+    action: ServeActionAssignIssue,
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: SessionStandingInvalid { standing } },
+    authorization_policy: open_write_policy(),
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "csrf-1",
+    observed_at: "2026-09-25T00:05:00Z",
+  )
+}
+
+// A FORGED COOKIE MINTS NOTHING: an unknown standing (the cookie names no session the store
+// holds) refuses at the authentication axis, and the refusal is NOT the absent-session
+// spelling — it names the forged-cookie remedy. Expired, malformed, and unread standings each
+// refuse with their own cause, and none of them is ever an anonymous session.
+test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its_own_cause() -> Bool {
+  let absent_cause = match human_write_admission(
+    route_path: "/issue/demo/assign" as NonEmptyStr,
+    action: ServeActionAssignIssue,
+    security: local_dev_absent_security(),
+    authorization_policy: open_write_policy(),
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "csrf-1",
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    Deny { refusal } => match refusal.cause {
+      AccessEvidenceAbsent { evidence: e } => e
+      _ => ""
+    }
+    Permit => ""
+  }
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match witness_standing_write(standing: SessionCookieUnknown { session_id: "forged" as NonEmptyStr }) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessEvidenceRejected { evidence: e, reason: r } =>
+              e == "google-oidc-session"
+                && string_contains(s: r, pattern: "forged")
+                && match witness_standing_write(standing: SessionCookieExpired { session: s, observed_at: "2026-09-26T00:00:00Z" }) {
+                  Deny { refusal: expired_refusal } =>
+                    match expired_refusal.cause {
+                      AccessEvidenceRejected { evidence: e2, reason: r2 } =>
+                        e2 == "google-oidc-session"
+                          && string_contains(s: r2, pattern: "expired")
+                          && match witness_standing_write(standing: SessionCookieMalformed { detail: "syntax" }) {
+                            Deny { refusal: malformed_refusal } =>
+                              match malformed_refusal.cause {
+                                AccessEvidenceRejected { evidence: e3, reason: r3 } =>
+                                  e3 == "google-oidc-session"
+                                    && string_contains(s: r3, pattern: "malformed")
+                                    && match witness_standing_write(standing: SessionCookieUnread { detail: "store unreadable" }) {
+                                      Deny { refusal: unread_refusal } =>
+                                        match unread_refusal.cause {
+                                          AccessEvidenceRejected { evidence: e4, reason: r4 } =>
+                                            e4 == "google-oidc-session"
+                                              && string_contains(s: r4, pattern: "store")
+                                              && absent_cause != ""
+                                              && !string_contains(s: absent_cause, pattern: "forged")
+                                          _ => false
+                                        }
+                                      Permit => false
+                                    }
+                                _ => false
+                              }
+                            Permit => false
+                          }
+                      _ => false
+                    }
+                  Permit => false
+                }
+            _ => false
+          }
+        Permit => false
+      }
+  }
 }

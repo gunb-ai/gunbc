@@ -1,6 +1,7 @@
 module gunbc.auth.session
 
 import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import extdeps.auth.oidc {
   OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal,
@@ -82,6 +83,7 @@ fn mint_authenticated_session(
   admit_callers: [
     decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
     decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "gunbc.roadmap_serve", decl_name: "auth_google_callback_response"),
   ]
 {
   if login_transaction_expired(t: transaction, observed_at: observed_at) {
@@ -179,12 +181,161 @@ data session_cookie_same_site_lax: Bool = true
 
 data session_cookie_path: NonEmptyStr = "/" as NonEmptyStr
 
-// THE STANDING A REQUEST ARRIVES WITH. Decoding the wire cookie into this standing is the socket
-// realization's job (frontier: the serve runtime hands the standing across the seam); the model
-// decides over the standing, and each non-valid arm is a located refusal rather than an
-// anonymous session — a malformed cookie is a deployment fact, not a person.
+// THE STANDING A REQUEST ARRIVES WITH. Decoding the wire cookie into this standing lands at the
+// serve seam (gunbc.auth.session_store resolves the opaque id through the file-backed store;
+// gunbc.roadmap_serve builds the request-security evidence from the standing); the model decides
+// over the standing, and each non-valid arm is a located refusal rather than an anonymous
+// session — a malformed cookie is a deployment fact, not a person. ABSENT, UNKNOWN, and UNREAD
+// stay distinct arms: absent names no cookie header at all, unknown names a cookie whose id the
+// store does not hold (a forged or expired-and-reaped cookie lands here), and unread names a
+// store the seam could not read — three different remedies (nothing / re-login / fix the store),
+// so three arms, per the vocabulary-of-refusals discipline.
 type SessionCookieStanding
   = SessionCookieValid { session: AuthenticatedSession }
   | SessionCookieExpired { session: AuthenticatedSession, observed_at: Timestamp }
   | SessionCookieAbsent
+  | SessionCookieUnknown { session_id: NonEmptyStr }
+  | SessionCookieUnread { detail: String }
   | SessionCookieMalformed { detail: String }
+
+// ── The cookie wire ────────────────────────────────────────────────────────────────────────────
+// THE COOKIE NAME IS THE REALIZATION'S ONE WIRE FACT, as a data row every consumer reads: the
+// serve seam matches it inbound and the Set-Cookie line spells it outbound, so the name cannot
+// drift between the reader and the writer.
+data session_cookie_name: NonEmptyStr = "gunbc_session" as NonEmptyStr
+
+// THE INBOUND PARSE, one typed arm per wire fact: no Cookie header (or one that names no session
+// cookie) is NotPresent; a value outside RFC 6265's cookie-octet set, an empty value, or a
+// DUPLICATE session cookie is Malformed — with two values present the seam and any downstream
+// reader could disagree about which is authoritative, and header smuggling is precisely the
+// technique of making them disagree, so the duplicate refuses like every other duplicate header
+// at this deployment's socket seams. The parse checks SYNTAX only; whether the id names a live
+// session is the store's answer, one fold down.
+type SessionCookieIdParse
+  = SessionCookieIdParsed { session_id: NonEmptyStr }
+  | SessionCookieIdNotPresent
+  | SessionCookieIdMalformed { detail: String }
+
+fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
+  let pairs = split(s: cookie_header, delimiter: ";")
+  let matches = filter(
+    pairs,
+    pair => starts_with(s: trim(pair), prefix: concat(session_cookie_name as String, "=")),
+  )
+  if count(matches) == 0 {
+    SessionCookieIdNotPresent
+  } else if count(matches) > 1 {
+    SessionCookieIdMalformed {
+      detail: concat("duplicate ", concat(session_cookie_name as String, " cookie in the Cookie header")),
+    }
+  } else {
+    match matches.first() {
+      Absent => SessionCookieIdNotPresent
+      Present { value: pair } =>
+        let trimmed_pair = trim(pair)
+        session_cookie_id_of_value(
+          value: substring(
+            s: trimmed_pair,
+            start: string_length(s: concat(session_cookie_name as String, "=")),
+            end: string_length(s: trimmed_pair),
+          ),
+        )
+    }
+  }
+}
+
+// RFC 6265 section 4.1.1 COOKIE-OCTET, the printable set a cookie value may carry: %x21,
+// %x23-2B, %x2D-3A, %x3C-5B, %x5D-7E. The alphabet check stays SYNTAX (the store decides
+// existence); the empty value is Malformed rather than NotPresent, because a header that names
+// the session cookie with no value is a wire fact about the deployment, not the same as no
+// cookie.
+fn session_cookie_octet(cp: Int) -> Bool {
+  cp == 33
+    || (cp >= 35 && cp <= 43)
+    || (cp >= 45 && cp <= 58)
+    || (cp >= 60 && cp <= 91)
+    || (cp >= 93 && cp <= 126)
+}
+
+fn session_cookie_value_wire_valid(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else if !session_cookie_octet(cp: code_point(c: char_at(s, i))) {
+    false
+  } else {
+    session_cookie_value_wire_valid(s: s, i: i + 1, len: len)
+  }
+}
+
+fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
+  if value == "" {
+    SessionCookieIdMalformed {
+      detail: concat("empty ", concat(session_cookie_name as String, " cookie value")),
+    }
+  } else if !session_cookie_value_wire_valid(s: value, i: 0, len: string_length(s: value)) {
+    SessionCookieIdMalformed {
+      detail: "the session cookie value carries a character outside RFC 6265's cookie-octet set",
+    }
+  } else {
+    SessionCookieIdParsed { session_id: value as NonEmptyStr }
+  }
+}
+
+// THE OUTBOUND Set-Cookie LINE, derived from the attribute data rows so the spelling the ruling
+// spelled ("Secure, HttpOnly, SameSite=Lax, path-bound, bounded lifetime") is emitted verbatim
+// and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
+// seconds; the caller supplies it because the lifetime bound is the login policy's fact
+// (gunbc.auth.oidc_deployment_config), not this module's.
+fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Int) -> String {
+  join(
+    [
+      "Set-Cookie: ",
+      session_cookie_name as String,
+      "=",
+      session_id as String,
+      if session_cookie_secure { "; Secure" } else { "" },
+      if session_cookie_http_only { "; HttpOnly" } else { "" },
+      if session_cookie_same_site_lax { "; SameSite=Lax" } else { "" },
+      "; Path=",
+      session_cookie_path as String,
+      "; Max-Age=",
+      to_string(value: max_age_seconds),
+    ],
+    "",
+  )
+}
+
+// THE LOGOUT CLEARING LINE: same attributes, empty value, zero lifetime, so the browser drops
+// the cookie whether or not the server-side session could be deleted.
+fn session_cookie_clear_line() -> String {
+  join(
+    [
+      "Set-Cookie: ",
+      session_cookie_name as String,
+      "=; Path=",
+      session_cookie_path as String,
+      if session_cookie_secure { "; Secure" } else { "" },
+      if session_cookie_http_only { "; HttpOnly" } else { "" },
+      if session_cookie_same_site_lax { "; SameSite=Lax" } else { "" },
+      "; Max-Age=0",
+    ],
+    "",
+  )
+}
+
+// ONE REFUSAL, ONE RENDERED REASON over the non-valid arms, for routes that answer a standing
+// with prose: each arm names its remedy, and no arm renders as an anonymous session.
+fn session_cookie_standing_reason(standing: SessionCookieStanding) -> String {
+  match standing {
+    SessionCookieValid { session: _ } => "the session cookie names a live authenticated session"
+    SessionCookieExpired { session: _, observed_at: _ } =>
+      "the authenticated session has expired; the operator must log in again"
+    SessionCookieAbsent => "no session cookie was presented"
+    SessionCookieUnknown { session_id: _ } =>
+      "the session cookie names no session this deployment holds (forged, reaped, or logged out); nothing mints from it"
+    SessionCookieUnread { detail: d } =>
+      concat("the session store could not be read: ", d)
+    SessionCookieMalformed { detail: d } =>
+      concat("the session cookie is malformed: ", d)
+  }
+}

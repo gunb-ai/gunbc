@@ -1,6 +1,6 @@
 module test.claim.auth_session_witness_test
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jwt {
   NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
@@ -11,6 +11,13 @@ import extdeps.auth.oidc {
   OidcIdTokenVerdictPolicy, verify_oidc_id_token,
   OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
 }
+import gunbc.principal_projection { principal_ref_label }
+import gunbc.auth.session_store {
+  SessionStoreLayout, session_cookie_standing_of, session_cookie_standing_of_store_result,
+  SessionStoreFound, SessionStoreUnknown, SessionStoreUnread, SessionStoreEntryMalformed,
+  authenticated_session_json, authenticated_session_of_json,
+  SessionFileDecoded, SessionFileMalformed,
+}
 import gunbc.auth.session {
   AuthenticatedSession, SessionMint, SessionMinted, SessionRefused,
   SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch,
@@ -18,6 +25,10 @@ import gunbc.auth.session {
   CsrfAdmitted, CsrfRefused, CsrfTokenAbsent, CsrfTokenMismatch,
   mint_authenticated_session, csrf_decision, session_not_expired,
   session_cookie_secure, session_cookie_http_only, session_cookie_same_site_lax, session_cookie_path,
+  session_cookie_id_of_header, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
+  session_cookie_set_cookie_line, session_cookie_clear_line,
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
+  SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
   SessionClientTrackerWeb, SessionClientApprovalsWeb,
 }
 
@@ -250,4 +261,150 @@ test fn the_cookie_attributes_are_the_rulings_spelled_set() -> Bool {
     && session_cookie_http_only == true
     && session_cookie_same_site_lax == true
     && (session_cookie_path as String) == "/"
+}
+
+// ── The cookie channel (lane A3 frontier 1) ────────────────────────────────────────────────────
+
+// THE WIRE COOKIE IS THE ONLY COOKIE FACT: the store holds sessions keyed by the opaque id, and
+// the id is what crosses the wire. These controls drive the parse (pure syntax) and the standing
+// fold (pure over the store's three-valued answer); the store's filesystem realization is
+// substrate, witnessed by the live seam rather than here.
+
+// THE COOKIE CHANNEL WITNESS LAYOUT: the standing fold's total form takes a layout, but an
+// absent header never reaches the store, so the root is a marker string the store never sees.
+fn witness_store_layout() -> SessionStoreLayout {
+  SessionStoreLayout { root: "witness-cookie-channel-unused" as FilePath }
+}
+
+// THE INBOUND PARSE distinguishes a present id from an absent one and from malformed spellings:
+// an empty value, a character outside RFC 6265's cookie-octet set, and a duplicate session
+// cookie are three Malformed arms with their own causes — never silently NotPresent.
+test fn the_cookie_parse_admits_a_present_id_and_refuses_malformed_spellings() -> Bool {
+  match session_cookie_id_of_header(cookie_header: "gunbc_session=abc-123") {
+    SessionCookieIdParsed { session_id } => (session_id as String) == "abc-123"
+    _ => false
+  }
+    && match session_cookie_id_of_header(cookie_header: "other=1; gunbc_session=abc-123; theme=dark") {
+      SessionCookieIdParsed { session_id } => (session_id as String) == "abc-123"
+      _ => false
+    }
+    && session_cookie_id_of_header(cookie_header: "") == SessionCookieIdNotPresent
+    && session_cookie_id_of_header(cookie_header: "other=1; theme=dark") == SessionCookieIdNotPresent
+    && match session_cookie_id_of_header(cookie_header: "gunbc_session=") {
+      SessionCookieIdMalformed { detail: _ } => true
+      _ => false
+    }
+    && match session_cookie_id_of_header(cookie_header: "gunbc_session=a b") {
+      SessionCookieIdMalformed { detail: _ } => true
+      _ => false
+    }
+    && match session_cookie_id_of_header(cookie_header: "gunbc_session=one; gunbc_session=two") {
+      SessionCookieIdMalformed { detail: _ } => true
+      _ => false
+    }
+}
+
+// THE STANDING FOLD KEEPS EVERY NON-VALID ARM DISTINCT: absent, unknown (the forged-cookie arm:
+// the id names no session the store holds), unread, malformed, and the valid/expired split each
+// survive the fold as their own constructor, because each names a different remedy.
+test fn the_standing_fold_keeps_absent_unknown_unread_and_expired_distinct() -> Bool {
+  session_cookie_standing_of(cookie_header: "", layout: witness_store_layout(), observed_at: "2026-09-25T00:05:00Z")
+    == SessionCookieAbsent
+    && match session_cookie_standing_of_store_result(
+      lookup: SessionStoreUnknown { session_id: "forged" as NonEmptyStr },
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionCookieUnknown { session_id } => (session_id as String) == "forged"
+      _ => false
+    }
+    && match session_cookie_standing_of_store_result(
+      lookup: SessionStoreUnread { session_id: "s1" as NonEmptyStr, detail: "probe" },
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionCookieUnread { detail } => detail == "probe"
+      _ => false
+    }
+    && match session_cookie_standing_of_store_result(
+      lookup: SessionStoreEntryMalformed { session_id: "s1" as NonEmptyStr, detail: "member csrf is absent" },
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionCookieMalformed { detail } => detail == "member csrf is absent"
+      _ => false
+    }
+    && match witness_mint_session(
+      verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+      transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+      session_id: "session-1" as NonEmptyStr,
+      csrf_token_value: "csrf-1" as NonEmptyStr,
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionMinted { session: s } =>
+        match session_cookie_standing_of_store_result(
+          lookup: SessionStoreFound { session: s },
+          observed_at: "2026-09-25T00:06:00Z",
+        ) {
+          SessionCookieValid { session: v } => (v.session_id as String) == "session-1"
+          _ => false
+        }
+          && match session_cookie_standing_of_store_result(
+            lookup: SessionStoreFound { session: s },
+            observed_at: "2026-09-26T00:00:00Z",
+          ) {
+            SessionCookieExpired { session: _, observed_at: _ } => true
+            _ => false
+          }
+      SessionRefused { cause: _ } => false
+    }
+}
+
+// THE SESSION FILE CODEC round-trips the whole session record through its JSON spelling, so a
+// file written by one login decodes to the same session the next request decides over — and a
+// file missing a member refuses with the member named, never a fabricated partial session.
+test fn the_session_file_codec_round_trips_and_refuses_with_the_member_named() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      match authenticated_session_of_json(text: authenticated_session_json(session: s)) {
+        SessionFileDecoded { session: d } =>
+          (d.session_id as String) == "session-1"
+            && (d.csrf.token as String) == "csrf-1"
+            && principal_ref_label(p: d.principal) == principal_ref_label(p: s.principal)
+            && (d.expires_at as String) == "2026-09-25T12:00:00Z"
+            && match d.auth_method {
+              AuthMethodGoogleOidc => true
+            }
+            && match d.client {
+              SessionClientTrackerWeb => true
+              SessionClientApprovalsWeb => false
+            }
+        SessionFileMalformed { detail: _ } => false
+      }
+    SessionRefused { cause: _ } => false
+  }
+    && match authenticated_session_of_json(text: "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"x\"}") {
+      SessionFileMalformed { detail } => string_contains(s: detail, pattern: "principal")
+      SessionFileDecoded { session: _ } => false
+    }
+    && match authenticated_session_of_json(text: "not json") {
+      SessionFileMalformed { detail: _ } => true
+      SessionFileDecoded { session: _ } => false
+    }
+}
+
+// THE OUTBOUND Set-Cookie LINE spells the ruling's attributes from the data rows — Secure,
+// HttpOnly, SameSite=Lax, path-bound, bounded lifetime — and the logout clearing line zeroes the
+// lifetime so the browser drops the cookie.
+test fn the_set_cookie_lines_spell_the_ruling_attributes() -> Bool {
+  let line = session_cookie_set_cookie_line(session_id: "abc-123" as NonEmptyStr, max_age_seconds: 43200)
+  let cleared = session_cookie_clear_line()
+  string_contains(s: line, pattern: "gunbc_session=abc-123; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200")
+    && string_contains(s: cleared, pattern: "gunbc_session=; Path=/")
+    && string_contains(s: cleared, pattern: "Max-Age=0")
+    && string_contains(s: cleared, pattern: "Secure")
+    && string_contains(s: cleared, pattern: "HttpOnly")
 }
