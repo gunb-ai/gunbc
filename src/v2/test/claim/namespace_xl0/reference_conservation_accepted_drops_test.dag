@@ -87,3 +87,30 @@ fn qualified_constructor_value_subject() -> ReferenceConservationSubject {
 test fn a_qualified_constructor_literal_value_is_reported_dropped_holds() -> Bool {
   report_drop_count(report: conservation_report_of(subject: qualified_constructor_value_subject()), wanted: ^rc_value) == 1
 }
+
+// A match-arm body that is a statement sequence -- `let t = v` then an expression -- lowers to `v`:
+// the binder and every following statement are gone, a nested match included. Rostered as
+// gunbc.recurring_failure_mode match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering.
+data match_arm_statement_body_source: String = "module v2.test.reference_conservation_arm_stmt\n\ntype RcT = RcA | RcB\n\ndata rc_bound: Int = 1\n\ndata rc_after: Int = 2\n\nfn rc_id(a: Int) -> Int { a }\n\nfn rc_arm(t: RcT) -> Int {\n  match t {\n    RcA =>\n      let rc_local = rc_bound\n      rc_id(rc_after)\n    RcB => 0\n  }\n}\n"
+
+fn match_arm_statement_body_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "match_arm_statement_body", source: match_arm_statement_body_source)
+}
+
+test fn a_statement_after_a_let_in_a_match_arm_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: match_arm_statement_body_subject()), wanted: ^rc_after) == 1
+}
+
+// A data initializer that is a match reads its scrutinee from an arm: the call scrutinee -- callee
+// and arguments -- is gone and the first arm's body stands in its place. The same match as a fn body
+// keeps its scrutinee. Rostered as gunbc.recurring_failure_mode
+// data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering.
+data data_initializer_match_scrutinee_source: String = "module v2.test.reference_conservation_data_match\n\ntype RcT = RcA | RcB\n\ndata rc_arg: Int = 1\n\nfn rc_pick(a: Int) -> RcT { RcA }\n\ndata rc_matched: Bool = match rc_pick(rc_arg) {\n  RcA => true\n  RcB => false\n}\n"
+
+fn data_initializer_match_scrutinee_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "data_initializer_match_scrutinee", source: data_initializer_match_scrutinee_source)
+}
+
+test fn a_data_initializer_match_scrutinee_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: data_initializer_match_scrutinee_subject()), wanted: ^rc_arg) == 1
+}

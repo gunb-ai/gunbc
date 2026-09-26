@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
+  identity: "data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering" as NonEmptyStr,
+
+  receipts: [
+    "**a data initializer that is a match reads its scrutinee from its first arm, and normalize ACCEPTS the module** (INVALID STATE: `data d: Bool = match h(a: zq) { X => true  Y => false }` lowers to a match whose scrutinee is `true`, the first arm's body. The call scrutinee, callee and arguments are gone, and there is no diagnostic.) The declaration matches a constant instead of what the source computes, so the answer is wrong whenever the arms depend on the scrutinee. A name in the scrutinee never reaches resolve. The same match as a fn body keeps its scrutinee.",
+    "WHERE, cited by symbol, traced (a normalized-tree dump of the fixture shows the scrutinee edge holding `dag_token_kw_true` at the first arm body's occurrence). `v2.compiler.body_lowering_fold` `body_lower_match_scrutinee_optional` finds the scrutinee by searching the WHOLE match subtree for the first `dag_surface_binary_expr`, then `dag_surface_postfix_expr` (`body_lower_find_captured`). A data initializer is folded bottom-up before the declaration is dispatched (`body_lower_data_initializer_body`'s own note), so by then the scrutinee's shell has been reduced and is no longer that production. The search therefore finds the next one, inside an arm body. That is a positional fact obtained by searching for its shape (`a_positional_fact_is_obtained_by_searching_for_its_shape`'s class), at a new site.",
+    "RECEIPTS. Census rerun on the #12313 lexer (exact loci): 13 of the 3,472 atoms absent in accepted modules have a production chain `data_decl/expr/match_expr/binary_expr...` (the scrutinee position), which is exact at chain grain, all in `test.claim.manual.outcome_diagnostics_eq` `witness_diagnostics_merge_some`. Fixtures: a call scrutinee with record arguments and one with plain arguments both drop; the fn-body form drops only the argument label, which is a separate row.",
+    "RUNG FOUND AT: below the floor (silent wrongness). CEILING: structurally guaranteed. The scrutinee is read from its grammar position, the child after `match`, or the match refuses. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 body lowering reads a match's scrutinee positionally on every route, data initializers included, never by searching the match subtree. Owner: bright-boar-848's fold queue. The pinned drop claim holds while the drop happens and reds when the repair lands.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops", decl_name: "a_data_initializer_match_scrutinee_is_reported_dropped_holds", field: WholeDeclaration },
+  ],
+}
