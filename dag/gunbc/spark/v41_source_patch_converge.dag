@@ -489,13 +489,18 @@ fn v41_known_set_diff_digests(target: SshTarget, context: FleetSshExecutionConte
   })
 }
 
-// Derive the known-set digests only where they can change the decision: a dirty tree at the pin,
-// no record match, and P not already present. Everywhere else the read stands as observed.
+// Derive the known-set digests only where ownership is the one fact the decision still lacks:
+// the read is not yet proven ours, and the SAME decision over the same read with ownership granted
+// would reset. Asked of the decision's structure (its Apply arm), never of its refusal wording.
 fn v41_needs_content_ownership(desired_revision: VllmSourceRevision, desired_patches: List<V41EnginePatch>, read: V41SourceTreeRead) -> Bool {
-  match v41_source_patch_decision(desired_revision: desired_revision, desired_patches: desired_patches, read: read) {
-    Refuse { reason: r } => (r as String).contains("not ours to reset")
-    Noop => false
-    Apply { plan: _ } => false
+  if v41_tree_is_ours(read: read) {
+    false
+  } else {
+    match v41_source_patch_decision(desired_revision: desired_revision, desired_patches: desired_patches, read: v41_with_known_set_digests(read: read, digests: [read.worktree_diff_sha256])) {
+      Apply { plan: p } => p.reset_to_revision_first
+      Noop => false
+      Refuse { reason: _ } => false
+    }
   }
 }
 
