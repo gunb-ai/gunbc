@@ -29,6 +29,9 @@ import gunbc.roadmap_provider_events {
   ProviderEventsRefused,
 }
 import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope { RepositoryCommit, commit_at_reference }
+import std.minted_identity { MintedId }
 
 // THE SUBMISSION ARTIFACT IS THE WORKER'S ONE DECLARED ACT, AND THIS MODULE IS ITS ONLY AUTHORITY.
 //
@@ -50,7 +53,17 @@ data submission_artifact_name: NonEmptyStr = ".gunbc-submission.json" as NonEmpt
 // refused, so a future shape cannot be silently read as this one with members missing.
 data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr
 
+// THE CAPTURE CARRIER IS VERSIONED, AND THE VERSIONS ARE BOTH READ. v2 is the shape production
+// has written since the capture record landed: ordinal binding alone, no root locator. v3 adds
+// the root-locator binding (SubmissionCaptureRoot below), and the decoder admits each schema only
+// into the arm that shape can honestly populate -- a v2 document decodes LegacyUnbound and is never
+// read as if it had authenticated its commit, because the one fact the binding carries is exactly
+// the fact a v2 writer never recorded. The bump is for the reader going forward rather than the
+// back: holding the tag at v2 would leave a v3 reader refusing the new records as unknown, or
+// worse, reading a missing member as a legacy arm and integrating a capture it never verified.
 data submission_capture_schema: NonEmptyStr = "roadmap-submission-capture/v2" as NonEmptyStr
+
+data submission_capture_schema_v3: NonEmptyStr = "roadmap-submission-capture/v3" as NonEmptyStr
 
 // THREE READINGS OF "HOW THE TASK ENDED", NOT ONE. `ready` declares a candidate: capture it and
 // judge it. `blocked` and `needs-context` declare that no candidate exists and why -- they end the
@@ -171,17 +184,39 @@ fn submission_digest(submission: WorkerSubmission) -> String {
 // is the existence of a decodable capture record at that head's own address, so a later edit (a new
 // head) inherits no prior evidence, and the old head's record is preserved rather than rewritten.
 //
+// THE ROOT-LOCATOR BINDING, the capture's self-authenticating half. A commit's repository-relative
+// ordinal alone is not an identity: minted ordinals are per-envelope counters, so ordinal 1 names
+// one commit in one envelope and a DIFFERENT commit in another, and a capture carried across
+// envelopes (or an envelope rebuilt under a capture) resolves its ordinal to a stranger's commit
+// -- the 2026-09-22 diagnosis's second hole, where a "successful" integrate could have published
+// the wrong candidate's content while every receipt read honest. The locator is the commit root's
+// content identity, recorded at capture time and verified against commits[ordinal].root before any
+// integrate, so a mismatched ordinal refuses typed instead of merging a stranger.
+//
+// LegacyUnbound is the v2 population's honest decoding: those captures recorded no locator, and
+// "recorded no locator" is a different fact from "recorded the wrong locator" -- the first refuses
+// integrate as binding-unverifiable, the second as a mismatch, and neither is ever guessed at.
+// The encoder re-emits each arm under its own schema, so a legacy capture re-serialized by this
+// build stays a legacy capture rather than being silently promoted.
+type SubmissionCaptureRoot
+  = SubmissionCaptureRootBound { locator: String }
+  | SubmissionCaptureRootLegacyUnbound
+
 // TWO IDENTITIES, AND THEIR ROLES DO NOT OVERLAP (owner ruling 2026-09-20: gunbc SCM inside, git at
 // the edge). `head_sha` is the git commit the belt created in the attempt worktree -- the EDGE
 // realization of the captured tree, consumed by the verification checkout and the publication push
 // while those still run on git. `scm_repository` + `scm_commit_ordinal` name the AUTHORITATIVE
 // capture: the commit the belt minted into the project's SCM envelope from the same tree. The
 // capture is addressed by the git head only because the verify gate's receipts already are; the
-// binding that fanin and the delivery obligation read is the SCM one.
+// binding that fanin and the delivery obligation read is the SCM one. `scm_root_locator` is that
+// binding's content half: the digest text the envelope's own vocabulary writes for an uncontained
+// commit root, recorded at capture time so a later ordinal resolution can be authenticated
+// instead of trusted.
 type SubmissionCapture {
   head_sha: String
   scm_repository: String
   scm_commit_ordinal: Int
+  scm_root_locator: SubmissionCaptureRoot
   digest: String
   submission: WorkerSubmission
 }
@@ -191,14 +226,27 @@ fn submission_capture_basename(head_sha: String) -> String {
 }
 
 fn submission_capture_json(capture: SubmissionCapture) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "schema", value: json_string(s: submission_capture_schema as String)),
-    json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
-    json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
-    json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
-    json_kv(key: "digest", value: json_string(s: capture.digest)),
-    json_kv(key: "submission", value: submission_json(submission: capture.submission)),
-  ])
+  match capture.scm_root_locator {
+    SubmissionCaptureRootBound { locator } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
+        json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+        json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+        json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+        json_kv(key: "scm_root_locator", value: json_string(s: locator)),
+        json_kv(key: "digest", value: json_string(s: capture.digest)),
+        json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+      ])
+    SubmissionCaptureRootLegacyUnbound =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: submission_capture_schema as String)),
+        json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+        json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+        json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+        json_kv(key: "digest", value: json_string(s: capture.digest)),
+        json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+      ])
+  }
 }
 
 fn submission_capture_text(capture: SubmissionCapture) -> String {
@@ -209,54 +257,79 @@ type SubmissionCaptureDecode
   = CaptureDecoded { capture: SubmissionCapture }
   | CaptureNotDecodable { reason: String }
 
+// SCHEMA DISPATCH IS THE VERSION CHECK, and each version decodes into the arm its writer could
+// honestly have produced. v3 requires the root locator and binds it; v2 predates the locator and
+// decodes LegacyUnbound -- never Bound-by-default, because an invented locator would authenticate
+// nothing and integrate a capture the envelope cannot vouch for. Anything older or newer refuses
+// with the tag it carried.
 fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode {
   match publication_receipt_member(doc: doc, key: "schema") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: schema } =>
-      if schema != (submission_capture_schema as String) {
-        CaptureNotDecodable {
-          reason: join(["capture schema is ", schema, ", not ", submission_capture_schema as String], ""),
-        }
-      } else {
-        match publication_receipt_member(doc: doc, key: "head_sha") {
-          ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
-          ReceiptMemberRead { value: head_sha } =>
-            match publication_receipt_member(doc: doc, key: "scm_repository") {
-              ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
-              ReceiptMemberRead { value: scm_repository } =>
-                match publication_receipt_int_member(doc: doc, key: "scm_commit_ordinal") {
-                  Absent =>
-                    CaptureNotDecodable {
-                      reason: "capture record scm_commit_ordinal member is absent, duplicated or not an integer",
-                    }
-                  Present { value: scm_commit_ordinal } =>
-                    match publication_receipt_member(doc: doc, key: "digest") {
-                      ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
-                      ReceiptMemberRead { value: digest } =>
-                        match json_object_unique_member(v: doc, key: "submission") {
-                          JsonMemberFound { value: submission_doc } =>
-                            match submission_decode_document(doc: submission_doc) {
-                              SubmissionNotDecodable { reason: r } => CaptureNotDecodable { reason: r }
-                              SubmissionDecoded { submission } =>
-                                CaptureDecoded {
-                                  capture: SubmissionCapture {
-                                    head_sha: head_sha,
-                                    scm_repository: scm_repository,
-                                    scm_commit_ordinal: scm_commit_ordinal,
-                                    digest: digest,
-                                    submission: submission,
-                                  },
-                                }
-                            }
-                          _ =>
-                            CaptureNotDecodable {
-                              reason: "capture record submission member is absent or duplicated",
-                            }
-                        }
-                    }
-                }
+      if schema == (submission_capture_schema_v3 as String) {
+        match publication_receipt_member(doc: doc, key: "scm_root_locator") {
+          ReceiptMemberUnreadable { reason: _ } =>
+            CaptureNotDecodable {
+              reason: "capture record scm_root_locator member is absent, duplicated or not a string",
             }
+          ReceiptMemberRead { value: locator } =>
+            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
         }
+      } else if schema == (submission_capture_schema as String) {
+        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound)
+      } else {
+        CaptureNotDecodable {
+          reason: join([
+            "capture schema is ", schema, ", not ", submission_capture_schema_v3 as String,
+            " (or the ", submission_capture_schema as String, " a historical capture carries)",
+          ], ""),
+        }
+      }
+  }
+}
+
+// THE MEMBER TAIL, SHARED BY BOTH SCHEMAS. The binding arrived as a parameter because the schema
+// dispatch already decided it; everything from head_sha down is the carrier both versions carry
+// unchanged.
+fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -> SubmissionCaptureDecode {
+  match publication_receipt_member(doc: doc, key: "head_sha") {
+    ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+    ReceiptMemberRead { value: head_sha } =>
+      match publication_receipt_member(doc: doc, key: "scm_repository") {
+        ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+        ReceiptMemberRead { value: scm_repository } =>
+          match publication_receipt_int_member(doc: doc, key: "scm_commit_ordinal") {
+            Absent =>
+              CaptureNotDecodable {
+                reason: "capture record scm_commit_ordinal member is absent, duplicated or not an integer",
+              }
+            Present { value: scm_commit_ordinal } =>
+              match publication_receipt_member(doc: doc, key: "digest") {
+                ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+                ReceiptMemberRead { value: digest } =>
+                  match json_object_unique_member(v: doc, key: "submission") {
+                    JsonMemberFound { value: submission_doc } =>
+                      match submission_decode_document(doc: submission_doc) {
+                        SubmissionNotDecodable { reason: r } => CaptureNotDecodable { reason: r }
+                        SubmissionDecoded { submission } =>
+                          CaptureDecoded {
+                            capture: SubmissionCapture {
+                              head_sha: head_sha,
+                              scm_repository: scm_repository,
+                              scm_commit_ordinal: scm_commit_ordinal,
+                              scm_root_locator: root,
+                              digest: digest,
+                              submission: submission,
+                            },
+                          }
+                      }
+                    _ =>
+                      CaptureNotDecodable {
+                        reason: "capture record submission member is absent or duplicated",
+                      }
+                  }
+              }
+          }
       }
   }
 }
@@ -268,6 +341,56 @@ fn submission_capture_decode(text: String) -> SubmissionCaptureDecode {
         reason: concat("the capture record is ", json_document_gap_text(gap: gap)),
       }
     JsonDocumentParsed { value: doc } => submission_capture_decode_document(doc: doc)
+  }
+}
+
+// THE CAPTURE->INTEGRATE BINDING, VERIFIED BEFORE FANIN. The ordinal a capture records is a
+// repository-relative counter, not an identity: ordinal 1 resolves to this envelope's first commit
+// and a stranger envelope's first commit with equal confidence, so an integrate that trusted the
+// ordinal alone could merge content the capture never authenticated -- the second structural hole
+// the 2026-09-22 diagnosis named. This gate re-resolves the ordinal against the envelope the
+// integrate actually loaded and compares the commit root's content identity with the locator the
+// capture recorded at capture time:
+//
+//   Absent (no refusal)   the binding holds -- or the envelope no longer carries the commit at all,
+//                         in which case this gate has no subject and the integrate's own
+//                         admissions refuse the missing candidate typed, as they did before the
+//                         binding existed. Passing that refusal through unchanged is deliberate:
+//                         the merge base's unwalkable arm names the damage with the vocabulary
+//                         that owns it.
+//   Mismatch              commits[ordinal].root differs from the recorded locator: the ordinal
+//                         resolved to a different commit. Refuse, carrying BOTH the claimed and the
+//                         actual locator, and never integrate.
+//   Unverifiable          a v2 capture recorded no locator. Refuse with the named cause rather
+//                         than guessing -- a legacy capture is not an authenticated capture.
+//
+// THE LOCATOR TEXT IS THE ENVELOPE'S OWN VOCABULARY: the digest rendering the index writes for an
+// uncontained commit root, compared as text so no second rendering exists beside the codec's.
+type SubmissionCaptureBindingRefusal
+  = CaptureBindingMismatch { claimed: String, actual: String }
+  | CaptureBindingUnverifiable
+
+fn submission_capture_binding_refusal(
+  capture: SubmissionCapture,
+  commits: List<RepositoryCommit>,
+) -> SubmissionCaptureBindingRefusal? {
+  match capture.scm_root_locator {
+    SubmissionCaptureRootLegacyUnbound =>
+      Present { value: CaptureBindingUnverifiable }
+    SubmissionCaptureRootBound { locator } =>
+      match commit_at_reference(
+        commits: commits,
+        reference: RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } },
+      ) {
+        Absent => none
+        Present { value: commit } =>
+          let actual = commit.root.locator.digest as String
+          if actual == locator {
+            none
+          } else {
+            Present { value: CaptureBindingMismatch { claimed: locator, actual: actual } }
+          }
+      }
   }
 }
 

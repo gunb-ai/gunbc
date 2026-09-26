@@ -172,6 +172,7 @@ import gunbc.roadmap.roadmap_supervisor {
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionBlocked, submission_digest,
+  SubmissionCaptureRootBound,
   SubmissionCaptureObservation, CaptureForHead, CaptureUnreadable,
 }
 import gunbc.roadmap_workflow_stage {
@@ -2591,6 +2592,7 @@ test fn the_checkpoint_lines_project_the_capture_record_verbatim() -> Bool {
       head_sha: "b04485cffb000000000000000000000000000000",
       scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
       scm_commit_ordinal: 3,
+      scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
       digest: submission_digest(submission: blocked),
       submission: blocked,
     } },

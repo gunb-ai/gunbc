@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
-  SubmissionCapture, submission_digest,
+  SubmissionCapture, submission_digest, SubmissionCaptureRootBound,
   SubmissionCaptureObservation,
   CaptureForHead, CaptureAbsent, CaptureUnreadable,
 }
@@ -60,6 +60,7 @@ fn capture_for(submission: WorkerSubmission) -> CaptureForHead {
       head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
       scm_commit_ordinal: 3,
+      scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
       digest: submission_digest(submission: submission),
       submission: submission,
     },

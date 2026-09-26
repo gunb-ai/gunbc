@@ -7,6 +7,7 @@ module test.claim.roadmap.roadmap_submission_witness_test
 // evidence, a fanin that loses a side or mints over a conflict.
 
 import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha }
+import std.minted_identity { minted_id_ordinal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_submission {
@@ -16,7 +17,9 @@ import gunbc.roadmap.roadmap_submission {
   submission_text, submission_decode, SubmissionDecoded, SubmissionNotDecodable,
   submission_digest,
   SubmissionCapture,
+  SubmissionCaptureRoot, SubmissionCaptureRootBound, SubmissionCaptureRootLegacyUnbound,
   submission_capture_text, submission_capture_decode, CaptureDecoded, CaptureNotDecodable,
+  submission_capture_binding_refusal, CaptureBindingMismatch, CaptureBindingUnverifiable,
   SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
   CandidateDecision, CandidateFresh, CandidateCheckpoint, submission_candidate_decision,
@@ -70,6 +73,7 @@ fn capture_at(head: String, submission: WorkerSubmission) -> SubmissionCapture {
     head_sha: head,
     scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
     scm_commit_ordinal: 3,
+    scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
     digest: submission_digest(submission: submission),
     submission: submission,
   }
@@ -101,6 +105,60 @@ test fn the_capture_codec_round_trips_the_scm_binding() -> Bool {
         && capture.scm_repository == "/instance/attempt-state/projects/n1.gunbc-repository.json"
         && capture.scm_commit_ordinal == 3
         && capture.digest == c.digest
+        && match capture.scm_root_locator {
+          SubmissionCaptureRootBound { locator } => locator == "0123456789abcdef"
+          SubmissionCaptureRootLegacyUnbound => false
+        }
+  }
+}
+
+// THE v2 POPULATION STAYS READABLE, AND STAYS HONEST: a capture production wrote before the
+// root-locator binding decodes as LegacyUnbound -- never as a bound locator someone might trust --
+// and re-encodes under the v2 schema it arrived in, so a legacy record this build touches is not
+// silently promoted. The document is hand-authored, like the codec claims' other plants, so the
+// claim cannot be moved by an encoder change.
+test fn a_v2_capture_record_decodes_as_the_legacy_unbound_arm() -> Bool {
+  let text = join([
+    "{\"schema\": \"roadmap-submission-capture/v2\",",
+    " \"head_sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",",
+    " \"scm_repository\": \"/r.json\",",
+    " \"scm_commit_ordinal\": 3,",
+    " \"digest\": \"d\",",
+    " \"submission\": {\"schema\": \"roadmap-submission/v1\", \"readiness\": \"ready\", \"explanation\": \"x\", \"limitations\": \"y\"}}",
+  ], "")
+  match submission_capture_decode(text: text) {
+    CaptureNotDecodable { reason: _ } => false
+    CaptureDecoded { capture } =>
+      match capture.scm_root_locator {
+        SubmissionCaptureRootLegacyUnbound => true
+        SubmissionCaptureRootBound { locator: _ } => false
+      }
+        && match submission_capture_decode(text: submission_capture_text(capture: capture)) {
+          CaptureNotDecodable { reason: _ } => false
+          CaptureDecoded { capture: reencoded } =>
+            match reencoded.scm_root_locator {
+              SubmissionCaptureRootLegacyUnbound => true
+              SubmissionCaptureRootBound { locator: _ } => false
+            }
+        }
+  }
+}
+
+// THE v3 SCHEMA REQUIRES THE LOCATOR IT ADDS. A v3 document without the member is not read as a
+// legacy capture: the schema is the writer's declaration of what it recorded, and a v3 writer that
+// recorded no locator has contradicted its own declaration.
+test fn a_v3_capture_record_without_the_locator_is_not_decodable() -> Bool {
+  let text = join([
+    "{\"schema\": \"roadmap-submission-capture/v3\",",
+    " \"head_sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",",
+    " \"scm_repository\": \"/r.json\",",
+    " \"scm_commit_ordinal\": 3,",
+    " \"digest\": \"d\",",
+    " \"submission\": {\"schema\": \"roadmap-submission/v1\", \"readiness\": \"ready\", \"explanation\": \"x\", \"limitations\": \"y\"}}",
+  ], "")
+  match submission_capture_decode(text: text) {
+    CaptureNotDecodable { reason } => string_contains(s: reason, pattern: "scm_root_locator")
+    CaptureDecoded { capture: _ } => false
   }
 }
 
@@ -632,6 +690,157 @@ test fn re_integrating_a_consumed_candidate_is_a_typed_noop_not_a_second_merge()
                     && repository_commit_ref_eq(left: head, right: h1)
               }
             }
+          }
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The capture->integrate binding, authenticated (the 2026-09-22 diagnosis's second hole). The
+// ordinal alone is not an identity -- ordinal 1 is this envelope's first commit and a stranger
+// envelope's first commit with equal confidence -- so the capture records the commit root's
+// content locator at capture time and the integrate verifies commits[ordinal].root against it
+// before fanin. These claims drive the real gate over the real scene builders.
+// ------------------------------------------------------------------------------------------------
+
+fn capture_with_root(ordinal: Int, root: SubmissionCaptureRoot) -> SubmissionCapture {
+  SubmissionCapture {
+    head_sha: "cccccccccccccccccccccccccccccccccccccccc",
+    scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
+    scm_commit_ordinal: ordinal,
+    scm_root_locator: root,
+    digest: submission_digest(submission: ready_submission()),
+    submission: ready_submission(),
+  }
+}
+
+fn root_locator_of(commits: List<RepositoryCommit>, at: RepositoryCommitRef) -> String {
+  match commit_at_reference(commits: commits, reference: at) {
+    Absent => ""
+    Present { value: c } => c.root.locator.digest as String
+  }
+}
+
+// THE HONEST CAPTURE: the recorded locator IS commits[ordinal].root, so the gate has no refusal
+// and the candidate integrates -- the arm the whole binding exists to keep reachable.
+test fn an_honest_capture_binding_integrates() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base, first, second: _ } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          let capture = capture_with_root(
+            ordinal: minted_id_ordinal(id: first.identity),
+            root: SubmissionCaptureRootBound { locator: root_locator_of(commits: repo.commits, at: first) },
+          )
+          match submission_capture_binding_refusal(capture: capture, commits: repo.commits) {
+            Present { value: _ } => false
+            Absent =>
+              match fanin_integrate_candidate(repository: repo, integration_head: base, candidate: first, message: "integrate one") {
+                FaninIntegrated { repository: _, head: _ } => true
+                FaninConflicted { conflicts: _ } => false
+                FaninAlreadyIntegrated { head: _ } => false
+                FaninRefused { detail: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// THE DISCRIMINATING ONE: the submission and the envelope are untouched -- only the recorded
+// locator is altered, to the root of a DIFFERENT commit of the same envelope. That is exactly the
+// cross-envelope ordinal-resolution hazard in miniature, and the gate refuses typed, carrying both
+// the claimed locator and the locator the ordinal actually resolves to.
+test fn an_altered_locator_refuses_with_both_sides_named() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base: _, first, second } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          let capture = capture_with_root(
+            ordinal: minted_id_ordinal(id: first.identity),
+            root: SubmissionCaptureRootBound { locator: root_locator_of(commits: repo.commits, at: second) },
+          )
+          match submission_capture_binding_refusal(capture: capture, commits: repo.commits) {
+            Present { value: CaptureBindingMismatch { claimed, actual } } =>
+              claimed == root_locator_of(commits: repo.commits, at: second)
+                && actual == root_locator_of(commits: repo.commits, at: first)
+            Present { value: CaptureBindingUnverifiable } => false
+            Absent => false
+          }
+      }
+  }
+}
+
+// CHANGED CONTENT UNDER AN OLD LOCATOR is the same refusal from the other direction: a capture
+// whose ordinal now resolves to a commit freezing different content than the recorded locator
+// refuses rather than integrating the stranger. (The ordinal is stable per envelope, so this is
+// the replaced-envelope shape of the hazard.)
+test fn a_changed_commit_under_an_old_locator_refuses_with_both_sides_named() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base: _, first, second } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          let capture = capture_with_root(
+            ordinal: minted_id_ordinal(id: second.identity),
+            root: SubmissionCaptureRootBound { locator: root_locator_of(commits: repo.commits, at: first) },
+          )
+          match submission_capture_binding_refusal(capture: capture, commits: repo.commits) {
+            Present { value: CaptureBindingMismatch { claimed, actual } } =>
+              claimed == root_locator_of(commits: repo.commits, at: first)
+                && actual == root_locator_of(commits: repo.commits, at: second)
+            Present { value: CaptureBindingUnverifiable } => false
+            Absent => false
+          }
+      }
+  }
+}
+
+// THE LEGACY ARM: a v2 capture recorded no locator, and the gate refuses with the named cause
+// rather than guessing -- an unauthenticated capture is not integrated on the strength of its
+// ordinal alone.
+test fn a_legacy_capture_refuses_as_binding_unverifiable() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base: _, first, second: _ } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          let capture = capture_with_root(
+            ordinal: minted_id_ordinal(id: first.identity),
+            root: SubmissionCaptureRootLegacyUnbound,
+          )
+          match submission_capture_binding_refusal(capture: capture, commits: repo.commits) {
+            Present { value: CaptureBindingUnverifiable } => true
+            Present { value: CaptureBindingMismatch { claimed: _, actual: _ } } => false
+            Absent => false
+          }
+      }
+  }
+}
+
+// THE GATE'S SUBJECT IS THE ORDINAL'S RESOLUTION, and an ordinal the envelope does not carry has
+// no resolution to authenticate: the gate passes it through, and the integrate's own admissions
+// refuse the missing candidate typed -- the pass-through is deliberate, so that refusal keeps the
+// vocabulary that owns it (the merge base's unwalkable arm) rather than a binding-shaped fiction.
+test fn a_capture_for_a_commit_the_envelope_lacks_passes_through_to_the_integrate() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base: _, first: _, second: _ } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          let capture = capture_with_root(
+            ordinal: 999,
+            root: SubmissionCaptureRootBound { locator: "ffffffffffffffff" },
+          )
+          match submission_capture_binding_refusal(capture: capture, commits: repo.commits) {
+            Present { value: _ } => false
+            Absent => true
           }
       }
   }

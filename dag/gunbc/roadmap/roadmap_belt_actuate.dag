@@ -470,7 +470,10 @@ import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_digest, submission_decode,
   submission_capture_basename, submission_capture_text, submission_capture_decode,
   submission_readiness_key,
+  SubmissionCaptureRootBound,
+  submission_capture_binding_refusal, CaptureBindingMismatch, CaptureBindingUnverifiable,
 }
+import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap_dispatch_actuator {
   host_exec_argv,
@@ -5639,8 +5642,13 @@ fn belt_scm_project_entry_name(project_key: String) -> String {
 // The distinction is born here, at each refusal site, because the site is the one authority on
 // what the refusal means; classifying later, from the detail string, would be a second authority
 // (DESIGN section 3) and the pass would be guessing.
+//
+// ScmCandidateCaptured carries the commit's ROOT LOCATOR beside the ordinal: the ordinal is a
+// repository-relative counter and the locator is the content identity, and the capture record is
+// the handoff binding -- recording both is what makes the integrate able to authenticate the
+// ordinal against the envelope instead of trusting it (submission_capture_binding_refusal).
 type BeltScmCapture
-  = ScmCandidateCaptured { repository_path: String, commit_ordinal: Int }
+  = ScmCandidateCaptured { repository_path: String, commit_ordinal: Int, commit_root_locator: String }
   | ScmCaptureRefused { detail: String }
   | ScmCapturePoisoned { detail: String }
 
@@ -6178,7 +6186,10 @@ fn belt_scm_delta_fold_step(
 // allocator damage, and unrecoverable sources recompute to the same refusal on every retry.
 // THE SAVE'S GUARD ARMS ARE TRANSIENT TOO: a stale generation or an unobservable one is this tick's
 // fact about the world, not the attempt's -- the next tick observes the envelope fresh and
-// re-derives the capture against whatever is actually on disk.
+// re-derives the capture against whatever is actually on disk. AND THE CAPTURED ROOT LOCATOR IS
+// THE MANIFEST THE MINT CONSUMED, recorded from the value already in scope: commit_staged freezes
+// this member as the commit's root by construction, so deriving the locator from it is
+// construction-over-validation, not a re-lookup that would carry a dead missing-commit arm.
 fn belt_scm_delta_capture(
   instance: HostDashboardInstance,
   worktree: String,
@@ -6299,6 +6310,7 @@ fn belt_scm_delta_capture(
                                   ScmCandidateCaptured {
                                     repository_path: path,
                                     commit_ordinal: minted_id_ordinal(id: reference.identity),
+                                    commit_root_locator: object_id_key(identity: manifest.locator),
                                   }
                                 RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                                   ScmCaptureRefused {
@@ -6365,7 +6377,7 @@ fn belt_commit_capture_candidate(
   ) {
     ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
     ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
-    ScmCandidateCaptured { repository_path, commit_ordinal } =>
+    ScmCandidateCaptured { repository_path, commit_ordinal, commit_root_locator } =>
       match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
         StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
         StagedCommitRecorded =>
@@ -6393,6 +6405,7 @@ fn belt_commit_capture_candidate(
                   head_sha: revision as String,
                   scm_repository: repository_path,
                   scm_commit_ordinal: commit_ordinal,
+                  scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
                   digest: digest,
                   submission: submission,
                 }),
@@ -9839,6 +9852,14 @@ fn belt_integration_receipt_record_state(
   )
 }
 
+// THE CAPTURE BINDING IS AUTHENTICATED BEFORE FANIN, because the ordinal alone is not an identity.
+// A capture whose scm_commit_ordinal resolves -- in the envelope this tick actually loaded -- to a
+// commit whose root differs from the recorded locator is refused typed (CaptureBindingMismatch,
+// both locators named) and the refusal is recorded as an integration-blocked receipt, durable: a
+// mismatched capture recomputes to the same refusal on every tick until a human looks. A legacy v2
+// capture records no locator and refuses as binding-unverifiable rather than being guessed at.
+// Both refusals land BEFORE fanin_integrate_candidate, so no merge is ever minted against an
+// unauthenticated binding; the honest capture falls through to the merge unchanged.
 fn belt_integrate_into_envelope(
   instance: HostDashboardInstance,
   worktree: String,
@@ -9863,6 +9884,29 @@ fn belt_integrate_into_envelope(
               IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
             }
           } else {
+            match submission_capture_binding_refusal(capture: capture, commits: envelope.commits) {
+              Present { value: CaptureBindingMismatch { claimed, actual } } => {
+                let detail = join([
+                  "capture binding mismatch: the capture records root locator ", claimed,
+                  " but commit ", to_string(capture.scm_commit_ordinal), " of the loaded envelope freezes root locator ",
+                  actual, "; the candidate is not integrated because the envelope cannot authenticate it",
+                ], "")
+                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                  IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
+                  IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
+                }
+              }
+              Present { value: CaptureBindingUnverifiable } => {
+                let detail = join([
+                  "the capture record predates the root-locator binding (schema ",
+                  "roadmap-submission-capture/v2), so the capture cannot be authenticated against its commit: binding unverifiable",
+                ], "")
+                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                  IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
+                  IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
+                }
+              }
+              Absent =>
             match fanin_integrate_candidate(
               repository: envelope,
               integration_head: head,
@@ -9921,6 +9965,7 @@ fn belt_integrate_into_envelope(
                 }
               }
               FaninRefused { detail } => EnvelopeIntegrationUnreadable { detail: detail }
+            }
             }
           }
       }
