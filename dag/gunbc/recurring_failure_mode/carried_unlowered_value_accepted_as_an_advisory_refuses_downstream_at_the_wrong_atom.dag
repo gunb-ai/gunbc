@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom: RecurringFailureMode = RecurringFailureMode {
+  identity: "carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a value the body-lowering value reader cannot lower is handed on as its UNLOWERED SHELL under a non-fatal advisory, and the file Accepts. v2.compiler.body_lowering_fold body_lower_value_lowered_or_carried did this for record-literal field initializers under the head-grain advisory body_lowering_reason_value_carried_unlowered, registered in v2.workflow.compile_door_cause_ownership. Nothing downstream refused the shell before consuming it as lowered, so the refusal the value owed moved to a later stage and to a different atom.",
+    "HARM: the value's defect is reported somewhere else, as something else. The resolver has no binder for a carried function literal, so the literal's OWN PARAMETER refuses as resolve_reason_unbound_symbol -- a refusal at the wrong atom, which is a wrong answer, not a located one (DESIGN section 5: a failure arm must refuse, never widen). The advisory made it look contained: the file Accepted and the residue was counted at head grain, while the actual refusal surfaced later against a name the author never wrote wrong.",
+    "RECEIPT 1, 2026-09-24 (gunbc.recurring_failure_mode lambda_has_no_lowered_function_value_form, 'WHY CARRYING THE SHELL IS NOT THE REPAIR'): carrying a lambda argument's shell under this advisory let an undeclared name in the body reach resolve, and the lambda's own parameter refused there -- `cav_apply(f: x => cav_undeclared)` refused at `x`.",
+    "RECEIPT 2, gunbc#12198, measured on srv1 at 8fc9f27377 (v2.test.claim.namespace_xl0.value_position_whole_read, its lambda frontier note): with the shell carried the module normalized, but both lambda claims stayed red, because a carried shell gives the resolver no scope for the parameter. The refusal moved from normalize to resolve and was not repaired, so the carry was withdrawn for call arguments -- and stayed live for field initializers.",
+    "DISTINGUISHING FACTS: the tell is an advisory that lets a file Accept while carrying a value no later stage is obliged to refuse. A carried value is honest only when a typed disposition is consumed downstream and the carried value is refused, located, before anything uses it as lowered. That is MQ-4's construction; an advisory counted at head grain is not that. A sibling of the same shape, body_lowering_reason_postfix_suffix_carried, is a declared rung drop (gunbc.rung_drop postfix_suffix_step_declined_to_the_pre_existing_arms) rather than an undeclared widen, and is not this row.",
+    "RUNG FOUND AT: below the ladder -- silent wrongness, since the refusal was misattributed rather than absent. REPAIR: body_lower_value_lowered_or_carried and the value_carried_unlowered advisory row are DELETED, and every value position (field initializer, if condition and arms, let value, each block statement, match-arm body) asks body_lower_value_read, which answers the lowered value or refuses AT THE VALUE with body_lowering_reason_value_unlowered. The same cut removed the operand-reader fallback whose Absent was relabelled as match_arm_navigation_refused / if_navigation_refused. Now mitigatable: loud, typed, located at the value. CEILING: structurally guaranteed -- every value shape lowers, or refuses at itself; there is no third answer. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a lowered function-value form for fn literals and lambdas in every value position (gunbc#12210 for fn literals), at which point the remaining value_unlowered population is the shapes that still have none.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_value_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_refusal", decl_name: "an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_carried_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_refusal", decl_name: "an_unlowerable_match_arm_body_refuses_at_the_body_not_as_navigation_holds", field: WholeDeclaration },
+  ],
+}
