@@ -9,6 +9,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.shell.exec { ProcessObservation }
 import gunbc.machine_intake_host_capture_envelope {
+  BoundHostCaptureEnvelope,
+  host_capture_argv_open,
+  host_capture_envelope_rule,
+  host_capture_line_close,
+  host_capture_section_open,
   HostCaptureWorkloadShape,
   HostCaptureBound,
   HostCaptureStage,
@@ -66,20 +71,101 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // attempt=3 was written by the program this grammar reconstructs, so the grammar must read it on
 // every axis the census verdict uses. A reconstruction that drifted from the real framing fails here.
 // attempt=3's capture must BIND -- one begin, the matching end for the same machine and run -- and
-// every verdict axis must read that bound envelope. This is the committed file, not a copy.
+// every verdict axis must read that bound envelope.
+//
+// THE AXES ARE ONE LIST, AND THE EXCERPT IS DERIVED FROM IT. Each axis names the section it reads;
+// the floor claim binds the committed bytes with every section NO axis reads removed by a pure
+// transform inside the claim -- attempt=3's dmesg-full alone was 205 KB of 270 KB and 76% of the bind.
+// An axis added here pulls its section back in; nothing else decides what is kept. The unmodified
+// full-file bind is the_attempt_three_full_capture_binds_by_real_execution below (local-wet).
+type AttemptThreeAxis
+  = AxisNprocExact { threads: String }
+  | AxisEdacClean { name: String }
+  | AxisWorkloadStable
+  | AxisSectionExitZero { name: String }
+
+data attempt_three_axes: List<AttemptThreeAxis> = [
+  AxisNprocExact { threads: "160" },
+  AxisEdacClean { name: "edac-before" },
+  AxisEdacClean { name: "edac-after" },
+  AxisWorkloadStable,
+  AxisSectionExitZero { name: "boot-media" },
+]
+
+fn attempt_three_axis_section(a: AttemptThreeAxis) -> String {
+  match a {
+    AxisNprocExact { threads: _ } => "nproc"
+    AxisEdacClean { name: n } => n
+    AxisWorkloadStable => "workload"
+    AxisSectionExitZero { name: n } => n
+  }
+}
+
+fn attempt_three_axis_holds(a: AttemptThreeAxis, e: BoundHostCaptureEnvelope) -> Bool {
+  match a {
+    AxisNprocExact { threads: t } => host_capture_bound_nproc_exact(envelope: e, threads: t)
+    AxisEdacClean { name: n } => host_capture_bound_edac_clean(envelope: e, name: n)
+    AxisWorkloadStable => host_capture_bound_workload_stable(envelope: e)
+    AxisSectionExitZero { name: n } => host_capture_bound_section_exit_zero(envelope: e, name: n)
+  }
+}
+
+// One section chunk of the capture text is `<name>----\n<body>`, the text after its `----SECTION `
+// opener. A chunk no axis reads keeps only the envelope's closing marker if it carries one, so the
+// begin/end framing -- the bind's own subject -- is never excised.
+fn attempt_three_chunk_kept(chunk: String) -> String {
+  let name = join(split(s: chunk, delimiter: host_capture_line_close).take(n: 1), "")
+  if any(attempt_three_axes, a => attempt_three_axis_section(a: a) == name) {
+    concat(host_capture_section_open, chunk)
+  } else {
+    let tail = split(s: chunk, delimiter: concat("\n", host_capture_envelope_rule))
+    if count(tail) < 2 { "" } else { concat("\n", host_capture_envelope_rule, join(tail.skip(n: 1), concat("\n", host_capture_envelope_rule))) }
+  }
+}
+
+fn attempt_three_axis_excerpt(capture: String) -> String {
+  let chunks = split(s: capture, delimiter: concat("\n", host_capture_section_open))
+  concat(
+    join(chunks.take(n: 1), ""),
+    join(map(chunks.skip(n: 1), c => concat("\n", attempt_three_chunk_kept(chunk: c))), ""),
+  )
+}
+
+fn attempt_three_axes_hold(capture: String) -> Bool {
+  match host_capture_bind(capture: capture, machine: "mtcollins1") {
+    HostCaptureBound { envelope: e } => all(attempt_three_axes, a => attempt_three_axis_holds(a: a, e: e))
+    _ => false
+  }
+}
+
+// THE RED IS ON A KEPT SECTION OF THE SAME BYTES: nproc's 160 edited to 159 must fail the excerpt,
+// so excising the unread sections cannot have excised what the claim asserts.
 test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
-  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
-    HostCaptureUnbound { reason: _ } => false
-    HostCaptureOpen { envelope: _ } => false
-    HostCaptureNotBegun => false
-    HostCaptureBound { envelope: e } =>
-      host_capture_bound_nproc_exact(envelope: e, threads: "160")
-        && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
-        && host_capture_bound_edac_clean(envelope: e, name: "edac-after")
-        && host_capture_bound_workload_stable(envelope: e)
-        && host_capture_bound_section_exit_zero(envelope: e, name: "boot-media")
+  let nproc_line = concat(host_capture_argv_open, "nproc: nproc\n")
+  let corrupted = join(split(s: read.content, delimiter: concat(nproc_line, "160\n")), concat(nproc_line, "159\n"))
+  read.success
+    && attempt_three_axes_hold(capture: attempt_three_axis_excerpt(capture: read.content))
+    && corrupted != read.content
+    && attempt_three_axes_hold(capture: attempt_three_axis_excerpt(capture: corrupted)) == false
+}
+
+// THE FULL COMMITTED FILE, UNEXCISED -- LOCAL-WET. It first confirms the bytes are the recorded
+// capture (sha256sum through a real process, which is also why it runs on the local-wet schedule and
+// not the hermetic floor), then binds all of them on every axis: the excerpt above is a transform of
+// exactly these bytes, and this is the claim that the whole file still binds.
+test fn the_attempt_three_full_capture_binds_by_real_execution() -> Bool {
+  let path = census_historical_capture.path
+  let identical = match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: observed } =>
+      match census_historical_capture.digest {
+        Sha256Hash(recorded) => (observed.hex as String) == (recorded.hex as String)
+        _ => false
+      }
   }
+  let read = Filesystem.Read(path: path as String)
+  identical && read.success && attempt_three_axes_hold(capture: read.content)
 }
 
 // THE HISTORICAL MAP IS CHECKED AGAINST THE BYTES, not by eye: every binding row's `original` must be
