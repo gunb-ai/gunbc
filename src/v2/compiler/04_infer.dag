@@ -731,7 +731,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                               descent: Holds { value: descent_proof }
                             )
                           Absent =>
-                            match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
+                            match infer_parameter_type_in_scope(tree: tree, reference: n, binding: binding) {
                               Present { value: domain_ty } =>
                                 inferred_facts_from_derived_type(
                                   node: n,
@@ -923,21 +923,47 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
   }
 }
 
-// interim: infer_find_arrow_domain_type_in_tree walks for a parameter name inside an Arrow domain
-// (operand typing). Application formals do not use that walk: only an operator whose node is
-// already Arrow is judged; an Atom operator is FormalUnresolved until SymbolIndex /
-// ResolvedTree.bindings. dissolve-on: delete the domain walker when that lookup lands.
+// A PARAMETER REFERENCE IS BOUND BY THE INNERMOST ENCLOSING ARROW THAT DECLARES IT. The walk this
+// replaces returned the FIRST Arrow anywhere in the tree naming the binding, so in a module declaring
+// `fn positive(x: Int)` and `fn f(x: Pos)` every `x` in f's body grounded as positive's Int: a
+// derived type fabricated from an unrelated declaration, which admitted `x as Int` and refused
+// `x as Pos` for the wrong reason (v2.test.claim.body_cast_node rows 15 and 16). One descent, the
+// same cost as the unscoped walk: it locates the reference OCCURRENCE (Node equality carries the
+// occurrence identity) and each Arrow on the way back up binds it if its domain names it.
+// Consumers: infer_node_facts' parameter arm (the grounding every cast, add, application, branch,
+// match and loop operand reads) and infer_branch_operand_resolved_type_in_tree.
+// interim: dissolve-on the SymbolIndex / ResolvedTree.bindings lookup, as before.
+type InferParameterScopeSearch
+  = ParameterReferenceNotHere
+  | ParameterReferenceUnbound
+  | ParameterReferenceBound { declared: Node }
 
-fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
-  match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
-    Present { value: ty } => Present { value: ty }
-    Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => infer_find_arrow_domain_type_in_tree(root: e.target, binding: binding)
+fn infer_parameter_scope_search(root: Node, reference: Node, binding: Symbol) -> InferParameterScopeSearch {
+  if root == reference {
+    ParameterReferenceUnbound
+  } else {
+    match fold(root.children, init: ParameterReferenceNotHere, f: fn(acc, e) {
+      match acc {
+        ParameterReferenceNotHere => infer_parameter_scope_search(root: e.target, reference: reference, binding: binding)
+        _ => acc
+      }
+    }) {
+      ParameterReferenceUnbound =>
+        match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
+          Present { value: ty } => ParameterReferenceBound { declared: ty }
+          Absent => ParameterReferenceUnbound
         }
-      })
+      ParameterReferenceBound { declared: ty } => ParameterReferenceBound { declared: ty }
+      ParameterReferenceNotHere => ParameterReferenceNotHere
+    }
+  }
+}
+
+fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -> Optional<Node> {
+  match infer_parameter_scope_search(root: tree, reference: reference, binding: binding) {
+    ParameterReferenceBound { declared: ty } => Present { value: ty }
+    ParameterReferenceUnbound => Absent
+    ParameterReferenceNotHere => Absent
   }
 }
 
@@ -962,7 +988,7 @@ fn infer_branch_operand_resolved_type_in_tree(
     Rejected { diagnostics: _ } =>
       match infer_atom_binding_sym(node: node) {
         Present { value: binding } =>
-          match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
+          match infer_parameter_type_in_scope(tree: tree, reference: node, binding: binding) {
             Present { value: domain_ty } => Holds { value: domain_ty }
             Absent => inferred_facts_resolved_type(facts: facts)
           }
