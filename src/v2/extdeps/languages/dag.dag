@@ -5514,8 +5514,17 @@ fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
 // body lowering's own read. Unfusing it is a body-lowering change, tracked as its own obligation
 // rather than performed from here.
 fn dag_named_arg_name_optional(arg_capture: Node) -> Optional<Symbol> {
+  match dag_named_arg_name_node_optional(arg_capture: arg_capture) {
+    Present { value: name_node } => node_atom_identity_optional(node: name_node)
+    Absent => Absent
+  }
+}
+
+// The name's token node itself, for a reader that must keep its occurrence
+// (v2.compiler.occurrence_role). The name-only decoder above is this one's projection.
+fn dag_named_arg_name_node_optional(arg_capture: Node) -> Optional<Node> {
   match find_named_child(root: arg_capture, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: name_node, diagnostics: _ } => node_atom_identity_optional(node: name_node)
+    Accepted { value: name_node, diagnostics: _ } => Present { value: name_node }
     Rejected { diagnostics: _ } => Absent
   }
 }
