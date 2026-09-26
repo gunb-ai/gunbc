@@ -67,9 +67,11 @@ type CoercionForkFixture {
 //
 //   both admit        -- int_to_int, float_to_float: a declared row whose source and target are one
 //                        model, the only shape on which the two algebras can coincide.
-//   both refuse       -- bool_to_float: no declared row and no structural equality.
-//   name-only         -- int_to_float (a declared widening), bool_to_int (a declared crossing with
-//                        no structural relation at all), int_to_nat (a GROUNDED identity that the
+//   both refuse       -- bool_to_float and bool_to_int: no declared row and no structural
+//                        equality. bool_to_int was name-only until #12227 withdrew its row -- a
+//                        Bool is not an Int (the 2026-09-26 coercion ruling, DESIGN section 4) --
+//                        so it now pins that the withdrawal holds.
+//   name-only         -- int_to_float (a declared widening), int_to_nat (a GROUNDED identity that the
 //                        name-keyed side carries in its own second roster). Each is a crossing the
 //                        executing algebra permits and the specified algebra cannot spell.
 //   homomorphism-only -- string_to_string: an IDENTITY crossing, which the name-keyed roster does
@@ -111,7 +113,7 @@ data coercion_fork_fixtures: List<CoercionForkFixture> = [
     target_type: "Int",
     source_name: ^Bool,
     target_name: ^Int,
-    expected_name_keyed: CrossingAdmitted,
+    expected_name_keyed: CrossingRefused,
     expected_homomorphism: CrossingRefused
   },
   {
@@ -235,7 +237,7 @@ fn coercion_admission_equal(left: CoercionAdmission, right: CoercionAdmission) -
 //
 // THE MEASUREMENT SURVIVES WITHOUT IT, and this is the point rather than a concession. The
 // agreement relation is DERIVED from the two expectation columns, which sit side by side on every
-// row: four of the seven rows carry expectations that differ, in both directions, and that is the
+// row: three of the seven rows carry expectations that differ, in both directions, and that is the
 // fork stated where a reader meets the population. If either algebra's admission set moves -- in
 // either direction, consolidation included -- the claim that owns that side reds and the author
 // must restate the row. Nothing was lost by deleting the comparison except a second spelling of a
