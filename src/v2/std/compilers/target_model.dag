@@ -13870,6 +13870,22 @@ fn target_project_callable_arg_in_arrow_scope(
   }
 }
 
+// A NAMED ACTUAL HAS NO SLOT THIS PROJECTION CAN NAME. It binds by name against the callee's
+// declared parameters (v2.std.compilers.body_lowering application_binding_plan), and this projection
+// receives the callee as a bare atom with no declaration context, so it cannot recover the declared
+// order a positional target needs. It refuses, located at the application, rather than emitting the
+// actuals in authored order (which bound every out-of-order named call wrongly and silently before
+// named actuals were carried) or dropping them. Reordering to declared order needs the callee's
+// declared order threaded into projection; that is its own change.
+fn target_transform_has_named_actual(body: Node) -> Bool {
+  fold(body.children, init: false, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => true
+      Positional => acc
+    }
+  })
+}
+
 fn target_project_transform_callable_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -13877,6 +13893,14 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
+  if target_transform_has_named_actual(body: body) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_declared_parameter_order_unavailable_to_projection,
+        node: body
+      )
+    )
+  } else {
   bind_outcome(
     o: target_transform_surface_op_atom(node: body),
     f: fn(callee) {
@@ -13922,6 +13946,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
       }
     }
   )
+  }
 }
 
 fn target_value_expr_branch_bool_gate(
