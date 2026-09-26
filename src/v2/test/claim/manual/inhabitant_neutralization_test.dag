@@ -1,8 +1,8 @@
 module v2.test.manual.inhabitant_neutralization
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile }
-import v2.compiler.infer { infer }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go {
   go_facts_float64,
@@ -146,7 +146,7 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_round_trip_holds() -> Bool {
     target: ts_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
+      match infer_and_discharge(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
             Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
@@ -191,7 +191,7 @@ test fn inhabitant_neutralization_emit_after_neutralize_round_trip_holds() -> Bo
     target: ts_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
+      match infer_and_discharge(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
             Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
@@ -204,7 +204,7 @@ test fn inhabitant_neutralization_emit_after_neutralize_round_trip_holds() -> Bo
 }
 
 fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
-  match infer(tree: python_emitted_add_fn_node()) {
+  match infer_and_discharge(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match emit(tree: inferred, target: ts_target_model()) {
         Rejected { diagnostics: _ } => true
@@ -228,7 +228,7 @@ fn inhabitant_neutralization_same_flavor_python_emit_round_trip_holds() -> Bool 
     target: python_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
+      match infer_and_discharge(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: python_target_model()) {
             Accepted { value: source, diagnostics: _ } => source.carried == python_source_text

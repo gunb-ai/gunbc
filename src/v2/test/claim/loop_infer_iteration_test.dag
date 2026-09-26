@@ -49,7 +49,7 @@ fn loop_infer_registered_measure() -> Node {
 }
 
 fn loop_infer_run(root: Node) -> Outcome<InferredTree> {
-  infer(tree: root)
+  infer_and_discharge(tree: root)
 }
 
 fn loop_infer_loop_type_is_int(tree: InferredTree, body: Node) -> Bool {

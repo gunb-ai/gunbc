@@ -1,0 +1,104 @@
+module v2.compiler.refinement_discharge
+
+import std.algebra { Cons, Empty }
+import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_true_primitive, v2_evaluator_interpretation }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary,
+  ExternalContractUnknown,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node }
+import v2.std.logic { Bool }
+import v2.std.runtime { RuntimeValue }
+
+// DISCHARGE IS THE ONE ROUTE FROM INFER'S OUTPUT TO AN InferredTree. Infer records a
+// RefinementObligation where it admitted `operand as R` conditionally; it does not decide R's
+// where-predicate, because deciding it is evaluation and v2.compiler.eval depends on
+// v2.compiler.infer (ruling: neat-boar-16, 2026-09-26). Discharge decides each obligation through
+// that ONE evaluator on the closed application `predicate(operand)` infer recorded -- there is no
+// second evaluator here -- and turns it into an admission or a located refusal. It runs in the compile pipeline before
+// emission, eval and the lens gates, so the refusal is still compile-time.
+//
+// THE THREE ARMS NEVER WIDEN. The predicate evaluates to the evaluator's own `true` value: admitted.
+// It evaluates to any other value: refinement_predicate_violated, located at the cast site. The
+// evaluator refuses the application -- an effect with no bound effect context, an unsupported callee,
+// a missing argument -- : refinement_obligation_undischargeable, located at the site, with the
+// evaluator's own diagnostics carried behind it. Deciding whether a predicate is effect-free is the
+// evaluator's refusal, not a second analysis here.
+//
+// ZERO OBLIGATIONS EVALUATE NOTHING: the tree is re-wrapped and returned.
+
+fn discharge_refinement_obligations(t: ObligatedInferredTree) -> Outcome<InferredTree> {
+  let tree = InferredTree { root: t.root, facts: t.facts }
+  discharge_each(tree: tree, remaining: t.obligations)
+}
+
+fn discharge_each(tree: InferredTree, remaining: List<RefinementObligation>) -> Outcome<InferredTree> {
+  match remaining {
+    Empty => outcome_accepted(tree)
+    Cons { head: o, tail: rest } =>
+      bind_outcome(
+        o: discharge_one(tree: tree, obligation: o),
+        f: fn(_) { discharge_each(tree: tree, remaining: rest) }
+      )
+  }
+}
+
+fn discharge_one(tree: InferredTree, obligation: RefinementObligation) -> Outcome<Bool> {
+  match eval(
+    tree: tree,
+    interpretation: v2_evaluator_interpretation(),
+    inputs: inputs_root_only(root: obligation.application)
+  ) {
+    Accepted { value: v, diagnostics: _ } =>
+      if v == v2_eval_bool_true_primitive() {
+        outcome_accepted(true)
+      } else {
+        outcome_rejected(d: refinement_predicate_violated_diagnostic(site: obligation.site))
+      }
+    Rejected { diagnostics: r } =>
+      Rejected {
+        diagnostics: NonEmptyDiagnostics {
+          head: refinement_obligation_undischargeable_diagnostic(site: obligation.site),
+          tail: Cons { head: r.head, tail: r.tail }
+        }
+      }
+  }
+}
+
+fn refinement_predicate_violated_diagnostic(site: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^refinement_predicate_violated,
+    at: node_locus(node: site),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn refinement_obligation_undischargeable_diagnostic(site: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^refinement_obligation_undischargeable,
+    at: node_locus(node: site),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// THE PIPELINE COMPOSITION: infer, then discharge. A caller that hands infer's result on to emit,
+// eval or a lens gate takes this route; a caller that only reads pre-discharge facts reads the
+// obligated form through v2.compiler.inferred_tree's accessors and never holds an InferredTree.
+fn infer_and_discharge(tree: ResolvedTree) -> Outcome<InferredTree> {
+  bind_outcome(o: infer(tree: tree), f: fn(obligated) { discharge_refinement_obligations(t: obligated) })
+}

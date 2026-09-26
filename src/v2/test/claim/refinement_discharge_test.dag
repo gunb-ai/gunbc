@@ -1,0 +1,126 @@
+module v2.test.claim.refinement_discharge
+
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
+import v2.compiler.refinement_discharge { discharge_refinement_obligations }
+import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Conj, Edge, Named, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.refinement_discharge discharge_refinement_obligations, at ONE interface -- an
+// ObligatedInferredTree in, an InferredTree or a located refusal out. The obligation is SUPPLIED
+// (DESIGN section 3 witness rule): infer records none until where-predicates bind to their
+// declarations (node adhoc-46630399-82b), and that change lands the producer with its inhabitance
+// claim. What is NOT supplied is the tree and its facts: the application is inferred by
+// v2.compiler.infer infer, so the evaluation discharge performs is the one evaluator's, reading
+// infer's real grounding for every node it touches.
+//
+// The v2 evaluator realizes no comparison, so each predicate's body is a constant: what these rows
+// discriminate is the ROUTE -- the inferred application evaluated, and its value mapped to exactly
+// one arm -- not a predicate's arithmetic.
+
+// The closed application `pred(1)` in the shape infer derives an application: the predicate's
+// declaration (an Arrow over `x: Int` returning Bool) applied to an Int literal. This is the node
+// the obligation producer records; its facts are infer's, so the evaluator reads a real grounding.
+fn rdt_application(body: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_arrow_with_body_node(
+          domain: node_synthetic(
+            kind: TypeNode { connective: Conj },
+            children: [Edge { label: Named { name: ^rdt_param_x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }]
+          ),
+          return_type_binding: ^dag_binding_type_bool,
+          body: body
+        )
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+    ]
+  )
+}
+
+fn rdt_true() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_true)
+}
+
+fn rdt_false() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_false)
+}
+
+// infer's own output over the application, with ONE supplied obligation naming it.
+fn rdt_obligated(body: Node) -> Optional<ObligatedInferredTree> {
+  let app = rdt_application(body: body)
+  match infer(tree: app) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: t, diagnostics: _ } =>
+      optional_present(value: ObligatedInferredTree {
+        root: t.root,
+        facts: t.facts,
+        obligations: [RefinementObligation {
+          site: app,
+          application: app,
+          target: dag_type_atom_node(identity: ^rdt_refinement)
+        }]
+      })
+  }
+}
+
+fn rdt_discharged(body: Node) -> Optional<Outcome<InferredTree>> {
+  match rdt_obligated(body: body) {
+    Absent => optional_absent()
+    Present { value: t } => optional_present(value: discharge_refinement_obligations(t: t))
+  }
+}
+
+fn rdt_refused_at_site_with(o: Optional<Outcome<InferredTree>>, reason: Symbol) -> Bool {
+  match o {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => false
+    Present { value: Rejected { diagnostics: d } } => d.head.reason == reason
+  }
+}
+
+fn rdt_admitted(o: Optional<Outcome<InferredTree>>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => true
+    Present { value: Rejected { diagnostics: _ } } => false
+  }
+}
+
+// (1) AN APPLICATION THE ONE EVALUATOR CANNOT RUN IS UNDISCHARGEABLE -- never admitted, never
+// reported as a violation. Here v2 infer leaves a Bool-returning application GroundingNotDerived, so
+// eval refuses it (eval_rejected_grounding_not_derived) and discharge carries that refusal behind
+// refinement_obligation_undischargeable, located at the site. The pair of bodies is the
+// discriminator for "the value is not read": `true` and `false` must land on the SAME arm while the
+// application is unevaluable, or discharge is answering from something other than the evaluator.
+//
+// FRONTIER, NOT A SKIP: the holds/violated pair -- a `true` predicate admits, a `false` one refuses
+// refinement_predicate_violated -- is not assertable through the real evaluator until infer derives
+// a Bool-returning application, so that a where-predicate application grounds and v2.compiler.eval
+// evaluates it (node adhoc-3fbf72e5-2b4). When that lands, THIS ROW FLIPS: the `true` body admits,
+// the `false` body refuses refinement_predicate_violated.
+test fn rdt_an_unevaluable_application_refuses_undischargeable_whatever_its_body() -> Bool {
+  rdt_refused_at_site_with(o: rdt_discharged(body: rdt_true()), reason: ^refinement_obligation_undischargeable)
+    && rdt_refused_at_site_with(o: rdt_discharged(body: rdt_false()), reason: ^refinement_obligation_undischargeable)
+}
+
+// (2) ZERO OBLIGATIONS: the identity, and the cost path every module takes today.
+test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
+  match infer(tree: rdt_application(body: rdt_true())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match discharge_refinement_obligations(t: t) {
+        Accepted { value: d, diagnostics: _ } => d.root == t.root
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}

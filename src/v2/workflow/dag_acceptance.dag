@@ -9,7 +9,7 @@ import v2.compiler.compile {
   TranslateTo,
   compile_inferred
 }
-import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.infer { InferredTree }
 import v2.compiler.staged_front_end {
   FrontEndRun,
   FrontEndStage,
@@ -39,6 +39,7 @@ import v2.std.leaf_model_verification {
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_count }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 
 // STAGES MINT EVIDENCE, A CONTRACT MINTS ACCEPTANCE. Given a candidate .dag SOURCE STRING this
 // authority answers how far it got and why it stopped, as typed per-stage evidence adjudicated by a
@@ -696,7 +697,7 @@ fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
         }
       )
     Present { value: resolved } =>
-      match infer(tree: resolved) {
+      match infer_and_discharge(tree: resolved) {
         Rejected { diagnostics: d } =>
           state_with_row(
             state: state,

@@ -1,10 +1,7 @@
 module v2.test.claim.body_lowering.infer_transform_binary_infix_witness_test
 
-import v2.compiler.infer {
-  infer,
-  inferred_facts_grounding_derived,
-  inferred_facts_witness_for_node
-}
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.compiler.infer { inferred_facts_grounding_derived, inferred_facts_witness_for_node }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers {
@@ -15,7 +12,7 @@ import v2.std.node { Symbol }
 
 test fn infer_transform_non_add_remains_frontier_holds() -> Bool {
   let body = infer_transform_subtract_fixture()
-  match infer(tree: body) {
+  match infer_and_discharge(tree: body) {
     Accepted { value: tree, diagnostics: d } =>
       match inferred_facts_witness_for_node(tree: tree, node: body) {
         Holds { value: facts } =>

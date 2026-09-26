@@ -1,5 +1,6 @@
 module v2.compiler.ingest
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.algebra { Empty, list_append }
 import v2.std.collection {
   Absent,
@@ -28,7 +29,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_list_from_node,
 }
 import v2.compiler.compile { CoreNode }
-import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.infer { InferredTree }
 import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate {
@@ -314,7 +315,7 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {
       bind_outcome(
-        o: infer(tree: emitted),
+        o: infer_and_discharge(tree: emitted),
         f: fn(inferred) {
           bind_outcome(
             o: coerce_grounded_node(source: emitted, tree: inferred, target: source_model),
@@ -338,7 +339,7 @@ fn cross_language_compile(
         o: neutralize_core_for_target(core: core, target: target_model),
         f: fn(neutralized) {
           bind_outcome(
-            o: infer(tree: neutralized),
+            o: infer_and_discharge(tree: neutralized),
             f: fn(inferred) {
               emit(tree: inferred, target: target_model)
             }

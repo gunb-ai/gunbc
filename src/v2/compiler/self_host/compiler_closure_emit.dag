@@ -1,8 +1,8 @@
 module v2.compiler.self_host.compiler_closure_emit
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
-import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest_located }
 import v2.compiler.program_partition { emit_for_target }
@@ -144,7 +144,7 @@ fn emit_compiler_import_closure_from_assembled(
     o: program,
     f: fn(resolved) {
       bind_outcome(
-        o: infer(tree: resolved),
+        o: infer_and_discharge(tree: resolved),
         f: fn(inferred) {
           let closure = compiler_import_closure(root: inferred.root)
           if compiler_import_closure_is_acyclic(root: inferred.root, closure: closure) {

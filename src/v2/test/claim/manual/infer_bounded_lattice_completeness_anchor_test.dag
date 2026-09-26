@@ -1,10 +1,8 @@
 module v2.test.manual.infer_bounded_lattice_completeness_anchor
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.infer {
-  InferredTree,
-  infer
-}
+import v2.compiler.infer { InferredTree }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   infer_bounded_lattice_instance_gate,
@@ -178,7 +176,7 @@ data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> = infer_bound
   partials: [anchor_partial_bounded_lattice_instance]
 )
 
-data anchor_infer_rejects_consumer_tree: Outcome<InferredTree> = infer(tree: anchor_module_with_partial_and_consumer)
+data anchor_infer_rejects_consumer_tree: Outcome<InferredTree> = infer_and_discharge(tree: anchor_module_with_partial_and_consumer)
 
 fn anchor_infer_consumer_tree_is_rejected() -> Bool {
   match anchor_infer_rejects_consumer_tree {

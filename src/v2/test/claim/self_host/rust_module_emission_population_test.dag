@@ -1,10 +1,10 @@
 module v2.test.claim.self_host.rust_module_emission_population
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.emit_produced { produced_decl_conjs_in_tree }
-import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.candidate_generation {
@@ -169,7 +169,7 @@ fn population_declaration_count_of(src: String) -> Int {
   ) {
     Rejected { diagnostics: _ } => 0 - 1
     Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
+      match infer_and_discharge(tree: resolved) {
         Rejected { diagnostics: _ } => 0 - 2
         Accepted { value: inferred, diagnostics: _ } =>
           length(xs: produced_decl_conjs_in_tree(root: inferred.root))

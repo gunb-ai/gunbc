@@ -21,6 +21,7 @@ import v2.compiler.inferred_tree {
   InferredFacts,
   InferredFactsEntry,
   InferredTree,
+  ObligatedInferredTree,
   NodeGrounding
 }
 import v2.extdeps.languages.dag {
@@ -2925,7 +2926,11 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
     acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, tree: tree))
   )
 }
-fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
+// INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
+// discharge_refinement_obligations is the one route onward. No obligation is recorded yet -- the
+// producer is the literal-into-refinement cast arm, which lands once where-predicates bind to their
+// declarations (node adhoc-46630399-82b); until then every tree discharges with nothing to evaluate.
+fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
@@ -2933,9 +2938,10 @@ fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: facts_map, diagnostics: md } =>
           Accepted {
-            value: InferredTree {
+            value: ObligatedInferredTree {
               root: tree,
-              facts: facts_map
+              facts: facts_map,
+              obligations: Empty
             },
             diagnostics: diagnostics_merge(outer: d, inner: md)
           }

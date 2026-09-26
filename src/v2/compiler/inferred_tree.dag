@@ -1,7 +1,7 @@
 module v2.compiler.inferred_tree
 
 import v2.std.cardinality { TerminationProof }
-import v2.std.collection { Map }
+import v2.std.collection { List, Map }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
 import v2.std.witness { Witness }
@@ -42,4 +42,39 @@ type InferredTree {
 type InferredFactsEntry {
   node: Node
   facts: InferredFacts
+}
+
+// A REFINEMENT OBLIGATION is a cast infer admitted CONDITIONALLY: `operand as target` where target
+// is a refinement whose where-predicate infer does not decide, because deciding it is evaluation and
+// evaluation depends on infer (v2.compiler.eval imports v2.compiler.infer). The obligation carries
+// the closed application `predicate(operand)` -- a node INFER HAS ALREADY INFERRED, because the one
+// evaluator reads an inferred fact for every node it evaluates and discharge may not mint one -- the
+// refinement it discharges into, and the cast site a violation refuses at.
+type RefinementObligation {
+  site: Node
+  application: Node
+  target: Node
+}
+
+// INFER'S OUTPUT BEFORE DISCHARGE. It carries no InferredTree field and nothing converts it into one
+// except v2.compiler.refinement_discharge discharge_refinement_obligations, so an obligation infer
+// recorded has no route to emit, eval or a lens gate that skips its decision: InferredTree has no
+// obligations field, and this form is not an InferredTree. A hand-built InferredTree remains a
+// legitimate supplied input (DESIGN section 3 witness rule); it simply records no obligation.
+type ObligatedInferredTree {
+  root: Node
+  facts: PartialFunction<Node, InferredFacts>
+  obligations: List<RefinementObligation>
+}
+
+fn obligated_inferred_root(t: ObligatedInferredTree) -> Node {
+  t.root
+}
+
+fn obligated_inferred_facts(t: ObligatedInferredTree) -> PartialFunction<Node, InferredFacts> {
+  t.facts
+}
+
+fn obligated_inferred_obligations(t: ObligatedInferredTree) -> List<RefinementObligation> {
+  t.obligations
 }
