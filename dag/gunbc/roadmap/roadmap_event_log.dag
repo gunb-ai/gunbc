@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_event_log
 
-import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.types { String, Int, Bool, List, NonEmptyStr, brand }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonObject, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse {

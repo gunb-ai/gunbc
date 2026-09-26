@@ -126,8 +126,8 @@ data where_predicate_probes: List<WherePredicateProbe> = [
     expected_refusal: true
   },
   WherePredicateProbe {
-    spelling: "non_empty",
-    clause: "non_empty",
+    spelling: "string_non_empty",
+    clause: "string_non_empty",
     base_type: "String",
     value_text: "\"\"",
     expected_refusal: true

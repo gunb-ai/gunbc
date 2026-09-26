@@ -33,3 +33,29 @@ fn string_lex_compare(left: String, right: String) -> Ordering {
 fn string_is_lexicographically_before(left: String, right: String) -> Bool {
   ordering_is_less(o: string_lex_compare(left: left, right: right))
 }
+
+// CHARACTER CLASSES over Char, beside the Char-sequence carrier. They lived in std.unicode.types,
+// which imported Char from std.types while std.types' Char refinement names std.unicode.types
+// unicode_scalar -- a module cycle once the where atom binds as a reference.
+type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+
+fn char_in_class(c: Char, class: CharClass) -> Bool =
+  match class {
+
+    Whitespace =>
+      unicode_char_code_point(c: c) == 9 || unicode_char_code_point(c: c) == 10 || unicode_char_code_point(c: c) == 12
+      || unicode_char_code_point(c: c) == 13 || unicode_char_code_point(c: c) == 32
+    Digit => unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
+    IdentStart =>
+      unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
+      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
+      || unicode_char_code_point(c: c) == 95
+
+    IdentContinue =>
+      unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
+      || unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
+      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
+      || unicode_char_code_point(c: c) == 95
+  }
+
+fn unicode_char_code_point(c: Char) -> Int = c + 0

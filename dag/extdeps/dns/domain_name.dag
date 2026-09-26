@@ -1,6 +1,6 @@
 module extdeps.dns.domain_name
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.types { NonEmptyStr, String, List, Bool, Int, brand }
 import std.error_primitives { Result, Ok, Err }
 
 import extdeps.external_authority { ExternalAuthority }

@@ -2649,7 +2649,7 @@ mod compiler_tests {
                 // that only proves the refusal stopped is indistinguishable from
                 // deleting the wall.
                 let peel_src = |call: &str| {
-                    format!("module peel\ntype Tight = String where non_empty\nfn f(s: Tight) -> Int {{ s |> {} }}\n", call)
+                    format!("module peel\ntype Tight = String where string_non_empty\nfn f(s: Tight) -> Int {{ s |> {} }}\n", call)
                 };
                 let peel_green = compile_one("peel_green.dag", peel_src("count"));
                 assert!(

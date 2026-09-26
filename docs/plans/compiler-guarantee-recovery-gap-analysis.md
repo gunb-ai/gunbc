@@ -820,14 +820,14 @@ account blamed the closure: the three candidates (a where-refinement alias, an u
 shape, an unresolved method on a bare type parameter) ran through a fixture-only CLI compile whose
 single source root carries no `std`, so the refinement supposedly never resolved *to* a refinement.
 **A discriminating control refuted that.** Run under the full `dag` + `src/v2` pool, the
-where-refinement alias `type Tight = String where non_empty` is **still silent** — zero diagnostics
+where-refinement alias `type Tight = String where string_non_empty` is **still silent** — zero diagnostics
 with `std` fully available — while a *different* shape, a cast to `std`'s refined brand
 (`fn tighten(s: String) -> NonEmptyStr { s as NonEmptyStr }`), fires `WhereRefinementUnenforced` as
 a counted advisory on the same harness. So the closure was not the discriminator between the
 failure and the success: **the probe SHAPE was.** A **2×2 pins the actual axis**, and it is not the
 one two successive explanations guessed. Crossing declaration site (locally-declared alias vs
-`std`'s brand — structurally identical, `type NonEmptyStr = String where non_empty` and
-`type Tight = String where non_empty`, same predicate) against cast subject (a literal vs an
+`std`'s brand — structurally identical, `type NonEmptyStr = String where string_non_empty` and
+`type Tight = String where string_non_empty`, same predicate) against cast subject (a literal vs an
 unknown parameter): local+parameter **fires**, local+literal **silent**, std+parameter **fires**,
 std+literal **silent**. Declaration site is irrelevant — a user-declared refinement alias is judged
 exactly as `std`'s brand is — and the diagnostic names the real axis itself: *"where-refinement
@@ -2125,7 +2125,7 @@ enforces end to end.
        **Result: PASS, exit 0.** Confirms the harness actually exercises the door (a
        zero-finding instrument is worthless without this).
      - *Case 2, predicate bypass, no `__type` tamper:* `response.fields.id.value` overwritten
-       to `""` on disk, `witness_id_equals_empty`. `NonEmptyStr = String where non_empty`
+       to `""` on disk, `witness_id_equals_empty`. `NonEmptyStr = String where string_non_empty`
        (`dag/std/types.dag`). **Predicted:** refusal, since the recorded value violates the
        declared refinement. **Observed: PASS, exit 0.** The empty string reconstructs into
        the `NonEmptyStr`-typed field with no refusal.
@@ -2271,7 +2271,7 @@ enforces end to end.
    bare alias with no `where` clause, and `Secret` is declared `type Secret nominal_opaque =
    String` — opacity is a different mechanism from a predicate, and an opaque carrier has no
    proposition that reconstruction could violate (one nuance worth keeping: `SecretValue =
-   Secret where non_empty` **is** a refined secret carrier, so dropping bare `Secret` does not
+   Secret where string_non_empty` **is** a refined secret carrier, so dropping bare `Secret` does not
    mean secrets are categorically unrefined — none of this scan's 22 happens to be
    `SecretValue`, but a future re-scan should not assume the whole `Secret` family is exempt).
    Those `CommitSha`/`Secret` fields were counted as refined because the scan enumerated

@@ -1,6 +1,6 @@
 module std.scoped_authorization
 
-import std.types { NonEmptyStr, String, Bool, Timestamp, List }
+import std.types { NonEmptyStr, String, Bool, Timestamp, List, brand }
 import v2.std.optional { Present, Absent }
 import std.content_hash {
   ContentHash,

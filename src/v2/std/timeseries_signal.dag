@@ -28,6 +28,7 @@ import std.measure {
 import v2.std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.text { String }
+import std.types { brand }
 
 type Voltage = Measure<ElectricPotential, Micro, Int>
 type Current = Measure<ElectricCurrent, Micro, Int>

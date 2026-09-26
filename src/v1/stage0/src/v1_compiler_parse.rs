@@ -6091,13 +6091,13 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                 }
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => match pred_name.clone().as_str() {
-                "non_empty" => parsed_predicate_result(
+                "string_non_empty" => parsed_predicate_result(
                     tokens.clone(),
                     ctx.clone(),
                     |value_identity, predicate_identity| {
                         crate::v1_std_core::make_field_init_node(
                             predicate_identity.clone(),
-                            "non_empty".to_string(),
+                            "string_non_empty".to_string(),
                             crate::v1_std_core::make_expr_node(
                                 value_identity.clone(),
                                 Rc::new(ExprData::ExprLiteral {

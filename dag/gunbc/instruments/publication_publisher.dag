@@ -1,6 +1,6 @@
 module tools.publication_publisher
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, brand }
 import std.content_hash { serialize_content_hash }
 import extdeps.git.hooks { PrePushStdinRow }
 import gunbc.public_projection { PublicProjectionPlan, PublicProjectionSubject }

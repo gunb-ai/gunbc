@@ -1,6 +1,6 @@
 module product.installed_bom_reconcile
 
-import std.types { Bool, List, Int, NonEmptyStr }
+import std.types { Bool, List, Int, NonEmptyStr, brand }
 import product.placement_supply { HostIdentity }
 import extdeps.memory.types { DramModuleCatalogRow, MemoryPopulationRow }
 import extdeps.cpu.types { CpuModelCatalogRow }

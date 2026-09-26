@@ -11,7 +11,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // 43129). CONSTRUCTION (real): Disposition has no prose and no absent arm, so a row cannot carry an
 // unmarked or free-text disposition — Terminal-with-reason or Scaffold-with-bind are the only
 // inhabitants, and 'unmarked' is genuinely unwritable. CONSTRUCTION (literal sites only, PR #7438):
-// DeclarationRef.module_path and decl_name are NonEmptyStr (String where non_empty) and the v1
+// DeclarationRef.module_path and decl_name are NonEmptyStr (String where string_non_empty) and the v1
 // typechecker enforces non_empty at string-literal construction sites — an empty bind is unwritable
 // at compile time. Non-literal string values at those positions emit counted
 // WhereRefinementUnenforced advisory (wall after grounding: decidable whether evidence exists,

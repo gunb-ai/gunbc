@@ -123,7 +123,7 @@ fn d1_locus_from_root(root: Node) -> String {
 
 data d1_where_reproducer: String = "module m\ntype A = NonEmptyStr where brand(\"A\")\nfn f() -> Int { 1 }\n"
 data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int { 1 }\n"
-data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
+data d1_where_bare: String = "module m\ntype A = NonEmptyStr where string_non_empty\nfn f() -> Int { 1 }\n"
 data d1_where_empty: String = "module m\ntype A = NonEmptyStr where\nfn f() -> Int { 1 }\n"
 
 data d1_cache_identity_where_source: String = "module probe.cache_identity\n\ntype CacheInterfaceId = NonEmptyStr where brand(\"CacheInterfaceId\")\ntype ArtifactKindId = NonEmptyStr where brand(\"ArtifactKindId\")\n\nfn f() -> Int {\n  1\n}\n"

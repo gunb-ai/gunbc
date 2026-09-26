@@ -1,6 +1,6 @@
 module gunbc.merge_admission_subject
 
-import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe }
+import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe, brand }
 import extdeps.git.object_store {
   GitObjectId,
   GitSha1ObjectId,

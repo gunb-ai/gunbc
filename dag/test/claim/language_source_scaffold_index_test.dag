@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // discriminating case is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate
 // (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'.
 // The empty-bind RED control moved to dag/test/claim/where_refinement_enforcement_witness_test.dag
-// once NonEmptyStr where non_empty is construction-enforced — an empty DeclarationRef
+// once NonEmptyStr where string_non_empty is construction-enforced — an empty DeclarationRef
 // module_path/decl_name is now unwritable at compile time rather than caught only by
 // language_source_scaffold_row_is_dispositioned. (2) COVERAGE: the roster must actually cover its
 // carriers. Asserting hardcoded census counts alone would let a new rt_/ct_ blob land unmarked and

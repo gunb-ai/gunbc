@@ -1,14 +1,11 @@
 module v2.test.claim.body_lowering.declaration_structure_preserved
 
 import v2.compiler.reference_conservation_admission {
-  ExplainedDrop,
-  WhereRefinementPredicate,
   conservation_subject_of_text,
   conserved_normalize,
   conserved_normalize_of_text,
   no_explained_drops
 }
-import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,9 +47,6 @@ fn normalize_outcome(src: String) -> String {
 }
 
 
-// The refinement predicate `non_empty` (at its extent in where_refinement_alias_source) is lost by lowering today, pinned by
-// v2.test.claim.namespace_xl0.reference_conservation the_where_refinement_predicate_is_reported_dropped_holds.
-data where_predicate_explained: ExplainedDrop = ExplainedDrop { start: 37, end: 46, shape: WhereRefinementPredicate }
 
 data coproduct_with_field_block_source: String = "module m.t\ntype T = A { x: Int } | B\nfn f() -> Int {\n  1\n}\n"
 
@@ -60,7 +54,7 @@ data fn_type_alias_source: String = "module m.t\ntype F = fn(Int) -> Int\nfn f()
 
 data record_literal_field_init_source: String = "module m.t\ntype R { a: Int }\ndata d: R = R { a: 1 }\nfn f() -> Int {\n  1\n}\n"
 
-data where_refinement_alias_source: String = "module m.t\ntype Tight = String where non_empty\nfn f() -> Int {\n  1\n}\n"
+data where_refinement_alias_source: String = "module m.t\ntype Tight = String where string_non_empty\nfn f() -> Int {\n  1\n}\n"
 
 // EVERY SOURCE CARRIES A FUNCTION, and that is not decoration. A module of
 // declarations alone refuses at normalize with namespace_graft_body_dissolved_refused
@@ -81,7 +75,7 @@ test fn record_literal_field_init_is_not_retained_holds() -> Bool {
 }
 
 test fn where_refinement_clause_interior_is_not_retained_holds() -> Bool {
-  match conserved_normalize(subject: where_refinement_alias_subject(), explained: Cons { head: where_predicate_explained, tail: Empty }) {
+  match conserved_normalize(subject: where_refinement_alias_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

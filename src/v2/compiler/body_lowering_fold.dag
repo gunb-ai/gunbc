@@ -681,98 +681,315 @@ fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<Suga
   }
 }
 
-fn body_lower_where_skip_token(id: Symbol) -> Bool {
-  (id == ^dag_token_kw_where)
-    || (id == ^dag_token_lparen)
-    || (id == ^dag_token_rparen)
-    || (id == ^dag_token_comma)
-    || (id == ^dag_token_colon)
-}
+// A WHERE CLAUSE LOWERS TO ITS PREDICATES, EVERY ONE, EACH A CALL-SHAPED NODE RESOLVE BINDS.
+// `where range(min: 0, max: 5), brand("X")` carries two predicates, and each keeps its authored
+// name atom -- the ident's own occurrence -- as a Transform's operator, so v2 resolve binds that
+// atom to the predicate's declaration by ordinary name lookup (std.integer range, std.types brand)
+// and refuses a spelling nothing declares (resolve_reason_where_predicate_unbound). The value being
+// refined is the declaration's first parameter and is never written in the clause. Labelled
+// arguments bind to the declaration's parameters BY LABEL, so they are carried as ONE record whose
+// field names are the labels (`min: 0, max: 5` is Conj { min: 0, max: 5 }): a Transform admits a
+// single named edge, and the label, not the position, is what binds. Positional arguments
+// (`brand("X")`) stay positional. The predicates of one clause are a Conj labelled by predicate
+// spelling, so a clause naming one predicate twice is not a well-formed tree and refuses here,
+// located, instead of one copy silently standing for both.
+//
+// What this used to do, recorded because it was the defect: it kept the FIRST atom found under the
+// clause -- a production-identity projection when there was one -- as a bare Atom at the clause's
+// occurrence, so the predicate's own atom reached no node and every predicate after the first was
+// dropped (the retired drop's control: v2.test.claim.namespace_xl0.reference_conservation
+// the_where_refinement_predicates_are_conserved_holds).
 
-fn body_lower_where_predicate_ident_optional(node: Node) -> Optional<Symbol> {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
-    Present { value: id } =>
-      match body_lower_where_skip_token(id: id) {
-        true =>
-          fold(node.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => body_lower_where_predicate_ident_optional(node: e.target)
-            }
-          })
-        false => Present { value: id }
-      }
-    Absent =>
+fn body_lower_where_leaf_atom_optional(node: Node) -> Optional<Node> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } => optional_present(value: node)
+    _ =>
       fold(node.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
-          Absent => body_lower_where_predicate_ident_optional(node: e.target)
+          Absent =>
+            match e.label {
+              Named { name: sym } =>
+                if sym == ^grammar_production_identity_node_projection {
+                  acc
+                } else {
+                  body_lower_where_leaf_atom_optional(node: e.target)
+                }
+              Positional => body_lower_where_leaf_atom_optional(node: e.target)
+            }
         }
       })
   }
 }
 
-fn body_lower_where_predicate_atom(where_clause: Node) -> Node {
-  match body_lower_where_predicate_ident_optional(node: where_clause) {
-    Present { value: id } =>
-      node_with_occurrence_id(
-        kind: TypeNode { connective: Atom { identity: id } },
-        children: [],
-        occurrence_id: where_clause.occurrence_id
-      )
+fn body_lower_where_predicate_productions(node: Node) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_where_predicate {
+        [node]
+      } else {
+        body_lower_where_predicate_productions_below(node: node)
+      }
+    Absent => body_lower_where_predicate_productions_below(node: node)
+  }
+}
+
+fn body_lower_where_predicate_productions_below(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == ^grammar_production_identity_node_projection {
+          acc
+        } else {
+          list_append(left: acc, right: body_lower_where_predicate_productions(node: e.target))
+        }
+      Positional => list_append(left: acc, right: body_lower_where_predicate_productions(node: e.target))
+    }
+  })
+}
+
+fn body_lower_where_unread(n: Node) -> Diagnostic {
+  body_lower_diagnostic(reason: ^body_lowering_reason_where_predicate_unread, n: n)
+}
+
+// One argument: `label: <int>` is a labelled argument, anything else a positional leaf.
+type WherePredicateArgument
+  = WhereArgumentLabelled { label: Symbol, value: Node }
+  | WhereArgumentPositional { value: Node }
+
+fn body_lower_where_argument(item: Node) -> Outcome<WherePredicateArgument> {
+  let raw = body_lower_deep_unwrap_optional(node: item)
+  match sugar_sequence_pair_optional(node: raw) {
     Absent =>
-      node_with_occurrence_id(
-        kind: TypeNode { connective: Conj },
-        children: [],
-        occurrence_id: where_clause.occurrence_id
+      match body_lower_where_leaf_atom_optional(node: raw) {
+        Present { value: leaf } => outcome_accepted(value: WhereArgumentPositional { value: leaf })
+        Absent => outcome_rejected(d: body_lower_where_unread(n: item))
+      }
+    Present { value: pair } =>
+      match body_lower_where_leaf_atom_optional(node: pair.left) {
+        Absent => outcome_rejected(d: body_lower_where_unread(n: item))
+        Present { value: name } =>
+          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+            Absent => outcome_accepted(value: WhereArgumentPositional { value: name })
+            Present { value: colon_value } =>
+              match body_lower_where_leaf_atom_optional(node: colon_value.right) {
+                Absent => outcome_rejected(d: body_lower_where_unread(n: item))
+                Present { value: value } =>
+                  match name.kind {
+                    TypeNode { connective: Atom { identity: label } } =>
+                      outcome_accepted(value: WhereArgumentLabelled { label: label, value: value })
+                    _ => outcome_rejected(d: body_lower_where_unread(n: item))
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_where_arguments(items: List<Node>) -> Outcome<List<WherePredicateArgument>> {
+  match items {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: item, tail: rest } =>
+      bind_outcome(
+        o: body_lower_where_argument(item: item),
+        f: fn(arg) {
+          bind_outcome(
+            o: body_lower_where_arguments(items: rest),
+            f: fn(args) { outcome_accepted(value: Cons { head: arg, tail: args }) }
+          )
+        }
       )
   }
 }
 
-// Conj is LabeledEdges: every child must be Named. A parse-shell captured of
-// `where brand("...")` is not admitted by well_formed, so the clause is a
-// production-shaped Conj whose captured child is a bare predicate Atom.
-fn body_lower_kept_where_clause(where_clause: Node) -> Node {
-  let production = node_with_occurrence_id(
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^grammar_production_identity_node_projection },
+// `(` args `)` or nothing: the optional suffix after the predicate name.
+fn body_lower_where_argument_items(suffix: Node) -> Outcome<List<Node>> {
+  let inner = body_lower_deep_unwrap_optional(node: suffix)
+  if is_empty_conj_root(n: inner) {
+    outcome_accepted(value: Empty)
+  } else {
+    match sugar_sequence_pair_optional(node: inner) {
+      Absent => outcome_rejected(d: body_lower_where_unread(n: suffix))
+      Present { value: paren_rest } =>
+        match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: paren_rest.right)) {
+          Absent => outcome_rejected(d: body_lower_where_unread(n: suffix))
+          Present { value: list_close } =>
+            body_lower_comma_list_items(
+              list_capture: list_close.left,
+              shape_refusal: ^body_lowering_reason_where_predicate_unread
+            )
+        }
+    }
+  }
+}
+
+fn body_lower_where_labelled_record(args: List<WherePredicateArgument>, at: Node) -> List<Edge> {
+  let labelled = fold(args, init: Empty, f: fn(acc, a) {
+    match a {
+      WhereArgumentLabelled { label: label, value: value } =>
+        list_snoc_item(xs: acc, item: Edge { label: Named { name: label }, target: value })
+      WhereArgumentPositional { value: _ } => acc
+    }
+  })
+  match labelled {
+    Empty => Empty
+    Cons { head: _, tail: _ } =>
+      [Edge {
+        label: Positional,
         target: node_with_occurrence_id(
-          kind: TypeNode { connective: Atom { identity: ^dag_surface_where_refinement_clause } },
-          children: [],
-          occurrence_id: where_clause.occurrence_id
+          kind: TypeNode { connective: Conj },
+          children: labelled,
+          occurrence_id: at.occurrence_id
         )
-      },
-      Edge {
-        label: Named { name: ^grammar_production_captured_node_projection },
-        target: body_lower_where_predicate_atom(where_clause: where_clause)
+      }]
+  }
+}
+
+fn body_lower_where_positional_edges(args: List<WherePredicateArgument>) -> List<Edge> {
+  fold(args, init: Empty, f: fn(acc, a) {
+    match a {
+      WhereArgumentPositional { value: value } =>
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: value })
+      WhereArgumentLabelled { label: _, value: _ } => acc
+    }
+  })
+}
+
+type LoweredWherePredicate {
+  spelling: Symbol
+  call: Node
+}
+
+fn body_lower_where_predicate(pred: Node) -> Outcome<LoweredWherePredicate> {
+  match parse_production_captured_child_optional(node: pred) {
+    Absent => outcome_rejected(d: body_lower_where_unread(n: pred))
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => outcome_rejected(d: body_lower_where_unread(n: pred))
+        Present { value: pair } =>
+          match body_lower_where_leaf_atom_optional(node: pair.left) {
+            Absent => outcome_rejected(d: body_lower_where_unread(n: pred))
+            Present { value: name } =>
+              match name.kind {
+                TypeNode { connective: Atom { identity: spelling } } =>
+                  bind_outcome(
+                    o: body_lower_where_argument_items(suffix: pair.right),
+                    f: fn(items) {
+                      bind_outcome(
+                        o: body_lower_where_arguments(items: items),
+                        f: fn(args) {
+                          outcome_accepted(value: LoweredWherePredicate {
+                            spelling: spelling,
+                            call: node_with_occurrence_id(
+                              kind: ComputationNode { behavior: Transform },
+                              children: list_append(
+                                left: Cons { head: Edge { label: Positional, target: name }, tail: body_lower_where_positional_edges(args: args) },
+                                right: body_lower_where_labelled_record(args: args, at: pred)
+                              ),
+                              occurrence_id: pred.occurrence_id
+                            )
+                          })
+                        }
+                      )
+                    }
+                  )
+                _ => outcome_rejected(d: body_lower_where_unread(n: pred))
+              }
+          }
       }
-    ],
-    occurrence_id: where_clause.occurrence_id
-  )
-  node_with_occurrence_id(
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^dag_surface_where_refinement_clause },
-        target: production
-      }
-    ],
-    occurrence_id: where_clause.occurrence_id
+  }
+}
+
+fn body_lower_where_predicates(preds: List<Node>, done: List<Edge>) -> Outcome<List<Edge>> {
+  match preds {
+    Empty => outcome_accepted(value: done)
+    Cons { head: pred, tail: rest } =>
+      bind_outcome(
+        o: body_lower_where_predicate(pred: pred),
+        f: fn(lowered) {
+          if fold(done, init: false, f: fn(seen, e) {
+            seen || match e.label {
+              Named { name: n } => n == lowered.spelling
+              Positional => false
+            }
+          }) {
+            outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_where_predicate_repeated, n: pred))
+          } else {
+            body_lower_where_predicates(
+              preds: rest,
+              done: list_snoc_item(xs: done, item: Edge { label: Named { name: lowered.spelling }, target: lowered.call })
+            )
+          }
+        }
+      )
+  }
+}
+
+fn body_lower_where_predicate_set(where_clause: Node) -> Outcome<Node> {
+  match body_lower_where_predicate_productions(node: where_clause) {
+    Empty => outcome_rejected(d: body_lower_where_unread(n: where_clause))
+    Cons { head: first, tail: rest } =>
+      bind_outcome(
+        o: body_lower_where_predicates(preds: Cons { head: first, tail: rest }, done: Empty),
+        f: fn(edges) {
+          outcome_accepted(value: node_with_occurrence_id(
+            kind: TypeNode { connective: Conj },
+            children: edges,
+            occurrence_id: where_clause.occurrence_id
+          ))
+        }
+      )
+  }
+}
+
+// Conj is LabeledEdges: every child must be Named. The clause is a production-shaped Conj whose
+// captured child is the predicate set above.
+fn body_lower_kept_where_clause(where_clause: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_lower_where_predicate_set(where_clause: where_clause),
+    f: fn(predicates) {
+      let production = node_with_occurrence_id(
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: ^grammar_production_identity_node_projection },
+            target: node_with_occurrence_id(
+              kind: TypeNode { connective: Atom { identity: ^dag_surface_where_refinement_clause } },
+              children: [],
+              occurrence_id: where_clause.occurrence_id
+            )
+          },
+          Edge {
+            label: Named { name: ^grammar_production_captured_node_projection },
+            target: predicates
+          }
+        ],
+        occurrence_id: where_clause.occurrence_id
+      )
+      outcome_accepted(value: node_with_occurrence_id(
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: ^dag_surface_where_refinement_clause },
+            target: production
+          }
+        ],
+        occurrence_id: where_clause.occurrence_id
+      ))
+    }
   )
 }
 
 fn body_lower_type_variant_children_with_where(
   base: Node,
-  where_clause: Node,
+  kept_clause: Node,
   fields: Node
 ) -> List<Edge> {
   let with_clause = [
     Edge { label: Named { name: ^dag_surface_type_expr }, target: base },
     Edge {
       label: Named { name: ^dag_surface_where_refinement_clause },
-      target: body_lower_kept_where_clause(where_clause: where_clause)
+      target: kept_clause
     }
   ]
   if is_empty_conj_root(n: fields) {
@@ -984,16 +1201,21 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
                     Absent => outcome_accepted(value: shell)
                     Present { value: suffix_id } =>
                       if suffix_id == ^dag_surface_where_refinement_clause {
-                        outcome_accepted(
-                          value: node_with_occurrence_id(
-                            kind: TypeNode { connective: Conj },
-                            children: body_lower_type_variant_children_with_where(
-                              base: pair.left,
-                              where_clause: suffixes.left,
-                              fields: suffixes.right
-                            ),
-                            occurrence_id: shell.occurrence_id
-                          )
+                        bind_outcome(
+                          o: body_lower_kept_where_clause(where_clause: suffixes.left),
+                          f: fn(kept) {
+                            outcome_accepted(
+                              value: node_with_occurrence_id(
+                                kind: TypeNode { connective: Conj },
+                                children: body_lower_type_variant_children_with_where(
+                                  base: pair.left,
+                                  kept_clause: kept,
+                                  fields: suffixes.right
+                                ),
+                                occurrence_id: shell.occurrence_id
+                              )
+                            )
+                          }
                         )
                       } else {
                         outcome_accepted(value: shell)

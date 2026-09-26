@@ -176,6 +176,7 @@ import extdeps.uri {
   UriScheme,
   uri_scheme_inhabitants
 }
+import std.types { brand }
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
 // The compiler asks a target for a produced declaration and receives a bodied-arrow

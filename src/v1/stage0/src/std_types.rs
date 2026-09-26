@@ -6,11 +6,13 @@ use self::Bool::*;
 use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::TopologyNodeKind::*;
+use self::WherePredicateMarker::*;
 pub use crate::std_algebra::{
     algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
     carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
+pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -271,6 +273,24 @@ pub fn commit_sha_text_holds(head: String) -> bool {
 
 pub type Sha256 = String;
 
+pub fn gt_zero(value: i64) -> bool {
+    (value.clone() > 0)
+}
+
+pub fn range(value: i64, min: Option<i64>, max: Option<i64>) -> bool {
+    {
+        let at_least_min = match min.clone() {
+            Some(lo) => (value.clone() >= lo.clone()),
+            std::option::Option::None => true,
+        };
+        let at_most_max = match max.clone() {
+            Some(hi) => (value.clone() <= hi.clone()),
+            std::option::Option::None => true,
+        };
+        (at_least_min.clone() && at_most_max.clone())
+    }
+}
+
 pub type RetryCount = i64;
 
 pub type HttpStatus = i64;
@@ -304,6 +324,27 @@ pub type SecretValue = std::string::String;
 pub type SemVer = String;
 
 pub type NonEmptyStr = String;
+
+pub fn string_non_empty(value: String) -> bool {
+    (v1_rt::string_length(&value) > 0)
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WherePredicateMarker {
+    NominalBrand { name: String },
+}
+impl WherePredicateMarker {
+    pub fn name(&self) -> String {
+        match self {
+            WherePredicateMarker::NominalBrand { name: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn brand(name: String) -> Rc<WherePredicateMarker> {
+    Rc::new(WherePredicateMarker::NominalBrand { name: name.clone() })
+}
 
 pub type LanguageId = String;
 
@@ -349,7 +390,7 @@ pub type FilePath = String;
 pub fn file_path_sentinel_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter).".to_string()
+            "review 45141. FilePath where string_non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

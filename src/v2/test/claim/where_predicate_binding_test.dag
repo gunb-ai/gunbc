@@ -1,0 +1,118 @@
+module v2.test.claim.where_predicate_binding
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.resolve resolve_where_refinement_clause -- a where-refinement predicate binds
+// to its declaration by ordinary name lookup, and a spelling nothing declares refuses
+// resolve_reason_where_predicate_unbound. BOUNDARY: source text in, assembled (normalized +
+// resolved) program out through assemble_program_from_ingest, the real path; the outcome and its
+// typed reason are the observation. Each fixture declares its own predicates, so what binds is the
+// fixture's declaration and not a std row a later edit could move.
+//
+// WHY THE REDS DISCRIMINATE. Before this repair lowering kept one bare atom per clause at the
+// clause's occurrence and resolve walked none of it: every spelling here, declared or not, was
+// accepted. So wpb_unbound_predicate_refuses is red on that tree, and wpb_second_predicate_is_bound
+// is red on any lowering that keeps only the first predicate of a clause -- its first predicate is
+// declared and only its second is not.
+
+data wpb_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^where_predicate_binding_artifact,
+  file_path: "src/v2/pilot/where_predicate_binding_pilot.dag"
+}
+
+fn wpb_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: wpb_artifact,
+      compilation_unit: ^where_predicate_binding_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn wpb_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn wpb_assemble(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(ingest: wpb_ingest_for(src: src), admission: wpb_admission(), lm: dag_language_model())
+}
+
+fn wpb_outcome_accepts(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn wpb_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// Nullary and pure: the resolved Outcome per subject is the share point (see
+// v2.test.claim.match_arm_binder_frame for why the language model itself cannot be).
+fn wpb_resolved_declared() -> Outcome<Node> {
+  wpb_assemble(src: "module p\n\ntype T = Int where wpb_positive\n\nfn wpb_positive(value: Int) -> Bool {\n  true\n}\n\nfn f() -> Int {\n  1\n}\n")
+}
+
+fn wpb_resolved_undeclared() -> Outcome<Node> {
+  wpb_assemble(src: "module p\n\ntype T = Int where wpb_missing\n\nfn f() -> Int {\n  1\n}\n")
+}
+
+fn wpb_resolved_labelled_then_undeclared() -> Outcome<Node> {
+  wpb_assemble(src: "module p\n\ntype T = Int where wpb_at_least(min: 0), wpb_missing\n\nfn wpb_at_least(value: Int, min: Int) -> Bool {\n  true\n}\n\nfn f() -> Int {\n  1\n}\n")
+}
+
+fn wpb_resolved_labelled_and_marker() -> Outcome<Node> {
+  wpb_assemble(src: "module p\n\ntype wpb_brand = Nominal {}\n\ntype T = Int where wpb_at_least(min: 0, max: 9), wpb_brand(\"T\")\n\nfn wpb_at_least(value: Int, min: Int, max: Int) -> Bool {\n  true\n}\n\nfn f() -> Int {\n  1\n}\n")
+}
+
+// A declared predicate binds and the module assembles: the positive control.
+test fn wpb_declared_predicate_binds() -> Bool {
+  wpb_outcome_accepts(o: wpb_resolved_declared())
+}
+
+// THE DISCRIMINATING RED: an undeclared predicate refuses, typed as a where predicate.
+test fn wpb_unbound_predicate_refuses() -> Bool {
+  wpb_outcome_refuses_with(o: wpb_resolved_undeclared(), reason: ^resolve_reason_where_predicate_unbound)
+}
+
+// The SECOND predicate of a clause is carried and bound: the first is declared, the second is not.
+test fn wpb_second_predicate_is_bound() -> Bool {
+  wpb_outcome_refuses_with(o: wpb_resolved_labelled_then_undeclared(), reason: ^resolve_reason_where_predicate_unbound)
+}
+
+// Labelled arguments and a marker with a positional string argument, both declared, assemble.
+test fn wpb_labelled_arguments_and_marker_bind() -> Bool {
+  wpb_outcome_accepts(o: wpb_resolved_labelled_and_marker())
+}
+

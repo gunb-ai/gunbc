@@ -1,6 +1,6 @@
 module product.capacity.lease
 
-import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, EpochSecs, brand }
 import std.nat { Nat }
 import product.capacity.event_chain { EventId }
 

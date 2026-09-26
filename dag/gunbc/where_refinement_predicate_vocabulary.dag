@@ -6,7 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 
 // THE SUBJECT IS PREDICATE IDENTITY, NOT PREDICATE COUNT. A where-refinement predicate
-// (`type NonEmptyStr = String where non_empty`) is a BARE IDENTIFIER with no declaration binding
+// (`type NonEmptyStr = String where string_non_empty`) is a BARE IDENTIFIER with no declaration binding
 // anywhere in the pipeline. v1.compiler.parse parse_single_predicate accepts any identifier in its
 // unparenthesised arm, and v1.compiler.infer then decides what the identifier MEANS by matching the
 // string against three hand-written name-keyed tables (where_refinement_is_int_literal_predicate,
@@ -17,13 +17,16 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 //
 // THIS MODULE IS THE JOIN THAT DID NOT EXIST: one row per predicate spelling authored anywhere in
 // the corpus, carrying the compiler's enforcement class and whether a real declaration grounds it.
-// It exists because those two facts were UNCORRELATED and nothing said so. Seven of the fifteen
-// spellings are grounded by a declared total Bool function and eight are not, and the compiler's
-// treatment does not track that split in either direction: two grounded String->Bool predicates are
-// enrolled and WALL at literal construction sites, three structurally identical ones -- two of them
-// declared in the SAME FILE as an enrolled pair -- are in no table at all and are therefore
-// permanently advisory. The discriminator is not decidability, grounding, or any property of the
-// predicate. It is whether a human added a table row.
+// It exists because those two facts were UNCORRELATED and nothing said so. Every authored spelling
+// but `brand` is now grounded by a declared total Bool function, and `brand` by a declared nominal
+// marker (std.types brand -> WherePredicateMarker); v2 resolve binds each where atom to its
+// declaration by ordinary name lookup and refuses an unbound one
+// (resolve_reason_where_predicate_unbound). The v1 seed's treatment still does not track grounding:
+// its enforcement class below is decided by the hand tables in v1.compiler.infer, which cannot
+// consult a declaration without compile-time evaluation. Three grounded String->Bool predicates are
+// in no table at all and are therefore permanently advisory under v1. The discriminator there is
+// not decidability, grounding, or any property of the predicate. It is whether a human added a
+// table row.
 //
 // WHAT THE ROWS ARE NOT. They carry no occurrence counts and no site lists. A count copied into a
 // row here would be a transcribed measurement rotting away from the tree that produced it
@@ -37,15 +40,14 @@ type WherePredicateEnforcement
   | DeferredAtCompileTime
   | UnenrolledNoTableRow
 
-// GROUNDING IS A COPRODUCT AND NOT AN OPTIONAL DECLARATION REF, because the two states owe
-// different things. A grounded predicate has an authority the compiler is DECLINING to consult; an
-// ungrounded one has no authority anywhere and its meaning exists only inside 04_infer. Collapsing
-// them into `DeclarationRef?` would make "nobody wrote this down" and "somebody wrote it down and
-// we ignore it" the same absent value, which is exactly the distinction this roster was built to
-// surface.
+// GROUNDING IS A COPRODUCT, because the two states owe different things. A grounded predicate is a
+// total Bool declaration over the refined value; a marker (`brand`) is a declaration that decides
+// nothing about the value and is never evaluated. There is no third, undeclared arm any more: every
+// authored spelling has a declaration, and a spelling without one refuses in v2 resolve
+// (resolve_reason_where_predicate_unbound) instead of joining this roster.
 type WherePredicateGrounding
   = GroundedByDeclaration { declaration: DeclarationRef }
-  | NoDeclarationCompilerInternal
+  | MarkerByDeclaration { declaration: DeclarationRef }
 
 type WherePredicateRow {
   spelling: String
@@ -69,57 +71,60 @@ fn where_predicate_decl(module_path: String, decl_name: String) -> WherePredicat
 // maps "brand" onto "Brand" so the two spellings meet. The authored form is the key here because
 // this roster's population is what an author can write, not what the parser rewrites it into.
 
-// THE non_empty ROW IS THE FORK, AND IT IS THE ONE A GREP FOR THE SPELLING CANNOT FIND. It is
-// recorded as NoDeclarationCompilerInternal even though `fn non_empty` EXISTS in the corpus,
-// because the declaration that exists is v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool --
-// a different predicate over a different domain. The where-predicate `non_empty` means String
-// length > 0 and that meaning is hand-written inside 04_infer
-// decidable_where_string_predicate_holds. Claiming the algebra declaration as that row's grounding
-// would be the fabrication DESIGN section 5 forbids: it would assert an authority that does not
-// answer for this predicate. A THIRD carrier of the same concept exists at
-// v2.lens.enforcement.gate non_empty_string(s: String) -> Bool. One concept, three authorities, and
-// the load-bearing one is not a declaration at all.
+// THE STRING NON-EMPTINESS PREDICATE IS SPELLED string_non_empty, NOT non_empty. `non_empty` is
+// v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool, a different predicate over a different
+// domain, and a builtin collection-method name; String inhabits no FreeMonoid carrier in v2.std, so
+// the String predicate is a distinct concept and owns a distinct name (DESIGN section 3: one name,
+// one meaning). The concept once had three carriers -- that algebra name borrowed by spelling, the
+// v1 table, and v2.lens.enforcement.gate non_empty_string; std.types string_non_empty is now the one
+// declaration and the gate calls it.
 
 data where_refinement_predicate_vocabulary: List<WherePredicateRow> = [
   WherePredicateRow {
     spelling: "brand",
     enforcement: DeferredAtCompileTime,
-    grounding: NoDeclarationCompilerInternal
+    grounding: MarkerByDeclaration {
+      declaration: DeclarationRef {
+        module_path: "std.types" as NonEmptyStr,
+        decl_name: "brand" as NonEmptyStr,
+        field: WholeDeclaration
+      }
+    }
   },
   WherePredicateRow {
     spelling: "range",
     enforcement: IntLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.types", decl_name: "range")
   },
   WherePredicateRow {
     spelling: "gt_zero",
     enforcement: IntLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.types", decl_name: "gt_zero")
   },
   WherePredicateRow {
-    spelling: "non_empty",
+    spelling: "string_non_empty",
     enforcement: StringLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.types", decl_name: "string_non_empty")
   },
   WherePredicateRow {
     spelling: "lower_hex_16",
     enforcement: StringLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.content_hash", decl_name: "lower_hex_16")
   },
   WherePredicateRow {
     spelling: "lower_hex_40",
     enforcement: StringLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.content_hash", decl_name: "lower_hex_40")
   },
   WherePredicateRow {
     spelling: "lower_hex_64",
     enforcement: StringLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.content_hash", decl_name: "lower_hex_64")
   },
   WherePredicateRow {
     spelling: "lower_hex_128",
     enforcement: StringLiteralDecidable,
-    grounding: NoDeclarationCompilerInternal
+    grounding: where_predicate_decl(module_path: "std.content_hash", decl_name: "lower_hex_128")
   },
   WherePredicateRow {
     spelling: "oci_other_digest_algorithm",
@@ -194,7 +199,7 @@ fn where_predicate_grounded_rows(rows: List<WherePredicateRow>) -> List<WherePre
   rows |> filter(r =>
     match r.grounding {
       GroundedByDeclaration { declaration: _ } => true
-      NoDeclarationCompilerInternal => false
+      MarkerByDeclaration { declaration: _ } => false
     }
   )
 }

@@ -1,6 +1,6 @@
 module product.capacity.event_chain
 
-import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, brand }
 import std.nat { Nat, nat_range_inclusive }
 
 // A PARTITIONED, IMMUTABLE, CONTENT-ADDRESSED EVENT CHAIN, AND THE ONE DECISION THAT LINEARIZES IT.

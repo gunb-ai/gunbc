@@ -1,6 +1,6 @@
 module gunbc.runner_microvm_network
 
-import std.types { String, NonEmptyStr, Bool, Int, List, Port }
+import std.types { String, NonEmptyStr, Bool, Int, List, Port, brand }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }

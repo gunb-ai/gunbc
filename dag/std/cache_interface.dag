@@ -1,6 +1,6 @@
 module std.cache_interface
 
-import std.types { NonEmptyStr, Bool, Int, LogicalTime }
+import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand }
 import v2.std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }

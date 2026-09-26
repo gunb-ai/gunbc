@@ -355,7 +355,7 @@ fn coercion_fold_exact_structural(
 // multiplicity is UniqueOnly and no target-selection policy applies -- answered by the same
 // procedure (find_witness under exact structural equality) and refused with the same typed
 // mismatch (coercion_wrap_find_witness_rejection). Only an Identity or Exact crossing is admitted.
-// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where non_empty`) is never structurally
+// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where string_non_empty`) is never structurally
 // equal to the operand's derived type -- v2.compiler.infer grounds a refinement-typed value as its
 // carrier -- so every cast INTO a refinement refuses here, the identity cast `x as Pos` from
 // `x: Pos` included; a cast from a refinement-typed value to its carrier crosses carrier to carrier

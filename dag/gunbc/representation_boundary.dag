@@ -664,7 +664,7 @@ fn boundaries_without_an_authority() -> Int {
 // The obvious walls to write over this roster are "every candidate names a DISCRIMINATOR" and
 // "every two-authority row states its ONE QUESTION". Both were written, and both were DELETED after
 // asking DESIGN section 4b's question BEFORE keeping the check: is the forbidden state AUTHORABLE
-// anywhere the check could run? It is not. NonEmptyStr is `String where non_empty`, so an empty
+// anywhere the check could run? It is not. NonEmptyStr is `String where string_non_empty`, so an empty
 // discriminator and an empty shared question are refused by the REFINEMENT at construction --
 // `"" as NonEmptyStr` typechecks and then refuses, so a fixture cannot even build the row a red
 // would need. A fold over those fields would therefore be permanently green BY CONSTRUCTION,

@@ -3,6 +3,7 @@ module v2.lens.enforcement.gate
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.text { String }
+import std.types { string_non_empty }
 import v2.std.algebra { for_all, any, filter, contains, non_empty, list_head, HeadFound, HeadAbsent }
 import v2.lens.registry { LensRegistryEntryV0, LensIdV0, lens_id_v0_eq }
 import v2.lens.enforcement.vocab {
@@ -238,15 +239,11 @@ fn lenses_self_apply_or_exempt_holds(receipts: List<EnrollmentDiscoveryReceipt>)
   for_all(xs: receipts, predicate: fn(r) { receipt_self_ok(r: r) })
 }
 
-fn non_empty_string(s: String) -> Bool {
-  !(s == "")
-}
-
 fn intent_admissible(i: StandingIntent) -> Bool {
   i.recurring
     && i.receiptable
-    && non_empty_string(s: i.displaced_cost)
-    && non_empty_string(s: i.mechanism_class)
+    && string_non_empty(value: i.displaced_cost)
+    && string_non_empty(value: i.mechanism_class)
     && non_empty(xs: i.desired_scope.roots)
 }
 

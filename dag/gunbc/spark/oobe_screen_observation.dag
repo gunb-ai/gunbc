@@ -1,6 +1,6 @@
 module gunbc.spark.oobe_screen_observation
 
-import std.types { NonEmptyStr, Bool, List, HttpStatus }
+import std.types { NonEmptyStr, Bool, List, HttpStatus, brand }
 import extdeps.uri { Uri, Http }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }

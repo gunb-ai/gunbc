@@ -98,7 +98,7 @@ fn provider_reference_realization_row(
 //                              representation to inline; whatever the target supplies is exactly
 //                              what the declaration withholds, so writing it at a use site publishes
 //                              the one thing opacity exists to keep.
-//   std.types NonEmptyStr   -- `String where non_empty`. The representation admits a value the
+//   std.types NonEmptyStr   -- `String where string_non_empty`. The representation admits a value the
 //                              declaration refuses, so a reference spelling String is a reference to
 //                              a strictly wider type wearing the narrow one's name.
 //   std.nat Nat             -- the grounded numeric authority; the declaration IS the host integer
@@ -130,7 +130,7 @@ fn reference_realization_policy_rows() -> List<ProviderReferenceRealizationRow> 
       module_path: "std.types",
       decl_name: "NonEmptyStr",
       ground: ProviderRefinesItsRepresentation {
-        refinement: "String where non_empty: the representation admits the empty string and the declaration refuses it, so a reference spelled String names a strictly wider type" as NonEmptyStr
+        refinement: "String where string_non_empty: the representation admits the empty string and the declaration refuses it, so a reference spelled String names a strictly wider type" as NonEmptyStr
       }
     ),
     provider_reference_realization_row(

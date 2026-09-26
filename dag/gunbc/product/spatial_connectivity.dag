@@ -1,6 +1,6 @@
 module product.spatial_connectivity
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, brand }
 import std.algebra { Empty, Cons }
 import std.integer { Int }
 import std.orthogonal_topology {

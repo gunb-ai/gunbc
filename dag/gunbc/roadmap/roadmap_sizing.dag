@@ -1,6 +1,6 @@
 module gunbc.roadmap_sizing
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr, brand }
 
 // SIZE IS DERIVED, NEVER AUTHORED. Until this module existed, every roadmap work item carried a
 // hand-authored intricacy/volume pair inside the NodeSizing coproduct, chosen by whoever wrote the

@@ -2892,7 +2892,7 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 }
 
 // WHY AN ACCEPTED CAST CAN HAVE NOTHING FOR THE HOST TO DO, AND WHY THAT IS DECIDED ON STRUCTURE.
-// `type NonEmptyStr = String where non_empty` and `type PathSegment = NonEmptyStr where
+// `type NonEmptyStr = String where string_non_empty` and `type PathSegment = NonEmptyStr where
 // brand("PathSegment")` are three .dag types over ONE host carrier: each of them emits as the
 // target's String. A source cast between any two of them changes which accepted .dag type the value
 // inhabits and asks the target for no operation whatsoever, so the emission is the operand

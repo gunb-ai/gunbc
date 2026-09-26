@@ -4101,7 +4101,7 @@ fn ct_method_existence_wall_witness_test() -> String {
     "                // that only proves the refusal stopped is indistinguishable from\n",
     "                // deleting the wall.\n",
     "                let peel_src = |call: &str| {\n",
-    "                    format!(\"module peel\\ntype Tight = String where non_empty\\nfn f(s: Tight) -> Int {{ s |> {} }}\\n\", call)\n",
+    "                    format!(\"module peel\\ntype Tight = String where string_non_empty\\nfn f(s: Tight) -> Int {{ s |> {} }}\\n\", call)\n",
     "                };\n",
     "                let peel_green = compile_one(\"peel_green.dag\", peel_src(\"count\"));\n",
     "                assert!(\n",

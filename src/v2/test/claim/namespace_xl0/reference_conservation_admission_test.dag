@@ -8,7 +8,6 @@ import v2.compiler.reference_conservation_admission {
   NamedArgumentLabel,
   MatchLaterArm,
   StatementLetBinder,
-  WhereRefinementPredicate,
   known_drop_shape_restoration_trigger,
   NoBodyLoweringChange,
   changed_scope_observation_of_subjects,
@@ -140,7 +139,7 @@ fn restoration_named(shape: KnownDropShape) -> Bool {
 }
 
 test fn every_known_drop_shape_names_its_restoration_trigger_holds() -> Bool {
-  restoration_named(shape: NamedArgumentLabel) && restoration_named(shape: WhereRefinementPredicate) && restoration_named(shape: MatchLaterArm) && restoration_named(shape: StatementLetBinder)
+  restoration_named(shape: NamedArgumentLabel) && restoration_named(shape: MatchLaterArm) && restoration_named(shape: StatementLetBinder)
 }
 
 // Removing a declaration reds the fixture: the same source, with and without its explanation.

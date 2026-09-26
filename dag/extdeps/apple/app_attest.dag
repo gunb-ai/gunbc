@@ -1,6 +1,6 @@
 module extdeps.apple.app_attest
 
-import std.types { NonEmptyStr, String, Int, List, Timestamp }
+import std.types { NonEmptyStr, String, Int, List, Timestamp, brand }
 import std.logic { Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }

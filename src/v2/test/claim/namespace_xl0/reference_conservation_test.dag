@@ -247,22 +247,24 @@ test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> 
   report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
 }
 
-// ---- a measured drop found by admission: the where-refinement predicate -----------------------
+// ---- a retired drop: the where-refinement predicates ---------------------------------------
 
 // Found when v2.test.claim.body_lowering.declaration_structure_preserved was routed through
-// v2.compiler.reference_conservation_admission conserved_normalize (MQ-6): normalize ACCEPTS a
-// `where` refinement alias, and the predicate's name reaches no node and no edge of the normalized
-// tree. Stated as today's measurement; it reds when lowering carries the predicate, and the
-// explanation that fixture declares reds with it (conservation_reason_explanation_stale).
-data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = String where rc_pred\n"
+// v2.compiler.reference_conservation_admission conserved_normalize (MQ-6): lowering kept one bare
+// atom at the clause's occurrence, so a predicate's name reached no node of the normalized tree.
+// Lowering now carries every predicate of the clause at its own occurrence, with its arguments
+// (v2.compiler.body_lowering_fold body_lower_kept_where_clause), so the same shape -- two predicates,
+// the first with labelled arguments -- conserves every authored atom. This was the drop's pin; it is
+// kept as the regression control that the drop stays retired (DESIGN 4b(4)).
+data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = Int where rc_pred(min: 1, max: 5), rc_other\n"
 
 fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "where_refinement_predicate", source: where_refinement_predicate_source)
 }
 
-test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
+test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
   let r = conservation_report_of(subject: where_refinement_predicate_subject())
-  report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
+  length(xs: r.dropped) == 0 && length(xs: r.unmeasured) == 0
 }
 
 // ---- measured drops found by admission: a later match arm, a statement-let binder -------------

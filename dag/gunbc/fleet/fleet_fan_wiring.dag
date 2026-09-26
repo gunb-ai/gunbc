@@ -1,6 +1,6 @@
 module gunbc.fleet_fan_wiring
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.operator_fan_declaration {

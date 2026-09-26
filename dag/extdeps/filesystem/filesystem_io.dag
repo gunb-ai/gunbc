@@ -377,7 +377,7 @@ fn admit_filesystem_entry_name(name: String) -> FilesystemEntryNameAdmission {
 // path and no arm recasts or re-admits it.
 //
 // THE CARRIER IS `std.types.FilePath` AND NOT A NEW `FilesystemDirectoryPath`. The whole law this
-// part is missing is nonemptiness, which `FilePath = String where non_empty` already owns and which
+// part is missing is nonemptiness, which `FilePath = String where string_non_empty` already owns and which
 // every neighbouring dependency already spells that way for `workdir` and `root`. A second type
 // whose only additional rule was nonemptiness would be section 3 nicknaming, and its name would
 // additionally fuse the lexical path fact with the directory-KIND fact that the surrounding

@@ -1,6 +1,7 @@
 module std.types
 
 import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map }
+import std.unicode.types { unicode_scalar }
 
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
@@ -193,6 +194,29 @@ fn commit_sha_text_holds(head: String) -> Bool {
 }
 
 type Sha256       = String
+// WHERE-PREDICATES OVER Int, one declaration each, homed beside Int so every module that refines an
+// Int can import them (std.integer reaches std.types, so they cannot live there without a cycle); a
+// where atom binds to them by name in v2 resolve.
+// The first parameter is the refined value and is never written in a where clause. Every further
+// parameter binds from the where argument of the SAME LABEL: `where range(min: 1, max: 5)` binds
+// min = 1, max = 5. A bound a where clause omits (`where range(min: 0)`) is Absent, so an omitted
+// bound constrains nothing -- the reading the seed's decidable_where_int_predicate_holds gives it.
+fn gt_zero(value: Int) -> Bool {
+  value > 0
+}
+
+fn range(value: Int, min: Int?, max: Int?) -> Bool {
+  let at_least_min = match min {
+    Present { value: lo } => value >= lo
+    Absent => true
+  }
+  let at_most_max = match max {
+    Present { value: hi } => value <= hi
+    Absent => true
+  }
+  at_least_min && at_most_max
+}
+
 type RetryCount   = Int where range(min: 1, max: 5)
 type HttpStatus   = Int where range(min: 100, max: 599)
 
@@ -220,12 +244,36 @@ type Port         = Int where range(min: 1, max: 65535)
 
 type GistId       = String
 type Secret       nominal_opaque = String
-type SecretValue  = Secret where non_empty
+type SecretValue  = Secret where string_non_empty
 
 type SemVer       = String
-type NonEmptyStr     = String where non_empty
-type LanguageId      = String where non_empty
-type SecretName      = String where non_empty
+type NonEmptyStr     = String where string_non_empty
+
+// THE WHERE-PREDICATE `string_non_empty` IS THIS DECLARATION. The where atom binds to it by ordinary
+// name lookup in v2 resolve, so the predicate's meaning has one authority. The spelling is not
+// `non_empty`: that name is v2.std.algebra non_empty<T> (a free monoid's non-emptiness, a different
+// domain) and a builtin collection-method name, so a std free fn spelled `non_empty` would be a
+// second meaning for one name (DESIGN section 3) and would break the method table.
+fn string_non_empty(value: String) -> Bool {
+  value.length() > 0
+}
+
+// `brand("X")` IS NOT A PREDICATE OVER THE VALUE and has no Bool declaration: it names a nominal
+// identity, and there is nothing about the value to decide. It is still a declaration, so the where
+// atom `brand` binds like every other predicate spelling, and its disposition is its TYPE rather than
+// silence: it takes no refined value, only the brand's name, and yields a WherePredicateMarker, which
+// is never evaluated as a refinement. A where spelling bound to nothing refuses in v2 resolve
+// (resolve_reason_where_predicate_unbound). It is a fn and not a data row or a type: a module-level
+// data row named `brand` is read by the v1 emitter in place of every local binding of that name
+// (measured: v1.compiler.infer_resolve's `brand` locals regenerated as calls), and a type would be
+// emitted as a Rust type spelled in lower case.
+type WherePredicateMarker = NominalBrand { name: String }
+
+fn brand(name: String) -> WherePredicateMarker {
+  NominalBrand { name: name }
+}
+type LanguageId      = String where string_non_empty
+type SecretName      = String where string_non_empty
 
 type PathSegment   = NonEmptyStr where brand("PathSegment")
 
@@ -270,9 +318,9 @@ type FilePathParts {
 type GlobPattern {
   segments: List<GlobSegment>
 }
-type FilePath      = String where non_empty
+type FilePath      = String where string_non_empty
 
-data file_path_sentinel_scaffold_note: String = "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter)."
+data file_path_sentinel_scaffold_note: String = "review 45141. FilePath where string_non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter)."
 
 type SourceSpan {
   file: FilePath
@@ -303,7 +351,7 @@ type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
 type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
 type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
 
-type GitRef       = String where non_empty
+type GitRef       = String where string_non_empty
 
 type TopologyNodeKind = Pure | Transport | SubDag | Env
 type DocSourceKind    = Template | Generated | Static

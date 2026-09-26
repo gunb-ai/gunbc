@@ -2,7 +2,7 @@ module gunbc.merge_admission
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { NonEmptyStr, CommitSha, String, List, Bool, Int }
+import std.types { NonEmptyStr, CommitSha, String, List, Bool, Int, brand }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
