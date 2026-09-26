@@ -99,7 +99,8 @@ pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
-    run_required_v2_native, run_self_host, run_v2_native_cli, NativeMemberTermination,
+    run_native_claim_program, run_required_v2_native, run_self_host, run_v2_native_cli,
+    run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
     NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
@@ -1307,6 +1308,96 @@ mod roadmap_acceptance_history_projection_tests {
             json.get("grouping_strategy"),
             Some(&serde_json::Value::String("ALLGREEN".to_string())),
             "the control must send the field it carries: {json}"
+        );
+    }
+
+    // THE BODY GOOGLE IAM ACCEPTS FOR setIamPolicy, ESTABLISHED BY EXECUTION. `extdeps.cloud.gcp.iam`
+    // `GcpBinding.condition` is `IamCondition?` (std Optional). A policy read back by getIamPolicy
+    // and extended by the reconciler carries one binding with no condition (Absent) beside one with
+    // a condition (Present). Google's REST reference for google.iam.v1.Policy / Binding / google.type.Expr
+    // (https://cloud.google.com/iam/docs/reference/rest/v1/Policy,
+    // https://cloud.google.com/secret-manager/docs/reference/rest/v1/Policy#Binding) is proto3 JSON:
+    // an unset `condition` is an absent key and a set one is the Expr object itself. mtcollins1's
+    // first secret grant was refused HTTP 400 `Unknown name "_variant" at policy.bindings[1].condition`
+    // because the encoder emitted std Optional's internal `{"_variant":"Present","value":...}`.
+    #[test]
+    fn wire_body_encodes_optional_as_its_payload_or_omits_it() {
+        let ctx = empty_ctx();
+        let s = |t: &str| v1_interpreter::str_value(t.to_string());
+        let variant = |v: &str, fields: Vec<(v1_interpreter::Symbol, v1_interpreter::Value)>| {
+            v1_interpreter::Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym(v),
+                fields: Rc::new(fields),
+            }
+        };
+        let binding = |role: &str, member: &str, condition: v1_interpreter::Value| {
+            v1_interpreter::Value::Record {
+                type_name: ctx.sym("GcpBinding"),
+                fields: Rc::new(vec![
+                    (ctx.sym("role"), s(role)),
+                    (
+                        ctx.sym("members"),
+                        v1_interpreter::list_value(vec![s(member)]),
+                    ),
+                    (ctx.sym("condition"), condition),
+                ]),
+            }
+        };
+        let expr = v1_interpreter::Value::Record {
+            type_name: ctx.sym("IamCondition"),
+            fields: Rc::new(vec![
+                (ctx.sym("title"), s("expires")),
+                (
+                    ctx.sym("expression"),
+                    s("request.time < timestamp(\"2027-01-01T00:00:00Z\")"),
+                ),
+                (ctx.sym("description"), variant("Absent", vec![])),
+            ]),
+        };
+        let policy = v1_interpreter::Value::Record {
+            type_name: ctx.sym("GcpPolicy"),
+            fields: Rc::new(vec![
+                (
+                    ctx.sym("bindings"),
+                    v1_interpreter::list_value(vec![
+                        binding(
+                            "roles/secretmanager.secretAccessor",
+                            "principalSet://iam.googleapis.com/x",
+                            variant("Absent", vec![]),
+                        ),
+                        binding(
+                            "roles/secretmanager.viewer",
+                            "user:a@example.com",
+                            variant("Present", vec![(ctx.sym("value"), expr)]),
+                        ),
+                    ]),
+                ),
+                (ctx.sym("etag"), s("BwYAAAAAAAA=")),
+                (ctx.sym("version"), v1_interpreter::Value::Int(3)),
+            ]),
+        };
+        let json = super::value_to_wire_json(&policy, &ctx).expect("serialize policy");
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "bindings": [
+                    {
+                        "role": "roles/secretmanager.secretAccessor",
+                        "members": ["principalSet://iam.googleapis.com/x"]
+                    },
+                    {
+                        "role": "roles/secretmanager.viewer",
+                        "members": ["user:a@example.com"],
+                        "condition": {
+                            "title": "expires",
+                            "expression": "request.time < timestamp(\"2027-01-01T00:00:00Z\")"
+                        }
+                    }
+                ],
+                "etag": "BwYAAAAAAAA=",
+                "version": 3
+            })
         );
     }
 
@@ -39190,6 +39281,27 @@ pub fn value_to_wire_json(
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
     match val {
+        // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
+        // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
+        // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
+        // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
+            match wire_resolve_sym(ctx, *variant_name).as_str() {
+                "Absent" => Ok(serde_json::Value::Null),
+                "Present" => match fields
+                    .iter()
+                    .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
+                {
+                    Some((_, v)) => value_to_wire_json(v, ctx),
+                    None => Err("Optional.Present carries no `value` field".to_string()),
+                },
+                other => Err(format!("Optional has no variant `{other}`")),
+            }
+        }
         v1_interpreter::Value::Variant {
             type_name,
             variant_name,
@@ -39240,13 +39352,20 @@ pub fn value_to_wire_json(
             }
             Ok(serde_json::Value::Object(obj))
         }
-        v1_interpreter::Value::Record { fields, .. } => {
+        v1_interpreter::Value::Record { type_name, fields } => {
+            let record_type = wire_resolve_sym(ctx, *type_name);
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
-                if matches!(v, v1_interpreter::Value::Null) {
+                let encoded = value_to_wire_json(v, ctx)?;
+                if encoded.is_null() {
                     continue;
                 }
-                obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+                let key = v1_interpreter::record_field_wire_key(
+                    ctx,
+                    &record_type,
+                    &wire_resolve_sym(ctx, *k),
+                );
+                obj.insert(key, encoded);
             }
             Ok(serde_json::Value::Object(obj))
         }

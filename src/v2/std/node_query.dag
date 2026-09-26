@@ -13,7 +13,8 @@ import v2.std.diagnostic {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_append, list_snoc_item, list_tail }
-import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.collection { Absent, List, Present, empty_map, list_at_optional, map_insert, map_lookup }
+import std.types { Map }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.node {
   Cardinality,
@@ -578,52 +579,6 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
   })
 }
 
-fn node_is_callee_reference(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Arrow } => true
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
-  }
-}
-
-fn node_is_call(node: Node) -> Bool {
-  match node.kind {
-    ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: callee } => node_is_callee_reference(node: callee)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
-fn call_callee_target(node: Node) -> Outcome<Node> {
-  if node_is_call(node: node) {
-    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-      Present { value: callee } => outcome_accepted(value: callee)
-      Absent =>
-        outcome_rejected(d: Diagnostic {
-          reason: ^call_callee_absent,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        })
-    }
-  } else {
-    outcome_rejected(d: Diagnostic {
-      reason: ^node_not_a_call,
-      at: node_locus(node: node),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    })
-  }
-}
-
-fn call_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    TailFound { tail: args } => args
-    TailAbsent => Empty
-  }
-}
-
 fn node_envelope_without_named_coordinate_go(
   root: Node,
   xs: FreeMonoid<Edge>,
@@ -810,4 +765,30 @@ fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
         correction: Unavailable { reason: ExternalContractUnknown }
       })
   }
+}
+
+// THE EDGES v2.std.node all_names_distinct REFUSES, IN ORDER: each Named edge whose name an earlier
+// edge already carries. Empty exactly when all_names_distinct holds. A producer that must refuse a
+// repeated name at its own locus reads the offending edge here instead of restating the rule and
+// then searching for the site. It lives here rather than beside all_names_distinct because the seen
+// set is a Map, and v2.std.collection imports v2.std.node: one lookup per edge, not a rescan of
+// every earlier name (DESIGN section 6, bare minimum cost). all_names_distinct keeps its own
+// quadratic count, because it is the well_formed gate's predicate and is out of scope here.
+type RepeatedNameScan {
+  seen: Map<Symbol, Bool>
+  repeated: List<Edge>
+}
+
+fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
+  let scanned = fold(children, init: RepeatedNameScan { seen: empty_map(), repeated: [] }, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: n } =>
+        match map_lookup(m: acc.seen, key: n) {
+          Present { value: _ } => RepeatedNameScan { seen: acc.seen, repeated: list_snoc_item(xs: acc.repeated, item: e) }
+          Absent => RepeatedNameScan { seen: map_insert(m: acc.seen, key: n, value: true), repeated: acc.repeated }
+        }
+    }
+  })
+  scanned.repeated
 }

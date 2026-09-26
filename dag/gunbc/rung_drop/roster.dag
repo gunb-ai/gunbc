@@ -64,6 +64,7 @@ import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_deb
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.v2_native_frontier_nightly_cadence { v2_native_frontier_nightly_cadence }
 import gunbc.rung_drop.native_lane_live_pair_expected_red { native_lane_live_pair_expected_red }
 import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
 import gunbc.rung_drop.approval_store_single_writer_by_agreement { approval_store_single_writer_by_agreement }
@@ -108,6 +109,7 @@ import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_ad
 import gunbc.rung_drop.systemctl_show_property_input_type_wall { systemctl_show_property_input_type_wall }
 import gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure { compiler_change_refusals_land_outside_every_compiled_closure }
 import gunbc.rung_drop.retention_census_counts_one_retention_per_refused_module { retention_census_counts_one_retention_per_refused_module }
+import gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier { typed_statement_let_refuses_until_the_bind_annotation_carrier }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -155,6 +157,7 @@ data rung_drop_roster: List<RungDrop> = [
   determinism_transitive_reachability,
   transitional_admission_exception(),
   v2_native_route_off_the_merge_path,
+  v2_native_frontier_nightly_cadence,
   native_lane_live_pair_expected_red,
   consumed_row_owner_charge_unenforced,
   owner_deletion_follow_up_charge_removed,
@@ -199,6 +202,7 @@ data rung_drop_roster: List<RungDrop> = [
   systemctl_show_property_input_type_wall,
   compiler_change_refusals_land_outside_every_compiled_closure,
   retention_census_counts_one_retention_per_refused_module,
+  typed_statement_let_refuses_until_the_bind_annotation_carrier,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

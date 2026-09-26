@@ -2,7 +2,7 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs }
-import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
+import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanProjectsDerivedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
@@ -22,6 +22,7 @@ type GeneratedArtifact
   | MicrovmShakedownYamlArtifact
   | HealWorkflowYamlArtifact
   | HealPublisherWorkflowYamlArtifact
+  | NativeFrontierWorkflowYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | CargoConfigArtifact
@@ -51,11 +52,12 @@ type GeneratedArtifact
   | CouponCadQueryProgramArtifact
   | WholeCorpusCompileMeasuredRootDemandsArtifact
   | ApprovalDeviceVectorsArtifact
+  | ApproveIosProjectYmlArtifact
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, NativeFrontierWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -70,6 +72,8 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
 // CrossLanguageClientTest: a client written in another language reads the file as its test oracle
 // for bytes this tree defines (gunbc.auth.approval_device_redemption_fixtures, read by the iOS
 // app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
+// XcodeProjectGenerator: XcodeGen reads the file on the operator's Mac and writes the Xcode project
+// and the target's Info.plist from it (gunbc.approve_ios_project); neither output is committed.
 type RepoConsumer
   = GitProtocol
   | CargoToolchain
@@ -78,6 +82,7 @@ type RepoConsumer
   | HostReconciler
   | CompilerRunInput
   | CrossLanguageClientTest
+  | XcodeProjectGenerator
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -193,6 +198,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     MicrovmShakedownYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "microvm-shakedown.yml" }
     HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
     HealPublisherWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal-publish.yml" }
+    NativeFrontierWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "native-frontier.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     CargoConfigArtifact => ArtifactLocation { directory: ".cargo", name: "config.toml" }
@@ -213,6 +219,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
       ArtifactLocation { directory: "manufacturing", name: "hole_diameter_ladder_r1.py" }
     WholeCorpusCompileMeasuredRootDemandsArtifact => ArtifactLocation { directory: whole_corpus_compile_demand_projection_directory, name: whole_corpus_compile_demand_projection_name }
     ApprovalDeviceVectorsArtifact => ArtifactLocation { directory: "dag/test/fixture/approval_device_redemption", name: "vectors.json" }
+    ApproveIosProjectYmlArtifact => ArtifactLocation { directory: "apps/approve-ios", name: "project.yml" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -280,6 +287,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     MicrovmShakedownYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    NativeFrontierWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
@@ -288,12 +296,14 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     PlanArtifact { plan } =>
       match plan.projection {
         PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+        PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
         PlanIsAuthorityOnly { ruling: _ } => NotCommitted
       }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
     ApprovalDeviceVectorsArtifact => CommitRequired { consumer: CrossLanguageClientTest }
+    ApproveIosProjectYmlArtifact => CommitRequired { consumer: XcodeProjectGenerator }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -341,6 +351,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     MicrovmShakedownYamlArtifact => match b { MicrovmShakedownYamlArtifact => true  _ => false }
     HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
     HealPublisherWorkflowYamlArtifact => match b { HealPublisherWorkflowYamlArtifact => true  _ => false }
+    NativeFrontierWorkflowYamlArtifact => match b { NativeFrontierWorkflowYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     CargoConfigArtifact => match b { CargoConfigArtifact => true  _ => false }
@@ -356,6 +367,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     CouponCadQueryProgramArtifact => match b { CouponCadQueryProgramArtifact => true  _ => false }
     WholeCorpusCompileMeasuredRootDemandsArtifact => match b { WholeCorpusCompileMeasuredRootDemandsArtifact => true  _ => false }
     ApprovalDeviceVectorsArtifact => match b { ApprovalDeviceVectorsArtifact => true  _ => false }
+    ApproveIosProjectYmlArtifact => match b { ApproveIosProjectYmlArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -416,6 +428,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
     HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
+    NativeFrontierWorkflowYamlArtifact => decl_ref(module_path: "gunbc.native_frontier_workflow", decl_name: "expected_native_frontier_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
     CargoConfigArtifact => decl_ref(module_path: "gunbc.cargo_config_emit", decl_name: "expected_cargo_config_toml")
@@ -431,6 +444,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
     WholeCorpusCompileMeasuredRootDemandsArtifact => decl_ref(module_path: "gunbc.whole_corpus_compile_demand_projection", decl_name: "expected_whole_corpus_compile_measured_root_demands_json")
     ApprovalDeviceVectorsArtifact => decl_ref(module_path: "gunbc.auth.approval_device_redemption_fixtures", decl_name: "approval_device_vectors_json")
+    ApproveIosProjectYmlArtifact => decl_ref(module_path: "gunbc.approve_ios_project", decl_name: "expected_approve_ios_project_yml")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
@@ -444,7 +458,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
     RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner_host_grants", decl_name: "runner_host_sudoers_content")
-    PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "expected_plan_md")
+    PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "plan_generation")
   }
 }
 
