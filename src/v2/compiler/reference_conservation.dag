@@ -120,6 +120,21 @@ fn reference_conservation_holds(report: ReferenceConservationReport) -> Bool {
   length(xs: report.dropped) == 0 && length(xs: report.unmeasured) == 0
 }
 
+// ACCEPTED IS A SEPARATE FACT FROM CONSERVED, AND A CONTROL THAT MEANS "THIS MODULE LOWERS" MUST ASK
+// BOTH. reference_conservation_holds admits refused atoms (a located refusal accounts for what it
+// covers), so on its own it cannot tell a module that lowered and kept every reference from one that
+// normalization REFUSED -- the refusal stands in for restored acceptance. A module is accepted when
+// nothing in it was refused and it conserved a nonzero population (a report that measured nothing
+// has not been accepted, only not rejected). Every control whose subject is "lowered, and ..." reads
+// these, not their parts, so no claim re-spells what acceptance is.
+fn reference_conservation_accepted(report: ReferenceConservationReport) -> Bool {
+  (report.refused == 0) && (report.conserved > 0)
+}
+
+fn reference_conservation_admitted(report: ReferenceConservationReport) -> Bool {
+  reference_conservation_holds(report: report) && reference_conservation_accepted(report: report)
+}
+
 // ---- the parse-side population -----------------------------------------------------------------
 
 // `items` counts the top-level items entered so far; `item_names` records each item's declaring

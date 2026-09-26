@@ -31,6 +31,7 @@ import v2.std.find_witness {
   TargetDeclaredPriority,
   TargetSelection,
   TargetSelectionPolicy,
+  UniqueOnly,
   find_witness,
 }
 import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
@@ -349,6 +350,61 @@ fn coercion_fold_exact_structural(
       }
   }
 }
+// A CAST'S CROSSING: does the source's grounding cross to the ONE type the cast names? It is the
+// fold's own question with the candidate set fixed by the author -- the singleton {target}, so the
+// multiplicity is UniqueOnly and no target-selection policy applies -- answered by the same
+// procedure (find_witness under exact structural equality) and refused with the same typed
+// mismatch (coercion_wrap_find_witness_rejection). Only an Identity or Exact crossing is admitted.
+// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where non_empty`) is never structurally
+// equal to the operand's derived type -- v2.compiler.infer grounds a refinement-typed value as its
+// carrier -- so every cast INTO a refinement refuses here, the identity cast `x as Pos` from
+// `x: Pos` included; a cast from a refinement-typed value to its carrier crosses carrier to carrier
+// and is admitted. v2.std.coercion models refinement crossings only with a value-set predicate
+// supplied per domain (coercion_fold_refinement_widening), so the cast refuses rather than being
+// admitted by name. This is v2.compiler.infer's authority for `e as T`; the
+// name-keyed std.coercion dag_cast_rules is not consulted
+// (gunbc.guarantee_stall coercion_two_algebras_answer_one_question_stall).
+fn coercion_cast_target_singleton(target: Node) -> CandidateSet {
+  CandidateSet {
+    candidates: [target],
+    closedness: StructuralPropertyWitness { property: ^coercion_cast_target_singleton_closed, evidence: target }
+  }
+}
+
+// source is the operand's grounding (its node is the operand, where a refusal is located) and
+// source_type the type that grounding established.
+fn coercion_cast_crossing(source: CanonicalGrounding, source_type: Node, target: Node) -> Outcome<CoercionResult> {
+  match find_witness(
+    source_facts: source_type,
+    candidates: coercion_cast_target_singleton(target: target),
+    predicate: PreservationPredicate {
+      algebra: source_type,
+      preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: UniqueOnly
+  ) {
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: if fw.candidate == source_type { Identity } else { Exact },
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_exact_structural_equality,
+              evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+            }
+          }
+        },
+        diagnostics: fw_d
+      }
+    Rejected { diagnostics: r } =>
+      match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
+        Accepted { value: wrapped, diagnostics: _ } => Rejected { diagnostics: wrapped }
+        Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+      }
+  }
+}
+
 fn coercion_fold(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
