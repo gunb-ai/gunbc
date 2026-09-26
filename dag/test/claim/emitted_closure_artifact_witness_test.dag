@@ -52,3 +52,17 @@ test fn the_route_package_and_binary_are_slug_derived_holds() -> Bool {
 test fn the_import_alias_still_equals_the_physical_library_holds() -> Bool {
   emitted_closure_import_alias().alias == emitted_closure_rust_library_text()
 }
+
+// THE EMITTER NOW READS THIS AUTHORITY, AND THIS ROW PINS THAT DOING SO CHANGED NO EMITTED BYTE.
+// `v1.compiler.emit_rust` used to spell the emitted closure's library name as a literal, which made it
+// a SECOND producer of a fact the curated harness also authored -- two sites deciding one identifier,
+// each locally reasonable. It now reads `emitted_closure_rust_library_text`, so the consolidation
+// reaches both production consumers rather than only the harness. The risk in connecting a producer is
+// that the value moves, so the expected identifier is carried here as a controlled literal: the string
+// the emitter rendered before the connection. A change to the authority that altered the emitted crate
+// name would fail here rather than surfacing as a rebuilt-artifact mismatch somewhere downstream.
+data expected_emitted_library_identifier: String = "v1_compiled"
+
+test fn connecting_the_emitter_did_not_move_the_library_name_holds() -> Bool {
+  emitted_closure_rust_library_text() == expected_emitted_library_identifier
+}

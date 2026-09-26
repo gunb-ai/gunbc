@@ -12,6 +12,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
+import gunbc.emitted_closure_artifact { emitted_closure_rust_library_text }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
@@ -3494,6 +3495,16 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // entry declares a different driver carries none of that, so widening these to every pipeline entry
 // would rename its crate and demand a dispatch surface it never asked for. The main is where the
 // two drivers differ, and emit_main_rs branches there.
+// THE EMITTED CLOSURE'S LIBRARY NAME IS READ FROM ITS AUTHORITY, NOT SPELLED HERE. This branch used to
+// carry the literal, which made the emitter a SECOND producer of a fact the curated harness also
+// authored -- two sites deciding one library identifier, each locally reasonable. It now reads
+// `gunbc.emitted_closure_artifact`, so the consolidation reaches both production consumers rather than
+// only the harness.
+// THE SEED'S OWN CRATE NAME STAYS A LITERAL HERE, DELIBERATELY. `v1_compiler` names a DIFFERENT
+// artifact -- the seed host crate, not the emitted closure -- and folding it into the emitted-closure
+// model would be exactly the package-versus-library conflation that model exists to make
+// unrepresentable. It wants its own home if it ever gains a second producer; it has none today.
+
 fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
@@ -3550,7 +3561,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
   let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
-  let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
+  let crate_name = if has_pipeline { "v1_compiler" } else { emitted_closure_rust_library_text() }
   let cargo = emit_cargo_toml(
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {

@@ -782,3 +782,65 @@ test fn the_route_package_name_is_not_the_library_identifier_holds() -> Bool {
   emitted_closure_cargo_package(slug: EmittedArtifactSlug { slug: "src-v2-cli-compile-cli-dag" as NonEmptyStr }).name
     != emitted_closure_rust_library_text()
 }
+
+
+// THE GUARD ABOVE COMPARES POLICY; THESE TWO ROWS READ ACTUAL IMPORT TEXT, and the distinction was a
+// real gap rather than a nicety. `the_tooling_rust_namespace_derives_from_the_library_identifier_holds`
+// reads the CONFIGURED tooling entry in `rust_source_namespace_rows` and compares that namespace with
+// the library-name authority -- so changing a real `use` line in a shim while leaving the namespace
+// policy untouched does not move it. That is narrower than "actual shim drift is enrolled", which is
+// what the guard was claimed to do.
+// THE JOIN THAT CLOSES IT is that the SCANNED TOKEN is derived from the authority rather than written
+// here, and the observation reads supplied file CONTENT. So an import naming the authority is observed
+// under it, and an import naming anything else is visibly unobserved -- which is the signal a policy
+// comparison cannot produce. The positive fixture's import is BUILT from the authority, so a rename
+// moves the fixture and the token together and this row keeps meaning the same thing; only the
+// negative fixture carries a foreign literal, which is its whole purpose.
+data g_obs_shim_path: String = "dag/gunbc/instruments/planted_use_shims/observed_probe.rs"
+
+data g_obs_drift_path: String = "dag/gunbc/instruments/planted_use_shims/observed_drift.rs"
+
+fn g_obs_authority_token() -> List<String> {
+  Cons { head: emitted_closure_rust_library_text(), tail: Empty }
+}
+
+fn g_obs_import_naming_authority() -> String {
+  concat("use ", concat(emitted_closure_rust_library_text(), "::v2_std_node as emitted;\npub fn probe() -> i32 { 1 }\n"))
+}
+
+data g_obs_import_naming_something_else: String = "use some_other_crate::v2_std_node as emitted;\npub fn probe() -> i32 { 1 }\n"
+
+fn g_obs_source(path: String, content: String) -> RustFileChangeInput {
+  RustFileChangeInput {
+    repo_path: path,
+    base_content: content,
+    head_content: content,
+    present_at_base: true,
+    present_at_head: true,
+    old_ranges: [],
+    new_ranges: []
+  }
+}
+
+fn g_obs_rows_for(path: String, content: String) -> List<RustReferenceRow> {
+  match observe_rust_references(
+    observed_at: planted_observed_tree,
+    sources: Cons { head: g_obs_source(path: path, content: content), tail: Empty },
+    generated_repo_paths: [],
+    tokens: g_obs_authority_token(),
+    rows: rust_source_namespace_rows
+  ) {
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: _, unscannable: _ } => rs
+    RustReferenceHostRefused { detail: _ } => []
+  }
+}
+
+test fn an_import_naming_the_authority_is_observed_under_it_holds() -> Bool {
+  let rs = g_obs_rows_for(path: g_obs_shim_path, content: g_obs_import_naming_authority())
+  (count(rs) > 0)
+    && any(rs, r => r.token == emitted_closure_rust_library_text())
+}
+
+test fn an_import_that_does_not_name_the_authority_is_not_observed_holds() -> Bool {
+  count(g_obs_rows_for(path: g_obs_drift_path, content: g_obs_import_naming_something_else)) == 0
+}
