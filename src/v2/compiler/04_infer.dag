@@ -627,6 +627,9 @@ fn infer_product_child_evidence_edges(
       match acc {
         Absent => acc
         Present { value: evidence_edges } =>
+          if infer_edge_is_signature_order(edge: edge) {
+            optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
+          } else {
           match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
             Absent => optional_absent()
             Present { value: child_facts } =>
@@ -641,9 +644,23 @@ fn infer_product_child_evidence_edges(
                   )
               }
           }
+          }
       }
     }
   )
+}
+
+// AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE. The ^arrow_signature_order_edge names the
+// parameters' declared positions (v2.std.compilers.body_lowering signature_order_edge); its atoms are
+// labels, not values, so there is no type to infer for them. The order is part of the Arrow's type
+// (declared parameter order is semantic for positional binding), so the derived type carries the edge
+// unchanged rather than demanding a derivation for a list of labels -- which would leave every
+// declared Arrow NotDerived.
+fn infer_edge_is_signature_order(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } => sym == ^arrow_signature_order_edge
+    Positional => false
+  }
 }
 
 fn infer_product_facts_from_entries(

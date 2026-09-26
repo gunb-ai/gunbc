@@ -53,7 +53,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -3233,35 +3233,19 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 }
 
 // THE DECLARED ORDER, CARRIED ON THE ARROW. Every Arrow built from a declared signature carries one
-// ^arrow_signature_order_edge whose target is the language's canonical FreeMonoid introduction
-// (v2.std.compilers.body_lowering lower_list_introduction) of the parameter labels as childless
+// ^arrow_signature_order_edge (v2.std.compilers.body_lowering signature_order_edge) whose target is
+// the language's canonical FreeMonoid introduction (lower_list_introduction) of the parameter labels as childless
 // Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
 // Resolve does not walk it (v2.compiler.resolve resolve_arrow_node): its atoms are labels, not
 // references, so a parameter spelled like a name in scope cannot bind through it.
-fn body_lower_signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
-  Edge {
-    label: Named { name: ^arrow_signature_order_edge },
-    target: lower_list_introduction(
-      elements: fold(order, init: Empty, f: fn(acc, sym) {
-        list_snoc_item(xs: acc, item: node_lowered_from(
-          kind: TypeNode { connective: Atom { identity: sym } },
-          children: [],
-          source: source
-        ))
-      }),
-      source: source
-    )
-  }
-}
-
 fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
   let signature = list_append(
     left: [
       Edge { label: Positional, target: sig.domain },
       Edge { label: Positional, target: sig.return_type },
       Edge { label: Positional, target: sig.return_type },
-      body_lower_signature_order_edge(order: sig.order, source: shell)
+      signature_order_edge(order: sig.order, source: shell)
     ],
     right: body_lower_fn_decl_type_params_edges(sig: sig)
   )
