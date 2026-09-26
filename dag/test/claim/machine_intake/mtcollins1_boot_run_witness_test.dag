@@ -17,8 +17,10 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
   HardwareThreadCountMismatch, WorkloadWriteFailed,
   mtcollins1_boot_medium_refusal,
-  mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_one_socket_milestone }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
@@ -190,7 +192,7 @@ fn pending_because(v: MtCollins1BootTerminalVerdict, fragment: String) -> Bool {
 fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium: MtCollins1BootMedium, clean: String, boot23_open: String) -> Bool {
   let begin_a = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 begin 2026-09-21T14:47:00Z=====\n"
   let begin_b = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=bbbbbbbb-0000-4000-8000-000000000002 begin 2026-09-21T14:52:00Z=====\n"
-  let refusing_nproc = "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n"
+  let refusing_nproc = "----SECTION nproc----\n----ARGV nproc: nproc\n79\n----EXIT nproc: 0\n"
   let restarted = concat(begin_a, begin_b, refusing_nproc)
   let no_argv = concat(begin_a, "----SECTION nproc----\n80\n----EXIT nproc: 0\n")
   let exit_before_argv = concat(begin_a, "----SECTION nproc----\n----EXIT nproc: 0\n----ARGV nproc: nproc\n80\n")
@@ -199,7 +201,7 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
   let terminated = concat(unterminated, "\n")
   let closed_unterminated_workload = concat(begin_a,
     "----SECTION boot-media----\n----ARGV boot-media: blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
-    "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+    "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
     "----SECTION edac-before----\n----ARGV edac-before: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
     "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1\n",
     "----SECTION edac-after----\n----ARGV edac-after: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n",
@@ -218,13 +220,13 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
   (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
     TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "second begin marker"))
     _ => false })
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 79, qualification expects 80", unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact", unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact", unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "nproc"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "edac-after")])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "nproc"), unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "edac-after")])
     && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {
       TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
         let t = mtcollins1_boot_terminal_cause_text(cause: c)
@@ -248,7 +250,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
@@ -267,7 +269,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
@@ -286,7 +288,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
           concat(
@@ -305,7 +307,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n----EXIT nproc: 1\n----SECTION lscpu----\n----ARGV lscpu: lscpu\nCPU(s):                               160\n----EXIT lscpu: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n----EXIT nproc: 1\n----SECTION lscpu----\n----ARGV lscpu: lscpu\nCPU(s):                               80\n----EXIT lscpu: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
@@ -324,7 +326,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
@@ -348,7 +350,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
@@ -367,7 +369,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     concat(
       "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 255937 MB\nnode 0 free: 250112 MB\n----EXIT numa: 0\n",
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
@@ -395,7 +397,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     ),
   )
   let accepted = match mtcollins1_boot_terminal_verdict(capture: clean, subject: census_subject, medium: census_medium) {
-    TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 160
+    TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 80
     _ => false
   }
   accepted
@@ -410,9 +412,57 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: digest_mismatch, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_only, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1", unobserved(name: "edac-after")])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "numa"), unobserved(name: "edac-after")])
     && review_5269655400_walls(census_subject: census_subject, census_medium: census_medium, clean: clean, boot23_open: boot23_open)
     && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
+}
+
+// THE ONE-SOCKET MILESTONE, DISCRIMINATED (gunbc.machine_intake_mtcollins1_boot_milestone): the
+// verdict is held against 80 threads ALL on socket 0, not against the machine's 160, and not
+// against the count alone. Positive control: 80 on socket 0 accepts. REDs: 79 on socket 0 refuses
+// on the count; 80 split 40/40 across sockets passes nproc and refuses on placement -- the case a
+// count-only expectation would have accepted; 80 on socket 1 alone refuses; and the whole machine
+// refuses too, because the milestone is not "at least" -- a boot that brings socket 1 up is the
+// restoration trigger of gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent, and must be read
+// as that rather than silently passing a milestone it exceeds. The machine's own figure stays 160.
+fn milestone_capture(nproc: String, numa: String) -> String {
+  concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+    concat("----SECTION nproc----\n----ARGV nproc: nproc\n", nproc, "\n----EXIT nproc: 0\n"),
+    numa,
+    "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+    "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+    "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
+  )
+}
+
+test fn the_boot_is_held_to_the_one_socket_milestone_not_the_count() -> Bool {
+  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  let socket0_whole = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 127968 MB\n----EXIT numa: 0\n"
+  let socket0_short = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78\nnode 0 size: 127968 MB\n----EXIT numa: 0\n"
+  let split_across = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0-1\navailable: 2 nodes (0-1)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39\nnode 0 size: 127968 MB\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119\nnode 1 size: 127968 MB\n----EXIT numa: 0\n"
+  let socket1_only = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n1\navailable: 1 nodes (1)\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159\nnode 1 size: 127968 MB\n----EXIT numa: 0\n"
+  let both_whole = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0-1\navailable: 2 nodes (0-1)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 127968 MB\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159\nnode 1 size: 127968 MB\n----EXIT numa: 0\n"
+  let milestone = " CPUs on socket 0 and none elsewhere"
+  hardware_thread_count_value(t: mtcollins1_nproc) == 160
+    && hardware_thread_count_value(t: mtcollins1_one_socket_milestone.threads) == 80
+    && mtcollins1_one_socket_milestone.socket == 0
+    && (match mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: socket0_whole), subject: subject, medium: census_medium) {
+      TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 80
+      _ => false })
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "79", numa: socket0_short), subject: subject, medium: census_medium),
+      texts: ["nproc observed 79, qualification expects 80", concat("numa placement node 0=79, milestone expects 80", milestone)])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: split_across), subject: subject, medium: census_medium),
+      texts: [concat("numa placement node 0=40, node 1=40, milestone expects 80", milestone)])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: socket1_only), subject: subject, medium: census_medium),
+      texts: [concat("numa placement node 1=80, milestone expects 80", milestone)])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "160", numa: both_whole), subject: subject, medium: census_medium),
+      texts: ["nproc observed 160, qualification expects 80", concat("numa placement node 0=80, node 1=80, milestone expects 80", milestone)])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: "----SECTION numa----\n----ARGV numa: numactl -H\n0\n----EXIT numa: 0\n"), subject: subject, medium: census_medium),
+      texts: ["numa section carries no node cpus line; socket placement is not read"])
 }
 
 // THE UNIT HOLD STORE IS ON THE RUNNER HOST, so a boot anywhere else would take a hold the operator

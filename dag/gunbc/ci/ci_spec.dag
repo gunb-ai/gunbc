@@ -952,7 +952,7 @@ data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunS
 }
 
 data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+  entry: "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
   function: "mtcollins1_boot_admit_executor",
 }
 
