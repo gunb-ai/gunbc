@@ -2,7 +2,7 @@ module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_tail, zip_map }
-import std.algebra { Cons, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -46,7 +46,14 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.compilers.body_lowering { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.compilers.body_lowering {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order,
+  list_introduction_elements_optional,
+  list_introduction_head_path
+}
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
   CanonicalGrounding,
@@ -65,6 +72,9 @@ import v2.std.inhabitance {
   InhabitanceVerdict,
   application_argument_does_not_inhabit_diagnostic,
   application_positional_arity_mismatch_diagnostic,
+  application_parameter_order_absent_reason,
+  application_parameter_order_diagnostic,
+  application_parameter_order_malformed_reason,
   declared_type_inhabitance,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_diagnostic,
@@ -1602,15 +1612,69 @@ fn infer_application_callee_arrow(node: Node) -> Optional<Node> {
   }
 }
 
-fn infer_application_formals(node: Node) -> Optional<List<InhabitanceFormal>> {
+// THE FORMALS IN DECLARED ORDER, OR A REFUSAL. The domain's formals are keyed by name; their
+// positions come only from the Arrow's declared order (arrow_declared_parameter_order), never from
+// the domain's stored sequence, which is sorted by label for identity (gunbc#12054). An operator
+// that is not an Arrow, or a domain whose formals are not all named, stays FormalsUnresolved -- the
+// undecidable-accepted arm it always took. An Arrow with named formals and no readable order refuses.
+type InferApplicationFormals
+  = FormalsInDeclaredOrder { formals: List<InhabitanceFormal> }
+  | FormalsUnresolved
+  | FormalsOrderRefused { reason: Symbol }
+
+fn infer_application_formals(node: Node) -> InferApplicationFormals {
   match infer_application_callee_arrow(node: node) {
-    Absent => Absent
+    Absent => FormalsUnresolved
     Present { value: arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-        Absent => Absent
-        Present { value: domain } => infer_formals_from_domain(domain: domain)
+        Absent => FormalsUnresolved
+        Present { value: domain } =>
+          match infer_formals_from_domain(domain: domain) {
+            Absent => FormalsUnresolved
+            Present { value: formals } =>
+              match arrow_declared_parameter_order(arrow: arrow) {
+                ArrowParameterOrderAbsent =>
+                  FormalsOrderRefused { reason: application_parameter_order_absent_reason() }
+                ArrowParameterOrderMalformed =>
+                  FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+                ArrowParameterOrderDeclared { labels: labels } =>
+                  infer_formals_in_declared_order(formals: formals, labels: labels)
+              }
+          }
       }
   }
+}
+
+// Each declared label selects its one formal by identity. The order edge is a permutation of the
+// domain's binders (v2.std.node arrow_signature_order_conforms), so a label with no formal is
+// malformed and refuses rather than shortening the list.
+type InferDeclaredFormalsWalk {
+  ordered: List<InhabitanceFormal>
+  complete: Bool
+}
+
+fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: List<Symbol>) -> InferApplicationFormals {
+  let walk = fold(labels, init: InferDeclaredFormalsWalk { ordered: Empty, complete: true }, f: fn(acc, label) {
+    match infer_formal_named(formals: formals, label: label) {
+      Present { value: formal } =>
+        InferDeclaredFormalsWalk { ordered: list_snoc_item(xs: acc.ordered, item: formal), complete: acc.complete }
+      Absent => InferDeclaredFormalsWalk { ordered: acc.ordered, complete: false }
+    }
+  })
+  if walk.complete && (length(xs: walk.ordered) == length(xs: formals)) {
+    FormalsInDeclaredOrder { formals: walk.ordered }
+  } else {
+    FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+  }
+}
+
+fn infer_formal_named(formals: List<InhabitanceFormal>, label: Symbol) -> Optional<InhabitanceFormal> {
+  fold(formals, init: optional_absent(), f: fn(acc, f) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if f.parameter_identity == label { optional_present(value: f) } else { acc }
+    }
+  })
 }
 
 // The callee's declared type parameters; empty when the operator is not an Arrow or declares none.
@@ -1761,12 +1825,14 @@ fn infer_application_argument_inhabitance(
   entries: List<InferredFactsEntry>
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node) {
-    Absent =>
+    FormalsUnresolved =>
       infer_inhabitance_undecidable_accepted(
         application: node,
         reason: undecidable_formal_unresolved()
       )
-    Present { value: formals } =>
+    FormalsOrderRefused { reason: reason } =>
+      outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
+    FormalsInDeclaredOrder { formals: formals } =>
       let args = infer_transform_argument_targets(node: node)
       if length(xs: formals) != length(xs: args) {
         outcome_rejected(

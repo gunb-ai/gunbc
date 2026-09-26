@@ -349,16 +349,135 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
 // SHAPE -- any Named edge other than the body targets a well-formed binder Conj, and there is at most
 // one -- and v2.std.type_binder type_binder_labels_conform states that such an edge carries the marker.
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
-  let non_body = fold(children, init: 0, f: fn(acc, e) {
+  let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => if sym == ^arrow_body_edge { acc } else { acc + 1 }
+      Named { name: sym } =>
+        if (sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) { acc } else { acc + 1 }
     }
   })
-  (non_body <= 1) && fold(children, init: true, f: fn(acc, e) {
+  (binder_edges <= 1)
+  && (name_occurrences(name: ^arrow_signature_order_edge, children: children) <= 1)
+  && arrow_signature_order_conforms(children: children)
+  && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || type_binder_conj_conforms(t: e.target))
+      Named { name: sym } =>
+        acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) || type_binder_conj_conforms(t: e.target))
+    }
+  })
+}
+
+// THE DECLARED ORDER IS EXACTLY A PERMUTATION OF THE DOMAIN'S BINDERS. An Arrow built from a declared
+// signature carries one ^arrow_signature_order_edge (v2.compiler.body_lowering_fold
+// body_lower_signature_order_edge): a Transform whose positional children after the head are
+// childless Atoms, one per domain binder, each binder exactly once. The producer mints the list and
+// the domain from one fold (v2.std.anonymous_binder anonymous_binder_mint_parameter_list), so a
+// disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
+// extra, or a repeated label. An Arrow with no order edge is well formed; positional binding refuses
+// against it (arrow_declared_parameter_order), and never falls back to label order.
+fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
+  match named_edge_target_lookup(children: children, name: ^arrow_signature_order_edge) {
+    Absent => true
+    Ambiguous => false
+    Found { target: list } =>
+      match arrow_declared_parameter_order_of(list: list) {
+        OrderUnreadable => false
+        OrderLabels { labels: labels } =>
+          match arrow_domain_binder_labels(children: children) {
+            OrderUnreadable => false
+            OrderLabels { labels: binders } =>
+              (count(labels) == count(binders))
+              && fold(labels, init: true, f: fn(acc, l) {
+                acc && (symbol_occurrences(sym: l, xs: labels) == 1) && (symbol_occurrences(sym: l, xs: binders) == 1)
+              })
+          }
+      }
+  }
+}
+
+type ArrowParameterOrderRead
+  = OrderLabels { labels: List<Symbol> }
+  | OrderUnreadable
+
+fn symbol_occurrences(sym: Symbol, xs: List<Symbol>) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) { if x == sym { acc + 1 } else { acc } })
+}
+
+// The labels a signature-order list carries, in order: every edge positional, a head, and each
+// later target a childless Atom. The head's identity is the FreeMonoid introduction, which this
+// module cannot name without an import cycle (v2.std.compilers.body_lowering
+// list_introduction_elements_optional reads it); the wall checks the shape it can see and the
+// permutation.
+type ArrowParameterOrderStep {
+  index: Int
+  read: ArrowParameterOrderRead
+}
+
+fn arrow_declared_parameter_order_of(list: Node) -> ArrowParameterOrderRead {
+  match list.kind {
+    ComputationNode { behavior: Transform } =>
+      if !all_edges_positional(children: list.children) || (count(list.children) < 1) {
+        OrderUnreadable
+      } else {
+        fold(list.children, init: ArrowParameterOrderStep { index: 0, read: OrderLabels { labels: [] } }, f: fn(acc, e) {
+          ArrowParameterOrderStep {
+            index: acc.index + 1,
+            read: if acc.index == 0 { acc.read } else { arrow_parameter_order_step(read: acc.read, element: e.target) }
+          }
+        }).read
+      }
+    _ => OrderUnreadable
+  }
+}
+
+fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> ArrowParameterOrderRead {
+  match read {
+    OrderUnreadable => OrderUnreadable
+    OrderLabels { labels: ls } =>
+      match element.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          if count(element.children) == 0 { OrderLabels { labels: concat(ls, [sym]) } } else { OrderUnreadable }
+        _ => OrderUnreadable
+      }
+  }
+}
+
+// The domain's binder labels: the Arrow's FIRST positional child, which must be a Conj of Named edges.
+fn arrow_domain_binder_labels(children: List<Edge>) -> ArrowParameterOrderRead {
+  match arrow_first_positional_target(children: children) {
+    FirstPositionalFound { target: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          fold(domain.children, init: OrderLabels { labels: [] }, f: fn(acc, d) {
+            match acc {
+              OrderUnreadable => OrderUnreadable
+              OrderLabels { labels: ls } =>
+                match d.label {
+                  Named { name: sym } => OrderLabels { labels: concat(ls, [sym]) }
+                  Positional => OrderUnreadable
+                }
+            }
+          })
+        _ => OrderUnreadable
+      }
+    FirstPositionalAbsent => OrderUnreadable
+  }
+}
+
+type FirstPositionalTarget
+  = FirstPositionalFound { target: Node }
+  | FirstPositionalAbsent
+
+fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget {
+  fold(children, init: FirstPositionalAbsent, f: fn(acc, e) {
+    match acc {
+      FirstPositionalFound { target: _ } => acc
+      FirstPositionalAbsent =>
+        match e.label {
+          Positional => FirstPositionalFound { target: e.target }
+          Named { name: _ } => acc
+        }
     }
   })
 }
