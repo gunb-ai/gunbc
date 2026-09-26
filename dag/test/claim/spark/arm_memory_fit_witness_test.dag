@@ -103,6 +103,9 @@ import gunbc.spark.arm_memory_experiment_observed {
   arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
   arm_experiment_kvplan_v2_2026_09_26_loader_runbook,
   arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook,
+  arm_loader_trace_runs, arm_loader_trace_converged, arm_loader_trace_failed_legs,
+  arm_loader_trace_min_hundredths_gib, arm_loader_trace_bound,
+  arm_loader_trace_receipt, arm_loader_trace_receipt_admitted,
   ArmCheckpointTensorRow, ArmPlacementVocabSharded, ArmPlacementColumnSharded, ArmPlacementRowSharded,
   ArmPlacementExpertSplit, ArmPlacementReplicated,
   arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
@@ -2434,7 +2437,10 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
           })
         && all(subject.ranks, rb =>
           match rb.loader_transform {
-            ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "load-transient falsification run")
+            ComponentBoundCeiling { bytes: b, receipt: r } =>
+              byte_size_count(b: b) > 0
+                && string_contains(s: r as String, pattern: "page cache")
+                && string_contains(s: r as String, pattern: "OUTER bound")
             _ => false
           })
         && all(subject.ranks, rb =>
@@ -2489,27 +2495,28 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
   }
 }
 
-// THE CONJUNCTION RUNS AND NAMES EXACTLY WHAT REMAINS: 18 obligations -- the loader transient
-// and the fragmentation allowance open on all four ranks (8), the indeterminacy that survives
-// the exact projection (9: graph-capture is the heaviest phase -- the KV carve AND the
-// activation both hold resident there, so its summed upper passes BOTH walls at all four ranks,
-// 8 obligations; idle-serving, one rank lighter, settles at three ranks and fires only rank 3's
-// supply wall, 107.64 GiB against the 106.94 GiB conservative supply -- 1 obligation;
-// model-load and profiling now settle entirely), and the scalar deduction pair's conservation
-// (1) -- and NOTHING for the checkpoint, runtime-fixed, collective, activation, graph, KV or
-// deduction open terms: those are bounded, and the fold says so by staying silent about them.
-// THE MANDATORY DEMAND FITS: no refusal mints -- the verdict is Unestablished, not Refused,
-// with every named term's completing act in its own text. 37 -> 18: the projection settled 19
-// of the 28 indeterminacy obligations (the pre-landing analytic said 17; the miss taught that
-// KV is resident at graph-capture too -- the verdict rows are the authority, not the estimate).
+// THE CONJUNCTION RUNS AND NAMES EXACTLY WHAT REMAINS: 22 obligations -- the fragmentation
+// allowance alone still open, on all four ranks (4); the indeterminacy the landed evidence
+// carries (17: the loader-transient receipts closed the four OPEN loader obligations, and the
+// page-cache-inclusive bound they mint -- 111.8-114.0 GiB of unified-pool pressure, charged
+// whole to the load phases with the checkpoint double-count named -- does not decide against
+// the conservative supply at loader-transform or restart-overlap, 8; graph-capture, the
+// heaviest phase, still passes both walls at all four ranks, 8; idle-serving fires only rank
+// 3's supply wall, 107.64 GiB against 106.94 GiB, 1), and the scalar deduction pair's
+// conservation (1). NOTHING for the checkpoint, runtime-fixed, collective, activation, graph, KV
+// or the loader OPEN terms -- those are bounded, and the fold says so by staying silent about
+// them. THE MANDATORY DEMAND FITS: no refusal mints -- Unestablished, not Refused. 18 -> 22 is
+// the receipts' honest signature: four vague opens became eight precise pinches, each with its
+// completing act -- the loader pinch closes on the engine's byte-exact load accounting (or a
+// drop-caches rerun), the graph-capture and idle pinches on the CollectiveWorkspaceBound
+// measurement pricing NCCL alone inside the residue (runtime and collective uppers then
+// partition the residue once instead of double-charging it), and the conservation pinch on the
+// byte-exact pool producer with same-device deductions.
 test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
   match fx_launch_wall_verdict() {
     ArmMemoryFitUnestablished { obligations: os } =>
-      length(os) == 18
-        && any(os, o => string_contains(s: o as String, pattern: "rank 0 loader-transform has no defensible bound"))
-        && any(os, o => string_contains(s: o as String, pattern: "rank 1 loader-transform has no defensible bound"))
-        && any(os, o => string_contains(s: o as String, pattern: "rank 2 loader-transform has no defensible bound"))
-        && any(os, o => string_contains(s: o as String, pattern: "rank 3 loader-transform has no defensible bound"))
+      length(os) == 22
+        && !any(os, o => string_contains(s: o as String, pattern: "loader-transform has no defensible bound"))
         && any(os, o => string_contains(s: o as String, pattern: "rank 0 fragmentation-allowance has no defensible bound"))
         && any(os, o => string_contains(s: o as String, pattern: "rank 3 fragmentation-allowance has no defensible bound"))
         && any(os, o => string_contains(s: o as String, pattern: "does not decide"))
@@ -2517,6 +2524,8 @@ test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms
         && any(os, o => string_contains(s: o as String, pattern: "does not decide against the decided envelope"))
         && length(filter(os, o => string_contains(s: o as String, pattern: "phase graph-capture does not decide"))) == 8
         && length(filter(os, o => string_contains(s: o as String, pattern: "phase idle-serving does not decide"))) == 1
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase loader-transform does not decide"))) == 4
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase restart-overlap does not decide"))) == 4
         && any(os, o => string_contains(s: o as String, pattern: "rank 3 phase idle-serving does not decide: demand upper"))
         && !any(os, o => string_contains(s: o as String, pattern: "phase model-load does not decide"))
         && !any(os, o => string_contains(s: o as String, pattern: "phase profiling does not decide"))
@@ -2605,8 +2614,8 @@ test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
 // evidence, witness 27) beside the launch-wall verdict above -- the standing's open obligations
 // carry the arm prefix and NOTHING from the cache or prefill subproofs: two green subproofs
 // promote nothing they do not own, and the whole-arm verdict is exactly the launch wall's own
-// list, 18 obligations naming the loader transient, the fragmentation allowance, and the
-// graph-capture/idle-serving indeterminacy the exact projection leaves open.
+// list, 22 obligations naming the fragmentation allowance, the loader-receipt pinches, and
+// the graph-capture/idle-serving indeterminacy the landed evidence leaves open.
 test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> Bool {
   let prefill = prefill_transient_fit_verdict(
     shape: fx_prefill_shape(),
@@ -2626,12 +2635,14 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
     })
     && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: fx_launch_wall_verdict(), subject_length: token_count(count: 262144)) {
       ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, open_obligations: os } =>
-        length(os) == 18
+        length(os) == 22
           && !any(os, o => string_contains(s: o as String, pattern: "cache-capacity-fit:"))
           && !any(os, o => string_contains(s: o as String, pattern: "prefill-transient-fit:"))
           && all(os, o => string_contains(s: o as String, pattern: "arm-memory-fit:"))
-          && any(os, o => string_contains(s: o as String, pattern: "loader-transform has no defensible bound"))
+          && !any(os, o => string_contains(s: o as String, pattern: "loader-transform has no defensible bound"))
           && any(os, o => string_contains(s: o as String, pattern: "fragmentation-allowance has no defensible bound"))
+          && any(os, o => string_contains(s: o as String, pattern: "phase loader-transform does not decide"))
+          && any(os, o => string_contains(s: o as String, pattern: "phase restart-overlap does not decide"))
           && any(os, o => string_contains(s: o as String, pattern: "unified-pool conservation does not decide"))
     })
 }
@@ -2839,6 +2850,54 @@ test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool {
   }
 }
 
+
+
+// ── WITNESS 35: THE LOADER-TRANSIENT RECEIPTS, MINTED AND GATED ──────────────────────────────────
+//
+// THE BRACKET EXECUTED and the receipts mint: three converged launches, zero failed legs, the
+// peak-over-loads bound per rank at the conservative hundredths-floor spelling. The four OPEN
+// loader obligations close (the term now carries a defensible bound) -- and the bound is the
+// pinch the interpretation law anticipated: page-cache-inclusive pressure against the
+// conservative supply. THE RED beside it: the same reading claimed as engine-pinned demand is
+// refused at the typed gate, and the rank record would carry an OPEN term if a receipt ever
+// passed without the mechanism named.
+
+test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool {
+  arm_loader_trace_runs == 3
+    && arm_loader_trace_converged == 3
+    && arm_loader_trace_failed_legs == 0
+    && length(arm_loader_trace_min_hundredths_gib) == 4
+    && byte_size_count(b: arm_loader_trace_bound(rank: 0)) == 122395830517
+    && byte_size_count(b: arm_loader_trace_bound(rank: 1)) == 121923384115
+    && byte_size_count(b: arm_loader_trace_bound(rank: 2)) == 121869697024
+    && byte_size_count(b: arm_loader_trace_bound(rank: 3)) == 120076548177
+    && (match fx_launch_wall_subject_mint() {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb => match rb.loader_transform { ComponentBoundOpen { obligation: _ } => false _ => true })
+    })
+}
+
+test fn w_the_loader_receipt_names_the_page_cache_mechanism() -> Bool {
+  let receipt = arm_loader_trace_receipt(rank: 3, host: "srv11" as NonEmptyStr)
+  arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: receipt)
+    && string_contains(s: receipt as String, pattern: "page cache")
+    && string_contains(s: receipt as String, pattern: "NOT engine-pinned device demand")
+    && string_contains(s: receipt as String, pattern: "zero failed legs")
+}
+
+// THE RED: A TRACE READING CLAIMED AS ENGINE-PINNED DEMAND IS REFUSED. The gate is the typed
+// wall: the same numbers, receipted as "engine-pinned device demand" with no page-cache naming,
+// fail admission -- the model has no spelling for a soft observation bounding a hard quantity
+// unnamed. And a receipt with the mechanism but no subject identity fails the provenance wall.
+test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool {
+  let pinned_claim = "loader peak 111.83 GiB engine-pinned device demand, measured on glm-5.3-flash-native-fp8 x gunbc-glm53-nope-derived-gb10 x tp4" as NonEmptyStr
+  let no_identity = "loader peak 111.83 GiB, OUTER bound, page cache included, peak over 3 runs" as NonEmptyStr
+  !arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: pinned_claim)
+    && !arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: no_identity)
+    && !arm_loader_trace_receipt_admitted(bytes: byte_size(count: 0), receipt: arm_loader_trace_receipt(rank: 0, host: "srv9" as NonEmptyStr))
+}
+
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
   w_the_production_tuple_is_unestablished_with_named_obligations()
     && w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank()
@@ -2909,4 +2968,7 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_the_vision_tower_loads_cited_from_the_config()
     && w_the_loader_transient_plan_is_admitted_and_named()
     && w_the_fragmentation_churn_plan_is_admitted_and_named()
+    && w_the_loader_receipts_mint_from_the_executed_bracket()
+    && w_the_loader_receipt_names_the_page_cache_mechanism()
+    && w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused()
 }

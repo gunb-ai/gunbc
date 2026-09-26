@@ -38,7 +38,7 @@ import gunbc.spark.arm_memory_fit {
   MemoryPlacementRankResident, MemoryPlacementAllocatorCarve,
   MemoryLifetime, MemoryLifetimeProcess, MemoryLifetimeLaunch, MemoryLifetimePhase,
   ArmMemoryComponent, ArmCheckpointResidency, ArmActivationWorkspace, ArmGraphCapture, ArmKvCache,
-  ArmComponentBound, ComponentBoundOpen, ComponentBoundExact, ComponentBoundInterval,
+  ArmComponentBound, ComponentBoundOpen, ComponentBoundExact, ComponentBoundInterval, ComponentBoundCeiling,
   component_bound_interval, ArmComponentBoundReady, ArmComponentBoundRefused,
   ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseGraphCapture, ArmPhaseIdleServing,
   ArmWetStanding, ArmWetObservedInterval, ArmWetObservationOnly, ArmWetCompositeObservation,
@@ -1064,13 +1064,6 @@ fn arm_experiment_kvplan_v2_2026_09_26_kv_carry() -> ArmComponentBound {
 
 // ── TERMS LEFT OPEN, WITH THEIR COMPLETING ACTS NAMED ────────────────────────────────────────────
 
-fn arm_experiment_kvplan_v2_2026_09_26_loader_obligation() -> NonEmptyStr {
-  join([
-    "the loader's padding, repacking and temporary copies on top of the resident checkpoint at this subject are unmeasured: the composite readings at this launch are from the profiling phase, DOWNSTREAM of the load, so they cannot price the load transient; a bounded load-transient falsification run at this exact subject (the 262144x6 launch wall, peak-over-loads protocol, a per-rank memory trace bracketing the load) is the completing wet act that mints a CheckpointRankResidencyBound receipt for this term. Subject: ",
-    arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
-  ], "") as NonEmptyStr
-}
-
 fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr {
   join([
     "allocator fragmentation under churn admits no conservative construction in this corpus and no churn-protocol measurement exists at this subject: a bounded churn run at the launch wall (six 262144 seats driven through allocation churn, peak-over-runs) or a conservative fragmentation construction from the allocator's block accounting is the completing act. Subject: ",
@@ -1084,7 +1077,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r: ArmExperimentEnvelope
   ArmRankDemand {
     rank: r.rank,
     checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected(),
-    loader_transform: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_loader_obligation() },
+    loader_transform: arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: r.rank, host: r.host),
     runtime_fixed: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r),
     collective_workspace: arm_experiment_kvplan_v2_2026_09_26_collective_carry(r),
     activation_workspace: arm_experiment_kvplan_v2_2026_09_26_activation_carry(r),
@@ -1540,4 +1533,98 @@ data arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook: ArmExperimentRun
   pass_bound: "the window's peak unreclaimable allocator gap (allocated minus reserved headroom beyond the engine's block accounting), minted as an AllocatorFragmentationBound receipt, keeps the peak-serving mandatory demand within supply at all four ranks when priced into the launch wall" as NonEmptyStr,
   fail_bound: "a peak unreclaimable gap that pushes the peak-serving demand lower past a rank's conservative supply refuses the six-seat point: the service intent must re-price at 262144 before normal serving" as NonEmptyStr,
   receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr,
+}
+
+
+// ── THE LOADER-TRANSIENT RECEIPTS, MINTED FROM THE EXECUTED BRACKET ──────────────────────────────
+//
+// THE RUN EXECUTED (parent, 2026-09-26): three consecutive bounded experiment launches at this
+// subject (image derived-kvplan-v2-20260926, the per-rank readback bracket), ALL converged,
+// zero failed legs -- the falsification pass/fail (any rank OOM / the launch failing its own
+// accounting) recorded NONE. Per-rank host-pool traces (MemAvailable kB at 2-second cadence,
+// whole load-to-ready window) stand in /tmp/loader-transient-run{1,2,3}.jsonl; the minima below
+// are read from them at the reporter's precision.
+//
+// THE INTERPRETATION LAW, stated once and binding on every receipt minted from these traces:
+// MemAvailable is the HOST view of the GB10's unified pool -- it counts RECLAIMABLE page-cache
+// pressure from reading the 305.8 GiB checkpoint alongside engine-pinned demand, so a receipt
+// minted from it is an OUTER bound on load-phase host pressure (page cache counted as consumed),
+// NEVER engine-pinned device demand alone. The page-cache component is named as the mechanism
+// to refine later IF the bound is ever the pinch -- and at the conservative supply spelling it
+// is (see below), so the refinement (the engine's own byte-exact load accounting, or a
+// drop-caches rerun) is carried as the completing act, named.
+data arm_loader_trace_runs: Nat = 3
+
+data arm_loader_trace_cadence_seconds: Nat = 2
+
+data arm_loader_trace_converged: Nat = 3
+
+data arm_loader_trace_failed_legs: Nat = 0
+
+// THE MINIMA, per host, at the hundredths floor of the raw kB readings (peak-over-loads takes
+// the worst run per host): srv9 7.70 / srv10 8.14 / srv11 7.86 / srv12 8.19 GiB. Host-to-rank
+// mapping is the bundle's (TP0 srv9, TP1 srv10, TP2 srv12, TP3 srv11).
+data arm_loader_trace_min_hundredths_gib: List<Nat> = [770, 814, 819, 786]
+
+// THE BOUND per rank: the host's pool reading (hundredths, from the boot rows) minus the worst
+// observed MemAvailable floor -- the load-phase peak pressure of the unified pool, page cache
+// included, at the conservative floor spelling.
+fn arm_loader_trace_pool_hundredths(rank: Nat) -> Nat {
+  match rank {
+    3 => 11969
+    _ => 12169
+  }
+}
+
+fn arm_loader_trace_host_floor_hundredths(rank: Nat) -> Nat {
+  match rank {
+    0 => 770
+    1 => 814
+    2 => 819
+    _ => 786
+  }
+}
+
+fn arm_loader_trace_bound(rank: Nat) -> ByteSize {
+  arm_experiment_gib_hundredths_floor(hundredths: arm_loader_trace_pool_hundredths(rank: rank) - arm_loader_trace_host_floor_hundredths(rank: rank))
+}
+
+// THE ADMISSION GATE, typed: a trace reading enters the model ONLY as the named outer bound --
+// the receipt text must name the page-cache mechanism, the conservative direction, the
+// peak-over-loads protocol, and this subject's identity, or the gate is false and the term
+// stays open. A trace reading claimed as ENGINE-PINNED DEVICE DEMAND is refused here, which is
+// the RED the doctrine's weaker-evidence rule requires: an observation whose soft component is
+// not named cannot bound a harder quantity.
+fn arm_loader_trace_receipt_admitted(bytes: ByteSize, receipt: NonEmptyStr) -> Bool {
+  byte_size_count(b: bytes) > 0
+    && string_contains(s: receipt as String, pattern: "page cache")
+    && string_contains(s: receipt as String, pattern: "OUTER bound")
+    && string_contains(s: receipt as String, pattern: "peak over ")
+    && string_contains(s: receipt as String, pattern: serving_checkpoint_wire(c: Glm53NativeFp8) as String)
+    && string_contains(s: receipt as String, pattern: serving_topology_wire(t: FourSparkTp4) as String)
+}
+
+fn arm_loader_trace_receipt(rank: Nat, host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "loader-transient host-pool trace, 2026-09-26 bracket: three consecutive bounded experiment launches at this subject (image derived-kvplan-v2-20260926, per-rank readback bracket), all converged, zero failed legs; MemAvailable kB at ", to_string(arm_loader_trace_cadence_seconds),
+    "-second cadence across the load-to-ready window, peak over ", to_string(arm_loader_trace_runs), " runs on ", host as String,
+    ": worst MemAvailable floor ", to_string(arm_loader_trace_host_floor_hundredths(rank: rank)), " hundredths GiB against the host pool ", to_string(arm_loader_trace_pool_hundredths(rank: rank)), " hundredths. INTERPRETATION LAW: the trace is the HOST view of the unified pool and INCLUDES reclaimable page-cache pressure from reading the 305.8 GiB checkpoint -- this receipt is an OUTER bound on load-phase host pressure (page cache counted as consumed), NOT engine-pinned device demand; the page-cache component is the named mechanism to refine (engine byte-exact load accounting or a drop-caches rerun) if this bound is ever the pinch. Subject: ",
+    arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+  ], "") as NonEmptyStr
+}
+
+// THE MINT: the loader-transform term carries the gated ceiling -- the gate passes (the receipt
+// names the mechanism), so the four open loader obligations CLOSE and the term bounds the
+// load-phase pressure whole, checkpoint double-count NAMED as the conservative direction: the
+// ceiling bounds the phase total including the resident checkpoint, and the phase fold also
+// charges checkpoint residency -- the over-count is the price of an unsplittable trace, stated
+// here rather than silently absorbed.
+fn arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: Nat, host: NonEmptyStr) -> ArmComponentBound {
+  let receipt = arm_loader_trace_receipt(rank: rank, host: host)
+  let bytes = arm_loader_trace_bound(rank: rank)
+  if arm_loader_trace_receipt_admitted(bytes: bytes, receipt: receipt) {
+    ComponentBoundCeiling { bytes: bytes, receipt: receipt }
+  } else {
+    ComponentBoundOpen { obligation: "the loader-transient trace reading was not admitted: a host-pool trace enters the model only as the named outer bound (page-cache mechanism, conservative direction, peak-over-loads protocol, subject identity) -- an unnamed reading cannot bound the loader term, and the term stays open until a receipt passes the gate" as NonEmptyStr }
+  }
 }
