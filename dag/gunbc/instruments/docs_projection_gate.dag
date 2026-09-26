@@ -20,6 +20,7 @@ import gunbc.generated_artifact {
   MicrovmShakedownYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
+  NativeFrontierWorkflowYamlArtifact,
   GitignoreArtifact,
   GitattributesArtifact, CargoConfigArtifact,
   RoadmapArtifact,
@@ -88,6 +89,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     MicrovmShakedownYamlArtifact => Absent
     HealWorkflowYamlArtifact => Absent
     HealPublisherWorkflowYamlArtifact => Absent
+    NativeFrontierWorkflowYamlArtifact => Absent
     GitignoreArtifact => Absent
     GitattributesArtifact => Absent
     CargoConfigArtifact => Absent

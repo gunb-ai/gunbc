@@ -158,7 +158,7 @@ import v2.std.compilers.target_model {
   derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, for_all, is_empty, length, list_append, list_map, list_snoc_item }
+import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_append, list_map, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -2044,11 +2044,10 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // general type fields do not (see dag_grammar_io_field_decl_expr).
 // Service-level `config` follows v1 parse_service_config_block: `config` `{` (field `:` expr)* `}`
 // over v1's closed field set. The v2-inline operation form is v1-admitted and not yet in this
-// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
-// no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
-// (body_lowering_fold body_lower_wrapper_retained_shell, counted by body_lowering_retention_census)
-// and normalized_tree admit_normalized_tree refuses it before resolve. The refusal moved from parse
-// to normalize; it did not disappear.
+// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl lowers
+// at declaration grade in v2.compiler.body_lowering_fold body_lower_service_decl, which reads the
+// interface and sets realization (transport, config, exit, response, mock_response) and unmodeled
+// interface members aside, typed and located.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
@@ -2082,12 +2081,14 @@ fn dag_grammar_status_expr_entry_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_io_block_expr() -> GrammarExpr {
+// `input` and `output` are TWO productions, not one io_block over a choice of the two words. A
+// literal terminal is captured by its token class alone (v2.std.grammar StampLexeme keeps no
+// lexeme), so a single io_block's parse tree could not say which word it matched, and the
+// declaration-grade lowering (v2.compiler.body_lowering_fold body_lower_service_decl) needs exactly
+// that fact to build an operation's domain and codomain. The production identity carries it.
+fn dag_grammar_io_block_expr(keyword: String) -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "input")),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "output"))
-    ),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: keyword)),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
       right: dag_grammar_sequence(
@@ -2173,16 +2174,19 @@ fn dag_grammar_mock_response_block_expr() -> GrammarExpr {
 
 fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_io_block),
+    left: dag_grammar_nonterminal(production: ^dag_production_input_block),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
+      left: dag_grammar_nonterminal(production: ^dag_production_output_block),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_transport),
+        left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+          left: dag_grammar_nonterminal(production: ^dag_production_transport),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_response_block),
-            right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+            left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+            right: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_response_block),
+              right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+            )
           )
         )
       )
@@ -2584,10 +2588,15 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_transport_expr(),
     emitted: ^dag_surface_transport
   )
-  let io_block = dag_grammar_production(
-    name: ^dag_production_io_block,
-    expression: dag_grammar_io_block_expr(),
-    emitted: ^dag_surface_io_block
+  let input_block = dag_grammar_production(
+    name: ^dag_production_input_block,
+    expression: dag_grammar_io_block_expr(keyword: "input"),
+    emitted: ^dag_surface_input_block
+  )
+  let output_block = dag_grammar_production(
+    name: ^dag_production_output_block,
+    expression: dag_grammar_io_block_expr(keyword: "output"),
+    emitted: ^dag_surface_output_block
   )
   let op_modifier = dag_grammar_production(
     name: ^dag_production_op_modifier,
@@ -2823,7 +2832,8 @@ fn dag_grammar_root() -> GrammarRoot {
       operation,
       operation_body_entry,
       transport,
-      io_block,
+      input_block,
+      output_block,
       op_modifier,
       exit_block,
       response_block,
@@ -2872,29 +2882,31 @@ fn dag_grammar_root() -> GrammarRoot {
   }
 }
 
-// THE DECLARED GRAMMAR-PRODUCTION ROSTER, AS A NODE. Every production the grammar authority
-// declares, projected to its emitted surface atom and gathered under one Conj root keyed by the
-// production's name. This is the single authority an inference membership rule consults to ground
-// grammar-projection identity atoms (e.g. dag_surface_module) by lookup -- the same frame as the
-// declared-inhabitants roster: the roster root is the evidence, and it is never structurally equal
-// to any member atom, so the self-evidence wall holds by construction. The roster derives from
-// dag_grammar_root(), so a production added to the grammar joins the roster by construction.
+// THE DECLARED TYPE OF A GRAMMAR-PRODUCTION EMITTED ATOM. Each production's emitted node is the
+// surface atom a production emits into the parse tree, so its declared type is "a dag surface
+// production atom", named here by the grammar authority that emits it. An inference rule reads this
+// for a member; a production added to dag_grammar_root() is a member by construction.
 
-fn dag_grammar_production_roster_edge(production: GrammarProduction) -> Edge {
-  Edge {
-    label: Named { name: production.name },
-    target: production.emitted
-  }
+fn dag_grammar_surface_production_type_node() -> Node {
+  dag_grammar_atom(id: ^dag_grammar_surface_production_type_atom)
 }
 
-fn dag_grammar_productions_roster_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_map(
+fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool {
+  production.emitted == n
+}
+
+// The namespace graft's module-body marker is a surface identity atom of the same kind: it
+// occupies the grammar_production_identity_node_projection slot a production's emitted atom
+// occupies, so it shares that declared type.
+fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
+  if (n == namespace_graft_module_body_marker_node())
+    || any(
       xs: dag_grammar_root().productions,
-      f: dag_grammar_production_roster_edge
-    ),
-    occurrence_id: OccurrenceSynthetic
+      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
+    ) {
+    optional_present(value: dag_grammar_surface_production_type_node())
+  } else {
+    optional_absent()
   }
 }
 
@@ -3258,11 +3270,7 @@ fn dag_declared_inhabitants_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node()),
-      dag_named_edge(
-        name: ^dag_inhabitant_field_module_body,
-        target: namespace_graft_module_body_marker_node()
-      )
+      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -6074,10 +6082,10 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
-// The one constructor of the marker node: emitted by namespace_graft_build_body_conj
-// and declared in dag_declared_inhabitants_core, so infer grounds it as a node the
-// dag language authority declares (infer_node_declared_in_language_inhabitants) and
-// a marked body stays a fully evidenced product.
+// The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
+// It is a surface identity atom, not a type denotation, so infer grounds it with the
+// grammar authority's surface-production type (dag_grammar_production_member_declared_type)
+// and a marked body stays a fully evidenced product.
 fn namespace_graft_module_body_marker_node() -> Node {
   dag_inhabitant_atom(id: namespace_graft_module_body_identity)
 }

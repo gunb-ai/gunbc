@@ -24,7 +24,15 @@ fn transform_body_emitted() -> Rc<ENode> {
         Rc::new(ENodeKind::ComputationNode {
             behavior: EBehavior::Transform,
         }),
-        Rc::new(vec![]),
+        Rc::new(vec![Rc::new(EEdge {
+            label: Rc::new(EEdgeLabel::Positional),
+            target: emitted_node_synthetic(
+                Rc::new(ENodeKind::ComputationNode {
+                    behavior: EBehavior::Value,
+                }),
+                Rc::new(vec![]),
+            ),
+        })]),
     )
 }
 
@@ -33,7 +41,15 @@ fn transform_body_seed() -> Rc<SNode> {
         Rc::new(SNodeKind::ComputationNode {
             behavior: SBehavior::Transform,
         }),
-        Rc::new(vec![]),
+        Rc::new(vec![Rc::new(SEdge {
+            label: Rc::new(SEdgeLabel::Positional),
+            target: seed_node_synthetic(
+                Rc::new(SNodeKind::ComputationNode {
+                    behavior: SBehavior::Value,
+                }),
+                Rc::new(vec![]),
+            ),
+        })]),
     )
 }
 
@@ -77,6 +93,10 @@ fn arrow_signature_seed() -> Rc<SNode> {
     )
 }
 
+// The Transform fixture carries one positional edge because v2.std.node behavior_edges_conform
+// requires `count(children) >= 1` for Transform. It carried none while this row linked a hand
+// v2_std_node shim laxer than that authority; against the emitted module the edgeless fixture is
+// (correctly) refused, so the shim had been keeping a malformed input green.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
     let mut all_pass = true;
@@ -95,25 +115,30 @@ fn main() {
     println!("dispatch_non_behavior eq_reject={reject_ok}");
     all_pass &= reject_ok;
 
-    let e_produce = emitted::produce_arrow_with_structured_body(
-        arrow_signature_emitted(),
-        if inject_fault {
-            atom_body_emitted()
-        } else {
-            transform_body_emitted()
-        },
-    );
-    let s_produce = seed::produce_arrow_with_structured_body(
-        arrow_signature_seed(),
-        transform_body_seed(),
-    );
-    let produce_ok = outcome_is_accepted_emitted(&e_produce)
-        == outcome_is_accepted_seed(&s_produce)
-        && (!inject_fault || !outcome_is_accepted_emitted(&e_produce));
-    println!(
-        "produce_arrow inject_fault={inject_fault} parity={produce_ok}"
-    );
-    all_pass &= produce_ok;
+    // THE FAULT RUN INVERTS EXACTLY ONE PROPOSITION: the planted claim is that emitted
+    // produce_arrow ACCEPTS an Atom body. A correct producer refuses it, so the injected run
+    // fails (the harness reads that as the fault detected); an accept-everything producer makes
+    // the injected run PASS, and cssl_fault_run_detected_the_planted_fault refuses. An earlier
+    // revision required `parity && !accepted` there, which no implementation could satisfy.
+    let produce_ok = if inject_fault {
+        let e_atom = emitted::produce_arrow_with_structured_body(
+            arrow_signature_emitted(),
+            atom_body_emitted(),
+        );
+        outcome_is_accepted_emitted(&e_atom)
+    } else {
+        let e_produce = emitted::produce_arrow_with_structured_body(
+            arrow_signature_emitted(),
+            transform_body_emitted(),
+        );
+        let s_produce = seed::produce_arrow_with_structured_body(
+            arrow_signature_seed(),
+            transform_body_seed(),
+        );
+        outcome_is_accepted_emitted(&e_produce) && outcome_is_accepted_seed(&s_produce)
+    };
+    println!("produce_arrow inject_fault={inject_fault} ok={produce_ok}");
+    all_pass = if inject_fault { produce_ok } else { all_pass && produce_ok };
 
     if all_pass {
         println!("SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS");
