@@ -3,9 +3,10 @@ module gunbc.machine_intake_mtcollins1_boot_milestone
 import std.types { Bool, Int, List, String }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { HardwareThreadCount, gibibyte, hardware_thread_count, hardware_thread_count_value }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.machine_intake_host_capture_envelope { HostCaptureStage, HostCaptureWorkloadShape, host_capture_census_stages }
 
 // THE MACHINE'S FIGURE AND THE BOOT'S MILESTONE ARE TWO FACTS, NOT ONE ROW. mtcollins1_nproc stays
 // 160: that is what the machine IS, read on it with both sockets populated (the census capture
@@ -27,19 +28,50 @@ fn mtcollins1_threads_per_socket() -> HardwareThreadCount {
 // no CPU on any other socket. The count alone is not the milestone -- 80 CPUs split 40/40 across
 // two sockets is a different machine state (both sockets up, each half-enumerated) that nproc
 // cannot tell apart from socket 0 whole.
+//
+// THE MEMORY WORKLOAD IS PART OF THE SAME PROFILE, because the memory a boot can exercise is a fact
+// of the same machine state the topology describes: one socket populated is 16 GiB installed, both
+// sockets is the whole machine. A footprint chosen anywhere else would be a second authority for
+// "which state are we qualifying", and the first one that disagreed wrote 64 GiB into a 16 GiB boot
+// (run 35808203121, `No space left on device` on chunk0).
 type MtCollins1BootTopologyExpectation {
   socket: Nat
   threads: HardwareThreadCount
+  workload: HostCaptureWorkloadShape
+}
+
+// THE WHOLE-MACHINE SHAPE, KEPT UNCHANGED: four 16 GiB chunks, the census's original footprint. It is
+// what the expectation rebinds to when gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent
+// retires -- not before, since no both-sockets expectation is admissible until socket 1 enumerates.
+data mtcollins1_dual_socket_workload: HostCaptureWorkloadShape = HostCaptureWorkloadShape {
+  chunk_stems: ["chunk0", "chunk1", "chunk2", "chunk3"],
+  chunk_size: gibibyte(16),
+}
+
+// THE ONE-SOCKET SHAPE: a BOUNDED EDAC CHECK, NOT FULL-MEMORY OR SOAK QUALIFICATION. Two 2 GiB chunks
+// (4 GiB exactly) against 16 GiB installed: enough traffic through socket 0's controllers for the
+// edac-before/edac-after CE/UE comparison and the two-pass hash to mean something, small enough to
+// sit well under the live environment's /dev/shm (tmpfs, half of RAM by default) and MemAvailable.
+// It is declared, not derived from what the host reports free: the census PREFLIGHTS both
+// capacities and REFUSES if this does not fit, so a boot never silently exercises less than this.
+data mtcollins1_one_socket_workload: HostCaptureWorkloadShape = HostCaptureWorkloadShape {
+  chunk_stems: ["chunk0", "chunk1"],
+  chunk_size: gibibyte(2),
 }
 
 data mtcollins1_one_socket_milestone: MtCollins1BootTopologyExpectation = MtCollins1BootTopologyExpectation {
   socket: 0,
   threads: mtcollins1_threads_per_socket(),
+  workload: mtcollins1_one_socket_workload,
 }
 
 // THE EXPECTATION THE BOOT QUALIFICATION CHECKS TODAY. One binding, so the day socket 1 enumerates
 // the retirement is this row (and the drop), not a hunt through the verdict.
 data mtcollins1_boot_topology_expectation: MtCollins1BootTopologyExpectation = mtcollins1_one_socket_milestone
+
+// THE CENSUS ROSTER THE MILESTONE BOOTS: the envelope's roster applied to the expectation's workload,
+// so the image the boot runs and the verdict that judges it read one shape.
+data mtcollins1_census_stages: List<HostCaptureStage> = host_capture_census_stages(workload: mtcollins1_boot_topology_expectation.workload)
 
 // ── reading the placement ──────────────────────────────────────────────────────────────────────
 //
