@@ -5,7 +5,7 @@ import std.string_type { String }
 import std.nat { Nat }
 import std.measure { Mebibyte, mebibyte }
 import std.algebra { trim }
-import v2.std.algebra { filter, skip }
+import v2.std.algebra { skip }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -119,13 +119,21 @@ fn compute_app_row(line: String) -> NvidiaComputeApp? {
 
 // ONE PASS PER LINE AND ONE FLATTEN, not an accumulator re-copied per row (DESIGN section 6).
 fn parse_compute_apps(text: String) -> NvidiaComputeAppsRead {
-  let rows = map(filter(split(s: text, delimiter: "\n"), l => trim(s: l) != ""), l =>
+  let lines = flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+  let rows = map(lines, l =>
     match compute_app_row(line: l) {
       Absent => ComputeAppsUnparsed { line: l }
       Present { value: a } => ComputeAppsParsed { apps: [a] }
     })
-  match first(filter(rows, r => match r { ComputeAppsUnparsed { line: _ } => true  ComputeAppsParsed { apps: _ } => false })) {
-    Present { value: bad } => bad
-    Absent => ComputeAppsParsed { apps: flat_map(rows, r => match r { ComputeAppsParsed { apps: xs } => xs  ComputeAppsUnparsed { line: _ } => [] as List<NvidiaComputeApp> }) }
+  let unparsed = flat_map(rows, r => match r {
+    ComputeAppsUnparsed { line: l } => [l]
+    ComputeAppsParsed { apps: _ } => [] as List<String>
+  })
+  match first(unparsed) {
+    Present { value: bad } => ComputeAppsUnparsed { line: bad }
+    Absent => ComputeAppsParsed { apps: flat_map(rows, r => match r {
+      ComputeAppsParsed { apps: xs } => xs
+      ComputeAppsUnparsed { line: _ } => [] as List<NvidiaComputeApp>
+    }) }
   }
 }
