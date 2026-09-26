@@ -375,8 +375,8 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
 }
 
 // THE DECLARED ORDER IS EXACTLY A PERMUTATION OF THE DOMAIN'S BINDERS. An Arrow built from a declared
-// signature carries one ^arrow_signature_order_edge (v2.compiler.body_lowering_fold
-// body_lower_signature_order_edge): a Transform whose positional children after the head are
+// signature carries one ^arrow_signature_order_edge (v2.std.compilers.body_lowering
+// signature_order_edge): a Transform whose positional children after the head are
 // childless Atoms, one per domain binder, each binder exactly once. The producer mints the list and
 // the domain from one fold (v2.std.anonymous_binder anonymous_binder_mint_parameter_list), so a
 // disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
