@@ -1,6 +1,6 @@
 module gunbc.spark.systemd_execution_cell
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, Port }
 import std.nat { Nat, nat_range_inclusive }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { shell_quote }
@@ -289,5 +289,217 @@ fn systemd_profile_readback_script(member: SystemdExecutionMember, profile_ancho
     "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if grep -q \"", profile_anchor, "\" ", member.log_path as String, " 2>/dev/null; then echo profile-line-seen; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-profile; exit 1; fi; sleep 5; done\n",
     "grep \"", profile_anchor, "\" ", member.log_path as String, " | tail -1\n",
     "systemctl is-active ", unit, "\n",
+  ], "")
+}
+
+// ── THE FRAGMENTATION-CHURN WORKLOAD SCRIPTS, ONE RENDERER PER LEG ───────────────────────────────
+//
+// THE EXECUTION CELL HAS NO WORKLOAD PHASE: the contract's eight phases end at activation and its
+// readback observes launch evidence, not serving behaviour. The fragmentation-churn experiment the
+// bracket plans when a plan targets ArmFragmentationAllowance (gunbc.spark.native_experiment_apply
+// spark_experiment_workload_phase) is the one consumer that must DRIVE the engine between the
+// profile readbacks and the deterministic stop, so its three scripts render here beside the profile
+// readback, as this substrate's answer for "run a bounded workload on the head host and read the
+// allocator while it runs". They travel over the same privileged leg as every other script the
+// realization renders (sudo sh -s on the host), so their substrate assumptions are only what every
+// Group B host already carries: curl, awk, nvidia-smi, and the engine's OpenAI-compatible endpoint
+// on the loopback (--network host publishes 0.0.0.0:serve_port).
+//
+// THE THREE LEGS, AND WHY THREE. (a) the cold full-window prefill seats mint the pool state the
+// churn questions; (b) the churn driver issues bounded mixed-length requests for the plan's window;
+// (c) the allocator sampler reads the gap instruments at the runbook cadence while the churn runs
+// beside it and folds the peak-over-window the receipt mints from. The transport runs legs
+// sequentially, so "sample while churning" is spelled (b) launching the bounded driver detached and
+// (c) sampling in the foreground over the churn window plus the driver's own request-tail backstop,
+// reaping the driver through its exit file — never two transport legs that would have to overlap.
+
+// THE WORKLOAD STATE, on the head host's own disk: one directory per member, named from the
+// container the unit supervises. The legs are separate privileged sessions, so the prefill's
+// calibrated per-block token yield, the driver's pid and exit file, the warm reference reading and
+// the sampler's series travel as files in this directory. It is deliberately left in place after
+// the run: it is the raw material the receipt layer folds, and the stop contract removes the
+// container, never host evidence.
+fn systemd_workload_state_dir(member: SystemdExecutionMember) -> String {
+  join(["/var/tmp/", member.container_name as String, "-workload"], "")
+}
+
+// THE PROMPT MATERIAL, and why it defeats the prefix cache this profile turns ON. Every generated
+// block carries its coordinates in a fixed-width marker — (seat, block) for the prefills, (client,
+// request, block) for the churn — so no two blocks anywhere in the workload are byte-identical: two
+// seats share nothing from the first token, and no churn request can fold against an earlier one.
+// The body is a fixed sixteen-word line so the per-block token yield is stable across the run, and
+// the marker varies inside the block rather than at its edge, so block-boundary token merges land
+// on carried counts, not on the requested size. The engine's own usage.prompt_tokens is the
+// authority for what a seat cost — the prefill_batch_sweep idiom, which carried the returned count
+// rather than the requested one.
+data systemd_workload_block_body: NonEmptyStr = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa quebec" as NonEmptyStr
+
+// (a) THE COLD FULL-WINDOW PREFILL SEATS, one concurrent request per seat of the plan's workload.
+// A single calibration request derives the per-block token yield against THIS engine and tokenizer —
+// no tokenizer table is modeled or trusted, and the yield the run itself measures is the only
+// spelling that cannot drift from the served model. Each seat prompt is then generated at
+// blocks = seat window / yield, so every seat lands within one block of the full window, and all
+// seats fire concurrently with max_tokens 1 (the seats are prefill work; generation is beside the
+// point). A seat whose request fails, or whose carried prompt_tokens shows the engine refused the
+// window, fails the leg under set -e with the seat's stderr preserved in the state directory and
+// the seat line already printed, so the refusal is located by seat. The leg closes by recording the
+// warm process_mib reference the sampler folds the gap against — taken with every seat complete and
+// no request in flight, it is the experiment's accounted baseline.
+fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_tokens: Nat) -> String {
+  let state = systemd_workload_state_dir(member: member)
+  let body = systemd_workload_block_body as String
+  join([
+    "set -e\n",
+    "state=", state, "\n",
+    "install -d -m 755 \"$state\"\n",
+    "base=http://127.0.0.1:", to_string(serve_port), "\n",
+    "served_alias=", served_alias as String, "\n",
+    "body=\"", body, "\"\n",
+    "curl -fsS -m 10 \"$base/v1/models\" >/dev/null\n",
+    "awk -v alias=\"$served_alias\" -v body=\"$body\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"s00b00001 %s s00b00002 %s s00b00003 %s s00b00004 %s\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\", alias, body, body, body, body }' > \"$state/probe.json\"\n",
+    "probe_resp=$(curl -fsS -m 120 \"$base/v1/completions\" -H 'Content-Type: application/json' -d @\"$state/probe.json\")\n",
+    "probe_tokens=$(printf '%s' \"$probe_resp\" | grep -o '\"prompt_tokens\":[0-9][0-9]*' | head -1 | cut -d: -f2)\n",
+    "case \"$probe_tokens\" in ''|*[!0-9]*) echo \"prefill-calibration-unreadable: no usage.prompt_tokens in the probe response\"; exit 20 ;; esac\n",
+    "yield=$(( probe_tokens / 4 ))\n",
+    "if [ \"$yield\" -lt 8 ]; then echo \"prefill-calibration-implausible: per-block yield $yield below 8 tokens\"; exit 21; fi\n",
+    "printf '%s' \"$yield\" > \"$state/block_tokens\"\n",
+    "blocks=$(( ", to_string(seat_tokens), " / yield ))\n",
+    "seat_pids=\"\"\n",
+    "seat=1\n",
+    "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
+    "  awk -v alias=\"$served_alias\" -v body=\"$body\" -v seat=\"$seat\" -v n=\"$blocks\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; b = 1; while (b <= n) { printf \"s%02db%05d %s \", seat, b, body; b = b + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/seat_$seat.json\"\n",
+    "  ( curl -fsS -m 1800 \"$base/v1/completions\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" > \"$state/seat_$seat.resp\" 2> \"$state/seat_$seat.err\"; echo $? > \"$state/seat_$seat.rc\" ) &\n",
+    "  seat_pids=\"$seat_pids $!\"\n",
+    "  seat=$(( seat + 1 ))\ndone\n",
+    "for pid in $seat_pids; do wait \"$pid\"; done\n",
+    "seat=1\n",
+    "failed=0\n",
+    "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
+    "  rc=$(cat \"$state/seat_$seat.rc\")\n",
+    "  if [ \"$rc\" != \"0\" ]; then echo \"seat $seat prefill-failed rc=$rc\"; failed=1; seat=$(( seat + 1 )); continue; fi\n",
+    "  seat_tokens_realized=$(grep -o '\"prompt_tokens\":[0-9][0-9]*' \"$state/seat_$seat.resp\" | head -1 | cut -d: -f2)\n",
+    "  case \"$seat_tokens_realized\" in ''|*[!0-9]*) echo \"seat $seat prompt-tokens-unreadable\"; failed=1 ;; *) echo \"seat $seat prompt_tokens=$seat_tokens_realized\" ;; esac\n",
+    "  seat=$(( seat + 1 ))\ndone\n",
+    "if [ \"$failed\" != \"0\" ]; then exit 22; fi\n",
+    "warm=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits | awk -F', ' '{ v = $2 + 0; if (v > m) m = v } END { printf \"%d\", m }')\n",
+    "if [ \"$warm\" -le 0 ]; then echo \"warm-reference-unreadable: nvidia-smi reports no compute process after the prefills\"; exit 23; fi\n",
+    "printf '%s' \"$warm\" > \"$state/warm_mib\"\n",
+    "echo \"prefill-seats-complete seats=", to_string(seat_count), " window_tokens=", to_string(seat_tokens), " yield=$yield blocks=$blocks warm_mib=$warm\"\n",
+  ], "")
+}
+
+// (b-i) THE CHURN DRIVER ITSELF, rendered as a standalone script the launcher installs and starts
+// detached. Bounded BOTH ways, never unbounded: the loop stops at the window's end timestamp and at
+// the per-client request count, whichever it hits first. Lengths are mixed inside the plan's
+// 8K-to-full-window band by drawing block counts from awk's rand() — POSIX sh carries no $RANDOM,
+// and awk's rand() is the seeded portable draw the fleet's shell already carries. Every request is
+// max_tokens 1 (the churn allocates and frees prefill windows; it does not decode) and carries its
+// (client, request, block) coordinates, so no request can be served from the prefix cache another
+// request populated. The driver writes its exit file as its LAST act — "done fail=0" only when
+// every client finished inside both bounds with every request answered — and the sampler reaps it
+// through that file, so a driver that is killed without writing refuses located instead of reading
+// as a quiet success.
+fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmptyStr, state_dir: String, body: String, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
+  join([
+    "# churn driver, rendered by gunbc.spark.systemd_execution_cell; bounded by design\n",
+    "state=", state_dir, "\n",
+    "base=http://127.0.0.1:", to_string(serve_port), "\n",
+    "served_alias=", served_alias as String, "\n",
+    "body=\"", body, "\"\n",
+    "yield=$(cat \"$state/block_tokens\")\n",
+    "case \"$yield\" in ''|*[!0-9]*) echo \"churn-driver: block_tokens missing or unreadable in $state\"; exit 30 ;; esac\n",
+    "end=$(( $(date +%s) + ", to_string(window_seconds), " ))\n",
+    "low_blocks=$(( ", to_string(low_tokens), " / yield ))\n",
+    "span_blocks=$(( (", to_string(high_tokens), " - ", to_string(low_tokens), ") / yield ))\n",
+    "client_pids=\"\"\n",
+    "client=1\n",
+    "while [ \"$client\" -le ", to_string(clients), " ]; do\n",
+    "  (\n",
+    "    n=0\n",
+    "    while [ \"$(date +%s)\" -lt \"$end\" ] && [ \"$n\" -lt ", to_string(requests_per_client), " ]; do\n",
+    "      n=$(( n + 1 ))\n",
+    "      blocks=$(( low_blocks + $(awk -v span=\"$span_blocks\" 'BEGIN { srand(); printf \"%d\", int(rand() * (span + 1)) }') ))\n",
+    "      awk -v alias=\"$served_alias\" -v body=\"$body\" -v client=\"$client\" -v req=\"$n\" -v nb=\"$blocks\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; b = 1; while (b <= nb) { printf \"c%02dr%05db%05d %s \", client, req, b, body; b = b + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/churn_\"$client\"_\"$n\".json\"\n",
+    "      curl -fsS -m ", to_string(request_timeout_seconds), " \"$base/v1/completions\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" -o /dev/null || exit 31\n",
+    "    done\n",
+    "  ) &\n",
+    "  client_pids=\"$client_pids $!\"\n",
+    "  client=$(( client + 1 ))\ndone\n",
+    "driver_failed=0\n",
+    "for pid in $client_pids; do wait \"$pid\" || driver_failed=1; done\n",
+    "printf 'done fail=%s\n' \"$driver_failed\" > \"$state/churn_driver.exit\"\n",
+    "exit \"$driver_failed\"\n",
+  ], "")
+}
+
+// (b-ii) THE CHURN LAUNCHER LEG. Writes the rendered driver into the state directory, starts it
+// detached with nohup so it survives this leg's session ending, records its pid for the record, and
+// exits — the leg's contract is "the bounded driver is running with the rendered bounds", and the
+// sampler leg reaps it through the exit file. Detached is not unbounded: the driver renders the
+// same window end and request count the launcher banner names, so even a sampler that never runs
+// leaves a driver that stops by construction, and the worst case the receipt can show is a bounded
+// driver whose window expired, never an unbounded process.
+fn systemd_workload_churn_launch_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
+  let state = systemd_workload_state_dir(member: member)
+  let body = systemd_workload_block_body as String
+  join([
+    "set -e\n",
+    "state=", state, "\n",
+    "install -d -m 755 \"$state\"\n",
+    "cat > \"$state/churn_driver.sh\" <<'GUNBC_CHURN_DRIVER_EOF'\n",
+    systemd_workload_churn_driver_script(serve_port: serve_port, served_alias: served_alias, state_dir: state, body: body, clients: clients, low_tokens: low_tokens, high_tokens: high_tokens, requests_per_client: requests_per_client, window_seconds: window_seconds, request_timeout_seconds: request_timeout_seconds),
+    "GUNBC_CHURN_DRIVER_EOF\n",
+    "nohup sh \"$state/churn_driver.sh\" > \"$state/churn_driver.log\" 2>&1 &\n",
+    "printf '%s' $! > \"$state/churn_driver.pid\"\n",
+    "echo \"churn-driver-launched pid=$(cat \"$state/churn_driver.pid\") window_seconds=", to_string(window_seconds), " clients=", to_string(clients), " requests_per_client=", to_string(requests_per_client), " band_tokens=", to_string(low_tokens), "-", to_string(high_tokens), "\"\n",
+  ], "")
+}
+
+// (c) THE ALLOCATOR SAMPLER LEG. Reads the gap instruments at the runbook cadence while the churn
+// driver runs beside it, then folds the peak-over-window the receipt mints from. WHAT A SAMPLE
+// READS, named because the v2 KV-allocation-plan emission is startup-only: the ALLOCATED side is
+// nvidia-smi's per-process used_memory for the largest compute process — the pool carve is fixed
+// after startup and the weights are resident, so process growth across the window beyond the warm
+// reference is the allocator holding bytes the engine cannot account for; the ACCOUNTING side is
+// vllm:kv_cache_usage_perc from the loopback /metrics, carried per sample as the engine's own block
+// accounting (extdeps.vllm.metrics names what that gauge does and refuses — it counts every block
+// that is not FREE, cached prefixes included, so it is the accounting series, never the gap
+// itself). Liveness is the front door /v1/models, the same read gunbc.serving.engine_progress
+// names. The sampler stops when the driver's exit file appears — covering the window plus any
+// in-flight request tail, bounded by window + request timeout + one cadence — and each tick also
+// checks the driver's recorded pid, so a driver that died without writing its exit file (a launch
+// skew, a missing calibration) refuses located within one cadence instead of riding out the
+// backstop. Then it refuses located on a driver that reported failure or outlived the backstop, and
+// only then prints the peak line: warm reference, peak, gap, sample count, window.
+fn systemd_workload_sampling_script(member: SystemdExecutionMember, serve_port: Port, window_seconds: Nat, cadence_seconds: Nat, request_timeout_seconds: Nat) -> String {
+  let state = systemd_workload_state_dir(member: member)
+  join([
+    "set -e\n",
+    "state=", state, "\n",
+    "base=http://127.0.0.1:", to_string(serve_port), "\n",
+    ": > \"$state/samples.tsv\"\n",
+    "warm=$(cat \"$state/warm_mib\" 2>/dev/null || true)\n",
+    "case \"$warm\" in ''|*[!0-9]*) echo \"allocator-sampling: warm_mib reference missing; run the prefill leg first\"; exit 40 ;; esac\n",
+    "backstop=$(( $(date +%s) + ", to_string(window_seconds), " + ", to_string(request_timeout_seconds), " + ", to_string(cadence_seconds), " ))\n",
+    "peak=0\n",
+    "ticks=0\n",
+    "while true; do\n",
+    "  if [ -f \"$state/churn_driver.exit\" ]; then break; fi\n",
+    "  if [ \"$(date +%s)\" -ge \"$backstop\" ]; then echo \"churn-driver-tail-backstop-reached\"; exit 41; fi\n",
+    "  driver_pid=$(cat \"$state/churn_driver.pid\" 2>/dev/null || true)\n",
+    "  if [ -n \"$driver_pid\" ] && ! kill -0 \"$driver_pid\" 2>/dev/null; then echo \"churn-driver-died-without-exit pid=$driver_pid\"; exit 45; fi\n",
+    "  if ! curl -fsS -m 10 \"$base/v1/models\" >/dev/null 2>&1; then echo \"endpoint-unreachable-at-tick ticks=$ticks\"; exit 42; fi\n",
+    "  used=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits | awk -F', ' '{ v = $2 + 0; if (v > m) m = v } END { printf \"%d\", m }')\n",
+    "  case \"$used\" in ''|*[!0-9]*|0) echo \"engine-process-unreadable-at-tick ticks=$ticks\"; exit 43 ;; esac\n",
+    "  usage=$(curl -fsS -m 10 \"$base/metrics\" | grep -m1 '^vllm:kv_cache_usage_perc' | awk '{ print $NF }' || true)\n",
+    "  if [ -z \"$usage\" ]; then usage=unread; fi\n",
+    "  printf 'allocator-sample t=%s process_mib=%s kv_cache_usage_perc=%s\n' \"$(date +%s)\" \"$used\" \"$usage\" >> \"$state/samples.tsv\"\n",
+    "  if [ \"$used\" -gt \"$peak\" ]; then peak=$used; fi\n",
+    "  ticks=$(( ticks + 1 ))\n",
+    "  sleep ", to_string(cadence_seconds), "\n",
+    "done\n",
+    "if ! grep -q '^done fail=0$' \"$state/churn_driver.exit\"; then echo \"churn-driver-failed: $(cat \"$state/churn_driver.exit\")\"; exit 44; fi\n",
+    "gap=$(( peak - warm ))\n",
+    "echo \"allocator-gap-peak warm_mib=$warm peak_mib=$peak gap_mib=$gap samples=$ticks window_seconds=", to_string(window_seconds), " cadence_seconds=", to_string(cadence_seconds), "\"\n",
   ], "")
 }
