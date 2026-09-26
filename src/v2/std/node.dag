@@ -434,13 +434,40 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
 type ArrowBodyForm
   = DirectAtomBody
   | RecordConstructBody
+  | DeclarationReferenceBody
   | ComputationBody { behavior: Behavior }
   | UnsupportedArrowBody
+
+// A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. v2.compiler.resolve mints a reference
+// as a one-edge Conj over its qualified-name spine (v2.std.qualified_name declaration_reference_node),
+// and a body that is exactly a reference -- `data d: D = A`, which lowers to a nullary Arrow whose
+// body is the initializer -- reached this classifier as RecordConstructBody, whose field gate
+// refuses a first edge that does not target an Atom. So every module holding such a body failed
+// well_formed and eval refused all of its tests (the native lane canary, 2026-09-26). This module
+// states the SHAPE: exactly one Named edge, targeting a Conj. It is disjoint from a construct,
+// whose first edge is its tag and targets an Atom. The edge's LABEL is not this module's fact --
+// the marker is interned by v2.std.compilers.lexing, which imports this module -- so
+// v2.std.qualified_name declaration_reference_body_labels_conform states that a body of this
+// shape carries the marker, beside well_formed at each gate that admits a resolved tree.
+fn declaration_reference_body_shape(target: Node) -> Bool {
+  match target.kind {
+    TypeNode { connective: Conj } =>
+      (count(target.children) == 1)
+        && fold(target.children, init: true, f: fn(acc, e) {
+          acc && is_named(e: e) && (match e.target.kind {
+            TypeNode { connective: Conj } => true
+            _ => false
+          })
+        })
+    _ => false
+  }
+}
 
 fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
-    TypeNode { connective: Conj } => RecordConstructBody
+    TypeNode { connective: Conj } =>
+      if declaration_reference_body_shape(target: target) { DeclarationReferenceBody } else { RecordConstructBody }
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     _ => UnsupportedArrowBody
   }
@@ -451,6 +478,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
     UnsupportedArrowBody => false
     DirectAtomBody => true
     RecordConstructBody => false
+    DeclarationReferenceBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
     ComputationBody { behavior: Branch } => true
@@ -489,6 +517,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match classify_arrow_body_form(target: target) {
     UnsupportedArrowBody => false
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+    DeclarationReferenceBody => true
     DirectAtomBody => true
     ComputationBody { behavior: _ } => true
   }

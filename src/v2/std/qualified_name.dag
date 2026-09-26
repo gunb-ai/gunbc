@@ -28,7 +28,7 @@ import v2.std.optional {
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq }
+import v2.std.node { Arrow, Atom, Conj, DeclarationReferenceBody, Edge, EdgeLabel, Found, Named, Node, NodeFold, Positional, Symbol, TypeNode, arrow_body_target_lookup, classify_arrow_body_form, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -335,6 +335,34 @@ fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceId
     ],
     occurrence_id: occurrence_id
   )
+}
+
+// THE LABEL HALF OF v2.std.node DeclarationReferenceBody. That module classifies an Arrow body of the
+// reference SHAPE (one Named edge over a Conj) without being able to intern the marker, so this is
+// where the shape is held to the marker: an Arrow whose body has the shape but carries any other
+// label -- an authored one-field record whose value is itself a record -- is not a reference and
+// is refused here rather than admitted under the reference's form. Every gate that admits a
+// resolved tree by v2.std.node well_formed checks this beside it, node by node, so a refusal
+// names the first node that fails either half.
+fn declaration_reference_body_label_conforms(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: n.children) {
+        Found { target: body } =>
+          match classify_arrow_body_form(target: body) {
+            DeclarationReferenceBody =>
+              fold(body.children, init: true, f: fn(acc, e) {
+                acc && (match e.label {
+                  Named { name: label } => symbol_eq(a: label, b: declaration_reference_marker())
+                  Positional => false
+                })
+              })
+            _ => true
+          }
+        _ => true
+      }
+    _ => true
+  }
 }
 
 // A DECLARATION REFERENCE READS AS ITS PATH OR AS NOTHING, keyed on the marker and never on the
