@@ -1,6 +1,14 @@
 module gunbc.roadmap_page
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
+import gunbc.roadmap.roadmap_event_log {
+  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
+  IssueComment, roadmap_issue_comments, issue_comment_anchor,
+}
+import gunbc.principal_projection {
+  PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
+  fabric_workflow_principal, fabric_display_alias,
+}
 import gunbc.roadmap_component { standing_chip_class }
 import std.types { list_length }
 import gunbc.harness.harness_throughput {
@@ -1762,6 +1770,115 @@ fn issue_event_insert_sorted(sorted: List<RoadmapEventEnvelope>, env: RoadmapEve
   }
 }
 
+
+// THE DESCRIPTION, pinned above the comment stream (owner mandate 2026-09-25,
+// docs/plans/issue-page-architecture.md): the issue's authored content leads the page's narrative.
+// THE NAMED GAP, not papered over: the roadmap authority rows carry one content string today (the
+// headline the header also wears), so the description renders THAT content until the authority
+// grows a separate body field — never a fabricated empty section.
+fn issue_description_node(view: WorkRowView) -> Fragment {
+  el_class("div", "issue-description", [
+    el_class("h2", "issue-description-heading", [ txt("Description") ]),
+    el_class("div", "issue-description-body", inline_md_nodes(text: view.headline)),
+  ])
+}
+
+// THE COMMENT STREAM (A5 surface): one row per folded comment in chronological (causal) order —
+// avatar-backed (the author principal through the display projection, initials under the
+// never-blocks law, the workflow badge for fabric), the stable deep link /issue/<id>#comment-N on
+// the ordinal anchor AND the row id (the location bar lands on the comment), the created and
+// edited timestamps, the markdown body, and the reply marker naming the comment answered. A
+// DELETED comment renders its tombstone with the ordinal RETAINED — the deep link stays addressed.
+fn issue_comment_row_node(node_id: String, comments: List<IssueComment>, c: IssueComment) -> Fragment {
+  let display = event_principal_display(p: c.author)
+  el_attrs("div", [
+    attr(name: "class", value: join(["issue-comment", if c.deleted { " issue-comment-deleted" } else { "" }], "") ),
+    attr(name: "id", value: issue_comment_anchor(ordinal: c.ordinal) ),
+  ], [
+    issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: c.author)),
+    el_class("div", "issue-comment-main", concat(
+      [ issue_comment_head_node(node_id: node_id, comments: comments, c: c, display: display) ],
+      [ el_class("div", "issue-comment-body",
+          if c.deleted { [ txt("comment deleted") ] } else { inline_md_nodes(text: c.body) }) ])),
+  ])
+}
+
+fn issue_comment_head_node(node_id: String, comments: List<IssueComment>, c: IssueComment, display: EventPrincipalDisplay) -> Fragment {
+  el_class("div", "issue-comment-head", concat(
+    [ el_class("span", "issue-comment-author", [ txt(display.name) ]) ],
+    concat(
+      [ el_attrs("a", [
+          attr(name: "class", value: "issue-comment-ref" ),
+          attr(name: "href", value: join(["/issue/", node_id, "#", issue_comment_anchor(ordinal: c.ordinal)], "") ),
+        ], [ txt(join(["#comment-", to_string(value: c.ordinal)], "")) ]) ],
+      concat(
+        [ el_class("span", "issue-comment-at", [ txt(comment_time_text(c: c)) ]) ],
+        concat(
+          [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ],
+          [ el_class("span", "issue-comment-reply", [ txt(issue_comment_reply_text(comments: comments, c: c)) ]) ])))))
+}
+
+// THE REPLY MARKER: a reply names the comment it answers by the parent's ordinal — looked up in
+// the folded stream, so the marker reads "reply to #comment-2", never a raw id. A root comment
+// renders an empty marker (the :empty rule hides it).
+fn issue_comment_reply_text(comments: List<IssueComment>, c: IssueComment) -> String {
+  match c.parent_comment {
+    Absent => ""
+    Present { value: parent_id } =>
+      match (filter(comments, pc => (pc.comment as String) == (parent_id as String))).first() {
+        Present { value: parent } => join(["reply to #comment-", to_string(value: parent.ordinal)], "")
+        Absent => join(["reply to ", parent_id as String], "")
+      }
+  }
+}
+
+// THE TIMESTAMP LINE: created, plus the edited marker when an edit event stamped it — both empty
+// for an unprobed clock, honestly (absence is not a timestamp).
+fn comment_time_text(c: IssueComment) -> String {
+  join([
+    c.created_at,
+    if c.edited_at == "" { "" } else { join([" · edited ", c.edited_at], "") },
+  ], "")
+}
+
+fn issue_comments_stream_node(node_id: String, comments: List<IssueComment>) -> Fragment {
+  el_class("div", "issue-comments", [
+    el_class("h2", "issue-comments-heading", [ txt(join(["Comments · ", to_string(value: count(comments))], "")) ]),
+    el_class("div", "issue-comment-stream", map(comments, c => issue_comment_row_node(node_id: node_id, comments: comments, c: c))),
+  ])
+}
+
+// THE COMPOSER, the durable-comment write surface: a NATIVE FORM (method + action + enctype
+// text/plain — honest-before-JS, the body rides LAST since markdown freely carries newlines), the
+// key field for retry-idempotence (empty until the client mints one; the server still dedupes the
+// keyless retry by author + body + head), the csrf field the write law consults
+// (gunbc.auth.request_authentication.human_write_admission), and the expected_revision pin
+// matching the assign form. The submit wears no .issue-action class — the client's bodyless action
+// bind must not race the native submit.
+fn issue_comment_composer_node(node_id: String, expected_revision: String) -> Fragment {
+  el_attrs("form", [
+    attr(name: "class", value: "issue-comment-form" ),
+    attr(name: "method", value: "post" ),
+    attr(name: "enctype", value: "text/plain" ),
+    attr(name: "action", value: join(["/issue/", node_id, "/comment"], "") ),
+  ], [
+    el_attrs("input", [ attr(name: "name", value: "key" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: "" ) ], []),
+    el_attrs("input", [ attr(name: "name", value: "csrf" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: "" ) ], []),
+    el_attrs("input", [ attr(name: "name", value: "expected_revision" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: expected_revision ) ], []),
+    el_attrs("textarea", [
+      attr(name: "name", value: "body" ),
+      attr(name: "class", value: "issue-comment-input" ),
+      attr(name: "placeholder", value: "comment — markdown, @mentions" ),
+    ], []),
+    el_attrs("button", [
+      attr(name: "class", value: "issue-comment-submit issue-action-text" ),
+      attr(name: "type", value: "submit" ),
+      attr(name: "data-action-route", value: "comment" ),
+      attr(name: "data-node", value: node_id ),
+    ], [ txt("Comment") ]),
+  ])
+}
+
 fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
@@ -1851,7 +1968,10 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
     ]),
     el_class("div", "issue-panels", [
       el_class("section", "panel-issue", concat(
-        [ el_class("div", "issue-fields", concat(
+        [ issue_description_node(view: view),
+          issue_comments_stream_node(node_id: view.node_id, comments: roadmap_issue_comments(envs: events)),
+          issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
+          el_class("div", "issue-fields", concat(
             [ issue_field_text_row(label: "status", value: issue_explanation(view: view)) ],
             concat(
               [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view, attempts: attempts)) ],

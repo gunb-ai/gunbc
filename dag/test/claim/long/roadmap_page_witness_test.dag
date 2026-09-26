@@ -2067,6 +2067,19 @@ fn fx_event_envelope(id: String, at: String, kind: gunbc.roadmap.roadmap_event_l
   }
 }
 
+fn fx_event_envelope_chained(id: String, parent: String, at: String, kind: gunbc.roadmap.roadmap_event_log.RoadmapEventKind) -> gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+  gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+    id: id as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
+    event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
+      node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
+      author: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_human_ref() },
+      parent: Present { value: parent as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
+      kind: kind,
+      recorded_at: at,
+    },
+  }
+}
+
 test fn witness_issue_work_tab_renders_event_history_newest_first() -> Bool {
   let events = [
     fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_human_principal(), return_to: fixture_human_principal() }),
@@ -2117,5 +2130,65 @@ test fn witness_restore_group_b_serving_renders_on_the_issue_table() -> Bool {
         && string_contains(s: table, pattern: "Restore Group B serving")
         && occurrence_count(s: table, pattern: "data-node=\"restore-group-b-serving\" tabindex=\"0\"") == 1
         && string_contains(s: table, pattern: "data-search=\"Restore Group B serving restore-group-b-serving @fleet\"")
+  }
+}
+
+// THE COMMENT STREAM (A5 surface, owner mandate 2026-09-25): the description pins above a
+// chronological stream — one row per comment, avatar-backed (author principal → display
+// projection with initials fallback), the ordinal deep link on the row id AND the href, created
+// and edited timestamps, the markdown body, the reply marker naming the comment answered, and the
+// deleted tombstone with its ordinal RETAINED (the deep link stays addressed). The fixture: one
+// root comment edited once, one reply, one deleted.
+fn fx_comment_stream_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope> {
+  let c1 = fx_event_envelope(id: "cmt-1", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.CommentCreated { comment: "k1" as NonEmptyStr, body: "first **words**" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none })
+  let e1 = fx_event_envelope_chained(id: "cmt-1e", parent: "cmt-1", at: "2026-09-24T01:30:00Z", kind: gunbc.roadmap.roadmap_event_log.CommentEdited { comment: "k1" as NonEmptyStr, body: "first **words** (edited)" as NonEmptyStr })
+  let c2 = fx_event_envelope_chained(id: "cmt-2", parent: "cmt-1e", at: "2026-09-24T02:00:00Z", kind: gunbc.roadmap.roadmap_event_log.CommentCreated { comment: "k2" as NonEmptyStr, body: "a reply" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: Present { value: "k1" as NonEmptyStr } })
+  let c3 = fx_event_envelope_chained(id: "cmt-3", parent: "cmt-2", at: "2026-09-24T03:00:00Z", kind: gunbc.roadmap.roadmap_event_log.CommentCreated { comment: "k3" as NonEmptyStr, body: "gone" as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none })
+  let d3 = fx_event_envelope_chained(id: "cmt-3d", parent: "cmt-3", at: "2026-09-24T03:30:00Z", kind: gunbc.roadmap.roadmap_event_log.CommentDeleted { comment: "k3" as NonEmptyStr })
+  [c1, e1, c2, c3, d3]
+}
+
+test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_and_deep_links() -> Bool {
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: fx_comment_stream_events(),
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "")) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<div class=\"issue-description\">") == 1
+        && string_contains(s: h, pattern: "<div class=\"issue-description-body\">Specimen issue</div>")
+        && string_contains(s: h, pattern: "<h2 class=\"issue-comments-heading\">Comments · 3</h2>")
+        && occurrence_count(s: h, pattern: "id=\"comment-") == 3
+        && string_contains(s: h, pattern: "<div class=\"issue-comment\" id=\"comment-1\">")
+        && string_contains(s: h, pattern: "href=\"/issue/issue-detail-specimen#comment-1\">#comment-1</a>")
+        && string_contains(s: h, pattern: "href=\"/issue/issue-detail-specimen#comment-3\">#comment-3</a>")
+        && string_contains(s: h, pattern: "2026-09-24T01:00:00Z · edited 2026-09-24T01:30:00Z")
+        && string_contains(s: h, pattern: "first <strong>words</strong> (edited)")
+        && string_contains(s: h, pattern: "reply to #comment-1")
+        && occurrence_count(s: h, pattern: "class=\"issue-comment issue-comment-deleted\"") == 1
+        && string_contains(s: h, pattern: "<div class=\"issue-comment-body\">comment deleted</div>")
+        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 6
+  }
+}
+
+// THE COMPOSER: a native text/plain POST to the comment route — key, csrf, and expected_revision
+// ride as hidden fields, the body LAST (markdown freely carries newlines), the submit wears no
+// .issue-action class (the client's bodyless bind must not race the native submit).
+test fn witness_issue_comment_composer_posts_text_plain_with_key_csrf_and_body_last() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<form class=\"issue-comment-form\" method=\"post\" enctype=\"text/plain\" action=\"/issue/issue-detail-specimen/comment\">") == 1
+        && occurrence_count(s: h, pattern: "name=\"key\" type=\"hidden\"") == 1
+        && occurrence_count(s: h, pattern: "name=\"csrf\" type=\"hidden\"") == 1
+        && occurrence_count(s: h, pattern: "name=\"expected_revision\" type=\"hidden\"") == 2
+        && string_contains(s: h, pattern: "<textarea name=\"body\" class=\"issue-comment-input\" placeholder=\"comment — markdown, @mentions\"></textarea>")
+        && occurrence_count(s: h, pattern: "class=\"issue-comment-submit issue-action-text\" type=\"submit\"") == 1
+        && occurrence_count(s: h, pattern: "issue-action\" type=\"button\"") == 0
   }
 }

@@ -1255,6 +1255,93 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
     ] },
+    StaticRule { selector: ClassSelector { name: "issue-description" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-description-heading" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comments" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comments-heading" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-stream" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_0)),
+      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-deleted" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-main" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+      decl(prop: MinWidth, value: "0"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-head" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-author" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-ref" }, decls: [
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: TextDecoration, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-at" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-detail" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-reply" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-reply:empty" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-body" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-form" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-comment-input" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_4)),
+      decl(prop: MinHeight, value: scale_var(t: space_24)),
+    ] },
     StaticRule { selector: ClassSelector { name: "issue-not-found" }, decls: [
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
