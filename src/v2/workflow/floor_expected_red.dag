@@ -1125,30 +1125,21 @@ fn floor_expected_red_chunk_loaded_carrier_body_receipt() -> List<String> {
   Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Empty {} }
 }
 
-// A FUNCTION LITERAL IN VALUE POSITION DOES NOT YET LOWER: gunbc#12210's frontier, found red on
-// unmodified main by the adhoc-9d86ad93-96c sweep (srv1, neat-boar-16, 289eb51b3a). A fn literal as a
-// data-record field refuses as body_lowering_reason_wrapper_retained_emitted at its
-// dag_surface_fn_body (its body is lowered only under a fn declaration), and a fn literal as a call
-// argument refuses as body_lowering_reason_call_argument_unread at dag_surface_fn_literal. Neither
-// is repaired here because #12210 owns the one producer for that shape; a second local producer
-// would be the fork. The arrow-lambda sibling of the first row and its in-fn-body control stay green.
-// OWNER: gunbc#12210. DISSOLVE-ON: both rows PASSING, which is #12210 landing its fn-literal lowering.
-fn floor_expected_red_chunk_fn_literal_value_lowering() -> List<String> {
-  Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds", tail: Cons { head: "v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness.wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds", tail: Empty {} } }
+// THE FOLD SEAM LOOP DROPS ITS COLLECTION AND INIT OPERANDS. Enrolled for gunbc#12210's fn-literal
+// lowering (adhoc-9d86ad93-96c sweep, srv1, neat-boar-16, 289eb51b3a); #12210 retired its data-record
+// sibling. The row then refused at resolve (resolve_reason_unbound_symbol at `fold`) because a
+// POSITIONAL fold step -- `fold(x, 0, fn(acc, _) { acc })` -- never lowered, leaving `fold` an
+// ordinary call. MQ-1 reads the step by the position std.algebra collection_fold_shape declares, so
+// it now lowers exactly as the named form does, and both forms refuse at the SAME earlier point:
+// normalize's reference conservation, conservation_reason_dropped_reference, because
+// v2.compiler.fold_lowering fold_call_seam_loop builds Loop(body, bound, carrier) and carries neither
+// the iterated collection nor init. OWNER: MQ-5 (gentle-koi-724 lane).
+// TRIGGER: the fold seam Loop carries collection and init, conserved. DISSOLVE-ON: the row PASSING.
+fn floor_expected_red_chunk_fold_seam_loop_drops_operands() -> List<String> {
+  Cons { head: "v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness.wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds", tail: Empty {} }
 }
-
-// A LAMBDA ARGUMENT DOES NOT YET LOWER: the named frontier of gunbc#12198. Both rows are red on main
-// and on #12198's head (srv1, neat-boar-16, 8fc9f27377): a lambda argument refuses its module as
-// body_lowering_reason_call_argument_unread, and carrying its shell under value_carried_unlowered
-// normalizes the module but leaves the parameter unscoped at resolve. The claim module's comment is
-// the mechanism. OWNER: the body-lowering modeling pass (adhoc-1b3dbcdb-f9f), whose lambda lowering
-// in argument position is the capability that retires both. DISSOLVE-ON: both rows PASSING.
-fn floor_expected_red_chunk_lambda_argument_lowering() -> List<String> {
-  Cons { head: "v2.test.claim.namespace_xl0.value_position_whole_read.a_lambda_argument_whose_body_uses_its_parameter_resolves", tail: Cons { head: "v2.test.claim.namespace_xl0.value_position_whole_read.an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom", tail: Empty {} } }
-}
-
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_lambda_argument_lowering(), tail: Cons { head: floor_expected_red_chunk_fn_literal_value_lowering(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_fold_seam_loop_drops_operands(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } }  }
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
