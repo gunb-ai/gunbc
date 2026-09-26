@@ -10,7 +10,7 @@ import std.content_hash {
   content_hash_of_value,
   serialize_content_hash,
 }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 import extdeps.languages.json.emit {
   serialize_json,
   json_object,

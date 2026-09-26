@@ -17,7 +17,7 @@ import v2.std.compilers.target_model {
   ProducedSignatureFixed,
   TargetModel
 }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.std.collection { List, Map, map_insert }
 import v2.std.node { Symbol }
 import v2.std.text { String }

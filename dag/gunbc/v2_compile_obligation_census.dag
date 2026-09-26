@@ -781,7 +781,7 @@ data determinism_non_primitive_fold_obligation: V2CompileObligation = V2CompileO
 // home field says so rather than citing a declaration that would have to be invented to be cited.
 //
 // MEASURED, AND IT DIVERGES BOTH WAYS AT ONCE, which is what makes it a class rather than a bug.
-// v2.std.algebra list_append is O(n) in the authority and O(n^2) in the seed-emitted Rust
+// std.algebra list_append is O(n) in the authority and O(n^2) in the seed-emitted Rust
 // (fold_list_right with a clone and a Vec insert at position 0 per element); list_snoc_item is O(n)
 // in the authority, because it is defined via list_append, and O(1) amortized in the emitted Rust,
 // because the seed intercepts it to a push. Both directions defeat the lens for the same structural
@@ -802,7 +802,7 @@ data realization_cost_fidelity_obligation: V2CompileObligation = V2CompileObliga
     why_it_is_not_the_home: "cost_fidelity_of is the JOIN and it is now authored: given a modeled CostBound and a realized CostBound it decides preservation, divergence, and the two kinds of ignorance. What it is not is the OBSERVER. Nothing in the corpus reads a cost bound off an emitted realization, so the join has no realized operand to be given, and a comparison authority nobody can feed is not the home of an obligation about what realizations do. The home is wherever a target realization is SELECTED, which is where both operands exist at once" as NonEmptyStr
   },
   claimed_rung: OutsideTheLadder,
-  discriminating_red: "a declaration whose authority declares one cost shape and whose emitted realization has another — v2.std.algebra list_append, O(n) declared and O(n^2) emitted, is the measured specimen — which some consumer must refuse" as NonEmptyStr,
+  discriminating_red: "a declaration whose authority declares one cost shape and whose emitted realization has another — std.algebra list_append, O(n) declared and O(n^2) emitted, is the measured specimen — which some consumer must refuse" as NonEmptyStr,
   positive_control: "a declaration whose emitted realization matches its declared shape, which must be accepted; and the second specimen, list_snoc_item, whose realization is FASTER than its authority, must also be reported rather than silently passed, or the check is a one-sided ratchet rather than a fidelity comparison" as NonEmptyStr,
   witnesses: [],
   ceiling: StructurallyGuaranteed,

@@ -1,0 +1,135 @@
+module test.claim.spark.v41_engram_file_backed_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.integer { UInt8 }
+import std.measure { ByteSize, byte_size, byte_size_count, microsecond, microsecond_count }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_engram_row_store {
+  V41CompleteStore, V41Placed, V41PlacementRefused, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
+  v41_place_row, v41_row_address, v41_transform_fixture, v41_row_store_magic_size,
+}
+import gunbc.spark.v41_engram_file_backed {
+  V41StoreOpenReceipt, V41OpenReleased, V41OpenResidueRefused, V41Gathered, V41GatherRefused,
+  v41_store_open_receipt, v41_open_residency_verdict, v41_gather_rows,
+  v41_touched_pages, v41_fetch_touch_receipt, v41_rank_touches,
+}
+import test.claim.spark.v41_engram_row_store_witness { w_tiny_spec, w_source, w_row }
+
+// ── OPEN: VERIFIED AND RELEASED, OR REFUSED ─────────────────────────────────────────────────────
+
+fn w_receipt(verified: Nat, after_release: Nat) -> V41StoreOpenReceipt {
+  v41_store_open_receipt(store_bytes: byte_size(count: 1000), verified_bytes: byte_size(count: verified), resident_after_verify: byte_size(count: 1000), resident_after_release: byte_size(count: after_release))
+}
+
+test fn a_verified_store_whose_cache_was_released_opens() -> Bool {
+  match v41_open_residency_verdict(r: w_receipt(verified: 1000, after_release: 0)) {
+    V41OpenReleased { receipt: r } => byte_size_count(b: r.resident_after_verify) == 1000
+    V41OpenResidueRefused { defect: _ } => false
+  }
+}
+
+// RED (a): verification that leaves its page cache resident fails the residency claim, by any
+// residue, including a single page; and a partial verification is no verification.
+test fn verification_that_leaves_the_cache_resident_refuses() -> Bool {
+  let resident = match v41_open_residency_verdict(r: w_receipt(verified: 1000, after_release: 1000)) {
+    V41OpenReleased { receipt: _ } => false
+    V41OpenResidueRefused { defect: d } => (d as String).contains("remain page-cache resident")
+  }
+  let one_page = match v41_open_residency_verdict(r: w_receipt(verified: 1000, after_release: 4096)) {
+    V41OpenReleased { receipt: _ } => false
+    V41OpenResidueRefused { defect: _ } => true
+  }
+  let partial = match v41_open_residency_verdict(r: w_receipt(verified: 999, after_release: 0)) {
+    V41OpenReleased { receipt: _ } => false
+    V41OpenResidueRefused { defect: d } => (d as String).contains("whole file")
+  }
+  resident && one_page && partial
+}
+
+// ── GATHER: THE BATCH IS THE PER-ROW RECORDS, IN ORDER; A SHIFTED OFFSET REFUSES ─────────────────
+
+fn w_rank1_store() -> V41CompleteStore? {
+  match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, stores: st } => first(filter(st, c => c.rank == 1))
+    V41PublishedTransformUnestablished { obligation: _ } => none
+    V41TransformUnfaithful { defects: _ } => none
+  }
+}
+
+// The per-row reference: the record v41_place_row put for this global row, and its address.
+fn w_record(i: Nat) -> List<UInt8> {
+  match v41_place_row(row: w_row(i: i), spec: w_tiny_spec()) {
+    V41Placed { row: p } => p.record
+    V41PlacementRefused { defect: _ } => [] as List<UInt8>
+  }
+}
+
+fn w_offset(i: Nat) -> ByteSize {
+  match v41_row_address(spec: w_tiny_spec(), layer: 1, global_row: i) {
+    Present { value: a } => a.offset
+    Absent => byte_size(count: 0)
+  }
+}
+
+// RED (b), agreement arm: rank 1 owns global rows 2 and 3, its first and last local rows. A batch
+// over both boundaries, out of order and with a repeat, returns exactly the per-row records in
+// request order.
+test fn the_batched_gather_is_the_per_row_records_in_request_order_over_boundary_rows() -> Bool {
+  match w_rank1_store() {
+    Absent => false
+    Present { value: s } => match v41_gather_rows(store: s, spec: w_tiny_spec(), offsets: [w_offset(i: 3), w_offset(i: 2), w_offset(i: 3)]) {
+      V41GatherRefused { defect: _ } => false
+      V41Gathered { rows: rs } => length(w_record(i: 2)) == 3 && rs == [w_record(i: 3), w_record(i: 2), w_record(i: 3)]
+    }
+  }
+}
+
+fn w_refused(s: V41CompleteStore, offsets: List<ByteSize>) -> Bool {
+  match v41_gather_rows(store: s, spec: w_tiny_spec(), offsets: offsets) {
+    V41Gathered { rows: _ } => false
+    V41GatherRefused { defect: d } => (d as String).contains("is not magic + k * 3")
+  }
+}
+
+// RED (b), refusal arm: an offset shifted by one byte, one inside the magic, and one whose record
+// would run past the file each refuse the WHOLE batch, even beside a valid offset.
+test fn a_shifted_offset_batch_refuses() -> Bool {
+  match w_rank1_store() {
+    Absent => false
+    Present { value: s } => {
+      let end = length(s.bytes)
+      w_refused(s: s, offsets: [w_offset(i: 2), byte_size(count: byte_size_count(b: w_offset(i: 2)) + 1)])
+        && w_refused(s: s, offsets: [byte_size(count: byte_size_count(b: v41_row_store_magic_size()) - 1)])
+        && w_refused(s: s, offsets: [byte_size(count: end)])
+    }
+  }
+}
+
+// ── TOUCHES: DISTINCT PAGES, NOT ROWS ───────────────────────────────────────────────────────────
+
+fn w_offsets(xs: List<Nat>) -> List<ByteSize> {
+  map(xs, x => byte_size(count: x))
+}
+
+// RED (c): a duplicate offset within a batch counts once. 3-byte records on 8-byte pages.
+test fn a_duplicate_offset_in_a_batch_counts_once() -> Bool {
+  length(v41_touched_pages(offsets: w_offsets(xs: [8, 8, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
+    && length(v41_touched_pages(offsets: w_offsets(xs: [8, 11, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
+}
+
+// RED (d): a row spanning a page boundary counts both pages; the row just before the boundary
+// counts one, and a record longer than a page counts every page it covers.
+test fn a_row_spanning_a_page_boundary_counts_both_pages() -> Bool {
+  v41_touched_pages(offsets: w_offsets(xs: [6]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0, 1]
+    && v41_touched_pages(offsets: w_offsets(xs: [5]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0]
+    && v41_touched_pages(offsets: w_offsets(xs: [7]), record: byte_size(count: 18), page: byte_size(count: 8)) == [0, 1, 2, 3]
+}
+
+// A rank's (file, page) pairs across files are the per-file counts summed, with calls, rows and time.
+test fn a_rank_sums_its_files_touch_receipts() -> Bool {
+  let a = v41_fetch_touch_receipt(page_bytes: byte_size(count: 4096), page_count: 100, distinct_pages_touched: 7, fetch_rows_calls: 2, rows_fetched: 9, fetch_rows_time: microsecond(count: 30))
+  let b = v41_fetch_touch_receipt(page_bytes: byte_size(count: 4096), page_count: 100, distinct_pages_touched: 3, fetch_rows_calls: 1, rows_fetched: 4, fetch_rows_time: microsecond(count: 12))
+  let r = v41_rank_touches(files: [a, b])
+  r.distinct_pages_touched == 10 && r.fetch_rows_calls == 3 && r.rows_fetched == 13 && microsecond_count(m: r.fetch_rows_time) == 42
+}

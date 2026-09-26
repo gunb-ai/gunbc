@@ -214,7 +214,7 @@ fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
 }
 
 fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc: List<v2.lens.complexity_accumulator_copy.Finding>) -> List<v2.lens.complexity_accumulator_copy.Finding> {
-  v2.std.algebra.list_append(left: acc, right: fresh)
+  std.algebra.list_append(left: acc, right: fresh)
 }
 
 fn let_expr_capture(node: Node) -> Optional<Node> {
@@ -461,7 +461,7 @@ fn projection_call_port_readings(cap: Node) -> List<v2.lens.complexity_accumulat
               match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
                 Absent => std.algebra.Empty
                 Present { value: repeat_elem } =>
-                  v2.std.algebra.list_append(
+                  std.algebra.list_append(
                     left: [projection_receiver_port_reading(left: left)],
                     right: projection_arg_port_readings(repeat_elem: repeat_elem)
                   )
@@ -575,7 +575,7 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
           if acc.saw_operator {
             LoweredTransformPortAcc {
               saw_operator: true,
-              readings: v2.std.algebra.list_append(
+              readings: std.algebra.list_append(
                 left: acc.readings,
                 right: [lowered_arg_port_reading(arg: t)]
               )

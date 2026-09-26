@@ -6,9 +6,9 @@ import v2.std.algebra {
   FreeMonoid,
   fold_list_right,
   length,
-  list_append,
   zip_eq
 }
+import std.algebra { list_append }
 
 // Consumer: gunbc.recurring_failure_mode.lens_prices_the_authority_while_the_lane_runs_the_realization.
 // Re-derives the one-binary list_append concat vs reconstructed fold_list_right timing. Both arms
