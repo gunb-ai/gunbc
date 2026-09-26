@@ -78,6 +78,18 @@ import product.capacity.event_chain { EventId }
 // (gunbc.spark.v41_runtime_image_probe v41_probe_privileged_argv), but runs from a file the
 // bootstrap below writes, because Triton reads kernel source from the file. It runs under `timeout`
 // so a wedged device read cannot outlive the step.
+// 🟡 dissolve-on: v41_access_probe_script -- THIS FUNCTION CARRIES A PYTHON + TRITON PROGRAM AS TEXT,
+// a hand-written foreign medium beside extdeps.languages.python, the corpus's authority for Python
+// surface syntax. WHY THAT AUTHORITY DOES NOT DISSOLVE IT TODAY: extdeps.languages.python is a target
+// model the generic emitter consumes to translate this repository's declarations; this program is
+// device reflection (cudaDeviceGetAttribute, mincore, POSIX_FADV_DONTNEED) plus a lookup-shaped kernel
+// written to measure a foreign runtime, and there is nothing in .dag to emit it from.
+// DISSOLVES WHEN the probe is retired, which is its intended end: per the operator's ruling
+// (2026-09-26) this module is a one-shot instrument that never lands on main, and its receipts (run
+// 36247421840 is the evidence of record for the design-B choice) are what the cutover cites. It is
+// deleted with its branch once the design-B cutover lands; nothing on main consumes it. The interim
+// shape follows gunbc.spark.v41_runtime_image_probe v41_probe_script and
+// gunbc.instruments.emit_host_fixtures.
 fn v41_access_probe_script() -> String {
   join([
     "import ctypes\n",
