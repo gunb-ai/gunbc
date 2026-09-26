@@ -12,8 +12,9 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
   unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner, mtcollins1_unit_hold_key,
 }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin }
 import gunbc.auth.mtcollins1_boot_federation {
-  OidcClaimPin, mtcollins1_boot_claim_pins, mtcollins1_boot_claims_admitted, mtcollins1_boot_wif_attribute_condition,
+  mtcollins1_boot_claim_pins, mtcollins1_boot_claims_admitted, mtcollins1_boot_wif_attribute_condition,
   mtcollins1_boot_secret_grants, mtcollins1_boot_wif_principal_set,
 }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }

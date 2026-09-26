@@ -3,7 +3,7 @@ module gunbc.fleet_converge_workflow
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path }
 import std.measure { minute_count, second_count }
 
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, kv }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
@@ -12,7 +12,7 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
 import gunbc.action_use_admission {
-  checkout_action, download_artifact_action, upload_artifact_action,
+  checkout_action, download_artifact_action, upload_artifact_action, google_auth_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -81,6 +81,10 @@ import gunbc.fleet_workflow_steps {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_store_host }
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
+import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
+import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
 import gunbc.auth.mtcollins1_boot_federation {
   mtcollins1_boot_environment, mtcollins1_boot_wif_provider_resource, mtcollins1_boot_service_account,
 }
@@ -113,6 +117,8 @@ import gunbc.ci_spec {
   gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_microvm_runner_group_ensure_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
+  gunbc_ci_gcp_iam_converge_request_invoke,
+  gunbc_ci_gcp_iam_converge_apply_invoke,
   gunbc_ci_pair_serving_d0_invoke,
   gunbc_ci_pair_serving_d0_admit_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
@@ -266,6 +272,7 @@ type FleetConvergeWorkflowMode
   | MtCollins1CensusImagePublish
   | MicrovmRunnerGroupEnsure
   | OrgRunnerRosterObserve
+  | GcpIamConverge
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -310,6 +317,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     ApprovalKeyringConverge => "approval_keyring_converge"
     ApprovalDeviceEnrolmentCodeIssue => "approval_device_enrolment_code_issue"
     MtCollins1Boot => "mtcollins1_boot"
+    GcpIamConverge => "gcp_iam_converge"
     PairServingD0 => "pair_serving_d0"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
@@ -340,7 +348,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -404,6 +412,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     ApprovalKeyringConverge => none
     ApprovalDeviceEnrolmentCodeIssue => none
     MtCollins1Boot => none
+    GcpIamConverge => none
     PairServingD0 => none
     MtCollins1FanObserve => none
     FabricWriterIdentityObserve => none
@@ -531,6 +540,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
+    GcpIamConverge => FleetSshKeyNotConsumed
   }
 }
 
@@ -1086,6 +1096,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MtCollins1CensusImagePublish => ExecutorDomain
     MicrovmRunnerGroupEnsure => ExecutorDomain
     OrgRunnerRosterObserve => ExecutorDomain
+    GcpIamConverge => ExecutorDomain
   }
 }
 
@@ -2945,14 +2956,20 @@ fn fleet_converge_spark_v41_row_store_readback_step() -> Step {
 // claim, so honouring it there would let a trusted main dispatch build and run other bytes under the
 // boot's credentials. For that mode the build job and the boot job both check out the EVENT's own
 // sha, which is the main commit the provider admitted; expected_revision cannot reach either.
+//
+// THE GCP IAM CONVERGE IS THE SAME CASE: its job federates as iam-observe through a provider pinning
+// this file at main, and redeems an approval for an iam-converge token, so the bytes that plan and
+// actuate are the event's main commit and never a dispatch input's.
 data fleet_converge_checkout_ref_expr: String = join([
-  "${{ github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "' && github.sha || github.event.inputs.expected_revision || github.ref }}",
+  "${{ (github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot),
+  "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge),
+  "') && github.sha || github.event.inputs.expected_revision || github.ref }}",
 ], "")
 
 // THE BOOT JOB'S OWN CHECKOUT NAMES ONLY THE EVENT SHA, with no input in the expression at all.
-data fleet_converge_mtcollins1_boot_checkout_ref_expr: String = "${{ github.sha }}"
+data fleet_converge_event_sha_checkout_ref_expr: String = "${{ github.sha }}"
 
-fn fleet_converge_mtcollins1_boot_checkout_step() -> Step {
+fn fleet_converge_event_sha_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout (the event sha only; no dispatch input selects these bytes)" },
     id: none,
@@ -2960,7 +2977,7 @@ fn fleet_converge_mtcollins1_boot_checkout_step() -> Step {
     with: Present {
       value: [
         kv(key: "fetch-depth", value: yaml_int(n: 0)),
-        kv(key: "ref", value: yaml_string(s: fleet_converge_mtcollins1_boot_checkout_ref_expr)),
+        kv(key: "ref", value: yaml_string(s: fleet_converge_event_sha_checkout_ref_expr)),
       ]
     },
     env: none,
@@ -3000,7 +3017,10 @@ fn fleet_converge_consumer_prelude_steps() -> List<Step> {
 // repo-wide provider admits for every job in the repository. It consumes the fleet key because the
 // census medium readback on srv2 runs over fleet ssh; the dedicated account holds a pinned cell for
 // that version and for the BMC credential, and nothing else.
-data fleet_converge_shared_job_if: String = join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'"], "")
+data fleet_converge_shared_job_if: String = join([
+  "github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'",
+  " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge), "'",
+], "")
 
 // THE RUNNER AND THE CONCURRENCY DOMAIN ARE FIXED TO THE STORE HOST, never read from the dispatch's
 // `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals derived from
@@ -3026,7 +3046,7 @@ fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
 // them, and the witnesses of each script read that producer alone (DESIGN section 3).
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
   [
-    fleet_converge_mtcollins1_boot_checkout_step(),
+    fleet_converge_event_sha_checkout_step(),
     ci_release_bins_download_step(),
     ci_release_bins_unpack_verify_step(),
     fleet_converge_mtcollins1_boot_admit_step(),
@@ -3331,6 +3351,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: "approval-broker-dark-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "microvm-controller-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "rlm-launch-deployment-receipt" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "gcp-iam-converge" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
 ]
 
 // A BUILDER ASKS THE ROSTER FOR ITS OWN EDGE BY ID AND THE LOOKUP REFUSES RATHER THAN INVENTS. An
@@ -3366,7 +3387,124 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_approval_broker_dark_install_job(),
     fleet_converge_microvm_controller_install_job(),
     fleet_converge_rlm_launch_deployment_receipt_job(),
+    fleet_converge_gcp_iam_converge_job(),
   ]
+}
+
+// ── THE GCP IAM CONVERGE JOB (operator requirement 2026-09-24; decision B 2026-09-25) ────────
+// Its own job for the boot's reason: OIDC tokens are minted per job, and this one federates through
+// its own pool pinned by the `environment` claim (gunbc.auth.gcp_iam_converge_federation). It runs on
+// srv1 because the approval client files and polls over srv1's loopback. THE STEP ORDER IS THE GATE
+// (gunbc.auth.gcp_iam_converge_run): the job federates as iam-observe, plans and waits; only a live
+// approval over exactly the planned request and run attempt writes the request step's approved
+// output, and only that output admits the second auth step, which federates as iam-converge. The
+// apply step re-admits the approval through the same live gate before the token is used.
+data fleet_converge_gcp_iam_converge_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
+
+// THE IMPERSONATION CONDITION reads the request step's own output, which the run writes through the
+// modeled filesystem on its one approved arm (gunbc.auth.gcp_iam_converge_run mark_approved). The
+// expression is a GitHub Actions expression and is rendered by the same concatenation every
+// fleet_converge_mode_step_if uses; it carries no shell.
+data fleet_converge_gcp_iam_approved_if: String = join([fleet_converge_gcp_iam_converge_step_if, " && steps.gcp_iam_request.outputs.", gcp_iam_converge_approved_output, " == 'true'"], "")
+
+fn fleet_converge_gcp_iam_request_step() -> Step {
+  RunStep {
+    name: Present { value: "GCP IAM converge: plan as iam-observe, file one request, wait for the operator (no write credential exists yet)" },
+    id: Present { value: "gcp_iam_request" },
+    run: gunbc_ci_gcp_iam_converge_request_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
+  }
+}
+
+// THE SECOND FEDERATION, as iam-converge, for the actuation token's lifetime and no longer. Its id is
+// not wif_auth, so no step that reads the job's observe token can read this one by accident.
+fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)" },
+    id: Present { value: "wif_auth_iam_converge" },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_observe_wif_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: iam_converge_service_account as String)),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
+        kv(key: "create_credentials_file", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_gcp_iam_apply_step() -> Step {
+  RunStep {
+    name: Present { value: "GCP IAM converge: re-plan, re-admit the approval, apply exactly the approved effects as iam-converge, read back as iam-observe" },
+    id: Present { value: "gcp_iam_apply" },
+    run: gunbc_ci_gcp_iam_converge_apply_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
+  }
+}
+
+fn fleet_converge_gcp_iam_converge_job() -> Job {
+  Job {
+    id: "gcp-iam-converge",
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", approval_broker_host_identity() as String] },
+    environment: Present { value: gcp_iam_converge_environment as String },
+    steps: [
+      fleet_converge_event_sha_checkout_step(),
+      ci_release_bins_download_step(),
+      ci_release_bins_unpack_verify_step(),
+      ci_wif_auth_step_for(
+        name: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA, access token only)",
+        provider_resource: gcp_iam_observe_wif_provider_resource(),
+        service_account: iam_observe_service_account as String,
+      ),
+      fleet_converge_gcp_iam_request_step(),
+      fleet_converge_gcp_iam_actuate_auth_step(),
+      fleet_converge_gcp_iam_apply_step(),
+    ],
+    needs: fleet_converge_job_needs(id: "gcp-iam-converge" as NonEmptyStr),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
+    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() + 20 },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: "gcp-iam-converge",
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: Present { value: PermWrite },
+      }
+    }
+  }
 }
 
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over

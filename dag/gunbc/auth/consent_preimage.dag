@@ -1,0 +1,20 @@
+module gunbc.auth.consent_preimage
+
+import std.types { List, String }
+
+// ONE INJECTIVE ENCODING FOR EVERY PREIMAGE AN OPERATOR'S CONSENT IS BOUND TO. A stored approval is
+// consent to exactly the content its intent hash was computed over, so the preimage must be
+// injective: no two different contents may encode to the same bytes. Every field is tag:length:value;
+// so no separator redistribution between fields can reproduce an encoding (the length fixes where
+// each value ends), and the tags fix which field each value is. A list carries its element count
+// first. It was lifted out of the Mt. Collins standing ruling (since removed, gunbc#12324) so that a
+// second consent preimage would not be a second spelling of the same injectivity argument; its
+// consumer is the GCP IAM converge diff (gunbc.auth.gcp_iam_converge), and any further preimage an
+// approval binds reads it too.
+fn consent_field(tag: String, value: String) -> String {
+  join([tag, ":", to_string(string_length(value)), ":", value, ";"], "")
+}
+
+fn consent_list_field(tag: String, values: List<String>) -> String {
+  concat(consent_field(tag: concat(tag, "#"), value: to_string(values.length())), join(map(values, v => consent_field(tag: tag, value: v)), ""))
+}

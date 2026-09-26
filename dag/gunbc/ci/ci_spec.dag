@@ -926,6 +926,16 @@ data gunbc_ci_pair_serving_d0_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "pair_serving_d0_ci_wet",
 }
 
+data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
+  function: "gcp_iam_converge_request_wet",
+}
+
+data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
+  function: "gcp_iam_converge_apply_wet",
+}
+
 data gunbc_ci_pair_serving_d0_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/pair_serving_d0_door.dag",
   function: "pair_serving_d0_admit_executor",
@@ -1257,7 +1267,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_pair_serving_d0_target,
-    gunbc_ci_pair_serving_d0_admit_target
+    gunbc_ci_pair_serving_d0_admit_target,
+    gunbc_ci_gcp_iam_converge_request_target,
+    gunbc_ci_gcp_iam_converge_apply_target
   ]
 }
 
@@ -2772,12 +2784,15 @@ fn gunbc_ci_approval_device_enrolment_code_issue_invoke() -> String {
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
 
-fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
+// THE SUBMISSION-KEY PRELUDE IS ONE FOLD OVER A FILE STEM: the D0 door and the GCP IAM converge
+// both sign a filing (and the converge a mint request) with the one pinned submission MAC version,
+// fetched the same way into the same 0600 shape; only the file names differ.
+fn gunbc_ci_submission_key_prelude(stem: String) -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
     Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/pair-serving-d0-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/pair-serving-d0-sm.json\"") },
+    Do { run: ci_retry_body_run(command: join(["HDR_FILE=\"$RUNNER_TEMP/", stem, "-auth-header\""], "")) },
+    Do { run: ci_retry_body_run(command: join(["RESP_FILE=\"$RUNNER_TEMP/", stem, "-sm.json\""], "")) },
     Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
@@ -2786,6 +2801,38 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
       "; then chmod 600 \"$SUB_FILE\"; export ", approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\"; else rm -f \"$SUB_FILE\"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi",
     ], "")) },
   ]
+}
+
+fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
+  gunbc_ci_submission_key_prelude(stem: "pair-serving-d0")
+}
+
+data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger")
+
+fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_submission_key_prelude(stem: "gcp-iam-converge"),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_gcp_iam_converge_request_target.entry,
+      function: gunbc_ci_gcp_iam_converge_request_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
+  )
+}
+
+// THE APPLY STEP READS NO SECRET: both tokens arrive by the workflow's auth-step variables, and the
+// recorded approval is read over the approval client's loopback status route.
+fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_gcp_iam_converge_apply_target.entry,
+    function: gunbc_ci_gcp_iam_converge_apply_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 // The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
