@@ -183,9 +183,28 @@ fn self_host_label() -> Label {
 // (gunbc#12207). An exit 0 is judged by a stronger oracle than the one it replaced: the text must name
 // the declaration, carry its value, and be Rust the build's own compiler accepts. That arm reports the
 // instruction to flip the probe back -- the day the Rust grammar rows render a module and its members.
-// Over the real corpus the door still stops at a located `parse_g0_tokens_remain` at the
-// `service ... { operation ... }` form, which `v2.cli.compile_cli` records. The second generation is
-// still unclaimed.
+// THE CORPUS CLAIM THIS NOTE USED TO CARRY IS NOT REACHABLE TODAY, AND THE CORRECTION IS THE USEFUL
+// PART. It said the door stops over the real corpus at a located `parse_g0_tokens_remain` at the
+// `service ... { operation ... }` form. A NEARER REFUSAL NOW FIRES FIRST, so that one cannot be
+// observed and is not currently falsifiable: the built gen-one door refuses at the FIRST MODULE
+// DECLARATION OF EITHER KIND with `translate_arrow_body_not_a_type_expression`, the same cause this
+// instrument's fixture arm pins. Measured on the kept gen-one binary (sha256 3dc6ad34..) against
+// one-file source roots, so no corpus and no import closure is involved: `data answer: Int = 606060`
+// refuses at the `data` keyword and `fn add(a: Int, b: Int) -> Int { a + b }` refuses at the `fn`
+// keyword, each at the byte range of that keyword, and the fn arm carries
+// `inhabitance_undecidable_formal_unresolved` ahead of it. Both exit 1.
+// TWO FURTHER READINGS FROM THE SAME RUN, recorded because each would otherwise be re-derived.
+// `--entry` DOES NOT SCOPE THE CLOSURE on the real roots: two different entries, `v2.std.logic` and
+// `extdeps.shell`, produce BYTE-IDENTICAL output that terminates in
+// `body_lowering_reason_call_argument_unread` at `dag/examples/weather/weather.dag`, a file neither
+// entry imports -- so the door reads the roots rather than the entry's closure, and a reader
+// diagnosing an entry's own modules from that output would be reading the wrong subject. And the
+// refusal EXITS 1 rather than 0, which is worth stating because an earlier reading of this run
+// reported exit 0: that figure came from `$?` after a pipe into `head` and was the pipe's status, not
+// the door's.
+// The second generation -- the BUILT door emitting a closure -- is still unclaimed, and its first
+// gate is now named: the translate stage's handling of a module's own declarations, not a grammar
+// form the door never reaches.
 //
 // IT IS A SEPARATE LABEL BECAUSE IT IS A SEPARATE CLOSURE, not because the question is different.
 // The two closures are DIFFERENT rather than nested, and neither contains the other's
