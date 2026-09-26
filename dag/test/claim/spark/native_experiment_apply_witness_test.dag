@@ -197,9 +197,11 @@ test fn w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures() -
             && string_contains(s: phase.readiness_gate.plan.script, pattern: "/v1/models")
             && phase.readiness_bounded_seconds == admitted
             && string_contains(s: phase.prefill_seats.plan.script, pattern: join(["while [ \"$seat\" -le ", to_string(seat_count), " ]"], ""))
-            && string_contains(s: phase.prefill_seats.plan.script, pattern: join(["blocks=$(( ", to_string(seat_window), " / yield ))"], ""))
+            && string_contains(s: phase.prefill_seats.plan.script, pattern: join(["( ", to_string(seat_window), " - unit_base"], ""))
+            && string_contains(s: phase.prefill_seats.plan.script, pattern: "/ unit_marginal + 1")
             && string_contains(s: phase.prefill_seats.plan.script, pattern: join(["limit=", to_string(context_window)], ""))
             && string_contains(s: phase.prefill_seats.plan.script, pattern: "(driver defect")
+            && string_contains(s: phase.prefill_seats.plan.script, pattern: "(probe_b_tokens - unit_base) / 2")
             && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: admitted)
             && phase.sample_cadence_seconds == spark_allocator_sample_cadence_seconds
             && admitted == arm_memory_experiment_runtime_seconds()

@@ -28,6 +28,7 @@ import gunbc.spark.execution_cell {
 }
 import gunbc.spark.systemd_execution_cell {
   SystemdExecutionMember, systemd_member_key,
+  systemd_workload_header_safety_tokens,
   systemd_inventory_script, systemd_quiescence_script, systemd_disposal_script, systemd_settlement_script,
   systemd_readback_script, systemd_prepare_script, systemd_activate_script, systemd_rollback_script,
   systemd_profile_readback_script,
@@ -620,8 +621,15 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: gate, pattern: "sleep 5")
             && string_contains(s: prefill, pattern: "/v1/completions")
             && string_contains(s: prefill, pattern: "prompt_tokens=")
-            && string_contains(s: prefill, pattern: "s%02db%05d")
-            && string_contains(s: prefill, pattern: "probe.json")
+            && !string_contains(s: prefill, pattern: "s%02db%05d")
+            && string_contains(s: prefill, pattern: "seat%d %s ")
+            && string_contains(s: prefill, pattern: "probe_a.json")
+            && string_contains(s: prefill, pattern: "probe_b.json")
+            && string_contains(s: prefill, pattern: "(probe_b_tokens - unit_base) / 2")
+            && string_contains(s: prefill, pattern: "unit_base_tokens")
+            && string_contains(s: prefill, pattern: "unit_marginal_tokens")
+            && string_contains(s: prefill, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1"], ""))
+            && string_contains(s: prefill, pattern: join(["( ", to_string(seat_window), " - unit_base"], ""))
             && string_contains(s: prefill, pattern: "warm_mib")
             && string_contains(s: prefill, pattern: "-D \"$state/seat_$seat.hdr\"")
             && string_contains(s: prefill, pattern: "cut -d' ' -f2")
@@ -630,7 +638,6 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: prefill, pattern: "body=$(tr -d '\\n' <")
             && string_contains(s: prefill, pattern: "over-limit")
             && string_contains(s: prefill, pattern: "(driver defect")
-            && string_contains(s: prefill, pattern: join(["blocks=$(( ", to_string(seat_window), " / yield ))"], ""))
             && string_contains(s: prefill, pattern: join(["limit=", to_string(context_window)], ""))
             && string_contains(s: prefill, pattern: "context_window_tokens=")
             && string_contains(s: churn, pattern: "churn-driver-launched")
@@ -639,7 +646,10 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: churn, pattern: join(["while [ \"$(date +%s)\" -lt \"$end\" ] && [ \"$n\" -lt ", to_string(spark_churn_requests_per_seat), " ]"], ""))
             && string_contains(s: churn, pattern: join(["$(date +%s) + ", to_string(window)], ""))
             && string_contains(s: churn, pattern: to_string(spark_churn_band_floor_tokens))
-            && string_contains(s: churn, pattern: "c%02dr%05db%05d")
+            && !string_contains(s: churn, pattern: "s%02db%05d")
+            && string_contains(s: churn, pattern: "c%02dr%05d %s ")
+            && string_contains(s: churn, pattern: "unit_marginal_tokens")
+            && string_contains(s: churn, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal"], ""))
             && string_contains(s: churn, pattern: "srand")
             && string_contains(s: churn, pattern: "churn-request-failed")
             && string_contains(s: churn, pattern: "churn_last.resp")
@@ -783,6 +793,46 @@ test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool 
       }
   }
   at_this_window && at_the_margin && below_the_margin && churn_ready && tiny_refused
+}
+
+// THE SEAT CONSTRUCTION IS TOKEN-EXACT, and the drift scenario that 400'd the first churn rerun
+// provably cannot recur. The law: a seat is one header word plus verbatim repeats of the
+// calibration unit — no text shape in a seat that the two probes did not send (the retired
+// per-block marker "s%02db%05d" is asserted ABSENT from both the prefill and the churn scripts).
+// The arithmetic: the probes measure the unit base a and the exact marginal m — B's count is a + 2m
+// because every appended unit tokenizes after the identical left context — a seat realizes at most
+// a + header drift + (M - 1) x m with M built from (seat_window - a - safety), so the realized
+// count stays under seat_window - safety + header drift, the header drift is one word (bounded by
+// the named safety), and safety sits three orders of magnitude inside the scheduler-block margin.
+// The bounds are pinned here as data: safety < margin, seat_window + margin == context window, and
+// the scripts carry the exact-marginal arithmetic and the safety-absorbing unit formula.
+test fn w_the_seat_construction_is_token_exact() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          let prefill = phase.prefill_seats.plan.script
+          let churn = phase.churn.plan.script
+          let context_window = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+            ArmMemoryExperimentAdmitted { plan: p } => token_count_value(t: p.profile.max_model_len)
+            ArmMemoryExperimentRefused { cause: _ } => 0
+          }
+          let seat_window = match spark_seat_window_tokens(context_window: context_window) {
+            Present { value: w } => w
+            Absent => 0
+          }
+          systemd_workload_header_safety_tokens < spark_seat_window_margin_tokens
+            && seat_window + spark_seat_window_margin_tokens == context_window
+            && !string_contains(s: prefill, pattern: "s%02db%05d")
+            && !string_contains(s: churn, pattern: "s%02db%05d")
+            && string_contains(s: prefill, pattern: "(probe_b_tokens - unit_base) / 2")
+            && string_contains(s: prefill, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1"], ""))
+            && string_contains(s: churn, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal"], ""))
+            && string_contains(s: prefill, pattern: "(driver defect")
+      }
+  }
 }
 
 // THE READINESS GATE'S REFUSAL IS THE NEVER-READY LOCATED HALT: the runner plants a failure in
