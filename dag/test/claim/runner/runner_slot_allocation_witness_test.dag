@@ -132,8 +132,11 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
 // runs is not a width this module states at all: its committed width is a typed refusal, asserted
 // below on its own terms by srv2_width_resolves_to_a_typed_refusal_naming_its_denominator.
+// srv1 IS 12 BECAUSE THE ENVELOPE NOW SUBTRACTS THE SERVED DEPLOYMENT SLICES (40 + 10 GiB, gunbc.live_deploy.served_slice_charge)
+// that gunbc.fleet_host_budget host_allocation_verdict already charged. Without that term main derived 14
+// (this pin said 15, stale), and 14 slots did not conserve on srv1, so ci_runner_placement refused it.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 15
+  host_memory_admitted_width(host: operator_host_srv1) == 12
     && host_memory_admitted_width(host: operator_host_srv3) == 17
     && host_memory_admitted_width(host: operator_host_srv4) == 17
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -214,7 +217,7 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv1, expected: 15)
+  committed_width_is(host: operator_host_srv1, expected: 12)
     && committed_width_is(host: operator_host_srv3, expected: 17)
     && committed_width_is(host: operator_host_srv4, expected: 17)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
