@@ -232,6 +232,17 @@ fn envelope_base_name(path: String) -> String {
   }
 }
 
+// THE FULL FILE NAME, for the listing observation a compare-and-set guard makes: absence is
+// established by a successful directory listing naming (or not naming) this entry, never by a
+// failed read. The last-segment shape is envelope_base_name's own; a path with no separator names
+// itself, the same fallback the base-name read carries.
+fn envelope_file_name(path: String) -> String {
+  match (split(s: path, delimiter: "/")).last() {
+    Present { value: name } => name
+    Absent => path
+  }
+}
+
 fn object_shard_name_for(envelope_path: String, identity_digest: String) -> String {
   join([envelope_base_name(path: envelope_path), ".object.", identity_digest, ".json"], "")
 }

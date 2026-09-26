@@ -13,16 +13,19 @@ module test.claim.scm_repository_save_witness
 // observe the path is still unreadable -- establishes that nothing was written, using only the
 // direction of the boundary that routes.
 //
-// WHAT IS DELIBERATELY NOT CLAIMED HERE: that a SUCCESSFUL save writes correct bytes, and that a
-// failed write is reported. Both need a real host write, and the frame that would run them is not
-// established. What IS established, by execution: under `gunbc run` a write DOES occur -- the
+// WHAT IS DELIBERATELY NOT CLAIMED HERE: that a SUCCESSFUL UNGUARDED save writes correct bytes, and
+// that a failed write is reported. Both need a real host write, and the frame that would run them is
+// not established; the generation-guard section below claims a successful GUARDED save's applied
+// bytes instead, because there the write itself is the guard's subject and the claim is idempotent
+// by construction. What IS established, by execution: under `gunbc run` a write DOES occur -- the
 // mutation receipt below produced an actual file. Whether the required floor's hermetic frame
 // admits the same write is a DIFFERENT question, not measured; a write has no input carve-out the
-// way a read of a checkout path does. Asserting either answer without measuring the floor would be
-// the rung claim DESIGN forbids. Authoring the two write arms as claims before that is settled
-// would risk two permanently-unexecuted claims in a file whose other claims run -- the decoration
-// DESIGN calls worse than absent, because the file would be cited as covering a boundary it half
-// covers. Closing the gap needs a measured route, not another claim here.
+// way a read of a checkout path does. The guard section states that standing beside its one
+// write-performing claim rather than asserting it. Authoring the two unguarded write arms as
+// claims before that is settled would risk two permanently-unexecuted claims in a file whose other
+// claims run -- the decoration DESIGN calls worse than absent, because the file would be cited as
+// covering a boundary it half covers. Closing the gap needs a measured route, not another claim
+// here.
 //
 // THE MUTATION RECEIPT, stronger than a passing pair. Replacing the checked encoder with an
 // unchecked one -- removing the adjudication from ahead of the write -- reds BOTH claims, and the
@@ -33,13 +36,24 @@ module test.claim.scm_repository_save_witness
 
 import std.types { Bool, Int, String }
 import std.minted_identity { MintedId, MintedIdAllocator }
+import std.content_hash {
+  content_hash_atom,
+  content_hash_eq_structural,
+  Fnv1a64Structural,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { serialize_json }
 import gunbc.scm.object_store { empty_store }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryEncodeRefusal,
   RepositoryCheckoutNotInCommits,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  encode_repository_sharded_checked,
+  repository_generation_of_content,
 }
 import gunbc.scm.repository_save {
   RepositorySave,
@@ -47,6 +61,15 @@ import gunbc.scm.repository_save {
   RepositorySaveRefusedByCodec,
   RepositoryFileUnwritable,
   save_repository,
+  GenerationExpected,
+  GenerationExpectedAbsent,
+  RepositoryGenerationAdmitted,
+  RepositoryGenerationStale,
+  admit_repository_generation,
+  save_repository_sharded_guarded,
+  RepositoryGuardedSaveOutcome,
+  RepositoryStaleGenerationRefused,
+  RepositoryGuardedSaveUnobservable,
 }
 import gunbc.scm.repository_load {
   RepositoryLoad,
@@ -99,4 +122,160 @@ test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
     _ => false
   }
   refused && absent
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE GENERATION GUARD (the 2026-09-22 incident's structural hole). A save derived from one
+// generation of the on-disk envelope must refuse -- naming both generations -- when the disk now
+// holds another, instead of silently clobbering the newer envelope. The guard's pure decision is
+// witnessed over supplied generations; the end-to-end arms drive the real guarded save over the
+// committed v7 fixture below.
+//
+// HOW THE END-TO-END CLAIMS STAY HERMETIC, and where they do not. The stale arm performs no write
+// -- encode (pure), observe (a read of a checkout path, the carve-out this file's header already
+// relies on), refuse -- so the stale claim and the byte-identity claim are admissible on the same
+// footing as the two claims above. The fresh-save claim performs a REAL write of the bytes the
+// fixture already holds: the save is admitted by the matching generation and rewrites identical
+// bytes, so it is idempotent across reruns, and the read-back comparison asserts the applied
+// bytes equal the checked-in bytes. Whether the required floor admits that write is the unmeasured
+// fact this file's header already records for writes in general -- the claim executes under
+// `gunbc run --claim-run`, and its standing on the floor is stated, not asserted.
+// ------------------------------------------------------------------------------------------------
+
+// A COMMITTED v7 ENVELOPE, written by the production sharded writer itself (module
+// scratch.tmp_fixture_gen, run once and removed). Empty store, zero shards -- the guard's subject
+// is the index document alone. The checked-in bytes ARE the serializer's output, which is what
+// makes the fresh-save claim's idempotent rewrite possible.
+data scm_sv_v7_fixture_path: String = "dag/test/fixture/scm_repository_save/v7_empty_envelope.gunbc-repository.json"
+
+// THE FIXTURE'S DECODED FORM, loaded through the real read path: the repository a stale writer
+// would hold after loading the fixture.
+fn scm_sv_fixture_envelope() -> RepositoryEnvelope? {
+  match load_repository(path: scm_sv_v7_fixture_path) {
+    RepositoryLoaded { path: _, envelope, generation: _ } => Present { value: envelope }
+    RepositoryLoadRefused { cause: _ } => none
+  }
+}
+
+// A GENERATION THE FIXTURE CANNOT HOLD: the content hash of bytes that are not the fixture's.
+// Minted through the family kernel, never by labeling text as a digest.
+fn scm_sv_bogus_generation() -> Fnv1a64Structural {
+  content_hash_atom(value: "a generation the fixture was never written at" as NonEmptyStr)
+}
+
+test fn scm_sv_a_matching_generation_is_admitted() -> Bool {
+  let observed = content_hash_atom(value: "generation observed at load" as NonEmptyStr)
+  match admit_repository_generation(
+    expected: GenerationExpected(observed),
+    found: Present { value: observed },
+  ) {
+    RepositoryGenerationAdmitted => true
+    RepositoryGenerationStale { expected: _, found: _ } => false
+  }
+}
+
+test fn scm_sv_absence_is_admitted_for_an_absent_expectation() -> Bool {
+  match admit_repository_generation(expected: GenerationExpectedAbsent, found: none) {
+    RepositoryGenerationAdmitted => true
+    RepositoryGenerationStale { expected: _, found: _ } => false
+  }
+}
+
+test fn scm_sv_a_vanished_envelope_is_admitted_for_an_observed_expectation() -> Bool {
+  let observed = content_hash_atom(value: "generation observed at load" as NonEmptyStr)
+  match admit_repository_generation(expected: GenerationExpected(observed), found: none) {
+    RepositoryGenerationAdmitted => true
+    RepositoryGenerationStale { expected: _, found: _ } => false
+  }
+}
+
+test fn scm_sv_an_appeared_envelope_refuses_an_absent_expectation() -> Bool {
+  let on_disk = content_hash_atom(value: "generation someone else wrote" as NonEmptyStr)
+  match admit_repository_generation(expected: GenerationExpectedAbsent, found: Present { value: on_disk }) {
+    RepositoryGenerationAdmitted => false
+    RepositoryGenerationStale { expected: e, found } =>
+      content_hash_eq_structural(left: found, right: on_disk)
+        && match e {
+          GenerationExpectedAbsent => true
+          GenerationExpected(_) => false
+        }
+  }
+}
+
+// THE STALE ARM, END TO END: the guarded save over the fixture, expecting a generation the fixture
+// was never written at, refuses typed and names BOTH identities -- the expectation it carried and
+// the generation actually on disk (re-derived here from a direct read of the fixture bytes, so the
+// claim checks the guard's observation rather than trusting it).
+test fn scm_sv_a_stale_generation_save_refuses_naming_both_identities() -> Bool {
+  let on_disk = repository_generation_of_content(content: Filesystem.Read(path: scm_sv_v7_fixture_path).content)
+  let bogus = scm_sv_bogus_generation()
+  match scm_sv_fixture_envelope() {
+    Absent => false
+    Present { value: envelope } =>
+      match save_repository_sharded_guarded(
+        path: scm_sv_v7_fixture_path,
+        repo: envelope,
+        expected: GenerationExpected(bogus),
+      ) {
+        RepositoryStaleGenerationRefused { path: p, expected: e, found: f } =>
+          p == scm_sv_v7_fixture_path
+            && content_hash_eq_structural(left: f, right: on_disk)
+            && match e {
+              GenerationExpected(wanted) => content_hash_eq_structural(left: wanted, right: bogus)
+              GenerationExpectedAbsent => false
+            }
+        RepositoryGuardedSaveOutcome(_) => false
+        RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
+      }
+  }
+}
+
+// THE GUARD'S ONLY EFFECT ON A STALE WORLD IS THE REFUSAL: the fixture's bytes after the refused
+// save equal the bytes before it. The refused path performs no write (encode, observe, refuse),
+// so this is the read-before/read-after form of the file's header claim, over a file that exists.
+test fn scm_sv_a_refused_stale_save_leaves_the_envelope_byte_identical() -> Bool {
+  let before = Filesystem.Read(path: scm_sv_v7_fixture_path).content
+  let refused = match scm_sv_fixture_envelope() {
+    Absent => false
+    Present { value: envelope } =>
+      match save_repository_sharded_guarded(
+        path: scm_sv_v7_fixture_path,
+        repo: envelope,
+        expected: GenerationExpected(scm_sv_bogus_generation()),
+      ) {
+        RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } => true
+        RepositoryGuardedSaveOutcome(_) => false
+        RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
+      }
+  }
+  refused && Filesystem.Read(path: scm_sv_v7_fixture_path).content == before
+}
+
+// THE FRESH ARM, END TO END AND IDEMPOTENT: expecting the generation of the bytes the writer will
+// persist, the save applies -- and because the expectation is derived from the checked-in
+// fixture's own re-encoding, the bytes it writes equal the bytes that were there, on every run.
+// The found-generation arm of the guard matches (the fixture exists), so this exercises the full
+// compare-and-set path, not the first-save path.
+test fn scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes() -> Bool {
+  match scm_sv_fixture_envelope() {
+    Absent => false
+    Present { value: envelope } =>
+      match encode_repository_sharded_checked(repo: envelope) {
+        RepositoryEncodeRefused { cause: _ } => false
+        RepositoryEncoded { value: v } => {
+          let expected = GenerationExpected(
+            repository_generation_of_content(content: serialize_json(v: v)),
+          )
+          match save_repository_sharded_guarded(path: scm_sv_v7_fixture_path, repo: envelope, expected: expected) {
+            RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+              Filesystem.Read(path: scm_sv_v7_fixture_path).content == serialize_json(v: v)
+            RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) => false
+            RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: _, error: _ }) => false
+            RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported: _ }) => false
+            RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } => false
+            RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
+          }
+        }
+      }
+  }
 }

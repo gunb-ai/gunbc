@@ -17,8 +17,8 @@ module test.claim.scm.scm_repository_convert_witness_test
 // build READS and CONVERTS, so the witness must be able to say what one is.
 //
 // WHAT IS NOT CLAIMED HERE, AND WHERE IT IS COVERED. That the shell writes nothing on a refusal is
-// an ordering fact about the shell's body -- every refusal arm returns before `save_repository_sharded`
-// is reachable -- demonstrated by inspection and by the live rehearsal over the production envelope,
+// an ordering fact about the shell's body -- every refusal arm returns before the guarded save
+// (`save_repository_sharded_guarded`) is reachable -- demonstrated by inspection and by the live rehearsal over the production envelope,
 // not decidable at the hermetic boundary. That a converted envelope loads back with the same
 // population is `scm_object_shard_witness_test`'s and the live rehearsal's claim; the plan only
 // certifies that the write the shell would perform carries the whole decoded repository.

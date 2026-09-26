@@ -426,8 +426,12 @@ import gunbc.scm.write_spine {
 }
 import gunbc.scm.repository_load { load_repository, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
-  save_repository_sharded,
+  save_repository_sharded_guarded,
+  RepositoryGuardedSaveOutcome,
+  RepositoryStaleGenerationRefused,
+  RepositoryGuardedSaveUnobservable,
   RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
+  RepositoryGenerationExpectation, GenerationExpected, GenerationExpectedAbsent,
 }
 import gunbc.scm.worktree_inventory {
   worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args,
@@ -5640,14 +5644,22 @@ type BeltScmCapture
   | ScmCaptureRefused { detail: String }
   | ScmCapturePoisoned { detail: String }
 
+// THE ENVELOPE SOURCE CARRIES THE GENERATION EXPECTATION BESIDE THE ENVELOPE, because the two are
+// one observation: the expectation records what this tick's observe saw at the path (a generation,
+// or absence), and a later guarded save must compare against exactly that, not re-observe --
+// re-observing could admit a write derived from older bytes over a newer envelope, which is the
+// silent-clobber failure the guard exists to refuse (the 2026-09-22 incident: a capture persisted
+// ordinal 1 and a stale writer rewound the envelope to commit-0-only four minutes later).
 type BeltEnvelopeSource
-  = EnvelopeReady { envelope: RepositoryEnvelope }
+  = EnvelopeReady { envelope: RepositoryEnvelope, generation: RepositoryGenerationExpectation }
   | EnvelopeSourceRefused { detail: String }
 
 // A MISSING ENVELOPE IS AN EMPTY REPOSITORY; AN UNDECODABLE ONE STOPS THE LINE. Absence is
 // established by the directory listing, never by a failed read -- the same rule the capture
 // directory and the publication spool already carry, because a project envelope that exists but
-// does not decode is damage to report, not a fresh start to pave over.
+// does not decode is damage to report, not a fresh start to pave over. The absence arm carries
+// GenerationExpectedAbsent: the seed save this feeds is the first-save path, admissible only
+// while the disk still holds no envelope.
 fn belt_scm_envelope_observe(projects_dir: String, path: String, entry_name: String) -> BeltEnvelopeSource {
   let listing = Filesystem.List(path: projects_dir)
   if !listing.success {
@@ -5658,10 +5670,11 @@ fn belt_scm_envelope_observe(projects_dir: String, path: String, entry_name: Str
       ], ""),
     }
   } else if !filesystem_listing_names_entry(listing: listing.entries, name: entry_name) {
-    EnvelopeReady { envelope: empty_repository() }
+    EnvelopeReady { envelope: empty_repository(), generation: GenerationExpectedAbsent }
   } else {
     match load_repository(path: path) {
-      RepositoryLoaded { path: _, envelope } => EnvelopeReady { envelope: envelope }
+      RepositoryLoaded { path: _, envelope, generation } =>
+        EnvelopeReady { envelope: envelope, generation: GenerationExpected(generation) }
       RepositoryLoadRefused { cause } =>
         EnvelopeSourceRefused {
           detail: join([
@@ -5846,14 +5859,19 @@ fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceOb
 // SeedRefused is transient (gather/exec/read/save I/O), SeedPoisoned is durable (store or
 // envelope damage, an unsatisfiable base). The seed is the capture's first half, so the split
 // is born here rather than re-classified where the seed's verdict joins the capture's.
+// SeedReady carries the generation expectation the envelope observation minted: the delta
+// capture's save must compare against what THIS tick observed, whatever the seed did in between.
 type BeltSeedOutcome
-  = SeedReady { envelope: RepositoryEnvelope }
+  = SeedReady { envelope: RepositoryEnvelope, generation: RepositoryGenerationExpectation }
   | SeedRefused { detail: String }
   | SeedPoisoned { detail: String }
 
 // SEED ONCE. The envelope holding any commit at all is already seeded -- the second candidate of a
 // project must never re-read the base tree. The seed is saved before the candidate work begins, so
-// a crash after seeding does not re-seed either.
+// a crash after seeding does not re-seed either. The save is the guarded sharded writer: a seed is
+// the first-save path (the observation minted GenerationExpectedAbsent, or the generation of the
+// empty envelope on disk), and the guard keeps it first -- an envelope that appears between this
+// tick's observe and the seed's write is refused, not clobbered.
 //
 // Two notes on the mint below, kept at declaration grain (the annotation channel admits no
 // in-body comments): on the BaseShaUnobserved arm -- THE SPAWN ORIGIN IS WRITTEN ONCE, BY THE
@@ -5866,13 +5884,14 @@ fn belt_scm_envelope_seeded(
   instance: HostDashboardInstance,
   worktree: String,
   envelope: RepositoryEnvelope,
+  generation: RepositoryGenerationExpectation,
   path: String,
   paths: List<NonEmptyStr>,
   node_id: RoadmapNodeId,
   attempt_key: String,
 ) -> BeltSeedOutcome {
   if count(envelope.commits) > 0 {
-    SeedReady { envelope: envelope }
+    SeedReady { envelope: envelope, generation: generation }
   } else {
     match belt_scm_base_sha_observe(instance: instance, node_id: node_id, attempt_key: attempt_key) {
       BaseShaUnobserved { reason } => SeedPoisoned { detail: reason }
@@ -5914,14 +5933,19 @@ fn belt_scm_envelope_seeded(
                   StagedCommitSourceUnrecoverable { cause: _ } =>
                     SeedPoisoned { detail: "a staged base path's source is unrecoverable from the object store" }
                   StagedCommitMinted { repository: seeded, reference: _ } =>
-                    match save_repository_sharded(path: path, repo: seeded) {
-                      RepositorySaved { path: _, written: _ } => SeedReady { envelope: seeded }
-                      RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                    match save_repository_sharded_guarded(path: path, repo: seeded, expected: generation) {
+                      RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+                        SeedReady { envelope: seeded, generation: generation }
+                      RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                         SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
-                      RepositoryFileUnwritable { path: p, error } =>
+                      RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
                         SeedRefused { detail: join(["the base commit was minted but the envelope could not be written to ", p, " (", error, ")"], "") }
-                      RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                      RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
                         SeedRefused { detail: join(["the envelope write reported a nonsensical byte count (", to_string(reported), ")"], "") }
+                      RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } =>
+                        SeedRefused { detail: "the project envelope changed on disk since this tick observed it; the in-memory base commit is discarded and the seed re-derives on the next tick" }
+                      RepositoryGuardedSaveUnobservable { path: _, error } =>
+                        SeedRefused { detail: join(["the on-disk envelope generation could not be observed, so the seed refused to write unguarded: ", error], "") }
                     }
                 }
             }
@@ -5996,7 +6020,7 @@ fn belt_scm_capture_candidate_tree(
         entry_name: belt_scm_project_entry_name(project_key: project_key),
       ) {
         EnvelopeSourceRefused { detail } => ScmCaptureRefused { detail: detail }
-        EnvelopeReady { envelope } =>
+        EnvelopeReady { envelope, generation } =>
           match belt_scm_base_sha_observe(
             instance: instance,
             node_id: node_id,
@@ -6027,6 +6051,7 @@ fn belt_scm_capture_candidate_tree(
                   instance: instance,
                   worktree: worktree,
                   envelope: envelope,
+                  generation: generation,
                   path: path,
                   paths: paths,
                   node_id: node_id,
@@ -6034,7 +6059,7 @@ fn belt_scm_capture_candidate_tree(
                 ) {
                   SeedRefused { detail } => ScmCaptureRefused { detail: detail }
                   SeedPoisoned { detail } => ScmCapturePoisoned { detail: detail }
-                  SeedReady { envelope: seeded } =>
+                  SeedReady { envelope: seeded, generation: seeded_generation } =>
                     match belt_scm_root_commit_ref(envelope: seeded) {
                       Absent =>
                         ScmCapturePoisoned {
@@ -6053,6 +6078,7 @@ fn belt_scm_capture_candidate_tree(
                               instance: instance,
                               worktree: worktree,
                               seeded: seeded,
+                              generation: seeded_generation,
                               base_ref: base_ref,
                               head_ref: head_ref,
                               base_sha: base_sha,
@@ -6150,10 +6176,14 @@ fn belt_scm_delta_fold_step(
 // tick's I/O; the next tick reads again, so it stays transient. On the commit_staged arms -- THE
 // MINT'S DURABLE REFUSALS, the same classification the seed's mint carries: identical-to-base,
 // allocator damage, and unrecoverable sources recompute to the same refusal on every retry.
+// THE SAVE'S GUARD ARMS ARE TRANSIENT TOO: a stale generation or an unobservable one is this tick's
+// fact about the world, not the attempt's -- the next tick observes the envelope fresh and
+// re-derives the capture against whatever is actually on disk.
 fn belt_scm_delta_capture(
   instance: HostDashboardInstance,
   worktree: String,
   seeded: RepositoryEnvelope,
+  generation: RepositoryGenerationExpectation,
   base_ref: RepositoryCommitRef,
   head_ref: RepositoryCommitRef?,
   base_sha: String,
@@ -6264,29 +6294,37 @@ fn belt_scm_delta_capture(
                                 },
                                 staged: with_candidate.staged,
                               }
-                              match save_repository_sharded(path: path, repo: restored) {
-                                RepositorySaved { path: _, written: _ } =>
+                              match save_repository_sharded_guarded(path: path, repo: restored, expected: generation) {
+                                RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
                                   ScmCandidateCaptured {
                                     repository_path: path,
                                     commit_ordinal: minted_id_ordinal(id: reference.identity),
                                   }
-                                RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                                RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                                   ScmCaptureRefused {
                                     detail: "the capture was minted but the envelope could not be encoded for persistence; the in-memory commit is lost and the capture must be re-taken",
                                   }
-                                RepositoryFileUnwritable { path: p, error } =>
+                                RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
                                   ScmCaptureRefused {
                                     detail: join([
                                       "the capture was minted but the envelope could not be written to ", p,
                                       " (", error, "); the in-memory commit is lost and the capture must be re-taken",
                                     ], ""),
                                   }
-                                RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                                RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
                                   ScmCaptureRefused {
                                     detail: join([
                                       "the envelope write reported a nonsensical byte count (",
                                       to_string(reported), "), so whether the capture persisted is unknown",
                                     ], ""),
+                                  }
+                                RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } =>
+                                  ScmCaptureRefused {
+                                    detail: "the project envelope changed on disk since this tick observed it; the in-memory capture is discarded and re-derived on the next tick rather than clobbering the newer envelope",
+                                  }
+                                RepositoryGuardedSaveUnobservable { path: _, error } =>
+                                  ScmCaptureRefused {
+                                    detail: join(["the on-disk envelope generation could not be observed, so the capture refused to write unguarded: ", error], ""),
                                   }
                               }
                             }
@@ -9811,7 +9849,7 @@ fn belt_integrate_into_envelope(
   match load_repository(path: capture.scm_repository) {
     RepositoryLoadRefused { cause } =>
       EnvelopeIntegrationUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
-    RepositoryLoaded { path: _, envelope } => {
+    RepositoryLoaded { path: _, envelope, generation } => {
       let candidate = RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } }
       match envelope.checked_out {
         Absent =>
@@ -9844,23 +9882,31 @@ fn belt_integrate_into_envelope(
                   checked_out: Present { value: new_head },
                   staged: advanced.staged,
                 }
-                match save_repository_sharded(path: capture.scm_repository, repo: moved) {
-                  RepositorySaved { path: _, written: _ } =>
+                match save_repository_sharded_guarded(path: capture.scm_repository, repo: moved, expected: GenerationExpected(generation)) {
+                  RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
                     match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
                       IntegrationReceiptRecorded => EnvelopeIntegrated
                       IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
                     }
-                  RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                  RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                     EnvelopeIntegrationUnreadable {
                       detail: "the candidate was merged but the envelope could not be encoded for persistence; the merge must be re-derived on the next tick",
                     }
-                  RepositoryFileUnwritable { path: p, error } =>
+                  RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
                     EnvelopeIntegrationUnreadable {
                       detail: join(["the candidate was merged but the envelope could not be written to ", p, " (", error, ")"], ""),
                     }
-                  RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                  RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
                     EnvelopeIntegrationUnreadable {
                       detail: join(["the envelope write reported a nonsensical byte count (", to_string(reported), ")"], ""),
+                    }
+                  RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } =>
+                    EnvelopeIntegrationUnreadable {
+                      detail: "the project envelope changed on disk between this tick's load and the integrate's save; the in-memory merge is discarded and re-derived on the next tick against the envelope that is actually there",
+                    }
+                  RepositoryGuardedSaveUnobservable { path: _, error } =>
+                    EnvelopeIntegrationUnreadable {
+                      detail: join(["the on-disk envelope generation could not be observed, so the integrate refused to write unguarded: ", error], ""),
                     }
                 }
               }
@@ -10257,12 +10303,12 @@ fn belt_publish_project_materialize(
     ExecOk { stdout: _ } =>
       match fold(
         files,
-        init: ScmCandidateCaptured { repository_path: "", commit_ordinal: 0 },
+        init: ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" },
         f: (acc, f) =>
           match acc {
             ScmCaptureRefused { detail: _ } => acc
             ScmCapturePoisoned { detail: _ } => acc
-            ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } => {
+            ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } => {
               let write = Filesystem.Write(
                 path: join([worktree, "/", f.path as String], ""),
                 content: match f.content {
@@ -10282,8 +10328,8 @@ fn belt_publish_project_materialize(
       ) {
         ScmCaptureRefused { detail } => ScmCaptureRefused { detail: detail }
         ScmCapturePoisoned { detail } => ScmCapturePoisoned { detail: detail }
-        ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } =>
-          ScmCandidateCaptured { repository_path: "", commit_ordinal: 0 }
+        ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
+          ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
       }
   }
 }
@@ -10347,7 +10393,7 @@ fn belt_publish_project_for_instance(
                   match load_repository(path: envelope_path) {
                     RepositoryLoadRefused { cause } =>
                       PublishEvidenceUnreadable { node_id: node_id, detail: belt_scm_load_refusal_detail(cause: cause) }
-                    RepositoryLoaded { path: _, envelope } =>
+                    RepositoryLoaded { path: _, envelope, generation: _ } =>
                       match envelope.checked_out {
                         Absent =>
                           PublishEvidenceUnreadable {
@@ -10379,7 +10425,7 @@ fn belt_publish_project_for_instance(
                                           PublishEvidenceUnreadable { node_id: node_id, detail: detail }
                                         ScmCapturePoisoned { detail } =>
                                           PublishEvidenceUnreadable { node_id: node_id, detail: detail }
-                                        ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } =>
+                                        ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
                                           match belt_commit_staged(
                                             instance: instance,
                                             worktree: worktree,

@@ -27,6 +27,10 @@ import std.minted_identity {
   minted_id_eq,
   minted_id_ordinal,
 }
+import std.content_hash {
+  content_hash_atom,
+  Fnv1a64Structural,
+}
 
 import extdeps.languages.json.emit {
   JsonValue,
@@ -299,6 +303,38 @@ data repository_envelope_format_tag_v3: String = "gunbc-scm-repository-v3"
 // by a rule the v1 value does not describe, which is exactly the silent reinterpretation this tag
 // exists to turn into a refusal.
 data repository_object_identity_rule_tag: String = "scm-object-identity-v2"
+
+// THE GENERATION IDENTITY OF A PERSISTED ENVELOPE IS THE CONTENT HASH OF THE DOCUMENT'S OWN BYTES.
+//
+// This is the compare-and-set operand the guarded save (gunbc.scm.repository_save
+// save_repository_sharded_guarded) matches between a writer's load and its write: a loader hands
+// back the generation of the bytes it decoded, a saver observes the generation currently on disk,
+// and a mismatch means someone else committed an envelope the writer never saw -- the save refuses
+// rather than clobbering it. The 2026-09-22 incident is the receipt for the missing guard: the
+// fmt-gate capture recorded scm_commit_ordinal 1, and four minutes later a stale-generation save
+// silently rewrote the envelope commit-0-only, destroying the capture's commit while every
+// operation reported success.
+//
+// The rule lives here, beside the format tags, because it is a FACT ABOUT THE FORMAT, owned by the
+// format's authority: one derivation feeds both the loader (which hashes the bytes it read) and
+// the guard (which hashes the bytes on disk now), so the two sides can never disagree about what
+// a generation IS. It is deliberately over the document BYTES rather than any decoded projection:
+// two byte-different documents that decode to one semantic repository (insertion-order ties, the
+// non-canonical encoding the codec header declares) are nonetheless two GENERATIONS, because the
+// guard's subject is the file on disk, not the repository it denotes. A hand edit that preserves
+// semantics still moves the generation, and the next stale writer refuses -- conservative
+// refusal is the guard's whole purpose.
+//
+// The hash family is the object identity's own family (fnv1a64 structural, the declared-rung
+// locator family this format already uses for ObjectId): no second digest authority is minted for
+// one compare, and the declared non-cryptographic rung of that family applies here unchanged --
+// the guard separates writers that observed different bytes, it is not an adversarial-integrity
+// claim. The cast is the established content_hash_atom idiom (the same submission_digest carries);
+// an index document is non-empty by construction, since every format the loader admits carries a
+// format member and an empty document refuses at that read.
+fn repository_generation_of_content(content: String) -> Fnv1a64Structural {
+  content_hash_atom(value: content as NonEmptyStr)
+}
 
 // ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
 // rather than a fresh choice. The annotation on `checked_out` records why it resolves against the

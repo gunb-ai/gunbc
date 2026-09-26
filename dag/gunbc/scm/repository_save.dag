@@ -42,12 +42,16 @@ module gunbc.scm.repository_save
 // decide it on their behalf.
 
 import std.types { String, Int }
+import std.content_hash {
+  content_hash_eq_structural,
+  Fnv1a64Structural,
+}
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesystem_established_absence_path }
-import extdeps.languages.json.emit { serialize_json }
+import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesystem_established_absence_path, filesystem_listing_names_entry }
+import extdeps.languages.json.emit { serialize_json, JsonValue }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }
-import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for, shard_partition, shard_members_of, shard_identity_of }
+import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for, shard_partition, shard_members_of, shard_identity_of, envelope_parent_dir, envelope_file_name }
 import gunbc.scm.object_store { ScmObject, scm_object_identity }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -57,6 +61,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeRefusal,
   encode_repository_checked,
   encode_repository_sharded_checked,
+  repository_generation_of_content,
 }
 
 // THE BYTE COUNT IS A MAGNITUDE, NOT A NUMBER, and it is carried as one. `ByteSize` is
@@ -82,11 +87,103 @@ import gunbc.scm.repository_envelope {
 // unreachable by any input this repository can currently express. It is kept because the
 // alternative is not "no arm" but `nat_magnitude` silently turning the negative into a byte
 // count; deleting the arm would delete the refusal, not the case.
+//
+// THE GUARDED ENTRY GROWS THE OUTCOME RATHER THAN THIS TYPE, for the reason init.dag's fold and
+// render.dag's renderer state: RepositorySave's existing consumers answer questions an
+// unguarded write can ask (init's create, the renderer's lines), and arming them to match
+// guard-only refusals they can never produce would be the callee-arm-carried-past-its-exclusion
+// shape this stack keeps removing. The compare-and-set refusals live on
+// RepositoryGuardedSave beside an arm embedding RepositorySave whole, so one save vocabulary
+// serves both entries and no consumer matches an arm its route cannot construct.
 type RepositorySave
   = RepositorySaved { path: String, written: ByteSize }
   | RepositorySaveRefusedByCodec { path: String, cause: RepositoryEncodeRefusal }
   | RepositoryFileUnwritable { path: String, error: String }
   | RepositoryWriteByteCountUnrepresentable { path: String, reported: Int }
+
+// THE GENERATION A GUARDED SAVE EXPECTS ON DISK, as one sealed question. GenerationExpected
+// carries the hash the writer's load observed; GenerationExpectedAbsent records that the load
+// observed NO envelope -- the first-save case. The distinction is carried as data rather than a
+// bare optional because the two expectations refuse differently when the disk disagrees: an
+// observed generation that no longer matches is STALE, while an observed absence that is no longer
+// absent means an envelope APPEARED, and "someone else saved after you loaded" and "someone
+// created what you saw as empty" are different facts about different remedies, not one boolean's
+// two values.
+type RepositoryGenerationExpectation
+  = GenerationExpected(Fnv1a64Structural)
+  | GenerationExpectedAbsent
+
+// THE PURE HALF OF THE COMPARE-AND-SET GUARD, separated from the effects so a witness reaches
+// every arm at the hermetic boundary. The judgment is total over (expectation, observed
+// generation): an absent on-disk envelope ADMITS, because a save over absence destroys nothing --
+// the first-save path stays admissible, and an envelope that vanished between load and save
+// leaves nothing a stale writer could clobber. A present on-disk generation that differs from
+// what the writer observed -- in either direction, older or newer -- is STALE, and the refusal
+// carries BOTH identities, because a stale refusal that names only one side sends its operator to
+// compare against a generation they cannot see.
+type RepositoryGenerationAdmission
+  = RepositoryGenerationAdmitted
+  | RepositoryGenerationStale { expected: RepositoryGenerationExpectation, found: Fnv1a64Structural }
+
+fn admit_repository_generation(
+  expected: RepositoryGenerationExpectation,
+  found: Fnv1a64Structural?,
+) -> RepositoryGenerationAdmission {
+  match found {
+    Absent => RepositoryGenerationAdmitted
+    Present { value: on_disk } =>
+      match expected {
+        GenerationExpectedAbsent =>
+          RepositoryGenerationStale { expected: expected, found: on_disk }
+        GenerationExpected(observed) =>
+          if content_hash_eq_structural(left: observed, right: on_disk) {
+            RepositoryGenerationAdmitted
+          } else {
+            RepositoryGenerationStale { expected: expected, found: on_disk }
+          }
+      }
+  }
+}
+
+// WHAT THE GUARD OBSERVED AT THE ENVELOPE'S ADDRESS, one instant before the write. Absence is
+// established by a successful listing never naming the file -- the same rule the belt's envelope
+// observation carries -- and a listed-then-unreadable envelope is UNOBSERVABLE, not absent: a
+// compare-and-set decided on a guess would be worse than none, so the guard fails closed and the
+// save refuses.
+type EnvelopeGenerationObservation
+  = EnvelopeGenerationObserved { found: Fnv1a64Structural? }
+  | EnvelopeGenerationUnobservable { error: String }
+
+fn observe_envelope_generation(path: String) -> EnvelopeGenerationObservation {
+  let listing = Filesystem.List(path: envelope_parent_dir(path: path))
+  if !listing.success {
+    EnvelopeGenerationUnobservable {
+      error: join(["the envelope's directory could not be listed, so the on-disk generation is unknown: ", listing.error], ""),
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: envelope_file_name(path: path)) {
+    EnvelopeGenerationObserved { found: none }
+  } else {
+    let read = Filesystem.Read(path: path)
+    if read.success {
+      EnvelopeGenerationObserved { found: Present { value: repository_generation_of_content(content: read.content) } }
+    } else {
+      EnvelopeGenerationUnobservable {
+        error: join(["the envelope is listed but could not be read, so the on-disk generation is unknown: ", read.error], ""),
+      }
+    }
+  }
+}
+
+// THE OUTCOME OF A COMPARE-AND-SET GUARDED SAVE. The embedded arm carries the unguarded save
+// outcome whole -- codec refusal, unwritable path, nonsense byte count, and success are the same
+// facts under a guard as without one -- and the two guard-only arms name the ways a compare-and-set
+// can refuse: the on-disk generation moved since the writer loaded (STALE, carrying both
+// identities), or the on-disk generation could not be observed at all (so the set half of the
+// compare-and-set cannot run, and the save fails closed rather than writing unguarded).
+type RepositoryGuardedSave
+  = RepositoryGuardedSaveOutcome(RepositorySave)
+  | RepositoryStaleGenerationRefused { path: String, expected: RepositoryGenerationExpectation, found: Fnv1a64Structural }
+  | RepositoryGuardedSaveUnobservable { path: String, error: String }
 
 // CREATING A REPOSITORY IS NOT SAVING ONE, AND THE DIFFERENCE IS THE WRITE ITSELF.
 //
@@ -238,28 +335,73 @@ fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardW
   }
 }
 
+// THE SHARDED WRITE'S SHARED TAIL: shards first (write-once, content-named, skipped when present),
+// the index last, so an interrupted save leaves the previous index naming only shards that exist.
+// Both the unguarded entry and the guarded entry reach this only through the checked encoder --
+// the adjudication stays ahead of every write either way.
+fn persist_sharded_repository(path: String, repo: RepositoryEnvelope, v: JsonValue) -> RepositorySave {
+  match save_object_shards(envelope_path: path, objects: repo.store.objects) {
+    ShardWriteAcc { written: _, refused } =>
+      match refused {
+        Present { value: detail } =>
+          RepositoryFileUnwritable { path: path, error: detail }
+        Absent => {
+          let write = Filesystem.Write(path: path, content: serialize_json(v: v))
+          if !write.success {
+            RepositoryFileUnwritable { path: path, error: write.error }
+          } else if write.bytes_written < 0 {
+            RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
+          } else {
+            RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+          }
+        }
+      }
+  }
+}
+
 fn save_repository_sharded(path: String, repo: RepositoryEnvelope) -> RepositorySave {
   match encode_repository_sharded_checked(repo: repo) {
     RepositoryEncodeRefused { cause: cause } =>
       RepositorySaveRefusedByCodec { path: path, cause: cause }
-    RepositoryEncoded { value: v } => {
-      match save_object_shards(envelope_path: path, objects: repo.store.objects) {
-        ShardWriteAcc { written: _, refused } =>
-          match refused {
-            Present { value: detail } =>
-              RepositoryFileUnwritable { path: path, error: detail }
-            Absent => {
-              let write = Filesystem.Write(path: path, content: serialize_json(v: v))
-              if !write.success {
-                RepositoryFileUnwritable { path: path, error: write.error }
-              } else if write.bytes_written < 0 {
-                RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
-              } else {
-                RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
-              }
-            }
+    RepositoryEncoded { value: v } =>
+      persist_sharded_repository(path: path, repo: repo, v: v)
+  }
+}
+
+// THE COMPARE-AND-SET GUARDED SAVE. The adjudication order is the module's own law, one level
+// deeper: encode-checked FIRST (a repository that no writer can write refuses before the
+// filesystem is consulted), THEN the generation observation, THEN the write -- so no arm in this
+// type reports a write for a repository that failed adjudication, and no stale arm performs one.
+// The caller's expectation is the generation its load observed (RepositoryLoaded carries it beside
+// the envelope for exactly this), or GenerationExpectedAbsent when the load observed no envelope;
+// the guard refuses when the disk no longer matches that observation, which is the whole content
+// of the protection. The 2026-09-22 incident was a stale writer -- a save derived from a
+// commit-0-only load, executed four minutes after a capture had persisted ordinal 1 -- silently
+// rewinding the envelope, and no arm existed to say the world had moved.
+//
+// THE REFUSAL IS THE GUARD'S ONLY EFFECT ON A STALE WORLD: the stale arm returns before
+// persist_sharded_repository is reachable, so a refused guarded save leaves every byte on disk --
+// shards and index -- exactly as it found them, and the next tick's fresh load re-derives the
+// write against the generation that is actually there.
+fn save_repository_sharded_guarded(
+  path: String,
+  repo: RepositoryEnvelope,
+  expected: RepositoryGenerationExpectation,
+) -> RepositoryGuardedSave {
+  match encode_repository_sharded_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: path, cause: cause })
+    RepositoryEncoded { value: v } =>
+      match observe_envelope_generation(path: path) {
+        EnvelopeGenerationUnobservable { error } =>
+          RepositoryGuardedSaveUnobservable { path: path, error: error }
+        EnvelopeGenerationObserved { found } =>
+          match admit_repository_generation(expected: expected, found: found) {
+            RepositoryGenerationAdmitted =>
+              RepositoryGuardedSaveOutcome(persist_sharded_repository(path: path, repo: repo, v: v))
+            RepositoryGenerationStale { expected: stale_expected, found: stale_found } =>
+              RepositoryStaleGenerationRefused { path: path, expected: stale_expected, found: stale_found }
           }
       }
-    }
   }
 }

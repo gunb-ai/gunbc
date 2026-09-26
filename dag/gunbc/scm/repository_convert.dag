@@ -34,13 +34,15 @@ module gunbc.scm.repository_convert
 // constructed in (DESIGN section 5). A refused conversion leaves the monolith byte-for-byte on disk,
 // so the operator's next act can be a repair of the document, not a recovery from a half-written one.
 //
-// THE WRITE IS THE SHARDED WRITER, UNCHANGED. `save_repository_sharded` writes shards first (each
+// THE WRITE IS THE GUARDED SHARDED WRITER. `save_repository_sharded_guarded` writes shards first (each
 // sealed by its content identity, each skipped if a shard of that name already holds those bytes) and
 // the index last, so an interrupted conversion leaves the previous document naming only shards that
-// exist. The monolith's bytes at the index path are replaced by the v7 index -- the pre-conversion
-// document is not deleted by name, it is superseded by contents, per the declared migration's
-// rollback note (docs/plans/scm-envelope-read-path-bounded-migration.md): the load path dispatches on
-// the format tag, so a restored v6 document reads exactly as today.
+// exist -- and it compares the generation this shell read against the generation on disk before any
+// byte moves, so a conversion that took minutes to plan refuses rather than clobbering an envelope
+// someone else moved. The monolith's bytes at the index path are replaced by the v7 index -- the
+// pre-conversion document is not deleted by name, it is superseded by contents, per the declared
+// migration's rollback note (docs/plans/scm-envelope-read-path-bounded-migration.md): the load path
+// dispatches on the format tag, so a restored v6 document reads exactly as today.
 //
 // WHY THE PLAN IS SPLIT FROM THE SHELL. `repository_convert_plan` is pure -- a parsed document in, a
 // write-plan, a no-op plan, or a refusal out -- so the version check, the admission set, and the
@@ -51,6 +53,7 @@ module gunbc.scm.repository_convert
 import std.types { String, Int }
 import std.measure { ByteSize, byte_size_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadOutcome,
@@ -77,8 +80,21 @@ import gunbc.scm.repository_envelope {
   RepositoryDecoded,
   RepositoryDecodeRefused,
   RepositoryEncodeRefusal,
+  repository_generation_of_content,
 }
-import gunbc.scm.repository_save { save_repository_sharded, RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable }
+import gunbc.scm.repository_save {
+  save_repository_sharded_guarded,
+  RepositoryGuardedSave,
+  RepositoryGuardedSaveOutcome,
+  RepositoryStaleGenerationRefused,
+  RepositoryGuardedSaveUnobservable,
+  RepositorySaved,
+  RepositorySaveRefusedByCodec,
+  RepositoryFileUnwritable,
+  RepositoryWriteByteCountUnrepresentable,
+  RepositoryGenerationExpectation,
+  GenerationExpected,
+}
 
 // THE OUTCOME OF ONE CONVERSION ATTEMPT. Three arms, and the distinction between the first two is the
 // idempotence contract: `RepositoryConverted` says this run wrote the v7 layout, `RepositoryConvertNoOp`
@@ -99,6 +115,17 @@ type RepositoryConvert
 // fact about the BYTES (repair or restore the document), an unwritable path is a fact about the HOST
 // (check the directory), an unrepresentable repository is a fact about the VALUE (no writer can write
 // it anywhere). One arm over the three would send the operator to the wrong repair.
+//
+// THE WRITE-SIDE ARMS THE GUARD ADDED, and why each is its own fact. Superseded is the
+// compare-and-set refusal: the conversion read the monolith at one generation and the guard
+// observed another, so someone else moved the envelope between the read and the write, and
+// converting would clobber their bytes with bytes derived from a world that no longer exists --
+// both identities are carried because the operator's first question is what the disk now holds.
+// GenerationUnobservable is the guard's fail-closed arm: the on-disk generation could not be read
+// at all, so the conversion cannot know whether the world moved, and an unguarded write is
+// exactly the silent-clobber failure the guarded entry exists to refuse. Both are reachable on
+// this route -- the expectation is always the generation of the bytes this shell just read, and
+// between that read and the write the envelope is anyone's.
 type RepositoryConvertRefusal
   = RepositoryConvertFileUnreadable { path: String, error: String }
   | RepositoryConvertDocumentUnparseable { path: String, gap: JsonDocumentGap }
@@ -108,6 +135,8 @@ type RepositoryConvertRefusal
   | RepositoryConvertEncodeRefused { path: String, cause: RepositoryEncodeRefusal }
   | RepositoryConvertFileUnwritable { path: String, error: String }
   | RepositoryConvertByteCountUnrepresentable { path: String, reported: Int }
+  | RepositoryConvertSuperseded { path: String, expected: Fnv1a64Structural, found: Fnv1a64Structural }
+  | RepositoryConvertGenerationUnobservable { path: String, error: String }
 
 // THE PLAN IS THE DECISION WITHOUT THE EFFECTS. `RepositoryConvertWritePlan` carries the decoded
 // envelope because the decode is the admission: a plan exists only for a document that read whole.
@@ -170,7 +199,7 @@ fn repository_convert_plan(v: JsonValue) -> RepositoryConvertPlan {
 }
 
 // THE SHELL. Read, parse, plan, and only then write -- the order is the guarantee, not a check inside
-// the writer: every refusal arm returns before `save_repository_sharded` is reachable, so no shard and
+// the writer: every refusal arm returns before the guarded save is reachable, so no shard and
 // no index of a refused conversion is on disk.
 fn convert_repository_to_sharded(path: String) -> RepositoryConvert {
   let read = Filesystem.Read(path: path)
@@ -188,7 +217,12 @@ fn convert_repository_to_sharded(path: String) -> RepositoryConvert {
             RepositoryConvertRefusePlan { cause } =>
               RepositoryConvertRefused { cause: repository_convert_read_refusal_located(path: path, cause: cause) }
             RepositoryConvertWritePlan { from_format, envelope } =>
-              repository_convert_write(path: path, from_format: from_format, envelope: envelope)
+              repository_convert_write(
+                path: path,
+                from_format: from_format,
+                envelope: envelope,
+                expected: GenerationExpected(repository_generation_of_content(content: content)),
+              )
           }
       }
   }
@@ -207,12 +241,19 @@ fn repository_convert_read_refusal_located(path: String, cause: RepositoryConver
   }
 }
 
-// THE WRITE IS THE SHARDED WRITER'S OUTCOME, CARRIED ONE-TO-ONE. The save's three failure arms map to
-// the conversion's three write-side arms without re-wording: the causes have one home, in
+// THE WRITE IS THE GUARDED SHARDED WRITER'S OUTCOME, CARRIED ONE-TO-ONE. The save's arms map to
+// the conversion's write-side arms without re-wording: the causes have one home, in
 // `gunbc.scm.repository_save`, and a second phrasing here would fork what the operator repairs.
-fn repository_convert_write(path: String, from_format: String, envelope: RepositoryEnvelope) -> RepositoryConvert {
-  match save_repository_sharded(path: path, repo: envelope) {
-    RepositorySaved { path: _, written } =>
+// The two guard-only refusals map to the two arms the type above admits for them; the success and
+// codec/host arms map exactly as the unguarded writer's did.
+fn repository_convert_write(
+  path: String,
+  from_format: String,
+  envelope: RepositoryEnvelope,
+  expected: RepositoryGenerationExpectation,
+) -> RepositoryConvert {
+  match save_repository_sharded_guarded(path: path, repo: envelope, expected: expected) {
+    RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written }) =>
       RepositoryConverted {
         path: path,
         from_format: from_format,
@@ -220,12 +261,18 @@ fn repository_convert_write(path: String, from_format: String, envelope: Reposit
         shards: count(shard_roster_of(objects: envelope.store.objects)),
         written: written,
       }
-    RepositorySaveRefusedByCodec { path: _, cause } =>
+    RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause }) =>
       RepositoryConvertRefused { cause: RepositoryConvertEncodeRefused { path: path, cause: cause } }
-    RepositoryFileUnwritable { path: _, error } =>
+    RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: _, error }) =>
       RepositoryConvertRefused { cause: RepositoryConvertFileUnwritable { path: path, error: error } }
-    RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+    RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
       RepositoryConvertRefused { cause: RepositoryConvertByteCountUnrepresentable { path: path, reported: reported } }
+    RepositoryStaleGenerationRefused { path: _, expected: stale_expected, found: stale_found } =>
+      RepositoryConvertRefused {
+        cause: RepositoryConvertSuperseded { path: path, expected: stale_expected, found: stale_found },
+      }
+    RepositoryGuardedSaveUnobservable { path: _, error } =>
+      RepositoryConvertRefused { cause: RepositoryConvertGenerationUnobservable { path: path, error: error } }
   }
 }
 
@@ -329,6 +376,22 @@ fn repository_convert_refused_json(cause: RepositoryConvertRefusal) -> JsonValue
         json_kv(key: "path", value: json_string(s: path)),
         json_kv(key: "refusal", value: json_string(s: "byte-count-unrepresentable")),
         json_kv(key: "detail", value: json_string(s: join(["the envelope write reported a nonsensical byte count (", to_string(reported), "): ", path], ""))),
+      ])
+    RepositoryConvertSuperseded { path, expected: _, found: _ } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "superseded")),
+        json_kv(key: "detail", value: json_string(s: concat("the envelope changed on disk between the conversion's read and its write, so converting would clobber a newer envelope; nothing was written: ", path))),
+      ])
+    RepositoryConvertGenerationUnobservable { path, error } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: repository_convert_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "path", value: json_string(s: path)),
+        json_kv(key: "refusal", value: json_string(s: "generation-unobservable")),
+        json_kv(key: "detail", value: json_string(s: join(["the on-disk generation could not be observed, so the conversion could not compare-and-set and refused rather than writing unguarded: ", path, " (", error, ")"], ""))),
       ])
   }
 }

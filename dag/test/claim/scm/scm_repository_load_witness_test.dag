@@ -16,7 +16,9 @@ module test.claim.scm_repository_load_witness
 // as a failed read, and the claim would be measuring the sandbox instead of this module.
 
 import std.types { Bool, String, List, Int }
+import std.content_hash { content_hash_eq_structural }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.scm.repository_load {
   RepositoryLoad,
   RepositoryLoaded,
@@ -33,6 +35,7 @@ import gunbc.scm.repository_envelope {
   RepositoryFormatUnrecognized,
   RepositoryFormatRetired,
   repository_envelope_load_standing,
+  repository_generation_of_content,
 }
 import gunbc.scm.load_standing {
   LoadStanding,
@@ -56,8 +59,23 @@ data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_fil
 
 test fn scm_rl_a_well_formed_document_loads() -> Bool {
   match load_repository(path: scm_rl_empty_repository_path) {
-    RepositoryLoaded { path: p, envelope: _ } => p == scm_rl_empty_repository_path
+    RepositoryLoaded { path: p, envelope: _, generation: _ } => p == scm_rl_empty_repository_path
     _ => false
+  }
+}
+
+// THE GENERATION IS THE HASH OF THE BYTES THAT WERE READ, not of any decoded projection: it is the
+// compare-and-set operand a guarded save matches against the disk (the save witness drives that
+// arm), so it must be re-derivable from the document alone. The expectation is computed here from
+// a direct read of the same fixture bytes, and the claim refuses to trust the load's own report.
+test fn scm_rl_the_loaded_generation_is_the_content_hash_of_the_documents_bytes() -> Bool {
+  let expected = repository_generation_of_content(
+    content: Filesystem.Read(path: scm_rl_empty_repository_path).content,
+  )
+  match load_repository(path: scm_rl_empty_repository_path) {
+    RepositoryLoaded { path: _, envelope: _, generation } =>
+      content_hash_eq_structural(left: generation, right: expected)
+    RepositoryLoadRefused { cause: _ } => false
   }
 }
 
@@ -175,7 +193,7 @@ test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
 // have to invent authored bytes the semantic projection discarded.
 test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool {
   match load_repository(path: scm_rl_predecessor_v4_path) {
-    RepositoryLoaded { path: p, envelope: envelope } =>
+    RepositoryLoaded { path: p, envelope: envelope, generation: _ } =>
       p == scm_rl_predecessor_v4_path
         && match envelope.staged {
           Absent => true
@@ -214,7 +232,7 @@ test fn scm_rl_a_v4_document_declaring_a_stage_refuses() -> Bool {
 // These drive the SAME fixtures through the real projection.
 fn scm_rl_refusal_text(path: String) -> List<String> {
   match load_repository(path: path) {
-    RepositoryLoaded { path: _, envelope: _ } => []
+    RepositoryLoaded { path: _, envelope: _, generation: _ } => []
     RepositoryLoadRefused { cause: cause } => repository_load_refusal_lines(cause: cause)
   }
 }
