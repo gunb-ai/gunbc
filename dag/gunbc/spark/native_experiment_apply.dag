@@ -214,9 +214,9 @@ data spark_churn_requests_per_seat: Nat = 25
 
 // THE CHURN BAND'S FLOOR, 8K tokens in the plan's words (arm_memory_experiment_observed
 // fragmentation-churn plan: bounded mixed-length churn 8K-256K). The band's CEILING is not a second
-// constant: it is the plan's own window, profile.max_model_len — the churn questions the allocator
-// up to the full window the prefills minted, and a band ceiling minted beside the profile could
-// drift from the engine config the run actually launched.
+// constant: it is the seat window the admission derived — the plan's context window minus one
+// scheduler block — so a churn request can no more overshoot the engine's limit than a prefill
+// seat can, and the margin's arithmetic lives in exactly one place.
 data spark_churn_band_floor_tokens: Nat = 8192
 
 // THE SAMPLING CADENCE is the fragmentation runbook's poll_seconds
@@ -231,12 +231,66 @@ data spark_allocator_sample_cadence_seconds: Nat = 5
 // the cell's remaining lifetime. Declared, not measured.
 data spark_churn_request_timeout_seconds: Nat = 600
 
+// THE SEAT MARGIN IS ONE SCHEDULER BLOCK BELOW THE CONTEXT WINDOW. The engine's own
+// KV_ALLOCATION_PLAN emission names scheduler_block_size 2304 for this model
+// (test.fixture.kv_allocation_plan_emission real_262144x6_v2_line, pinned by
+// test.claim.spark.vllm_allocation_plan_observe_witness_test at 2304 for both the v1 and v2
+// launches) — and the first churn run is the receipt for why the seat construction cannot target
+// the window itself: all six seats came back HTTP 400 with empty bodies because a prompt whose
+// realized token count reaches 262144 has no room for tokenizer drift at the block boundaries, and
+// vLLM refuses a prompt past max_model_len. One scheduler block of headroom keeps every admissible
+// drift inside the window, and it is the engine's own allocation granularity — the emission pads
+// group-0 to 114 blocks x 2304 = 262,656 token-slots for a 262,144-token request — so the margin
+// is a fact about THIS engine, not a guess at a safe number.
+data spark_seat_window_margin_tokens: Nat = 2304
+
+// THE SEAT WINDOW THE PREFILLS TARGET: the context window minus one scheduler block, or nothing
+// when the window cannot hold the margin. The refusal arm is the build-time wall: a plan whose
+// context window is at or below the margin has no legal full-window seat construction, and the
+// actuation that kept building one would mint seats the engine refuses — the .dag subtraction
+// stays total by checking before it subtracts.
+fn spark_seat_window_tokens(context_window: Nat) -> Nat? {
+  if context_window > spark_seat_window_margin_tokens {
+    Present { value: context_window - spark_seat_window_margin_tokens }
+  } else {
+    none
+  }
+}
+
+// THE SEAT WINDOW ADMISSION, at the actuation's plan wall: a memory-profile plan never builds
+// seats, so it is ready with the raw window and the value goes unread below the gate; a
+// fragmentation plan must show a window that holds the margin, and refuses with the arithmetic
+// named when it cannot.
+type SparkSeatWindowAdmission
+  = SparkSeatWindowReady { seat_window: Nat }
+  | SparkSeatWindowRefused { cause: NonEmptyStr }
+
+fn spark_experiment_seat_window(plan: ArmMemoryExperimentPlan) -> SparkSeatWindowAdmission {
+  if !spark_plan_targets_fragmentation(plan: plan) {
+    SparkSeatWindowReady { seat_window: token_count_value(t: plan.profile.max_model_len) }
+  } else {
+    let context_window = token_count_value(t: plan.profile.max_model_len)
+    match spark_seat_window_tokens(context_window: context_window) {
+      Present { value: w } => SparkSeatWindowReady { seat_window: w }
+      Absent =>
+        SparkSeatWindowRefused {
+          cause: join([
+            "the experiment plan's context window (", to_string(context_window),
+            " tokens) cannot hold one full-window seat: the prefill construction keeps a one-scheduler-block margin (",
+            to_string(spark_seat_window_margin_tokens),
+            " tokens) below the window so tokenizer drift can never push a seat past the engine's limit, and this window does not span the margin",
+          ], "") as NonEmptyStr,
+        }
+    }
+  }
+}
+
 // THE WORKLOAD PHASE, PLANNED. Present only when the plan targets the fragmentation allowance;
 // every leg runs on the head member (the engine's endpoint is the head's loopback), and each leg's
 // script renders through the realization's own renderer, so the dry entry shows the legs the
 // realization inhabits. Absent everywhere else: the bracket for a memory-profile plan is the bracket
 // that has always run.
-fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionMember>, plan: ArmMemoryExperimentPlan) -> SparkExperimentWorkloadPhase? {
+fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionMember>, plan: ArmMemoryExperimentPlan, seat_window: Nat) -> SparkExperimentWorkloadPhase? {
   if !spark_plan_targets_fragmentation(plan: plan) {
     none
   } else {
@@ -245,7 +299,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
       Present { value: head } =>
         let window = spark_churn_window_seconds(admitted_seconds: plan.max_runtime_seconds)
         let seats = length(plan.workload.cold_sequence_budgets)
-        let seat_window = token_count_value(t: plan.profile.max_model_len)
+        let context_window = token_count_value(t: plan.profile.max_model_len)
         let alias = plan.profile.served_alias
         Present { value: SparkExperimentWorkloadPhase {
           readiness_gate: SparkExperimentWorkloadLeg {
@@ -261,7 +315,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: seats, seat_tokens: seat_window),
+              script: systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: seats, seat_window: seat_window, context_window: context_window),
             },
           },
           churn: SparkExperimentWorkloadLeg {
@@ -456,7 +510,10 @@ fn arm_experiment_actuation_admission(
 // contract order (inventory, quiescence, disposal, settlement, readback), then preparation per
 // member, then the cohort's non-blocking activation per member — the list the order law checks.
 // Every leg is rendered by the realization's own verb, so the legs the dry entry shows are the
-// legs the realization inhabits, not a parallel spelling.
+// legs the realization inhabits, not a parallel spelling. Ahead of the workload phase, the seat
+// window wall: a fragmentation-targeted plan whose context window cannot hold the one-scheduler-
+// block margin refuses the actuation here, at plan time, with the arithmetic named — before any
+// credential is reached for and before a seat is built that the engine would refuse.
 fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecutionMember>, plan: ArmMemoryExperimentPlan) -> ArmExperimentActuationAdmission {
   let realization = systemd_execution_realization()
   let identity = ExecutionOperationIdentity { attempt: spark_native_experiment_apply_attempt_raw, generation: cohort.generation }
@@ -475,6 +532,9 @@ fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecution
   match spark_head_readback_leg(cohort: cohort, admitted_seconds: plan.max_runtime_seconds) {
     Absent => ArmExperimentActuationRefused { cause: "the cohort admitted no head member, so no head readback leg could be planned: the convergence witness needs the head's log" as NonEmptyStr }
     Present { value: head_readback } =>
+      match spark_experiment_seat_window(plan: plan) {
+        SparkSeatWindowRefused { cause: c } => ArmExperimentActuationRefused { cause: c }
+        SparkSeatWindowReady { seat_window: seat_window } =>
       ArmExperimentActuationAdmitted {
         cohort: cohort,
         prior_generation_actuations: prior_generation_actuations,
@@ -482,9 +542,10 @@ fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecution
         activation_actuations: activation_actuations,
         head_readback: head_readback,
         rank_readbacks: spark_rank_readback_legs(cohort: cohort, admitted_seconds: plan.max_runtime_seconds),
-        workload_phase: spark_experiment_workload_phase(cohort: cohort, plan: plan),
+        workload_phase: spark_experiment_workload_phase(cohort: cohort, plan: plan, seat_window: seat_window),
         stop_legs: map(cohort.members, m => spark_stop_plan_of_member(member: m)),
         admitted_seconds: plan.max_runtime_seconds,
+      }
       }
   }
 }

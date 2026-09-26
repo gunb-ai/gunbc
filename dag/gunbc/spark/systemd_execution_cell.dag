@@ -339,14 +339,19 @@ data systemd_workload_block_body: NonEmptyStr = "alpha bravo charlie delta echo 
 // A single calibration request derives the per-block token yield against THIS engine and tokenizer —
 // no tokenizer table is modeled or trusted, and the yield the run itself measures is the only
 // spelling that cannot drift from the served model. Each seat prompt is then generated at
-// blocks = seat window / yield, so every seat lands within one block of the full window, and all
-// seats fire concurrently with max_tokens 1 (the seats are prefill work; generation is beside the
-// point). A seat whose request fails, or whose carried prompt_tokens shows the engine refused the
-// window, fails the leg under set -e with the seat's stderr preserved in the state directory and
-// the seat line already printed, so the refusal is located by seat. The leg closes by recording the
-// warm process_mib reference the sampler folds the gap against — taken with every seat complete and
-// no request in flight, it is the experiment's accounted baseline.
-fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_tokens: Nat) -> String {
+// blocks = seat window / yield, so every seat lands within one block of the seat window — which
+// the caller keeps ONE SCHEDULER BLOCK below the engine's context window, so tokenizer drift at
+// block boundaries can never push a seat past the limit the engine 400s on (the first churn run's
+// six empty 400s are the receipt for that margin). Every request's response body — success or
+// error — is written to the seat's evidence file with its HTTP status: curl's -f would have thrown
+// the engine's 400 message away and left the failure evidence empty, and an engine refusal the
+// driver cannot quote is a located refusal the operator cannot read. A seat whose readback
+// prompt_tokens exceeds the context window is refused as a DRIVER DEFECT located by seat — the
+// margin was supposed to make that unreachable, so reaching it means the construction above is
+// wrong, not the engine. The leg closes by recording the warm process_mib reference the sampler
+// folds the gap against — taken with every seat complete and no request in flight, it is the
+// experiment's accounted baseline.
+fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_window: Nat, context_window: Nat) -> String {
   let state = systemd_workload_state_dir(member: member)
   let body = systemd_workload_block_body as String
   join([
@@ -358,18 +363,21 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     "body=\"", body, "\"\n",
     "curl -fsS -m 10 \"$base/v1/models\" >/dev/null\n",
     "awk -v alias=\"$served_alias\" -v body=\"$body\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"s00b00001 %s s00b00002 %s s00b00003 %s s00b00004 %s\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\", alias, body, body, body, body }' > \"$state/probe.json\"\n",
-    "probe_resp=$(curl -fsS -m 120 \"$base/v1/completions\" -H 'Content-Type: application/json' -d @\"$state/probe.json\")\n",
-    "probe_tokens=$(printf '%s' \"$probe_resp\" | grep -o '\"prompt_tokens\":[0-9][0-9]*' | head -1 | cut -d: -f2)\n",
-    "case \"$probe_tokens\" in ''|*[!0-9]*) echo \"prefill-calibration-unreadable: no usage.prompt_tokens in the probe response\"; exit 20 ;; esac\n",
+    "if curl -sS -m 120 -D \"$state/probe.hdr\" -o \"$state/probe.resp\" -H 'Content-Type: application/json' -d @\"$state/probe.json\" \"$base/v1/completions\"; then probe_rc=0; else probe_rc=$?; fi\n",
+    "probe_http=$(head -1 \"$state/probe.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+    "case \"$probe_rc\" in 0) : ;; *) echo \"prefill-calibration-transport-failed rc=$probe_rc body=$(tr -d '\\n' < \"$state/probe.resp\")\"; exit 24 ;; esac\n",
+    "case \"$probe_http\" in 200) : ;; *) echo \"prefill-calibration-refused http=$probe_http body=$(tr -d '\\n' < \"$state/probe.resp\")\"; exit 25 ;; esac\n",
+    "probe_tokens=$(grep -o '\"prompt_tokens\":[0-9][0-9]*' \"$state/probe.resp\" | head -1 | cut -d: -f2)\n",
+    "case \"$probe_tokens\" in ''|*[!0-9]*) echo \"prefill-calibration-unreadable: no usage.prompt_tokens in the probe response body=$(tr -d '\\n' < \"$state/probe.resp\")\"; exit 20 ;; esac\n",
     "yield=$(( probe_tokens / 4 ))\n",
     "if [ \"$yield\" -lt 8 ]; then echo \"prefill-calibration-implausible: per-block yield $yield below 8 tokens\"; exit 21; fi\n",
     "printf '%s' \"$yield\" > \"$state/block_tokens\"\n",
-    "blocks=$(( ", to_string(seat_tokens), " / yield ))\n",
+    "blocks=$(( ", to_string(seat_window), " / yield ))\n",
     "seat_pids=\"\"\n",
     "seat=1\n",
     "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
     "  awk -v alias=\"$served_alias\" -v body=\"$body\" -v seat=\"$seat\" -v n=\"$blocks\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; b = 1; while (b <= n) { printf \"s%02db%05d %s \", seat, b, body; b = b + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/seat_$seat.json\"\n",
-    "  ( curl -fsS -m 1800 \"$base/v1/completions\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" > \"$state/seat_$seat.resp\" 2> \"$state/seat_$seat.err\"; echo $? > \"$state/seat_$seat.rc\" ) &\n",
+    "  ( if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\"; then seat_rc=0; else seat_rc=$?; fi; echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\" ) &\n",
     "  seat_pids=\"$seat_pids $!\"\n",
     "  seat=$(( seat + 1 ))\ndone\n",
     "for pid in $seat_pids; do wait \"$pid\"; done\n",
@@ -377,29 +385,37 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     "failed=0\n",
     "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
     "  rc=$(cat \"$state/seat_$seat.rc\")\n",
-    "  if [ \"$rc\" != \"0\" ]; then echo \"seat $seat prefill-failed rc=$rc\"; failed=1; seat=$(( seat + 1 )); continue; fi\n",
+    "  http=$(cat \"$state/seat_$seat.http\")\n",
+    "  if [ \"$rc\" != \"0\" ]; then echo \"seat $seat prefill-failed transport rc=$rc body=$(tr -d '\\n' < \"$state/seat_$seat.resp\")\"; failed=1; seat=$(( seat + 1 )); continue; fi\n",
+    "  if [ \"$http\" != \"200\" ]; then echo \"seat $seat prefill-failed http=$http body=$(tr -d '\\n' < \"$state/seat_$seat.resp\")\"; failed=1; seat=$(( seat + 1 )); continue; fi\n",
     "  seat_tokens_realized=$(grep -o '\"prompt_tokens\":[0-9][0-9]*' \"$state/seat_$seat.resp\" | head -1 | cut -d: -f2)\n",
-    "  case \"$seat_tokens_realized\" in ''|*[!0-9]*) echo \"seat $seat prompt-tokens-unreadable\"; failed=1 ;; *) echo \"seat $seat prompt_tokens=$seat_tokens_realized\" ;; esac\n",
+    "  case \"$seat_tokens_realized\" in\n",
+    "    ''|*[!0-9]*) echo \"seat $seat prompt-tokens-unreadable body=$(tr -d '\\n' < \"$state/seat_$seat.resp\")\"; failed=1 ;;\n",
+    "    *) if [ \"$seat_tokens_realized\" -gt ", to_string(context_window), " ]; then echo \"seat $seat over-limit prompt_tokens=$seat_tokens_realized limit=", to_string(context_window), " (driver defect: the seat construction exceeded the engine's context window)\"; failed=1; else echo \"seat $seat prompt_tokens=$seat_tokens_realized\"; fi ;;\n",
+    "  esac\n",
     "  seat=$(( seat + 1 ))\ndone\n",
     "if [ \"$failed\" != \"0\" ]; then exit 22; fi\n",
     "warm=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits | awk -F', ' '{ v = $2 + 0; if (v > m) m = v } END { printf \"%d\", m }')\n",
     "if [ \"$warm\" -le 0 ]; then echo \"warm-reference-unreadable: nvidia-smi reports no compute process after the prefills\"; exit 23; fi\n",
     "printf '%s' \"$warm\" > \"$state/warm_mib\"\n",
-    "echo \"prefill-seats-complete seats=", to_string(seat_count), " window_tokens=", to_string(seat_tokens), " yield=$yield blocks=$blocks warm_mib=$warm\"\n",
+    "echo \"prefill-seats-complete seats=", to_string(seat_count), " seat_window_tokens=", to_string(seat_window), " context_window_tokens=", to_string(context_window), " yield=$yield blocks=$blocks warm_mib=$warm\"\n",
   ], "")
 }
 
 // (b-i) THE CHURN DRIVER ITSELF, rendered as a standalone script the launcher installs and starts
 // detached. Bounded BOTH ways, never unbounded: the loop stops at the window's end timestamp and at
 // the per-client request count, whichever it hits first. Lengths are mixed inside the plan's
-// 8K-to-full-window band by drawing block counts from awk's rand() — POSIX sh carries no $RANDOM,
-// and awk's rand() is the seeded portable draw the fleet's shell already carries. Every request is
-// max_tokens 1 (the churn allocates and frees prefill windows; it does not decode) and carries its
-// (client, request, block) coordinates, so no request can be served from the prefix cache another
-// request populated. The driver writes its exit file as its LAST act — "done fail=0" only when
-// every client finished inside both bounds with every request answered — and the sampler reaps it
-// through that file, so a driver that is killed without writing refuses located instead of reading
-// as a quiet success.
+// 8K-to-seat-window band by drawing block counts from awk's rand() — POSIX sh carries no $RANDOM,
+// and awk's rand() is the seeded portable draw the fleet's shell already carries; the band ceiling
+// is the caller's margin'd seat window, never the raw context window, so a churn request can no
+// more 400 on length than a seat can. Every request is max_tokens 1 (the churn allocates and frees
+// prefill windows; it does not decode) and carries its (client, request, block) coordinates, so no
+// request can be served from the prefix cache another request populated. Like the prefill leg,
+// every response body is captured with its HTTP status — a refused churn request fails the driver
+// WITH the engine's message in the driver log, never an empty exit. The driver writes its exit file
+// as its LAST act — "done fail=0" only when every client finished inside both bounds with every
+// request answered — and the sampler reaps it through that file, so a driver that is killed without
+// writing refuses located instead of reading as a quiet success.
 fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmptyStr, state_dir: String, body: String, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
   join([
     "# churn driver, rendered by gunbc.spark.systemd_execution_cell; bounded by design\n",
@@ -421,7 +437,10 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
     "      n=$(( n + 1 ))\n",
     "      blocks=$(( low_blocks + $(awk -v span=\"$span_blocks\" 'BEGIN { srand(); printf \"%d\", int(rand() * (span + 1)) }') ))\n",
     "      awk -v alias=\"$served_alias\" -v body=\"$body\" -v client=\"$client\" -v req=\"$n\" -v nb=\"$blocks\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; b = 1; while (b <= nb) { printf \"c%02dr%05db%05d %s \", client, req, b, body; b = b + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/churn_\"$client\"_\"$n\".json\"\n",
-    "      curl -fsS -m ", to_string(request_timeout_seconds), " \"$base/v1/completions\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" -o /dev/null || exit 31\n",
+    "      if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$state/churn_last.hdr\" -o \"$state/churn_last.resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
+    "      churn_http=$(head -1 \"$state/churn_last.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+    "      if [ \"$churn_rc\" != \"0\" ]; then echo \"churn-request-failed client=$client request=$n transport rc=$churn_rc body=$(tr -d '\\n' < \"$state/churn_last.resp\")\"; exit 31; fi\n",
+    "      if [ \"$churn_http\" != \"200\" ]; then echo \"churn-request-failed client=$client request=$n http=$churn_http body=$(tr -d '\\n' < \"$state/churn_last.resp\")\"; exit 31; fi\n",
     "    done\n",
     "  ) &\n",
     "  client_pids=\"$client_pids $!\"\n",

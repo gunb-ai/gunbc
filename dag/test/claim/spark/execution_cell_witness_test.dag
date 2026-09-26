@@ -2,6 +2,7 @@ module test.claim.spark.execution_cell_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
+import std.measure { token_count, token_count_value }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.execution_cell {
@@ -41,9 +42,11 @@ import gunbc.spark.native_experiment_apply {
   SparkProfileReadbacksConverged, SparkProfileReadbackHalted,
   SparkHeadProfileReadbackRefused, SparkRankProfileReadbackRefused,
   SparkExperimentRouteResult,
-  spark_plan_targets_fragmentation, spark_experiment_workload_phase,
+  spark_plan_targets_fragmentation, spark_experiment_workload_phase, spark_experiment_seat_window,
+  spark_seat_window_tokens, spark_seat_window_margin_tokens,
   spark_churn_window_seconds, spark_churn_requests_per_seat, spark_churn_band_floor_tokens,
   spark_allocator_sample_cadence_seconds, spark_churn_request_timeout_seconds,
+  SparkSeatWindowReady, SparkSeatWindowRefused,
   SparkEndpointReadinessRefused, SparkPrefillSeatsRefused, SparkChurnRefused, SparkAllocatorSamplingRefused,
 }
 import gunbc.spark.arm_memory_experiment_observed {
@@ -57,8 +60,8 @@ import gunbc.spark.pair_serving_apply {
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.native_serving_realization { glm_native_head_unit_name, glm_native_rank_unit_name, glm_native_head_log_path, glm_native_rank_log_path }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
-import gunbc.spark.serving_arm { serving_launch_profile_key }
-import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused }
+import gunbc.spark.serving_arm { serving_launch_profile_key, serving_launch_profile }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds, ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused }
 
 // ── WHAT THIS SUITE ESTABLISHES ──────────────────────────────────────────────────────────────────
 //
@@ -556,19 +559,29 @@ test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: _ } =>
       let loader_absent = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
-        ArmMemoryExperimentAdmitted { plan: p } => match spark_experiment_workload_phase(cohort: cohort, plan: p) {
-          Absent => true
-          Present { value: _ } => false
-        }
+        ArmMemoryExperimentAdmitted { plan: p } =>
+          match spark_experiment_seat_window(plan: p) {
+            SparkSeatWindowRefused { cause: _ } => false
+            SparkSeatWindowReady { seat_window: sw } =>
+              match spark_experiment_workload_phase(cohort: cohort, plan: p, seat_window: sw) {
+                Absent => true
+                Present { value: _ } => false
+              }
+          }
         ArmMemoryExperimentRefused { cause: _ } => false
       }
       let churn_present = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
-        ArmMemoryExperimentAdmitted { plan: p } => match spark_experiment_workload_phase(cohort: cohort, plan: p) {
-          Absent => false
-          Present { value: phase } =>
-            (phase.prefill_seats.member.host as String) == (phase.churn.member.host as String)
-              && (phase.churn.member.host as String) == (phase.sampling.member.host as String)
-        }
+        ArmMemoryExperimentAdmitted { plan: p } =>
+          match spark_experiment_seat_window(plan: p) {
+            SparkSeatWindowRefused { cause: _ } => false
+            SparkSeatWindowReady { seat_window: sw } =>
+              match spark_experiment_workload_phase(cohort: cohort, plan: p, seat_window: sw) {
+                Absent => false
+                Present { value: phase } =>
+                  (phase.prefill_seats.member.host as String) == (phase.churn.member.host as String)
+                    && (phase.churn.member.host as String) == (phase.sampling.member.host as String)
+              }
+          }
         ArmMemoryExperimentRefused { cause: _ } => false
       }
       loader_absent && churn_present
@@ -593,6 +606,14 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
           let churn = phase.churn.plan.script
           let sampling = phase.sampling.plan.script
           let window = spark_churn_window_seconds(admitted_seconds: admitted)
+          let context_window = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+            ArmMemoryExperimentAdmitted { plan: p } => token_count_value(t: p.profile.max_model_len)
+            ArmMemoryExperimentRefused { cause: _ } => 0
+          }
+          let seat_window = match spark_seat_window_tokens(context_window: context_window) {
+            Present { value: w } => w
+            Absent => 0
+          }
           string_contains(s: gate, pattern: "/v1/models")
             && string_contains(s: gate, pattern: join(["endpoint-not-ready-after-", to_string(phase.readiness_bounded_seconds), "s"], ""))
             && string_contains(s: gate, pattern: "unit-inactive-before-endpoint-ready")
@@ -602,6 +623,16 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: prefill, pattern: "s%02db%05d")
             && string_contains(s: prefill, pattern: "probe.json")
             && string_contains(s: prefill, pattern: "warm_mib")
+            && string_contains(s: prefill, pattern: "-D \"$state/seat_$seat.hdr\"")
+            && string_contains(s: prefill, pattern: "cut -d' ' -f2")
+            && string_contains(s: prefill, pattern: "prefill-failed http=")
+            && string_contains(s: prefill, pattern: "prefill-failed transport rc=")
+            && string_contains(s: prefill, pattern: "body=$(tr -d '\\n' <")
+            && string_contains(s: prefill, pattern: "over-limit")
+            && string_contains(s: prefill, pattern: "(driver defect")
+            && string_contains(s: prefill, pattern: join(["blocks=$(( ", to_string(seat_window), " / yield ))"], ""))
+            && string_contains(s: prefill, pattern: join(["limit=", to_string(context_window)], ""))
+            && string_contains(s: prefill, pattern: "context_window_tokens=")
             && string_contains(s: churn, pattern: "churn-driver-launched")
             && string_contains(s: churn, pattern: "nohup")
             && string_contains(s: churn, pattern: "GUNBC_CHURN_DRIVER_EOF")
@@ -610,6 +641,8 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: churn, pattern: to_string(spark_churn_band_floor_tokens))
             && string_contains(s: churn, pattern: "c%02dr%05db%05d")
             && string_contains(s: churn, pattern: "srand")
+            && string_contains(s: churn, pattern: "churn-request-failed")
+            && string_contains(s: churn, pattern: "churn_last.resp")
             && string_contains(s: sampling, pattern: "vllm:kv_cache_usage_perc")
             && string_contains(s: sampling, pattern: "nvidia-smi")
             && string_contains(s: sampling, pattern: "/v1/models")
@@ -687,6 +720,69 @@ test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
         && all(ranks, l => string_contains(s: l.plan.script, pattern: expected_loop))
         && all(ranks, l => string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")))
   }
+}
+
+// THE SEAT MARGIN REFUSES AN OVERSHOOTING CONSTRUCTION AT BUILD TIME: the derivation returns the
+// context window minus one 2304-token scheduler block at this launch's 262144-token window
+// (259840), returns nothing when the window cannot span the margin (at the margin, below it), and
+// the plan-level admission is ready with the margin'd figure for the minted churn plan while a
+// plan whose window equals the margin refuses with the arithmetic named — the actuation wall that
+// keeps an unbuildable seat construction from ever reaching a credential.
+test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool {
+  let at_this_window = match spark_seat_window_tokens(context_window: 262144) {
+    Present { value: w } => w == 262144 - spark_seat_window_margin_tokens
+    Absent => false
+  }
+  let at_the_margin = match spark_seat_window_tokens(context_window: spark_seat_window_margin_tokens) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let below_the_margin = match spark_seat_window_tokens(context_window: 100) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let churn_ready = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      match spark_experiment_seat_window(plan: p) {
+        SparkSeatWindowReady { seat_window: w } => w == token_count_value(t: p.profile.max_model_len) - spark_seat_window_margin_tokens
+        SparkSeatWindowRefused { cause: _ } => false
+      }
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+  let tiny_profile = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      Present { value: ArmMemoryExperimentPlan {
+        checkpoint: p.checkpoint,
+        runtime: p.runtime,
+        topology: p.topology,
+        workload: p.workload,
+        profile: serving_launch_profile(
+          max_model_len: token_count(count: spark_seat_window_margin_tokens),
+          max_num_batched_tokens: p.profile.max_num_batched_tokens,
+          max_num_seqs: p.profile.max_num_seqs,
+          decided_gpu_memory_basis_points: p.profile.decided_gpu_memory_basis_points,
+          kv_cache_dtype_wire: p.profile.kv_cache_dtype_wire,
+          serve_port: p.profile.serve_port,
+          served_alias: p.profile.served_alias,
+          prefix_caching: p.profile.prefix_caching,
+        ),
+        targets: p.targets,
+        envelope_basis_points: p.envelope_basis_points,
+        max_runtime_seconds: p.max_runtime_seconds,
+        expected_receipts: p.expected_receipts,
+        stop: p.stop,
+      } }
+    ArmMemoryExperimentRefused { cause: _ } => none
+  }
+  let tiny_refused = match tiny_profile {
+    Absent => false
+    Present { value: tiny } =>
+      match spark_experiment_seat_window(plan: tiny) {
+        SparkSeatWindowRefused { cause: c } => string_contains(s: c as String, pattern: "margin")
+        SparkSeatWindowReady { seat_window: _ } => false
+      }
+  }
+  at_this_window && at_the_margin && below_the_margin && churn_ready && tiny_refused
 }
 
 // THE READINESS GATE'S REFUSAL IS THE NEVER-READY LOCATED HALT: the runner plants a failure in
