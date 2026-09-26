@@ -23,7 +23,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_body_label_conforms, declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -2585,18 +2585,14 @@ fn eval_runtime_node(
 // that witness is the only fact that tells a reader what to repair: anchoring the refusal at the
 // prepared module's root made one ill-formed declaration refuse every test in the module under an
 // occurrence that located nothing (the native lane canary, 2026-09-26). The walk is the same
-// preorder fold_node well_formed takes, and each node is held to both halves of the arrow-body
-// form: v2.std.node's shape and v2.std.qualified_name's declaration-reference label.
+// preorder fold_node well_formed takes over the same local predicate, so the gate admits exactly
+// what well_formed admits.
 fn eval_first_ill_formed_node(n: Node) -> Optional<Node> {
   fold_node(
     n: n,
     algebra: NodeFold {
       init: fn(n0) {
-        if locally_well_formed(n: n0) && declaration_reference_body_label_conforms(n: n0) {
-          optional_absent()
-        } else {
-          optional_present(value: n0)
-        }
+        if locally_well_formed(n: n0) { optional_absent() } else { optional_present(value: n0) }
       },
       step: fn(acc, _, child) {
         match acc {

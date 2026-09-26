@@ -13,12 +13,11 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import extdeps.communication.medium { Lossless, Medium }

@@ -17,7 +17,7 @@ import v2.extdeps.languages.dag {
   dag_language_model
 }
 import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { TokenStream, symbol_intern_lexeme }
+import v2.std.compilers.lexing { TokenStream }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -36,7 +36,8 @@ import v2.std.node {
   Node,
   TypeNode,
   canonicalize_node_strip_provenance,
-  content_hash
+  content_hash,
+  symbol_intern_lexeme,
 }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }

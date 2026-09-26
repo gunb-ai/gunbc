@@ -1,6 +1,9 @@
 module v2.std.node
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.string_type { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -438,25 +441,59 @@ type ArrowBodyForm
   | ComputationBody { behavior: Behavior }
   | UnsupportedArrowBody
 
-// A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. v2.compiler.resolve mints a reference
-// as a one-edge Conj over its qualified-name spine (v2.std.qualified_name declaration_reference_node),
-// and a body that is exactly a reference -- `data d: D = A`, which lowers to a nullary Arrow whose
-// body is the initializer -- reached this classifier as RecordConstructBody, whose field gate
-// refuses a first edge that does not target an Atom. So every module holding such a body failed
-// well_formed and eval refused all of its tests (the native lane canary, 2026-09-26). This module
-// states the SHAPE: exactly one Named edge, targeting a Conj. It is disjoint from a construct,
-// whose first edge is its tag and targets an Atom. The edge's LABEL is not this module's fact --
-// the marker is interned by v2.std.compilers.lexing, which imports this module -- so
-// v2.std.qualified_name declaration_reference_body_labels_conform states that a body of this
-// shape carries the marker, beside well_formed at each gate that admits a resolved tree.
-fn declaration_reference_body_shape(target: Node) -> Bool {
+// A SYMBOL IS INTERNED FROM ITS LEXEME HERE, AND READ BACK TO IT, BESIDE THE TYPE BOTH CONVERT. The body is a self-call -- a
+// host seam (std.primitive_projection HostRealizedSeam), realized by the interpreter's
+// v4_bridge.symbol_intern_lexeme arm and by the Rust registry row of the same name -- and it lives
+// in this module so the carriers this module owns can name a symbol no source spells. It was
+// declared in v2.std.compilers.lexing, which imports this module, so a marker label was a fact this
+// module's well_formed could not check, and each gate had to pair it with a second predicate; one
+// gate did and the rest silently admitted what the marker exists to exclude (gunbc#12377 review
+// 71638).
+fn symbol_intern_lexeme(lexeme: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: lexeme)
+}
+
+// ITS INVERSE, THE SAME SEAM THE OTHER WAY: the lexeme a Symbol was interned from.
+data symbol_lexeme_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.node",
+    decl_name: "symbol_lexeme",
+    field: WholeDeclaration
+  }
+}
+
+fn symbol_lexeme(sym: Symbol) -> String {
+  symbol_lexeme(sym: sym)
+}
+
+// A DECLARATION REFERENCE IS MARKED, NOT RECOGNISED BY SHAPE. v2.compiler.resolve mints a reference
+// to a corpus declaration as a one-edge Conj whose only label is this marker, over the reference's
+// qualified-name spine (v2.std.qualified_name declaration_reference_node). A spine is a cons list,
+// and a cons list is not only a path -- an integer literal and a list literal lower to the same
+// shape (gunbc.recurring_failure_mode declaration_reference_recognised_by_a_shape_a_literal_also_has)
+// -- so every reader keys on this label. Its lexeme is not an identifier in the dag grammar, so no
+// authored record field, binder or name can carry it.
+fn declaration_reference_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<declaration-reference>")
+}
+
+// A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
+// Arrow whose body is the initializer, and when the initializer is a reference that body is the
+// marked Conj. Before this arm the classifier read every Conj body as a record construct, whose
+// field gate refuses a first edge that does not target an Atom, so every module holding such a
+// declaration failed well_formed and eval refused all of its tests (the native lane canary,
+// 2026-09-26). The arm is keyed on the MARKER: a one-edge Conj whose label is anything else -- an
+// authored one-field record over a record -- stays a record construct and is refused by its gate
+// exactly as before.
+fn declaration_reference_body_marked(target: Node) -> Bool {
   match target.kind {
     TypeNode { connective: Conj } =>
       (count(target.children) == 1)
         && fold(target.children, init: true, f: fn(acc, e) {
-          acc && is_named(e: e) && (match e.target.kind {
-            TypeNode { connective: Conj } => true
-            _ => false
+          acc && (match e.label {
+            Named { name: label } => symbol_eq(a: label, b: declaration_reference_marker())
+            Positional => false
           })
         })
     _ => false
@@ -467,7 +504,7 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
     TypeNode { connective: Conj } =>
-      if declaration_reference_body_shape(target: target) { DeclarationReferenceBody } else { RecordConstructBody }
+      if declaration_reference_body_marked(target: target) { DeclarationReferenceBody } else { RecordConstructBody }
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     _ => UnsupportedArrowBody
   }

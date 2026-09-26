@@ -12,7 +12,6 @@ import std.realization_schedule {
   runnable_eq,
 }
 import v2.std.algebra { bag_eq }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.diagnostic {
   CorrectionNotModeled,
   Diagnostic,
@@ -25,7 +24,7 @@ import v2.std.lens_verdict {
   Violation,
   lens_verdict_module_file,
 }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 
 type ScheduleLensViolation

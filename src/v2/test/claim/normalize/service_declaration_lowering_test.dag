@@ -4,14 +4,14 @@ import v2.compiler.normalize { normalize, normalize_census }
 import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
-import v2.std.compilers.lexing { Token, TokenStream, symbol_intern_lexeme, token_stream_new }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }
 

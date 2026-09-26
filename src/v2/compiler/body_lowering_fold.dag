@@ -54,7 +54,6 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -104,7 +103,9 @@ import v2.std.node {
   node_lowered_from,
   node_rebuild,
   node_synthetic,
-  node_with_occurrence_id
+  node_with_occurrence_id,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.type_binder { type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_params_edge }
 import v2.std.node_query {

@@ -43,7 +43,7 @@ import v2.std.node {
   node_synthetic,
   well_formed,
 }
-import v2.std.qualified_name { declaration_reference_body_label_conforms, declaration_reference_node }
+import v2.std.qualified_name { declaration_reference_node }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   ArrowBodyFormAdmissionProduction,
@@ -370,7 +370,7 @@ test fn arrow_body_form_classify_declaration_reference_holds() -> Bool {
 
 test fn arrow_body_form_declaration_reference_arrow_well_formed_holds() -> Bool {
   let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_declaration_reference())
-  well_formed(n: arrow) && declaration_reference_body_label_conforms(n: arrow)
+  well_formed(n: arrow)
 }
 
 // THE MUTATION: the classifier with the arm deleted reads the reference as a record construct and
@@ -386,11 +386,34 @@ test fn arrow_body_form_RED_no_declaration_reference_refuses_reference_body_hold
     )
 }
 
-// The label half: the shape alone does not make a reference. An authored label over the same shape
-// is refused by v2.std.qualified_name, so the new arm admits nothing the record gate refused before.
+// The marker, not the shape, makes a reference. The same one-edge Conj under an authored label is
+// a record construct whose first field does not target an Atom, and v2.std.node well_formed refuses
+// it itself -- so every gate that admits by well_formed refuses it, not only eval's (gunbc#12377
+// review 71638: with the label checked beside eval alone, the other gates admitted it).
 test fn arrow_body_form_reference_shape_without_marker_refused_holds() -> Bool {
   let arrow = arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record())
-  !declaration_reference_body_label_conforms(n: arrow)
+  (match classify_arrow_body_form(target: abf_reference_shaped_record()) {
+    RecordConstructBody => true
+    _ => false
+  })
+    && !well_formed(n: arrow)
+}
+
+// ...and it reaches a gate that is not eval: resolve admits a normalized tree only if it is well
+// formed, so the unmarked shape is refused there before any evaluator runs.
+fn abf_admitted_unmarked_reference_tree() -> Outcome<NormalizedTree> {
+  admit_normalized_tree(import_bindings: no_import_bindings(), record_declarations: no_record_declarations(), test_markers: test_marker_channel_empty(), root: arrow_body_form_fixture_arrow_with_body(body: abf_reference_shaped_record()), diagnostics: None)
+}
+
+test fn arrow_body_form_reference_shape_without_marker_refused_at_resolve_holds() -> Bool {
+  match abf_admitted_unmarked_reference_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match resolve(tree: tree, lm: dag_language_model()) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
 }
 
 test fn arrow_body_form_declaration_reference_not_an_eval_entry_holds() -> Bool {

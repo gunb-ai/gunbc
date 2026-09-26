@@ -77,8 +77,6 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   VoidLexRules,
-  symbol_intern_lexeme,
-  symbol_lexeme
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -127,6 +125,8 @@ import v2.std.node {
   match_arm_children_conform_skip_first,
   name_occurrences,
   node_rebuild,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.witness {
   StructuralPropertyWitness

@@ -91,7 +91,6 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_member,
   lex_rule_set_token_class_member,
-  symbol_intern_lexeme
 }
 import v2.std.node {
   Arrow,
@@ -110,6 +109,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   is_empty_conj_root,
+  symbol_intern_lexeme,
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
