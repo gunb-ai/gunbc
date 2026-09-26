@@ -27,7 +27,8 @@ import v2.lens.registry.completeness {
   lens_registry_completeness_unenrolled_count_from_facts
 }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, list_snoc_item, HeadFound, HeadAbsent }
+import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, HeadFound, HeadAbsent }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }

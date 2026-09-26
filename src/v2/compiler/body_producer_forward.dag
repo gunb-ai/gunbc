@@ -1,7 +1,8 @@
 module v2.compiler.body_producer_forward
 
 import v2.extdeps.languages.dag { dag_translation_rules_node, parse_production_emitted_identity_optional }
-import v2.std.algebra { fold_list, length, list_append }
+import v2.std.algebra { fold_list, length }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus }
 import v2.std.grammar { grammar_relation_row_forward_production_selection }

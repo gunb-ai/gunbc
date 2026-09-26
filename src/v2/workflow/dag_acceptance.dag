@@ -26,8 +26,7 @@ import v2.compiler.staged_front_end {
   FrontEndRefused,
   run_front_end_to
 }
-import v2.std.algebra { list_snoc_item }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import std.measure { Millisecond, millisecond, millisecond_count }

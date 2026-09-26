@@ -1,9 +1,9 @@
 module v2.std.compilers.cli_surface
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty }
+import std.algebra { Empty, list_snoc_item }
 import std.types { NonEmptyStr, String }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
   BoundToken,
