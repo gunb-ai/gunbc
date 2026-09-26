@@ -133,7 +133,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
-import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names }
+import v2.std.type_binder { bind_is_annotated, cast_target_optional, type_annotation_optional, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
@@ -2395,12 +2395,6 @@ fn infer_gather_application_row_on_entries(
 // converts nothing, so only the verdict is used, never a crossed value. A value whose grounding is
 // not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
 // is: the check is neither admitted nor skipped silently.
-fn infer_bind_is_annotated(node: Node) -> Bool {
-  match type_annotation_optional(n: node) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
 
 fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
   match type_annotation_optional(n: node) {
@@ -2619,7 +2613,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
         )
       }
     ComputationNode { behavior: Bind } =>
-      if infer_bind_is_annotated(node: n) {
+      if bind_is_annotated(n: n) {
         infer_gather_fold_acc_ok(
           node: n,
           entries: empty_inferred_facts_entry_list(),
@@ -2983,7 +2977,7 @@ fn infer_gather_fold_step_merged(
       partials: partials,
       tree: tree
     )
-  } else if children_remaining == 0 && infer_bind_is_annotated(node: acc.node) {
+  } else if children_remaining == 0 && bind_is_annotated(n: acc.node) {
     infer_gather_bind_annotation_row_on_entries(
       node: acc.node,
       entries: merged_entries,

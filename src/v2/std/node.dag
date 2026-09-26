@@ -295,6 +295,17 @@ fn is_positional(e: Edge) -> Bool {
   }
 }
 
+// A NODE'S SLOTS ARE ITS POSITIONAL EDGES, in the order the producer wrote them; its Named edges are
+// the markers beside them. Readers that index a Bind's binder, value and body take the slots from
+// here, so one fact decides what a slot is.
+fn positional_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { is_positional(e: e) })
+}
+
+fn named_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { !is_positional(e: e) })
+}
+
 fn all_edges_named(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     acc && is_named(e: e)

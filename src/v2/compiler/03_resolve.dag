@@ -88,7 +88,9 @@ import v2.std.symbol_index {
   symbol_index_lexical_lookup
 }
 import v2.std.node {
+  named_edges,
   positional_child_count,
+  positional_edges,
   Arrow,
   Atom,
   Bind,
@@ -265,7 +267,7 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
   match n.kind {
     ComputationNode { behavior: Bind } =>
       if positional_child_count(children: n.children) == 3 {
-        match first(bind_positional_edges(edges: n.children)) {
+        match first(positional_edges(children: n.children)) {
           Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
           Absent => acc
@@ -1781,15 +1783,6 @@ fn resolve_bind_positional_edges(
 // it last, but resolve walks the tree as produced -- so counting it would shift the value into the
 // binder's inner scope and admit an initializer that names its own binder. The positionals are
 // walked first under their slot rules; the annotation after, in the type-role frame.
-fn bind_positional_edges(edges: List<Edge>) -> List<Edge> {
-  filter(edges, fn(e) {
-    match e.label {
-      Positional => true
-      Named { name: _ } => false
-    }
-  })
-}
-
 fn resolve_bind_edges(
   ctx: ResolveContext,
   edges: List<Edge>,
@@ -1797,15 +1790,10 @@ fn resolve_bind_edges(
   scope_inner: Scope
 ) -> ChildWalk {
   fold(
-    filter(edges, fn(e) {
-      match e.label {
-        Positional => false
-        Named { name: _ } => true
-      }
-    }),
+    named_edges(children: edges),
     init: resolve_bind_positional_edges(
       ctx: ctx,
-      edges: bind_positional_edges(edges: edges),
+      edges: positional_edges(children: edges),
       scope_outer: scope_outer,
       scope_inner: scope_inner
     ),

@@ -7,7 +7,6 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
-import v2.std.compilers.target_model { target_value_expr_bind_is_annotated }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
 import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic {
@@ -23,9 +22,9 @@ import v2.std.diagnostic {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.node { named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
+import v2.std.type_binder { bind_is_annotated, cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
@@ -264,8 +263,8 @@ test fn bla_translate_refuses_an_annotated_bind() -> Bool {
 // ... and the refusal is the annotation's: the gate that fires it answers false for the same Bind
 // without the edge. Read at the gate, not through a second full emit.
 test fn bla_translate_gate_is_the_annotations() -> Bool {
-  target_value_expr_bind_is_annotated(node: bla_bind(annotated: true))
-    && !target_value_expr_bind_is_annotated(node: bla_bind(annotated: false))
+  bind_is_annotated(n: bla_bind(annotated: true))
+    && !bind_is_annotated(n: bla_bind(annotated: false))
 }
 
 // (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
@@ -306,12 +305,6 @@ type BlaReorderedResolve {
   fatal: Optional<Symbol>
 }
 
-fn bla_edge_is_positional(e: Edge) -> Bool {
-  match e.label {
-    Positional => true
-    Named { name: _ } => false
-  }
-}
 
 // Every Bind's children rewritten as [binder, annotation, value, body]; any other node keeps its
 // order. Children are rewritten first, so a nested Bind is moved too.
@@ -321,9 +314,9 @@ fn bla_annotation_second(n: Node) -> Node {
   })
   let children = match n.kind {
     ComputationNode { behavior: Bind } =>
-      let positionals = filter(rebuilt, fn(e) { bla_edge_is_positional(e: e) })
+      let positionals = positional_edges(children: rebuilt)
       let binder = fold(positionals, init: [], f: fn(acc, e) { if length(xs: acc) == 0 { [e] } else { acc } })
-      concat(concat(binder, filter(rebuilt, fn(e) { !bla_edge_is_positional(e: e) })), skip(xs: positionals, n: 1))
+      concat(concat(binder, named_edges(children: rebuilt)), skip(xs: positionals, n: 1))
     _ => rebuilt
   }
   Node { kind: n.kind, children: children, occurrence_id: n.occurrence_id }

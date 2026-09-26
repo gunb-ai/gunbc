@@ -80,6 +80,7 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.node {
+  positional_edges,
   ArrowBodyForm,
   Behavior,
   Bind,
@@ -1168,12 +1169,7 @@ fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
 fn eval_nth_positional_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
   eval_witness_outcome(
     witness: list_nth(
-      xs: filter(node.children, fn(e) {
-        match e.label {
-          Positional => true
-          Named { name: _ } => false
-        }
-      }),
+      xs: positional_edges(children: node.children),
       wanted: wanted,
       absent: eval_diagnostic(reason: absent_reason, node: node)
     )

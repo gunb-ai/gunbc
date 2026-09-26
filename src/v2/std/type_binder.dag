@@ -279,6 +279,13 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
   }
 }
 
+fn bind_is_annotated(n: Node) -> Bool {
+  match type_annotation_optional(n: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 // WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform or Bind
 // by SHAPE (PositionalPlusOneNamedEdges); this is the label half, and it is asked of those two
 // behaviors ONLY: a Transform's cast target, a Bind's let annotation. Every other behavior's Named
