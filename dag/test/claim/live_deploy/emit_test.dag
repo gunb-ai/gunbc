@@ -1332,8 +1332,8 @@ test fn the_fabric_storage_area_ensure_repairs_the_ci_principals_entries() -> Bo
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
-  string_contains(s: objects, pattern: "-user ghrunner -exec /bin/chmod u+r,g+r,o+r") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "-user ghrunner -exec /bin/chmod u+r,g+r,o+r") && !string_contains(s: heads, pattern: "REFUSED")
+  string_contains(s: objects, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: objects, pattern: "REFUSED")
+    && string_contains(s: heads, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: heads, pattern: "REFUSED")
 }
 
 // THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0444, the other-read being

@@ -200,7 +200,8 @@ test fn the_identity_route_echoes_the_presented_login_and_touches_no_head_by_rea
 // and differs from what any umask can produce from create-new's 0666, so a realization that dropped
 // the declared bits and fell back to the umask is red here whatever umask the runner has. The
 // umask-077 case that failed on srv1 is exercised directly in the seed's
-// a_declared_mode_is_published_regardless_of_the_umask.
+// a_declared_mode_is_published_regardless_of_the_umask. The control inside the claim runs the SAME
+// operations on a store with no declared mode and requires that it does not publish 0444.
 fn read_only_by_all() -> FileMode {
   FileMode {
     owner: PermissionBits { read: true, write: false, execute: false },
@@ -228,7 +229,6 @@ test fn a_declared_entry_mode_is_the_published_mode_of_objects_and_heads() -> Bo
     FabricHeadAdvanced { object: _, generation: g } => observed_mode_octal(path: cas_file_slot_path(root: s.heads, key: "p", generation: g))
     _ => "not advanced"
   }
-  // The control: the SAME operations on a store with no declared mode do not publish 0444.
   let _b = fabric_storage_file_put(root: base, object: a)
   let undeclared_mode = observed_mode_octal(path: fabric_storage_object_path(root: base, object: fabric_object_ref_of(object: a)))
   ready && put && object_mode == "0444" && head_mode == "0444" && undeclared_mode != "0444"
