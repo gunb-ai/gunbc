@@ -8,6 +8,7 @@ import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
+import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -1038,6 +1039,14 @@ data gunbc_ci_spark_v41_row_store_encode_target: GunbcRunStepTarget = GunbcRunSt
 data gunbc_ci_spark_v41_row_store_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_row_store_readback_run.dag",
   function: "v41_row_store_readback_ci_wet",
+}
+
+// THE DESIGN-B ENGRAM DIFFERENTIAL ON THE SPARK HOLDING THE ROW STORES
+// (gunbc.spark.v41_engram_differential_run): read-only against the stores and the served model; the
+// same privileged edge, because the GPU container is started as the administrator.
+data gunbc_ci_spark_v41_engram_differential_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_engram_differential_run.dag",
+  function: "v41_engram_differential_ci_wet",
 }
 
 // ITS SECOND STEP, THE .engram. SELECTION OVER THE PINNED INDEX, run in its own process so a parse
@@ -2625,6 +2634,17 @@ fn gunbc_ci_spark_v41_row_store_readback_invoke() -> String {
     function: gunbc_ci_spark_v41_row_store_readback_target.function,
     claim_run: false,
     receipt_rel: v41_readback_run_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_engram_differential_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_engram_differential_target.entry,
+    function: gunbc_ci_spark_v41_engram_differential_target.function,
+    claim_run: false,
+    receipt_rel: v41_differential_receipt_path
   )
 }
 

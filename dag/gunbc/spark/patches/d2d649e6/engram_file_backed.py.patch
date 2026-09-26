@@ -1,9 +1,9 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..f134c1d
+index 0000000..521c26e
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,473 @@
+@@ -0,0 +1,764 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -52,6 +52,7 @@ index 0000000..f134c1d
 +import mmap
 +import json
 +import os
++import signal
 +import threading
 +import time
 +import warnings
@@ -79,6 +80,18 @@ index 0000000..f134c1d
 +
 +
 +class EngramRowOffsetMisaligned(RuntimeError):
++    pass
++
++
++class EngramRowStoreManifestInvalid(RuntimeError):
++    pass
++
++
++class EngramFileBackedRequiresOffload(RuntimeError):
++    pass
++
++
++class EngramCheckpointGeometryMismatch(RuntimeError):
 +    pass
 +
 +
@@ -370,6 +383,209 @@ index 0000000..f134c1d
 +    return storage, staging
 +
 +
++# ── THE LAUNCH'S ROW-STORE MANIFEST ─────────────────────────────────────────────────────────────
++#
++# gunbc.spark.v41_engram_store_manifest derives this document from the row-store model: the magic and
++# record size of the encoding, and one entry per (layer, rank) naming the store's path and its
++# SHA-256. When the environment names a manifest, every Engram layer is file-backed and no upstream
++# DPShared/pinned table is constructed; a manifest that does not parse, repeats a (layer, rank), or
++# lacks the entry a rank needs refuses at model init.
++MANIFEST_ENV = "GUNBC_ENGRAM_ROW_STORE_MANIFEST"
++TOUCH_RECEIPT_DIR_ENV = "GUNBC_ENGRAM_TOUCH_RECEIPT_DIR"
++
++
++@dataclass(frozen=True)
++class RowStoreManifestEntry:
++    layer: int
++    rank: int
++    path: str
++    sha256: str
++
++
++@dataclass(frozen=True)
++class RowStoreManifest:
++    magic: bytes
++    record_bytes: int
++    weight_bytes: int
++    entries: Tuple[RowStoreManifestEntry, ...]
++
++
++def load_manifest(path: str) -> RowStoreManifest:
++    try:
++        with open(path) as f:
++            doc = json.load(f)
++        magic = bytes.fromhex(doc["magic_hex"])
++        record = int(doc["record_bytes"])
++        weight = int(doc["weight_bytes"])
++        entries = tuple(
++            RowStoreManifestEntry(int(e["layer"]), int(e["rank"]), str(e["path"]), str(e["sha256"]))
++            for e in doc["stores"]
++        )
++    except (OSError, ValueError, KeyError, TypeError) as exc:
++        raise EngramRowStoreManifestInvalid(f"{path}: {type(exc).__name__}: {exc}") from exc
++    if not magic or record <= 0 or not (0 < weight < record):
++        raise EngramRowStoreManifestInvalid(f"{path}: magic, record_bytes and weight_bytes must be non-empty and 0 < weight < record")
++    keys = [(e.layer, e.rank) for e in entries]
++    if len(set(keys)) != len(keys):
++        raise EngramRowStoreManifestInvalid(f"{path}: a (layer, rank) appears more than once")
++    return RowStoreManifest(magic, record, weight, entries)
++
++
++def manifest_from_env() -> "RowStoreManifest | None":
++    path = os.environ.get(MANIFEST_ENV)
++    return None if not path else load_manifest(path)
++
++
++def manifest_entry(m: RowStoreManifest, layer: int, rank: int) -> RowStoreManifestEntry:
++    for e in m.entries:
++        if e.layer == layer and e.rank == rank:
++            return e
++    raise EngramLocalStoreMissing(f"the row-store manifest names no store for layer {layer} rank {rank}; there is no fallback table")
++
++
++def expected_identity(m: RowStoreManifest, e: RowStoreManifestEntry) -> ExpectedRowStoreIdentity:
++    return ExpectedRowStoreIdentity(e.sha256, m.magic, m.record_bytes)
++
++
++# ── THE DESIGN-B LOOKUP ─────────────────────────────────────────────────────────────────────────
++#
++# Upstream's _engram_lookup_kernel, realized over a file-backed store: for T tokens and this rank's
++# LOCAL heads, a (token, head) row is OWNED when its head exists (head < TOTAL) and its hash id falls
++# in [vocab_start, vocab_end); an owned row is the store record at local = id - vocab_start, fp8
++# weight times the ue8m0 scale (its byte is the fp32 exponent field), cast to bf16; every other row is
++# zero. The ids come to the host, the owned records are gathered in one batched fetch_rows into pinned
++# staging, copied up, and dequantized with the kernel's own operations. The staging buffer is fenced
++# by an event, so the next gather cannot overwrite rows whose copy has not completed. Decision
++# evidence: gunbc fleet-converge run 36247421840 (design B, the CPU gather).
++class FileBackedLookup:
++    def __init__(self, storage: FileBackedEngramStorage, staging: torch.Tensor, weight_bytes: int, quant_block: int):
++        self.storage = storage
++        self.staging = staging
++        self.weight_bytes = weight_bytes
++        self.quant_block = quant_block
++        self._copied = None
++
++    def lookup(self, local_ids: torch.Tensor, vocab_start: int, vocab_end: int, out: torch.Tensor) -> None:
++        """local_ids: host int64 [T, LOCAL] with -1 for heads that do not exist; out: [T, LOCAL, dim]."""
++        record = self.storage.expected.record_bytes
++        dim = self.weight_bytes
++        flat = local_ids.reshape(-1)
++        owned = (flat >= vocab_start) & (flat < vocab_end)
++        n = int(owned.sum())
++        rows_out = out.view(-1, dim)
++        rows_out.zero_()
++        if n == 0:
++            return
++        if n > self.staging.shape[0]:
++            raise EngramFullTablePinned(f"{n} owned rows exceed the {self.staging.shape[0]}-row staging buffer")
++        if self._copied is not None:
++            self._copied.synchronize()
++        local = flat[owned] - vocab_start
++        offsets = (len(self.storage.expected.magic) + local * record).tolist()
++        self.storage.fetch_rows(offsets, record, self.staging)
++        rows = self.staging[:n].to(out.device, non_blocking=True)
++        if out.device.type == "cuda":
++            self._copied = torch.cuda.Event()
++            self._copied.record()
++        w = rows[:, :dim].view(torch.float8_e4m3fn).to(torch.float32)
++        s = (rows[:, dim:dim + dim // self.quant_block].to(torch.int32) << 23).view(torch.float32)
++        values = (w * s.repeat_interleave(self.quant_block, dim=1)).to(torch.bfloat16)
++        rows_out.index_copy_(0, owned.nonzero().squeeze(1).to(out.device), values)
++
++
++def check_checkpoint_geometry(loaded: torch.Tensor, is_scale: bool, dim: int, quant_block: int, vocab_end: int) -> None:
++    """The checkpoint still streams engram.embed.* past the file-backed params; its shape and dtype
++    must be the table the manifest's stores were encoded from, or the launch refuses."""
++    want_cols = dim // quant_block if is_scale else dim
++    ok_dtype = loaded.dtype in ((torch.float8_e8m0fnu, torch.uint8) if is_scale else (torch.float8_e4m3fn,))
++    if loaded.dim() != 2 or loaded.shape[1] != want_cols or loaded.shape[0] < vocab_end or not ok_dtype:
++        raise EngramCheckpointGeometryMismatch(
++            f"checkpoint engram {'scale' if is_scale else 'weight'} {tuple(loaded.shape)} {loaded.dtype} "
++            f"is not the table the row stores encode ({want_cols} columns, at least {vocab_end} rows)"
++        )
++
++
++# ── TOUCH RECEIPTS ON SIGUSR2 ───────────────────────────────────────────────────────────────────
++#
++# When the launch names a receipt directory, each worker writes rank<r>.json (write_touch_receipt,
++# temp + rename, snapshot-and-reset) on SIGUSR2. The handler runs only on the signal, and the lock it
++# takes is held for snapshot_touches' copy-and-reset, so fetch_rows' added work stays _note_touches.
++# A worker that cannot install the handler (not its main thread) writes rank<r>.unavailable, which the
++# measurement reads as TouchCounterUnavailable rather than as silence.
++_TOUCH_STORAGES = []
++_TOUCH_STATE = {"rank": None, "installed": False}
++
++
++def register_touch_storage(storage: FileBackedEngramStorage, rank: int) -> None:
++    _TOUCH_STORAGES.append(storage)
++    _TOUCH_STATE["rank"] = rank
++    directory = os.environ.get(TOUCH_RECEIPT_DIR_ENV)
++    if not directory or _TOUCH_STATE["installed"]:
++        return
++    if threading.current_thread() is not threading.main_thread():
++        with open(os.path.join(directory, f"rank{rank}.unavailable"), "w") as f:
++            f.write("SIGUSR2 handler could not be installed: model init did not run on the worker's main thread\n")
++        _TOUCH_STATE["installed"] = True
++        return
++
++    def on_signal(signum, frame):
++        write_touch_receipt(rank, list(_TOUCH_STORAGES), os.path.join(directory, f"rank{rank}.json"), reset=True)
++
++    signal.signal(signal.SIGUSR2, on_signal)
++    _TOUCH_STATE["installed"] = True
++
++
++# ── THE RED: A BYTE-IDENTICAL DIFFERENTIAL AGAINST UPSTREAM'S KERNEL ON REAL ROWS ──────────────────
++def differential(manifest_path: str, rows: int, tokens: int, seed: int) -> int:
++    """For every (layer, rank) the manifest names: sample `rows` real records, place them in a compact
++    upstream-layout table, and compare upstream _engram_lookup_kernel with FileBackedLookup over the
++    same hash ids (owned, below and above the rank's range, and absent heads). One line per store;
++    nonzero if any output differs in any bit."""
++    import triton
++    from vllm.models.deepseek_v4_1.common.engram import _engram_lookup_kernel
++
++    m = load_manifest(manifest_path)
++    dim = m.weight_bytes
++    block = dim // (m.record_bytes - m.weight_bytes)
++    # Heads 18..23 are the last TP4 rank's slice; a total of 22 leaves heads 22 and 23 absent, so the
++    # absent-head mask is exercised too.
++    local_heads, total_heads, head_start = 6, 22, 18
++    g = torch.Generator().manual_seed(seed)
++    failures = 0
++    for e in m.entries:
++        s = FileBackedEngramStorage(e.path, expected_identity(m, e))
++        try:
++            count = (s._mmap.size() - len(m.magic)) // m.record_bytes
++            chosen = torch.randint(0, count, (rows,), generator=g)
++            raw = torch.stack([torch.frombuffer(bytearray(s._mmap[len(m.magic) + int(k) * m.record_bytes:len(m.magic) + (int(k) + 1) * m.record_bytes]), dtype=torch.uint8) for k in chosen])
++            weight = raw[:, :dim].contiguous().view(torch.float8_e4m3fn).cuda()
++            scales = raw[:, dim:].contiguous().cuda()
++            vocab_start = 1000
++            pick = torch.randint(0, rows, (tokens, total_heads), generator=g)
++            kind = torch.randint(0, 10, (tokens, total_heads), generator=g)
++            compact_ids = torch.where(kind < 7, vocab_start + pick, torch.where(kind < 8, torch.full_like(pick, 3), torch.full_like(pick, vocab_start + rows + 5)))
++            real_ids = torch.where(kind < 7, 100000 + chosen[pick], torch.where(kind < 8, torch.full_like(pick, 3), torch.full_like(pick, 100000 + count + 5)))
++            upstream = torch.empty((tokens, local_heads, dim), dtype=torch.bfloat16, device="cuda")
++            n = tokens * local_heads
++            ids_dev = compact_ids.cuda()
++            _engram_lookup_kernel[(triton.cdiv(n, 16),)](weight, scales, ids_dev, upstream, vocab_start, vocab_start + rows, n, ids_dev.stride(0), ids_dev.stride(1), HEAD_START=head_start, LOCAL_HEADS=local_heads, TOTAL_HEADS=total_heads, DIM=dim, QUANT_BLOCK=block, BLOCK_R=16, GRID=triton.cdiv(n, 16))
++            staging = torch.empty((n, m.record_bytes), dtype=torch.uint8, pin_memory=True)
++            ours = torch.empty_like(upstream)
++            present = total_heads - head_start
++            local_ids = torch.full((tokens, local_heads), -1, dtype=torch.int64)
++            local_ids[:, :present] = real_ids[:, head_start:total_heads]
++            FileBackedLookup(s, staging, dim, block).lookup(local_ids, 100000, 100000 + count, ours)
++            torch.cuda.synchronize()
++            k = kind[:, head_start:total_heads]
++            same = bool(torch.equal(upstream.view(torch.int16), ours.view(torch.int16)))
++            print("DIFFERENTIAL", e.layer, e.rank, "rows_sampled", rows, "owned", int((k < 7).sum()), "unowned_below", int((k == 7).sum()), "out_of_range", int((k > 7).sum()), "absent_heads", tokens * (local_heads - present), "equal" if same else "DIFFERS")
++            failures += 0 if same else 1
++        finally:
++            s.close()
++    print("DIFFERENTIAL_DONE", "failures", failures)
++    return 0 if failures == 0 else 1
++
++
 +def self_test(directory: str) -> int:
 +    """THE SELF-TEST: a tiny synthetic rank file through the batched gather and
 +    the touch counter, against independent expectations. One PASS/FAIL line per
@@ -454,6 +670,73 @@ index 0000000..f134c1d
 +    finally:
 +        os.unlink(path)
 +
++    # 6. The design-B lookup against an independent per-element reference: owned rows are the record's
++    #    fp8 times 2^(scale - 127) in bf16, unowned and absent-head rows are zero.
++    dim, block = 32, 16
++    rec = dim + dim // block
++    rows_n = 40
++    g2 = torch.Generator().manual_seed(9)
++    weights = (torch.randint(0, 256, (rows_n, dim), dtype=torch.uint8, generator=g2) & 0x77)
++    scale_b = torch.randint(118, 136, (rows_n, dim // block), dtype=torch.uint8, generator=g2)
++    body2 = torch.cat([weights, scale_b], dim=1).numpy().tobytes()
++    data2 = magic + body2
++    fd2, path2 = tempfile.mkstemp(prefix="engram_selftest_", dir=directory)
++    try:
++        with os.fdopen(fd2, "wb") as f:
++            f.write(data2)
++            f.flush()
++            os.fsync(f.fileno())
++        s2 = m.FileBackedEngramStorage(path2, m.ExpectedRowStoreIdentity(_h.sha256(data2).hexdigest(), magic, rec))
++        try:
++            start, end = 500, 500 + rows_n
++            ids = torch.tensor([[500, 539, 3, -1], [520, 540, 505, 499]], dtype=torch.int64)
++            out = torch.empty((2, 4, dim), dtype=torch.bfloat16)
++            staging = torch.empty((8, rec), dtype=torch.uint8)
++            m.FileBackedLookup(s2, staging, dim, block).lookup(ids, start, end, out)
++            def ref(i):
++                if i < start or i >= end:
++                    return torch.zeros(dim, dtype=torch.bfloat16)
++                k = i - start
++                w = weights[k].view(torch.float8_e4m3fn).float()
++                sc = torch.tensor([2.0 ** (int(b) - 127) for b in scale_b[k]]).repeat_interleave(block)
++                return (w * sc).to(torch.bfloat16)
++            want = torch.stack([torch.stack([ref(int(i)) for i in row]) for row in ids])
++            check("design-B lookup equals an independent per-element reference", torch.equal(out.view(torch.int16), want.view(torch.int16)))
++        finally:
++            s2.close()
++    finally:
++        os.unlink(path2)
++
++    # 7. The manifest refuses a repeated (layer, rank) and names a missing entry; the checkpoint
++    #    geometry check refuses a table that is not the encoded one.
++    mfd, mpath = tempfile.mkstemp(prefix="engram_manifest_", dir=directory)
++    try:
++        with os.fdopen(mfd, "w") as f:
++            json.dump({"magic_hex": magic.hex(), "record_bytes": 264, "weight_bytes": 256, "stores": [{"layer": 1, "rank": 0, "path": "/x", "sha256": "0" * 64}, {"layer": 1, "rank": 0, "path": "/y", "sha256": "1" * 64}]}, f)
++        try:
++            m.load_manifest(mpath)
++            repeated = False
++        except m.EngramRowStoreManifestInvalid:
++            repeated = True
++        with open(mpath, "w") as f:
++            json.dump({"magic_hex": magic.hex(), "record_bytes": 264, "weight_bytes": 256, "stores": [{"layer": 1, "rank": 0, "path": "/x", "sha256": "0" * 64}]}, f)
++        one = m.load_manifest(mpath)
++        try:
++            m.manifest_entry(one, 14, 0)
++            missing = False
++        except m.EngramLocalStoreMissing:
++            missing = True
++        check("manifest refuses a repeated store and a missing (layer, rank)", repeated and missing and m.manifest_entry(one, 1, 0).path == "/x")
++    finally:
++        os.unlink(mpath)
++    try:
++        m.check_checkpoint_geometry(torch.empty((100, 128), dtype=torch.float8_e4m3fn), False, 256, 32, 50)
++        geometry = False
++    except m.EngramCheckpointGeometryMismatch:
++        geometry = True
++    m.check_checkpoint_geometry(torch.empty((100, 256), dtype=torch.float8_e4m3fn), False, 256, 32, 50)
++    check("checkpoint geometry refuses a table the stores were not encoded from", geometry)
++
 +    return 0 if all(results) else 1
 +
 +
@@ -464,6 +747,14 @@ index 0000000..f134c1d
 +
 +    if len(sys.argv) >= 2 and sys.argv[1] == "--self-test":
 +        sys.exit(self_test(sys.argv[2] if len(sys.argv) > 2 else os.getcwd()))
++    if len(sys.argv) >= 2 and sys.argv[1] == "--differential":
++        dp = argparse.ArgumentParser(description="byte-identical differential against upstream _engram_lookup_kernel")
++        dp.add_argument("--differential", dest="manifest", required=True)
++        dp.add_argument("--rows", type=int, default=4096)
++        dp.add_argument("--tokens", type=int, default=2048)
++        dp.add_argument("--seed", type=int, default=5)
++        da = dp.parse_args()
++        sys.exit(differential(da.manifest, da.rows, da.tokens, da.seed))
 +    p = argparse.ArgumentParser(description="measure fetch_rows over a rank-local Engram row store")
 +    p.add_argument("--store", required=True)
 +    p.add_argument("--rank-digest-hex", required=True)
