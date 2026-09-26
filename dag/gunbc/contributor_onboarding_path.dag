@@ -250,6 +250,15 @@ fn onboarding_build_lane_command() -> String {
   join(argv_words(command: build_lane_run_command()), " ")
 }
 
+// THE NATIVE V2 BINARY IS REACHED THROUGH ITS INSTRUMENT AND NOT THROUGH cargo, because the thing
+// being built is EMITTED rather than authored: the seed emits `src/v2/cli/compile_cli.dag`'s closure,
+// assembles a crate, builds it under `-D warnings`, injects a discriminating fault the build must
+// fail on by name, restores, and then SPAWNS the result. A cargo invocation would produce the seed's
+// own binaries and none of that evidence. The label is the surface (operator ruling 2026-09-16: a new
+// measurement is a row and an arm, never a flag), so this row names the label rather than respelling
+// what it does.
+data onboarding_native_v2_command: String = "gunbc test //gunbc/instruments:v2-native-cli"
+
 data onboarding_clone_command: String = "git clone https://github.com/gunb-ai/gunbc.git"
 
 data onboarding_hooks_command: String = "git config core.hooksPath .githooks"
@@ -306,6 +315,13 @@ data onboarding_steps: List<OnboardingStep> = [
     goal: "Run the emission lane: the regen comparison and the emission compile. Also tens of minutes. RUN IT BEFORE YOU CHANGE ANYTHING, because the change step asks you to take it from refusing to green and you cannot see that transition if you never saw it green first." as NonEmptyStr,
     command: Present { value: onboarding_build_lane_command() as NonEmptyStr },
     verification: "The generated-artifact phase reports each population it owns, and names the path plus the regeneration recipe when a projection has drifted." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    id: "native-v2" as NonEmptyStr,
+    goal: "Get the emitted native v2 compiler, and know which binary you are holding. `gunbc` is the SEED: hand-authored host Rust that interprets `.dag`. The binary this step produces is emitted v2 -- `.dag` compiled to Rust and built -- and the two are not interchangeable, so a session that cites one while running the other reports the wrong compiler's behaviour." as NonEmptyStr,
+    command: Present { value: onboarding_native_v2_command as NonEmptyStr },
+    verification: "The run prints `emit and build completed exit_status=0 warning_count=0`, then a `generation-one executable kept path=` line naming the binary together with its binary_sha256, closure_identity and seed_sha256. That path IS the artifact -- it is named by the sha256 of its own bytes, so the path states which bytes ran rather than pointing at a name that could have been rebuilt underneath it. Read the path from that line; do not expect a fixed filename." as NonEmptyStr,
     blocker: SelfServe,
   },
   OnboardingStep {
