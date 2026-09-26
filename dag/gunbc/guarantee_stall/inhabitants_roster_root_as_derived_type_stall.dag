@@ -1,0 +1,18 @@
+module gunbc.guarantee_stall.inhabitants_roster_root_as_derived_type_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data inhabitants_roster_root_as_derived_type_stall: GuaranteeStall = GuaranteeStall {
+  subject: "The declared-inhabitants rule in v2.compiler.infer (infer_node_declared_in_language_inhabitants, over the dag, python and typescript declared-inhabitants roots) passes the ROSTER ROOT as a member's derived_type. Every reader of that field treats it as a TYPE -- eval's RuntimeValueAcceptanceWitness compares it to a runtime value's type, translate's coerce uses it as the coerced target, infer_product_child_evidence_edges composes it into parent evidence, algebra_ref_from_grounding reads it -- and none reads it as provenance, so one field carries two meanings (a DESIGN section 3 meaning fork) and nothing detects the mismatch. The canonical-operation and grammar-production rosters were cut over to each member's own declared type; this roster could not be, because its members ARE type denotations (the Int inhabitant is the type Int, the add fn Arrow is a fn type), so a member's type is its KIND, and std declares no kind or universe authority. Refusing members instead takes the python-to-typescript cross-language round trip dark (six claims measured red on srv1), so the fork is held as debt rather than traded for a capability loss.",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding { grounding: "a kind (universe) authority in std whose kind node is the type of a type denotation" },
+  population: BoundedPopulation { members: [
+    "v2.compiler.infer.infer_node_declared_in_language_inhabitants",
+    "v2.extdeps.languages.dag.dag_declared_inhabitants_root",
+    "v2.extdeps.languages.python.python_declared_inhabitants_root",
+    "v2.extdeps.languages.typescript.ts_declared_inhabitants_root"
+  ] },
+  next_rung_trigger: climbs_when(capability: "a kind authority in std, consumed by v2.compiler.infer, SUFFICIENT FOR every declared-inhabitant roster member to derive a type that is not its roster root -- with no roster root reaching derived_type anywhere -- while the six cross-language claims stay green: translate_underived_refusal cross_language_compile_python_to_typescript_round_trip_holds; self_host_candidate_generation_stage_verdicts add_slice_composition_accepts_holds; inhabitant_neutralization_e2e_witness inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds; cross_language_add_python_to_typescript parse_tree_to_target_model_bridge_realized, cross_language_emit_inhabitant_neutralization_round_trip_holds and cross_language_add_python_to_typescript_chain_status_holds. Declaring the kind without infer consuming it, or typing only the top-level inhabitants while the deep fact atoms still read the root, does not fire this.")
+}

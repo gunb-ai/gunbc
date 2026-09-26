@@ -62,8 +62,14 @@ fn resolved_type(n: Node) -> Node {
   }
 }
 
+// AN ARROW'S inferred IS ITS RETURN TYPE, NOT ITS OWN TYPE: make_callable_type and
+// parse_callable_type_expr store the codomain there, so reading it as "the type this child
+// denotes" answered `Int` for the element of `List<fn() -> Int>` and every binding drawn from that
+// element -- a lambda parameter, a match arm -- lost its callability and its call refused as
+// `function 'r' not found in scope`. An Arrow child denotes itself.
+// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none { resolved_type(n: ch) } else { ch }
+  if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
@@ -216,7 +222,23 @@ fn combine_resolution_verdicts(acc: TypeResolutionVerdict, next: TypeResolutionV
   }
 }
 
+// AN ARROW IS RESOLVED WHEN ITS SIGNATURE IS: its parameter types sit in params and its codomain in
+// inferred, and it has no children, so the child walk below read every Arrow as FullyResolved. It
+// is asked first because the two checks after it read inferred as the node's OWN type, which on an
+// Arrow is the codomain.
+fn callable_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
+  let params_verdict = fold(n.params, init: FullyResolved, f: (acc, p) =>
+    combine_resolution_verdicts(acc: acc, next: type_resolution_verdict(n: child_type_node(ch: param_node_type_expr(n: p)), source_indices: source_indices))
+  )
+  match n.inferred {
+    Present { value: Resolved { node: ret } } =>
+      combine_resolution_verdicts(acc: params_verdict, next: type_resolution_verdict(n: ret, source_indices: source_indices))
+    _ => combine_resolution_verdicts(acc: params_verdict, next: UnderResolved)
+  }
+}
+
 fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
+  if (n.connective == Arrow) { callable_resolution_verdict(n: n, source_indices: source_indices) } else {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
   if type_is_divergent(n: n) { DivergentExpression }
   else if self_is_type_var { UnderResolved }
@@ -243,6 +265,7 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
           )
         )
     }
+  }
   }
 }
 
@@ -858,6 +881,13 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
     } else {
       concat("Primitive(", n_name, ")")
     }
+  } else if (n.connective == Arrow) {
+    let codomain_shape = match n.inferred {
+      Present { value: Resolved { node: ret } } => node_type_shape(n: ret, source_indices: source_indices)
+      _ => "?"
+    }
+    let param_shapes = node_type_shape_argument_list(args: n.params |> map(p => param_node_type_expr(n: p)), source_indices: source_indices)
+    concat("Callable(", param_shapes, "->", codomain_shape, ")")
   } else {
     let is_product = n.connective == Conj
     let is_coproduct = n.connective == Disj
@@ -902,6 +932,9 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
   else if left_tv || right_tv { true }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
+  else if left.connective == Arrow && (right.connective == Arrow) {
+    callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_compatible(left: a, right: b, source_indices: source_indices))
+  }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
     let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
@@ -1032,7 +1065,42 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
 // declared_type_conformance_note (v1.compiler.infer) names as its own dissolve-on: a judgment
 // scoped to declared boundaries can carry the identity discrimination; the corpus-wide equality
 // relation cannot.
+// A CALLABLE SIGNATURE IS ITS ARITY, ITS PARAMETER TYPES AND ITS CODOMAIN -- one relation over
+// them, parameterised by the component relation, so equality and compatibility cannot drift apart.
+// The signature lives in params and inferred, never in children, which is why an Arrow must be
+// asked here rather than through the childless-structural arm: that arm compared two Arrows by
+// the name "Callable" alone, so `List<fn() -> Int>` and `List<fn() -> String>` compared equal once
+// v1.compiler.infer_types child_type_node stopped erasing the arrow to its codomain.
+fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> Bool) -> Bool {
+  if left.params |> count != right.params |> count { false }
+  else {
+    let params_agree = left.params |> enumerate |> all(pair =>
+      match right.params |> skip(pair.first) |> first {
+        Present { value: right_param } => agree(param_node_type_expr(n: pair.second), param_node_type_expr(n: right_param))
+        Absent => false
+      }
+    )
+    if params_agree == false { false }
+    else {
+      match left.inferred {
+        Present { value: Resolved { node: left_ret } } =>
+          match right.inferred {
+            Present { value: Resolved { node: right_ret } } => agree(left_ret, right_ret)
+            Absent => false
+            _ => false
+          }
+        Absent => right.inferred == none
+        _ => false
+      }
+    }
+  }
+}
+
 fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if left.connective == Arrow || (right.connective == Arrow) {
+    left.connective == right.connective
+      && callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices))
+  } else {
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
@@ -1103,34 +1171,13 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
         }
       }
       else if left.params |> count > 0 && right.params |> count > 0 {
-        if left.params |> count != right.params |> count { false }
-        else {
-          let params_eq = left.params |> enumerate |> all(pair =>
-            match right.params |> skip(pair.first) |> first {
-              Present { value: right_param } =>
-                node_type_equals(left: param_node_type_expr(n: pair.second), right: param_node_type_expr(n: right_param), source_indices: source_indices)
-              Absent => false
-            }
-          )
-          if params_eq == false { false }
-          else {
-            match left.inferred {
-              Present { value: Resolved { node: left_ret } } =>
-                match right.inferred {
-                  Present { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret, source_indices: source_indices)
-                  Absent => false
-                  _ => false
-                }
-              Absent => right.inferred == none
-              _ => false
-            }
-          }
-        }
+        callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices))
       }
       else {
         false
       }
     }
+  }
   }
 }
 
