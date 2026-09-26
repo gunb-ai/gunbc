@@ -18,7 +18,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { unit_hold_acquire }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_drive_handoff, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
-import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff }
+import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff, oob_power_action_after_confirmed_selection, oob_power_actuate_and_read_back, OobPowerUp }
 import gunbc.machine_intake_megarac_media_attach { megarac_attach_remote_image }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
 
@@ -42,7 +42,17 @@ fn attach_through_the_wrapper_from_outside() -> String {
 }
 
 fn power_cycle_through_the_generic_handoff_from_outside() -> String {
-  let _x = oob_boot_handoff(observation: mtcollins1_access_observation, capability_row: mtcollins1_capability_row, username: "admin", password_file: "/tmp/pw", selection: mtcollins1_cdrom_selection, power_action: "cycle")
+  let _x = oob_boot_handoff(observation: mtcollins1_access_observation, capability_row: mtcollins1_capability_row, username: "admin", password_file: "/tmp/pw", selection: mtcollins1_cdrom_selection)
+  ""
+}
+
+fn power_action_past_the_verified_selection_from_outside() -> String {
+  let _x = oob_power_action_after_confirmed_selection(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", device: "cdrom")
+  ""
+}
+
+fn power_command_past_the_state_read_from_outside() -> String {
+  let _x = oob_power_actuate_and_read_back(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", device: "cdrom", action: OobPowerUp)
   ""
 }
 

@@ -31,6 +31,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
+import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_milestone {
   MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
   MtCollins1PlacementReading, PlacementHeld, PlacementNoNodeLines, PlacementMismatch, mtcollins1_boot_placement_reading,
@@ -101,6 +102,7 @@ data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 fn mtcollins1_boot_step_timeout_minutes() -> Minute {
   let secs = second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
+    + second_count(s: oob_power_readback_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: mtcollins1_boot_diagnostics_allowance())

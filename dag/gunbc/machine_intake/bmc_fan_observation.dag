@@ -1,10 +1,18 @@
 module gunbc.machine_intake_bmc_fan_observation
 
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi_chassis_control {
+  ChassisPowerObservation,
+  ChassisPowerRead,
+  ChassisStatusUndecodable,
+  ChassisUnreadable,
+  chassis_observation,
+}
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ObservationRoundCount, SdrUndecodedLineCount, Second, observation_round_count_value, sdr_undecoded_line_count_value, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.ipmi_sdr {
   SdrFanDuty,
   SdrFanNoReading,
@@ -85,10 +93,8 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // substituted SDR field, and this. The repair is the same each time - the absence gets an arm
 // instead of a plausible value - and doing it here removes the two-field disagreement by
 // construction rather than by a checking order.
-type ChassisPowerObservation
-  = ChassisPowerRead { power_on: Bool }
-  | ChassisStatusUndecodable { cause: NonEmptyStr }
-  | ChassisUnreadable
+// The carrier is extdeps.bmc.ipmi_chassis_control ChassisPowerObservation, one authority shared
+// with the boot handoff's power-state read.
 
 type ThermalObservation
   = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount }
@@ -180,54 +186,8 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
 // "System Power         : on". An unreadable status is NOT read as powered-off: a machine whose
 // controller did not answer is a machine we know nothing about, and answering "off" there would put
 // every such sample into the arm where full-duty fans are expected and unremarkable.
-// THE ABSENCE OF THE LINE IS NOT THE WORD "off".
-//
-// This fold used to start at `false` and return the accumulator for every non-matching line, so a
-// chassis status that SUCCEEDED but printed no `System Power :` row -- different firmware wording,
-// truncated stdout, a locale -- answered `power_on: false`. That is structurally indistinguishable
-// from the controller saying the host is off, and it routes to HostPoweredOff and from there to
-// FailsafeBeforeHostTelemetry, the arm this module's own header calls "the contract working rather
-// than a finding". A read that understood nothing would have been reported as a healthy failsafe.
-//
-// So the parse answers FOUR things, not two. Review 69156 caught the first attempt at this fix
-// answering only three: it routed a MISSING line to its own arm and then wrote
-// `if v == "on" { On } else { Off }`, so a present line carrying `unknown`, a truncated
-// `System Power :` (which splits to ["System Power", ""] and passes the length guard), or any other
-// firmware wording still became Off. The header above that fold claimed the three-way split while
-// the fold made a two-way one, which is §4c exactly: an annotation is never evidence that a machine
-// claim holds. Only the literal words are believed now; everything else carries its text out.
-type ChassisPowerLine
-  = ChassisPowerLineOn
-  | ChassisPowerLineOff
-  | ChassisPowerLineUnrecognised { text: String }
-  | ChassisPowerLineAbsent
-
-fn chassis_power_line(stdout: String) -> ChassisPowerLine {
-  fold(split(s: stdout, delimiter: "\n"), init: ChassisPowerLineAbsent, f: (acc, line) => {
-    let fields = split(s: line, delimiter: ":") |> map(f => trim(f))
-    if fields.length() < 2 {
-      acc
-    } else {
-      match fields.first() {
-        Absent => acc
-        Present { value: key } => if trim(key) == "System Power" {
-          match fields.skip(n: 1).first() {
-            Absent => acc
-            Present { value: v } => if trim(v) == "on" {
-              ChassisPowerLineOn
-            } else if trim(v) == "off" {
-              ChassisPowerLineOff
-            } else {
-              ChassisPowerLineUnrecognised { text: v }
-            }
-          }
-        } else {
-          acc
-        }
-      }
-    }
-  })
-}
+// THE DECODER IS extdeps.bmc.ipmi_chassis_control chassis_power_line, one authority for the
+// §28.2 System Power line, shared with the boot handoff's power-state read.
 
 // THE SERIES IS A TYPED OUTCOME AND NOT A LIST, so a run that observed nothing cannot be mistaken
 // for a run that observed an empty fleet of fans. The interval travels WITH the rounds because every
@@ -236,6 +196,13 @@ fn chassis_power_line(stdout: String) -> ChassisPowerLine {
 type FanObservationSeries
   = FanObservationTaken { rounds: List<FanObservationRound>, interval: Second }
   | FanObservationRefused { cause: NonEmptyStr }
+
+// THE CHASSIS READ IS BOUNDED (extdeps.bmc.ipmi ChassisStatus has no unbounded form), so a
+// controller that stops answering ends one round's power reading as unreadable rather than stalling
+// the series.
+data fan_round_ipmi_read_deadline: Second = second(count: 20)
+
+data fan_round_ipmi_kill_after: Second = second(count: 5)
 
 // ONE ROUND: THREE READS, IN THE ORDER THAT MAKES THE SAMPLE COHERENT. Power is read first because
 // it is the fact that decides what the other two mean; the thermal read comes before the fan read so
@@ -251,6 +218,8 @@ fn observe_fan_round(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
+    deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
   )
   temps = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
@@ -291,21 +260,6 @@ fn chassis_was_read(chassis: ChassisPowerObservation) -> Bool {
     ChassisUnreadable => false
     ChassisStatusUndecodable { cause: _ } => false
     ChassisPowerRead { power_on: _ } => true
-  }
-}
-
-fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation {
-  if success {
-    match chassis_power_line(stdout: stdout) {
-      ChassisPowerLineOn => ChassisPowerRead { power_on: true }
-      ChassisPowerLineOff => ChassisPowerRead { power_on: false }
-      ChassisPowerLineUnrecognised { text: t } =>
-        ChassisStatusUndecodable { cause: join(["the System Power line carried a value this decoder does not recognise: ", t], "") as NonEmptyStr }
-      ChassisPowerLineAbsent =>
-        ChassisStatusUndecodable { cause: "the chassis status read succeeded and printed no System Power line" as NonEmptyStr }
-    }
-  } else {
-    ChassisUnreadable
   }
 }
 
