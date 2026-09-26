@@ -3,7 +3,7 @@ module test.claim.spark.v41_engram_file_backed_witness
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { UInt8 }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, microsecond, microsecond_count }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_engram_row_store {
   V41CompleteStore, V41Placed, V41PlacementRefused, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
@@ -12,6 +12,7 @@ import gunbc.spark.v41_engram_row_store {
 import gunbc.spark.v41_engram_file_backed {
   V41StoreOpenReceipt, V41OpenReleased, V41OpenResidueRefused, V41Gathered, V41GatherRefused,
   v41_store_open_receipt, v41_open_residency_verdict, v41_gather_rows,
+  v41_touched_pages, v41_fetch_touch_receipt, v41_rank_touches,
 }
 import test.claim.spark.v41_engram_row_store_witness { w_tiny_spec, w_source, w_row }
 
@@ -103,4 +104,32 @@ test fn a_shifted_offset_batch_refuses() -> Bool {
         && w_refused(s: s, offsets: [byte_size(count: end)])
     }
   }
+}
+
+// ── TOUCHES: DISTINCT PAGES, NOT ROWS ───────────────────────────────────────────────────────────
+
+fn w_offsets(xs: List<Nat>) -> List<ByteSize> {
+  map(xs, x => byte_size(count: x))
+}
+
+// RED (c): a duplicate offset within a batch counts once. 3-byte records on 8-byte pages.
+test fn a_duplicate_offset_in_a_batch_counts_once() -> Bool {
+  length(v41_touched_pages(offsets: w_offsets(xs: [8, 8, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
+    && length(v41_touched_pages(offsets: w_offsets(xs: [8, 11, 8]), record: byte_size(count: 3), page: byte_size(count: 8))) == 1
+}
+
+// RED (d): a row spanning a page boundary counts both pages; the row just before the boundary
+// counts one, and a record longer than a page counts every page it covers.
+test fn a_row_spanning_a_page_boundary_counts_both_pages() -> Bool {
+  v41_touched_pages(offsets: w_offsets(xs: [6]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0, 1]
+    && v41_touched_pages(offsets: w_offsets(xs: [5]), record: byte_size(count: 3), page: byte_size(count: 8)) == [0]
+    && v41_touched_pages(offsets: w_offsets(xs: [7]), record: byte_size(count: 18), page: byte_size(count: 8)) == [0, 1, 2, 3]
+}
+
+// A rank's (file, page) pairs across files are the per-file counts summed, with calls, rows and time.
+test fn a_rank_sums_its_files_touch_receipts() -> Bool {
+  let a = v41_fetch_touch_receipt(page_bytes: byte_size(count: 4096), page_count: 100, distinct_pages_touched: 7, fetch_rows_calls: 2, rows_fetched: 9, fetch_rows_time: microsecond(count: 30))
+  let b = v41_fetch_touch_receipt(page_bytes: byte_size(count: 4096), page_count: 100, distinct_pages_touched: 3, fetch_rows_calls: 1, rows_fetched: 4, fetch_rows_time: microsecond(count: 12))
+  let r = v41_rank_touches(files: [a, b])
+  r.distinct_pages_touched == 10 && r.fetch_rows_calls == 3 && r.rows_fetched == 13 && microsecond_count(m: r.fetch_rows_time) == 42
 }
