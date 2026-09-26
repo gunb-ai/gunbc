@@ -9,6 +9,7 @@ import v2.std.bounded_lattice_completeness {
 }
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
+  canonical_operation_op_coerce,
   canonical_operation_wire_matches_operation,
   target_model_canonical_operation_member_declared_type
 }
@@ -122,7 +123,8 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
-import v2.std.type_binder { type_param_names }
+import v2.std.type_binder { cast_target_optional, type_param_names }
+import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 
@@ -2325,8 +2327,9 @@ fn infer_gather_application_row_on_entries(
       )
     Accepted { value: _, diagnostics: id } =>
       let merged_pending = diagnostics_merge(outer: pending, inner: id)
-      if infer_transform_is_binary_infix_int_add_shape(node: node) {
-        match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
+      match infer_transform_derived_optional(node: node, partials: partials, entries: entries, tree: tree) {
+        Present { value: derived } =>
+        match derived {
           Rejected { diagnostics: r } =>
             infer_gather_fold_acc_failed(
               node: node,
@@ -2365,7 +2368,7 @@ fn infer_gather_application_row_on_entries(
                 )
             }
         }
-      } else {
+        Absent =>
         infer_gather_transform_frontier_on_entries(
           node: node,
           entries: entries,
@@ -2374,6 +2377,71 @@ fn infer_gather_application_row_on_entries(
           tree: tree
         )
       }
+  }
+}
+
+// THE TRANSFORMS WHOSE TYPE IS DERIVED, by shape: the binary Int add, and a cast whose operand's
+// grounding is derived. Absent is the counted frontier (GroundingNotDerived), never an admission.
+fn infer_transform_derived_optional(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node,
+) -> Optional<Outcome<InferredFacts>> {
+  if infer_transform_is_binary_infix_int_add_shape(node: node) {
+    optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
+  } else {
+    infer_transform_cast_optional(node: node, entries: entries)
+  }
+}
+
+// A CAST `e as T` is Transform[coerce, e] + <cast-target> T (v2.std.type_binder). Its type is T, and
+// it is admitted only when v2.std.coercion coercion_cast_crossing finds e's derived grounding
+// crosses to T; otherwise it refuses with coercion's typed mismatch. An operand whose grounding is
+// not derived leaves the cast on the counted frontier -- the crossing is not judged, and it is not
+// admitted either.
+fn infer_transform_is_cast(node: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: op } =>
+      canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_coerce())
+    Absent => false
+  }
+}
+
+fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+  if !infer_transform_is_cast(node: node) {
+    optional_absent()
+  } else {
+    match cast_target_optional(n: node) {
+      Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
+      Present { value: target } =>
+        match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+          Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
+          Present { value: operand } =>
+            match lookup_inferred_facts_in_entries(entries: entries, key: operand) {
+              Absent => optional_present(value: outcome_rejected(infer_facts_lookup_miss_diagnostic(key: operand)))
+              Present { value: operand_facts } =>
+                match operand_facts.grounding {
+                  GroundingNotDerived { node: _ } => optional_absent()
+                  DerivedGrounding { grounding: g } =>
+                    optional_present(value: bind_outcome(
+                      o: coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: target),
+                      f: fn(crossed) {
+                        match infer_descent_witness_for_node(n: node) {
+                          Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+                          Holds { value: descent_proof } =>
+                            inferred_facts_from_derived_type(
+                              node: node,
+                              derived_type: crossed.target,
+                              descent: Holds { value: descent_proof }
+                            )
+                        }
+                      }
+                    ))
+                }
+            }
+        }
+    }
   }
 }
 

@@ -109,7 +109,7 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed,
 }
-import v2.std.type_binder { edge_is_type_params, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_params, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
@@ -139,8 +139,15 @@ type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
+// type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
+// enclosing Arrows' type-parameter frames over the namespace root, and it never carries a value
+// binder (a parameter, a `let`, an arm binder), so a type position cannot bind a value and a value
+// position -- which resolves in `scope` -- cannot bind a type parameter. resolve_arrow_node opens a
+// fn's <T> on it over the WHOLE Arrow, signature and body; only type-role walks consult it
+// (resolve_type_role_target).
 type ResolveContext {
   scope: Scope
+  type_scope: Scope
   namespace: Namespace
   policy: NameResolutionPolicy
   position: QualifiedName
@@ -318,6 +325,7 @@ fn resolve_ctx_init(
 ) -> ResolveContext {
   ResolveContext {
     scope: scope_from_namespace(namespace: namespace),
+    type_scope: scope_from_namespace(namespace: namespace),
     namespace: namespace,
     policy: policy,
     position: namespace.module_qn,
@@ -329,6 +337,7 @@ fn resolve_ctx_init(
 fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
   ResolveContext {
     scope: scope,
+    type_scope: ctx.type_scope,
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: ctx.position,
@@ -337,9 +346,30 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
   }
 }
 
+fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+// THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target today
+// (v2.std.type_binder <cast-target>), a let annotation next -- resolves here: in the type-role
+// frame, so the enclosing fn's <T> binds it and no value binder can, and an undeclared name refuses
+// located at that name.
+fn resolve_type_role_target(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
+  resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: target)
+}
+
 fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveContext {
   ResolveContext {
     scope: ctx.scope,
+    type_scope: ctx.type_scope,
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
@@ -351,6 +381,7 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
 fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bool) -> ResolveContext {
   ResolveContext {
     scope: ctx.scope,
+    type_scope: ctx.type_scope,
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: ctx.position,
@@ -450,7 +481,30 @@ fn anonymous_parameter_referenced_diagnostic(n: Node) -> Diagnostic {
 // IT DISCRIMINATES THE TWO CAUSES, which is why the third arm exists rather than defaulting: a name
 // no module declares gets NO advisory, because the honest reading there is a typo or a deleted
 // declaration and pointing anywhere would be fabrication.
+// A TYPE PARAMETER NAMED IN A VALUE POSITION is not an unknown name: the type-role frame binds it,
+// and the value scope deliberately does not. It refuses with its own reason, located at the use.
+fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name: Symbol) -> Optional<Diagnostic> {
+  match lookup_chain(s: ctx.type_scope, name: name) {
+    Accepted { value: BoundInFrame { canonical: _ }, diagnostics: _ } =>
+      optional_present(
+        value: Diagnostic {
+          reason: ^resolve_reason_type_parameter_in_value_position,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    _ => optional_absent()
+  }
+}
+
 fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
+  match type_parameter_in_value_position_optional(ctx: ctx, n: n, name: name) {
+    Present { value: d } => NonEmptyDiagnostics { head: d, tail: [] }
+    Absent => unbound_symbol_diagnostics_of_value_name(ctx: ctx, n: n, name: name)
+  }
+}
+
+fn unbound_symbol_diagnostics_of_value_name(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
   let fatal = unbound_symbol_diagnostic(n: n)
   match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
     GlobalBareHit { node: _, path: path } =>
@@ -1190,7 +1244,12 @@ fn resolve_transform_children(
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
-        _ => resolve_node_walk(ctx: ctx, n: e.target)
+        Named { name: _ } =>
+          if edge_is_cast_target(e: e) {
+            resolve_type_role_target(ctx: ctx, target: e.target)
+          } else {
+            resolve_node_walk(ctx: ctx, n: e.target)
+          }
       }
     )
   }))
@@ -1633,6 +1692,16 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 // to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
 // invented by that refusal.
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  resolve_arrow_node_in(
+    outer_ctx: ctx,
+    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope)),
+    n: n
+  )
+}
+
+// The Arrow's own <T> binders are checked from the OUTER context: the frame they open must not
+// answer for them, or every binder would read as shadowing itself.
+fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
   let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type }
@@ -1641,7 +1710,7 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
     match e.label {
       Named { name: _ } =>
         if edge_is_type_params(e: e) {
-          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
+          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else {
           child_walk_step(
             w: acc,
