@@ -104,6 +104,21 @@ test fn two_system_power_lines_select_nothing() -> Bool {
   })
 }
 
+// EXACTLY ONE KEY AND ONE VALUE (review 5326561042): a System Power line with trailing fields is
+// malformed, never the on or off it starts with, so no action is selected from it.
+test fn a_system_power_line_with_trailing_fields_selects_nothing() -> Bool {
+  (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on : trailing\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  }) && (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : off : trailing\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  }) && (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  })
+}
+
 // THE INCIDENT ITSELF: a cycle at an off host, exit 0, the chassis never moves. Every sample reads
 // off, so the off-then-on transition is never completed and the read-back refuses.
 test fn an_off_host_cycled_with_no_transition_is_not_observed() -> Bool {
