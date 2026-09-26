@@ -1,0 +1,178 @@
+module extdeps.languages.cpp.name_lookup
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "eel.is/c++draft/basic.lookup"
+  }
+}
+
+// C++ NAME LOOKUP, CITED TO THE WORKING DRAFT AND VERIFIED BY FETCHING IT (2026-09-21, per the
+// same verify-or-refuse rule extdeps.languages.cpp.subject records for the committee page). The
+// fetched page identifies itself as clause 6.5 `Name lookup` [basic.lookup] of the C++ standard
+// WORKING DRAFT at commit c7015b485cc3db8efaa9dfb9ff0809c5394a4ed1. It is NOT the published
+// ISO/IEC 14882, and the distinction is carried rather than smoothed over: iso.org 403s the
+// published text (the caveat the subject module already records), so the draft is the best
+// fetchable citation and this module says so instead of implying the published standard was read.
+//
+// WHY THIS CORPUS MODELS ANOTHER LANGUAGE'S LOOKUP AT ALL. DESIGN section 3 says to model the
+// accepted universal framework rather than re-coin it, and section 1 says to replace convention
+// with necessity until nothing arbitrary survives. This repository resolves names across a
+// namespace tree and has been deciding, in its own vocabulary, questions C++ settled decades ago
+// and deployed at enormous scale. Pointing at that framework is cheaper than re-deriving it and
+// gives every claim about lookup an external referent, which is exactly what section 1's A3
+// demands of a fact -- a shared, time-stable framework rather than an internal taxonomy.
+//
+// WHAT THIS MODULE IS NOT. It is not a claim that this repository implements C++ lookup, nor that
+// C++ lookup is the rule this corpus follows. extdeps models the upstream FAITHFULLY; a consumer
+// that departs from it states its departure on its own carrier (DESIGN section 3b: diverging with
+// a stated reason is admitted, diverging silently is the fork). In particular this corpus is
+// STRICTER than what is modeled here, and nothing in this module should be read as importing
+// overload resolution, argument-dependent lookup, or using-directive behavior into it.
+//
+// THE SIX LOOKUP FORMS THE FETCHED CLAUSE ENUMERATES, AT THEIR OWN STABLE LABELS. Keeping the
+// standard's names is the section 3 rule for an upstream: a nickname here would be a second name
+// for a concept the citation already names, and the stable labels are how a reader checks the
+// model against the text.
+
+type CppLookupForm
+  = UnqualifiedLookup
+  | ArgumentDependentLookup
+  | QualifiedLookup
+  | MemberNameLookup
+  | ElaboratedTypeSpecifierLookup
+  | UsingDirectiveLookup
+
+fn cpp_lookup_form_stable_label(form: CppLookupForm) -> NonEmptyStr {
+  match form {
+    UnqualifiedLookup => "basic.lookup.unqual" as NonEmptyStr
+    ArgumentDependentLookup => "basic.lookup.argdep" as NonEmptyStr
+    QualifiedLookup => "basic.lookup.qual" as NonEmptyStr
+    MemberNameLookup => "class.member.lookup" as NonEmptyStr
+    ElaboratedTypeSpecifierLookup => "basic.lookup.elab" as NonEmptyStr
+    UsingDirectiveLookup => "basic.lookup.udir" as NonEmptyStr
+  }
+}
+
+fn cpp_lookup_form_subclause(form: CppLookupForm) -> NonEmptyStr {
+  match form {
+    MemberNameLookup => "6.5.2" as NonEmptyStr
+    UnqualifiedLookup => "6.5.3" as NonEmptyStr
+    ArgumentDependentLookup => "6.5.4" as NonEmptyStr
+    QualifiedLookup => "6.5.5" as NonEmptyStr
+    ElaboratedTypeSpecifierLookup => "6.5.6" as NonEmptyStr
+    UsingDirectiveLookup => "6.5.7" as NonEmptyStr
+  }
+}
+
+// THE PARENT-SCOPE RULE, QUOTED RATHER THAN PARAPHRASED, because the CONDITION is the whole
+// content and a paraphrase loses it. The search moves outward ONLY on an empty result; a scope
+// that declares the name ends the walk, which is what makes an inner declaration shadow an outer
+// one rather than compete with it.
+
+data cpp_unqualified_parent_scope_rule: NonEmptyStr = "If no declarations are found, the results of the unqualified search are the results of an unqualified search in the parent scope of S, if any, from P." as NonEmptyStr
+
+data cpp_unqualified_parent_scope_rule_citation: NonEmptyStr = "[basic.lookup.unqual] 6.5.3 paragraph 2" as NonEmptyStr
+
+// THE AMBIGUITY RULE. Note what it is keyed on: not "more than one declaration" but "do not all
+// denote the same entity". Several declarations of ONE entity are not ambiguous; two entities are,
+// and the program is ill-formed rather than resolved by any priority order.
+
+data cpp_ambiguity_rule: NonEmptyStr = "Otherwise, if the declarations found by name lookup do not all denote the same entity, they are ambiguous and the program is ill-formed." as NonEmptyStr
+
+data cpp_ambiguity_rule_citation: NonEmptyStr = "[basic.lookup.general] 6.5.1 paragraph 1" as NonEmptyStr
+
+// THE ABSENT MECHANISM, MODELED AS A FACT BECAUSE ITS ABSENCE IS THE LOAD-BEARING OBSERVATION.
+//
+// A reader looking for "what does C++ do when no enclosing scope declares the name" finds that the
+// search is exhausted and the program is ill-formed. There is NO rule that searches the whole
+// program for a unique declaration and binds to it. That negative is easy to lose -- absence
+// leaves no clause to cite -- so it is carried here as a declaration rather than left to be
+// re-derived by the next reader, and it is stated as a property of the FETCHED TEXT rather than as
+// a claim about every version of the language.
+//
+// DESIGN section 4d governs how strongly this may be put. What was observed is that the fetched
+// clause enumerates six lookup forms and none of them is a whole-program unique search; that is a
+// reading of one document at one commit, not a proof about the language. It is recorded at that
+// strength.
+
+type CppWholeProgramUniqueLookup
+  = NoSuchLookupFormInTheCitedText { observed_at: NonEmptyStr }
+
+data cpp_no_whole_program_unique_lookup: CppWholeProgramUniqueLookup = NoSuchLookupFormInTheCitedText {
+    observed_at: "clause 6.5 [basic.lookup] at working-draft commit c7015b485cc3db8efaa9dfb9ff0809c5394a4ed1, fetched 2026-09-21: the clause enumerates unqualified, argument-dependent, qualified, member, elaborated-type-specifier and using-directive lookup, and no form searches the whole program for a unique declaration" as NonEmptyStr
+  }
+
+// WHICH FORMS THIS CORPUS GROUNDS ITSELF ON, AND WHICH IT DELIBERATELY DOES NOT. An extdeps module
+// may model more than its consumers use, but leaving the boundary unstated invites exactly the
+// silent import the ruling that prompted this module warned against: a reader finding
+// ArgumentDependentLookup declared here could take it as licence to expect it. Each exclusion
+// carries its reason, so the boundary is a decision rather than an omission.
+
+type CppLookupFormUse
+  = GroundsThisCorpus { because: NonEmptyStr }
+  | NotImportedHere { because: NonEmptyStr }
+
+fn cpp_lookup_form_use(form: CppLookupForm) -> CppLookupFormUse {
+  match form {
+    UnqualifiedLookup =>
+      GroundsThisCorpus {
+        because: "a reference written as a bare name is this corpus's commonest form, and the parent-scope rule above is the framework its own resolution rule is a strictening of" as NonEmptyStr
+      }
+    QualifiedLookup =>
+      GroundsThisCorpus {
+        because: "a dotted reference names the scope to search, which is the same question this clause answers for the :: form" as NonEmptyStr
+      }
+    ArgumentDependentLookup =>
+      NotImportedHere {
+        because: "ADL widens the searched set from the ARGUMENT TYPES of a call, so a reference's meaning depends on the types flowing into it -- the opposite of the stability DESIGN section 1's A3 requires of a reference, and not a mechanism this corpus has or wants" as NonEmptyStr
+      }
+    UsingDirectiveLookup =>
+      NotImportedHere {
+        because: "a using-directive makes names appear as if declared in an enclosing scope, which is a wildcard import; this corpus is deleting its import concept rather than widening it" as NonEmptyStr
+      }
+    MemberNameLookup =>
+      NotImportedHere {
+        because: "class member lookup is inseparable from C++'s inheritance and access model, none of which this corpus has" as NonEmptyStr
+      }
+    ElaboratedTypeSpecifierLookup =>
+      NotImportedHere {
+        because: "the elaborated-type-specifier form exists to disambiguate C++'s type/variable namespace split, which this corpus does not have" as NonEmptyStr
+      }
+  }
+}
+
+fn cpp_lookup_form_grounds_this_corpus(form: CppLookupForm) -> Bool {
+  match cpp_lookup_form_use(form: form) {
+    GroundsThisCorpus { because: _ } => true
+    NotImportedHere { because: _ } => false
+  }
+}
+
+data cpp_lookup_forms: List<CppLookupForm> = [
+  UnqualifiedLookup,
+  ArgumentDependentLookup,
+  QualifiedLookup,
+  MemberNameLookup,
+  ElaboratedTypeSpecifierLookup,
+  UsingDirectiveLookup,
+]
+
+data cpp_name_lookup_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.cpp.subject",
+      decl_name: "cpp_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = cpp_name_lookup_model_scope

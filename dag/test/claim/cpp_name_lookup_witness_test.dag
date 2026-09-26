@@ -1,0 +1,52 @@
+module test.claim.cpp_name_lookup_witness
+
+import v2.std.logic { Bool }
+import v2.std.algebra { length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.cpp.name_lookup {
+  ArgumentDependentLookup, CppLookupForm, ElaboratedTypeSpecifierLookup, GroundsThisCorpus,
+  MemberNameLookup, NotImportedHere, QualifiedLookup, UnqualifiedLookup, UsingDirectiveLookup,
+  cpp_lookup_form_grounds_this_corpus, cpp_lookup_form_stable_label, cpp_lookup_form_subclause,
+  cpp_lookup_form_use, cpp_lookup_forms,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THESE ARMS CAN AND CANNOT ESTABLISH, said plainly so the set is not over-read. They cannot
+// check the model against the C++ standard -- no executing route here fetches it, and a witness
+// asserting a quoted sentence equals itself would be the change detector DESIGN section 5 names.
+// What they establish is the boundary this module exists to make explicit: that every enumerated
+// form carries a disposition, that the two imported forms are exactly the two intended, and that
+// the four excluded ones are excluded rather than merely unmentioned. That boundary is the fact a
+// later reader is most likely to erode, by finding ArgumentDependentLookup declared here and
+// taking its presence for licence.
+
+test fn every_lookup_form_carries_a_disposition_holds() -> Bool {
+  length(xs: cpp_lookup_forms) == 6
+}
+
+// The pair that keeps the boundary from drifting in either direction. Asserting only the imported
+// forms would stay green if everything were imported; asserting only the excluded ones would stay
+// green if nothing were.
+test fn exactly_the_two_reference_forms_ground_this_corpus_holds() -> Bool {
+  cpp_lookup_form_grounds_this_corpus(form: UnqualifiedLookup)
+  && cpp_lookup_form_grounds_this_corpus(form: QualifiedLookup)
+}
+
+test fn the_four_widening_forms_are_not_imported_holds() -> Bool {
+  !cpp_lookup_form_grounds_this_corpus(form: ArgumentDependentLookup)
+  && !cpp_lookup_form_grounds_this_corpus(form: UsingDirectiveLookup)
+  && !cpp_lookup_form_grounds_this_corpus(form: MemberNameLookup)
+  && !cpp_lookup_form_grounds_this_corpus(form: ElaboratedTypeSpecifierLookup)
+}
+
+// The stable labels are how a reader checks this model against the cited clause, so a wrong label
+// is a broken citation rather than a cosmetic slip -- the positional-citation failure DESIGN
+// section 3 warns about, one layer out.
+test fn the_stable_labels_are_the_cited_ones_holds() -> Bool {
+  (cpp_lookup_form_stable_label(form: UnqualifiedLookup) == "basic.lookup.unqual")
+  && (cpp_lookup_form_stable_label(form: QualifiedLookup) == "basic.lookup.qual")
+  && (cpp_lookup_form_stable_label(form: ArgumentDependentLookup) == "basic.lookup.argdep")
+  && (cpp_lookup_form_subclause(form: UnqualifiedLookup) == "6.5.3")
+  && (cpp_lookup_form_subclause(form: QualifiedLookup) == "6.5.5")
+}
