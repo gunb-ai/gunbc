@@ -1398,6 +1398,72 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_assertion_counter_wet_witness_test", function: "a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted" },
+      entry: "dag/test/claim/approval_assertion_counter_wet_witness_test.dag",
+      function: "a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_assertion_counter_wet_witness_test", function: "the_counter_standing_is_per_enrolment" },
+      entry: "dag/test/claim/approval_assertion_counter_wet_witness_test.dag",
+      function: "the_counter_standing_is_per_enrolment",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_assertion_counter_wet_witness_test", function: "a_lost_counter_race_is_refused_not_admitted" },
+      entry: "dag/test/claim/approval_assertion_counter_wet_witness_test.dag",
+      function: "a_lost_counter_race_is_refused_not_admitted",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_assertion_counter_wet_witness_test", function: "an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions" },
+      entry: "dag/test/claim/approval_assertion_counter_wet_witness_test.dag",
+      function: "an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_assertion_counter_wet_witness_test", function: "an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create" },
+      entry: "dag/test/claim/approval_assertion_counter_wet_witness_test.dag",
+      function: "an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_device_routes_wet_witness_test", function: "a_bound_realization_passes_the_read_past_the_gate" },
+      entry: "dag/test/claim/approval_device_routes_wet_witness_test.dag",
+      function: "a_bound_realization_passes_the_read_past_the_gate",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", function: "the_code_slot_is_written_before_delivery_by_real_execution" },
+      entry: "dag/test/claim/approval_device_enrolment_code_wet_witness_test.dag",
+      function: "the_code_slot_is_written_before_delivery_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", function: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution" },
+      entry: "dag/test/claim/approval_device_enrolment_code_wet_witness_test.dag",
+      function: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_ntfy_access_readback_wet_witness_test", function: "the_root_refuses_before_minting_on_this_host_by_real_execution" },
+      entry: "dag/test/claim/approval_ntfy_access_readback_wet_witness_test.dag",
+      function: "the_root_refuses_before_minting_on_this_host_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_ntfy_access_readback_wet_witness_test", function: "the_helper_output_decodes_as_an_outcome_by_real_execution" },
+      entry: "dag/test/claim/approval_ntfy_access_readback_wet_witness_test.dag",
+      function: "the_helper_output_decodes_as_an_outcome_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
       function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution",
@@ -1602,9 +1668,21 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.v41_runtime_candidate_witness", function: "the_live_candidate_is_unestablished_and_names_every_missing_axis" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_authorization_witness", function: "the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back" },
+      entry: "dag/test/claim/spark/pair_serving_d0_authorization_witness_test.dag",
+      function: "the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_engram_runtime_witness", function: "control_published_infeasibility_is_not_weakened_by_a_keyed_specification" },
+      entry: "dag/test/claim/spark/v41_engram_runtime_witness_test.dag",
+      function: "control_published_infeasibility_is_not_weakened_by_a_keyed_specification",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_runtime_candidate_witness", function: "the_live_candidate_is_keyed_end_to_end" },
       entry: "dag/test/claim/spark/v41_runtime_candidate_witness_test.dag",
-      function: "the_live_candidate_is_unestablished_and_names_every_missing_axis",
+      function: "the_live_candidate_is_keyed_end_to_end",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

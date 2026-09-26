@@ -1,0 +1,153 @@
+module v2.test.emit.int_literal_form_unwired_located
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.emit_produced { emit_produced_decl_inner_arrow, produced_decl_conjs_in_tree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest_located }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.dag { dag_language_model, dag_pick_target_model, dag_value_expression_projection }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_project_arrow_body_to_value_expression,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target
+}
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.provenance { SpanIndex }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS WHERE A TARGET THAT HAS NOT DECLARED `int_literal_form` REFUSES AN INTEGER LITERAL.
+// `v2.std.compilers.target_model` renders an integer literal through the target's declared literal
+// token class; C, TypeScript and dag declare `IntLiteralUnwired`, so their token fold refuses
+// `target_value_expr_int_literal_form_unwired`. The refusal is only useful if it names the authored
+// literal, so each row asserts the reason AND that the locus is the literal's bytes in this source --
+// `606060` sits at bytes 62..68 of the text below. A wire node built with a synthetic occurrence
+// renders a synthetic locus and makes every locus row false.
+//
+// THE DAG ROW USES A BODIED-FUNCTION dag TARGET (`dag_pick_target_model`), because the bare
+// `dag_target_model` carries no value-expression projection at all and refuses before any literal is
+// reached; every dag target that renders a body shares the one `dag_value_expression_projection`, so
+// its `IntLiteralUnwired` is the one read here.
+//
+// ONE NULLARY PRODUCER, FORCED ONCE AND ENROLLED WARM (v2.workflow.floor_pure_producer_share): the
+// front end is paid once, and the three targets project the same inferred member arrow. It publishes
+// only the reason and locus text per target.
+data int_literal_probe_source: String = "module int_literal_probe\n\ndata int_literal_probe_value: Int = 606060\n"
+
+data int_literal_probe_ingest: SourceRootIngest = Cons {
+  head: DagSourceReadWitness {
+    source: Medium { carried: int_literal_probe_source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^int_literal_probe_artifact, file_path: "src/v2/int_literal_probe.dag" },
+    compilation_unit: ^int_literal_probe_cu,
+    source_root: V2Tree
+  },
+  tail: Empty
+}
+
+type IntLiteralTargetVerdict
+  = IntLiteralTokensAccepted
+  | IntLiteralRefused { reason: Symbol, locus: String }
+  | IntLiteralProbeUnreached { reason: Symbol }
+
+type IntLiteralProbeTable {
+  c: IntLiteralTargetVerdict,
+  typescript: IntLiteralTargetVerdict,
+  dag: IntLiteralTargetVerdict
+}
+
+fn int_literal_target_verdict(arrow: Node, target: TargetModel, spans: SpanIndex) -> IntLiteralTargetVerdict {
+  let tokens = bind_outcome(
+    o: target_project_arrow_body_to_value_expression(
+      arrow: arrow,
+      target: target,
+      source_bool_form: dag_value_expression_projection().bool_literal_form,
+      handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+    ),
+    f: fn(expr) {
+      bind_outcome(
+        o: target_value_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          target_value_expression_tokens_from_target(expr: expr, target: target, projection: projection)
+        }
+      )
+    }
+  )
+  match tokens {
+    Accepted { value: _, diagnostics: _ } => IntLiteralTokensAccepted
+    Rejected { diagnostics: d } =>
+      IntLiteralRefused {
+        reason: diagnostics_fatal_reason(d: d),
+        locus: lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: spans)
+      }
+  }
+}
+
+fn int_literal_unreached_table(reason: Symbol) -> IntLiteralProbeTable {
+  IntLiteralProbeTable {
+    c: IntLiteralProbeUnreached { reason: reason },
+    typescript: IntLiteralProbeUnreached { reason: reason },
+    dag: IntLiteralProbeUnreached { reason: reason }
+  }
+}
+
+fn int_literal_probe_table() -> IntLiteralProbeTable {
+  let assembled = assemble_program_from_ingest_located(
+    ingest: int_literal_probe_ingest,
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^int_literal_probe, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+  match bind_outcome(o: assembled.program, f: fn(p) { infer(tree: p) }) {
+    Rejected { diagnostics: d } => int_literal_unreached_table(reason: diagnostics_fatal_reason(d: d))
+    Accepted { value: inferred, diagnostics: _ } =>
+      match produced_decl_conjs_in_tree(root: inferred.root) {
+        Empty => int_literal_unreached_table(reason: ^int_literal_probe_no_declaration)
+        Cons { head: decl, tail: _ } =>
+          match emit_produced_decl_inner_arrow(decl: decl) {
+            Rejected { diagnostics: d } => int_literal_unreached_table(reason: diagnostics_fatal_reason(d: d))
+            Accepted { value: arrow, diagnostics: _ } =>
+              IntLiteralProbeTable {
+                c: int_literal_target_verdict(arrow: arrow, target: c_target_model(), spans: assembled.spans),
+                typescript: int_literal_target_verdict(arrow: arrow, target: ts_target_model(), spans: assembled.spans),
+                dag: int_literal_target_verdict(arrow: arrow, target: dag_pick_target_model(), spans: assembled.spans)
+              }
+          }
+      }
+  }
+}
+
+fn int_literal_refused_unwired_at_the_literal(v: IntLiteralTargetVerdict) -> Bool {
+  match v {
+    IntLiteralRefused { reason: reason, locus: locus } =>
+      (reason == ^target_value_expr_int_literal_form_unwired)
+        && string_contains(s: locus, pattern: "int_literal_probe_cu bytes 62..68")
+    _ => false
+  }
+}
+
+test fn c_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
+  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().c)
+}
+
+test fn typescript_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
+  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().typescript)
+}
+
+test fn dag_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
+  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().dag)
+}

@@ -37,12 +37,30 @@ import v2.std.compilers.sugar {
   sugar_rule_for_key
 }
 import v2.compiler.body_lowering_fold {
+  BodyLowering,
+  BodyLoweredTree,
+  WrapperRetention,
+  body_lowering_after_pending,
   body_lower_finish_for_normalize,
+  body_lowered_tree_map_node,
+  body_lowered_tree_of,
+  body_lowered_tree_over,
+  body_lowered_tree_retained,
+  body_lowered_tree_then,
+  no_wrapper_retentions,
+  wrapper_retentions_concat,
   body_lower_fn_decl_to_census_arrow,
+  body_lower_service_decl,
   body_lower_is_deferred_lower_at_normalize,
   body_lower_type_decl_record_name_optional
 }
-import v2.compiler.normalized_tree { CensusTree, NormalizedTree, admit_census_tree, admit_normalized_tree }
+import v2.compiler.normalized_tree {
+  CensusTree,
+  NormalizedTree,
+  admit_census_tree,
+  admit_normalized_tree,
+  admit_retention_free
+}
 import v2.compiler.test_marker_capture { test_marker_capture }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
@@ -99,33 +117,77 @@ fn normalize_no_edges() -> List<Edge> {
   []
 }
 
-fn normalize_children_init() -> Outcome<List<Edge>> {
-  Accepted { value: normalize_no_edges(), diagnostics: None }
+// THE CHILD FOLD CARRIES EVERY RETENTION ITS CHILDREN FOUND beside the edge list (MQ-4). A retained
+// shell is a typed variant of the lowering's result (v2.compiler.body_lowering_fold BodyLowering),
+// not a diagnostic, so it cannot ride the diagnostics merge; it rides this list instead, appended in
+// child order, and reaches v2.compiler.normalized_tree admit_retention_free, which refuses each one at
+// its own shell.
+type NormalizeEdges sole_constructor {
+  edges: List<Edge>,
+  retained: FreeMonoid<WrapperRetention>,
+}
+
+fn normalize_children_init() -> Outcome<NormalizeEdges> {
+  Accepted {
+    value: NormalizeEdges { edges: normalize_no_edges(), retained: no_wrapper_retentions() },
+    diagnostics: None
+  }
 }
 
 fn normalize_children_step(
-  acc: Outcome<List<Edge>>,
+  acc: Outcome<NormalizeEdges>,
   edge: Edge,
-  child: Outcome<Node>
-) -> Outcome<List<Edge>> {
+  child: Outcome<BodyLoweredTree>
+) -> Outcome<NormalizeEdges> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: edges, diagnostics: ad } =>
+    Accepted { value: gathered, diagnostics: ad } =>
       match child {
         Rejected { diagnostics: cr } =>
           Rejected {
             diagnostics: rejected_with_pending(pending: ad, rejected: cr)
           }
-        Accepted { value: child_node, diagnostics: cd } =>
+        Accepted { value: child_tree, diagnostics: cd } =>
           Accepted {
-            value: list_snoc_item(
-              xs: edges,
-              item: Edge { label: edge.label, target: child_node }
-            ),
+            value: NormalizeEdges {
+              edges: list_snoc_item(
+                xs: gathered.edges,
+                item: Edge { label: edge.label, target: child_tree.node }
+              ),
+              retained: wrapper_retentions_concat(
+                earlier: gathered.retained,
+                later: body_lowered_tree_retained(t: child_tree)
+              )
+            },
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
       }
   }
+}
+
+// The enclosing node, rebuilt once over its lowered children, then lowered itself. Every retention
+// the children found stays in the tree; one the node's own lowering finds is appended after them.
+fn normalize_lower_over_children(
+  n: Node,
+  gathered: NormalizeEdges,
+  cd: Diagnostics,
+  fn_body_pass_through: Bool
+) -> Outcome<BodyLoweredTree> {
+  body_lowered_tree_then(
+    t: body_lowered_tree_over(node: node_rebuild(n: n, children: gathered.edges), retained: gathered.retained),
+    f: fn(folded) {
+      body_lower_finish_for_normalize(
+        n: n,
+        folded: folded,
+        cd: cd,
+        fn_body_pass_through: fn_body_pass_through
+      )
+    }
+  )
+}
+
+fn normalize_sugar_tree_finish(n: Node, t: BodyLoweredTree, cd: Diagnostics) -> Outcome<BodyLoweredTree> {
+  body_lowered_tree_map_node(t: t, f: fn(folded) { normalize_sugar_finish(n: n, folded: folded, cd: cd) })
 }
 
 fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
@@ -166,7 +228,7 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
   }
 }
 
-fn normalize_node(n: Node) -> Outcome<Node> {
+fn normalize_node(n: Node) -> Outcome<BodyLoweredTree> {
   normalize_node_ctx(n: n, under_fn_decl: false)
 }
 
@@ -184,7 +246,7 @@ fn normalize_fn_body_pass_through_at_seam(emitted: Symbol, under_fn_decl: Bool) 
   (emitted == ^dag_surface_fn_body) && under_fn_decl
 }
 
-fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: emitted } =>
       if body_lower_is_deferred_lower_at_normalize(
@@ -205,7 +267,7 @@ fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
         ) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: after_body, diagnostics: cd0 } =>
-            normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+            normalize_sugar_tree_finish(n: n, t: body_lowered_tree_of(lowering: after_body), cd: cd0)
         }
       } else {
         normalize_node_fold_children_ctx(
@@ -238,7 +300,7 @@ fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node>
   }
 }
 
-fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
   match fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
     normalize_children_step(
       acc: acc,
@@ -247,16 +309,11 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Nod
     )
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: edges, diagnostics: cd } =>
-      match body_lower_finish_for_normalize(
-        n: n,
-        folded: node_rebuild(n: n, children: edges),
-        cd: cd,
-        fn_body_pass_through: false
-      ) {
+    Accepted { value: gathered, diagnostics: cd } =>
+      match normalize_lower_over_children(n: n, gathered: gathered, cd: cd, fn_body_pass_through: false) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: after_body, diagnostics: cd0 } =>
-          normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+          normalize_sugar_tree_finish(n: n, t: after_body, cd: cd0)
       }
   }
 }
@@ -332,8 +389,19 @@ fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
   )
 }
 
+fn bind_retention_free(o: Outcome<BodyLoweredTree>) -> Outcome<Node> {
+  match o {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: tree, diagnostics: d } => admit_retention_free(tree: tree, diagnostics: d)
+  }
+}
+
+// RETENTION IS REFUSED FIRST, before the graft and the well-formedness gate read the tree: a retained
+// shell is the earlier fact, and it is why either of them would refuse. v2.compiler.normalized_tree
+// admit_retention_free is where the retained list is consumed and the Node leaves the lowering
+// carrier; nothing downstream of it holds a retention to drop.
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
-  match normalize_node(n: parse_tree) {
+  match bind_retention_free(o: normalize_node(n: parse_tree)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
@@ -391,21 +459,24 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
 //     the same Disjs whole-root ingest produces.
 // The result is a CensusTree, not a NormalizedTree, so no emission or body-resolution consumer can be
 // handed one: a census-grade module is never emitted BY TYPE rather than by a check at the emitter.
-fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: emitted } =>
       if (emitted == ^dag_surface_data_decl) || (emitted == ^dag_surface_test_fn_decl) {
-        Accepted { value: n, diagnostics: None }
+        Accepted { value: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()), diagnostics: None }
+      } else if emitted == ^dag_surface_service_decl {
+        body_lowered_tree_then(
+          t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
+          f: fn(shell) { body_lower_service_decl(shell: shell, admit_set_aside: true) }
+        )
       } else if emitted == ^dag_surface_fn_decl {
         match normalize_census_fold_children(n: n, under_fn_decl: true) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: edges, diagnostics: cd } =>
-            match body_lower_fn_decl_to_census_arrow(shell: node_rebuild(n: n, children: edges)) {
-              Rejected { diagnostics: r } =>
-                Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
-              Accepted { value: arrow, diagnostics: d } =>
-                Accepted { value: arrow, diagnostics: diagnostics_merge(outer: cd, inner: d) }
-            }
+          Accepted { value: gathered, diagnostics: cd } =>
+            body_lowered_tree_then(
+              t: body_lowered_tree_over(node: node_rebuild(n: n, children: gathered.edges), retained: gathered.retained),
+              f: fn(shell) { census_arrow_after(cd: cd, shell: shell) }
+            )
         }
       } else if body_lower_is_deferred_lower_at_normalize(
         emitted: emitted,
@@ -419,7 +490,11 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   }
 }
 
-fn normalize_census_fold_children(n: Node, under_fn_decl: Bool) -> Outcome<List<Edge>> {
+fn census_arrow_after(cd: Diagnostics, shell: Node) -> Outcome<BodyLowering> {
+  body_lowering_after_pending(pending: cd, o: body_lower_fn_decl_to_census_arrow(shell: shell))
+}
+
+fn normalize_census_fold_children(n: Node, under_fn_decl: Bool) -> Outcome<NormalizeEdges> {
   fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
     normalize_children_step(
       acc: acc,
@@ -429,25 +504,21 @@ fn normalize_census_fold_children(n: Node, under_fn_decl: Bool) -> Outcome<List<
   })
 }
 
-fn normalize_census_finish(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+fn normalize_census_finish(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
   match normalize_census_fold_children(n: n, under_fn_decl: under_fn_decl) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: edges, diagnostics: cd } =>
-      match body_lower_finish_for_normalize(
-        n: n,
-        folded: node_rebuild(n: n, children: edges),
-        cd: cd,
-        fn_body_pass_through: false
-      ) {
+    Accepted { value: gathered, diagnostics: cd } =>
+      match normalize_lower_over_children(n: n, gathered: gathered, cd: cd, fn_body_pass_through: false) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: after_body, diagnostics: cd0 } =>
-          normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+          normalize_sugar_tree_finish(n: n, t: after_body, cd: cd0)
       }
   }
 }
 
+// The census door refuses retention on the same evidence and at the same point the full door does.
 fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
-  match normalize_census_node(n: parse_tree, under_fn_decl: false) {
+  match bind_retention_free(o: normalize_census_node(n: parse_tree, under_fn_decl: false)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {

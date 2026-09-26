@@ -55,7 +55,7 @@ import v1.compiler.infer_sigs {
 }
 
 import v1.compiler.infer_items {
-  TypedModule, ResolvedGraph, ItemInfo, item_is_effectful_callee
+  TypedModule, ResolvedGraph, ItemInfo, item_is_effectful_callee, item_resource_names
 }
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
@@ -219,7 +219,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
         Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
         _ =>
           let field_strs = expr.children |> map(f =>
-            concat("\"", field_init_node_name_at(n: f, source_indices: source_indices), "\": ",
+            concat("\"", escape_string_literal_body(s: field_init_node_name_at(n: f, source_indices: source_indices)), "\": ",
               emit_simple_expr(expr: field_init_node_value(n: f), target: target, source_indices: source_indices)))
           concat("{", field_strs |> join(separator: ", "), "}")
       }
@@ -3431,7 +3431,7 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
         rls.anon_empty
       } else {
         let field_strs = fields |> map(f =>
-          concat(rls.anon_field_indent, "\"", field_init_node_name_at(n: f, source_indices: source_indices), "\": ", recurse(field_init_node_value(n: f)), ",")
+          concat(rls.anon_field_indent, "\"", escape_string_literal_body(s: field_init_node_name_at(n: f, source_indices: source_indices)), "\": ", recurse(field_init_node_value(n: f)), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat(rls.anon_prefix, fields_str, "\n", rls.anon_suffix)

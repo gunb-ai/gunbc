@@ -20,11 +20,19 @@ import v2.std.algebra {
 }
 import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.body_lowering {
+  ApplicationHeadFound,
+  ApplicationHeadRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplicationHead,
+  application_head_read,
+  body_lowering_diagnostic
+}
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_singleton }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, symbol_eq }
-import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.text { String }
 
 type FnArrowParam {
@@ -59,9 +67,8 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // A CONSUMER THAT GUESSES WRONG GETS A GREEN. A skeleton node is `TypeNode { connective: Conj }`,
 // EXCEPT a named call, which carries `ComputationNode { behavior: Transform }` with the callee
 // identity leaf as its first positional child -- the same carrier `v2.compiler.body_lowering_fold`
-// produces for a lowered body, so `v2.std.node_query` `node_is_call` / `call_callee_target` /
-// `call_argument_targets` are the authority over this substrate and a consumer needs no predicate of
-// its own. UNTIL gunbc#10282 THE MARSHAL SPELLED CALLS `Conj` TOO, and the cost of leaving that
+// produces for a lowered body, so `v2.std.compilers.body_lowering` `application_head_read` is the
+// authority over this substrate and a consumer needs no predicate of its own. UNTIL gunbc#10282 THE MARSHAL SPELLED CALLS `Conj` TOO, and the cost of leaving that
 // undocumented is measured rather than hypothetical: every call-shaped lens folding these skeletons
 // was green with no authorable red, and `v2.lens.no_dual_representation_test.scan` grew a private
 // copy of `node_is_call` respelled against `Conj` because the shared one could not read its own
@@ -197,7 +204,7 @@ fn param_names_of(decl: FnArrowDecl) -> List<String> {
 }
 
 // Immediate atom identities remain the literal/reference reader used by the effect and live-read
-// lenses. Call reachability does not consume this channel: callees_from_node selects call nodes
+// lenses. Call reachability does not consume this channel: callees_from_decl selects call nodes
 // structurally below.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
   let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
@@ -265,20 +272,52 @@ fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
   }
 }
 
-fn callee_text_from_call(node: Node) -> String? {
-  if node_is_call(node: node) {
-    match call_callee_target(node: node) {
-      Accepted { value: callee, diagnostics: _ } =>
-        match node_atom_identity_optional(node: callee) {
-          Present { value: sym } => optional_present(value: symbol_lexeme(sym: sym))
-          Absent => optional_absent()
-        }
-      Rejected { diagnostics: _ } => optional_absent()
-    }
-  } else {
-    optional_absent()
+// THREE ANSWERS PER NODE, NOT TWO. A node is not an application, or it is one whose callee is
+// named, or it is one this reader cannot read -- a partial Transform (application_head_read refused
+// it), or a resolved Arrow head, which carries no lexeme to match against a declaration name. The
+// last two used to answer "no callee here" and drop the call out of every reachability walk
+// silently; they are carried as located diagnostics instead (DESIGN §5).
+type CalleeTextRead
+  = NoCallee
+  | CalleeText { text: String }
+  | CalleeUnreadable { diagnostics: NonEmptyDiagnostics }
+
+// THE QUESTION IS THE CALLEE, so this reads the head through the head layer
+// v2.std.compilers.body_lowering application_head_read and never judges operands: whether an argument
+// is whole is not what the walk asks, and paying application_read's per-operand residue checks on
+// every call of every reached body is work no consumer of the walk demands (DESIGN §2). A named
+// edge or a missing, residue or non-callee head still refuses, located. Skeleton arguments are
+// wrapper nodes anyway (`count(x)` marshals to Transform[count, Conj[Conj[]]]);
+// v2.test.claim.enforcement.skeleton_call_route_witness holds application_read over the real
+// marshal's output separately.
+fn callee_text_read(node: Node) -> CalleeTextRead {
+  match application_head_read(site: node) {
+    NotApplicationHead => NoCallee
+    ApplicationHeadRefused { diagnostics: d } => CalleeUnreadable { diagnostics: d }
+    ApplicationHeadFound { head: head, head_identity: identity, operands: _ } =>
+      match identity {
+        AtomHead { identity: sym } => CalleeText { text: symbol_lexeme(sym: sym) }
+        ArrowHead =>
+          CalleeUnreadable {
+            diagnostics: diagnostics_singleton(
+              d: body_lowering_diagnostic(reason: ^fn_index_callee_head_unnamed, n: head)
+            )
+          }
+      }
   }
 }
+
+type CalleeScan {
+  texts: List<String>
+  refusals: List<Diagnostic>
+}
+
+data empty_diagnostic_list: List<Diagnostic> = []
+
+fn non_empty_diagnostics_list(d: NonEmptyDiagnostics) -> List<Diagnostic> {
+  Cons { head: d.head, tail: d.tail }
+}
+
 
 // EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE.
 //
@@ -315,24 +354,56 @@ fn callee_text_from_call(node: Node) -> String? {
 // The cost figures that motivated this shape are not transcribed here. They are re-derived by the
 // arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
 // produces them.
-fn callee_texts_in_subtree(node: Node) -> List<String> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(self) {
-        match callee_text_from_call(node: self) {
-          Present { value: text } => Cons { head: text, tail: Empty }
-          Absent => empty_fn_arrow_string_list
-        }
-      },
-      step: fn(acc, _edge, sub) { list_append(left: acc, right: sub) }
+// ONE LIST THROUGH THE FOLD, SPLIT ONCE AT THE END. Carrying texts and refusals as two lists would
+// append twice per edge; the walk is paid on every reached body, so it carries one list of tagged
+// items -- one append per edge, as the walk had before refusals existed -- and partitions the
+// (short) result once.
+type CalleeItem
+  = CalleeItemText { text: String }
+  | CalleeItemRefusal { diagnostic: Diagnostic }
+
+data empty_callee_items: List<CalleeItem> = []
+
+fn callee_items_of(read: CalleeTextRead) -> List<CalleeItem> {
+  match read {
+    NoCallee => empty_callee_items
+    CalleeText { text: text } => Cons { head: CalleeItemText { text: text }, tail: Empty }
+    CalleeUnreadable { diagnostics: d } =>
+      fold_list(xs: non_empty_diagnostics_list(d: d), empty: empty_callee_items, cons: fn(acc, x) {
+        list_snoc_item(xs: acc, item: CalleeItemRefusal { diagnostic: x })
+      })
+  }
+}
+
+fn callee_scan_of_items(items: List<CalleeItem>) -> CalleeScan {
+  fold_list(
+    xs: items,
+    empty: CalleeScan { texts: empty_fn_arrow_string_list, refusals: empty_diagnostic_list },
+    cons: fn(acc, item) {
+      match item {
+        CalleeItemText { text: t } => CalleeScan { texts: list_snoc_item(xs: acc.texts, item: t), refusals: acc.refusals }
+        CalleeItemRefusal { diagnostic: d } => CalleeScan { texts: acc.texts, refusals: list_snoc_item(xs: acc.refusals, item: d) }
+      }
     }
   )
 }
 
-fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
-  fold_list(
-    xs: callee_texts_in_subtree(node: node),
+fn callee_texts_in_decl(decl: FnArrowDecl) -> CalleeScan {
+  callee_scan_of_items(items: fold_node(
+    n: decl.output,
+    algebra: NodeFold {
+      init: fn(self) { callee_items_of(read: callee_text_read(node: self)) },
+      step: fn(acc, _edge, sub) { list_append(left: acc, right: sub) }
+    }
+  ))
+}
+
+// The refusals ride beside the callee lexemes unfiltered: a terminal roster names callees whose
+// BODIES are not entered, and an unreadable call has no name to be on that roster.
+fn callees_from_decl(decl: FnArrowDecl, terminal_callee_symbols: List<String>) -> CalleeScan {
+  let scan = callee_texts_in_decl(decl: decl)
+  CalleeScan { texts: fold_list(
+    xs: scan.texts,
     empty: empty_fn_arrow_string_list,
     cons: fn(acc, text) {
       if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq) {
@@ -345,7 +416,15 @@ fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<
         }
       }
     }
-  )
+  ), refusals: scan.refusals }
+}
+
+// WHAT THE WALK REACHED, AND THE CALLS IT COULD NOT READ ON THE WAY. `reached` is complete only
+// when `refusals` is empty: an unreadable call may name a declaration the walk never entered, so a
+// consumer that concludes anything from the ABSENCE of a reached declaration must refuse first.
+type CallReach {
+  reached: List<FnArrowDecl>
+  refusals: List<Diagnostic>
 }
 
 // THE WALK'S PER-STEP BOOKKEEPING, MADE LINEAR. THREE SITES, ONE DEFECT.
@@ -372,10 +451,11 @@ fn call_reachable_decls_go(
   closure_modules: List<String>,
   decls: List<FnArrowDecl>,
   reached_reversed: List<FnArrowDecl>,
-  seen: Map<String, Bool>
-) -> List<FnArrowDecl> {
+  seen: Map<String, Bool>,
+  refusals: List<Diagnostic>
+) -> CallReach {
   match list_head(xs: seeds) {
-    HeadAbsent => list_reverse(xs: reached_reversed)
+    HeadAbsent => CallReach { reached: list_reverse(xs: reached_reversed), refusals: refusals }
     HeadFound { value: seed } =>
       let rest = tail_decls(xs: seeds)
       match map_lookup(m: seen, key: seed.qualified_name) {
@@ -386,15 +466,16 @@ fn call_reachable_decls_go(
             closure_modules: closure_modules,
             decls: decls,
             reached_reversed: reached_reversed,
-            seen: seen
+            seen: seen,
+            refusals: refusals
           )
         Absent =>
-          let callees = callees_from_node(
-            node: seed.output,
+          let scan = callees_from_decl(
+            decl: seed,
             terminal_callee_symbols: terminal_callee_symbols
           )
           let callee_decls = fold_list(
-            xs: callees,
+            xs: scan.texts,
             empty: empty_fn_arrow_decl_list,
             cons: fn(acc, callee) {
               list_append(
@@ -416,7 +497,8 @@ fn call_reachable_decls_go(
             closure_modules: closure_modules,
             decls: decls,
             reached_reversed: Cons { head: seed, tail: reached_reversed },
-            seen: map_insert(m: seen, key: seed.qualified_name, value: true)
+            seen: map_insert(m: seen, key: seed.qualified_name, value: true),
+            refusals: list_append(left: refusals, right: scan.refusals)
           )
       }
   }
@@ -430,14 +512,15 @@ fn call_reachable_decls(
   terminal_callee_symbols: List<String>,
   closure_modules: List<String>,
   decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+) -> CallReach {
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
     terminal_callee_symbols: terminal_callee_symbols,
     closure_modules: closure_modules,
     decls: decls,
     reached_reversed: empty_fn_arrow_decl_list,
-    seen: empty_map()
+    seen: empty_map(),
+    refusals: empty_diagnostic_list
   )
 }
 
@@ -467,13 +550,14 @@ fn call_reachable_decls_from_root(
   terminal_callee_symbols: List<String>,
   closure_modules: List<String>,
   decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+) -> CallReach {
   call_reachable_decls_go(
     seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
     terminal_callee_symbols: terminal_callee_symbols,
     closure_modules: closure_modules,
     decls: decls,
     reached_reversed: empty_fn_arrow_decl_list,
-    seen: empty_map()
+    seen: empty_map(),
+    refusals: empty_diagnostic_list
   )
 }

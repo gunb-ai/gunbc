@@ -1,13 +1,16 @@
 module v2.test.claim.body_lowering.frontier_three_state
 
 import v2.compiler.body_lowering_fold {
+  BodyLowered,
+  BodyLowering,
   BodyLoweringLowered,
   BodyLoweringRejected,
   BodyLoweringWrapperRetained,
   body_lower_outcome_frontier_disposition,
-  body_lower_wrapper_retained_shell
+  body_lower_wrapper_retained_shell,
+  body_lowering_after_pending
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Empty }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -37,6 +40,9 @@ import v2.std.text { String }
 // return Lowered. The negative controls matter as much: an unrelated diagnostic must NOT
 // manufacture retention, and a clean accept must stay lowered — a classifier answering retained
 // more often would satisfy the positive claims while destroying the count.
+// Since MQ-4 retention is the BodyWrapperRetained variant rather than a diagnostic reason, so the
+// classifier reads the variant; the reason-spelled diagnostic below is kept as the control that a
+// reason alone no longer manufactures retention.
 
 fn probe_shell() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
@@ -50,7 +56,7 @@ fn unrelated_diagnostic() -> Diagnostic {
   }
 }
 
-fn retained_diagnostic() -> Diagnostic {
+fn old_retention_reason_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^body_lowering_reason_wrapper_retained_emitted,
     at: Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
@@ -58,39 +64,41 @@ fn retained_diagnostic() -> Diagnostic {
   }
 }
 
-fn rejected_outcome() -> Outcome<Node> {
+fn rejected_outcome() -> Outcome<BodyLowering> {
   Rejected {
     diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: Empty }
   }
 }
 
-fn clean_accept() -> Outcome<Node> {
-  Accepted { value: probe_shell(), diagnostics: None }
+fn clean_accept() -> Outcome<BodyLowering> {
+  Accepted { value: BodyLowered { node: probe_shell() }, diagnostics: None }
 }
 
-fn accept_with_unrelated_diagnostic() -> Outcome<Node> {
+fn accept_with_unrelated_diagnostic() -> Outcome<BodyLowering> {
   Accepted {
-    value: probe_shell(),
+    value: BodyLowered { node: probe_shell() },
     diagnostics: Some { diagnostics: diagnostics_singleton(d: unrelated_diagnostic()) }
   }
 }
 
-fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
+fn accept_with_the_old_retention_reason() -> Outcome<BodyLowering> {
   Accepted {
-    value: probe_shell(),
-    diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics {
-        head: unrelated_diagnostic(),
-        tail: Cons { head: retained_diagnostic(), tail: Empty }
-      }
-    }
+    value: BodyLowered { node: probe_shell() },
+    diagnostics: Some { diagnostics: diagnostics_singleton(d: old_retention_reason_diagnostic()) }
   }
 }
 
-fn disposition_name(o: Outcome<Node>) -> Symbol {
+fn retention_behind_a_pending_diagnostic() -> Outcome<BodyLowering> {
+  body_lowering_after_pending(
+    pending: Some { diagnostics: diagnostics_singleton(d: unrelated_diagnostic()) },
+    o: body_lower_wrapper_retained_shell(shell: probe_shell())
+  )
+}
+
+fn disposition_name(o: Outcome<BodyLowering>) -> Symbol {
   match body_lower_outcome_frontier_disposition(o: o) {
     BodyLoweringLowered => ^disposition_lowered
-    BodyLoweringWrapperRetained { reason: _ } => ^disposition_wrapper_retained
+    BodyLoweringWrapperRetained { retention: _ } => ^disposition_wrapper_retained
     BodyLoweringRejected { diagnostics: _ } => ^disposition_rejected
   }
 }
@@ -98,7 +106,7 @@ fn disposition_name(o: Outcome<Node>) -> Symbol {
 fn rejected_disposition_keeps_its_reason() -> Symbol {
   match body_lower_outcome_frontier_disposition(o: rejected_outcome()) {
     BodyLoweringRejected { diagnostics: ne } => ne.head.reason
-    BodyLoweringWrapperRetained { reason: _ } => ^not_rejected
+    BodyLoweringWrapperRetained { retention: _ } => ^not_rejected
     BodyLoweringLowered => ^not_rejected
   }
 }
@@ -125,4 +133,8 @@ test fn an_unrelated_diagnostic_does_not_manufacture_retention_holds() -> Bool {
 
 test fn a_clean_accept_is_lowered_holds() -> Bool {
   disposition_name(o: clean_accept()) == ^disposition_lowered
+}
+
+test fn the_old_retention_reason_does_not_manufacture_retention_holds() -> Bool {
+  disposition_name(o: accept_with_the_old_retention_reason()) == ^disposition_lowered
 }

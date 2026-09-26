@@ -45,11 +45,34 @@ fn ipmi_chassis_control_verb(action: IpmiChassisControlAction) -> NonEmptyStr {
 // "System Power         : on". An unreadable status is NOT read as powered-off, and THE ABSENCE OF
 // THE LINE IS NOT THE WORD "off": only the literal words are believed, everything else carries its
 // text out (review 69156 caught a revision that turned `unknown` and a truncated line into Off).
+//
+// A SECOND System Power LINE IS NOT A LATER ANSWER. The first revision folded to the last matching
+// line, so output carrying two -- a firmware that prints the field twice, or two reads concatenated
+// -- answered with whichever came last, silently choosing between readings that may disagree (side
+// chat on gunbc#12247). A repeated line is its own arm and never decodes to a power state.
 type ChassisPowerLine
   = ChassisPowerLineOn
   | ChassisPowerLineOff
   | ChassisPowerLineUnrecognised { text: String }
+  | ChassisPowerLineRepeated
   | ChassisPowerLineAbsent
+
+fn chassis_power_line_value(v: String) -> ChassisPowerLine {
+  if trim(v) == "on" {
+    ChassisPowerLineOn
+  } else if trim(v) == "off" {
+    ChassisPowerLineOff
+  } else {
+    ChassisPowerLineUnrecognised { text: v }
+  }
+}
+
+fn chassis_power_line_seen(acc: ChassisPowerLine, value: ChassisPowerLine) -> ChassisPowerLine {
+  match acc {
+    ChassisPowerLineAbsent => value
+    _ => ChassisPowerLineRepeated
+  }
+}
 
 fn chassis_power_line(stdout: String) -> ChassisPowerLine {
   fold(split(s: stdout, delimiter: "\n"), init: ChassisPowerLineAbsent, f: (acc, line) => {
@@ -62,13 +85,7 @@ fn chassis_power_line(stdout: String) -> ChassisPowerLine {
         Present { value: key } => if trim(key) == "System Power" {
           match fields.skip(n: 1).first() {
             Absent => acc
-            Present { value: v } => if trim(v) == "on" {
-              ChassisPowerLineOn
-            } else if trim(v) == "off" {
-              ChassisPowerLineOff
-            } else {
-              ChassisPowerLineUnrecognised { text: v }
-            }
+            Present { value: v } => chassis_power_line_seen(acc: acc, value: chassis_power_line_value(v: v))
           }
         } else {
           acc
@@ -92,6 +109,8 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
       ChassisPowerLineOff => ChassisPowerRead { power_on: false }
       ChassisPowerLineUnrecognised { text: t } =>
         ChassisStatusUndecodable { cause: join(["the System Power line carried a value this decoder does not recognise: ", t], "") as NonEmptyStr }
+      ChassisPowerLineRepeated =>
+        ChassisStatusUndecodable { cause: "the chassis status read printed more than one System Power line, so no single power state was reported" as NonEmptyStr }
       ChassisPowerLineAbsent =>
         ChassisStatusUndecodable { cause: "the chassis status read succeeded and printed no System Power line" as NonEmptyStr }
     }

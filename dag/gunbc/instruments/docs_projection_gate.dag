@@ -20,6 +20,7 @@ import gunbc.generated_artifact {
   MicrovmShakedownYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
+  NativeFrontierWorkflowYamlArtifact,
   GitignoreArtifact,
   GitattributesArtifact, CargoConfigArtifact,
   RoadmapArtifact,
@@ -41,7 +42,8 @@ import gunbc.generated_artifact {
   RunnerHostSudoersArtifact,
   PlanArtifact,
   CouponCadQueryProgramArtifact,
-  ApprovalDeviceVectorsArtifact
+  ApprovalDeviceVectorsArtifact,
+  ApproveIosProjectYmlArtifact
 }
 import v2.std.optional { Optional, Absent, Present }
 import tools.docs_projection_agreement { docs_projection_bytes_agree }
@@ -87,6 +89,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     MicrovmShakedownYamlArtifact => Absent
     HealWorkflowYamlArtifact => Absent
     HealPublisherWorkflowYamlArtifact => Absent
+    NativeFrontierWorkflowYamlArtifact => Absent
     GitignoreArtifact => Absent
     GitattributesArtifact => Absent
     CargoConfigArtifact => Absent
@@ -108,6 +111,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     CouponCadQueryProgramArtifact => Absent
     WholeCorpusCompileMeasuredRootDemandsArtifact => Absent
     ApprovalDeviceVectorsArtifact => Absent
+    ApproveIosProjectYmlArtifact => Absent
     AutoinstallUserDataArtifact { spec: _ } => Absent
     RunnerHostSudoersArtifact { host: _ } => Absent
     PlanArtifact { plan: _ } => Absent

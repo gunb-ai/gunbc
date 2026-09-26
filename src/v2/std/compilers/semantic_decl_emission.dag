@@ -73,6 +73,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.node_query { find_named_child }
+import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.algebra { Cons, Empty, FreeMonoid }
 
@@ -2062,7 +2063,38 @@ fn target_semantic_decl_variant_surfaces_for_coproduct(
   }
 }
 
+// A GENERIC DECLARATION IS REFUSED BEFORE ANY FIELD OR VARIANT IS PROJECTED. Handed a generic type
+// declaration's target -- the v2.std.type_binder wrapper -- these surfaces read it through the typed
+// view and refuse, because the `params` they render are the caller's, not the declaration's. Refusing with the translator's own reason
+// (v2.compiler.translate translate_type_expression_project) keeps one refusal for one missing
+// capability: a target grammar row rendering the member's binder roster.
+fn semantic_decl_generic_member_not_rendered_diagnostic(member: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_reason_generic_type_decl_not_rendered,
+    at: node_locus(node: member),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn target_semantic_enum_surface_from_coproduct(
+  projection: TargetSemanticDeclSurfaceProjection,
+  name: Symbol,
+  params: List<Symbol>,
+  coproduct: Node
+) -> Outcome<Node> {
+  match type_decl_view(target: coproduct) {
+    GenericTypeDecl { binders: _, member: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
+    GenericTypeAlias { binders: _, aliased: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
+    GenericOpaqueTypeDecl { binders: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
+    PlainTypeDecl { member: m } =>
+      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m)
+  }
+}
+
+fn target_semantic_enum_surface_from_coproduct_admitted(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,
@@ -2137,6 +2169,24 @@ fn target_semantic_enum_surface_from_coproduct(
 }
 
 fn target_semantic_struct_surface_from_record(
+  projection: TargetSemanticDeclSurfaceProjection,
+  name: Symbol,
+  params: List<Symbol>,
+  record: Node
+) -> Outcome<Node> {
+  match type_decl_view(target: record) {
+    GenericTypeDecl { binders: _, member: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
+    GenericTypeAlias { binders: _, aliased: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
+    GenericOpaqueTypeDecl { binders: _ } =>
+      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
+    PlainTypeDecl { member: m } =>
+      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m)
+  }
+}
+
+fn target_semantic_struct_surface_from_record_admitted(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,

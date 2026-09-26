@@ -1,5 +1,6 @@
 module test.claim.machine_intake.oob_power_action_witness
 
+import v2.std.algebra { filter }
 import std.types { Bool, Int, List, String }
 import extdeps.filesystem.filesystem_io
 import extdeps.bmc.ipmi_chassis_control {
@@ -89,6 +90,18 @@ test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
     PowerActionSelected { action: _ } => false
   }
   unread && unknown
+}
+
+// A REPEATED System Power LINE IS NOT A POWER STATE (side chat on gunbc#12247): two lines, even
+// agreeing ones, select no action, so a write is never chosen from ambiguous output.
+test fn two_system_power_lines_select_nothing() -> Bool {
+  (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on\nSystem Power         : on\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  }) && (match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : on\nSystem Power         : off\n")) {
+    PowerActionUnselectable { observed_state: _ } => true
+    PowerActionSelected { action: _ } => false
+  })
 }
 
 // THE INCIDENT ITSELF: a cycle at an off host, exit 0, the chassis never moves. Every sample reads

@@ -24,7 +24,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // callers. Production skip does not consult them.
 //
 // WHY IT IS RUST AND NOT .dag. The census must read witness files that may not RESOLVE. A Node
-// fold (v2.std.fn_index callees_from_node) does not reach those files; parse_entry_live_tree_disposition
+// fold (v2.std.fn_index callees_from_decl) does not reach those files; parse_entry_live_tree_disposition
 // is already a textual seed reader on the same line, so the detector inhabits that reader
 // (DESIGN section 3b: stated inhabitance, not that the fold was harder). The tests call those
 // host functions and the live registry, which a .dag witness under the required floor cannot.
