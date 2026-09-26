@@ -12,6 +12,7 @@ pub enum EvalBuiltinArm {
     FreeCallBytesOctets,
     FreeCallOctetsBytes,
     FreeCallUtf8EncodeBytes,
+    FreeCallPureDagSeamUnreachable,
     FreeCallDiscriminant,
     FreeCallCharsToString,
     FreeCallGet,
@@ -160,6 +161,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "bytes_octets" => Some(EvalBuiltinArm::FreeCallBytesOctets),
         "octets_bytes" => Some(EvalBuiltinArm::FreeCallOctetsBytes),
         "utf8_encode_bytes" => Some(EvalBuiltinArm::FreeCallUtf8EncodeBytes),
+        "pure_dag_seam_unreachable" => Some(EvalBuiltinArm::FreeCallPureDagSeamUnreachable),
         "discriminant" => Some(EvalBuiltinArm::FreeCallDiscriminant),
         "chars_to_string" => Some(EvalBuiltinArm::FreeCallCharsToString),
         "get" => Some(EvalBuiltinArm::FreeCallGet),
@@ -312,6 +314,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.bytes_octets") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBytesOctets };
     ("free_call.octets_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallOctetsBytes };
     ("free_call.utf8_encode_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallUtf8EncodeBytes };
+    ("free_call.pure_dag_seam_unreachable") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallPureDagSeamUnreachable };
     ("free_call.discriminant") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDiscriminant };
     ("free_call.chars_to_string") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharsToString };
     ("free_call.get") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallGet };

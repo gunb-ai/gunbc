@@ -89,6 +89,15 @@ fn stat_inode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
 }
 
+// -L FOLLOWS THE FINAL LINK, so on a /proc/<pid>/exe or /proc/<pid>/fd/<n> magic link %i is the
+// inode of the object the process HOLDS, not of the link: a regular file's inode (still reported
+// after the file is unlinked), and for `socket:[N]` / `pipe:[N]` the N that sockfs and pipefs report.
+// Every `anon_inode:[...]` target shares the anon_inode filesystem's one inode, which identifies
+// nothing; that is the caller's to skip, not this read's to hide.
+fn stat_dereferenced_inode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-L", "-c", "%i", "--", path])
+}
+
 // %u AND %a AND %s AS COMMANDS, for a caller that reads back a file it just staged: numeric owner,
 // octal mode, size in bytes. One token each, for the reason the argv pair above states.
 fn stat_owner_uid_command(path: String) -> ArgvCommand {
@@ -97,6 +106,32 @@ fn stat_owner_uid_command(path: String) -> ArgvCommand {
 
 fn stat_mode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%a", "--", path])
+}
+
+// THE THREE FILE TIMES, as whole seconds since the epoch (stat(1) %Y, %Z, %W): last data
+// modification, last status change, and birth. %W prints 0 when the filesystem or kernel does not
+// report a birth time, which is "unknown", never the epoch -- a consumer must refuse on it.
+fn stat_mtime_epoch_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%Y", "--", path])
+}
+
+fn stat_ctime_epoch_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%Z", "--", path])
+}
+
+fn stat_birth_epoch_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%W", "--", path])
+}
+
+// A PATH'S IDENTITY IN ONE READ: inode, status-change time, birth time and file type
+// (`%i %Z %W %F`). stat does NOT follow a final symlink without -L, so this identifies the path's own
+// inode and says whether it is a "regular file" (stat_regular_file_type) or a "symbolic link"; a
+// caller that brackets a read of the path's CONTENT must require the regular type, or the bracket
+// identifies a link while the content read follows it. ctime cannot be set by the file's owner
+// (touch sets mtime and atime only), so a change of inode or ctime between two reads is a change of
+// the file. The type is last because its words contain spaces.
+fn stat_identity_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%i %Z %W %F", "--", path])
 }
 
 fn stat_size_bytes_command(path: String) -> ArgvCommand {

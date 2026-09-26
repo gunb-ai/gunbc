@@ -1,7 +1,8 @@
 module gunbc.plans.dag_v2_defork_audit
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsDerivedMarkdown }
+import gunbc.defork_type_name_census { defork_census_derivation }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -34,6 +35,8 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
       li(text: "**The \{node,coercion\} exemption is VACUOUS for the type-name guard.** node/coercion (and logic,\nand now verification) share **zero** type names — only the *basename*. The guard keys on a shared\nunqualified **type name** within one closure, so it never fires on them; their de-fork is a\n*module-basename* rename (Route-C / v1-delete), a different surface. The guard needs no\n\{node,coercion\} roster entry to land green — keeping it would be a dead (non-firing) exemption,\nitself a §5 smell. Recommend marking the roster entry explicitly \"Route-C basename, non-firing\"\nor dropping it from the guard model."),
       li(text: "**The guard's real lands-green gate is the grounding de-fork of the shared-type-name basenames**,\nfronted by the LIVE pair `\{algebra (75 floor entries), nat (138)\}` — they silently fail-open today\n(benign only because they shadow record-with-record, not the coproduct-variant-drop that broke\n`verification` under A1), and a flag-ANY wall reds them on landing. `\{effects, float, integer\}`\nare latent (no co-occurrence today) but re-arm risks (exactly how verification went latent→LIVE\nunder A1). So the wall lands-already-green only after `\{algebra, nat\}` (then the latent three)\nde-fork — that sequence, not the \{node,coercion\} exemption, gates activation."),
     ]),
+    ThematicBreak,
+    p(text: "**§2D, the shared type-name census, is derived from the live tree at generation and is projected at the end of this document** (`gunbc.defork_type_name_census`). It supersedes the per-basename `shared type-names` column of §2A; no second list exists."),
     ThematicBreak,
     h2(text: "0. Thesis — the only duplication is v2's bootstrap copies of dag"),
     p(text: "`dag/` is the single authority (the standard library + the grounded `extdeps/` domain models + the CI spec). `src/v2/` is the **compiler**, and a compiler needs a standard library to run. During bootstrap it made copies of pieces of `dag/std` inside `src/v2/std`. Those copies are the fork surface."),
@@ -144,7 +147,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
 }
 
 data dag_v2_defork_audit_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanProjectsDerivedMarkdown { derive: fn() { defork_census_derivation() } },
   slug: "dag-v2-defork-audit",
   title: "Plan — De-fork `dag/` ↔ `src/v2/` (collapse the duplicated standard library)",
   body: dag_v2_defork_audit_body(),

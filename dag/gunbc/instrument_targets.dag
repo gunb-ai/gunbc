@@ -16,6 +16,7 @@ import gunbc.target_binding {
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
+  NativeClaimProgramProducer,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -168,21 +169,22 @@ fn self_host_label() -> Label {
 // EXECUTES -- which are different questions, and the second one was asked by nothing until the
 // built binary was spawned. It is spawned twice over `fixtures/native_cli_door`.
 //
-// THE EXECUTING EVIDENCE IS THE REFUSAL ARM, not an emission. `emit --source-root <root>` with no
+// THE REFUSAL ARM ESTABLISHES THE ENTRYPOINT EXECUTES. `emit --source-root <root>` with no
 // `--entry` is admitted only when the process exits non-zero carrying `cli_no_entry`'s located
 // sentence -- a cause only this program's own `.dag` fold produces, so reaching it establishes that
 // the process started, read argv, parsed it, decided, rendered its own cause and set its own status.
 //
-// THE OTHER ARM EXPECTS RED AGAIN, AND THE GREEN IT REPLACED WAS AN OVER-CLAIM. Until 2026-09-23
+// THE OTHER ARM IS AN EMISSION CONTROL, AND ITS FIRST GREEN WAS AN OVER-CLAIM. Until 2026-09-23
 // the built binary could not ground the fixture (`translate_rejected_grounding_not_derived`); once v2
 // lowered a `data` declaration to a named member and grounded it, the arm was flipped to admit exit 0
 // plus the declaration's NAME. That emission was a record rendering with the member printed as its
 // type and the value `606060` dropped -- not Rust, and not the program (gunbc.recurring_failure_mode
-// closure_emit_renders_an_arrow_without_its_body). The translate now refuses that body at the arrow
-// instead of dropping it, so the arm pins `translate_arrow_body_not_a_type_expression` by name
-// (gunbc#12207). An exit 0 is judged by a stronger oracle than the one it replaced: the text must name
-// the declaration, carry its value, and be Rust the build's own compiler accepts. That arm reports the
-// instruction to flip the probe back -- the day the Rust grammar rows render a module and its members.
+// closure_emit_renders_an_arrow_without_its_body). gunbc#12207 made translate refuse that body
+// instead of dropping it and pinned the refusal; the door now renders the module member by member
+// through the Rust target's declared rows, so the arm is an EMISSION control again under a stronger
+// oracle than the name-only one: the text must name the declaration, carry its value `606060`, and be
+// Rust the build's own compiler accepts. `translate_arrow_body_not_a_type_expression` returning is
+// reported as the regression.
 // Over the real corpus the door still stops at a located `parse_g0_tokens_remain` at the
 // `service ... { operation ... }` form, which `v2.cli.compile_cli` records. The second generation is
 // still unclaimed.
@@ -197,6 +199,22 @@ fn self_host_label() -> Label {
 // regression in either be reported under a name that does not say which.
 fn v2_native_cli_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-cli" } }
+}
+
+// THE NATIVE FRONTIER INSTRUMENT: the same adjudicating run as the native route, over the whole
+// v2.test.* universe, answered by gunbc.native_frontier_ratchet instead of by the lane's route
+// qualification. The two are different questions. Qualification asks whether this run was a sound
+// route. The frontier asks whether this run's debt equals the committed roster
+// (gunbc.native_frontier_roster), and it passes only on `held` or `advanced`. It is a separate label
+// because its verdict is a separate fact: a regressed identity turns this red, while qualification
+// counts a classified refusal and stays green.
+//
+// ITS CONSUMER is the nightly `native-frontier` workflow (gunbc.native_frontier_workflow), which runs
+// it on the srv self-hosted class under a memory bound and opens the pull request its proposal
+// describes. Its subject corpus is the self-host instrument's, because the adjudicating binary is
+// that instrument's emitted closure.
+fn v2_native_frontier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }
 }
 
 // THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
@@ -219,6 +237,21 @@ fn v2_native_cli_label() -> Label {
 // glob facades; it does not say each crate's public surface is minimal or grounded.
 fn emitted_crate_workspace_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "emitted-crate-workspace" } }
+}
+
+// THE NATIVE CRYPTO VECTORS: the emitted .dag verifiers (extdeps.crypto.sha2, extdeps.crypto.nist_p256)
+// executed over their published vectors and the base point's order, by running the
+// NativeClaimDriver program gunbc.instruments.native_crypto_vectors. It is the executing consumer
+// gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names for the
+// crypto half: a green here establishes that the closure EXECUTES NATIVELY with the right answers,
+// run by name -- it is not a merge gate, so it discharges no drop whose capability is enforcement on
+// the merge path. `gunbc test //gunbc/instruments:native-crypto-vectors`.
+fn native_crypto_vectors_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-crypto-vectors" } }
+}
+
+fn native_crypto_vectors_entry() -> String {
+  "dag/gunbc/instruments/native_crypto_vectors.dag"
 }
 
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
@@ -355,8 +388,16 @@ fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
+fn native_crypto_vectors_binding() -> TargetBinding {
+  TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() } }
+}
+
 fn v2_native_cli_binding() -> TargetBinding {
   TargetBinding { target: v2_native_cli_label() producer: V2NativeCliProducer {} }
+}
+
+fn v2_native_frontier_binding() -> TargetBinding {
+  TargetBinding { target: v2_native_frontier_label() producer: V2NativeFrontierProducer {} }
 }
 
 fn self_host_binding() -> TargetBinding {
@@ -481,12 +522,13 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    emitted_crate_workspace_label()
+    emitted_crate_workspace_label(),
+    native_crypto_vectors_label()
   ]
 }
 
@@ -494,12 +536,13 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    emitted_crate_workspace_binding()
+    emitted_crate_workspace_binding(),
+    native_crypto_vectors_binding()
   ]
 }
 

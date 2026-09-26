@@ -52,13 +52,18 @@ import extdeps.systemd.unit_file {
   WorkingDirectory,
   EnvironmentFile,
   ExecStart,
+  TimeoutStartSec,
   NotInstallable,
   serialize_systemd_unit_file,
 }
+import std.measure { Second, second, second_count }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.spec {
-  deployment_slice_unit_name, DeploymentSpec }
+  deployment_slice_unit_name, DeploymentSpec,
+  gunbc_approval_broker_slice_unit_name,
+  gunbc_repository_convergence_slice_unit_name,
+}
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   desired_deployment_for_instance_id,
@@ -556,8 +561,136 @@ fn convergence_exec_start(
 // both measured on srv1 by the first deploys through `gunbc converge --mode deploy`. systemd does
 // not expand environment variables in WorkingDirectory=, so the path is a parameter here and the
 // writer expands it from the deploying shell's PWD, exactly as the env file's value is written.
+// THE ONESHOT IS BOUNDED, BECAUSE THE DEPLOY WAITS ON IT SYNCHRONOUSLY AND A ONESHOT'S DEFAULT
+// START TIMEOUT IS INFINITY. The apply restarts this unit with a blocking `systemctl restart`
+// (gunbc.live_deploy.emit tree_sync_restart_step_with_diagnosis), and the whole apply runs as one
+// captured shell execution, so an unbounded convergence is an unbounded, SILENT apply: fleet-converge
+// run 36032847731 logged `started shell.Exec.Run` and nothing else until the workflow step's
+// ceiling killed the job, leaving no receipt and no cause. A slice under memory pressure makes the
+// interpreter crawl rather than die -- a state only a start bound turns into a refusal. The oneshot
+// now runs in its own slice (the admission below), which removes the co-tenant pressure that made it
+// crawl; the bound stays because its own demand can still outgrow its envelope.
+// With the bound, systemd kills a convergence that outlives it, the restart fails, and the step's
+// existing diagnosis arm prints the unit's own status tail before exiting 1 -- located, inside the
+// step, with the receipt still written.
+//
+// THE VALUE IS BOUNDED ABOVE BY THE STEP THAT WAITS ON IT, not measured from the convergence: no
+// receipt yet records this unit's duration (the instrument is its journal's start/finish lines).
+// gunbc.fleet_workflow_steps gunbc_ci_live_deploy_step_timeout_minutes is the ceiling of the step
+// that contains the restart, and that step also typechecks, derives the plan and polls readiness,
+// so the bound must leave room for them or the step ceiling fires first and the diagnosis is lost.
+// Half the ceiling is that reservation stated as a policy, not a derivation; the witness pins the
+// relation (strictly inside the step) rather than the number. Tighten it from the journal once a
+// converged deploy records a duration.
+data convergence_unit_start_timeout: Second = second(count: 900)
+
+// ── WHERE THE ONESHOT RUNS IS AN ADMISSION, AND A SERVING SLICE IS ITS REFUSAL ──────────────
+// THE ONESHOT USED TO NAME THE DEPLOYMENT'S SERVING SLICE, and that placement is what failed. It ran
+// the interpreter over the runner checkout inside gunbc-roadmap.slice beside the serve, belt,
+// publication and fabric-storage members, so its memory was whatever they had not yet taken. Once
+// they grew, fleet-converge run 36204703858 read the slice at MemoryPeak 42,797,977,600 B over its
+// 38,654,705,664 B MemoryHigh, and the oneshot was reclaim-throttled -- alive, silent after
+// '[workspace-root] discovered', killed by TimeoutStartSec at fifteen minutes. The bound that made it
+// crawl belonged to other processes; no value of it is this oneshot's to own.
+//
+// SO THE SLICE IS ADMITTED RATHER THAN NAMED, and the admission is derived from the serving slices the
+// deployment installs rather than from a role tag on the candidate: a tag is an authored claim that
+// could say "convergence" about gunbc-roadmap.slice, while descent over the served roster cannot be
+// talked out of the answer. DESCENT, NOT EQUALITY, because systemd reads a dash in a slice name as a
+// parent edge -- gunbc-roadmap-convergence.slice is a CHILD of gunbc-roadmap.slice, charged against
+// its bound, and an equality check would admit it while the throttling it exists to escape continued
+// one cgroup down.
+type ConvergenceSliceAdmission
+  = ConvergenceSliceAdmitted { name: NonEmptyStr }
+  | ConvergenceSliceInsideServingSlice { name: NonEmptyStr, serving: NonEmptyStr }
+
+// THE SLICES THIS DEPLOYMENT'S SERVED PROCESSES RUN UNDER: the roadmap deployment slice every serving
+// member of spec names, and the approval broker's. A served slice added later is added here, and
+// the admission refuses the oneshot in it without a further edit.
+fn deployment_serving_slice_names(spec: DeploymentSpec) -> List<NonEmptyStr> {
+  [deployment_slice_unit_name(names: spec.names), gunbc_approval_broker_slice_unit_name]
+}
+
+fn slice_unit_stem(name: NonEmptyStr) -> String {
+  (name as String).replace(from: ".slice", to: "")
+}
+
+// systemd's slice hierarchy: `a-b.slice` sits under `a.slice`, so a slice is inside another exactly
+// when its stem equals the other's or extends it past a dash.
+fn slice_is_within(candidate: NonEmptyStr, ancestor: NonEmptyStr) -> Bool {
+  let c = slice_unit_stem(name: candidate)
+  let a = slice_unit_stem(name: ancestor)
+  c == a || c.starts_with(prefix: concat(a, "-"))
+}
+
+fn convergence_slice_admission(spec: DeploymentSpec, slice: NonEmptyStr) -> ConvergenceSliceAdmission {
+  match deployment_serving_slice_names(spec: spec) |> filter(serving => slice_is_within(candidate: slice, ancestor: serving)) |> first() {
+    Present { value: serving } => ConvergenceSliceInsideServingSlice { name: slice, serving: serving }
+    Absent => ConvergenceSliceAdmitted { name: slice }
+  }
+}
+
+type ConvergenceUnitRendering
+  = ConvergenceUnitRendered { text: String }
+  | ConvergenceUnitPlacementRefused { reason: String }
+
+fn convergence_slice_refusal_text(slice: NonEmptyStr, serving: NonEmptyStr) -> String {
+  join([
+    "the repository convergence oneshot may not run in `", slice as String,
+    "`: it is inside the serving slice `", serving as String,
+    "`, whose bound belongs to the served processes -- a convergence there is reclaim-throttled by",
+    " their growth (fleet-converge run 36204703858) rather than bounded by its own demand",
+  ], "")
+}
+
+// THE PRODUCTION UNIT IS THE ADMITTED RENDERING OVER THE DECLARED CONVERGENCE SLICE. The refused arm
+// is unreachable from the declared row -- the witness pins that -- and it renders a poison marker
+// rather than a unit, in the same shape as gunbc.live_deploy.emit release_revision_not_installed_poison:
+// systemd refuses to load it and the restart step's diagnosis prints the reason, so an edit that moved
+// the declared row into a serving slice fails the deploy loudly instead of installing a throttled unit.
 fn convergence_unit_doc(
   spec: DeploymentSpec,
+  candidate: String,
+  receipt_path: String,
+  working_directory: String,
+) -> String {
+  match convergence_unit_rendering(
+    spec: spec,
+    slice: gunbc_repository_convergence_slice_unit_name,
+    candidate: candidate,
+    receipt_path: receipt_path,
+    working_directory: working_directory,
+  ) {
+    ConvergenceUnitRendered { text: t } => t
+    ConvergenceUnitPlacementRefused { reason: r } =>
+      concat("__GUNBC_DEPLOY_UNREACHABLE__ ", r)
+  }
+}
+
+fn convergence_unit_rendering(
+  spec: DeploymentSpec,
+  slice: NonEmptyStr,
+  candidate: String,
+  receipt_path: String,
+  working_directory: String,
+) -> ConvergenceUnitRendering {
+  match convergence_slice_admission(spec: spec, slice: slice) {
+    ConvergenceSliceInsideServingSlice { name: n, serving: s } =>
+      ConvergenceUnitPlacementRefused { reason: convergence_slice_refusal_text(slice: n, serving: s) }
+    ConvergenceSliceAdmitted { name: admitted } =>
+      ConvergenceUnitRendered { text: convergence_unit_text_in(
+        spec: spec,
+        slice: admitted,
+        candidate: candidate,
+        receipt_path: receipt_path,
+        working_directory: working_directory,
+      ) }
+  }
+}
+
+fn convergence_unit_text_in(
+  spec: DeploymentSpec,
+  slice: NonEmptyStr,
   candidate: String,
   receipt_path: String,
   working_directory: String,
@@ -571,9 +704,12 @@ fn convergence_unit_doc(
       ServiceType { mode: OneshotMode },
       ServiceUser { name: user },
       ServiceGroup { name: user },
-      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      ServiceSlice { name: slice },
       WorkingDirectory { path: working_directory as NonEmptyStr },
       EnvironmentFile { path: spec.names.tree_sync_env_path },
+      TimeoutStartSec {
+        duration: to_string(value: second_count(s: convergence_unit_start_timeout)) as NonEmptyStr,
+      },
       ExecStart {
         command: convergence_exec_start(
           spec: spec,

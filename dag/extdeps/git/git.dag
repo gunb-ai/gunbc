@@ -2,7 +2,7 @@ module extdeps.git
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.string_type { String }
@@ -905,6 +905,72 @@ fn shape_git_config_local_get_argv(key: String) -> List<String> {
   ["git", "config", "--local", "--get", key]
 }
 
+// git-config(1) safe.directory: the configuration git consults before operating in a repository its
+// caller does not own ("detected dubious ownership"). It is protected configuration, honoured from
+// the command line as well as from global config, and `-c` scopes it to ONE invocation: nothing is
+// written, nothing outlives the command, and no other git call by the same principal is widened.
+//
+// ONE SAFE.DIRECTORY TRUST, carried by one shape for every call that needs it: the exact repository
+// path. It names no principal because an invocation-scoped trust is held by whoever runs that
+// invocation and by no one else -- a principal field here would be a claim nothing checks.
+type SafeDirectoryGrant {
+  path: NonEmptyStr
+}
+
+data git_safe_directory_key: String = "safe.directory"
+
+fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
+  ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
+}
+
+// A CALL INTO A REPOSITORY TRUSTS EXACTLY THAT REPOSITORY. The grant is derived from the same path
+// `-C` names, so a caller cannot trust one directory while operating in another, and cannot pass the
+// wildcard: the narrowest grant is the only one this shape can spell.
+fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
+  append(git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }), items: ["-C", repo as String])
+}
+
+// gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
+// root of its working tree.
+data git_non_bare_git_dir_name: String = ".git"
+
+fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
+  join([worktree as String, "/", git_non_bare_git_dir_name], "") as NonEmptyStr
+}
+
+// A LOCAL FETCH SOURCE IS TRUSTED AT ITS GIT DIR, NOT ITS WORKTREE. `git fetch <path>` spawns
+// git-upload-pack(1) on <path>, and upload-pack enters the repository through enter_repo() (git
+// path.c), which probes `<path>/.git` before `<path>` and -- with the CVE-2024-32004 fix, present in srv1's
+// packaged git 1:2.43.0-1ubuntu7.3 (an Ubuntu security backport, so no upstream version number
+// bounds it) -- checks ownership with die_upon_dubious_ownership() against the directory it ENTERED. For a
+// non-bare source that is the git dir, so a safe.directory naming the worktree is never the path
+// compared (srv1 journal 2026-09-25 02:07:36: "detected dubious ownership in repository at
+// <checkout>/.git" under `-c safe.directory=<checkout>`). The worktree form is NOT added beside it:
+// upload-pack consults no working tree, and the fetching repository (`-C`) is the caller's own, so
+// a second trusted path would widen trust for nothing. The source this is derived for is a non-bare
+// checkout; a bare source would refuse loudly with the same typed cause, never pass silently.
+fn git_local_fetch_source_grant(source: NonEmptyStr) -> SafeDirectoryGrant {
+  SafeDirectoryGrant { path: git_non_bare_git_dir(worktree: source) }
+}
+
+// THE SOURCE TRUST RIDES INSIDE --upload-pack, BECAUSE A `-c` ON THE FETCH NEVER REACHES UPLOAD-PACK.
+// For a local-path remote git connect.c git_connect() (PROTO_LOCAL) spawns the upload-pack command
+// with `local_repo_env` (environment.c) pushed as variables to UNSET, and that list carries
+// GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT -- the channel through which `git -c` reaches child
+// processes. So `git -c safe.directory=<S>/.git fetch <S>` configures the fetch and not the process
+// that checks ownership. Measured on srv1 (git 1:2.43.0-1ubuntu7.3, service user fetching from the
+// runner-owned srv1-12 checkout into a scratch repository, 2026-09-25, proud-deer-538):
+// (A) `git -c safe.directory=<S>/.git -C <T> fetch <S> HEAD` REFUSED with dubious ownership;
+// (B) `git -C <T> fetch --upload-pack="git -c safe.directory=<S>/.git upload-pack" <S> HEAD`
+// SUCCEEDED and fetched c107839e. The `-c` inside the command is parsed BY the upload-pack process
+// itself, after the scrub. The same connect.c branch sets use_shell, so git hands this string to
+// `sh -c` (appending the quoted repository path): the grant path is therefore QUOTED, never
+// spliced -- the whole `safe.directory=<path>` word goes through extdeps.exec.command shell_quote
+// (POSIX single quoting), which is total, so no path is refused and no metacharacter is live.
+fn git_local_fetch_upload_pack_command(grant: SafeDirectoryGrant) -> String {
+  join(["git", "-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"], " ")
+}
+
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
   ["git", "-C", repo as String, "config", "--local", key, value]
 }
@@ -1464,6 +1530,16 @@ service git.Core {
       stderr: String from "stderr"
     }
     transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
+  operation FetchForcedRefInRepoTrustingSource {
+    input { repo: FilePath, remote: String, refspec: String, upload_pack: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "--upload-pack={upload_pack}", "{remote}", "{refspec}"] }
   }
 
   operation PushForcedRefInRepo {

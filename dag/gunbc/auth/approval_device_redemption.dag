@@ -1,5 +1,6 @@
 module gunbc.auth.approval_device_redemption
 
+import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Timestamp, Int, List }
 import std.logic { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -40,7 +41,7 @@ import gunbc.durable_cas_file_store {
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
-  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_count,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -536,8 +537,8 @@ fn enrolment_record_kind_wire(k: EnrolmentRecordKind) -> NonEmptyStr {
 fn enrolment_record_kind_generation(k: EnrolmentRecordKind) -> CasGeneration {
   match k {
     IssuedCodeRecord => cas_generation_first()
-    EnrolledRecord => cas_generation_next(g: cas_generation_first())
-    RevokedRecord => cas_generation_next(g: cas_generation_next(g: cas_generation_first()))
+    EnrolledRecord => 2
+    RevokedRecord => 3
   }
 }
 
@@ -716,7 +717,9 @@ fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Enrolmen
 
 // THE ISSUER TAKES NO LOGIN: the code is issued to approval_operator_login and to nobody a caller
 // could name, so the verb that runs this cannot enrol a device for anyone else.
-fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite {
+fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_and_deliver_enrolment_code_until"),
+] {
   let challenge = EnrolmentChallenge { code: code, issued_to_login: approval_operator_login, issued_at: issued_at, expires_at: expires_at }
   device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: IssuedCodeRecord), payload: enrolment_code_json(c: challenge) as NonEmptyStr)
 }
@@ -764,7 +767,7 @@ data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dis
 )
 
 data ios_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "the SwiftUI client at apps/approve-ios generating its decision key in the Secure Enclave under approval_decision_key_access_policy, attesting with App Attest over enrolment_transcript, registering for APNs, fetching with assertion-authenticated reads, and redeeming with SignedRedemption, its byte builders checked against gunbc.auth.approval_device_redemption_fixtures vectors, built and uploaded to TestFlight -- SUFFICIENT FOR one physical-phone approval to read back with decided_by naming the enrolled login",
+  description: "the SwiftUI client at apps/approve-ios generating its decision key in the Secure Enclave under approval_decision_key_access_policy, attesting with App Attest over enrolment_transcript, registering for APNs, fetching with assertion-authenticated reads, and redeeming with SignedRedemption, its byte builders checked against gunbc.auth.approval_device_redemption_fixtures vectors, built and uploaded to TestFlight -- SUFFICIENT FOR one physical-phone approval to read back with decided_by naming the enrolled login. Its project.yml and Info.plist are derived (gunbc.approve_ios_project) and its vectors are derived (gunbc.auth.approval_device_redemption_fixtures); its Swift is hand-authored realization (gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier), and its build is executed by no required lane (gunbc.approve_ios_app approve_ios_build_unexecuted_frontier)",
 )
 
 data approval_target_frontier: DissolutionCondition = unbound_dissolution(

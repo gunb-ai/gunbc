@@ -1,6 +1,5 @@
 module tools.self_host_curated_seed_linked_harness
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -15,13 +14,20 @@ import v2.std.text { String }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 // Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated
-// emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe
+// emit->assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe
 // lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo.
-// Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted
-// closure so the entry module rustc-links against v1-compiler without waiting for full std
-// self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths,
-// witness driver, pass marker, and zero or more supplementary claim-runs. Empty shim_lib_rel = keep
-// gunbc-emitted lib.rs (runtime closure only). Empty claim_runs = skip supplementary claim-runs.
+// Every receipt links the WHOLE EMITTED CLOSURE (cssl_assemble, below) against v1-compiler; a module
+// lane supplies only its witness driver, pass marker, and zero or more supplementary claim-runs.
+// HAND SHIMS ARE GONE, AND THE FIELDS THAT CARRIED THEM WITH THEM. Rows used to overwrite emitted
+// modules with hand-authored Rust (a shim lib.rs plus per-module shim writes, most from a shared
+// std-bridge directory). Each shim was a second realization of a .dag module that nothing kept in
+// step with the emitter, so it went stale silently: self_host_03 was red for 13 E0308 because the
+// v2_std_diagnostic shim still spelled Diagnostics as an enum after the emitter moved it to Option,
+// and the lax v2_std_node shim was keeping malformed fixtures green in two drivers. Every shim row
+// was censused before the cut -- the emitted closure builds and the driver passes with no shim --
+// so the override has no admitted use and is deleted rather than left empty: a row CANNOT name a
+// shim now, which is gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module's rung.
+// Empty claim_runs = skip supplementary claim-runs.
 // LANDED: the per-module copy-paste this note names is dissolved by
 // tools.self_host_module_behavioral_transport_roster — one config row per frontier module, one
 // generic compiler_module_behavioral_receipt_for(module_path) dispatch, this kernel unchanged as
@@ -30,21 +36,17 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 // Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings
 // consumers.
 
-// LANDED (2026-07-17): generic seed-shim closure assembly via cssl_assemble bin +
+// LANDED (2026-07-17): generic closure assembly via cssl_assemble bin +
 // cssl_seed_linked_closure_assembly.rs (typed Refused final arm; explicit dag/std · lens ·
 // peripheral emit-retain). Former assembly Refused arms (compiler dep absent from seed lib.rs;
 // v2_std module without shared std-bridge shim) fold into byte-untouched emit-retain — refusal
 // relocates to cargo verdict, not silent green (the sanitize scaffold debt on this path dissolved
 // 2026-07-23 when strip_repeated_use_symbols landed in v1.compiler.emit_rust). Invoked from
-// cssl_seed_linked_behavioral_receipt when shim_lib_rel empty and shim_writes empty. cssl_assemble
+// cssl_seed_linked_behavioral_receipt for every row. cssl_assemble
 // IS the assembly entrypoint (a modeled bin, invoked directly); the hand probe runners that used to
 // drive it under CSSL_STD_SEED_LINK=1 lived in scripts/ and were deleted 2026-07-23 — their
 // measurement receipts are in docs/probes, and re-measuring goes through cssl_assemble, not a
 // restored shell wrapper.
-
-data cssl_std_bridge_shims_rel: String = "dag/gunbc/instruments/self_host_std_bridge_shims"
-
-data cssl_std_bridge_scaffold_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: dag/gunbc/instruments/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges.")
 
 // CSSL DOES NOT ADD MODULES TO THE v1 SEED, AND THE ABSENCE OF THIS SENTENCE HAS A MEASURED COST.
 // cssl_assemble writes into out_dir ONLY -- the gunbc-emitted CANDIDATE crate. AS OF THIS REVISION
@@ -73,7 +75,7 @@ data cssl_std_bridge_scaffold_dissolution_trigger: DissolutionCondition = unboun
 // assemble_seed_linked_closure actually writes. A refusal doing its job was read as evidence of a
 // fork. The distinction costs one paragraph here and cost a wrong work item without it.
 
-data cssl_closure_assembly_note: String = "Generic closure assembly: the dep population is the EMITTED-POPULATION MANIFEST the compiler writes into the same out_dir (src/emitted_population.rs), read under the grammar both ends resolve from gunbc.stage0_emitted_population_manifest -- split on the separator, strip the line prefix. Entry module bytes hash-locked. Emit-retain rule: every path the emitter DECLARED it produced must be materialized in out_dir, byte-untouched; a declared path with no file is a typed refusal (RefusedDeclaredMember), and refusal for anything the bytes then say relocates to the cargo verdict. THIS REPLACED THE LAST RUST TEXT-PARSE ON THIS PATH (the prior revision scraped src/lib.rs pub mod lines to recover closure membership), and the swap is a strengthening rather than a rename: lib.rs mod list is rendered FROM the same module file list the writer then writes out, so that check could only agree with itself on the real path and its only reachable red came from a hand-authored lib.rs -- while the manifest declares Cargo.toml, lib.rs, main.rs, every module, every test file and itself, so the declared-versus-materialized question is answerable at the grain that matters. BOOTSTRAP_INLINE_MODS is deleted with it: the manifest never declares NonEmptyVec/NonEmptyBTreeSet because they are inlined structs and not files, so the state that skip tolerated is not representable in the population assembly reads. The seed lib.rs is still NOT consulted: the compiler-seed-re-export arm and its seed_has_pub_mod oracle are deleted (see cssl_is_not_a_seed_admission_path_note), so seed mod-tree membership has one authority, v2.compiler.self_host.stage0_crate_layout, and this harness is not a second reader of it. Hand shim_lib_rel/shim_writes = optional fast-path override (body_producer / behavioral receipts)."
+data cssl_closure_assembly_note: String = "Generic closure assembly: the dep population is the EMITTED-POPULATION MANIFEST the compiler writes into the same out_dir (src/emitted_population.rs), read under the grammar both ends resolve from gunbc.stage0_emitted_population_manifest -- split on the separator, strip the line prefix. Entry module bytes hash-locked. Emit-retain rule: every path the emitter DECLARED it produced must be materialized in out_dir, byte-untouched; a declared path with no file is a typed refusal (RefusedDeclaredMember), and refusal for anything the bytes then say relocates to the cargo verdict. THIS REPLACED THE LAST RUST TEXT-PARSE ON THIS PATH (the prior revision scraped src/lib.rs pub mod lines to recover closure membership), and the swap is a strengthening rather than a rename: lib.rs mod list is rendered FROM the same module file list the writer then writes out, so that check could only agree with itself on the real path and its only reachable red came from a hand-authored lib.rs -- while the manifest declares Cargo.toml, lib.rs, main.rs, every module, every test file and itself, so the declared-versus-materialized question is answerable at the grain that matters. BOOTSTRAP_INLINE_MODS is deleted with it: the manifest never declares NonEmptyVec/NonEmptyBTreeSet because they are inlined structs and not files, so the state that skip tolerated is not representable in the population assembly reads. The seed lib.rs is still NOT consulted: the compiler-seed-re-export arm and its seed_has_pub_mod oracle are deleted (see cssl_is_not_a_seed_admission_path_note), so seed mod-tree membership has one authority, v2.compiler.self_host.stage0_crate_layout, and this harness is not a second reader of it."
 
 // SCAFFOLD — tracked debt: Cargo.toml TOML markup authored via concat string literals in
 // cssl_v1_compiled_cargo_* (same class as slb_cargo_toml / ssuv_cargo_toml / peh_cargo_toml).
@@ -120,56 +122,6 @@ fn cssl_v1_compiled_probe_lib_cargo_toml(root: String) -> String {
   )
 }
 
-type CuratedSeedLinkedShimWrite {
-  dest_rel: String
-  source_rel: String
-}
-
-fn cssl_write_shim_from_repo(
-  root: String,
-  out_dir: String,
-  shim: CuratedSeedLinkedShimWrite
-) -> Bool {
-  let read = Filesystem.Read(path: cssl_repo_path(root: root, rel: shim.source_rel))
-  let write = Filesystem.Write(
-    path: concat(out_dir, concat("/src/", shim.dest_rel)),
-    content: read.content
-  )
-  read.success && write.success
-}
-
-fn cssl_write_shims_from_repo(
-  root: String,
-  out_dir: String,
-  shims: List<CuratedSeedLinkedShimWrite>
-) -> Bool {
-  fold_list(
-    xs: shims,
-    empty: true,
-    cons: fn(ok, shim) {
-      ok && cssl_write_shim_from_repo(root: root, out_dir: out_dir, shim: shim)
-    }
-  )
-}
-
-fn cssl_write_shim_lib_from_repo(
-  root: String,
-  out_dir: String,
-  shim_lib_rel: String
-) -> Bool {
-  if shim_lib_rel == "" {
-    true
-  } else {
-    let read = Filesystem.Read(path: cssl_repo_path(root: root, rel: shim_lib_rel))
-    let write = Filesystem.Write(path: concat(out_dir, "/src/lib.rs"), content: read.content)
-    read.success && write.success
-  }
-}
-
-fn cssl_uses_hand_shim_fast_path(shim_lib_rel: String, shim_writes: List<CuratedSeedLinkedShimWrite>) -> Bool {
-  shim_lib_rel != "" || length(xs: shim_writes) > 0
-}
-
 fn cssl_run_generic_closure_assembly(
   root: String,
   out_dir: String,
@@ -182,8 +134,7 @@ fn cssl_run_generic_closure_assembly(
     args: [
       "--out-dir", out_dir,
       "--entry-dag", source_rel,
-      "--root", root,
-      "--std-bridge-dir", cssl_std_bridge_shims_rel
+      "--root", root
     ]
   )
   assemble.success && string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS")
@@ -295,12 +246,9 @@ fn cssl_fault_run_detected_the_planted_fault(
 
 fn cssl_seed_linked_behavioral_receipt(
   source_rel: String,
-  shim_lib_rel: String,
-  shim_writes: List<CuratedSeedLinkedShimWrite>,
   driver_rel: String,
   pass_marker: String,
-  claim_runs: List<CuratedSeedLinkedClaimRun>,
-  run_closure_assembly: Bool
+  claim_runs: List<CuratedSeedLinkedClaimRun>
 ) -> Bool {
   let root = git.Inspect.Toplevel()
   let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
@@ -326,19 +274,12 @@ fn cssl_seed_linked_behavioral_receipt(
   )
 
   let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
-  let hand_shim_path = cssl_uses_hand_shim_fast_path(shim_lib_rel: shim_lib_rel, shim_writes: shim_writes)
-  let generic_assembly_ok = if hand_shim_path && !run_closure_assembly {
-    true
-  } else {
-    cssl_run_generic_closure_assembly(
-      root: root.path,
-      out_dir: out_dir.path,
-      source_rel: source_rel,
-      cssl_assemble_bin: cssl_assemble_bin
-    )
-  }
-  let lib_written = cssl_write_shim_lib_from_repo(root: root.path, out_dir: out_dir.path, shim_lib_rel: shim_lib_rel)
-  let shims_written = cssl_write_shims_from_repo(root: root.path, out_dir: out_dir.path, shims: shim_writes)
+  let generic_assembly_ok = cssl_run_generic_closure_assembly(
+    root: root.path,
+    out_dir: out_dir.path,
+    source_rel: source_rel,
+    cssl_assemble_bin: cssl_assemble_bin
+  )
   let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: cssl_v1_compiled_cargo_toml(root: root.path))
   let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
 
@@ -369,7 +310,6 @@ fn cssl_seed_linked_behavioral_receipt(
     && out_dir.success && gunbc_built && cssl_assemble_built && emit.success
     && src_dir.success
     && generic_assembly_ok
-    && lib_written && shims_written
     && manifest.success && main_rs.success
     && build.success
     && pass_run.success && string_contains(s: pass_run.stdout, pattern: pass_marker)

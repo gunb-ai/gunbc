@@ -2,7 +2,7 @@ module gunbc.compile_permit_scope_observe
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { trim }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty, SystemdUnitProperty }
@@ -37,7 +37,7 @@ import gunbc.runner_slot_allocation {
 }
 import gunbc.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
 
-data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthority
+data compile_permit_scope_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THIS MODULE READS, AND WHAT IT MUST NOT SAY. gunbc.compile_permit_scope derives whether
 // cancellation is safe; this module reports the realization the host's committed runner slots are

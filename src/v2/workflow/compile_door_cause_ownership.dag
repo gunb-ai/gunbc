@@ -132,6 +132,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_service_realization_unreachable,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
@@ -201,28 +207,53 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^infer_grounding_not_derived,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.manual.recompute_trace_probe)"
+    flip_trigger: "the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.manual.recompute_trace_probe)"
   },
   CauseOwnership {
     cause: ^infer_grounding_demanded_not_derived,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a consumer demanded a canonical grounding (coercion, translate's coerce fold, eval's constraints) of a node the grounding frontier left underived (v2.compiler.infer node_grounding_frontier_note). Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived; same frontier, split out so a chain can tell the refusing link from the frontier rows in front of it. Flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own"
+    flip_trigger: "a consumer demanded a canonical grounding (coercion, translate's coerce fold, eval's constraints) of a node the grounding frontier left underived (v2.compiler.inferred_tree NodeGrounding). Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived; same frontier, split out so a chain can tell the refusing link from the frontier rows in front of it. Retires under node_grounding_frontier_retirement"
   },
   CauseOwnership {
     cause: ^translate_rejected_grounding_not_derived,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "translate's grounding gate refuses a node it must emit whose inferred facts carry no DerivedGrounding -- the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) observed at emission. Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived, so its population was counted under that row; it is the same frontier at the emit stage, split out so a chain can tell the refusing link from the frontier rows in front of it. Flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own"
+    flip_trigger: "translate's grounding gate refuses a node it must emit whose inferred facts carry no DerivedGrounding -- the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at emission. Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived, so its population was counted under that row; it is the same frontier at the emit stage, split out so a chain can tell the refusing link from the frontier rows in front of it. Retires under node_grounding_frontier_retirement"
   },
   CauseOwnership {
     cause: ^eval_rejected_grounding_not_derived,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.infer node_grounding_frontier_note); flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
+    flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.inferred_tree NodeGrounding); retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
   }
 ]
 
+
+// A FRONTIER'S RETIREMENT CONDITION, TYPED. A frontier observed under several causes (one per stage
+// that meets it) retires when EVERY one of its causes counts zero at fatal grain over the route's
+// population. Each cause must also be owned by a fatal-grain row of known_frontier_causes, because a
+// retirement over a cause nobody counts would read as retired at zero forever.
+// gunbc.witness_v2_native_route native_route_frontier_retirement_standing joins this condition to
+// the route's derived tally, and admission refuses a retirement whose causes are unowned.
+type FrontierRetirement {
+  frontier: Symbol
+  causes: List<Symbol>
+}
+
+// The node grounding frontier: v2.compiler.inferred_tree NodeGrounding's GroundingNotDerived arm,
+// counted by infer's own advisory and by each stage that refuses an underived node.
+data node_grounding_frontier_retirement: FrontierRetirement = FrontierRetirement {
+  frontier: ^node_grounding_frontier,
+  causes: [
+    ^infer_grounding_not_derived,
+    ^infer_grounding_demanded_not_derived,
+    ^translate_rejected_grounding_not_derived,
+    ^eval_rejected_grounding_not_derived
+  ]
+}
+
+data known_frontier_retirements: List<FrontierRetirement> = [node_grounding_frontier_retirement]
 
 fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<CauseOwnership> {
   list_find_first(
