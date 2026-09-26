@@ -27,7 +27,8 @@ import v2.workflow.bash_emit {
   bash_emit_program,
   bash_emit_program_matches_golden
 }
-import v2.std.algebra { list_append, list_map }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

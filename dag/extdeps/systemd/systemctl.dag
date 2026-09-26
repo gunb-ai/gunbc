@@ -65,6 +65,15 @@ fn systemctl_show_properties_command(unit: NonEmptyStr, properties: List<Systemd
   ])
 }
 
+// ONE PROPERTY OF `systemctl show` OUTPUT: the text after `Key=` on the line that starts with it.
+// Absent when no line names the key, which is not the same as an empty value (`Key=`).
+fn systemctl_show_property_value(text: String, key: String) -> String? {
+  match first(filter(split(s: text, delimiter: "\n"), l => starts_with(s: l, prefix: key + "="))) {
+    Present { value: l } => Present { value: substring(s: l, start: string_length(s: key) + 1, end: string_length(s: l)) }
+    Absent => none
+  }
+}
+
 // systemctl(1) show-environment: the service manager's own environment, `NAME=value` per line,
 // which every unit it starts inherits beneath the unit's Environment= and EnvironmentFile=.
 fn systemctl_show_environment_command() -> ArgvCommand {
