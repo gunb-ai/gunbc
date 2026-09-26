@@ -1,0 +1,76 @@
+module test.claim.grammar_production_index_witness
+
+import std.types { Bool, Int, List, String }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { list_snoc_item, list_append, length }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.witness { Holds, Violates }
+import v2.std.grammar {
+  FormalProduction,
+  grammar_formal_production, grammar_formal_terminal_free, grammar_formal_terminal_bound, grammar_formal_nonterminal_occurrence,
+  formal_production_index, formal_productions_asked_indexed, formal_production_for_lhs_exact
+}
+
+// THE CANDIDATES A NODE IS TESTED AGAINST, at the index's own interface (v2.std.grammar
+// formal_productions_asked_indexed). Resolution's cost is the number of candidates it tests per node,
+// so the index's claim is structural: a node led by kind tag T is offered the lhs's untagged
+// productions and T's bucket, never the lhs's other tagged alternatives. These claims go red if the
+// lookup degrades to the whole lhs (the former per-node filter). The real path -- resolution
+// selecting through the index -- is the last claim.
+
+fn pi_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn pi_conj(children: List<Node>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: map(children, c => Edge { label: Positional, target: c }), occurrence_id: OccurrenceSynthetic }
+}
+
+// `alternatives` productions of ^pi_item, each led by its own tag, plus one untagged production of three
+// free slots (so it never matches a two-slot tagged item and no selection below is ambiguous).
+fn pi_tagged(alternatives: Int, acc: List<FormalProduction>) -> List<FormalProduction> {
+  if alternatives <= 0 { acc } else {
+    pi_tagged(alternatives: alternatives - 1, acc: list_snoc_item(xs: acc, item: grammar_formal_production(lhs: ^pi_item, rhs: [grammar_formal_terminal_bound(identity: ^pi_kind, binding: concat("pi_tag_", to_string(alternatives))), grammar_formal_terminal_free(identity: ^pi_tok)])))
+  }
+}
+
+fn pi_grammar() -> List<FormalProduction> {
+  list_append(left: pi_tagged(alternatives: 32, acc: []), right: [
+    grammar_formal_production(lhs: ^pi_item, rhs: [grammar_formal_terminal_free(identity: ^pi_tok), grammar_formal_terminal_free(identity: ^pi_tok), grammar_formal_terminal_free(identity: ^pi_tok)]),
+    grammar_formal_production(lhs: ^pi_list, rhs: [grammar_formal_nonterminal_occurrence(identity: ^pi_item)]),
+    grammar_formal_production(lhs: ^pi_list, rhs: [grammar_formal_nonterminal_occurrence(identity: ^pi_item), grammar_formal_nonterminal_occurrence(identity: ^pi_list)])
+  ])
+}
+
+fn pi_item_node(tag: String, i: Int) -> Node {
+  pi_conj(children: [pi_atom(s: tag), pi_atom(s: concat("item_", to_string(i)))])
+}
+
+fn pi_candidates(emitted: Node) -> Int {
+  length(xs: formal_productions_asked_indexed(index: formal_production_index(productions: pi_grammar()), asked: [^pi_item], emitted: emitted))
+}
+
+// Led by one of 32 tags: its own bucket (1) and the untagged production (1). Not all 33.
+test fn a_tagged_node_is_offered_its_bucket_and_the_untagged_rows_only() -> Bool {
+  pi_candidates(emitted: pi_item_node(tag: "pi_tag_7", i: 0)) == 2
+}
+
+// Led by an atom that names no bucket: the untagged rows only. The miss adds nothing -- it never
+// widens to the 32 tagged alternatives.
+test fn a_tag_naming_no_bucket_is_offered_the_untagged_rows_only() -> Bool {
+  pi_candidates(emitted: pi_item_node(tag: "pi_tag_absent", i: 0)) == 1
+}
+
+// An lhs with no tagged rows is offered all of them (^pi_list has two, neither tagged).
+test fn an_untagged_lhs_is_offered_all_its_rows() -> Bool {
+  length(xs: formal_productions_asked_indexed(index: formal_production_index(productions: pi_grammar()), asked: [^pi_list], emitted: pi_conj(children: [pi_item_node(tag: "pi_tag_1", i: 0)]))) == 2
+}
+
+// The real path: resolution through the index selects the list over tagged items of different tags.
+test fn resolution_through_the_index_selects_a_list_of_tagged_items() -> Bool {
+  let subject = pi_conj(children: [pi_item_node(tag: "pi_tag_3", i: 1), pi_conj(children: [pi_item_node(tag: "pi_tag_29", i: 0)])])
+  match formal_production_for_lhs_exact(productions: pi_grammar(), lhs: ^pi_list, child: subject) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
