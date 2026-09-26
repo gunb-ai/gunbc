@@ -8,7 +8,7 @@ import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
-  docker_run_ephemeral_command, DockerLabel, DockerPsByLabel, docker_image_pull_command, docker_image_inspect_command,
+  docker_run_ephemeral_command, DockerLabel, DockerPsByLabel, docker_label_wire, docker_image_pull_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
 }
@@ -861,10 +861,11 @@ data v41_probe_host_effect_term: Second = second(count: 3600)
 // WHAT THE PROBE LEAVES IF IT DID NOT FINISH: the pull, the inspect and the run all carry the image
 // reference on their command line, and the run starts an unnamed container FROM that reference,
 // which `docker ps --filter ancestor=` finds while it runs.
-// The process pattern is the label as it appears on the docker client's command line, which only this
+// The process pattern is the label's own wire form (docker_label_wire, the same encoder the --label
+// argument uses), as it appears on the docker client's command line, which only this
 // lane's run carries; the image reference would also match a serving container's long-running client.
 fn v41_probe_host_residue() -> HostEffectResidueSpec {
-  HostEffectResidueSpec { process_pattern: "gunbc.lane=v41-runtime-image-probe" as NonEmptyStr, container: Present { value: DockerPsByLabel { label: v41_probe_lane_label } } }
+  HostEffectResidueSpec { process_pattern: docker_label_wire(l: v41_probe_lane_label) as NonEmptyStr, container: Present { value: DockerPsByLabel { label: v41_probe_lane_label } } }
 }
 
 // THE ADMINISTRATOR CONTEXT EXISTS BEFORE THE CLAIM, so the claim is released over the same privileged
