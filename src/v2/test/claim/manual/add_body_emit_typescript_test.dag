@@ -35,8 +35,7 @@ import v2.extdeps.languages.typescript {
   ts_fn_add_lex,
   ts_fn_add_lex_rules
 }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { list_append }
+import std.algebra { Cons, Empty, list_append }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,

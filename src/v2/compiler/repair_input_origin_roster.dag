@@ -1,6 +1,6 @@
 module v2.compiler.repair_input_origin_roster
 
-import std.algebra { Empty, FreeMonoid }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
@@ -16,7 +16,7 @@ import std.repair_input_origin {
   SourceDeclarationCarrier,
   SourceDeclarationCarrierIdentity
 }
-import v2.std.algebra { fold_list, is_empty, length, list_snoc_item, skip }
+import v2.std.algebra { fold_list, is_empty, length, skip }
 import v2.std.node { Node }
 import v2.std.qualified_name {
   QualifiedName,
