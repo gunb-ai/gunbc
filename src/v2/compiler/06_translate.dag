@@ -835,31 +835,30 @@ fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> 
   )
 }
 
+// The fold-list's items in order, walked with an accumulator so the walk is a tail call: a long
+// token list (a nested block of a large program) is not a stack as deep as the list.
 fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<Node>> {
+  serialize_source_fold_list_targets_into(remaining: remaining, node: node, acc: Empty)
+}
+
+fn serialize_source_fold_list_targets_into(remaining: Int, node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   if remaining <= 0 {
     outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   } else {
     match node.kind {
       TypeNode { connective: Conj } =>
         if is_empty(xs: node.children) {
-          Accepted { value: Empty, diagnostics: None }
+          Accepted { value: acc, diagnostics: None }
         } else {
-          bind_outcome(
-            o: conj_named_child(parent: node, edge_name: ^fold_list_node_head),
-            f: fn(head) {
-              bind_outcome(
-                o: conj_named_child(parent: node, edge_name: ^fold_list_node_tail),
-                f: fn(tail) {
-                  bind_outcome(
-                    o: serialize_source_fold_list_targets(remaining: remaining - 1, node: tail),
-                    f: fn(rest) {
-                      Accepted { value: Cons { head: head, tail: rest }, diagnostics: None }
-                    }
-                  )
-                }
-              )
-            }
-          )
+          match conj_named_child(parent: node, edge_name: ^fold_list_node_head) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: head, diagnostics: _ } =>
+              match conj_named_child(parent: node, edge_name: ^fold_list_node_tail) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: tail, diagnostics: _ } =>
+                  serialize_source_fold_list_targets_into(remaining: remaining - 1, node: tail, acc: list_snoc_item(xs: acc, item: head))
+              }
+          }
         }
       _ => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }

@@ -1404,20 +1404,6 @@ fn formal_production_nonterminal_at_slot(production: FormalProduction, slot: Int
   scan.found
 }
 
-fn formal_productions_asked(productions: List<FormalProduction>, asked: List<Symbol>) -> List<FormalProduction> {
-  fold_list(
-    xs: productions,
-    empty: Empty,
-    cons: fn(acc, production) {
-      if formal_symbol_list_contains(xs: asked, wanted: production.lhs.identity) {
-        list_snoc_item(xs: acc, item: production)
-      } else {
-        acc
-      }
-    }
-  )
-}
-
 fn formal_slot_asked_lhs(candidates: List<FormalProduction>, slot: Int) -> List<Symbol> {
   fold_list(
     xs: candidates,
@@ -1436,8 +1422,115 @@ type SlotResolutionScan {
   slots: List<EmittedProductionResolution>
 }
 
+// THE PRODUCTIONS PARTITIONED BY LEFT-HAND SIDE AND LEADING TAG, derived once from the rows being
+// resolved. Which productions a node can match depends on the asked lhs set and, for a production
+// whose first symbol is a terminal bound to one exact binding (a kind tag, the
+// v2.extdeps.languages.bash_command_fold precedent), on whether the node's first positional child is
+// that atom. Filtering every production at every node (the former formal_productions_asked) and then
+// testing every candidate recomputed that fact per node. The index answers it by lookup:
+//   untagged  -- the lhs's productions with no leading exact-binding terminal, tested at every node;
+//   tagged    -- by leading binding, only the bucket the node's own first atom names.
+// A node whose tag names no bucket has no tagged candidate: that is the answer, not a miss that
+// widens to the whole lhs (a tagged production cannot match a node not led by its tag). Candidate
+// order carries no meaning -- both readers of a resolution's matched set
+// (resolution_production_for_lhs_exact, resolution_unique_emitted_match) decide none/one/many --
+// so the buckets are concatenated, never merged.
+type FormalLhsBuckets {
+  untagged: List<FormalProduction>
+  tagged: Map<Symbol, List<FormalProduction>>
+}
+
+type FormalProductionIndex {
+  by_lhs: Map<Symbol, FormalLhsBuckets>
+}
+
+type FormalLeadingTag
+  = FormalLeadingExactBinding { binding: Symbol }
+  | FormalNoLeadingTag
+
+fn formal_production_leading_tag(production: FormalProduction) -> FormalLeadingTag {
+  match production.rhs {
+    Empty => FormalNoLeadingTag
+    Cons { head: first, tail: _ } => formal_symbol_leading_tag(symbol: first)
+  }
+}
+
+fn formal_symbol_leading_tag(symbol: FormalGrammarSymbol) -> FormalLeadingTag {
+  match symbol {
+    FormalTerminalOccurrence { terminal: _, binding: binding } =>
+      match binding {
+        Present { value: b } =>
+          match formal_binding_conj_slot_arm(binding: b) {
+            FormalBindingConjSlotExactBinding => FormalLeadingExactBinding { binding: b }
+            FormalBindingConjSlotEmittedAtom => FormalNoLeadingTag
+          }
+        Absent => FormalNoLeadingTag
+      }
+    FormalNonterminalOccurrence { nonterminal: _ } => FormalNoLeadingTag
+  }
+}
+
+fn formal_lhs_buckets_add(buckets: FormalLhsBuckets, production: FormalProduction) -> FormalLhsBuckets {
+  match formal_production_leading_tag(production: production) {
+    FormalNoLeadingTag =>
+      FormalLhsBuckets { untagged: list_snoc_item(xs: buckets.untagged, item: production), tagged: buckets.tagged }
+    FormalLeadingExactBinding { binding: b } => {
+      let prior = match map_lookup(m: buckets.tagged, key: b) {
+        Present { value: xs } => xs
+        Absent => Empty
+      }
+      FormalLhsBuckets { untagged: buckets.untagged, tagged: map_insert(m: buckets.tagged, key: b, value: list_snoc_item(xs: prior, item: production)) }
+    }
+  }
+}
+
+fn formal_production_index(productions: List<FormalProduction>) -> FormalProductionIndex {
+  FormalProductionIndex {
+    by_lhs: fold_list(
+      xs: productions,
+      empty: empty_map(),
+      cons: fn(acc, production) {
+        let prior = match map_lookup(m: acc, key: production.lhs.identity) {
+          Present { value: b } => b
+          Absent => FormalLhsBuckets { untagged: Empty, tagged: empty_map() }
+        }
+        map_insert(m: acc, key: production.lhs.identity, value: formal_lhs_buckets_add(buckets: prior, production: production))
+      }
+    )
+  }
+}
+
+// The productions a node can match: for each asked lhs, its untagged bucket and the bucket the node's
+// first positional atom names.
+fn formal_productions_asked_indexed(index: FormalProductionIndex, asked: List<Symbol>, emitted: Node) -> List<FormalProduction> {
+  let tag = match conj_positional_children(parent: emitted) {
+    Empty => optional_absent()
+    Cons { head: first, tail: _ } => node_atom_identity_optional(node: first)
+  }
+  fold_list(
+    xs: asked,
+    empty: Empty,
+    cons: fn(acc, lhs) {
+      match map_lookup(m: index.by_lhs, key: lhs) {
+        Present { value: buckets } => {
+          let with_untagged = list_append(left: acc, right: buckets.untagged)
+          match tag {
+            Present { value: t } =>
+              match map_lookup(m: buckets.tagged, key: t) {
+                Present { value: entries } => list_append(left: with_untagged, right: entries)
+                Absent => with_untagged
+              }
+            Absent => with_untagged
+          }
+        }
+        Absent => acc
+      }
+    }
+  )
+}
+
 fn resolve_emitted_productions_slots(
-  productions: List<FormalProduction>,
+  index: FormalProductionIndex,
   candidates: List<FormalProduction>,
   children: List<Node>
 ) -> List<EmittedProductionResolution> {
@@ -1449,8 +1542,8 @@ fn resolve_emitted_productions_slots(
         index: acc.index + 1,
         slots: list_snoc_item(
           xs: acc.slots,
-          item: resolve_emitted_productions_asked(
-            productions: productions,
+          item: resolve_emitted_productions_asked_in(
+            index: index,
             asked: formal_slot_asked_lhs(candidates: candidates, slot: acc.index),
             emitted: child
           )
@@ -1487,13 +1580,21 @@ fn resolve_emitted_productions_asked(
   asked: List<Symbol>,
   emitted: Node
 ) -> EmittedProductionResolution {
-  let candidates = formal_productions_asked(productions: productions, asked: asked)
+  resolve_emitted_productions_asked_in(index: formal_production_index(productions: productions), asked: asked, emitted: emitted)
+}
+
+fn resolve_emitted_productions_asked_in(
+  index: FormalProductionIndex,
+  asked: List<Symbol>,
+  emitted: Node
+) -> EmittedProductionResolution {
+  let candidates = formal_productions_asked_indexed(index: index, asked: asked, emitted: emitted)
   let children = conj_positional_children(parent: emitted)
   let child_count = conj_positional_child_count(children: children)
   let unmatched = EmittedProductionResolution {
     emitted: emitted,
     matched: Empty,
-    slots: resolve_emitted_productions_slots(productions: productions, candidates: candidates, children: children)
+    slots: resolve_emitted_productions_slots(index: index, candidates: candidates, children: children)
   }
   EmittedProductionResolution {
     emitted: emitted,

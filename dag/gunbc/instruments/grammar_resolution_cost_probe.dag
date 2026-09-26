@@ -1,0 +1,110 @@
+module tools.grammar_resolution_cost_probe
+import std.types { Bool, Int, List, String }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { list_snoc_item, list_append }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.witness { Holds, Violates }
+import v2.std.grammar {
+  FormalProduction,
+  grammar_formal_production, grammar_formal_terminal_free, grammar_formal_terminal_bound, grammar_formal_nonterminal_occurrence,
+  formal_production_for_lhs_exact
+}
+
+// THE COST SHAPE OF EMITTED-PRODUCTION RESOLUTION (v2.std.grammar resolve_emitted_productions_asked)
+// in the two quantities it can depend on: N, the emitted nodes, and P, the productions of the
+// grammar. The subject is a right-recursive list of N items, resolved against a grammar that holds
+// the list's three productions plus `pad` unrelated ones. Resolution asks each node about one or two
+// left-hand sides, so its cost is linear in N and should not grow with the unrelated rows; a
+// per-node filter over every production makes it N x P.
+
+fn gp_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn gp_conj(children: List<Node>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: map(children, c => Edge { label: Positional, target: c }), occurrence_id: OccurrenceSynthetic }
+}
+
+fn gp_list_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(lhs: ^gp_item, rhs: [grammar_formal_terminal_free(identity: ^gp_tok)]),
+    grammar_formal_production(lhs: ^gp_list, rhs: [grammar_formal_nonterminal_occurrence(identity: ^gp_item)]),
+    grammar_formal_production(lhs: ^gp_list, rhs: [grammar_formal_nonterminal_occurrence(identity: ^gp_item), grammar_formal_nonterminal_occurrence(identity: ^gp_list)])
+  ]
+}
+
+fn gp_padding(n: Int, acc: List<FormalProduction>) -> List<FormalProduction> {
+  if n <= 0 { acc } else {
+    gp_padding(n: n - 1, acc: list_snoc_item(xs: acc, item: grammar_formal_production(lhs: concat("gp_pad_", to_string(n)), rhs: [grammar_formal_terminal_free(identity: ^gp_tok)])))
+  }
+}
+
+fn gp_grammar(pad: Int) -> List<FormalProduction> {
+  list_append(left: gp_padding(n: pad, acc: []), right: gp_list_productions())
+}
+
+fn gp_item_node(i: Int) -> Node {
+  gp_conj(children: [gp_atom(s: concat("item_", to_string(i)))])
+}
+
+fn gp_list_node(n: Int) -> Node {
+  gp_list_from(i: n, acc: gp_conj(children: [gp_item_node(i: 0)]))
+}
+
+fn gp_list_from(i: Int, acc: Node) -> Node {
+  if i <= 0 { acc } else { gp_list_from(i: i - 1, acc: gp_conj(children: [gp_item_node(i: i), acc])) }
+}
+
+fn gp_resolves(pad: Int, subject: Node) -> Bool {
+  match formal_production_for_lhs_exact(productions: gp_grammar(pad: pad), lhs: ^gp_list, child: subject) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// The measurement is the eval steps each claim below performs, as claim_batch reports them
+// (`[witness] <identity>: ... eval_steps=<n>`): deterministic, and the quantity the required floor
+// enforces. Same subject, same list grammar, padded with 0, 64 and 256 unrelated productions.
+//
+// Run: claim_batch --source-root dag --source-root src/v2
+//   --entry dag/gunbc/instruments/grammar_resolution_cost_probe.dag
+//   --functions resolve_400_items_pad_0,resolve_400_items_pad_64,resolve_400_items_pad_256
+test fn resolve_400_items_pad_0() -> Bool { gp_resolves(pad: 0, subject: gp_list_node(n: 400)) }
+test fn resolve_400_items_pad_64() -> Bool { gp_resolves(pad: 64, subject: gp_list_node(n: 400)) }
+test fn resolve_400_items_pad_256() -> Bool { gp_resolves(pad: 256, subject: gp_list_node(n: 400)) }
+
+// THE TAGGED CASE: the item lhs has `alternatives` productions, each led by its own kind tag (a
+// terminal bound to one exact binding) followed by a free slot, and every item node carries the first
+// tag. Only one alternative can match any node; a resolution that tests every alternative pays
+// N x alternatives, one that looks the tag up pays N.
+fn gp_tagged_productions(alternatives: Int, acc: List<FormalProduction>) -> List<FormalProduction> {
+  if alternatives <= 0 { acc } else {
+    gp_tagged_productions(alternatives: alternatives - 1, acc: list_snoc_item(xs: acc, item: grammar_formal_production(lhs: ^gp_titem, rhs: [grammar_formal_terminal_bound(identity: ^gp_kind, binding: concat("gp_tag_", to_string(alternatives))), grammar_formal_terminal_free(identity: ^gp_tok)])))
+  }
+}
+
+fn gp_tagged_grammar(alternatives: Int) -> List<FormalProduction> {
+  list_append(left: gp_tagged_productions(alternatives: alternatives, acc: []), right: [
+    grammar_formal_production(lhs: ^gp_tlist, rhs: [grammar_formal_nonterminal_occurrence(identity: ^gp_titem)]),
+    grammar_formal_production(lhs: ^gp_tlist, rhs: [grammar_formal_nonterminal_occurrence(identity: ^gp_titem), grammar_formal_nonterminal_occurrence(identity: ^gp_tlist)])
+  ])
+}
+
+fn gp_titem_node(i: Int) -> Node {
+  gp_conj(children: [gp_atom(s: "gp_tag_1"), gp_atom(s: concat("item_", to_string(i)))])
+}
+
+fn gp_tlist_from(i: Int, acc: Node) -> Node {
+  if i <= 0 { acc } else { gp_tlist_from(i: i - 1, acc: gp_conj(children: [gp_titem_node(i: i), acc])) }
+}
+
+fn gp_tagged_resolves(alternatives: Int, items: Int) -> Bool {
+  match formal_production_for_lhs_exact(productions: gp_tagged_grammar(alternatives: alternatives), lhs: ^gp_tlist, child: gp_tlist_from(i: items, acc: gp_conj(children: [gp_titem_node(i: 0)]))) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// Run: claim_batch ... --functions resolve_400_tagged_items_1_alternative,resolve_400_tagged_items_32_alternatives
+test fn resolve_400_tagged_items_1_alternative() -> Bool { gp_tagged_resolves(alternatives: 1, items: 400) }
+test fn resolve_400_tagged_items_32_alternatives() -> Bool { gp_tagged_resolves(alternatives: 32, items: 400) }

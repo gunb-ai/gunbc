@@ -3718,28 +3718,27 @@ fn target_bodied_arrow_compose_statement_tokens(
   )
 }
 
+// The fold-list's items in order, walked with an accumulator so the walk is a tail call: a long
+// token list is not a stack as deep as the list.
 fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List<Node>> {
+  concrete_syntax_token_node_targets_into(node: node, acc: Empty)
+}
+
+fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   match node.kind {
     TypeNode { connective: Conj } =>
       if is_empty(xs: node.children) {
-        outcome_accepted(Empty)
+        outcome_accepted(acc)
       } else {
-        bind_outcome(
-          o: find_named_child(root: node, name: ^fold_list_node_head),
-          f: fn(head) {
-            bind_outcome(
-              o: find_named_child(root: node, name: ^fold_list_node_tail),
-              f: fn(tail) {
-                bind_outcome(
-                  o: concrete_syntax_token_node_targets_from_list_node(node: tail),
-                  f: fn(rest) {
-                    outcome_accepted(Cons { head: head, tail: rest })
-                  }
-                )
-              }
-            )
-          }
-        )
+        match find_named_child(root: node, name: ^fold_list_node_head) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: head, diagnostics: _ } =>
+            match find_named_child(root: node, name: ^fold_list_node_tail) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: tail, diagnostics: _ } =>
+                concrete_syntax_token_node_targets_into(node: tail, acc: list_snoc_item(xs: acc, item: head))
+            }
+        }
       }
     _ =>
       outcome_rejected(
