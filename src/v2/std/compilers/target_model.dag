@@ -1806,6 +1806,86 @@ fn target_model_canonical_operations_roster_root() -> Node {
   }
 }
 
+// THE DECLARED TYPE OF A CANONICAL-OPERATION WIRE NODE. Every wire node the roster above gathers
+// renders one CanonicalOperation value, so its declared type is CanonicalOperation, named here by
+// the authority that declares that type. This is what an inference rule reads for a roster member
+// -- never the roster root, which is where the member was FOUND, not what it IS.
+
+fn target_model_canonical_operation_type_node() -> Node {
+  target_model_type_atom_node(identity: ^canonical_operation_type_atom)
+}
+
+// A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
+// under it carries the variant field's declared type, Symbol (symbol_kernel_type_node). A predicate
+// atom encodes an OrderingPredicate or EqualityPredicate, and this authority names no type node for
+// either, so it answers Absent rather than fabricating one. Absent derives nothing here: infer
+// falls through to its remaining rules (the arrow-domain binding lookup), which end in the typed
+// GroundingNotDerived frontier unless the tree binds that very symbol.
+
+fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Optional<Node> {
+  match edge.label {
+    Named { name: field } =>
+      if field == ^target_canonical_operation_field_predicate {
+        optional_absent()
+      } else {
+        optional_present(value: symbol_kernel_type_node())
+      }
+    _ => optional_absent()
+  }
+}
+
+fn target_model_canonical_operation_wire_child_member_type(
+  acc: Optional<Node>,
+  child_edge: Edge,
+  n: Node
+) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if child_edge.target == n {
+        target_model_canonical_operation_wire_child_declared_type(edge: child_edge)
+      } else {
+        acc
+      }
+  }
+}
+
+fn target_model_canonical_operation_roster_member_type(
+  acc: Optional<Node>,
+  roster_edge: Edge,
+  n: Node
+) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if roster_edge.target == n {
+        optional_present(value: target_model_canonical_operation_type_node())
+      } else {
+        fold_list(
+          xs: roster_edge.target.children,
+          empty: optional_absent(),
+          cons: fn(inner, child_edge) {
+            target_model_canonical_operation_wire_child_member_type(
+              acc: inner,
+              child_edge: child_edge,
+              n: n
+            )
+          }
+        )
+      }
+  }
+}
+
+fn target_model_canonical_operation_member_declared_type(n: Node) -> Optional<Node> {
+  fold_list(
+    xs: target_model_canonical_operations_roster_root().children,
+    empty: optional_absent(),
+    cons: fn(acc, roster_edge) {
+      target_model_canonical_operation_roster_member_type(acc: acc, roster_edge: roster_edge, n: n)
+    }
+  )
+}
+
 fn canonical_operation_equal(
   left: CanonicalOperation,
   right: CanonicalOperation
