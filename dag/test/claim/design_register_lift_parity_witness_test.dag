@@ -404,9 +404,13 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_issue_tab_switch_contracts, witness_issue_history_tab_renders_event_history_newest_first,
 // the register censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
 // a39d8e02482582d4); this digest only pins bytes.
-// Re-derived 2026-09-26 on the merge of this slice with the D VIEWS roster retirement (the two
-// re-pins collided mid-pick; the merged tree's bytes decided by execution, never either side's).
-data roadmap_css_lift_parity_digest: String = "a39d8e02482582d4"
+// Re-pinned 2026-09-26 for the publication-handoff slice: the compact automated entry lands in
+// the Comments stream (.issue-publication background) while the rail's status row begins reading
+// the ledger-folded standing — one new rule. Behavioral receipts:
+// witness_issue_publication_handoff_renders_the_compact_automated_entry, the event-log handoff
+// witnesses, the register censuses unchanged. Derived by execution (roadmap_css_derived_digest on
+// this tree, 2fa0e1b23a779551); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "2fa0e1b23a779551"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

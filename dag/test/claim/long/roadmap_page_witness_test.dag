@@ -2209,3 +2209,42 @@ test fn witness_issue_comment_composer_posts_text_plain_with_key_csrf_and_body_l
         && occurrence_count(s: h, pattern: "issue-action\" type=\"button\"") == 0
   }
 }
+
+// THE PUBLICATION HANDOFF (owner mandate control 9): an observed publication renders ONE compact
+// automated entry in the Comments stream — fabric's service avatar, the PR and head, and the
+// merge owner the fold reassigned to (the stored return_to) — while the standing the page reads
+// becomes ready for review and the History tab carries the raw event.
+fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope> {
+  let claim = fx_event_envelope(id: "ho-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let pub = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+    id: "ho-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
+    event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
+      node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
+      author: fixture_fabric_principal(),
+      parent: Present { value: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
+      kind: gunbc.roadmap.roadmap_event_log.PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr },
+      recorded_at: "2026-09-25T11:00:00Z",
+    },
+  }
+  [claim, pub]
+}
+
+test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() -> Bool {
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: fx_handoff_events(),
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "")) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2
+        && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span></span>")
+        && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
+        && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
+        && string_contains(s: h, pattern: "issue-comment issue-publication")
+  }
+}

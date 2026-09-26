@@ -1473,6 +1473,7 @@ fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgre
           NodeInProgress { by, last_note: _ } => Present { value: by }
           NodeBlocked { by, reason: _ } => Present { value: by }
           NodeHandedBack { by, reason: _ } => Present { value: by }
+          NodeReadyForReview { by, pr: _, head: _ } => Present { value: by }
           NodeOpen => none
           NodeForked { heads: _ } => none
           NodeHistoryIncomplete { missing_parents: _ } => none
@@ -1745,6 +1746,8 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
     CommentEdited { comment: _, body: _ } => "comment edited"
     CommentDeleted { comment: _ } => "comment deleted"
+    PublicationObserved { pr, head } =>
+      join(["published ", pr as String, " at ", head as String], "")
   }
 }
 
@@ -1841,11 +1844,103 @@ fn comment_time_text(c: IssueComment) -> String {
   ], "")
 }
 
-fn issue_comments_stream_node(node_id: String, comments: List<IssueComment>) -> Fragment {
+// ONE STREAM ENTRY, the chronological merge the mandate's Comments tab renders: a durable
+// comment, or the compact automated handoff entry an observed publication appends (PR published,
+// reassigned for merge) — lifecycle events interleave with the narrative, never raw belt noise.
+type IssueStreamEntry
+  = StreamComment { comment: IssueComment }
+  | StreamPublication { env: RoadmapEventEnvelope }
+
+fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
+  let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
+  let publications = map(filter(envs, e => match e.event.kind { PublicationObserved { pr: _, head: _ } => true  _ => false }), e => StreamPublication { env: e })
+  issue_entries_sort_ascending(concat(comments, publications))
+}
+
+fn issue_entry_time(entry: IssueStreamEntry) -> String {
+  match entry {
+    StreamComment { comment } => comment.created_at
+    StreamPublication { env } => env.event.recorded_at
+  }
+}
+
+// Insertion sort by recorded_at ASCENDING (the chronological stream; the comments' causal order
+// is the tie-break for equal timestamps because the fold's creation order rides in already-sorted
+// for comments and publications sort stably behind them).
+fn issue_entries_sort_ascending(entries: List<IssueStreamEntry>) -> List<IssueStreamEntry> {
+  fold(entries, init: [], f: (acc, e) => issue_entry_insert(sorted: acc, e: e))
+}
+
+fn issue_entry_insert(sorted: List<IssueStreamEntry>, e: IssueStreamEntry) -> List<IssueStreamEntry> {
+  match sorted.first() {
+    Absent => [ e ]
+    Present { value: head } =>
+      if issue_entry_time(e) <= issue_entry_time(head) {
+        concat([e], sorted)
+      } else {
+        concat([head], issue_entry_insert(sorted: sorted.skip(n: 1), e: e))
+      }
+  }
+}
+
+fn issue_comments_stream_node(node_id: String, envs: List<RoadmapEventEnvelope>) -> Fragment {
+  let entries = issue_stream_entries(envs: envs)
   el_class("div", "issue-comments", [
-    el_class("h2", "issue-comments-heading", [ txt(join(["Comments · ", to_string(value: count(comments))], "")) ]),
-    el_class("div", "issue-comment-stream", map(comments, c => issue_comment_row_node(node_id: node_id, comments: comments, c: c))),
+    el_class("h2", "issue-comments-heading", [ txt(join(["Comments · ", to_string(value: count(roadmap_issue_comments(envs: envs)))], "")) ]),
+    el_class("div", "issue-comment-stream", map(entries, e => issue_stream_entry_row_node(node_id: node_id, envs: envs, entries: entries, e: e))),
   ])
+}
+
+fn issue_stream_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, entries: List<IssueStreamEntry>, e: IssueStreamEntry) -> Fragment {
+  match e {
+    StreamComment { comment } => issue_comment_row_node(node_id: node_id, comments: roadmap_comments_of(entries: entries), c: comment)
+    StreamPublication { env } => issue_publication_entry_row_node(node_id: node_id, envs: envs, env: env)
+  }
+}
+
+fn roadmap_comments_of(entries: List<IssueStreamEntry>) -> List<IssueComment> {
+  fold(entries, init: [], f: (acc, e) => match e {
+    StreamComment { comment } => concat(acc, [comment])
+    StreamPublication { env: _ } => acc
+  })
+}
+
+// THE COMPACT AUTOMATED HANDOFF ENTRY (owner mandate: one compact automated comment with PR/head,
+// reassigned for merge): fabric's service avatar, the PR and head, and the merge-owner the fold
+// reassigned to — the durable event is the comment; nothing is synthesized twice.
+fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope) -> Fragment {
+  match env.event.kind {
+    PublicationObserved { pr, head } =>
+      let display = event_principal_display(p: env.event.author)
+      el_attrs("div", [
+        attr(name: "class", value: "issue-comment issue-publication" ),
+        attr(name: "data-event-kind", value: "publication_observed" ),
+      ], [
+        issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: env.event.author)),
+        el_class("div", "issue-comment-main", [
+          el_class("div", "issue-comment-head", concat(
+            [ el_class("span", "issue-comment-author", [ txt(display.name) ]) ],
+            concat(
+              [ el_class("span", "issue-comment-at", [ txt(env.event.recorded_at) ]) ],
+              [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ]))),
+          el_class("div", "issue-comment-body", [
+            txt(join(["published ", pr as String, " at ", head as String, " — reassigned for merge to ", issue_publication_merge_target(envs: envs)], "")),
+          ]),
+        ]),
+      ])
+    _ =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+  }
+}
+
+// THE MERGE TARGET the entry names: the holder the fold now reads (the stored return_to after the
+// publication) — computed from the node's full event set, so the name rides the fold, never a
+// second guess.
+fn issue_publication_merge_target(envs: List<RoadmapEventEnvelope>) -> String {
+  match roadmap_issue_assignment(envs: envs).holder {
+    Present { value: holder } => event_principal_display(p: holder).name
+    Absent => "the stored merge owner"
+  }
 }
 
 // THE COMPOSER, the durable-comment write surface: a NATIVE FORM (method + action + enctype
@@ -1987,7 +2082,7 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
   concat(
     [
       issue_description_node(view: view),
-      issue_comments_stream_node(node_id: view.node_id, comments: roadmap_issue_comments(envs: events)),
+      issue_comments_stream_node(node_id: view.node_id, envs: events),
       issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
     ],
     disclosure_body_nodes(d: view.disclosure))
@@ -2046,7 +2141,7 @@ fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: 
   let assignment = roadmap_issue_assignment(envs: events)
   let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
   el_class("aside", "issue-rail", [
-    issue_field_text_row(label: "status", value: issue_explanation(view: view)),
+    issue_field_text_row(label: "status", value: issue_rail_status_text(view: view, events: events)),
     issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision),
     issue_field_text_row(label: "reporter", value: issue_owner_value(view: view)),
     issue_field_text_row(label: "component", value: issue_component_value(view: view)),
@@ -2058,6 +2153,19 @@ fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: 
     issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
     issue_rail_optional_row(label: "observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
   ])
+}
+
+// THE STATUS ROW's TEXT: the planning explanation, plus the event-log standing sentence when one
+// holds (claimed / ready for review / blocked …) — read from THE LEDGER'S OWN FOLD (the durable
+// truth), not the observed copy: an observed publication on this node's events shows ready for
+// review here even before the observation channel re-reads. Open histories render the explanation
+// alone.
+fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>) -> String {
+  match roadmap_node_standing(envs: events) {
+    NodeOpen => issue_explanation(view: view)
+    s =>
+      join([issue_explanation(view: view), " · ", roadmap_node_standing_text(s: s)], "")
+  }
 }
 
 // THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable

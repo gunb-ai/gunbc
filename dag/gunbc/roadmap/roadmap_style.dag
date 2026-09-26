@@ -1379,6 +1379,9 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-comment-body" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
+    StaticRule { selector: ClassSelector { name: "issue-publication" }, decls: [
+      decl(prop: Background, value: "var(--issue-bg-subtle)"),
+    ] },
     StaticRule { selector: ClassSelector { name: "issue-comment-form" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),

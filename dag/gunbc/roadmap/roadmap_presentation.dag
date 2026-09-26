@@ -1824,6 +1824,7 @@ fn row_pulses(row: WorkRowView) -> Bool {
         NodeInProgress { by: _, last_note: _ } => true
         NodeBlocked { by: _, reason: _ } => true
         NodeHandedBack { by: _, reason: _ } => true
+        NodeReadyForReview { by: _, pr: _, head: _ } => true
         NodeForked { heads: _ } => true
         NodeHistoryIncomplete { missing_parents: _ } => true
       }

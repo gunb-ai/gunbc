@@ -112,6 +112,7 @@ type RoadmapEventKind
   | CommentCreated { comment: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr, parent_comment: NonEmptyStr? }
   | CommentEdited { comment: NonEmptyStr, body: NonEmptyStr }
   | CommentDeleted { comment: NonEmptyStr }
+  | PublicationObserved { pr: NonEmptyStr, head: NonEmptyStr }
 
 // THE EVENT'S AUTHOR IS A PRINCIPAL, never an email and never a transport identity (owner ruling
 // 2026-09-25): v3 writes carry an authenticated PrincipalRef (a Google OIDC sub for humans,
@@ -141,6 +142,7 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment_created"
     CommentEdited { comment: _, body: _ } => "comment_edited"
     CommentDeleted { comment: _ } => "comment_deleted"
+    PublicationObserved { pr: _, head: _ } => "publication_observed"
   }
 }
 
@@ -190,6 +192,10 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
       ] } else { [
         json_kv(key: "comment", value: json_string(s: comment as String)),
       ] }
+    PublicationObserved { pr, head } => [
+      json_kv(key: "pr", value: json_string(s: pr as String)),
+      json_kv(key: "head", value: json_string(s: head as String)),
+    ]
   }
 }
 
@@ -345,6 +351,15 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
   } else if word == "comment_deleted" {
     let id_key = if schema == roadmap_event_schema_v2 { "key" } else { "comment" }
     match event_member_nonempty(doc: doc, key: id_key) { Present { value: c } => Present { value: CommentDeleted { comment: c } }  Absent => none }
+  } else if word == "publication_observed" {
+    match event_member_nonempty(doc: doc, key: "pr") {
+      Absent => none
+      Present { value: pr } =>
+        match event_member_nonempty(doc: doc, key: "head") {
+          Absent => none
+          Present { value: head } => Present { value: PublicationObserved { pr: pr, head: head } }
+        }
+    }
   } else { none }
 }
 
@@ -422,6 +437,7 @@ type RoadmapNodeStanding
   | NodeInProgress { by: EventPrincipal, last_note: NonEmptyStr }
   | NodeBlocked { by: EventPrincipal, reason: NonEmptyStr }
   | NodeHandedBack { by: EventPrincipal, reason: NonEmptyStr }
+  | NodeReadyForReview { by: EventPrincipal, pr: NonEmptyStr, head: NonEmptyStr }
   | NodeForked { heads: List<RoadmapEventId> }
   | NodeHistoryIncomplete { missing_parents: List<RoadmapEventId> }
 
@@ -465,14 +481,35 @@ fn roadmap_event_chain(envs: List<RoadmapEventEnvelope>, head: RoadmapEventEnvel
 // the event's ASSIGNEE — who holds the node now. A self-claim names the same principal twice and
 // nothing changes; a reassignment is a newer Claimed, and because the chain folds oldest-first each
 // Claimed step replaces the holder, so the NEWEST Claimed wins by construction, never by clock.
-fn roadmap_standing_step(acc: RoadmapNodeStanding, env: RoadmapEventEnvelope) -> RoadmapNodeStanding {
+// THE FOLD'S ACC carries the return_to the handoff needs: the standing alone cannot answer
+// "who does the published work come back to" — that principal is recorded on the latest Claimed
+// and rides the acc until a PublicationObserved spends it.
+type RoadmapStandingAcc {
+  standing: RoadmapNodeStanding
+  return_to: EventPrincipal?
+}
+
+fn roadmap_standing_acc_empty() -> RoadmapStandingAcc {
+  RoadmapStandingAcc { standing: NodeOpen, return_to: none }
+}
+
+// THE RETURN-TO-MERGE HANDOFF (owner mandate 2026-09-25): an observed publication moves the
+// holder to the stored return_to and the standing reads READY FOR REVIEW — merge remains the
+// human completion action; publication never closes the issue. A publication on a history with
+// no recorded return_to changes no holder (the acc passes through, honestly).
+fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope) -> RoadmapStandingAcc {
   let e = env.event
   match e.kind {
-    Claimed { assignee, return_to: _ } => NodeClaimed { by: assignee, since: e.recorded_at }
-    Released => NodeOpen
-    Progress { note } => NodeInProgress { by: e.author, last_note: note }
-    Blocked { reason } => NodeBlocked { by: e.author, reason: reason }
-    HandedBack { reason } => NodeHandedBack { by: e.author, reason: reason }
+    Claimed { assignee, return_to } => RoadmapStandingAcc { standing: NodeClaimed { by: assignee, since: e.recorded_at }, return_to: Present { value: return_to } }
+    Released => RoadmapStandingAcc { standing: NodeOpen, return_to: none }
+    Progress { note } => RoadmapStandingAcc { standing: NodeInProgress { by: e.author, last_note: note }, return_to: acc.return_to }
+    Blocked { reason } => RoadmapStandingAcc { standing: NodeBlocked { by: e.author, reason: reason }, return_to: acc.return_to }
+    HandedBack { reason } => RoadmapStandingAcc { standing: NodeHandedBack { by: e.author, reason: reason }, return_to: acc.return_to }
+    PublicationObserved { pr, head } =>
+      match acc.return_to {
+        Present { value: return_to } => RoadmapStandingAcc { standing: NodeReadyForReview { by: return_to, pr: pr, head: head }, return_to: acc.return_to }
+        Absent => acc
+      }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
@@ -494,7 +531,7 @@ fn roadmap_node_standing(envs: List<RoadmapEventEnvelope>) -> RoadmapNodeStandin
       match heads.first() {
         Absent => NodeOpen
         Present { value: head } =>
-          fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: NodeOpen, f: (acc, env) => roadmap_standing_step(acc: acc, env: env))
+          (fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env))).standing
       }
     }
   }
@@ -529,6 +566,7 @@ fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
     NodeInProgress { by: _, last_note: _ } => "in_progress"
     NodeBlocked { by: _, reason: _ } => "blocked"
     NodeHandedBack { by: _, reason: _ } => "handed_back"
+    NodeReadyForReview { by: _, pr: _, head: _ } => "ready_for_review"
     NodeForked { heads: _ } => "forked"
     NodeHistoryIncomplete { missing_parents: _ } => "history_incomplete"
   }
@@ -541,6 +579,7 @@ fn roadmap_node_standing_text(s: RoadmapNodeStanding) -> String {
     NodeInProgress { by, last_note } => join(["in progress (", event_principal_label(p: by), "): ", last_note as String], "")
     NodeBlocked { by, reason } => join(["blocked (", event_principal_label(p: by), "): ", reason as String], "")
     NodeHandedBack { by, reason } => join(["handed back (", event_principal_label(p: by), "): ", reason as String], "")
+    NodeReadyForReview { by, pr, head } => join(["ready for review — published ", pr as String, " at ", head as String, "; reassigned for merge to ", event_principal_label(p: by)], "")
     NodeForked { heads } => join(["forked history: ", to_string(value: count(heads)), " heads; two writers recorded without seeing each other"], "")
     NodeHistoryIncomplete { missing_parents } => join(["history incomplete: ", to_string(value: count(missing_parents)), " parent event(s) not present"], "")
   }
@@ -564,6 +603,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
+    PublicationObserved { pr: _, head: _ } => false
   })
   roadmap_event_principal_dedup(map(roadmap_events_newest_first(envs: claimed), e => match e.event.kind {
     Claimed { assignee, return_to: _ } => assignee
@@ -575,6 +615,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentEdited { comment: _, body: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentDeleted { comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    PublicationObserved { pr: _, head: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
   }))
 }
 
@@ -631,6 +672,11 @@ fn roadmap_assignment_step(acc: IssueAssignmentProjection, env: RoadmapEventEnve
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
     CommentDeleted { comment: _ } => acc
+    PublicationObserved { pr: _, head: _ } =>
+      match acc.return_to {
+        Present { value: return_to } => IssueAssignmentProjection { holder: Present { value: return_to }, return_to: acc.return_to }
+        Absent => acc
+      }
   }
 }
 
@@ -706,6 +752,7 @@ fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<Is
     Blocked { reason: _ } => acc
     HandedBack { reason: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+    PublicationObserved { pr: _, head: _ } => acc
   })
 }
 
@@ -739,6 +786,7 @@ fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, comment
     CommentCreated { comment: c, body: _, visibility: _, parent_comment: _ } => (c as String) == (comment as String)
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
+    PublicationObserved { pr: _, head: _ } => false
     Claimed { assignee: _, return_to: _ } => false
     Released => false
     Progress { note: _ } => false
@@ -762,6 +810,7 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
         })
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
+    PublicationObserved { pr: _, head: _ } => false
     Claimed { assignee: _, return_to: _ } => false
     Released => false
     Progress { note: _ } => false
@@ -775,4 +824,13 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
 // the page renders this as the row's id so /issue/<id>#comment-N lands on the comment.
 fn issue_comment_anchor(ordinal: Int) -> String {
   join(["comment-", to_string(value: ordinal)], "")
+}
+
+// THE HANDOFF EVENT, the one constructor the belt's publication-observation pass appends on an
+// observed publication (owner mandate: durable publication event, then the fold does the
+// reassignment). Factored so the pass names the event it writes and the witness drives the fold
+// directly; wiring the append into the pass itself is the belt lane's cut (named, not silently
+// omitted).
+fn roadmap_publication_handoff_event(node: RoadmapNodeId, pr: NonEmptyStr, head: NonEmptyStr, author: EventPrincipal, parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent {
+  RoadmapEvent { node: node, author: author, parent: parent, kind: PublicationObserved { pr: pr, head: head }, recorded_at: recorded_at }
 }

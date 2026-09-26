@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
   IssueAssignmentProjection, roadmap_issue_assignment,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
-  roadmap_recent_claimed_assignees, roadmap_events_newest_first,
+  roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_publication_handoff_event, PublicationObserved, NodeReadyForReview,
 }
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
@@ -113,6 +113,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
           CommentDeleted { comment: _ } => false
+          PublicationObserved { pr: _, head: _ } => false
         })
         && (roadmap_event_id(e: envelope.event) as String) != (id as String)
     RoadmapEventUndecodable { reason: _ } => false
@@ -140,6 +141,7 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
           CommentDeleted { comment: _ } => false
+          PublicationObserved { pr: _, head: _ } => false
         })
         && (roadmap_event_id(e: envelope.event) as String) != (id as String)
     RoadmapEventUndecodable { reason: _ } => false
@@ -329,4 +331,57 @@ test fn an_edit_or_delete_with_an_unknown_comment_id_is_an_honest_no_op() -> Boo
   let comments = roadmap_issue_comments(envs: [c1, stray_edit, stray_del])
   count(comments) == 1
     && (match comments.first() { Present { value: c } => (c.body as String) == "one" && !c.deleted && (c.edited_at as String) == ""  Absent => false })
+}
+
+// THE RETURN-TO-MERGE HANDOFF (owner mandate 2026-09-25): an observed publication is a durable
+// event (PublicationObserved { pr, head }, codec round-trip pinned); the fold then moves the
+// holder to the stored return_to and the standing reads READY FOR REVIEW — merge stays the human
+// completion action (publication never closes the issue), and a publication with no recorded
+// return_to changes no holder.
+test fn the_publication_handoff_reassigns_to_the_stored_return_to() -> Bool {
+  let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
+  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let pub = ev(kind: PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr }, parent: Present { value: claim.id }, author: fabric, at: "t2")
+  let folded = roadmap_node_standing(envs: [claim, pub])
+  let key_ok = roadmap_node_standing_key(s: folded) == "ready_for_review"
+  let holder_ok = match folded { NodeReadyForReview { by, pr, head } =>
+    event_principal_label(p: by) == event_principal_label(p: human_principal())
+      && (pr as String) == "gunb-ai/gunbc#12210"
+      && (head as String) == "52c56a8"
+    _ => false }
+  let text_ok = string_contains(s: roadmap_node_standing_text(s: folded), pattern: "reassigned for merge to principal:google-oidc/accounts/sub-1")
+  let projection_ok = match roadmap_issue_assignment(envs: [claim, pub]) { IssueAssignmentProjection { holder, return_to: _ } =>
+    match holder { Present { value: h } => event_principal_label(p: h) == event_principal_label(p: human_principal())  Absent => false }
+    _ => false }
+  let note = ev(kind: Progress { note: "work without an assignment" as NonEmptyStr }, parent: none, author: human_principal(), at: "t0")
+  let no_return_to = roadmap_node_standing(envs: [note, ev(kind: PublicationObserved { pr: "p" as NonEmptyStr, head: "h" as NonEmptyStr }, parent: Present { value: note.id }, author: human_principal(), at: "t1")])
+  let merge_is_human = roadmap_node_standing_key(s: no_return_to) == "in_progress"
+  let wire_round_trip = match roadmap_event_decode(text: roadmap_event_wire_text(env: pub)) {
+    RoadmapEventDecoded { envelope } =>
+      (envelope.id as String) == (pub.id as String)
+        && (match envelope.event.kind { PublicationObserved { pr, head } => (pr as String) == "gunb-ai/gunbc#12210" && (head as String) == "52c56a8"  _ => false })
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+  key_ok && holder_ok && text_ok && projection_ok && merge_is_human && wire_round_trip
+}
+
+// THE HANDOFF EVENT CONSTRUCTOR the belt's publication-observation pass will append: the
+// PublicationObserved kind on the chained-idiom shape, content-addressed like every event.
+test fn the_handoff_event_constructor_records_the_publication_fact() -> Bool {
+  let e = roadmap_publication_handoff_event(
+    node: node(),
+    pr: "gunb-ai/gunbc#12210" as NonEmptyStr,
+    head: "52c56a8" as NonEmptyStr,
+    author: event_principal_authenticated(ref: fabric_workflow_principal()),
+    parent: none,
+    recorded_at: "t1",
+  )
+  let env = roadmap_event_envelope(e: e)
+  string_length(s: env.id as String) > 8
+    && (match roadmap_event_decode(text: roadmap_event_wire_text(env: env)) {
+      RoadmapEventDecoded { envelope } =>
+        (envelope.id as String) == (env.id as String)
+          && (match envelope.event.kind { PublicationObserved { pr, head } => (pr as String) == "gunb-ai/gunbc#12210" && (head as String) == "52c56a8"  _ => false })
+      RoadmapEventUndecodable { reason: _ } => false
+    })
 }
