@@ -8,10 +8,11 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   approval_broker_slice_memory_max,
+  repository_convergence_slice_memory_max,
 }
 
 data served_slice_charge_authority: Disposition = Terminal {
-  reason: "Single authority for what the deployment's SERVED PROCESSES cost a host's memory budget: the roadmap deployment slice and the approval broker slice. It owns the per-host claim gunbc.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
+  reason: "Single authority for what the deployment's SLICES cost a host's memory budget: the roadmap deployment slice and the approval broker slice its served processes run under, and the repository convergence slice its tree-converging oneshot runs under. It owns the per-host claim gunbc.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
 }
 
 // ── THE SLICES WERE UNCHARGED, AND THAT IS A REAL HOLE RATHER THAN A TIDINESS GAP ────────────
@@ -87,8 +88,26 @@ data served_deployment_placement: ServedDeploymentPlacement = ServedDeploymentPi
 //
 // MemoryHigh IS NOT CHARGED, deliberately: High throttles and Max kills, so High is a pressure
 // point inside an allowance rather than a second allowance. Summing both would double-count.
+//
+// THE CONVERGENCE SLICE IS CHARGED HERE TOO, AND THE CLAIM'S NAME NOW UNDERSTATES IT (2026-09-26).
+// gunbc.live_deploy.repository_convergence_placement moved the repository convergence oneshot out of
+// the roadmap slice into gunbc-repository-convergence.slice. While it lived in the roadmap slice its
+// memory was inside live_deploy_slice_memory_max and so already charged; moving it out without
+// charging its new slice would reopen, for one allowance, the exact hole the header of this module
+// describes -- a MemoryMax systemd will honour on srv1 that no conservation term sees. It joins THIS
+// claim rather than a new budget child for this module's own reason: it is the same fact at the same
+// grain -- what this deployment's units are allowed to hold on the host it is placed on -- and it is
+// placed wherever the deployment is. The residue is the word "served": the oneshot converges the
+// tree the served processes run from and serves nothing itself. Renaming HostServedDeploymentClaim
+// touches gunbc.fleet_host_budget, gunbc.ci_runner_placement and their witnesses for no arithmetic, so
+// it is left to the change that next edits that verdict chain, and stated here so the sum is not read
+// as served processes alone.
 fn served_deployment_slice_allowance() -> ByteSize {
-  byte_size(byte_size_count(b: live_deploy_slice_memory_max) + byte_size_count(b: approval_broker_slice_memory_max))
+  byte_size(
+    byte_size_count(b: live_deploy_slice_memory_max)
+      + byte_size_count(b: approval_broker_slice_memory_max)
+      + byte_size_count(b: repository_convergence_slice_memory_max)
+  )
 }
 
 fn host_served_deployment_claim(host: HostIdentity) -> HostServedDeploymentClaim {
