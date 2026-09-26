@@ -2647,14 +2647,14 @@ pub fn declared_callable_list_element(
     match elem_expected.clone() {
         Some(de) => {
             if ((de.connective.clone() == Connective::Arrow) && {
-                let mut __all = true;
+                let mut __found = false;
                 for e in elements.iter().cloned() {
-                    if !(is_lambda_expr(e.clone())) {
-                        __all = false;
+                    if is_lambda_expr(e.clone()) {
+                        __found = true;
                         break;
                     }
                 }
-                __all
+                __found
             }) {
                 Some(de.clone())
             } else {

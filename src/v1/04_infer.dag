@@ -1878,11 +1878,13 @@ fn node_admits_list_literal(n: Node, source_indices: Map<String, NewlineIndex>) 
 // literal typed from its first element named its element as the lambda's return -- or, under a
 // generic body, as an unbound variable: [fn() { none }] against List<fn() -> Int?> was typed
 // List<T>, and the emitter had no arrow to realize each element at. Where the declared element is
-// an arrow and every element is a lambda, the declared arrow IS the element type.
+// an arrow and any element is a lambda, the declared arrow IS the element type -- every element
+// is still judged against it (PositionListElement), and `any` is the same predicate the emitter's
+// rust_list_lit_holds_callables uses, so a mixed list is typed at the arrow it realizes at.
 fn declared_callable_list_element(elem_expected: Node?, elements: List<Node>) -> Node? {
   match elem_expected {
     Present { value: de } =>
-      if de.connective == Arrow && elements |> all(e => is_lambda_expr(e: e)) { Present { value: de } }
+      if de.connective == Arrow && elements |> any(e => is_lambda_expr(e: e)) { Present { value: de } }
       else { none }
     Absent => none
   }
