@@ -1,0 +1,45 @@
+module gunbc.rung_drop.python_to_typescript_compile_inhabitance_off_the_required_gate
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 4b(3) DROP (adhoc-bdedca0e-5a1, gunbc#12374, 2026-09-26; parent ruling from
+// neat-boar-16). When #12290's infer change refused declared-inhabitant roster members, six
+// cross-language claims went false and no required lane saw it. The regression surfaced only on
+// srv1. Three of the six now run in the required gate (the bridge claim, the neutralized emit round
+// trip and the add-slice composition), each discriminating at one interface over a supplied core
+// or slice. Two were deleted as copies of the same end-to-end compile. The sixth, the chain-status
+// claim, was folded into the claim below, which keeps its bridge-route conjunct.
+//
+// WHAT IS LOST IS ONE CLAIM'S MERGE-TIME EXECUTION. The claim below is the inhabitance claim for
+// the supplied core `python_emitted_add_fn_node`: the real parse through the real bridge produces
+// that core, and the real compile emits ts_source_text. It is the only claim that runs the whole
+// python->typescript compile, so it cannot be supplied without removing the last execution of the
+// real path (DESIGN section 3, the pairing obligation). It is over the new-witness eval-step line,
+// so it stays in its long home and runs when someone runs it. A regression that changes the
+// bridge's core, or the compile's bytes, while each interface-level claim over the supplied core
+// still holds, is caught at the next manual run and not at merge.
+data python_to_typescript_compile_inhabitance_off_the_required_gate_population: List<String> = [
+  "v2.test.long.inhabitant_neutralization_e2e_witness.inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds: about 139,000 eval steps against the new-witness line of 72,300 (100ms at 723 steps/ms); measured alone by claim_batch --hermetic --entry src/v2/test/claim/long/inhabitant_neutralization_e2e_witness_test.dag --functions inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds"
+]
+
+data python_to_typescript_compile_inhabitance_off_the_required_gate: RungDrop = RungDrop {
+  identity: "python_to_typescript_compile_inhabitance_off_the_required_gate" as NonEmptyStr,
+
+  subject: "the python->typescript compile inhabitance claim (the real parse, bridge and compile behind the supplied core the admitted cross-language claims start from) runs only in its long home, not in the required gate",
+
+  declared: "2026-09-26",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the python->typescript compile executing on the required path within the new-witness eval-step budget",
+    },
+    population: python_to_typescript_compile_inhabitance_off_the_required_gate_population,
+    restoration_trigger: "THE CAPABILITY. The whole python->typescript compile of the python add fixture (parse, bridge, neutralize, infer, translate, emit) costs no more than the new-witness eval-step budget on the required path, OR the required gate's budget admits a claim of this cost, so that this claim, unchanged in what it asserts, executes on every required run. WHAT THAT MUST BE SUFFICIENT FOR: the real bridge's core and the real compile's bytes are both checked at merge for the chain whose supplied core the admitted claims in v2.test.manual.cross_language_add_python_to_typescript start from. Moving the claim into the gate under a raised per-claim exemption, or splitting it so no single claim runs the whole route, does not retire this row."
+  }
+}

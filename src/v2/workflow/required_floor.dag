@@ -753,6 +753,18 @@ fn required_gate_prefixes() -> List<String> {
 // class the red has to execute where merges are decided, so the six leave the cost-debt roster in
 // the same change. All six claims read parse-and-normalize subjects that are WARM in
 // `v2.workflow.floor_pure_producer_share`. The module declares SubstrateInputsOnly.
+// THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
+// (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
+// refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
+// it, because none was in the gate. Each admitted claim discriminates at one interface over a
+// SUPPLIED core (python_emitted_add_fn_node) or a supplied slice, and each was measured alone at
+// or under 53,592 eval steps, inside the new-witness line of 72,300. The one claim that runs the
+// whole python->typescript compile, which is the inhabitance claim for that supplied core, costs
+// about 139,000 steps and stays in its long home under the declared drop `gunbc.rung_drop`
+// `python_to_typescript_compile_inhabitance_off_the_required_gate`. The manual module declares
+// ReadsLiveTree, which is no longer a decline (DeclinedLiveTree is deleted above). Its preparation
+// growth is the ingest, neutralization and emit closure over the python and typescript
+// authorities; the first required run after admission is the priced receipt.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -761,6 +773,8 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.stage0_emitted_edge_admission_witness",
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
+    "v2.test.execution.self_host_candidate_generation_stage_verdicts",
+    "v2.test.manual.cross_language_add_python_to_typescript",
   ]
 }
 
