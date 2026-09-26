@@ -235,7 +235,7 @@ data dag_cast_rules: List<CastRule> = [
 // dag_cast_rules, so deleting an admission row silently shrank the domain -- and v1.compiler.infer
 // validate_cast ABSTAINS on a type outside the domain, so removing Bool->Int would have turned
 // `true as Int` from a checked admission into an unchecked one rather than a refusal. Bool stays
-// in the domain with no admission row: under the coercion ruling (DESIGN section 4, 2026-09-26) a
+// in the domain with no admission row: under the operator coercion ruling of 2026-09-26 (gunbc#12332, which records it in DESIGN section 4) a
 // Bool does not implicitly inhabit an Int, a Bool literal is not an Int literal, and a plain
 // `true as Int` refuses -- applying any Bool-to-number mapping changes interpretation, so it needs
 // a named, author-selected conversion. Per-target CastSyntax rows that can REALIZE such a
