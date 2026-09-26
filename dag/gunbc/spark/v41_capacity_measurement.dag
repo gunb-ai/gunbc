@@ -63,28 +63,34 @@ data v41_probe_cells: List<V41ProbeCell> = [
   V41ProbeCell { context: token_count(count: 262144), concurrency: 6 },
 ]
 
-// THE ENGRAM STARTUP ARMS ARE IMAGES, NOT A RUNTIME FLAG. Arm A keeps the page cache after the
-// checksum pass: it is the pre-release overlay. Arm B releases it: it is the image built after the
-// fetch_rows / page-release change (#12304) lands. There is deliberately no switch inside one image
-// that keeps the cache (the release refuses if pages stay resident). So the arm is read off the
-// image by a binding keyed on the image's CONFIG DIGEST, the same digest every rank's startup
-// receipt carries, and an image no binding names has no arm and refuses. The build run that
+// THE ENGRAM STARTUP ARMS ARE IMAGES, NOT A RUNTIME FLAG, and they are named for the storage the image
+// actually SERVES. Arm A is upstream pinned: ParallelEngramEmbedding._allocate_weights constructs
+// DPSharedEngramStorage, which holds the whole table in /dev/shm and registers it with the device.
+// Every image built before the _allocate_weights cutover serves this, whatever file-backed code it
+// merely carries (the release in #12304 runs only inside FileBackedEngramStorage, which such an image
+// never constructs). Arm B is file-backed released: the first image built after the cutover, where
+// each rank opens its row store through allocate_file_backed and the page cache is released after
+// the checksum. A file-backed arm that keeps the cache is not built: the release is unconditional
+// and a switch to keep it is the escape hatch #12304 refused. The arm is read off the image by a
+// binding keyed on the image's CONFIG DIGEST, the same digest every rank's startup receipt carries,
+// and an image no binding names (or two bindings name) has no arm and refuses. The build run that
 // produced the image is carried beside the digest as its provenance.
-type V41EngramStartupArm = EngramCacheRetained | EngramCacheReleased
+type V41EngramStartupArm = EngramUpstreamPinned | EngramFileBackedReleased
 
 type V41EngramArmBinding { arm: V41EngramStartupArm, image_config: OciContentDigest, build_run: NonEmptyStr }
 
-// Arm A: fleet-converge spark_v41_runtime_image_build run 36207135528, dispatched before #12304
-// landed (tag gunbc-vllm-dsv41-gb10:d73e307009a5d716), reported by proud-deer-538 2026-09-26.
+// Arm A: fleet-converge spark_v41_runtime_image_build run 36207135528 (tag
+// gunbc-vllm-dsv41-gb10:d73e307009a5d716), reported by proud-deer-538 2026-09-26. Built before the
+// _allocate_weights cutover, so it serves upstream pinned storage.
 data v41_engram_arm_bindings: List<V41EngramArmBinding> = [
   V41EngramArmBinding {
-    arm: EngramCacheRetained,
+    arm: EngramUpstreamPinned,
     image_config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
     build_run: "36207135528" as NonEmptyStr,
   },
 ]
 
-data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the srv8 V4.1 runtime image built from main after #12304 (the Engram page-release change) finishes, and its config digest is bound to EngramCacheReleased with its build run. SUFFICIENT FOR: both residency timelines name their arm by image content, so a cell from either image resolves to exactly one arm." as NonEmptyStr)
+data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image built after the ParallelEngramEmbedding._allocate_weights cutover to allocate_file_backed finishes, and its config digest is bound to EngramFileBackedReleased with its build run. An image built after #12304 but before the cutover serves upstream pinned storage and binds to EngramUpstreamPinned, not here. SUFFICIENT FOR: both residency timelines name their arm by image content, so a cell from either image resolves to exactly one arm." as NonEmptyStr)
 
 fn v41_engram_arm_of(image: V41OciImageDigest, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
   let wire = render_oci_content_digest_wire(d: image.config)
@@ -101,8 +107,8 @@ fn v41_engram_arm_of(image: V41OciImageDigest, bindings: List<V41EngramArmBindin
 
 fn v41_arm_wire(a: V41EngramStartupArm) -> String {
   match a {
-    EngramCacheRetained => "A-cache-retained"
-    EngramCacheReleased => "B-cache-released"
+    EngramUpstreamPinned => "A-upstream-pinned"
+    EngramFileBackedReleased => "B-file-backed-released"
   }
 }
 

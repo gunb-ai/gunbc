@@ -28,7 +28,7 @@ import gunbc.spark.v41_capacity_measurement {
   V41StartupAdmission, StartupAdmitted, StartupRefused, v41_admit_startup, v41_min_rank_bytes_per_token,
   v41_kv_bytes_per_token_bet, V41BetVerdict, BetConfirmed, BetFalsified, BetUnreadable, v41_judge_byte_range_bet,
   V41ResidencyCell, V41ResidencyTimeline, ResidencyTimelineAdmitted, ResidencyTimelineRefused, v41_admit_residency_timeline,
-  EngramCacheRetained, EngramCacheReleased, BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests, V41TorchMemory,
+  EngramUpstreamPinned, EngramFileBackedReleased, BeforeStart, AfterChecksum, AfterKvAllocation, AfterRequests, V41TorchMemory,
   V41ProbeCell, V41ProbeReading, V41ProbeRankReading, ProbeWarm, TouchCounterUnavailable, EngramLookupObserved,
   v41_touch_counter_frontier, v41_judge_probe, ProbeRefused, ProbeWorkingSetResident, ProbeWorkingSetFaulted,
   V41CapacityPolicy, PolicyOperatorSigned, v41_capacity_policy, V41StaircaseStepReading, v41_run_staircase,
@@ -245,7 +245,7 @@ fn w_stat(refault: Nat, majfault: Nat) -> CgroupMemoryStat {
 fn w_cell(phase: V41ResidencyPhase, rank: Nat) -> V41ResidencyCell {
   V41ResidencyCell {
     run_id: "run-1" as NonEmptyStr,
-    arm: EngramCacheRetained,
+    arm: EngramUpstreamPinned,
     phase: phase,
     rank: rank,
     engram_files: [] as List<MincoreFileResidency>,
@@ -264,12 +264,12 @@ fn w_all_cells() -> List<V41ResidencyCell> {
 }
 
 test fn a_complete_residency_timeline_is_admitted_and_a_missing_cell_is_named() -> Bool {
-  let ok = match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheRetained, cells: w_all_cells()) {
+  let ok = match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramUpstreamPinned, cells: w_all_cells()) {
     ResidencyTimelineAdmitted { run_id: _, arm: _, cells: _ } => true
     ResidencyTimelineRefused { causes: _ } => false
   }
   let holed = filter(w_all_cells(), c => !(c.rank == 2 && match c.phase { AfterChecksum => true  BeforeStart => false  AfterKvAllocation => false  AfterRequests => false }))
-  let red = match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheRetained, cells: holed) {
+  let red = match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramUpstreamPinned, cells: holed) {
     ResidencyTimelineRefused { causes: cs } => cs == ["no cell for after-checksum rank 2"]
     ResidencyTimelineAdmitted { run_id: _, arm: _, cells: _ } => false
   }
@@ -277,7 +277,7 @@ test fn a_complete_residency_timeline_is_admitted_and_a_missing_cell_is_named() 
 }
 
 test fn a_cell_from_the_other_image_arm_refuses_the_timeline() -> Bool {
-  match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheReleased, cells: w_all_cells()) {
+  match v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramFileBackedReleased, cells: w_all_cells()) {
     ResidencyTimelineRefused { causes: cs } => length(cs) == 16
     ResidencyTimelineAdmitted { run_id: _, arm: _, cells: _ } => false
   }
@@ -421,7 +421,7 @@ test fn production_admits_the_minimum_of_three_capacities_and_refuses_on_any_ref
 test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditions() -> Bool {
   let t = v41_capacity_measurement_plan_text()
   contains(t, "x6 needs 1572864 tokens, x16 needs 4194304")
-    && contains(t, "engram arms: A-cache-retained")
+    && contains(t, "engram arms: A-upstream-pinned")
     && contains(t, "TouchCounterUnavailable")
     && contains(t, "PROPOSED")
 }
@@ -429,7 +429,7 @@ test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditio
 // THE ENGRAM POINT BETS ARE JUDGED IN BYTES AGAINST THE AFTER-REQUESTS RESIDENCY, and a refused
 // timeline leaves them unreadable rather than zero.
 test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> Bool {
-  let timeline = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheRetained, cells: w_all_cells())
+  let timeline = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramUpstreamPinned, cells: w_all_cells())
   match list_at_optional(xs: v41_engram_resident_bets, index: 0) {
     Absent => false
     Present { value: bet } => {
@@ -437,7 +437,7 @@ test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> 
         PointBetObserved { concurrency: c, bet: b, observed: o } => c == 2 && byte_size_count(b: b) == 19 * 1073741824 && byte_size_count(b: o) == 0
         PointBetUnreadable { concurrency: _, cause: _ } => false
       }
-      let refused = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramCacheReleased, cells: w_all_cells())
+      let refused = v41_admit_residency_timeline(run_id: "run-1" as NonEmptyStr, arm: EngramFileBackedReleased, cells: w_all_cells())
       let unreadable = match v41_judge_engram_resident_bet(bet: bet, observed: v41_after_requests_resident(t: refused, rank: 0)) {
         PointBetUnreadable { concurrency: _, cause: _ } => true
         PointBetObserved { concurrency: _, bet: _, observed: _ } => false
@@ -475,7 +475,7 @@ test fn the_engram_arm_is_read_off_the_image_config_digest() -> Bool {
     config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
   )
   let a = match v41_engram_arm_of(image: arm_a_image, bindings: v41_engram_arm_bindings) {
-    Present { value: arm } => match arm { EngramCacheRetained => true  EngramCacheReleased => false }
+    Present { value: arm } => match arm { EngramUpstreamPinned => true  EngramFileBackedReleased => false }
     Absent => false
   }
   let none_bound = match v41_engram_arm_of(image: w_image(), bindings: v41_engram_arm_bindings) {
