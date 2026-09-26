@@ -3778,8 +3778,8 @@ fn body_lower_arg_value_read(arg_capture: Node, value_capture: Node) -> Outcome<
 // ONE ACTUAL, AS THE EDGE THE APPLICATION CARRIES IT ON: `name: value` is a Named edge whose label is
 // the parameter name, `value` a Positional edge. Named arguments reuse the Named edge the Arrow
 // domain already keys its binders by -- no new edge kind (ruling neat-boar-16 via gentle-koi-724,
-// 2026-09-26). Before this the label was read and dropped (reference_conservation KnownDropShape
-// NamedArgumentLabel), and every actual bound by position.
+// 2026-09-26). Before this the label was read and dropped -- a declared reference-conservation drop,
+// retired with this change -- and every actual bound by position.
 fn body_lower_call_arg_edge(arg_capture: Node) -> Outcome<Edge> {
   if body_lower_call_arg_capture_is_named(arg_capture: arg_capture) {
     match body_lower_named_arg_capture_optional(arg_capture: arg_capture) {
