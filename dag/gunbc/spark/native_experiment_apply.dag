@@ -2,6 +2,7 @@ module gunbc.spark.native_experiment_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.nat { Nat }
+import std.measure { token_count_value }
 import v2.std.algebra { zip_map }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -38,6 +39,7 @@ import gunbc.spark.arm_memory_fit {
   arm_memory_fit_subject_for_launch, arm_memory_fit_verdict, arm_memory_fit_experiment_plan,
   arm_memory_component_wire, arm_memory_subject_open_components,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
+  ArmFragmentationAllowance,
 }
 import gunbc.spark.execution_cell {
   ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,
@@ -81,12 +83,17 @@ import gunbc.spark.systemd_execution_cell {
 // alive together for the first time — and the readback phase then waits the profile pass on EVERY
 // host: the head leg holds the cohort's memory-profile anchor, and one leg per rank host holds
 // that host's own per-rank profile line, every leg bounded by the plan's one admitted duration
-// shared across the cohort. Only after all four readbacks succeed do the deterministic stop legs
-// run. A rank that fails after others started rolls the started ranks back before the route
-// refuses; a rank that dies before printing its profile line fails its own host's readback leg and
-// rolls the cohort back the same way. Success is one exact generation — the launch-profile hash
-// every unit renders from — observed across all four ranks, and the observation IS the readback
-// holding on every host's own profile line.
+// shared across the cohort. Only after all four readbacks succeed may the bracket's one optional
+// workload phase run — three legs on the head host, planned only when the experiment plan targets
+// the fragmentation allowance: the cold full-window prefill seats, the bounded mixed-length churn
+// driver launched beside the allocator sampler, and the sampler folding the peak unreclaimable gap
+// the run exists to mint. For a memory-profile plan the phase is absent and the bracket is the
+// bracket that has always run. Then the deterministic stop legs run. A rank that fails after
+// others started rolls the started ranks back before the route refuses; a rank that dies before
+// printing its profile line fails its own host's readback leg and rolls the cohort back the same
+// way. Success is one exact generation — the launch-profile hash every unit renders from —
+// observed across all four ranks, and the observation IS the readback holding on every host's own
+// profile line.
 //
 // THE TRUST BRACKET IS THE PAIR APPLY'S, unchanged: the same credential materialization, the same
 // fleet known-hosts anchor, the same spark_pair_privileged_leg transport, because a third spelling
@@ -182,6 +189,95 @@ fn spark_result_of_outcome(actuation: ExecutionCellActuation<SystemdExecutionMem
 
 // ── THE ADMISSION ────────────────────────────────────────────────────────────────────────────────
 
+// ── THE WORKLOAD PHASE'S PROTOCOL FIGURES, sized in the open ───────────────────────────────────────
+//
+// THE CHURN WINDOW IS CHARGED AGAINST THE PLAN'S ONE ADMITTED DURATION, never minted beside it:
+// the engines share one RuntimeMaxSec lifetime, startup and the readback phase consume its head,
+// and the receipts bound that consumption at minutes — the 2026-09-25 launch released its stop legs
+// ~35 seconds after the head's anchor, and the completing launch's rank lines landed tens of seconds
+// after that. One twelfth of the budget is the window this bracket renders: at the current 3600-second
+// admission that is 300 seconds of mixed-length churn, leaving the cell well inside its lifetime
+// with room for the prefill seats ahead of it. The divisor is named, not measured, and the witness
+// pins the rendering so a budget move moves the window with it.
+fn spark_churn_window_seconds(admitted_seconds: Nat) -> Nat {
+  admitted_seconds / 12
+}
+
+// THE PER-SEAT REQUEST BUDGET is the churn driver's count bound: the window binds first on this
+// engine (a full-window request at the 2048-token batch ceiling takes minutes), and the count is
+// the backstop that keeps the driver bounded even on an engine an order of magnitude faster than
+// the receipts priced. Twenty-five per seat bounds one run at 150 requests across the plan's six
+// seats; it is a declared protocol figure, not a measured one, and it travels in the launcher
+// banner so the receipt names it.
+data spark_churn_requests_per_seat: Nat = 25
+
+// THE CHURN BAND'S FLOOR, 8K tokens in the plan's words (arm_memory_experiment_observed
+// fragmentation-churn plan: bounded mixed-length churn 8K-256K). The band's CEILING is not a second
+// constant: it is the plan's own window, profile.max_model_len — the churn questions the allocator
+// up to the full window the prefills minted, and a band ceiling minted beside the profile could
+// drift from the engine config the run actually launched.
+data spark_churn_band_floor_tokens: Nat = 8192
+
+// THE SAMPLING CADENCE is the fragmentation runbook's poll_seconds
+// (arm_memory_experiment_observed arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook:
+// poll_seconds 5) — the runbook pins the cadence the pass bound prices, and the bracket renders the
+// same figure rather than a second spelling of it.
+data spark_allocator_sample_cadence_seconds: Nat = 5
+
+// THE REQUEST-TIMEOUT BACKSTOP bounds one churn request's tail: a full-window request at the
+// 2048-token batch ceiling runs minutes, and 600 seconds covers the slowest admissible request the
+// receipts bound while keeping the sampler's tail backstop (window + timeout + one cadence) inside
+// the cell's remaining lifetime. Declared, not measured.
+data spark_churn_request_timeout_seconds: Nat = 600
+
+// THE WORKLOAD PHASE, PLANNED. Present only when the plan targets the fragmentation allowance;
+// every leg runs on the head member (the engine's endpoint is the head's loopback), and each leg's
+// script renders through the realization's own renderer, so the dry entry shows the legs the
+// realization inhabits. Absent everywhere else: the bracket for a memory-profile plan is the bracket
+// that has always run.
+fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionMember>, plan: ArmMemoryExperimentPlan) -> SparkExperimentWorkloadPhase? {
+  if !spark_plan_targets_fragmentation(plan: plan) {
+    none
+  } else {
+    match first(filter(cohort.members, m => (m.unit_name as String) == (glm_native_head_unit_name as String))) {
+      Absent => none
+      Present { value: head } =>
+        let window = spark_churn_window_seconds(admitted_seconds: plan.max_runtime_seconds)
+        let seats = length(plan.workload.cold_sequence_budgets)
+        let seat_window = token_count_value(t: plan.profile.max_model_len)
+        let alias = plan.profile.served_alias
+        Present { value: SparkExperimentWorkloadPhase {
+          prefill_seats: SparkExperimentWorkloadLeg {
+            member: head,
+            plan: SparkPairHostApplyPlan {
+              host: head.host,
+              unit_name: head.unit_name,
+              script: systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: seats, seat_tokens: seat_window),
+            },
+          },
+          churn: SparkExperimentWorkloadLeg {
+            member: head,
+            plan: SparkPairHostApplyPlan {
+              host: head.host,
+              unit_name: head.unit_name,
+              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: seats, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: spark_churn_request_timeout_seconds),
+            },
+          },
+          sampling: SparkExperimentWorkloadLeg {
+            member: head,
+            plan: SparkPairHostApplyPlan {
+              host: head.host,
+              unit_name: head.unit_name,
+              script: systemd_workload_sampling_script(member: head, serve_port: plan.profile.serve_port, window_seconds: window, cadence_seconds: spark_allocator_sample_cadence_seconds, request_timeout_seconds: spark_churn_request_timeout_seconds),
+            },
+          },
+          churn_window_seconds: window,
+          sample_cadence_seconds: spark_allocator_sample_cadence_seconds,
+        } }
+    }
+  }
+}
+
 // ONE PROFILE-READBACK LEG: the member it observes — the host the leg runs on and whose log it
 // greps — beside the plan the transport runs. Carrying the member beside the plan is what lets a
 // failed leg's refusal name its host, exactly as a failed activation leg's refusal names the
@@ -205,10 +301,63 @@ type SparkProfileReadbackVerdict
   = SparkProfileReadbacksConverged
   | SparkProfileReadbackHalted { refusal: SparkProfileReadbackRefusal }
 
+// ── THE WORKLOAD PHASE: THREE LEGS, ONLY WHEN THE PLAN TARGETS THE FRAGMENTATION ALLOWANCE ────────
+//
+// THE BRACKET'S ONE WORKLOAD-PHASE CONSUMER. A plan that targets ArmFragmentationAllowance is the
+// minted fragmentation-churn experiment (gunbc.spark.arm_memory_experiment_observed
+// arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan and its runbook row): the engine is
+// warm after the readbacks, and the plan's pass bound prices the allocator's unreclaimable gap
+// under a workload — six cold full-window prefills, then bounded mixed-length churn, sampled at the
+// runbook cadence. A memory-profile plan (the loader-transient plan, or any plan whose targets
+// exclude the allowance) measures launch evidence and nothing here: its admission carries Absent,
+// its route runs no workload legs, and its dry rendering is byte-for-byte the bracket it has always
+// been. The gate is the plan's target list, not a caller's say-so.
+//
+// THE GATE IS EXACT TARGETING. The admission wall above already refuses a plan that does not target
+// every open obligation, so a plan that reaches this gate with ArmFragmentationAllowance in its
+// targets names it as one of the obligations this run exists to measure — the workload legs are the
+// measurement it mints. Spelling the gate as membership in plan.targets (rather than a new plan
+// field) keeps the experiment plan one authority: the same list the receipt fold checks is the list
+// that decides whether the bracket drives the engine.
+fn spark_plan_targets_fragmentation(plan: ArmMemoryExperimentPlan) -> Bool {
+  any(plan.targets, t => t == ArmFragmentationAllowance)
+}
+
+// ONE WORKLOAD LEG: the head member it runs on beside the plan the transport runs. The refusal
+// vocabulary names each leg, so a halt is located twice — the variant names which leg, the member
+// names which host — exactly as the readback refusals are.
+type SparkExperimentWorkloadLeg {
+  member: SystemdExecutionMember
+  plan: SparkPairHostApplyPlan
+}
+
+// THE WORKLOAD PHASE, all three legs on the head host, in route order: the prefill seats mint the
+// pool state, the churn driver runs beside the sampler, and the sampler folds the peak the receipt
+// mints from. The window and cadence ride beside the legs so the dry entry renders the bounds and
+// the witness asserts them without re-deriving.
+type SparkExperimentWorkloadPhase {
+  prefill_seats: SparkExperimentWorkloadLeg
+  churn: SparkExperimentWorkloadLeg
+  sampling: SparkExperimentWorkloadLeg
+  churn_window_seconds: Nat
+  sample_cadence_seconds: Nat
+}
+
+// THE WORKLOAD HALT, carried beside the readback halt so each phase's refusal stays typed: the
+// endpoint dying mid-run, the churn driver failing its bounds, the sampler losing its instruments —
+// each is a located refusal on the head member, never a bare boolean in the receipt.
+type SparkExperimentWorkloadRefusal
+  = SparkPrefillSeatsRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+  | SparkChurnRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+  | SparkAllocatorSamplingRefused { member: SystemdExecutionMember, cause: NonEmptyStr }
+
 // THE ADMITTED ARM, as an execution cell. Every leg the route will run is present, grouped by
 // phase in contract order, so the dry entry renders the whole shape and the wet entry folds the
 // runtime outcomes back through the cohort verdicts. The generation and the admitted seconds are
-// carried so the route and the receipt name exactly what was converged and how long it had.
+// carried so the route and the receipt name exactly what was converged and how long it had. The
+// workload phase is Absent unless the plan targets the fragmentation allowance — present, it sits
+// between the readbacks and the stops in the route, and the stops remain the deterministic end
+// either way.
 type ArmExperimentActuationAdmission
   = ArmExperimentActuationAdmitted {
       cohort: ExecutionCellCohort<SystemdExecutionMember>,
@@ -217,6 +366,7 @@ type ArmExperimentActuationAdmission
       activation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
       head_readback: SparkProfileReadbackLeg,
       rank_readbacks: List<SparkProfileReadbackLeg>,
+      workload_phase: SparkExperimentWorkloadPhase?,
       stop_legs: List<SparkPairHostApplyPlan>,
       admitted_seconds: Nat,
     }
@@ -316,6 +466,7 @@ fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecution
         activation_actuations: activation_actuations,
         head_readback: head_readback,
         rank_readbacks: spark_rank_readback_legs(cohort: cohort, admitted_seconds: plan.max_runtime_seconds),
+        workload_phase: spark_experiment_workload_phase(cohort: cohort, plan: plan),
         stop_legs: map(cohort.members, m => spark_stop_plan_of_member(member: m)),
         admitted_seconds: plan.max_runtime_seconds,
       }
@@ -411,6 +562,18 @@ fn spark_profile_readback_halt_wire(r: SparkProfileReadbackRefusal) -> String {
   }
 }
 
+// THE WORKLOAD HALT, RENDERED WHERE THE RECEIPT CAN CARRY IT. The variant names the leg — the
+// prefill seats, the churn driver, the allocator sampler — and the member names the head host, so
+// an endpoint that dies mid-run, a driver that fails its bounds, and a sampler that loses its
+// instruments each refuse located, beside the full outcome body the receipt already records.
+fn spark_workload_halt_wire(r: SparkExperimentWorkloadRefusal) -> String {
+  match r {
+    SparkPrefillSeatsRefused { member: m, cause: c } => join(["workload halted at prefill seats on head ", m.host as String, ": ", c as String, "\n"], "")
+    SparkChurnRefused { member: m, cause: c } => join(["workload halted at churn launch on head ", m.host as String, ": ", c as String, "\n"], "")
+    SparkAllocatorSamplingRefused { member: m, cause: c } => join(["workload halted at allocator sampling on head ", m.host as String, ": ", c as String, "\n"], "")
+  }
+}
+
 // THE DETERMINISTIC END, ONE STOP LEG PER MEMBER. `systemctl stop` runs the unit's ExecStop and
 // ExecStopPost, so the experiment ends on every rank leaving no container holding pool bytes; the
 // same plan is the rollback leg for a partially activated cohort's started members.
@@ -428,15 +591,54 @@ fn spark_stop_plan_of_member(member: SystemdExecutionMember) -> SparkPairHostApp
 // privileged leg. Prior-generation legs must all apply before anything prepares; a preparation
 // halt starts none; a partial activation rolls its started members back before the route refuses;
 // a converged activation takes the readback phase — the head's anchor leg, then one per-rank
-// profile leg, each issued only after the head's anchor has appeared — and then stops every rank
-// however the measurement went: the stops are the deterministic end on convergence and the
-// rollback on a readback halt, and they are the same legs because a converged cohort started
-// every member. The full outcome list is returned so the receipt records every leg that ran, and
-// the halt carries the located readback refusal when the phase ran and did not converge — absent
-// everywhere else, because a phase that was never reached mints no verdict about it.
+// profile leg, each issued only after the head's anchor has appeared — and then, when the plan
+// targets the fragmentation allowance AND the readbacks converged, the workload phase: the prefill
+// seats, then the churn driver launched beside the allocator sampler, each leg short-circuiting
+// the rest on failure so the halt is located on the leg that refused. The stops come after all of
+// it and run however the measurement went: they are the deterministic end on convergence and the
+// rollback on a halt, they are the same legs either way, and a workload that halted never delays
+// them. The full outcome list is returned so the receipt records every leg that ran; the readback
+// halt and the workload halt are carried separately, each absent everywhere its phase never ran,
+// because a phase that was never reached mints no verdict about it.
 type SparkExperimentRouteResult {
   outcomes: List<SparkPairHostApplyOutcome>
   halt: SparkProfileReadbackRefusal?
+  workload_halt: SparkExperimentWorkloadRefusal?
+}
+
+// THE WORKLOAD RUN, the phase's local result before it is folded into the route's outcome spine.
+type SparkWorkloadRun {
+  outcomes: List<SparkPairHostApplyOutcome>
+  workload_halt: SparkExperimentWorkloadRefusal?
+}
+
+// THE WORKLOAD PHASE, RUN. The three legs run in order on the head host through the same
+// transport as every other leg; the first failure short-circuits the phase with the located
+// refusal and the legs that never ran mint no outcomes, exactly as a failed head readback issues
+// no rank legs. All three legs' outcomes ride in the route's single outcome list, so the stop legs
+// still follow them however the phase went.
+fn spark_workload_run(phase: SparkExperimentWorkloadPhase, run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> SparkWorkloadRun {
+  let prefill_outcome = run_leg(phase.prefill_seats.plan)
+  match prefill_outcome {
+    SparkPairHostApplyFailed { host: _, cause: c } =>
+      SparkWorkloadRun { outcomes: [prefill_outcome], workload_halt: Present { value: SparkPrefillSeatsRefused { member: phase.prefill_seats.member, cause: c as NonEmptyStr } } }
+    SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+      let churn_outcome = run_leg(phase.churn.plan)
+      match churn_outcome {
+        SparkPairHostApplyFailed { host: _, cause: c } =>
+          SparkWorkloadRun { outcomes: [prefill_outcome, churn_outcome], workload_halt: Present { value: SparkChurnRefused { member: phase.churn.member, cause: c as NonEmptyStr } } }
+        SparkPairHostApplied { host: _, detail: _, standing: _ } => {
+          let sampling_outcome = run_leg(phase.sampling.plan)
+          match sampling_outcome {
+            SparkPairHostApplyFailed { host: _, cause: c } =>
+              SparkWorkloadRun { outcomes: [prefill_outcome, churn_outcome, sampling_outcome], workload_halt: Present { value: SparkAllocatorSamplingRefused { member: phase.sampling.member, cause: c as NonEmptyStr } } }
+            SparkPairHostApplied { host: _, detail: _, standing: _ } =>
+              SparkWorkloadRun { outcomes: [prefill_outcome, churn_outcome, sampling_outcome], workload_halt: none }
+          }
+        }
+      }
+    }
+  }
 }
 
 fn spark_experiment_route(
@@ -445,17 +647,18 @@ fn spark_experiment_route(
   activation_actuations: List<ExecutionCellActuation<SystemdExecutionMember>>,
   head_readback: SparkProfileReadbackLeg,
   rank_readbacks: List<SparkProfileReadbackLeg>,
+  workload_phase: SparkExperimentWorkloadPhase?,
   stop_legs: List<SparkPairHostApplyPlan>,
   run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome,
 ) -> SparkExperimentRouteResult {
   let prior_outcomes = map(prior_generation_actuations, a => run_leg(spark_plan_of_actuation(a: a)))
   if !spark_pair_apply_all_applied(outcomes: prior_outcomes) {
-    SparkExperimentRouteResult { outcomes: prior_outcomes, halt: none }
+    SparkExperimentRouteResult { outcomes: prior_outcomes, halt: none, workload_halt: none }
   } else {
     let preparation_outcomes = map(preparation_actuations, a => run_leg(spark_plan_of_actuation(a: a)))
     match execution_cell_preparation_verdict(results: zip_map(a: preparation_actuations, b: preparation_outcomes, f: fn(a, o) { spark_result_of_outcome(actuation: a, outcome: o) })) {
       ExecutionCellPrepareHalted { prepared: _, refusal: _ } =>
-        SparkExperimentRouteResult { outcomes: concat(prior_outcomes, preparation_outcomes), halt: none }
+        SparkExperimentRouteResult { outcomes: concat(prior_outcomes, preparation_outcomes), halt: none, workload_halt: none }
       ExecutionCellAllPrepared { actuations: _ } => {
         let activation_outcomes = map(activation_actuations, a => run_leg(spark_plan_of_actuation(a: a)))
         let activation = execution_cell_activation_verdict(results: zip_map(a: activation_actuations, b: activation_outcomes, f: fn(a, o) { spark_result_of_outcome(actuation: a, outcome: o) }))
@@ -472,18 +675,27 @@ fn spark_experiment_route(
               SparkProfileReadbacksConverged => none
               SparkProfileReadbackHalted { refusal: r } => Present { value: r }
             }
+            let workload = match workload_phase {
+              Absent => SparkWorkloadRun { outcomes: [] as List<SparkPairHostApplyOutcome>, workload_halt: none }
+              Present { value: wp } =>
+                match halt {
+                  Present { value: _ } => SparkWorkloadRun { outcomes: [] as List<SparkPairHostApplyOutcome>, workload_halt: none }
+                  Absent => spark_workload_run(phase: wp, run_leg: run_leg)
+                }
+            }
             let stop_outcomes = map(stop_legs, leg => run_leg(leg))
             SparkExperimentRouteResult {
-              outcomes: concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, concat([head_outcome], concat(rank_outcomes, stop_outcomes)))),
+              outcomes: concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, concat([head_outcome], concat(rank_outcomes, concat(workload.outcomes, stop_outcomes))))),
               halt: halt,
+              workload_halt: workload.workload_halt,
             }
           }
           ExecutionCellPartiallyActivated { started: _, refusal: _ } => {
             let rollback_outcomes = map(execution_cell_rollback_members(activation: activation), m => run_leg(spark_stop_plan_of_member(member: m)))
-            SparkExperimentRouteResult { outcomes: concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, rollback_outcomes)), halt: none }
+            SparkExperimentRouteResult { outcomes: concat(concat(prior_outcomes, preparation_outcomes), concat(activation_outcomes, rollback_outcomes)), halt: none, workload_halt: none }
           }
           ExecutionCellActivationRefusedBeforeStart { refusal: _ } =>
-            SparkExperimentRouteResult { outcomes: concat(concat(prior_outcomes, preparation_outcomes), activation_outcomes), halt: none }
+            SparkExperimentRouteResult { outcomes: concat(concat(prior_outcomes, preparation_outcomes), activation_outcomes), halt: none, workload_halt: none }
         }
       }
     }
@@ -503,11 +715,23 @@ fn spark_dry_actuation_line(a: ExecutionCellActuation<SystemdExecutionMember>) -
 // operator reads before the go, and what the review reads as the actuation's shape: phases in
 // contract order per host, the cohort activation shown as one concurrent step, the readback phase
 // — the head's bounded anchor leg, then one bounded per-rank profile leg per rank host, every leg
-// carrying the same shared bounded_seconds — and the deterministic stop.
+// carrying the same shared bounded_seconds — and then, only when the plan targets the fragmentation
+// allowance, the workload phase: the prefill seats, the churn driver with its rendered bounds, and
+// the allocator sampler with its cadence, each leg rendered in full so the review reads the exact
+// scripts the wet run would execute. The deterministic stop closes the cell either way.
+fn spark_workload_dry_lines(phase: SparkExperimentWorkloadPhase) -> String {
+  join([
+    "WORKLOAD PHASE (fragmentation-targeted plan: cold full-window prefill seats, bounded churn, allocator sampling at the runbook cadence)\n",
+    "WORKLOAD PREFILL SEATS ", phase.prefill_seats.member.host as String, " ", phase.prefill_seats.plan.unit_name as String, "\n", phase.prefill_seats.plan.script, "\n",
+    "WORKLOAD CHURN ", phase.churn.member.host as String, " ", phase.churn.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " requests_per_client=", to_string(spark_churn_requests_per_seat), " band_floor_tokens=", to_string(spark_churn_band_floor_tokens), "\n", phase.churn.plan.script, "\n",
+    "WORKLOAD ALLOCATOR SAMPLING ", phase.sampling.member.host as String, " ", phase.sampling.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " cadence_seconds=", to_string(phase.sample_cadence_seconds), "\n", phase.sampling.plan.script, "\n",
+  ], "")
+}
+
 fn spark_native_experiment_actuation_dry() -> String {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: c } => join(["REFUSED: ", c as String], "")
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, stop_legs: stop, admitted_seconds: admitted } =>
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: stop, admitted_seconds: admitted } =>
       join([
         "EXECUTION CELL members=", to_string(length(cohort.members)), " generation=", serialize_content_hash(hash: cohort.generation.identity), "\n",
         join(map(prior, a => spark_dry_actuation_line(a: a)), ""),
@@ -516,6 +740,10 @@ fn spark_native_experiment_actuation_dry() -> String {
         join(map(act, a => spark_dry_actuation_line(a: a)), ""),
         "HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted), "\n", head.plan.script, "\n",
         join(map(ranks, l => join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted), "\n", l.plan.script, "\n"], "")), ""),
+        match workload {
+          Absent => ""
+          Present { value: phase } => spark_workload_dry_lines(phase: phase)
+        },
         "STOP (deterministic end on every rank)\n",
         join(map(stop, p => join(["STOP ", p.host as String, " ", p.unit_name as String, "\n", p.script, "\n"], "")), ""),
       ], "")
@@ -565,7 +793,7 @@ fn spark_native_experiment_apply_wet() -> ProcessExit
   let now = clock_now_probed_at()
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: c } => exit_failure(reason: c as String)
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, stop_legs: stop, admitted_seconds: _ } =>
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: stop, admitted_seconds: _ } =>
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_native_experiment_apply: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -590,6 +818,7 @@ fn spark_native_experiment_apply_wet() -> ProcessExit
                             activation_actuations: act,
                             head_readback: head,
                             rank_readbacks: ranks,
+                            workload_phase: workload,
                             stop_legs: stop,
                             run_leg: run_leg)
                         },
@@ -598,10 +827,16 @@ fn spark_native_experiment_apply_wet() -> ProcessExit
                         MaterializedSshKeyFileBracketCompleted { value: result } => {
                           let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: result.outcomes)
                           let wr = Filesystem.Write(path: spark_native_experiment_apply_receipt_path, content: body)
-                          let located = match result.halt {
-                            Present { value: refusal } => spark_profile_readback_halt_wire(r: refusal)
-                            Absent => ""
-                          }
+                          let located = join([
+                            match result.halt {
+                              Present { value: refusal } => spark_profile_readback_halt_wire(r: refusal)
+                              Absent => ""
+                            },
+                            match result.workload_halt {
+                              Present { value: refusal } => spark_workload_halt_wire(r: refusal)
+                              Absent => ""
+                            },
+                          ], "")
                           if !wr.success {
                             exit_failure(reason: join(["spark native experiment apply receipt write failed: ", wr.error], ""))
                           } else if spark_pair_apply_all_applied(outcomes: result.outcomes) {
