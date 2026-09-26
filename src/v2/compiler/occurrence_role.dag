@@ -192,7 +192,8 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleNotYetRead),
     name_row(production: ^dag_production_operation, disposition: NameRoleNotYetRead),
     name_row(production: ^dag_production_transport, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_io_block, disposition: NameRoleNotYetRead)
+    name_row(production: ^dag_production_input_block, disposition: NameRoleNotYetRead),
+    name_row(production: ^dag_production_output_block, disposition: NameRoleNotYetRead)
   ]
 }
 
