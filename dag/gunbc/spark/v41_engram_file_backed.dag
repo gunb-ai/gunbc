@@ -1,0 +1,92 @@
+module gunbc.spark.v41_engram_file_backed
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.integer { UInt8 }
+import std.measure { ByteSize, byte_size_count }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter, length, skip }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, V41CompleteStore,
+  v41_row_bytes, v41_row_store_magic_size,
+}
+
+// ── THE FILE-BACKED OVERLAY'S OPEN AND GATHER CONTRACTS ─────────────────────────────────────────
+//
+// dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch FileBackedEngramStorage realizes
+// what this module declares; the patch is the realization and these are its facts.
+//
+// OPEN. Whole-file SHA-256 verification stays, and it stays fail-closed. What goes is its residue:
+// on a DGX Spark the CPU and GPU share one LPDDR5x pool, so the page cache the sequential verify
+// read leaves behind is ordinary memory taken from weights and KV. After verifying, open releases
+// the verified range (POSIX_FADV_DONTNEED) and reads its residency back (mincore). The receipt
+// carries both readings, and open is admitted only when the readback is zero over the whole file.
+//
+// GATHER. fetch_rows is one batched gather: every requested offset must be a record boundary of
+// this store (magic, then k whole records, with the record inside the file), and the rows come back
+// in request order, each exactly the record v41_place_row put at that address. A shifted offset
+// would read the tail of one record and the head of the next, a plausible row of the wrong bytes,
+// so it refuses rather than being read.
+//
+// THE REALIZATION MIRRORS THIS, BRANCH FOR BRANCH. FileBackedEngramStorage._verify_and_release raises
+// on exactly the two refusals of v41_open_residency_verdict (verified != fstat size; any residue after
+// release), and EngramStoreOpenReceipt carries V41StoreOpenReceipt's four fields. _record_index raises
+// on exactly the non-record offsets v41_is_record_offset rejects. The Python refuses at runtime because
+// a Spark rank cannot call this fold; the fold is the declaration those raises realize.
+//
+// CONSUMER: A DECLARED FRONTIER, NOT YET IN THIS CLOSURE. The consumer of v41_open_residency_verdict is
+// the (layer, rank) open-receipt reading the wiring patch introduces: when
+// ParallelEngramEmbedding._allocate_weights constructs FileBackedEngramStorage (the trigger
+// gunbc.spark.v41_engram_row_store already names), each rank's EngramStoreOpenReceipt is read back into
+// gunbc.spark.v41_runtime_candidate beside v41_published_store_readback_readings and folded through this
+// verdict, so a rank that verified but stayed resident refuses the candidate, not only its own open.
+// v41_gather_rows' consumer is the same change's differential over boundary rows of a published store.
+// Until then both are exercised by test.claim.spark.v41_engram_file_backed_witness over supplied
+// receipts and fixture stores. The patch's measure_fetch_rows / __main__ is the named instrument for
+// fetch_rows time; its readings are not transcribed here.
+
+type V41StoreOpenReceipt sole_constructor {
+  store_bytes: ByteSize
+  verified_bytes: ByteSize
+  resident_after_verify: ByteSize
+  resident_after_release: ByteSize
+}
+
+fn v41_store_open_receipt(store_bytes: ByteSize, verified_bytes: ByteSize, resident_after_verify: ByteSize, resident_after_release: ByteSize) -> V41StoreOpenReceipt {
+  V41StoreOpenReceipt { store_bytes: store_bytes, verified_bytes: verified_bytes, resident_after_verify: resident_after_verify, resident_after_release: resident_after_release }
+}
+
+type V41OpenResidency
+  = V41OpenReleased { receipt: V41StoreOpenReceipt }
+  | V41OpenResidueRefused { defect: NonEmptyStr }
+
+fn v41_open_residency_verdict(r: V41StoreOpenReceipt) -> V41OpenResidency {
+  if byte_size_count(b: r.verified_bytes) != byte_size_count(b: r.store_bytes) {
+    V41OpenResidueRefused { defect: join(["verified ", to_string(byte_size_count(b: r.verified_bytes)), " of ", to_string(byte_size_count(b: r.store_bytes)), " store bytes; verification is over the whole file"], "") as NonEmptyStr }
+  } else if byte_size_count(b: r.resident_after_release) != 0 {
+    V41OpenResidueRefused { defect: join([to_string(byte_size_count(b: r.resident_after_release)), " verified bytes remain page-cache resident after release (", to_string(byte_size_count(b: r.resident_after_verify)), " after verify)"], "") as NonEmptyStr }
+  } else {
+    V41OpenReleased { receipt: r }
+  }
+}
+
+type V41Gather
+  = V41Gathered { rows: List<List<UInt8>> }
+  | V41GatherRefused { defect: NonEmptyStr }
+
+fn v41_is_record_offset(spec: V41RowStoreEncodingSpec, store_len: Nat, offset: ByteSize) -> Bool {
+  let magic = byte_size_count(b: v41_row_store_magic_size())
+  let record = byte_size_count(b: v41_row_bytes(g: spec.geometry))
+  let o = byte_size_count(b: offset)
+  o >= magic && (o - magic) % record == 0 && o + record <= store_len
+}
+
+fn v41_gather_rows(store: V41CompleteStore, spec: V41RowStoreEncodingSpec, offsets: List<ByteSize>) -> V41Gather {
+  let record = byte_size_count(b: v41_row_bytes(g: spec.geometry))
+  let n = length(store.bytes)
+  let misaligned = filter(offsets, o => !v41_is_record_offset(spec: spec, store_len: n, offset: o))
+  match first(misaligned) {
+    Present { value: o } => V41GatherRefused { defect: join(["offset ", to_string(byte_size_count(b: o)), " is not magic + k * ", to_string(record), " inside a ", to_string(n), "-byte store"], "") as NonEmptyStr }
+    Absent => V41Gathered { rows: map(offsets, o => store.bytes |> skip(n: byte_size_count(b: o)) |> take(n: record)) }
+  }
+}
