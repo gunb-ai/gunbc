@@ -103,11 +103,20 @@ test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
   reference_conservation_holds(report: clean_control_report())
 }
 
-// The three numbers are separate and together account for the whole population: a check that
-// found nothing to conserve, or that summed locus-erased into conserved, cannot pass this.
+// The numbers are separate and together account for the whole population: a check that found
+// nothing to conserve, or that summed one disposition into another, cannot pass this. The clean
+// control has an atom in every one: conserved references, locus-erased binders the role producer
+// does not read yet (its parameters), role-excluded declarations and labels, and the header.
 test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
   let r = clean_control_report()
-  r.conserved > 0 && r.locus_erased > 0 && r.conserved + r.locus_erased == r.authored
+  r.conserved > 0 && r.locus_erased > 0 && r.role_excluded > 0 && r.header_channel > 0
+    && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
+}
+
+// THE HEADER IS ITS OWN CHANNEL (HeaderSegmentsNotRefusalSites): the clean control's header
+// `v2.test.reference_conservation_clean` is exactly three segments, all counted there.
+test fn the_clean_control_counts_its_header_segments_in_the_header_channel_holds() -> Bool {
+  clean_control_report().header_channel == 3
 }
 
 test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
@@ -319,7 +328,17 @@ fn construct_tags_subject() -> ReferenceConservationSubject {
 
 test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.authored == 22 && r.conserved == 11 && r.locus_erased == 11 && length(xs: r.dropped) == 0
+  r.authored == 22 && r.conserved == 11 && r.locus_erased + r.role_excluded + r.header_channel == 11 && length(xs: r.dropped) == 0
+}
+
+// BINDERS AND LABELS ARE COUNTED OUTSIDE THE XL-2 POPULATION, NOT AS LOST REFERENCES. Of the
+// fixture's erased atoms, five have a recorded role that is a declaration or a non-module-scope
+// reference (the RcRow type, the two fn names, the `v:` record-literal label and the `v:` pattern
+// label); three are the header; the three left in locus_erased are the parameter and field-
+// declaration binders whose producer rows are not read yet, which role_not_yet_read counts.
+test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tags_subject())
+  r.role_excluded == 5 && r.header_channel == 3 && r.locus_erased == 3 && r.role_not_yet_read == 3 && r.role_reader_refused == 0
 }
 
 // ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
@@ -338,7 +357,7 @@ fn dotted_spine_subject() -> ReferenceConservationSubject {
 
 test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: dotted_spine_subject())
-  r.authored == 18 && r.conserved == 10 && r.locus_erased == 8 && length(xs: r.dropped) == 0
+  r.authored == 18 && r.conserved == 10 && r.locus_erased + r.role_excluded + r.header_channel == 8 && length(xs: r.dropped) == 0
 }
 
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------

@@ -17,7 +17,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.algebra { fold_list, length, list_snoc_item }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules, symbol_lexeme }
 import v2.std.diagnostic {
   Accepted,
@@ -41,7 +41,27 @@ import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.occurrence_identity { OccurrenceId, occurrence_id_allocator_initial, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity {
+  DeclarationRole,
+  OccurrenceCategoryModuleScopeExposed,
+  OccurrenceCategoryModuleScopeNotExposed,
+  OccurrenceId,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ReferenceRole,
+  occurrence_category_module_scope_exposure_verdict,
+  occurrence_id_allocator_initial
+}
+import v2.compiler.occurrence_role {
+  AtomOccurrenceRole,
+  OccurrenceRoleTableRefused,
+  OccurrenceRoles,
+  OccurrenceRolesRead,
+  dag_name_production_emitted_symbols,
+  dag_occurrence_roles,
+  occurrence_role_index
+}
 import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label }
 import v2.std.node_query { pattern_wildcard_name }
 
@@ -100,15 +120,38 @@ type DroppedReference {
 type ReferenceConservationUnmeasured
   = TokenizeOrParseRefused { diagnostics: NonEmptyDiagnostics }
   | AtomExtentUnreadable { occurrence: OccurrenceId }
+  | OccurrenceRoleTableUnadmitted { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
-// THREE SEPARATE NUMBERS, NEVER SUMMED: `conserved` (the atom's own occurrence survives with its
+// SEPARATE NUMBERS, NEVER SUMMED: `conserved` (the atom's own occurrence survives with its
 // identity), `locus_erased` (the occurrence is gone but its declaration still holds an unconsumed
 // rebuilt copy of the spelling -- see conservation_against_tree), and `dropped` (neither).
+//
+// TWO TYPED EXCLUDED POPULATIONS (XL-2 LoweringOccurrenceProjection). A locus-erased atom that is
+// not a reference to a module-scope name is outside the XL-2 residual -- stripping imports cannot
+// make resolve refuse at it -- so it is counted in its own number instead of `locus_erased`, which
+// is left meaning "a reference lost its locus":
+//   `role_excluded`: its occurrence has a recorded role (v2.compiler.occurrence_role) that is a
+//     DeclarationRole, or a ReferenceRole whose category std.occurrence_identity
+//     occurrence_category_module_scope_exposure_verdict says is not module-scope (a field label,
+//     an argument label).
+//   `header_channel`: a segment of the module header. HeaderSegmentsNotRefusalSites: no resolve
+//     refusal is located at a header segment (measured on the XL-2 rehearsal composition with a
+//     module whose header names no existing path). CAVEAT, stated so the exclusion is not read
+//     wider than it is: a header DOES change what resolves -- a module nested under a provider's
+//     namespace resolves that provider's names with no import -- so relocating a module would make
+//     its header a rewrite target. That is the rehearsal's NestingScopedReferencesUncounted
+//     population, not this count.
+// `role_not_yet_read` and `role_reader_refused` carry the role producer's own gaps, so a binder the
+// producer could not read is a number here too; such a binder stays in `locus_erased`.
 type ReferenceConservationReport {
   path: String
   authored: Int
   conserved: Int
   locus_erased: Int
+  role_excluded: Int
+  header_channel: Int
+  role_not_yet_read: Int
+  role_reader_refused: Int
   refused: Int
   import_channel: Int
   test_marker_channel: Int
@@ -483,6 +526,10 @@ fn report_from_population(path: String, population: AuthoredAtomPopulation) -> R
     authored: length(xs: population.atoms),
     conserved: 0,
     locus_erased: 0,
+    role_excluded: 0,
+    header_channel: 0,
+    role_not_yet_read: 0,
+    role_reader_refused: 0,
     refused: 0,
     import_channel: population.import_channel,
     test_marker_channel: population.test_marker_channel,
@@ -497,6 +544,10 @@ fn report_snoc_drop(report: ReferenceConservationReport, atom: AuthoredAtom, cau
     authored: report.authored,
     conserved: report.conserved,
     locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
     test_marker_channel: report.test_marker_channel,
@@ -511,6 +562,10 @@ fn report_count_conserved(report: ReferenceConservationReport) -> ReferenceConse
     authored: report.authored,
     conserved: report.conserved + 1,
     locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
     test_marker_channel: report.test_marker_channel,
@@ -525,6 +580,10 @@ fn report_count_refused(report: ReferenceConservationReport) -> ReferenceConserv
     authored: report.authored,
     conserved: report.conserved,
     locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
     refused: report.refused + 1,
     import_channel: report.import_channel,
     test_marker_channel: report.test_marker_channel,
@@ -539,6 +598,10 @@ fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceCo
     authored: report.authored,
     conserved: report.conserved,
     locus_erased: report.locus_erased + 1,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
     test_marker_channel: report.test_marker_channel,
@@ -763,6 +826,88 @@ fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
   found == identity || found == body_lower_resolved_type_binding(sym: identity)
 }
 
+// WHERE AN ERASED ATOM IS COUNTED. The module header first (its item is -1), then an atom whose
+// recorded role puts it outside the XL-2 population, and otherwise a reference that lost its
+// locus. The role question is asked of std.occurrence_identity's own verdict, not restated.
+type ErasedAtomDisposition
+  = ErasedHeaderSegment
+  | ErasedOutsidePopulation
+  | ErasedReference
+
+fn erased_atom_disposition(atom: AuthoredAtom, role_index: Map<OccurrenceId, AtomOccurrenceRole>) -> ErasedAtomDisposition {
+  if atom.item < 0 {
+    ErasedHeaderSegment
+  } else {
+    match map_lookup(m: role_index, key: atom.occurrence) {
+      Absent => ErasedReference
+      Present { value: r } =>
+        match r.role {
+          DeclarationRole => ErasedOutsidePopulation
+          ReferenceRole =>
+            match occurrence_category_module_scope_exposure_verdict(category: r.category) {
+              OccurrenceCategoryModuleScopeExposed => ErasedReference
+              OccurrenceCategoryModuleScopeNotExposed { category: _ } => ErasedOutsidePopulation
+            }
+        }
+    }
+  }
+}
+
+fn report_count_erased_atom(report: ReferenceConservationReport, atom: AuthoredAtom, role_index: Map<OccurrenceId, AtomOccurrenceRole>) -> ReferenceConservationReport {
+  match erased_atom_disposition(atom: atom, role_index: role_index) {
+    ErasedReference => report_count_locus_erased(report: report)
+    ErasedOutsidePopulation => report_with_channels(report: report, role_excluded: report.role_excluded + 1, header_channel: report.header_channel)
+    ErasedHeaderSegment => report_with_channels(report: report, role_excluded: report.role_excluded, header_channel: report.header_channel + 1)
+  }
+}
+
+fn report_with_channels(report: ReferenceConservationReport, role_excluded: Int, header_channel: Int) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    role_excluded: role_excluded,
+    header_channel: header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured
+  }
+}
+
+fn map_int_total(m: Map<Symbol, Int>, keys: List<Symbol>) -> Int {
+  fold(keys, init: 0, f: fn(acc, k) {
+    match map_lookup(m: m, key: k) {
+      Present { value: n } => acc + n
+      Absent => acc
+    }
+  })
+}
+
+// The role producer's own gaps, summed over the productions of the table it was admitted with.
+fn report_with_role_gaps(report: ReferenceConservationReport, roles: OccurrenceRoles) -> ReferenceConservationReport {
+  let productions = dag_name_production_emitted_symbols()
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: map_int_total(m: roles.not_yet_read, keys: productions),
+    role_reader_refused: map_int_total(m: roles.reader_refused, keys: productions) + roles.unminted,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured
+  }
+}
+
 type TreeConservationState {
   report: ReferenceConservationReport
   pools: ItemPools
@@ -770,15 +915,16 @@ type TreeConservationState {
 
 // The module's qualified name is read ONCE here and handed to both pools, which previously each
 // re-derived it from the root (DESIGN section 2: one demand, one production).
-fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree) -> ReferenceConservationReport {
+fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree, roles: OccurrenceRoles) -> ReferenceConservationReport {
   let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
+  let role_index = occurrence_role_index(roles: roles)
   let module_qn = qualified_name_from_module_node(root: tree.root)
   let declarations = declaration_pools(tree: tree, module_qn: module_qn)
   let header = header_pool(module_qn: module_qn)
   fold_list(
     xs: population.atoms,
     empty: TreeConservationState {
-      report: report_from_population(path: path, population: population),
+      report: report_with_role_gaps(report: report_from_population(path: path, population: population), roles: roles),
       pools: ItemPools { pools: empty_map() }
     },
     cons: fn(state, atom) {
@@ -800,7 +946,7 @@ fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, t
             Present { value: n } =>
               if n > 0 {
                 TreeConservationState {
-                  report: report_count_locus_erased(report: state.report),
+                  report: report_count_erased_atom(report: state.report, atom: atom, role_index: role_index),
                   pools: ItemPools { pools: map_insert(m: state.pools.pools, key: atom.item, value: map_insert(m: pool, key: rebuilt, value: n - 1)) }
                 }
               } else {
@@ -841,6 +987,10 @@ fn reference_conservation_unmeasured(path: String, diagnostics: NonEmptyDiagnost
     authored: 0,
     conserved: 0,
     locus_erased: 0,
+    role_excluded: 0,
+    header_channel: 0,
+    role_not_yet_read: 0,
+    role_reader_refused: 0,
     refused: 0,
     import_channel: 0,
     test_marker_channel: 0,
@@ -892,6 +1042,26 @@ fn dag_declared_token_classes() -> Map<Symbol, Bool> {
   declared_token_classes(lm: dag_language_model())
 }
 
+// A ROLE TABLE THE GRAMMAR DOES NOT ADMIT MEASURES NOTHING: without roles every erased atom would
+// read as a reference, which is the silent widening the table's admission exists to refuse.
+fn reference_conservation_role_table_unadmitted(path: String, unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol>) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: path,
+    authored: 0,
+    conserved: 0,
+    locus_erased: 0,
+    role_excluded: 0,
+    header_channel: 0,
+    role_not_yet_read: 0,
+    role_reader_refused: 0,
+    refused: 0,
+    import_channel: 0,
+    test_marker_channel: 0,
+    dropped: Empty,
+    unmeasured: Cons { head: OccurrenceRoleTableUnadmitted { unlisted: unlisted, unknown: unknown, unkeyed: unkeyed }, tail: Empty }
+  }
+}
+
 fn reference_conservation_of_subject(subject: ReferenceConservationSubject, token_classes: Map<Symbol, Bool>) -> ReferenceConservationReport {
   match subject.parsed {
     Rejected { diagnostics: d } => reference_conservation_unmeasured(path: subject.path, diagnostics: d)
@@ -899,7 +1069,12 @@ fn reference_conservation_of_subject(subject: ReferenceConservationSubject, toke
       let population = authored_atom_population(artifact: artifact, token_classes: token_classes)
       match subject.normalized {
         Accepted { value: tree, diagnostics: _ } =>
-          conservation_against_tree(path: subject.path, population: population, tree: tree)
+          match dag_occurrence_roles(artifact: artifact) {
+            OccurrenceRolesRead { roles: roles } =>
+              conservation_against_tree(path: subject.path, population: population, tree: tree, roles: roles)
+            OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
+              reference_conservation_role_table_unadmitted(path: subject.path, unlisted: u, unknown: k, unkeyed: x)
+          }
         Rejected { diagnostics: d } =>
           conservation_against_refusal(path: subject.path, population: population, diagnostics: d)
       }
@@ -976,7 +1151,7 @@ fn dropped_reference_line(path: String, row: DroppedReference) -> String {
 }
 
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
-  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " test_marker_channel=" + integer_int_to_decimal_string(value: report.test_marker_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
+  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " test_marker_channel=" + integer_int_to_decimal_string(value: report.test_marker_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
   fold_list(
     xs: report.dropped,
     empty: Cons { head: summary, tail: Empty },
