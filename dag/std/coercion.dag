@@ -204,6 +204,21 @@ type CastRule {
   to_type: String
 }
 
+// A REFINEMENT ROW NAMES ITS TARGET'S DECLARATION, not only its spelling. The spelling "Nat" is
+// declared twice in one corpus -- std.nat.Nat (grounded onto Int, carrier i64) and v2.std.nat.Nat
+// (a Peano Zero | Succ coproduct) -- and only the first is a refinement of Int. A consumer that
+// holds a resolved declaration keys on to_declaration; to_type remains the spelling an explicit
+// `as` target is authored with. This module declares NO imports on purpose: it is in the v2
+// self-compile closure, which does not reach v2.std.algebra (the provider of the bare any / filter
+// it folds with), and importing any one name switches a file's bare channel off
+// (the unimported-bare-provider gate). DeclarationRef, decl_ref and declaration_ref_eq resolve
+// through that same bare channel to their single declarer, std.decl_ref.
+type RefinementCastRule {
+  from_type: String
+  to_type: String
+  to_declaration: DeclarationRef
+}
+
 type CastSyntax {
   template: String
   cast_rules: List<CastRule>
@@ -224,12 +239,19 @@ type CastSyntax {
 // primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake),
 // String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.
 
+// `Bool as Int` IS NOT A ROW. It was, while the seed's eval_cast refused it at runtime, so the
+// checker blessed a cast the evaluator crashed on (gunbc.recurring_failure_mode
+// the_checker_admits_a_cast_the_evaluator_refuses). A Bool is not an Int -- an Iverson bracket is
+// a function the author writes, not a re-typing -- so the row is withdrawn rather than taught to
+// eval. `Bool -> Bool` keeps Bool IN the cast domain, which is what makes validate_cast REFUSE
+// `b as Int` located instead of abstaining on it; and dag_can_cast, read at implicit admission,
+// no longer admits a Bool where an Int is declared.
 data dag_cast_rules: List<CastRule> = [
   { from_type: "Int",   to_type: "Int" },
   { from_type: "Int",   to_type: "Float" },
   { from_type: "Float", to_type: "Int" },
   { from_type: "Float", to_type: "Float" },
-  { from_type: "Bool",  to_type: "Int" },
+  { from_type: "Bool",  to_type: "Bool" },
 ]
 
 data grounded_primitive_coproduct_identities: List<CastRule> = [
@@ -247,12 +269,43 @@ data grounded_primitive_coproduct_identities: List<CastRule> = [
 // eval_cast refuses it for the same row, now as the unreachable echo of this refusal rather than a
 // second authority that only fired at runtime). A nonnegative literal needs no cast -- the grounded
 // identity already admits it in a Nat position -- and a value already typed Nat is an identity cast.
-data refinement_cast_rules: List<CastRule> = [
-  { from_type: "Int", to_type: "Nat" },
+data refinement_cast_rules: List<RefinementCastRule> = [
+  { from_type: "Int", to_type: "Nat", to_declaration: decl_ref(module_path: "std.nat", decl_name: "Nat") },
 ]
 
 fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
   refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+}
+
+// SUBTRACTION LEAVES A REFINEMENT. A refinement row says every to_type value IS a from_type value
+// and not the converse, so the refinement is closed under whatever its predicate is closed under
+// and no more: a Nat is closed under + and * (it is a commutative semiring) but `a - b` over two
+// Nats is an arbitrary Int. The difference is therefore typed at the row's SOURCE type, read from
+// the same rows that make `n as Nat` a refinement cast -- not a second rule beside them. The
+// operand is matched by its RESOLVED DECLARATION, never by its spelling: v2.std.nat.Nat shares the
+// spelling, is not a refinement of Int, and subtracts through its own typed nat_sub. Absent means
+// the operand's declaration is the target of no refinement row, and the operand's own algebra
+// decides as before.
+// ZERO, ONE OR MANY -- never "the first". Two rows naming one exact declaration with different
+// source types would make the difference's type depend on row ORDER, which is not a fact about
+// the declaration; that is a coherence defect in this table, so it is answered as its own arm and
+// the checker refuses on it (v1.compiler.infer_types subtraction_refinement_of) rather than picking.
+type SubtractionRefinement
+  = SubtractionStaysInOperandAlgebra
+  | SubtractionEscapesTo { from_type: String }
+  | SubtractionRefinementAmbiguous { from_types: List<String> }
+
+fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
+  let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
+  match hits |> first {
+    Absent => SubtractionStaysInOperandAlgebra
+    Present { value: r } =>
+      if (hits |> count) == 1 {
+        SubtractionEscapesTo { from_type: r.from_type }
+      } else {
+        SubtractionRefinementAmbiguous { from_types: hits |> map(h => h.from_type) }
+      }
+  }
 }
 
 fn dag_can_cast(source_type: String, target_type: String) -> Bool {

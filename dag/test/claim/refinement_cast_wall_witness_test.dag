@@ -64,6 +64,100 @@ test fn w_non_refinement_int_cast_is_still_accepted() -> Bool {
   blocking_count(source: non_refinement_cast_source) == 0
 }
 
+// THREE CONSEQUENCES OF THE SAME ROWS, each observed through the one wall above so no new instrument
+// is minted. (1) std.coercion dag_subtraction_refinement: a difference of two Nats leaves the
+// refinement, so `(a - b) as Nat` is an Int-as-Nat refinement cast and refuses; the sum stays Nat
+// and casts by identity (the positive control on the same operands). Before, the binop fold typed
+// every difference at its left operand, so the cast was a Nat identity and a negative Nat was
+// writable. (2) std.algebra count / length return Nat -- a cardinality is never negative -- so
+// `count(xs) as Nat` is an identity cast; before, it was the Int refinement cast. (3) `Bool as Int`
+// is no longer a dag_cast_rules row: validate_cast refuses it at compile time instead of the seed's
+// eval_cast refusing it at runtime.
+data nat_difference_source: String = "module probe_refinement_nat_difference\nimport std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Nat { (a - b) as Nat }\n"
+
+data nat_sum_source: String = "module probe_refinement_nat_sum\nimport std.nat { Nat }\nfn total(a: Nat, b: Nat) -> Nat { (a + b) as Nat }\n"
+
+data count_is_nat_source: String = "module probe_refinement_count_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { count(xs) as Nat }\n"
+
+data bool_as_int_source: String = "module probe_refinement_bool_as_int\nimport std.types { Bool, Int }\nfn bit(b: Bool) -> Int { b as Int }\n"
+
+// THE HOMONYM. v2.std.nat.Nat is spelled "Nat" and is not a refinement of Int (it is a Peano
+// Zero | Succ coproduct with its own typed nat_sub). The subtraction row is keyed on the resolved
+// DECLARATION, so a difference of two Peano Nats keeps its own typing and `as Nat` is an identity
+// cast. Keyed on the last name segment it would be typed Int, and `Int as Nat` is a refinement cast
+// that refuses. Observed through the cast, not a return position: a return would still admit the
+// wrong Int through the implicit grounded Int -> Nat identity, which matches by spelling.
+data peano_nat_difference_source: String = "module probe_refinement_peano_difference\nimport v2.std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Nat { (a - b) as Nat }\n"
+
+test fn w_peano_nat_difference_is_not_the_refinement() -> Bool {
+  blocking_count(source: peano_nat_difference_source) == 0
+}
+
+test fn w_nat_difference_leaves_the_refinement() -> Bool {
+  blocking_count(source: nat_difference_source) >= 1
+}
+
+// THE DIFFERENCE IS AN INT, AND ONLY ONE ROW MAY SAY SO. A Nat difference returned as Int compiles
+// clean. If refinement_cast_rules carried a second row for the same std.nat.Nat declaration with a
+// different source type, the checker must REFUSE (SubtractionRefinementAmbiguous) rather than take
+// whichever row comes first -- so under that mutation this claim goes red, while an order-picking
+// implementation would stay green.
+data nat_difference_as_int_source: String = "module probe_refinement_nat_difference_int\nimport std.types { Int }\nimport std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Int { a - b }\n"
+
+test fn w_nat_difference_is_an_int() -> Bool {
+  blocking_count(source: nat_difference_as_int_source) == 0
+}
+
+test fn w_nat_sum_stays_in_the_refinement() -> Bool {
+  blocking_count(source: nat_sum_source) == 0
+}
+
+test fn w_count_is_a_nat() -> Bool {
+  blocking_count(source: count_is_nat_source) == 0
+}
+
+// BOTH ROUTES, BOTH NAMES. A free call `count(xs)` / `length(xs)` is typed on the builtin
+// registry route (v1.compiler.infer_method builtin_function_registry, whose return is derived from
+// std.algebra by algebra_named_return); a method call `xs |> count` / `s.length()` is typed on the
+// algebra-template route. Each claim is an identity cast that refuses if its route answers Int.
+data length_is_nat_source: String = "module probe_refinement_length_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { length(xs) as Nat }\n"
+
+data method_count_is_nat_source: String = "module probe_refinement_method_count_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { (xs |> count) as Nat }\n"
+
+data method_length_is_nat_source: String = "module probe_refinement_method_length_nat\nimport std.types { String }\nimport std.nat { Nat }\nfn size_of(s: String) -> Nat { s.length() as Nat }\n"
+
+// THE REGISTRY ROUTE. A receiver with no method surface (a type parameter) fails known-method
+// resolution, so the free call is typed by the builtin registry's return -- derived from std.algebra
+// by algebra_named_return, which these two claims exercise and the container-receiver claims above
+// do not.
+data registry_count_is_nat_source: String = "module probe_refinement_registry_count\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { count(xs) as Nat }\n"
+
+data registry_length_is_nat_source: String = "module probe_refinement_registry_length\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { length(xs) as Nat }\n"
+
+test fn w_registry_count_is_a_nat() -> Bool {
+  blocking_count(source: registry_count_is_nat_source) == 0
+}
+
+test fn w_registry_length_is_a_nat() -> Bool {
+  blocking_count(source: registry_length_is_nat_source) == 0
+}
+
+test fn w_length_is_a_nat() -> Bool {
+  blocking_count(source: length_is_nat_source) == 0
+}
+
+test fn w_method_count_is_a_nat() -> Bool {
+  blocking_count(source: method_count_is_nat_source) == 0
+}
+
+test fn w_method_length_is_a_nat() -> Bool {
+  blocking_count(source: method_length_is_nat_source) == 0
+}
+
+test fn w_bool_as_int_is_refused_by_the_checker() -> Bool {
+  blocking_count(source: bool_as_int_source) >= 1
+}
+
 // The sanctioned crossing's own semantics, executed: a negative is absent, never clamped.
 test fn w_checked_int_to_nat_refuses_a_negative_and_keeps_a_nonnegative() -> Bool {
   let neg = match checked_int_to_nat(n: 0 - 3) { Absent => true  Present { value: _ } => false }

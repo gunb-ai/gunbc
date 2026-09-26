@@ -1,7 +1,7 @@
 module gunbc.spark.prefill_batch_sweep
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat, nat_min }
+import std.nat { Nat, nat_min, nat_ceil_div }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
@@ -491,7 +491,10 @@ fn budget_reading_at(ps: List<PrefillProbe>, fit: ThreeTermFit, budget: Nat, tok
 // because a bare 0 here is an Int and this returns a Nat: the two are not the same zero, and the
 // mismatch is a type error rather than a silent widening, which is the behaviour we want.
 fn ceil_div(a: Nat, b: Nat) -> Nat {
-  if b == 0 { nat_min(a: a, b: 0) } else { (a + b - 1) / b }
+  match nat_ceil_div(a: a, b: b) {
+    Present { value: steps } => steps
+    Absent => nat_min(a: a, b: 0)
+  }
 }
 
 // ── THE AFFINE LAW IS A SHALLOW-CONTEXT APPROXIMATION, AND HERE IS ITS RANGE ──────────────────
