@@ -91,8 +91,16 @@ import gunbc.spark.arm_memory_experiment_observed {
   arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks,
   arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions,
   arm_experiment_gib_hundredths_floor, arm_experiment_gib_hundredths_lower, arm_experiment_gib_hundredths_upper,
+  glm_checkpoint_index_revision, glm_checkpoint_index_tensor_count, glm_checkpoint_index_shard_count,
+  glm_checkpoint_index_tensor_bytes, glm_checkpoint_index_file_bytes, glm_checkpoint_index_header_overhead_bytes,
+  glm_checkpoint_index_kda_layer_indices, glm_checkpoint_index_sparse_base_layer_indices,
+  glm_checkpoint_index_mtp_layer_indices, glm_checkpoint_index_routed_experts_per_layer,
+  glm_checkpoint_index_census_holds, glm_checkpoint_projection_pending_obligation,
+  ArmCheckpointTensorRow, ArmPlacementVocabSharded, ArmPlacementColumnSharded, ArmPlacementRowSharded,
+  ArmPlacementExpertSplit, ArmPlacementReplicated,
+  arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
 }
-import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape }
+import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest }
 import extdeps.vllm.kv_layout { MambaState, KPoolIndex }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_prefill_logits_cap_bytes, flashinfer_sparse_workspace_bytes,
@@ -2614,6 +2622,110 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
     })
 }
 
+
+
+// ── WITNESS 32: THE CHECKPOINT INDEX CENSUS AND THE TP4 PLACEMENT PROJECTION ─────────────────────
+//
+// THE INDEX READ (fetched 2026-09-26) LANDS: the population census, the tensor-byte total, the
+// shard-header overhead, and the pinned source's placement rules -- the projection machinery is
+// arithmetic and waits only on the shard-header fetch the obligation names. THE CARRY'S UNITS
+// ERROR IS CORRECTED at its source (the checkpoint carry's how now states the aggregate at one
+// unit: the composites SUM past the checkpoint's whole file set; there is no unplaced gap). THE
+// WITNESSES BELOW pin what the index establishes: the census and its cross-authority agreement
+// with the corpus shape row and the manifest module, the classifier's rules on the census's own
+// name shapes, the conservation law as the exactness wall, and the exactness RED: a tensor moved
+// to a different shard changes a rank figure while conservation keeps holding.
+
+test fn w_the_checkpoint_index_census_holds() -> Bool {
+  glm_checkpoint_index_census_holds()
+    && byte_size_count(b: glm_checkpoint_index_file_bytes) == byte_size_count(b: glm_5_3_flash_native_manifest.safetensors_bytes)
+    && glm_checkpoint_index_revision == glm_5_3_flash_native_manifest.revision
+}
+
+test fn w_the_index_confirms_the_hybrid_shape_and_names_the_mtp() -> Bool {
+  length(glm_checkpoint_index_kda_layer_indices) == glm_5_3_flash_hybrid_shape.kda_linear_attention_layers
+    && length(glm_checkpoint_index_sparse_base_layer_indices) == glm_5_3_flash_hybrid_shape.sparse_attention_layers
+    && length(glm_checkpoint_index_mtp_layer_indices) == 1
+    && glm_checkpoint_index_routed_experts_per_layer > 0
+}
+
+test fn w_the_placement_rules_classify_the_census_name_shapes() -> Bool {
+  arm_checkpoint_classify(name: "model.language_model.embed_tokens.weight") == ArmPlacementVocabSharded
+    && arm_checkpoint_classify(name: "lm_head.weight") == ArmPlacementVocabSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight") == ArmPlacementExpertSplit
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.288.down_proj.weight_scale_inv") == ArmPlacementExpertSplit
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.gate.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.gate.e_score_correction_bias") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.shared_experts.gate_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.shared_experts.down_proj.weight") == ArmPlacementRowSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.q_a_proj.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.kv_a_proj_with_mqa.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.q_b_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.kv_b_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.o_proj.weight") == ArmPlacementRowSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.indexer.wq_b.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.indexer.wk.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.3.self_attn.indexer.weights_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.q_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.f_a_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.g_b_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.q_conv1d.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.A_log") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.dt_bias") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.self_attn.o_norm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.input_layernorm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.hc_attn_base") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.mlp.gate_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.0.mlp.down_proj.weight") == ArmPlacementRowSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.45.eh_proj.weight") == ArmPlacementColumnSharded
+    && arm_checkpoint_classify(name: "model.language_model.layers.45.shared_head.norm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.language_model.norm.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.visual.blocks.0.attn.qkv.weight") == ArmPlacementReplicated
+    && arm_checkpoint_classify(name: "model.visual.merger.proj.weight") == ArmPlacementReplicated
+}
+
+// THE EXACTNESS RED: A TENSOR MOVED TO A DIFFERENT SHARD CHANGES A RANK FIGURE. Three rows --
+// 8 GiB vocab-sharded, 16 GiB expert-split, 4 GiB replicated -- price to 10 GiB on every rank at
+// rank count 4. Moving the replicated row to column-sharded reprices every rank to 7 GiB, the
+// conservation law keeps holding in BOTH classifications, and the figures provably differ -- so
+// the projection cannot absorb a tensor's movement silently, and a misclassification is a
+// decidable violation of the conservation wall, not a rounding anecdote.
+test fn w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure() -> Bool {
+  let before = [
+    ArmCheckpointTensorRow { name: "probe.embed" as NonEmptyStr, kind: ArmPlacementVocabSharded, bytes: Present { value: fx_gib(8) } },
+    ArmCheckpointTensorRow { name: "probe.expert" as NonEmptyStr, kind: ArmPlacementExpertSplit, bytes: Present { value: fx_gib(16) } },
+    ArmCheckpointTensorRow { name: "probe.replicated" as NonEmptyStr, kind: ArmPlacementReplicated, bytes: Present { value: fx_gib(4) } },
+  ]
+  let after = [
+    ArmCheckpointTensorRow { name: "probe.embed" as NonEmptyStr, kind: ArmPlacementVocabSharded, bytes: Present { value: fx_gib(8) } },
+    ArmCheckpointTensorRow { name: "probe.expert" as NonEmptyStr, kind: ArmPlacementExpertSplit, bytes: Present { value: fx_gib(16) } },
+    ArmCheckpointTensorRow { name: "probe.replicated" as NonEmptyStr, kind: ArmPlacementColumnSharded, bytes: Present { value: fx_gib(4) } },
+  ]
+  let before_figures = arm_checkpoint_placement_rank_figures(rows: before, rank_count: 4)
+  let after_figures = arm_checkpoint_placement_rank_figures(rows: after, rank_count: 4)
+  arm_checkpoint_placement_conserved(rows: before, rank_count: 4)
+    && arm_checkpoint_placement_conserved(rows: after, rank_count: 4)
+    && length(before_figures) == 4
+    && all(before_figures, f => match f { Present { value: v } => byte_size_count(b: v) == byte_size_count(b: fx_gib(10)) Absent => false })
+    && all(after_figures, f => match f { Present { value: v } => byte_size_count(b: v) == byte_size_count(b: fx_gib(7)) Absent => false })
+}
+
+// THE PENDING ROW REFUSES TO TOTAL: a census row built from a real tensor name with Absent bytes
+// makes every rank's figure Absent -- the projection has no spelling for an unpriced tensor --
+// and the obligation names the completing fetch precisely.
+test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool {
+  let row = ArmCheckpointTensorRow {
+    name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight" as NonEmptyStr,
+    kind: arm_checkpoint_classify(name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight"),
+    bytes: none,
+  }
+  let figures = arm_checkpoint_placement_rank_figures(rows: [row], rank_count: 4)
+  length(figures) == 4
+    && all(figures, f => match f { Present { value: _ } => false Absent => true })
+    && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
+    && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "config.json")
+}
+
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
   w_the_production_tuple_is_unestablished_with_named_obligations()
     && w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank()
@@ -2674,4 +2786,9 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_the_boot_foreign_band_holds_at_the_reporters_unit()
     && w_the_launch_wall_refuses_a_toy_pool()
     && w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains()
+    && w_the_checkpoint_index_census_holds()
+    && w_the_index_confirms_the_hybrid_shape_and_names_the_mtp()
+    && w_the_placement_rules_classify_the_census_name_shapes()
+    && w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure()
+    && w_the_projection_refuses_to_total_until_the_shard_headers_land()
 }

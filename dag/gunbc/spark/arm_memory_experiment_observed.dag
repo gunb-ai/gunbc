@@ -1,7 +1,7 @@
 module gunbc.spark.arm_memory_experiment_observed
 
 import std.types { Bool, NonEmptyStr, List }
-import std.nat { Nat, nat_max, nat_min }
+import std.nat { Nat, nat_max, nat_min, nat_range_inclusive }
 import std.checked_arithmetic { nat_magnitude }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
@@ -924,7 +924,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_checkpoint_carry(r: ArmExperimentEnvelope
     upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
     how: join([
       "checkpoint residency carried as a derived conservative interval from the weights+nontorch COMPOSITE observation at this launch (gpu_worker.py:867 profile line, ", r.host as String,
-      "): the composite bounds checkpoint residency above -- every checkpoint byte is a torch weight or a non-torch allocation at the profiling phase -- and the composite-ness is NAMED: the reading does not separate checkpoint tensors from runtime-fixed, communication or other non-Torch allocations, so this interval is NOT a checkpoint-placement receipt and the lower endpoint is zero (no positive per-rank lower is derivable without the per-tensor safetensors index; the aggregate pigeonhole bounds only the max-loaded rank and rides on the subject's checkpoint_total interval). The manifest (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, revision eb9eb208) totals 328,337,455,672 bytes against the four composites' 322.24 GiB -- ~6.1 GiB of manifest bytes are not resident in weights+nontorch at any rank here, unplaced. Completing act: a safetensors-index read at /weights on a group B host prices the exact TP4 placement projection from the manifest. Subject: ",
+      "): the composite bounds checkpoint residency above -- every checkpoint byte is a torch weight or a non-torch allocation at the profiling phase -- and the composite-ness is NAMED: the reading does not separate checkpoint tensors from runtime-fixed, communication or other non-Torch allocations, so this interval is NOT a checkpoint-placement receipt and the lower endpoint is zero (no positive per-rank lower is derivable without the per-tensor projection; the aggregate pigeonhole bounds only the max-loaded rank and rides on the subject's checkpoint_total interval). THE AGGREGATE, RESTATED AT ONE UNIT (an earlier carry mixed GB against GiB): the four composite floors SUM to 346,002,565,364 bytes = 322.24 GiB, which EXCEEDS the checkpoint's entire file set (328,337,455,672 bytes = 305.79 GiB, glm_5_3_flash_native_manifest at revision eb9eb208) -- the composites contain the whole checkpoint between them plus the non-checkpoint bytes; there is no unplaced gap. THE INDEX IS NOW READ (the section below: 76,108 tensors, 62 shards, the layer/expert/scale census, and the pinned source's TP4 placement rules), and the per-tensor byte projection is carried pending the shard-header fetch it names: when it lands, this term becomes the derived exact per-rank placement and the composite-minus-checkpoint residual prices runtime-fixed and collective. Completing act: the 62 safetensors shard headers (or config.json plus derived shapes) at the pinned snapshot. Subject: ",
       arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
     ], "") as NonEmptyStr)
 }
@@ -1123,4 +1123,254 @@ fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: ByteSiz
       upper: foreign_high,
       how: "observed foreign occupancy at this launch's own boot readings: device total minus free memory at the 'Free memory on device' profile lines (gpu_worker.py:867, 2026-09-26T05:42:33Z), 14.49 / 13.17 / 12.80 / 10.58 GiB across srv9/srv10/srv12/srv11; the upper endpoint is the observed band's high at the reporter's rounding unit, sound at every device the arm can land on" as NonEmptyStr),
   }
+}
+
+
+// ── THE CHECKPOINT INDEX CENSUS AND THE TP4 PLACEMENT RULES ──────────────────────────────────────
+//
+// THE PER-TENSOR READ OF THE CHECKPOINT'S OWN INDEX (model.safetensors.index.json at the pinned
+// snapshot /home/briansrls/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash/snapshots/
+// eb9eb208eb0d988989d07a6a12d0fdeb5f52574a/, fetched to srv2 2026-09-26): the weight map names
+// every tensor's shard, and the metadata names the tensor-byte total -- the population census
+// below is parsed from it, not transcribed from the architecture. THE INDEX DOES NOT CARRY
+// SHAPES OR DTYPES (those live in each shard's safetensors header), so the byte projection is
+// CARRIED PENDING THE SHARD-HEADER FETCH, named below; everything the index does vouch is landed
+// here. THE TENSOR TOTAL IS THE NEW AUTHORITY ROW: 328,326,771,576 bytes of tensor data, against
+// the manifest module's 328,337,455,672 file bytes (glm_5_3_flash_native_manifest.safetensors_bytes)
+// -- the 10,684,096-byte difference is the 62 shards' own headers, named so no reader prices it
+// as weights.
+
+data glm_checkpoint_index_revision: NonEmptyStr = "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+
+data glm_checkpoint_index_file: NonEmptyStr = "model.safetensors.index.json" as NonEmptyStr
+
+data glm_checkpoint_index_tensor_count: Nat = 76108
+
+data glm_checkpoint_index_shard_count: Nat = 62
+
+data glm_checkpoint_index_tensor_bytes: ByteSize = byte_size(count: 328326771576)
+
+data glm_checkpoint_index_file_bytes: ByteSize = byte_size(count: 328337455672)
+
+// THE SHARD-HEADER OVERHEAD, derived not transcribed: file bytes minus tensor bytes.
+fn glm_checkpoint_index_header_overhead_bytes() -> ByteSize {
+  byte_size(count: byte_size_count(b: glm_checkpoint_index_file_bytes) - byte_size_count(b: glm_checkpoint_index_tensor_bytes))
+}
+
+// THE LAYER CENSUS, by attention mechanism (classified from the self_attn tensor names in the
+// weight map: kv_b_proj/indexer names mark MLA, A_log/conv1d names mark KDA). THE CHECKPOINT
+// CONFIRMS THE CORPUS SHAPE: 34 KDA + 11 sparse-MLA over the 45 base layers, and names the MTP
+// layer (index 45, MLA attention) the shape row does not carry. THE MLP AXIS IS SEPARATE FROM
+// THE ATTENTION AXIS: layers 0-2 carry a dense MLP (no experts); every layer from 3 through the
+// MTP carries MoE (288 routed experts + shared experts).
+data glm_checkpoint_index_sparse_base_layer_indices: List<Nat> = [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43]
+
+data glm_checkpoint_index_mtp_layer_indices: List<Nat> = [45]
+
+data glm_checkpoint_index_kda_layer_indices: List<Nat> = [
+  0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22,
+  24, 25, 26, 28, 29, 30, 32, 33, 34, 36, 37, 38, 40, 41, 42, 44,
+]
+
+data glm_checkpoint_index_dense_mlp_layer_indices: List<Nat> = [0, 1, 2]
+
+data glm_checkpoint_index_routed_experts_per_layer: Nat = 288
+
+data glm_checkpoint_index_scale_tensor_count: Nat = 37338
+
+// THE VISION TOWER IS IN THE CHECKPOINT (24 blocks + patch embed + merger + downsample + post
+// norm): whether THIS LAUNCH loads it is a config.json architectures fact (Glm5NextForCausalLM
+// builds the text model; Glm5NextForConditionalGeneration, the GLM4V-pattern multimodal wrapper
+// at glm5next/nvidia/model.py:963, builds the visual tower too) -- config.json rides the same
+// fetch as the shard headers, and the projection plus the loaded-weight comparison settles it.
+data glm_checkpoint_index_visual_block_count: Nat = 24
+
+// THE CENSUS CONSISTENCY LAW, checked not trusted: the classification partitions the 45 base
+// layers, the MTP list is the 46th layer, the dense-MLP list is the first three KDA layers.
+fn glm_checkpoint_index_census_holds() -> Bool {
+  length(glm_checkpoint_index_sparse_base_layer_indices) == 11
+    && length(glm_checkpoint_index_kda_layer_indices) == 34
+    && length(glm_checkpoint_index_sparse_base_layer_indices) + length(glm_checkpoint_index_kda_layer_indices) == 45
+    && length(glm_checkpoint_index_mtp_layer_indices) == 1
+    && length(glm_checkpoint_index_dense_mlp_layer_indices) == 3
+    && glm_checkpoint_index_tensor_count > 0
+    && glm_checkpoint_index_scale_tensor_count > 0
+    && byte_size_count(b: glm_checkpoint_index_header_overhead_bytes()) == 10684096
+    && byte_size_count(b: glm_checkpoint_index_tensor_bytes) + byte_size_count(b: glm_checkpoint_index_header_overhead_bytes()) == byte_size_count(b: glm_checkpoint_index_file_bytes)
+}
+
+// ── THE TP4 PLACEMENT RULES, FROM THE PINNED SOURCE ──────────────────────────────────────────────
+//
+// THE AUTHORITY IS vllm@8d09804c8's OWN MODULE CONSTRUCTION (docs/plans/moa-memory-modeling.md:
+// placement derives from the checkpoint manifest x the loader's placement rules -- the rules are
+// the engine's, cited symbol-first below). AT THIS LAUNCH tensor parallelism is 4, expert
+// parallelism is unset, and the EP group IS the TP group for MoE models (distributed/
+// parallel_state.py:2085-2119 builds the ep group from the TP ranks when DP and PCP are 1), so
+// the expert population splits across the same four ranks. SEQUENCE PARALLELISM IS OFF (the
+// launch carries no such flag), so the Column/Row sharding below is the standard TP split, not
+// the sequence-parallel replication (Glm5NextMLP's disable_tp branch is not taken).
+//
+// EMBED_TOKENS IS VOCAB-SHARDED (VocabParallelEmbedding, model.py:603); LM_HEAD IS VOCAB-SHARDED
+// (ParallelLMHead, model.py:881). DENSE MLP: gate/up MERGED-COLUMN-SHARDED, down ROW-SHARDED
+// (Glm5NextMLP, model.py:116-128). MOE: THE ROUTER IS REPLICATED (GateLinear IS-A ReplicatedLinear,
+// model_executor/layers/fused_moe/router/gate_linear.py:18, with e_score_correction_bias a plain
+// parameter); THE EXPERT BODIES SPLIT OVER THE EP GROUP (FusedMoEFactory, model.py:226-246);
+// SHARED EXPERTS ARE THE DENSE-MLP SHARDING (model.py:196-208). MLA: q_a REPLICATED AND kv_a
+// COLUMN-SHARDED INSIDE THE FUSED QKV-A PROJ (DeepSeekV2FusedQkvAProjLinear, the fused branch this
+// checkpoint's q_a_proj + kv_a_proj_with_mqa names select), q_b/kv_b COLUMN-SHARDED, o_proj
+// ROW-SHARDED (attention.py:447-484). KDA: in_proj_qkvbfg_a MERGED-COLUMN (with the class's
+// replicated-shard exceptions), f_b/g_b/q/k/v COLUMN-SHARDED, o_proj ROW-SHARDED, A_log/dt_bias/
+// o_norm PARAMETERS REPLICATED (kda.py:181-256). INDEXER: wk COLUMN-SHARDED (MergedColumnParallel),
+// wq_b REPLICATED (attention.py:250-255,253). NORMS/LAYERNORMS/HC_* PARAMETERS REPLICATED.
+// VISION TOWER: THE GLM4V-PATTERN VISUAL ENCODER IS BUILT FROM PLAIN MODULES, NOT TP-WRAPPED --
+// REPLICATED WHEREVER IT LOADS (model.py:963 class note; settled by the loaded-weight comparison).
+
+type ArmCheckpointPlacementKind
+  = ArmPlacementVocabSharded
+  | ArmPlacementColumnSharded
+  | ArmPlacementRowSharded
+  | ArmPlacementExpertSplit
+  | ArmPlacementReplicated
+
+fn arm_checkpoint_placement_kind_wire(k: ArmCheckpointPlacementKind) -> String {
+  match k {
+    ArmPlacementVocabSharded => "vocab-sharded"
+    ArmPlacementColumnSharded => "column-sharded"
+    ArmPlacementRowSharded => "row-sharded"
+    ArmPlacementExpertSplit => "expert-split"
+    ArmPlacementReplicated => "replicated"
+  }
+}
+
+// ONE PROJECTED TENSOR ROW: the tensor's checkpoint name, its placement kind, and its byte size.
+// `bytes` is OPTIONAL because the index does not carry shapes or dtypes: Absent names the
+// shard-header fetch as the completing read, and the folds below refuse to price an Absent row
+// rather than read it as a zero.
+type ArmCheckpointTensorRow {
+  name: NonEmptyStr
+  kind: ArmCheckpointPlacementKind
+  bytes: ByteSize?
+}
+
+// THE PER-RANK SHARE OF ONE ROW: sharded and expert-split kinds contribute bytes/rank_count to
+// every rank (modulo shard padding, priced when the shapes land); replicated contributes the
+// whole tensor to every rank. PADDING IS NAMED, NOT MODELED: vocab and dim sizes divide by 4 up
+// to a sub-block remainder, and the conservation law below absorbs it as a named deviation.
+fn arm_checkpoint_row_per_rank_bytes(row: ArmCheckpointTensorRow, rank_count: Nat) -> ByteSize? {
+  match row.bytes {
+    Absent => none
+    Present { value: b } =>
+      match row.kind {
+        ArmPlacementReplicated => Present { value: b }
+        _ => Present { value: byte_size(count: byte_size_count(b: b) / rank_count) }
+      }
+  }
+}
+
+// THE PER-RANK PLACEMENT FIGURES: one sum per rank over the row population. A row whose bytes
+// are Absent makes EVERY rank's figure Absent -- the projection has no spelling for an unpriced
+// tensor.
+fn arm_checkpoint_placement_rank_figures(rows: List<ArmCheckpointTensorRow>, rank_count: Nat) -> List<ByteSize?> {
+  map(nat_range_inclusive(lo: 1, hi: rank_count), rank =>
+    fold(rows, init: Present { value: byte_size(count: 0) }, f: (acc, row) =>
+      match acc {
+        Absent => none
+        Present { value: n } =>
+          match arm_checkpoint_row_per_rank_bytes(row: row, rank_count: rank_count) {
+            Absent => none
+            Present { value: share } => Present { value: byte_size(count: byte_size_count(b: n) + byte_size_count(b: share)) }
+          }
+      }))
+}
+
+// THE PLACEMENT CONSERVATION LAW: the per-rank figures sum back to the sharded and expert bytes
+// once plus the replicated bytes rank_count times -- the exactness wall the real projection must
+// pass. THE REAL PROJECTION'S INSTANCE: the sum must equal the index tensor bytes
+// 328,326,771,576 plus 3 x the replicated population minus the shard-padding remainder -- every
+// deviation named, none silent. A TENSOR MOVED TO A DIFFERENT SHARD CHANGES A RANK FIGURE by
+// kind-delta x bytes x (rank_count - 1)/rank_count, and this law is what makes that change
+// decidable instead of anecdotal.
+fn arm_checkpoint_placement_conserved(rows: List<ArmCheckpointTensorRow>, rank_count: Nat) -> Bool {
+  let sharded_and_expert = fold(rows, init: byte_size(count: 0), f: (acc, row) =>
+    match row.bytes {
+      Absent => acc
+      Present { value: b } =>
+        match row.kind {
+          ArmPlacementReplicated => acc
+          _ => byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
+        }
+    })
+  let replicated = fold(rows, init: byte_size(count: 0), f: (acc, row) =>
+    match row.bytes {
+      Absent => acc
+      Present { value: b } =>
+        match row.kind {
+          ArmPlacementReplicated => byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
+          _ => acc
+        }
+    })
+  let figures = arm_checkpoint_placement_rank_figures(rows: rows, rank_count: rank_count)
+  let figure_sum = fold(figures, init: Present { value: byte_size(count: 0) }, f: (acc, f2) =>
+    match acc {
+      Absent => none
+      Present { value: n } =>
+        match f2 {
+          Absent => none
+          Present { value: v } => Present { value: byte_size(count: byte_size_count(b: n) + byte_size_count(b: v)) }
+        }
+    })
+  match figure_sum {
+    Absent => false
+    Present { value: sum } =>
+      byte_size_count(b: sum) == byte_size_count(b: sharded_and_expert) + rank_count * byte_size_count(b: replicated)
+  }
+}
+
+// THE CATEGORY CLASSIFIER over the checkpoint's tensor-name shapes, in match order (the first
+// matching rule wins, so the population's exceptions precede its generalities): the language
+// model's projections by module class as cited above, the expert bodies by population, the
+// router/norms/parameters replicated, and the vision prefix replicated wherever it loads. A
+// name matching nothing explicit lands REPLICATED -- the conservative reading for the small
+// residual classes -- and the projection's conservation check against the composite readings is
+// the wall that exposes any misclassification.
+fn arm_checkpoint_classify(name: String) -> ArmCheckpointPlacementKind {
+  if string_contains(s: name, pattern: "model.visual.") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "embed_tokens") {
+    ArmPlacementVocabSharded
+  } else if string_contains(s: name, pattern: "lm_head") {
+    ArmPlacementVocabSharded
+  } else if string_contains(s: name, pattern: "mlp.experts.") {
+    ArmPlacementExpertSplit
+  } else if string_contains(s: name, pattern: "mlp.gate.") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "wq_b") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "q_a_proj") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "A_log") || string_contains(s: name, pattern: "dt_bias") || string_contains(s: name, pattern: "hc_") || string_contains(s: name, pattern: "e_score_correction_bias") || string_contains(s: name, pattern: "index_kpool_compress") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "down_proj") {
+    ArmPlacementRowSharded
+  } else if string_contains(s: name, pattern: "o_proj") {
+    ArmPlacementRowSharded
+  } else if string_contains(s: name, pattern: "conv1d") {
+    ArmPlacementColumnSharded
+  } else if string_contains(s: name, pattern: "gate_proj") || string_contains(s: name, pattern: "up_proj") {
+    ArmPlacementColumnSharded
+  } else if string_contains(s: name, pattern: "kv_a_proj_with_mqa") || string_contains(s: name, pattern: "weights_proj") || string_contains(s: name, pattern: "q_b_proj") || string_contains(s: name, pattern: "kv_b_proj") || string_contains(s: name, pattern: "wk.weight") || string_contains(s: name, pattern: "q_proj") || string_contains(s: name, pattern: "k_proj") || string_contains(s: name, pattern: "v_proj") || string_contains(s: name, pattern: "b_proj") || string_contains(s: name, pattern: "f_a_proj") || string_contains(s: name, pattern: "f_b_proj") || string_contains(s: name, pattern: "g_a_proj") || string_contains(s: name, pattern: "g_b_proj") || string_contains(s: name, pattern: "eh_proj") {
+    ArmPlacementColumnSharded
+  } else {
+    ArmPlacementReplicated
+  }
+}
+
+// THE PROJECTION'S PENDING FETCH, named as the obligation it is: the index does not carry shapes
+// or dtypes, so the byte census rides the 62 shards' safetensors headers (a bounded read of each
+// shard's opening bytes at the pinned snapshot -- or config.json plus the derived shapes as the
+// fallback), and config.json itself settles whether the vision tower loads (the architectures
+// field choosing ForCausalLM over ForConditionalGeneration). Until then every projected row
+// carries Absent bytes and the folds above refuse to total.
+fn glm_checkpoint_projection_pending_obligation() -> NonEmptyStr {
+  "the per-tensor byte projection is one bounded read from landing: the 62 safetensors shard headers at the pinned snapshot (shapes and dtypes per tensor), with config.json settling whether the vision tower loads; the placement rules, the census, and the conservation law above are already landed, so the projection is arithmetic, not modeling" as NonEmptyStr
 }
