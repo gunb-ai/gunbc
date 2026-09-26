@@ -52,7 +52,8 @@ import gunbc.spark.arm_memory_fit {
   arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
   ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
-  ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  arm_memory_experiment_runtime_seconds,
   ArmAllRanksStopped, ArmRouteEnrollmentProhibited, ArmEveryRankStopped, ArmNoRouteEnrollment,
   ArmMeasurement, ArmMeasurementProtocol, ProtocolPeakOverRuns, ProtocolEngineReportedMaximum, ProtocolSingleSample,
   MeasuredUpperBound, MeasuredInterval, ObservationOnly, MeasurementRefused,
@@ -96,6 +97,12 @@ import gunbc.spark.arm_memory_experiment_observed {
   glm_checkpoint_index_kda_layer_indices, glm_checkpoint_index_sparse_base_layer_indices,
   glm_checkpoint_index_mtp_layer_indices, glm_checkpoint_index_routed_experts_per_layer,
   glm_checkpoint_index_census_holds, glm_checkpoint_projection_pending_obligation,
+  glm_checkpoint_projection_census_holds, glm_checkpoint_projection_per_rank_bytes,
+  glm_checkpoint_projection_visual_bytes, glm_checkpoint_config_architectures,
+  arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
+  arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
+  arm_experiment_kvplan_v2_2026_09_26_loader_runbook,
+  arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook,
   ArmCheckpointTensorRow, ArmPlacementVocabSharded, ArmPlacementColumnSharded, ArmPlacementRowSharded,
   ArmPlacementExpertSplit, ArmPlacementReplicated,
   arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
@@ -2406,12 +2413,12 @@ fn fx_launch_wall_verdict() -> ArmMemoryFitVerdict {
 }
 
 // THE MINT SEALS AND EVERY CARRY LANDS WHERE THE CENSUS PUTS IT: four ranks; checkpoint residency
-// an interval at [0, the rank's composite floor] on every rank (the composite-named carry, rank
-// asymmetry 83,343,840,378 / 86,511,378,759 / 87,649,545,093 / 88,497,801,134 bytes carried
-// verbatim); runtime-fixed an interval from the pinned top-k buffer lower (17,825,792 bytes) to
-// the composite floor; collective an interval at [0, the composite floor]; activation an interval
-// at [0, the conservation bound] (14,778,406,973 bytes at rank 0, 7,735,620,235 at rank 3);
-// graph the reporter's rounding unit; the KV carve exact at 13,766,049,792 bytes; loader and
+// is THE PROJECTION'S EXACT PER-RANK FIGURE -- 83,237,158,776 bytes, identical on every rank
+// (the checkpoint places evenly by construction); runtime-fixed an interval from the pinned
+// top-k buffer lower (17,825,792 bytes) to the rank's residue (composite floor minus placement:
+// 106,681,602 at rank 0); collective an interval at [0, the residue]; activation an interval at
+// [0, the conservation bound] (14,779,376,601 bytes at rank 0, 7,735,630,235 at rank 3); graph
+// the reporter's rounding unit; the KV carve exact at 13,766,049,792 bytes; loader and
 // fragmentation open on every rank.
 test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
   match fx_launch_wall_subject_mint() {
@@ -2420,10 +2427,9 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
       length(subject.ranks) == 4
         && all(subject.ranks, rb =>
           match rb.checkpoint_residency {
-            ComponentBoundInterval { lower: l, upper: _, how: h } =>
-              byte_size_count(b: l) == 0
-                && string_contains(s: h as String, pattern: "COMPOSITE")
-                && string_contains(s: h as String, pattern: "NOT a checkpoint-placement receipt")
+            ComponentBoundExact { bytes: b, how: h } =>
+              byte_size_count(b: b) == 83237158776
+                && string_contains(s: h as String, pattern: "DERIVED EXACT by the TP4 placement projection")
             _ => false
           })
         && all(subject.ranks, rb =>
@@ -2445,12 +2451,12 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
         && (match first(filter(subject.ranks, rb => rb.rank == 0)) {
           Present { value: r0 } =>
             (match r0.checkpoint_residency {
-              ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 83343840378
+              ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
               _ => false
             })
               && (match r0.runtime_fixed {
                 ComponentBoundInterval { lower: l, upper: u, how: _ } =>
-                  byte_size_count(b: l) == 17825792 && byte_size_count(b: u) == 83343840378
+                  byte_size_count(b: l) == 17825792 && byte_size_count(b: u) == 106681602
                 _ => false
               })
               && (match r0.activation_workspace {
@@ -2471,7 +2477,7 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
         && (match first(filter(subject.ranks, rb => rb.rank == 3)) {
           Present { value: r3 } =>
             (match r3.checkpoint_residency {
-              ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 88497801134
+              ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
               _ => false
             })
               && (match r3.activation_workspace {
@@ -2483,20 +2489,23 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
   }
 }
 
-// THE CONJUNCTION RUNS AND NAMES EXACTLY WHAT REMAINS: 37 obligations -- the loader transient
-// and the fragmentation allowance open on all four ranks (8), the indeterminacy the composite
-// carries cannot settle (28: the summed uppers exceed the conservative supply at model-load too
-// -- runtime-fixed is resident in every phase, so the load-phase upper is twice the composite --
-// and at the profiling, graph-capture and idle-serving phases against both the supply and the
-// decided envelope, per rank), and the scalar deduction pair's conservation (1) -- and NOTHING
-// for the checkpoint, runtime-fixed, collective, activation, graph, KV or deduction open terms:
-// those are bounded, and the fold says so by staying silent about them. THE MANDATORY DEMAND
-// FITS: no refusal mints -- the verdict is Unestablished, not Refused, with every named term's
-// completing act in its own text.
+// THE CONJUNCTION RUNS AND NAMES EXACTLY WHAT REMAINS: 18 obligations -- the loader transient
+// and the fragmentation allowance open on all four ranks (8), the indeterminacy that survives
+// the exact projection (9: graph-capture is the heaviest phase -- the KV carve AND the
+// activation both hold resident there, so its summed upper passes BOTH walls at all four ranks,
+// 8 obligations; idle-serving, one rank lighter, settles at three ranks and fires only rank 3's
+// supply wall, 107.64 GiB against the 106.94 GiB conservative supply -- 1 obligation;
+// model-load and profiling now settle entirely), and the scalar deduction pair's conservation
+// (1) -- and NOTHING for the checkpoint, runtime-fixed, collective, activation, graph, KV or
+// deduction open terms: those are bounded, and the fold says so by staying silent about them.
+// THE MANDATORY DEMAND FITS: no refusal mints -- the verdict is Unestablished, not Refused,
+// with every named term's completing act in its own text. 37 -> 18: the projection settled 19
+// of the 28 indeterminacy obligations (the pre-landing analytic said 17; the miss taught that
+// KV is resident at graph-capture too -- the verdict rows are the authority, not the estimate).
 test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms() -> Bool {
   match fx_launch_wall_verdict() {
     ArmMemoryFitUnestablished { obligations: os } =>
-      length(os) == 37
+      length(os) == 18
         && any(os, o => string_contains(s: o as String, pattern: "rank 0 loader-transform has no defensible bound"))
         && any(os, o => string_contains(s: o as String, pattern: "rank 1 loader-transform has no defensible bound"))
         && any(os, o => string_contains(s: o as String, pattern: "rank 2 loader-transform has no defensible bound"))
@@ -2506,6 +2515,11 @@ test fn w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms
         && any(os, o => string_contains(s: o as String, pattern: "does not decide"))
         && any(os, o => string_contains(s: o as String, pattern: "unified-pool conservation does not decide"))
         && any(os, o => string_contains(s: o as String, pattern: "does not decide against the decided envelope"))
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase graph-capture does not decide"))) == 8
+        && length(filter(os, o => string_contains(s: o as String, pattern: "phase idle-serving does not decide"))) == 1
+        && any(os, o => string_contains(s: o as String, pattern: "rank 3 phase idle-serving does not decide: demand upper"))
+        && !any(os, o => string_contains(s: o as String, pattern: "phase model-load does not decide"))
+        && !any(os, o => string_contains(s: o as String, pattern: "phase profiling does not decide"))
         && !any(os, o => string_contains(s: o as String, pattern: "checkpoint-residency has no defensible bound"))
         && !any(os, o => string_contains(s: o as String, pattern: "runtime-fixed has no defensible bound"))
         && !any(os, o => string_contains(s: o as String, pattern: "collective-workspace has no defensible bound"))
@@ -2591,8 +2605,8 @@ test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
 // evidence, witness 27) beside the launch-wall verdict above -- the standing's open obligations
 // carry the arm prefix and NOTHING from the cache or prefill subproofs: two green subproofs
 // promote nothing they do not own, and the whole-arm verdict is exactly the launch wall's own
-// list, 37 obligations naming the loader transient, the fragmentation allowance, and the
-// indeterminacy the composite carries leave open.
+// list, 18 obligations naming the loader transient, the fragmentation allowance, and the
+// graph-capture/idle-serving indeterminacy the exact projection leaves open.
 test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> Bool {
   let prefill = prefill_transient_fit_verdict(
     shape: fx_prefill_shape(),
@@ -2612,7 +2626,7 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
     })
     && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: fx_launch_wall_verdict(), subject_length: token_count(count: 262144)) {
       ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, open_obligations: os } =>
-        length(os) == 37
+        length(os) == 18
           && !any(os, o => string_contains(s: o as String, pattern: "cache-capacity-fit:"))
           && !any(os, o => string_contains(s: o as String, pattern: "prefill-transient-fit:"))
           && all(os, o => string_contains(s: o as String, pattern: "arm-memory-fit:"))
@@ -2626,15 +2640,15 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
 
 // ── WITNESS 32: THE CHECKPOINT INDEX CENSUS AND THE TP4 PLACEMENT PROJECTION ─────────────────────
 //
-// THE INDEX READ (fetched 2026-09-26) LANDS: the population census, the tensor-byte total, the
-// shard-header overhead, and the pinned source's placement rules -- the projection machinery is
-// arithmetic and waits only on the shard-header fetch the obligation names. THE CARRY'S UNITS
-// ERROR IS CORRECTED at its source (the checkpoint carry's how now states the aggregate at one
-// unit: the composites SUM past the checkpoint's whole file set; there is no unplaced gap). THE
-// WITNESSES BELOW pin what the index establishes: the census and its cross-authority agreement
-// with the corpus shape row and the manifest module, the classifier's rules on the census's own
-// name shapes, the conservation law as the exactness wall, and the exactness RED: a tensor moved
-// to a different shard changes a rank figure while conservation keeps holding.
+// THE INDEX READ (fetched 2026-09-26) LANDED: the population census, the tensor-byte total, the
+// shard-header overhead, and the pinned source's placement rules. The shard-header and
+// config.json fetches have since COMPLETED and the exact byte projection is landed (witness 34
+// prices it); these witnesses pin what the index itself establishes -- the census and its
+// cross-authority agreement with the corpus shape row and the manifest module, the classifier's
+// rules on the census's own name shapes, the conservation law as the exactness wall, and the
+// exactness RED: a tensor moved to a different shard changes a rank figure while conservation
+// keeps holding. The Absent-bytes claim below is the machinery's fail-closed property, kept as a
+// RED against reading an unpriced tensor as zero.
 
 test fn w_the_checkpoint_index_census_holds() -> Bool {
   glm_checkpoint_index_census_holds()
@@ -2710,9 +2724,11 @@ test fn w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure() -> Bool {
     && all(after_figures, f => match f { Present { value: v } => byte_size_count(b: v) == byte_size_count(b: fx_gib(7)) Absent => false })
 }
 
-// THE PENDING ROW REFUSES TO TOTAL: a census row built from a real tensor name with Absent bytes
-// makes every rank's figure Absent -- the projection has no spelling for an unpriced tensor --
-// and the obligation names the completing fetch precisely.
+// THE UNPRICED ROW REFUSES TO TOTAL: a census row built from a real tensor name with Absent
+// bytes makes every rank's figure Absent -- the projection has no spelling for an unpriced
+// tensor. The header fetch has completed and the byte census is landed; this claim is the
+// machinery's fail-closed property, kept as the RED against ever reading an unpriced tensor as
+// zero.
 test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool {
   let row = ArmCheckpointTensorRow {
     name: "model.language_model.layers.3.mlp.experts.17.gate_proj.weight" as NonEmptyStr,
@@ -2724,6 +2740,103 @@ test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool
     && all(figures, f => match f { Present { value: _ } => false Absent => true })
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "config.json")
+}
+
+
+
+// ── WITNESS 34: THE EXACT PROJECTION PRICED, AND THE TWO COMPLETING RUNS IN EXECUTABLE FORM ──────
+//
+// THE BYTE ROWS LAND: the five kind sums reconstruct the index tensor total exactly, the
+// conservation law holds with slack zero, and the per-rank figure is uniform -- 83,237,158,776
+// bytes on every rank. THE RESIDUE TABLE pins what the composite observation now decomposes
+// into: 106,681,602 / 3,274,219,983 / 4,412,386,317 / 5,260,642,358 bytes across TP0-TP3, the
+// rank-varying shape the collective workspace wears. THE VISION TOWER LOADS, cited from
+// config.json's architectures field. THE TWO RUN DESIGNS are minted plans beside runbook rows --
+// the executable form the bracket consumes.
+
+test fn w_the_projection_census_and_conservation_hold_exact() -> Bool {
+  glm_checkpoint_projection_census_holds()
+    && byte_size_count(b: glm_checkpoint_projection_per_rank_bytes()) == 83237158776
+    && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) == 1127254016
+    && byte_size_count(b: glm_checkpoint_index_tensor_bytes) == 328326771576
+}
+
+test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread() -> Bool {
+  let ranks = arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()
+  length(ranks) == 4
+    && all(ranks, rb => match rb.checkpoint_residency {
+      ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
+      _ => false
+    })
+    && (match first(filter(ranks, rb => rb.rank == 1)) {
+      Present { value: r1 } =>
+        (match r1.runtime_fixed {
+          ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
+          _ => false
+        })
+          && (match r1.collective_workspace {
+            ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
+            _ => false
+          })
+      Absent => false
+    })
+    && (match first(filter(ranks, rb => rb.rank == 3)) {
+      Present { value: r3 } =>
+        (match r3.runtime_fixed {
+          ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 5260642358
+          _ => false
+        })
+          && (match r3.collective_workspace {
+            ComponentBoundInterval { lower: l, upper: u, how: _ } => byte_size_count(b: l) == 0 && byte_size_count(b: u) == 5260642358
+            _ => false
+          })
+      Absent => false
+    })
+}
+
+test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
+  glm_checkpoint_config_architectures == "Glm5NextForConditionalGeneration"
+    && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) < byte_size_count(b: glm_checkpoint_projection_replicated_bytes())
+    && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
+}
+
+// THE LOADER-TRANSIENT PLAN ADMITS, NAMED EXACTLY: the mint's own walls pass -- the workload
+// joins the policy profile, the target is open at the launch wall, the envelope is the
+// normal-serving decision, the runtime bound is the engine's own ready timeout, and the receipt
+// the run must mint is CheckpointRankResidencyBound. The runbook row pins the bracket, the
+// cadence, and the pass/fail bounds.
+test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool {
+  match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      p.targets == [ArmLoaderTransform]
+        && length(p.expected_receipts) == 1
+        && p.expected_receipts == ["CheckpointRankResidencyBound"]
+        && basis_point_count(bp: p.envelope_basis_points) == 8567
+        && p.max_runtime_seconds == arm_memory_experiment_runtime_seconds()
+        && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.plan == "loader-transient"
+        && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.poll_seconds == 2
+        && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.runs == 3
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_loader_runbook.anchor_end as String, pattern: "Free memory on device")
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_loader_runbook.fail_bound as String, pattern: "envelope floor")
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+}
+
+// THE FRAGMENTATION-CHURN PLAN ADMITS, NAMED EXACTLY: same walls, the
+// AllocatorFragmentationBound receipt, the warm-engine churn anchors, and the pass bound that
+// keeps the peak-serving demand within supply.
+test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool {
+  match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      p.targets == [ArmFragmentationAllowance]
+        && p.expected_receipts == ["AllocatorFragmentationBound"]
+        && basis_point_count(bp: p.envelope_basis_points) == 8567
+        && arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.plan == "fragmentation-churn"
+        && arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.poll_seconds == 5
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.anchor_start as String, pattern: "profile line")
+        && string_contains(s: arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook.pass_bound as String, pattern: "peak-serving mandatory demand within supply")
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
 }
 
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
@@ -2791,4 +2904,9 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_the_placement_rules_classify_the_census_name_shapes()
     && w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure()
     && w_the_projection_refuses_to_total_until_the_shard_headers_land()
+    && w_the_projection_census_and_conservation_hold_exact()
+    && w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread()
+    && w_the_vision_tower_loads_cited_from_the_config()
+    && w_the_loader_transient_plan_is_admitted_and_named()
+    && w_the_fragmentation_churn_plan_is_admitted_and_named()
 }

@@ -24,6 +24,7 @@ import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  ServingLaunchProfile,
 }
 import gunbc.spark.serving_capacity_intent {
   uniform_cold_seats, profile_for_intent,
@@ -45,6 +46,9 @@ import gunbc.spark.arm_memory_fit {
   ArmWetReceiptBinding, arm_admit_wet_binding,
   ArmRankCacheSupply,
   ArmRankDemand, ArmSupplyDeductions,
+  ArmLoaderTransform, ArmFragmentationAllowance,
+  ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  arm_memory_fit_experiment_plan,
   CacheCapacityCandidate, cache_capacity_candidate,
 }
 
@@ -918,15 +922,21 @@ fn arm_experiment_kvplan_v2_2026_09_26_carry_identity() -> NonEmptyStr {
 // lets the exact TP4 placement projection bound every rank's checkpoint residency from the
 // manifest x the loader's placement rules, replacing this carry.
 
-fn arm_experiment_kvplan_v2_2026_09_26_checkpoint_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
-  arm_experiment_component_interval(
-    lower: byte_size(count: 0),
-    upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+// THE CHECKPOINT TERM IS THE PROJECTION'S EXACT PER-RANK FIGURE: 83,237,158,776 bytes,
+// identical on every rank (every large tensor class shards or expert-splits across the four
+// ranks; only norms/router/parameters and the visual tower replicate -- and the visual tower
+// LOADS, config.json architectures Glm5NextForConditionalGeneration, the GLM4V-pattern
+// multimodal wrapper at model.py:963). The composite carry it replaces is retired: the
+// composite observation was the interim upper bound, and it now decomposes exactly -- composite
+// floor minus placement -- into the residue that prices runtime-fixed and collective below.
+fn arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected() -> ArmComponentBound {
+  ComponentBoundExact {
+    bytes: glm_checkpoint_projection_per_rank_bytes(),
     how: join([
-      "checkpoint residency carried as a derived conservative interval from the weights+nontorch COMPOSITE observation at this launch (gpu_worker.py:867 profile line, ", r.host as String,
-      "): the composite bounds checkpoint residency above -- every checkpoint byte is a torch weight or a non-torch allocation at the profiling phase -- and the composite-ness is NAMED: the reading does not separate checkpoint tensors from runtime-fixed, communication or other non-Torch allocations, so this interval is NOT a checkpoint-placement receipt and the lower endpoint is zero (no positive per-rank lower is derivable without the per-tensor projection; the aggregate pigeonhole bounds only the max-loaded rank and rides on the subject's checkpoint_total interval). THE AGGREGATE, RESTATED AT ONE UNIT (an earlier carry mixed GB against GiB): the four composite floors SUM to 346,002,565,364 bytes = 322.24 GiB, which EXCEEDS the checkpoint's entire file set (328,337,455,672 bytes = 305.79 GiB, glm_5_3_flash_native_manifest at revision eb9eb208) -- the composites contain the whole checkpoint between them plus the non-checkpoint bytes; there is no unplaced gap. THE INDEX IS NOW READ (the section below: 76,108 tensors, 62 shards, the layer/expert/scale census, and the pinned source's TP4 placement rules), and the per-tensor byte projection is carried pending the shard-header fetch it names: when it lands, this term becomes the derived exact per-rank placement and the composite-minus-checkpoint residual prices runtime-fixed and collective. Completing act: the 62 safetensors shard headers (or config.json plus derived shapes) at the pinned snapshot. Subject: ",
+      "checkpoint residency DERIVED EXACT by the TP4 placement projection: the checkpoint's own index (76,108 tensors at revision eb9eb208) classified by the pinned source's placement rules (VocabParallel embed/lm_head; ColumnParallel q/k/v/b/f/g/q_b/kv_b/wk/conv1d and MergedColumn gate_up/shared_experts/in_proj; RowParallel down_proj/o_proj; FusedMoE expert bodies over the EP group, which IS the TP group at this launch; GateLinear router, norms, A_log/dt_bias/hc_/indexer wq_b/q_a and the loading visual tower replicated), byte-sized from the 62 shard headers -- vocab 2,537,553,920 + column 8,919,910,400 + row 3,599,034,368 + expert 311,729,651,712, over four ranks, plus the replicated population 1,540,621,176 on every rank = 83,237,158,776 bytes per rank, identical on all four. The conservation wall holds with slack zero: the four figures sum to 332,948,635,104 = the sharded-plus-expert bytes once plus the replicated bytes four times. Per-tensor shard padding rides as a named sub-block deviation, under one KiB per tensor class aggregate. Subject: ",
       arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
-    ], "") as NonEmptyStr)
+    ], "") as NonEmptyStr,
+  }
 }
 
 // ── TERM: RUNTIME-FIXED, BOUNDED FROM THE PINNED SOURCE AND THE COMPOSITE DECOMPOSITION ──────────
@@ -954,11 +964,11 @@ fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower() -> ByteSize {
 fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
   arm_experiment_component_interval(
     lower: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower(),
-    upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    upper: arm_experiment_kvplan_v2_2026_09_26_residue(r),
     how: join([
-      "runtime-fixed bounded from the pinned source and the composite decomposition: the sparse top-k index buffer (max_num_batched_tokens ", to_string(arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens),
-      " x buffer_width 2176 int32, allocated once at model init per glm5next/nvidia/model.py lines 588-606 at 8d09804c8) is persistent residency, so the lower endpoint is exactly 17,825,792 bytes (extdeps.vllm.sparse_prefill_transient term 3); the upper endpoint is the weights+nontorch composite floor at ", r.host as String,
-      " -- engine structures and allocator metadata are a subset of the composite's non-checkpoint residue, and with the checkpoint unseparated the sound scalar upper is the composite floor. Composite-ness named: the composite observation does not separate these mechanisms. Open above the pinned buffer: the full persistent-allocation census (sampler buffers, logits reservations, allocator metadata) awaits a source walk at the pinned revision or a RuntimeFixedAllocationBound measurement. Subject: ",
+      "runtime-fixed bounded from the pinned source and the exact projection's residue: the sparse top-k index buffer (max_num_batched_tokens ", to_string(arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens),
+      " x buffer_width 2176 int32, allocated once at model init per glm5next/nvidia/model.py lines 588-606 at 8d09804c8) is persistent residency, so the lower endpoint is exactly 17,825,792 bytes (extdeps.vllm.sparse_prefill_transient term 3); the upper endpoint is this rank's residue -- the composite floor at ", r.host as String,
+      " minus the exact per-rank placement 83,237,158,776 bytes -- because runtime-fixed (engine structures, allocator metadata) is a subset of the composite's non-checkpoint residue and the projection now separates the checkpoint out. Open above the pinned buffer: the full persistent-allocation census (sampler buffers, logits reservations, allocator metadata) awaits a source walk at the pinned revision or a RuntimeFixedAllocationBound measurement. Subject: ",
       arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
     ], "") as NonEmptyStr)
 }
@@ -981,10 +991,10 @@ fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r: ArmExperimentEnvel
 fn arm_experiment_kvplan_v2_2026_09_26_collective_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
   arm_experiment_component_interval(
     lower: byte_size(count: 0),
-    upper: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib),
+    upper: arm_experiment_kvplan_v2_2026_09_26_residue(r),
     how: join([
-      "collective workspace discharged by inclusion at the launch wall: NCCL's communicator buffers are non-torch memory inside the profiler's consumed figure (vllm/utils/mem_utils.py lines 246-275 at 8d09804c8, category 3 with NCCL the named example), so the weights+nontorch composite observation at ", r.host as String,
-      " already contains this launch's collective residency, resident from the profiling phase onward -- the same composite the prefill subproof priced as persistent residency. The upper endpoint is the composite floor; the lower is zero. Residual, named: the inclusion does not SEPARATE NCCL from the composite -- a CollectiveWorkspaceBound measurement prices it alone, and until then the composite floor is the conservative scalar upper; charging a separate NCCL figure on top of the composite would double-count. Subject: ",
+      "collective workspace discharged by inclusion and now priced inside the projection's residue: NCCL's communicator buffers are non-torch memory inside the profiler's consumed figure (vllm/utils/mem_utils.py lines 246-275 at 8d09804c8, category 3 with NCCL the named example), so the weights+nontorch composite observation at ", r.host as String,
+      " contains this launch's collective residency, and the exact placement subtracts out -- leaving this rank's residue (composite floor minus 83,237,158,776 bytes) as the sound scalar upper. The residue IS the collective's neighborhood: it grows from 106,681,602 bytes at rank 0 to 5,260,642,358 at rank 3, the rank-varying shape NCCL channel buffers wear. Residual, named: the inclusion does not SEPARATE NCCL from the residue -- a CollectiveWorkspaceBound measurement prices it alone; charging a separate NCCL figure on top of the composite would double-count. Subject: ",
       arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
     ], "") as NonEmptyStr)
 }
@@ -1073,7 +1083,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr
 fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmRankDemand {
   ArmRankDemand {
     rank: r.rank,
-    checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_carry(r),
+    checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected(),
     loader_transform: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_loader_obligation() },
     runtime_fixed: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r),
     collective_workspace: arm_experiment_kvplan_v2_2026_09_26_collective_carry(r),
@@ -1133,9 +1143,10 @@ fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: ByteSiz
 // eb9eb208eb0d988989d07a6a12d0fdeb5f52574a/, fetched to srv2 2026-09-26): the weight map names
 // every tensor's shard, and the metadata names the tensor-byte total -- the population census
 // below is parsed from it, not transcribed from the architecture. THE INDEX DOES NOT CARRY
-// SHAPES OR DTYPES (those live in each shard's safetensors header), so the byte projection is
-// CARRIED PENDING THE SHARD-HEADER FETCH, named below; everything the index does vouch is landed
-// here. THE TENSOR TOTAL IS THE NEW AUTHORITY ROW: 328,326,771,576 bytes of tensor data, against
+// SHAPES OR DTYPES (those live in each shard's safetensors header); the shard-header and
+// config.json fetches have since COMPLETED, and the byte projection they enabled is landed in
+// the section below -- everything the index itself vouches is landed here. THE TENSOR TOTAL IS
+// THE AUTHORITY ROW: 328,326,771,576 bytes of tensor data, against
 // the manifest module's 328,337,455,672 file bytes (glm_5_3_flash_native_manifest.safetensors_bytes)
 // -- the 10,684,096-byte difference is the 62 shards' own headers, named so no reader prices it
 // as weights.
@@ -1365,12 +1376,168 @@ fn arm_checkpoint_classify(name: String) -> ArmCheckpointPlacementKind {
   }
 }
 
-// THE PROJECTION'S PENDING FETCH, named as the obligation it is: the index does not carry shapes
-// or dtypes, so the byte census rides the 62 shards' safetensors headers (a bounded read of each
-// shard's opening bytes at the pinned snapshot -- or config.json plus the derived shapes as the
-// fallback), and config.json itself settles whether the vision tower loads (the architectures
-// field choosing ForCausalLM over ForConditionalGeneration). Until then every projected row
-// carries Absent bytes and the folds above refuse to total.
+// THE FETCHES, RECORDED AS COMPLETED: the 62 shards' safetensors headers (bounded 262,144-byte
+// windows at the pinned snapshot, every header complete, no shortfall) delivered every tensor's
+// shape and dtype, and config.json's architectures field
+// (["Glm5NextForConditionalGeneration"]) settled the vision tower: it LOADS. What remains open
+// at the launch wall after the projection are the two phase obligations the minted experiment
+// plans name -- the loader transient and the fragmentation churn -- each with its runbook row
+// below; the projection itself is landed (the byte census section above) and its Absent-row
+// fail-closed behavior stays as the machinery's exactness property.
 fn glm_checkpoint_projection_pending_obligation() -> NonEmptyStr {
-  "the per-tensor byte projection is one bounded read from landing: the 62 safetensors shard headers at the pinned snapshot (shapes and dtypes per tensor), with config.json settling whether the vision tower loads; the placement rules, the census, and the conservation law above are already landed, so the projection is arithmetic, not modeling" as NonEmptyStr
+  "the shard headers and config.json fetches are COMPLETE: the byte census is landed (the projection section above reconstructs the index tensor total with slack zero) and config.json's architectures field settles the vision tower as loading; the launch wall's remaining completing acts are the two minted experiment plans -- the loader transient and the fragmentation churn, each with its runbook row below -- and the Absent-bytes fold behavior remains as the machinery's fail-closed exactness property, not a pending read" as NonEmptyStr
+}
+
+
+// ── THE BYTE CENSUS FROM THE SHARD HEADERS, AND THE EXACT PER-RANK PROJECTION ────────────────────
+//
+// THE 62 SHARD HEADERS (fetched 2026-09-26, 262,144 bytes per shard's opening, every header
+// complete -- no window shortfall) carry every tensor's shape and dtype; byte-sized and
+// classified, they reconstruct the index tensor total EXACTLY (328,326,771,576, slack zero) --
+// the exactness wall the aggregate carry could never pass. DTYPE POPULATION, named: 37,338
+// F8_E4M3 weight bodies beside 37,338 F32 weight_scale_inv block scales (128-block fp8), 1,141
+// BF16 unquantized projections (the MLA projections are BF16 in checkpoint per
+// glm5next/nvidia/attention.py:425), and the F32 parameter/residual population.
+
+data glm_checkpoint_projection_vocab_bytes: ByteSize = byte_size(count: 2537553920)
+
+data glm_checkpoint_projection_column_bytes: ByteSize = byte_size(count: 8919910400)
+
+data glm_checkpoint_projection_row_bytes: ByteSize = byte_size(count: 3599034368)
+
+data glm_checkpoint_projection_expert_bytes: ByteSize = byte_size(count: 311729651712)
+
+data glm_checkpoint_projection_replicated_bytes: ByteSize = byte_size(count: 1540621176)
+
+// THE VISUAL TOWER'S BYTES (1,127,254,016 across 347 tensors), a named subset of the replicated
+// population: config.json's architectures field reads ["Glm5NextForConditionalGeneration"], the
+// GLM4V-pattern multimodal wrapper (glm5next/nvidia/model.py:963) -- THE ENGINE BUILDS THE
+// VISUAL TOWER, so the tower LOADS at this launch, replicated on every rank. tie_word_embeddings
+// is false, so lm_head loads beside embed_tokens, consistent with the vocab-sharded class.
+data glm_checkpoint_projection_visual_bytes: ByteSize = byte_size(count: 1127254016)
+
+data glm_checkpoint_config_architectures: NonEmptyStr = "Glm5NextForConditionalGeneration" as NonEmptyStr
+
+// THE PROJECTION CENSUS, checked not trusted: the five kind sums reconstruct the index tensor
+// total exactly, and the conservation law holds with slack zero -- four times the per-rank
+// figure equals the sharded-plus-expert bytes once plus the replicated bytes four times.
+fn glm_checkpoint_projection_census_holds() -> Bool {
+  byte_size_count(b: glm_checkpoint_projection_vocab_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_column_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_row_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_expert_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_replicated_bytes)
+    == byte_size_count(b: glm_checkpoint_index_tensor_bytes)
+    && 4 * byte_size_count(b: glm_checkpoint_projection_per_rank_bytes())
+    == byte_size_count(b: glm_checkpoint_projection_vocab_bytes)
+      + byte_size_count(b: glm_checkpoint_projection_column_bytes)
+      + byte_size_count(b: glm_checkpoint_projection_row_bytes)
+      + byte_size_count(b: glm_checkpoint_projection_expert_bytes)
+      + 4 * byte_size_count(b: glm_checkpoint_projection_replicated_bytes)
+}
+
+// THE EXACT PER-RANK PLACEMENT FIGURE: the sharded and expert classes over four ranks plus the
+// replicated population -- identical on every rank by construction, which is the projection's
+// structural finding: the checkpoint places EVENLY, and the composite readings' rank spread
+// (83.34 / 86.51 / 87.65 / 88.50 GiB floors) lives in the non-checkpoint residue.
+fn glm_checkpoint_projection_per_rank_bytes() -> ByteSize {
+  let sharded = byte_size_count(b: glm_checkpoint_projection_vocab_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_column_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_row_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_expert_bytes)
+  byte_size(count: sharded / 4 + byte_size_count(b: glm_checkpoint_projection_replicated_bytes))
+}
+
+// THE NON-CHECKPOINT RESIDUE per rank: the composite observation's floor minus the exact
+// placement -- what runtime-fixed, collective, and any other non-checkpoint allocation share on
+// that rank. THE RESIDUE TABLE, pinned: 106,681,602 / 3,274,219,983 / 4,412,386,317 /
+// 5,260,642,358 bytes across TP0-TP3 -- the rank-varying shape collective workspace wears.
+fn arm_experiment_kvplan_v2_2026_09_26_residue(r: ArmExperimentEnvelopeDerivedArenaReading) -> ByteSize {
+  byte_size(count: byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib)) - byte_size_count(b: glm_checkpoint_projection_per_rank_bytes()))
+}
+
+// ── THE TWO COMPLETING WET ACTS, IN EXECUTABLE FORM ──────────────────────────────────────────────
+//
+// THE BRACKET'S EXPERIMENT PLANS, minted through the same wall the launch gate uses
+// (gunbc.spark.arm_memory_fit arm_memory_fit_experiment_plan): the subject tuple is the launch
+// wall's own, the envelope is the normal-serving decision (8567 basis points -- conservative
+// means no larger), each plan targets ONE open obligation, names the receipt kind the run must
+// mint, and carries the stop/cleanup contract and route-enrollment prohibition. THE RUNBOOK ROWS
+// beside each plan pin the anchor strings, the poll cadence, and the pass/fail bounds the
+// bracket executes against.
+
+fn arm_experiment_kvplan_v2_2026_09_26_workload() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile {
+  profile_for_intent(
+    intent: arm_experiment_kvplan_v2_2026_09_26_workload(),
+    decided_gpu_memory_basis_points: basis_point(count: 8567),
+    kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true })
+}
+
+// THE LOADER-TRANSIENT PLAN: one bounded launch, the load phase bracketed per rank, the peak
+// over repeated loads the bound. Targets the loader-transform obligation; the receipt kind the
+// run must mint is CheckpointRankResidencyBound.
+fn arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() -> ArmMemoryExperimentAdmission {
+  arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
+    policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
+    targets: [ArmLoaderTransform])
+}
+
+type ArmExperimentRunbookRow {
+  plan: NonEmptyStr
+  anchor_start: NonEmptyStr
+  anchor_end: NonEmptyStr
+  poll_seconds: Nat
+  runs: Nat
+  pass_bound: NonEmptyStr
+  fail_bound: NonEmptyStr
+  receipt_kind: NonEmptyStr
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_loader_runbook: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
+  plan: "loader-transient" as NonEmptyStr,
+  anchor_start: "engine container start on the rank (the load transient begins with the first checkpoint byte read)" as NonEmptyStr,
+  anchor_end: "the rank's gpu_worker.py:867 'Free memory on device' profile line (load, profile and capture all inside the bracket)" as NonEmptyStr,
+  poll_seconds: 2,
+  runs: 3,
+  pass_bound: "the peak-over-loads ceiling per rank, minted as a CheckpointRankResidencyBound receipt, closes the loader-transform obligation at all four ranks when priced into the launch wall" as NonEmptyStr,
+  fail_bound: "a rank's load-phase peak above its envelope floor (102.54-104.25 GiB at this launch) falsifies the model: the engine's own accounting would refuse the load" as NonEmptyStr,
+  receipt_kind: "CheckpointRankResidencyBound" as NonEmptyStr,
+}
+
+// THE FRAGMENTATION-CHURN PLAN: the warm engine driven through six cold full-window prefills
+// and a bounded mixed-length churn window, the allocator's unreclaimable gap the bound. Targets
+// the fragmentation-allowance obligation; the receipt kind is AllocatorFragmentationBound.
+fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() -> ArmMemoryExperimentAdmission {
+  arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
+    policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
+    targets: [ArmFragmentationAllowance])
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
+  plan: "fragmentation-churn" as NonEmptyStr,
+  anchor_start: "the rank's gpu_worker.py:867 profile line (engine warm, pool constructed, serving state)" as NonEmptyStr,
+  anchor_end: "churn window expiry, then the bracket's stop contract: engine stopped on every rank and the container removed before the observer preserves receipts" as NonEmptyStr,
+  poll_seconds: 5,
+  runs: 1,
+  pass_bound: "the window's peak unreclaimable allocator gap (allocated minus reserved headroom beyond the engine's block accounting), minted as an AllocatorFragmentationBound receipt, keeps the peak-serving mandatory demand within supply at all four ranks when priced into the launch wall" as NonEmptyStr,
+  fail_bound: "a peak unreclaimable gap that pushes the peak-serving demand lower past a rank's conservative supply refuses the six-seat point: the service intent must re-price at 262144 before normal serving" as NonEmptyStr,
+  receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr,
 }
