@@ -8196,6 +8196,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
 
 type BodyLowerServiceAcc {
   operations: List<Edge>,
+  operation_shells: List<Node>,
   set_aside: List<ServiceSetAside>,
 }
 
@@ -8208,16 +8209,19 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
           outcome_accepted(value: a)
         } else if id == ^dag_surface_operation {
           bind_outcome(o: body_lower_operation(shell: member), f: fn(op) {
-            if body_lower_service_declares_operation(operations: a.operations, name: op.edge.label) {
-              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_operation_repeated, n: member))
-            } else {
-              outcome_accepted(value: BodyLowerServiceAcc { operations: list_snoc_item(xs: a.operations, item: op.edge), set_aside: list_append(left: a.set_aside, right: op.set_aside) })
-            }
+            outcome_accepted(
+              value: BodyLowerServiceAcc {
+                operations: list_snoc_item(xs: a.operations, item: op.edge),
+                operation_shells: list_snoc_item(xs: a.operation_shells, item: member),
+                set_aside: list_append(left: a.set_aside, right: op.set_aside)
+              }
+            )
           })
         } else if (id == ^dag_surface_transport) || (id == ^dag_surface_service_config) {
           outcome_accepted(
             value: BodyLowerServiceAcc {
               operations: a.operations,
+              operation_shells: a.operation_shells,
               set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: RealizationMemberSetAside, member: member })
             }
           )
@@ -8226,14 +8230,6 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
         }
     }
   })
-}
-
-// AN OPERATION NAME IS DECLARED ONCE PER SERVICE. Two operations sharing a name would lower to two
-// identically labelled edges of one product, which is not a well-formed node and names no single
-// function type; the refusal is located at the second declaration, with its own cause, rather than
-// surfacing later as an unlocated post-normalize well-formedness failure at the module root.
-fn body_lower_service_declares_operation(operations: List<Edge>, name: EdgeLabel) -> Bool {
-  fold(operations, init: false, f: fn(found, e) { found || (e.label == name) })
 }
 
 fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
@@ -8268,11 +8264,20 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
         Present { value: service_name } =>
           match fold(
             body_lower_service_member_shells(root: captured),
-            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, set_aside: Empty }),
+            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, operation_shells: Empty, set_aside: Empty }),
             f: fn(acc, member) { body_lower_service_member(acc: acc, member: member) }
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: a, diagnostics: _ } =>
+              match first(repeated_name_edges(children: a.operations)) {
+                Present { value: repeated } =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_service_operation_repeated,
+                      n: body_lower_service_second_operation_shell(operations: a.operations, shells: a.operation_shells, label: repeated.label, service: shell)
+                    )
+                  )
+                Absent =>
               match a.set_aside {
                 Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations)))
                 Cons { head: _, tail: _ } =>
@@ -8290,8 +8295,38 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
                     }
                   }
               }
+              }
           }
       }
+  }
+}
+
+// AN OPERATION NAME IS DECLARED ONCE PER SERVICE. The repeat is read once, over the finished
+// operation list, from v2.std.node_query repeated_name_edges; this only locates it, at the SECOND
+// operation shell carrying that name, so the refusal names the declaration that repeated it.
+type BodyLowerServiceRepeatScan {
+  shells: List<Node>,
+  matched: Int,
+  located: Optional<Node>,
+}
+
+fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: List<Node>, label: EdgeLabel, service: Node) -> Node {
+  let scanned = fold(operations, init: BodyLowerServiceRepeatScan { shells: shells, matched: 0, located: Absent }, f: fn(acc, e) {
+    match acc.shells {
+      Empty => acc
+      Cons { head: sh, tail: more } =>
+        if (e.label == label) && (acc.matched == 1) {
+          BodyLowerServiceRepeatScan { shells: more, matched: 2, located: Present { value: sh } }
+        } else if e.label == label {
+          BodyLowerServiceRepeatScan { shells: more, matched: acc.matched + 1, located: acc.located }
+        } else {
+          BodyLowerServiceRepeatScan { shells: more, matched: acc.matched, located: acc.located }
+        }
+    }
+  })
+  match scanned.located {
+    Absent => service
+    Present { value: sh } => sh
   }
 }
 
