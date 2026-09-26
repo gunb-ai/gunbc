@@ -116,6 +116,7 @@ import v2.std.node_query {
   construct_node,
   construct_tag_optional,
   field_projection_node,
+  field_projection_optional,
   find_named_child,
   positional_payload_field_name,
   repeated_name_edges,
@@ -534,6 +535,13 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<BodyLowering> {
 // first -- must pass it through as it passes an Arrow or a Transform; the first-atom fallback
 // they otherwise take would answer the construct's tag and drop its fields, which is exactly how
 // `data d: R = R { .. }` reached the graft as the atom R before this arm.
+// A FIELD PROJECTION IS LOWERED SUBSTRATE, for the construct's reason. The postfix chain fold
+// answers `f(x).a` as v2.std.node_query field_projection_node, a two-edge Conj (base, field), and
+// until this arm nothing above the postfix reduce recognised it: an operator operand, a paren
+// group or a unary operand re-read the Conj as unlowered, and the first-child descent answered its
+// BASE -- `p + g(x).a` lowered to `p + g(x)` with no diagnostic, silent wrongness below the ladder
+// (DESIGN 4b). The producer and this predicate now agree on one shape, field_projection_optional,
+// the same reader the projection's consumers use.
 // A LOWERED INT LITERAL IS SUBSTRATE, AND ITS PAYLOAD IS NOT A NAME. body_lower_int_literal_with_magnitude_optional
 // produces an Atom(dag_token_int_literal) carrying the integer authority's decimal digit list as
 // its magnitude field, and that list is a FreeMonoid cons spine: the same head/tail shape
@@ -550,6 +558,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
 
@@ -4316,6 +4325,21 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<Li
 }
 
 fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
+  match body_lower_postfix_projection_segment(repeat_elem: repeat_elem) {
+    Present { value: seg } => optional_present(value: seg.segment)
+    Absent => optional_absent()
+  }
+}
+
+// A step's segment and the authored node it was read from. The node is what a lowered step
+// stamps its segment atom with, so the segment keeps its own minted occurrence
+// (v2.compiler.reference_conservation keys every authored atom by that occurrence).
+type PostfixSegment {
+  segment: Symbol
+  at: Node
+}
+
+fn body_lower_postfix_projection_segment(repeat_elem: Node) -> Optional<PostfixSegment> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -4327,7 +4351,13 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
               Absent => Absent
               Present { value: after_dot } =>
                 match body_lower_param_binding_optional(node: after_dot.left) {
-                  Present { value: method } => optional_present(value: method)
+                  Present { value: method } =>
+                    optional_present(
+                      value: PostfixSegment {
+                        segment: method,
+                        at: body_lower_deep_unwrap_optional(node: after_dot.left)
+                      }
+                    )
                   Absent => Absent
                 }
             }
@@ -4439,6 +4469,7 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
 // general fold all consume THIS answer and differ only in what they build from it.
 type PostfixStep {
   segment: Symbol
+  at: Node
   call_elem: Optional<Node>
 }
 
@@ -4454,11 +4485,14 @@ type PostfixStep {
 //
 // WHETHER EVERY STEP IS BARE IS DECIDED ONCE, BY THE READ (review 70331). The read already knows
 // each step's suffix kind as it meets it, so it carries that fact in its accumulator
-// (PostfixChainAcc) and answers PostfixChainBare with the segments alone when no step carries a
-// call. A reader then MATCHES the arm, rather than a Bool predicate over each step's Optional
-// re-deriving afterwards what the read had in hand.
+// (PostfixChainAcc) and answers PostfixChainBare when no step carries a call. A reader then MATCHES
+// the arm, rather than a Bool predicate over each step's Optional re-deriving afterwards what the
+// read had in hand. The bare arm carries its STEPS, not only their segments: a bare chain off a
+// computed head folds to field projections, and each projection's field atom is stamped with its
+// own segment's authored node (PostfixStep.at), so the spine reads the segments and the fold the
+// steps from the one answer.
 type PostfixChainRead
-  = PostfixChainBare { segments: List<Symbol> }
+  = PostfixChainBare { steps: List<PostfixStep> }
   | PostfixChainFound { steps: List<PostfixStep> }
   | PostfixChainNotThisShape
   | PostfixChainSuffixCarried { at: Node }
@@ -4495,39 +4529,35 @@ fn body_lower_postfix_chain_steps_grow(
   }
 }
 
-// The read's accumulator: every step so far bare (the segments alone), or a call seen (the steps).
+// The read's accumulator: every step so far bare, or a call seen.
 type PostfixChainAcc
-  = PostfixChainAccBare { segments: List<Symbol> }
+  = PostfixChainAccBare { steps: List<PostfixStep> }
   | PostfixChainAccCalled { steps: List<PostfixStep> }
 
-fn body_lower_postfix_bare_steps(segments: List<Symbol>) -> List<PostfixStep> {
-  fold(segments, init: Empty, f: fn(acc, segment) {
-    list_snoc_item(xs: acc, item: PostfixStep { segment: segment, call_elem: optional_absent() })
-  })
+// The segments of a bare chain, the spine's reading of it.
+fn body_lower_postfix_step_segments(steps: List<PostfixStep>) -> List<Symbol> {
+  fold(steps, init: Empty, f: fn(acc, step) { list_snoc_item(xs: acc, item: step.segment) })
 }
 
-fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Symbol) -> PostfixChainAcc {
+fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, seg: PostfixSegment) -> PostfixChainAcc {
+  let step = PostfixStep { segment: seg.segment, at: seg.at, call_elem: optional_absent() }
   match acc {
-    PostfixChainAccBare { segments: segments } =>
-      PostfixChainAccBare { segments: list_snoc_item(xs: segments, item: segment) }
+    PostfixChainAccBare { steps: steps } =>
+      PostfixChainAccBare { steps: list_snoc_item(xs: steps, item: step) }
     PostfixChainAccCalled { steps: steps } =>
-      PostfixChainAccCalled {
-        steps: list_snoc_item(xs: steps, item: PostfixStep { segment: segment, call_elem: optional_absent() })
-      }
+      PostfixChainAccCalled { steps: list_snoc_item(xs: steps, item: step) }
   }
 }
 
 fn body_lower_postfix_chain_acc_call_step(
   acc: PostfixChainAcc,
-  segment: Symbol,
+  seg: PostfixSegment,
   call_elem: Node
 ) -> PostfixChainAcc {
-  let step = PostfixStep { segment: segment, call_elem: optional_present(value: call_elem) }
+  let step = PostfixStep { segment: seg.segment, at: seg.at, call_elem: optional_present(value: call_elem) }
   match acc {
-    PostfixChainAccBare { segments: segments } =>
-      PostfixChainAccCalled {
-        steps: list_snoc_item(xs: body_lower_postfix_bare_steps(segments: segments), item: step)
-      }
+    PostfixChainAccBare { steps: steps } =>
+      PostfixChainAccCalled { steps: list_snoc_item(xs: steps, item: step) }
     PostfixChainAccCalled { steps: steps } =>
       PostfixChainAccCalled { steps: list_snoc_item(xs: steps, item: step) }
   }
@@ -4535,7 +4565,7 @@ fn body_lower_postfix_chain_acc_call_step(
 
 fn body_lower_postfix_chain_acc_finish(acc: PostfixChainAcc) -> PostfixChainRead {
   match acc {
-    PostfixChainAccBare { segments: segments } => PostfixChainBare { segments: segments }
+    PostfixChainAccBare { steps: steps } => PostfixChainBare { steps: steps }
     PostfixChainAccCalled { steps: steps } => PostfixChainFound { steps: steps }
   }
 }
@@ -4550,7 +4580,7 @@ fn body_lower_postfix_chain_steps_read(
     match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
       Absent => PostfixChainNotThisShape
       Present { value: repeat_elem } =>
-        match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
+        match body_lower_postfix_projection_segment(repeat_elem: repeat_elem) {
           Absent => PostfixChainNotThisShape
           Present { value: segment } =>
             match body_lower_postfix_suffix_read(repeat_elem: repeat_elem) {
@@ -4559,14 +4589,14 @@ fn body_lower_postfix_chain_steps_read(
               PostfixSuffixEmpty =>
                 body_lower_postfix_chain_steps_grow(
                   repeat_capture: repeat_capture,
-                  grown: body_lower_postfix_chain_acc_bare_step(acc: acc, segment: segment)
+                  grown: body_lower_postfix_chain_acc_bare_step(acc: acc, seg: segment)
                 )
               PostfixSuffixCall =>
                 body_lower_postfix_chain_steps_grow(
                   repeat_capture: repeat_capture,
                   grown: body_lower_postfix_chain_acc_call_step(
                     acc: acc,
-                    segment: segment,
+                    seg: segment,
                     call_elem: repeat_elem
                   )
                 )
@@ -4587,15 +4617,15 @@ fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
     Present { value: pair } =>
       match body_lower_postfix_chain_steps_read(
         repeat_capture: pair.right,
-        acc: PostfixChainAccBare { segments: Empty }
+        acc: PostfixChainAccBare { steps: Empty }
       ) {
         PostfixChainNotThisShape => PostfixChainNotThisShape
         PostfixChainSuffixCarried { at: at } => PostfixChainSuffixCarried { at: at }
         PostfixChainFound { steps: steps } => PostfixChainFound { steps: steps }
-        PostfixChainBare { segments: segments } =>
-          match segments {
+        PostfixChainBare { steps: steps } =>
+          match steps {
             Empty => PostfixChainNotThisShape
-            Cons { head: _, tail: _ } => PostfixChainBare { segments: segments }
+            Cons { head: _, tail: _ } => PostfixChainBare { steps: steps }
           }
       }
   }
@@ -4623,7 +4653,7 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
     PostfixChainNotThisShape => optional_absent()
     PostfixChainSuffixCarried { at: _ } => optional_absent()
     PostfixChainFound { steps: _ } => optional_absent()
-    PostfixChainBare { segments: segments } =>
+    PostfixChainBare { steps: steps } =>
       match body_lower_dotted_head_symbol_optional(
         node: body_lower_postfix_chain_head_or_self(node: node)
       ) {
@@ -4631,7 +4661,7 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
         Present { value: head } =>
           optional_present(
             value: body_lower_qualified_name_spine_node(
-              segments: Cons { head: head, tail: segments },
+              segments: Cons { head: head, tail: body_lower_postfix_step_segments(steps: steps) },
               source: node
             )
           )
@@ -4695,7 +4725,7 @@ fn body_lower_postfix_chain_fold_step(
             PostfixAccumValue { node: base } =>
               outcome_with_diagnostics(
                 value: PostfixAccumValue {
-                  node: field_projection_node(base: base, field: step.segment, source: source)
+                  node: field_projection_node(base: base, field: step.segment, source: step.at)
                 },
                 diagnostics: ad
               )
@@ -4763,11 +4793,8 @@ fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node
           )
         }
       )
-    PostfixChainBare { segments: segments } =>
-      body_lower_postfix_chain_lowered_from_steps(
-        node: node,
-        steps: body_lower_postfix_bare_steps(segments: segments)
-      )
+    PostfixChainBare { steps: steps } =>
+      body_lower_postfix_chain_lowered_from_steps(node: node, steps: steps)
     PostfixChainFound { steps: steps } =>
       body_lower_postfix_chain_lowered_from_steps(node: node, steps: steps)
   }
@@ -4788,15 +4815,50 @@ fn body_lower_postfix_chain_lowered_from_steps(
         source: node
       )
     Absent =>
-      match body_lower_operand_ref_optional(node: head_node) {
-        Absent => outcome_accepted(value: optional_absent())
-        Present { value: head_value } =>
-          body_lower_postfix_chain_fold_from(
-            steps: steps,
-            init: PostfixAccumValue { node: head_value },
-            source: node
+      match body_lower_try_primary_ident_call(node: head_node) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: Present { value: call }, diagnostics: hd } =>
+          body_lower_postfix_chain_prefixed(
+            head: hd,
+            rest: body_lower_postfix_chain_fold_from(
+              steps: steps,
+              init: PostfixAccumValue { node: call },
+              source: node
+            )
           )
+        Accepted { value: Absent, diagnostics: _ } =>
+          match body_lower_operand_ref_optional(node: head_node) {
+            Absent => outcome_accepted(value: optional_absent())
+            Present { value: head_value } =>
+              body_lower_postfix_chain_fold_from(
+                steps: steps,
+                init: PostfixAccumValue { node: head_value },
+                source: node
+              )
+          }
       }
+  }
+}
+
+// A CALL IN HEAD POSITION IS THE CHAIN'S FIRST VALUE (gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, the call-then-field residue). `f(x).a.b` parses as
+// a primary carrying its own call suffix followed by the dot steps, so the head is neither a bare
+// segment (body_lower_dotted_head_symbol_optional) nor an operand reference: the operand reader
+// has no call in its vocabulary. On the bottom-up fold route the primary is already a lowered
+// Transform and reaches the operand arm as core substrate; on the top-down walker route it is
+// still raw, and the door used to DECLINE, so the chain fell to arms that refused it
+// (operator_operand_unread) or kept its head alone. The head call is lowered by the one call
+// reader the walker already uses (body_lower_try_primary_ident_call), so a refused argument is
+// refused located at that argument, and every step after it folds exactly as it does off any other
+// value: an empty suffix is v2.std.node_query field_projection_node, a paren suffix a method call.
+fn body_lower_postfix_chain_prefixed(
+  head: Diagnostics,
+  rest: Outcome<Optional<Node>>
+) -> Outcome<Optional<Node>> {
+  match rest {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: v, diagnostics: d } =>
+      outcome_with_diagnostics(value: v, diagnostics: diagnostics_merge(outer: head, inner: d))
   }
 }
 

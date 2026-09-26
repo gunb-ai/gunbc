@@ -865,6 +865,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_dropping_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_outsider_dropping_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_clean_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.call_projection_operand_subject",
   "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_alias_subject",
   "v2.test.claim.body_lowering.single_arm_match.three_arm_subject",
   "v2.test.claim.body_lowering.single_arm_match.zero_arm_subject",
