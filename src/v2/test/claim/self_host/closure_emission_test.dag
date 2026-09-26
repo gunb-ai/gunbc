@@ -1,0 +1,302 @@
+module v2.test.claim.self_host.closure_emission
+
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.languages.json.emit { JsonArray, JsonObject, JsonString, JsonValue }
+import v2.std.integer { Int }
+import extdeps.languages.json.parse {
+  FieldRead,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_field,
+  json_field_string,
+  json_field_string_list,
+  parse_json_document
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.self_host.closure_emission {
+  ClosureEmission,
+  ClosureEmissionLocated,
+  ClosureMemberEmission,
+  ClosureMemberEmitted,
+  ClosureMemberRefused,
+  closure_emission_json,
+  closure_emission_refused_count,
+  emit_closure_from_ingest_located
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.algebra { contains, fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_synthetic }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DOOR'S THREE REFUSAL DIRECTIONS AND ITS CODEC, over inline corpora. Each scenario's whole
+// emission is a NULLARY PRODUCER enrolled in v2.workflow.floor_pure_producer_share, because the
+// front end, resolution and emission of even a two-module corpus cost more than a new witness may
+// spend (the measured reason v2.test.claim.reference_closure and cross_module_reference_resolution
+// share theirs): the real door runs once at preparation, and every claim reads the carrier it
+// produced. What the claims assert is the carrier's SHAPE PER DIRECTION, which is the door's
+// contract:
+//   - a module outside the closure whose BODY does not lower does not stop the emission;
+//   - a module outside the closure that does not PARSE refuses the emission (the census is total);
+//   - a closure member whose body does not lower refuses the emission at its cause (its reach is
+//     unknown); a refusal after membership is known is that member's typed arm, beside the others.
+// The owed claim over the real corpus -- the closure of v2.compiler.compile set-equal with the
+// seed's reference-derived closure -- is the instrument's, not this file's.
+
+data ce_entry_source: String = "module v2.test.ce_entry\n\nimport v2.std.logic { Bool }\n\nfn ce_entry_fn(p: Bool) -> Bool { v2.test.ce_member.ce_member_fn(p: p) }\n"
+
+data ce_member_source: String = "module v2.test.ce_member\n\nimport v2.std.logic { Bool }\n\nfn ce_member_fn(p: Bool) -> Bool { p }\n"
+
+data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
+
+// Outside every closure below. Its body is an else-less `if`, which body lowering refuses
+// (v2.compiler.body_lowering_fold body_lower_fn_decl_to_arrow), so a door that lowered it would fail.
+data ce_body_refusing_outsider_source: String = "module v2.test.ce_outsider\n\nimport v2.std.logic { Bool }\n\nfn ce_outsider_fn(p: Bool) -> Bool { if p { p } }\n"
+
+// Two files declaring ONE module identity with INDEPENDENT declarations: the case most likely to pass
+// silently, since neither file's declarations collide with the other's.
+data ce_duplicate_a_source: String = "module v2.test.ce_duplicate\n\nimport v2.std.logic { Bool }\n\nfn ce_duplicate_a(p: Bool) -> Bool { p }\n"
+
+data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport v2.std.logic { Bool }\n\nfn ce_duplicate_b(p: Bool) -> Bool { p }\n"
+
+data ce_unparseable_outsider_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
+
+// A member whose body does not lower: the entry reaches it, so the refusal is a member's.
+data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport v2.std.logic { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
+
+data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport v2.std.logic { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
+
+fn ce_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn ce_locus() -> Node {
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ce_entry_locus } }, children: [])
+}
+
+fn ce_emit(ingest: SourceRootIngest, entry: String) -> ClosureEmissionLocated {
+  emit_closure_from_ingest_located(
+    ingest: ingest,
+    entry: qualified_name_from_dotted_string(dotted: entry),
+    entry_locus: ce_locus(),
+    target: rust_target_model()
+  )
+}
+
+fn ce_emission_outsider_body_refuses() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_logic_source, id: ^ce_logic_read, path: "src/v2/test/fixture/closure_emission/logic.dag"),
+      ce_read(source: ce_entry_source, id: ^ce_entry_read, path: "src/v2/test/fixture/closure_emission/entry.dag"),
+      ce_read(source: ce_member_source, id: ^ce_member_read, path: "src/v2/test/fixture/closure_emission/member.dag"),
+      ce_read(source: ce_body_refusing_outsider_source, id: ^ce_outsider_read, path: "src/v2/test/fixture/closure_emission/outsider.dag")
+    ],
+    entry: "v2.test.ce_entry"
+  )
+}
+
+fn ce_emission_outsider_unparseable() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_logic_source, id: ^ce_logic_read, path: "src/v2/test/fixture/closure_emission/logic.dag"),
+      ce_read(source: ce_entry_source, id: ^ce_entry_read, path: "src/v2/test/fixture/closure_emission/entry.dag"),
+      ce_read(source: ce_member_source, id: ^ce_member_read, path: "src/v2/test/fixture/closure_emission/member.dag"),
+      ce_read(source: ce_unparseable_outsider_source, id: ^ce_unparseable_read, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
+    ],
+    entry: "v2.test.ce_entry"
+  )
+}
+
+fn ce_emission_duplicate_module() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_logic_source, id: ^ce_logic_read, path: "src/v2/test/fixture/closure_emission/logic.dag"),
+      ce_read(source: ce_entry_source, id: ^ce_entry_read, path: "src/v2/test/fixture/closure_emission/entry.dag"),
+      ce_read(source: ce_member_source, id: ^ce_member_read, path: "src/v2/test/fixture/closure_emission/member.dag"),
+      ce_read(source: ce_duplicate_a_source, id: ^ce_duplicate_a_read, path: "src/v2/test/fixture/closure_emission/duplicate_a.dag"),
+      ce_read(source: ce_duplicate_b_source, id: ^ce_duplicate_b_read, path: "src/v2/test/fixture/closure_emission/duplicate_b.dag")
+    ],
+    entry: "v2.test.ce_entry"
+  )
+}
+
+fn ce_emission_member_body_refuses() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_logic_source, id: ^ce_logic_read, path: "src/v2/test/fixture/closure_emission/logic.dag"),
+      ce_read(source: ce_refusing_entry_source, id: ^ce_refusing_entry_read, path: "src/v2/test/fixture/closure_emission/refusing_entry.dag"),
+      ce_read(source: ce_refusing_member_source, id: ^ce_refusing_member_read, path: "src/v2/test/fixture/closure_emission/refusing_member.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+fn ce_qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
+fn ce_members_are(e: ClosureEmission, expected: FreeMonoid<String>) -> Bool {
+  length(xs: e.members) == length(xs: expected)
+    && fold_list(xs: expected, empty: true, cons: fn(ok, name) {
+      ok && contains(xs: e.members, item: qualified_name_from_dotted_string(dotted: name), eq: ce_qn_eq)
+    })
+}
+
+// How many arms the carrier holds for one module identity. A member owes exactly one.
+fn ce_arm_count(e: ClosureEmission, name: String) -> Int {
+  fold_list(xs: e.modules, empty: 0, cons: fn(n, m) {
+    let q = match m {
+      ClosureMemberEmitted { module: q, text: _ } => q
+      ClosureMemberRefused { module: q, diagnostics: _ } => q
+    }
+    if q == qualified_name_from_dotted_string(dotted: name) { n + 1 } else { n }
+  })
+}
+
+// DIRECTION 1. The outsider's body would refuse if it were lowered; it is outside the closure, so it
+// is censused and never lowered: the emission is ACCEPTED, the closure is exactly the entry's, the
+// outsider has no arm, and every member -- entry, member and v2.std.logic -- has EXACTLY ONE arm, so a duplicated arm or a
+// missing one reds. Whether a member's arm is Emitted or a
+// typed Refused is the emit stages' answer, not the door's -- on this tree an ordinary fn still
+// answers translate_rejected_grounding_not_derived (v2.compiler.infer's grounding frontier), and that
+// refusal is carried as the member's arm rather than stopping the others, which is the point.
+test fn a_module_outside_the_closure_whose_body_does_not_lower_does_not_stop_the_emission_holds() -> Bool {
+  match ce_emission_outsider_body_refuses().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_members_are(e: e, expected: ["v2.test.ce_entry", "v2.test.ce_member", "v2.std.logic"])
+        && length(xs: e.modules) == 3
+        && ce_arm_count(e: e, name: "v2.test.ce_entry") == 1
+        && ce_arm_count(e: e, name: "v2.test.ce_member") == 1
+        && ce_arm_count(e: e, name: "v2.std.logic") == 1
+        && ce_arm_count(e: e, name: "v2.test.ce_outsider") == 0
+  }
+}
+
+// DIRECTION 2. The census is total: a file that does not parse refuses the emission even though no
+// member reaches it, because its declarations are unreadable and one of them could have been bound.
+test fn a_module_outside_the_closure_that_does_not_parse_refuses_the_emission_holds() -> Bool {
+  match ce_emission_outsider_unparseable().outcome {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// DIRECTION 3. A member whose body does not lower REFUSES THE EMISSION, located at its own cause,
+// and that is forced rather than chosen: the closure phase reads a member's references from its
+// lowered body, so a member whose body cannot be lowered is a member whose reach is unknown, and
+// emitting the rest would be a closure silently smaller than the program (DESIGN section 5). A
+// refusal AFTER membership is known -- resolve, infer, translate, emit -- is that member's typed arm
+// instead (direction 1 shows one).
+test fn a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds() -> Bool {
+  match ce_emission_member_body_refuses().outcome {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+  }
+}
+
+fn ce_arm_module(m: ClosureMemberEmission) -> String {
+  match m {
+    ClosureMemberEmitted { module: q, text: _ } => qualified_name_to_dotted_string(qn: q)
+    ClosureMemberRefused { module: q, diagnostics: _ } => qualified_name_to_dotted_string(qn: q)
+  }
+}
+
+fn ce_arm_is_emitted(m: ClosureMemberEmission) -> Bool {
+  match m {
+    ClosureMemberEmitted { module: _, text: _ } => true
+    ClosureMemberRefused { module: _, diagnostics: _ } => false
+  }
+}
+
+// ONE PARSED ROW AGAINST ONE CARRIER ARM: the same module identity, and exactly one of `emitted` /
+// `refused`, the one the arm is.
+fn ce_row_matches(row: JsonValue, arm: ClosureMemberEmission) -> Bool {
+  let emitted = match json_field_string(obj: row, key: "emitted") { FieldRead { value: _ } => true
+    _ => false }
+  let refused = match json_field_string(obj: row, key: "refused") { FieldRead { value: _ } => true
+    _ => false }
+  (match json_field_string(obj: row, key: "module") {
+    FieldRead { value: name } => name == ce_arm_module(m: arm)
+    _ => false
+  })
+    && (emitted != refused)
+    && (emitted == ce_arm_is_emitted(m: arm))
+}
+
+// Two lists, position by position: equal length and every position agrees.
+fn ce_rows_match(rows: FreeMonoid<JsonValue>, arms: FreeMonoid<ClosureMemberEmission>) -> Bool {
+  match rows {
+    Empty => match arms { Empty => true
+      Cons { head: _, tail: _ } => false }
+    Cons { head: r, tail: rs } =>
+      match arms {
+        Empty => false
+        Cons { head: a, tail: as_ } => ce_row_matches(row: r, arm: a) && ce_rows_match(rows: rs, arms: as_)
+      }
+  }
+}
+
+fn ce_names_match(names: FreeMonoid<String>, members: FreeMonoid<QualifiedName>) -> Bool {
+  match names {
+    Empty => match members { Empty => true
+      Cons { head: _, tail: _ } => false }
+    Cons { head: n, tail: ns } =>
+      match members {
+        Empty => false
+        Cons { head: m, tail: ms } => n == qualified_name_to_dotted_string(qn: m) && ce_names_match(names: ns, members: ms)
+      }
+  }
+}
+
+// THE CODEC ROUND TRIP AT IDENTITY GRAIN: the rendering parses back through the codec's other
+// direction, the entry and the ORDERED member identities come back equal, and row by row the modules
+// come back as the same identities, each with exactly one of emitted/refused matching its arm. A
+// serializer that repeated one name, dropped an arm, or swapped emitted for refused reds here.
+fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
+  match parse_json_document(s: closure_emission_json(emission: e)) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: doc } =>
+      (match json_field_string(obj: doc, key: "entry") {
+        FieldRead { value: entry } => entry == qualified_name_to_dotted_string(qn: e.entry)
+        _ => false
+      })
+        && (match json_field_string_list(obj: doc, key: "members") {
+          FieldRead { value: names } => ce_names_match(names: names, members: e.members)
+          _ => false
+        })
+        && (match json_field(obj: doc, key: "modules") {
+          FieldRead { value: JsonArray { elements: rows } } => ce_rows_match(rows: rows, arms: e.modules)
+          _ => false
+        })
+  }
+}
+
+test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds() -> Bool {
+  match ce_emission_outsider_body_refuses().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } => ce_round_trip_holds(e: e)
+  }
+}
+
+// A MODULE IDENTITY DECLARED BY TWO FILES REFUSES THE EMISSION AT THE CENSUS, even when the two
+// files' declarations are independent and neither is a closure member.
+test fn two_files_declaring_one_module_refuse_the_emission_at_the_census_holds() -> Bool {
+  match ce_emission_duplicate_module().outcome {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^closure_census_duplicate_module
+  }
+}

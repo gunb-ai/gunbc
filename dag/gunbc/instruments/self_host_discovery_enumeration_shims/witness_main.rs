@@ -1,125 +1,60 @@
 use std::rc::Rc;
+
 use v1_compiled::v2_compiler_discovery_enumeration as emitted;
-use v1_compiler::v2_compiler_discovery_enumeration as seed;
+use v1_compiled::v2_compiler_discovery_enumeration::{OwnedDataDeclInitializer, ResolvedDeclRef};
 
-fn rc_text_eq(e: &Rc<String>, s: &str) -> bool {
-    e.as_str() == s
-}
+// NO SEED ORACLE, ON PURPOSE. This driver used to compare emitted values against
+// v1_compiler::v2_compiler_discovery_enumeration, a hand copy, and it had gone stale against the
+// emitter (it built the String fields as Rc<String>, so it failed to compile). src/v2/compiler/
+// discovery_enumeration.dag declares no function: its whole behavior is two data constants and the
+// construction and elimination of its types. So this driver runs, over the EMITTED realization,
+// the same assertions src/v2/test/claim/discovery_enumeration_test.dag makes over the .dag in the
+// interpreter (the roster's claim-run for this row) -- one contract, two realizations, no copy of
+// the module under test.
 
-fn resolved_eq(e: &emitted::ResolvedDeclRef, s: &seed::ResolvedDeclRef) -> bool {
-    rc_text_eq(&e.module, &s.module) && e.name == s.name
-}
-
-fn init_eq(e: &emitted::OwnedDataDeclInitializer, s: &seed::OwnedDataDeclInitializer) -> bool {
-    use emitted::OwnedDataDeclInitializer as E;
-    use seed::OwnedDataDeclInitializer as S;
-    match (e, s) {
-        (E::OwnedNodeCorpusInit, S::OwnedNodeCorpusInit) => true,
-        (
-            E::OwnedBoolWitnessClaimInit {
-                witness_entry: ee,
-                witness_function: ef,
-            },
-            S::OwnedBoolWitnessClaimInit {
-                witness_entry: se,
-                witness_function: sf,
-            },
-        ) => rc_text_eq(ee, se) && rc_text_eq(ef, sf),
-        (E::OwnedOtherInit { resolved: er }, S::OwnedOtherInit { resolved: sr }) => {
-            resolved_eq(er, sr)
-        }
-        _ => false,
+fn classify(init: &OwnedDataDeclInitializer) -> &'static str {
+    match init {
+        OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit { .. } => "bool_witness",
+        OwnedDataDeclInitializer::OwnedNodeCorpusInit => "node_corpus",
+        OwnedDataDeclInitializer::OwnedOtherInit { .. } => "other",
     }
 }
 
-fn receipt_eq(e: &emitted::OwnedDataDiscoveryReceipt, s: &seed::OwnedDataDiscoveryReceipt) -> bool {
-    e.unified_claim_arm_count == s.unified_claim_arm_count
-        && e.bool_witness_claim_arm_count == s.bool_witness_claim_arm_count
-        && e.illegal_other_init_count == s.illegal_other_init_count
-        && e.bool_witness_transport_row_count == s.bool_witness_transport_row_count
-        && e.transport_projection_complete == s.transport_projection_complete
-}
-
+// The planted fault expects the node-corpus arm module to differ from the .dag's declared value,
+// so the fault run goes red only if the emitted constant really carries that value.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let mut all_pass = true;
+    let expected_module = "v2.std.verification";
+    let corpus_expected = if inject_fault { "v2.std.fault" } else { expected_module };
+    let modules_ok = emitted::unified_claim_arm_bool_witness_claim_module() == expected_module
+        && emitted::unified_claim_arm_node_corpus_module() == corpus_expected;
+    println!("claim arm modules inject_fault={inject_fault} ok={modules_ok}");
 
-    let e_bool_mod = emitted::unified_claim_arm_bool_witness_claim_module();
-    let s_bool_mod = seed::unified_claim_arm_bool_witness_claim_module();
-    let bool_mod_ok = rc_text_eq(&e_bool_mod, &s_bool_mod) && !inject_fault;
-    println!("bool_module emitted={e_bool_mod:?} seed={s_bool_mod:?} eq={bool_mod_ok}");
-    all_pass &= bool_mod_ok;
-
-    let e_corpus_mod = emitted::unified_claim_arm_node_corpus_module();
-    let s_corpus_mod = seed::unified_claim_arm_node_corpus_module();
-    let corpus_mod_ok = rc_text_eq(&e_corpus_mod, &s_corpus_mod);
-    println!("corpus_module emitted={e_corpus_mod:?} seed={s_corpus_mod:?} eq={corpus_mod_ok}");
-    all_pass &= corpus_mod_ok;
-
-    let cases: [(emitted::OwnedDataDeclInitializer, seed::OwnedDataDeclInitializer); 3] = [
-        (
-            emitted::OwnedDataDeclInitializer::OwnedNodeCorpusInit,
-            seed::OwnedDataDeclInitializer::OwnedNodeCorpusInit,
-        ),
-        (
-            emitted::OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {
-                witness_entry: Rc::new("entry.dag".to_string()),
-                witness_function: Rc::new("witness_fn".to_string()),
-            },
-            seed::OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {
-                witness_entry: "entry.dag".to_string(),
-                witness_function: "witness_fn".to_string(),
-            },
-        ),
-        (
-            emitted::OwnedDataDeclInitializer::OwnedOtherInit {
-                resolved: Rc::new(emitted::ResolvedDeclRef {
-                    module: Rc::new("v2.example.mod".to_string()),
-                    name: "sym".to_string(),
-                }),
-            },
-            seed::OwnedDataDeclInitializer::OwnedOtherInit {
-                resolved: seed::ResolvedDeclRef {
-                    module: "v2.example.mod".to_string(),
-                    name: "sym".to_string(),
-                },
-            },
-        ),
-    ];
-
-    for (i, (ev, sv)) in cases.iter().enumerate() {
-        let ev_cmp = if inject_fault && i == 0 {
-            emitted::OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {
-                witness_entry: Rc::new("fault".to_string()),
-                witness_function: Rc::new("fault".to_string()),
-            }
-        } else {
-            ev.clone()
-        };
-        let ok = init_eq(&ev_cmp, sv);
-        println!("init({i}) emitted={ev_cmp:?} seed={sv:?} eq={ok}");
-        all_pass &= ok;
-    }
-
-    let e_receipt = emitted::OwnedDataDiscoveryReceipt {
-        unified_claim_arm_count: 2,
-        bool_witness_claim_arm_count: 1,
-        illegal_other_init_count: 0,
-        bool_witness_transport_row_count: 1,
-        transport_projection_complete: true,
+    let corpus = OwnedDataDeclInitializer::OwnedNodeCorpusInit;
+    let bool_witness = OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {
+        witness_entry: "entry.dag".to_string(),
+        witness_function: "witness_fn".to_string(),
     };
-    let s_receipt = seed::OwnedDataDiscoveryReceipt {
-        unified_claim_arm_count: 2,
-        bool_witness_claim_arm_count: 1,
-        illegal_other_init_count: 0,
-        bool_witness_transport_row_count: 1,
-        transport_projection_complete: true,
+    let other = OwnedDataDeclInitializer::OwnedOtherInit {
+        resolved: Rc::new(ResolvedDeclRef {
+            module: "v2.example".to_string(),
+            name: "sym".to_string(),
+        }),
     };
-    let receipt_ok = receipt_eq(&e_receipt, &s_receipt);
-    println!("receipt emitted={e_receipt:?} seed={s_receipt:?} eq={receipt_ok}");
-    all_pass &= receipt_ok;
+    let bool_fields_ok = matches!(&bool_witness,
+        OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit { witness_entry, witness_function }
+            if witness_entry == "entry.dag" && witness_function == "witness_fn");
+    let other_fields_ok = matches!(&other,
+        OwnedDataDeclInitializer::OwnedOtherInit { resolved }
+            if resolved.module == "v2.example" && resolved.name == "sym");
+    let arms_ok = classify(&corpus) == "node_corpus"
+        && classify(&bool_witness) == "bool_witness"
+        && classify(&other) == "other"
+        && bool_fields_ok
+        && other_fields_ok;
+    println!("initializer arms round-trip ok={arms_ok}");
 
-    if all_pass {
+    if modules_ok && arms_ok {
         println!("SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }
