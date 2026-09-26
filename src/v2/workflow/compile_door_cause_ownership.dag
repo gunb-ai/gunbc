@@ -168,6 +168,30 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a value position -- record-literal field initializer, if condition or arm, let value, block statement, match-arm body -- whose value the value reader (v2.compiler.body_lowering_fold body_lower_value_read) cannot lower: a function value, chiefly, until fn-literal lowering covers it. It REPLACES the head-grain advisory body_lowering_reason_value_carried_unlowered, which carried the unlowered shell, let the file Accept, and refused later at resolve at the wrong atom (gunbc.recurring_failure_mode carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom); the value now refuses at itself. Flips to Blocking when every value shape lowers. The newly-refusing population at the cut is listed on the PR that made it"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_call_argument_unread,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "value-position lowering: a call argument whose value v2.compiler.body_lowering_fold body_lower_call_arg_value cannot read refuses its module here. Dominated by function values in argument position (inline lambdas and fn literals, gunbc.recurring_failure_mode lambda_has_no_lowered_function_value_form), which gunbc#12210 lowers to the generic fn Arrow; the positional fold-step residue is gunbc#12272. Flips to Blocking when the count zeroes after both land. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_operator_operand_unread,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering modeling pass (gentle-koi-724's lane): an operator operand body_lower_read_operator_expression cannot lower -- a caret symbol (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form) or a parenthesised `as` cast (as_cast_has_no_lowered_form, whose typed cast node is gunbc#12315). Flips to Blocking when every operand shape lowers and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_type_annotation_not_carried,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "an authored type annotation with no carrier: a statement-form let annotation (gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, retired by the let-annotation Bind carrier gunbc#12322) or a fn literal's return annotation; an `as` cast's target type rides the typed cast node gunbc#12315. Flips to Blocking when both carriers land and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_paren_group_unread,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "value-position lowering: raised by v2.compiler.body_lowering_fold body_lower_paren_group_lowered when a parenthesised group's inner expression neither lowered bottom-up nor reads as an operand (gunbc#12173 introduced the refusal in place of the left-element narrowing). The group adds no semantics, so it owns nothing of its own: it flips when the inner value shapes lower -- function values (gunbc#12210) and `as` casts (gunbc#12315) -- and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_statement_precedes_without_binding,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
