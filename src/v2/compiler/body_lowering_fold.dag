@@ -3974,6 +3974,15 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<Li
   }
 }
 
+// The step's method or field name alone, for a reader that needs only the spelling (the
+// complexity lens). A projection of the step reader below, not a second reader of the step.
+fn body_lower_postfix_projection_step_name(repeat_elem: Node) -> Optional<Symbol> {
+  match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
+    Present { value: atom } => node_atom_identity_optional(node: atom)
+    Absent => optional_absent()
+  }
+}
+
 fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {

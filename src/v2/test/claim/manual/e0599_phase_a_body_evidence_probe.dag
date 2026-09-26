@@ -29,7 +29,7 @@ fn e0599pa_parse_path_optional(path: String) -> Optional<Node> {
 }
 
 fn e0599pa_step_matches(n: Node, target: Symbol) -> Int {
-  match body_lower_postfix_projection_step(repeat_elem: n) {
+  match body_lower_postfix_projection_step_name(repeat_elem: n) {
     Present { value: method } => if method == target { 1 } else { 0 }
     Absent => 0
   }
