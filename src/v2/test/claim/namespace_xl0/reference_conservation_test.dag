@@ -22,8 +22,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
-import v2.std.integer { Int }
+import v2.std.integer { Int, integer_int_to_decimal_string }
 import extdeps.communication.medium { Lossless, Medium }
+import std.process { ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -121,8 +122,18 @@ test fn the_clean_control_routes_the_test_marker_to_its_channel_holds() -> Bool 
   clean_control_report().test_marker_channel == 1
 }
 
-// ---- drop 1: the second statement of a block ---------------------------------------------------
+// ---- former drop 1: the second statement of a block (now a located refusal, gunbc#12221) -------
 
+// MEASURED BOTH WAYS, AND THE SECOND WAY WAS HIDDEN. Before gunbc#12221 this body lowered and its
+// second statement reached no reference site: one DroppedReference. #12221 made a statement followed
+// by another REFUSE, located, so this module is no longer accepted. The old claim
+// (the_block_second_statement_is_reported_dropped_holds) kept passing because
+// reference_conservation_holds admits refused atoms: the refusal stood in for the drop. With
+// reference_conservation_accepted asked, it went red (seed-interpreted at 1204ef3922, fierce-gull-556).
+// Restated as what is true now: the module is refused, and neither accepted nor admitted. This is also
+// the shared mutation for every "lowered, and ..." control in this file: on a refusing report the
+// predicates they all ask are false, so each of them would be red. When a block's later statements
+// lower, this reds and is restated as a conserved control.
 data block_second_statement_source: String = "module v2.test.reference_conservation_block\n\nfn rc_block() -> Int { 1 \n 2 }\n"
 
 fn block_second_statement_subject() -> ReferenceConservationSubject {
@@ -133,9 +144,18 @@ fn block_second_statement_report() -> ReferenceConservationReport {
   conservation_report_of(subject: block_second_statement_subject())
 }
 
-test fn the_block_second_statement_is_reported_dropped_holds() -> Bool {
+test fn a_block_with_a_second_statement_is_refused_not_accepted_holds() -> Bool {
   let r = block_second_statement_report()
-  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^dag_token_int_literal) == 1
+  (r.refused > 0)
+    && !reference_conservation_accepted(report: r)
+    && !reference_conservation_admitted(report: r)
+}
+
+// A REPORT, NOT A CLAIM: the block fixture's four numbers through the process exit, so a run shows
+// how the report counts a refused body.
+fn block_second_statement_numbers() -> ProcessExit {
+  let r = block_second_statement_report()
+  exit_failure(reason: "authored=" + integer_int_to_decimal_string(value: r.authored) + " conserved=" + integer_int_to_decimal_string(value: r.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: r.locus_erased) + " refused=" + integer_int_to_decimal_string(value: r.refused) + " dropped=" + integer_int_to_decimal_string(value: length(xs: r.dropped)))
 }
 
 // ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ---------------------
@@ -330,27 +350,4 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
     && r.authored > 0
-}
-
-// ---- the refusing fixture: acceptance is not the absence of drops -------------------------------
-
-// A MODULE NORMALIZATION REFUSES MUST NOT PASS AS CONSERVED. A caret-symbol operand has no lowered
-// form yet (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form), so this module refuses
-// at normalize, located at the operand. reference_conservation_holds does not see that: a located
-// refusal accounts for the atoms it covers, so the report can have no drops and no unmeasured rows.
-// Every "lowered, and ..." control above therefore reads reference_conservation_accepted /
-// reference_conservation_admitted, and this is their shared mutation: on a refusing report the
-// shared predicate is false, so each of those controls would be red. When caret symbols lower, this
-// fixture stops refusing and this claim reds -- restate it on whatever still refuses then.
-data refusing_fixture_source: String = "module v2.test.reference_conservation_refusing\n\nimport v2.std.logic { Bool }\nimport v2.std.node { Symbol }\n\nfn rc_refusing(rc_sym_arg: Symbol) -> Bool { rc_sym_arg == ^rc_caret }\n"
-
-fn refusing_fixture_subject() -> ReferenceConservationSubject {
-  conservation_subject(id_tail: "refusing_fixture", source: refusing_fixture_source)
-}
-
-test fn a_refusing_module_is_neither_accepted_nor_admitted_holds() -> Bool {
-  let r = conservation_report_of(subject: refusing_fixture_subject())
-  (r.refused > 0)
-    && !reference_conservation_accepted(report: r)
-    && !reference_conservation_admitted(report: r)
 }
