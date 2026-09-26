@@ -8,6 +8,53 @@ projection"). The patch is reviewable text at
 runbook is the build and roll-out procedure. All steps run on the fleet by the
 operator — nothing here has been executed as part of authoring the patch.
 
+## AMENDMENT 2026-09-26 (owner directive, docs/plans/shared-pool-byte-correction.md): build v2, not v1
+
+The v1 patch above is SUPERSEDED for new builds by
+`dag/extdeps/vllm/patches/kv-allocation-plan-emission-v2-8d09804c8.patch`
+(sha256 `8267d86be0b7f2690119ed22d09e3299cea69debc6032c57f6eacf2fec8252c5`).
+v2 is a full standalone patch against the SAME pinned base
+(`8d09804c877c48165c6ba69bc9dc02d09bae0b83`; the pre-patch sha256 pins are
+unchanged: `core.py` `ef709a03...`, `envs.py` `1a2c6121...`) — apply v2
+INSTEAD of v1, never both. Every step below applies verbatim with two
+substitutions: the patch path becomes the v2 path, and the post-patch pin for
+`vllm/v1/engine/core.py` becomes sha256
+`7ffe8efa43e532d41722509db90db0c0db57af1b44b2b5dcd2d47a9088c9245e` (the
+`vllm/envs.py` post-patch pin is unchanged:
+`239d509314d44fd90c0aa2f39e8306c1d5976533763e4c2784d1ed97da774747`). v2 was
+witnessed to apply cleanly by `git apply --check` against a fresh checkout at
+the pin, and the patched `core.py` parses.
+
+WHAT v2 CHANGES AND WHY: the emission's schema moves to
+`kv-allocation-plan/v2` and the record gains the engine's own physical
+shared-pool figures — `physical_pool_bytes_per_block`
+(`_get_kv_cache_bytes_per_block(scheduler_kv_cache_config.kv_cache_groups)`,
+the divisor the allocator used to size the pool) and `allocated_pool_bytes`
+(physical_pool_bytes_per_block x num_blocks, the worker's single backing
+tensor). vLLM allocates ONE backing tensor at startup and every cache group
+overlays it — a block ID owned by any group consumes one block of it — so the
+per-group `page_size_bytes` are the LOGICAL per-group charge, not the pool
+block cost; v1's record carried only the group figures, and summing them
+underpriced the 262144x6 request ~106x (the withdrawn 125,010,432-byte
+figure). The corpus capture mint
+(`extdeps.vllm.kv_layout` / `gunbc.spark.vllm_allocation_plan_observe`)
+accepts BOTH vintages: the two fields are optional-until-emitted, the v1
+capture stays readable, and the byte-conservation wall
+(`allocated_pool_bytes == allocator_blocks x physical_pool_bytes_per_block`)
+is active only for v2.
+
+After the v2 image flies and a bounded run captures a `KV_ALLOCATION_PLAN_JSON`
+line: expect the capture to mint with both pool fields present (verify
+`physical_pool_bytes_per_block` against TP3's observed arena — the doctrine's
+reconciliation implies ~17.1 MiB/block at 1035 blocks against the 17.29 GiB
+arena, i.e. allocated_pool_bytes ≈ 17.29 GiB with the arena slack under one
+block), and expect the arm-side fold to mint PoolConstructionProved beside the
+block wall's CacheFitProved. ANY NEW WET RUN IS THE PARENT'S — this lane runs
+nothing; the operator sequence (rebuild, probe, bounded launch holding the
+stop legs past the ranks' profile prints per the landed readback bracket,
+capture) is fleet-owned on the serving lane's go.
+
+
 ## What is being rebuilt, and why this shape
 
 - **Base**: the recorded derived image `gunbc-vllm-glm53-gb10`, tag
