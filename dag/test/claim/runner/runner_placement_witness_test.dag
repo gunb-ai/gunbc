@@ -340,7 +340,13 @@ test fn two_refused_hosts_are_both_retained() -> Bool {
   refused.length() == 2
     && any(refused, r => (r.host as String) == (operator_host_srv2 as String))
     && any(refused, r => (r.host as String) == (operator_host_srv4 as String))
-    && host_deployment_refusal_text(c: refused[0].cause) != host_deployment_refusal_text(c: refused[1].cause)
+    && match refused[0] {
+      Absent => false
+      Present { value: a } => match refused[1] {
+        Absent => false
+        Present { value: b } => host_deployment_refusal_text(c: a.cause) != host_deployment_refusal_text(c: b.cause)
+      }
+    }
 }
 
 // CHANGING ONE HOST'S REFUSAL CAUSE MUST NOT PERTURB ANOTHER HOST'S DEPLOYMENT. This is the
