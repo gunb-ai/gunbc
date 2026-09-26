@@ -1639,9 +1639,16 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
-      Named { name: _ } =>
+      Named { name: sym } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
+        } else if sym == ^arrow_signature_order_edge {
+          // THE DECLARED ORDER IS LABELS, NOT REFERENCES. Its atoms name the domain's binders
+          // (v2.compiler.body_lowering_fold body_lower_signature_order_edge); walking them under
+          // scope_body would resolve each against a parameter or, spelled like a free name, against
+          // the enclosing scope, and a minted anonymous label against nothing. It is carried
+          // unwalked; the Arrow wall (v2.std.node arrow_signature_order_conforms) is its check.
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
             w: acc,

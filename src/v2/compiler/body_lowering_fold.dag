@@ -40,7 +40,7 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
-import v2.std.anonymous_binder { anonymous_binder_mint_domain }
+import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list }
 import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
   List,
@@ -1757,8 +1757,12 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
 // the comma spine and cannot know a slot's position; the mint needs the whole list, so it runs once
 // here, and both the domain (body_lower_domain_from_param_list) and the ingest-side binding list the
 // domain is checked against (body_lower_param_binding_symbols_from_param_list) read through it.
+fn body_lower_param_list(sequence_capture: Node) -> DeclaredParameterList {
+  anonymous_binder_mint_parameter_list(edges: body_lower_collect_param_edges(sequence_capture: sequence_capture))
+}
+
 fn body_lower_param_edges(sequence_capture: Node) -> List<Edge> {
-  anonymous_binder_mint_domain(edges: body_lower_collect_param_edges(sequence_capture: sequence_capture))
+  body_lower_param_list(sequence_capture: sequence_capture).edges
 }
 
 fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
@@ -2092,28 +2096,32 @@ fn body_lower_arrow_seq_return_type(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+// A DECLARED DOMAIN AND ITS DECLARED ORDER, from one mint (v2.std.anonymous_binder
+// anonymous_binder_mint_parameter_list). The Conj carries the binders keyed by name; `order` carries
+// the sequence the author wrote, which the Conj cannot.
+type BodyLowerDeclaredDomain {
+  domain: Node
+  order: List<Symbol>
+}
+
+fn body_lower_declared_domain_from_param_list(param_list: Node) -> Optional<BodyLowerDeclaredDomain> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
-      let edges = body_lower_param_edges(sequence_capture: comma_spine)
-      if count(edges) == 0 {
-        Present {
-          value: node_lowered_from(
-            kind: TypeNode { connective: Conj },
-            children: [],
-            source: param_list
-          )
-        }
-      } else {
-        Present {
-          value: node_lowered_from(
-            kind: TypeNode { connective: Conj },
-            children: edges,
-            source: param_list
-          )
+      let minted = body_lower_param_list(sequence_capture: comma_spine)
+      Present {
+        value: BodyLowerDeclaredDomain {
+          domain: node_lowered_from(kind: TypeNode { connective: Conj }, children: minted.edges, source: param_list),
+          order: minted.order
         }
       }
+  }
+}
+
+fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+  match body_lower_declared_domain_from_param_list(param_list: param_list) {
+    Absent => Absent
+    Present { value: d } => Present { value: d.domain }
   }
 }
 
@@ -3042,6 +3050,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
 // cannot read, which both arms retain as the shell.
 type BodyLowerFnSignature {
   domain: Node,
+  order: List<Symbol>,
   return_type: Node,
   fn_name: Symbol,
   type_params: DeclTypeParams,
@@ -3051,9 +3060,9 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => Absent
     ParseSubtreeFound { captured: param_list } =>
-      match body_lower_domain_from_param_list(param_list: param_list) {
+      match body_lower_declared_domain_from_param_list(param_list: param_list) {
         Absent => Absent
-        Present { value: domain } =>
+        Present { value: declared } =>
           match body_lower_return_type_from_fn_captured(captured: captured) {
             Absent => Absent
             Present { value: return_type } =>
@@ -3062,7 +3071,8 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
                 Present { value: fn_name } =>
                   Present {
                     value: BodyLowerFnSignature {
-                      domain: domain,
+                      domain: declared.domain,
+                      order: declared.order,
                       return_type: return_type,
                       fn_name: fn_name,
                       type_params: body_lower_decl_type_params(captured: captured)
@@ -3222,12 +3232,36 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
   }
 }
 
+// THE DECLARED ORDER, CARRIED ON THE ARROW. Every Arrow built from a declared signature carries one
+// ^arrow_signature_order_edge whose target is the language's canonical FreeMonoid introduction
+// (v2.std.compilers.body_lowering lower_list_introduction) of the parameter labels as childless
+// Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
+// place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
+// Resolve does not walk it (v2.compiler.resolve resolve_arrow_node): its atoms are labels, not
+// references, so a parameter spelled like a name in scope cannot bind through it.
+fn body_lower_signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
+  Edge {
+    label: Named { name: ^arrow_signature_order_edge },
+    target: lower_list_introduction(
+      elements: fold(order, init: Empty, f: fn(acc, sym) {
+        list_snoc_item(xs: acc, item: node_lowered_from(
+          kind: TypeNode { connective: Atom { identity: sym } },
+          children: [],
+          source: source
+        ))
+      }),
+      source: source
+    )
+  }
+}
+
 fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
   let signature = list_append(
     left: [
       Edge { label: Positional, target: sig.domain },
       Edge { label: Positional, target: sig.return_type },
-      Edge { label: Positional, target: sig.return_type }
+      Edge { label: Positional, target: sig.return_type },
+      body_lower_signature_order_edge(order: sig.order, source: shell)
     ],
     right: body_lower_fn_decl_type_params_edges(sig: sig)
   )

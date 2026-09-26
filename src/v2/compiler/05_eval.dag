@@ -13,7 +13,13 @@ import v2.compiler.infer {
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.compilers.body_lowering {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order
+}
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
@@ -1335,8 +1341,9 @@ fn eval_bind_arrow_params(
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
+      bind_outcome(o: eval_param_edges_in_declared_order(arrow: arrow, domain: domain_edge.target, node: node), f: fn(param_edges) {
       match fold_list(
-        xs: domain_edge.target.children,
+        xs: param_edges,
         empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
         cons: fn(state, param_edge) {
           eval_bind_param_edge_step(
@@ -1357,8 +1364,40 @@ fn eval_bind_arrow_params(
             bound
           }
       }
+      })
     }
   )
+}
+
+// THE PARAMETERS IN DECLARED ORDER. A domain of named binders is a Conj sorted by label, so its
+// stored sequence is not the order the author wrote; the order is read from the Arrow's
+// ^arrow_signature_order_edge through the one reader infer also uses
+// (v2.std.compilers.body_lowering arrow_declared_parameter_order), so the two stages cannot bind one
+// call differently. A named domain with no readable order refuses; a domain with no named binder
+// keeps its positional edges, whose order is their own.
+fn eval_param_edges_in_declared_order(arrow: Node, domain: Node, node: Node) -> Outcome<List<Edge>> {
+  if fold(domain.children, init: false, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => true
+      Positional => acc
+    }
+  }) {
+    match arrow_declared_parameter_order(arrow: arrow) {
+      ArrowParameterOrderDeclared { labels: labels } =>
+        Accepted {
+          value: fold(labels, init: Empty, f: fn(acc, label) {
+            list_snoc_item(xs: acc, item: Edge { label: Named { name: label }, target: domain })
+          }),
+          diagnostics: None
+        }
+      ArrowParameterOrderAbsent =>
+        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_absent, node: node))
+      ArrowParameterOrderMalformed =>
+        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_malformed, node: node))
+    }
+  } else {
+    Accepted { value: domain.children, diagnostics: None }
+  }
 }
 
 fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {

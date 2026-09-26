@@ -916,7 +916,7 @@ fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String
 
 // A MINTED ANONYMOUS SLOT IS SPELLED AS ITS AUTHORED SOURCE, `_`, never as its marker text: the
 // marker is not an identifier in any target. That is the inverse of the one mint
-// (v2.std.anonymous_binder anonymous_binder_mint_domain). A target that admits only one `_` per
+// (v2.std.anonymous_binder anonymous_binder_mint_parameter_list). A target that admits only one `_` per
 // signature receives two and its own compiler refuses them; no target row carries a per-target
 // anonymous-parameter spelling yet.
 fn bound_spelling_from_map(
