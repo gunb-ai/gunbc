@@ -286,8 +286,9 @@ test fn the_shakedown_index_is_the_top_of_srv1s_committed_width() -> Bool {
 // rather than a count of it (review 69823, DESIGN 5: a live-population count is not an oracle) --
 // a member the selection cannot reach is the defect, however many members there are.
 test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -> Bool {
-  let shakedown = match slot_of_instance(instance: "srv1-11") {
-    Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == 11
+  let expected = srv1_microvm_shakedown_slot()
+  let shakedown = match slot_of_instance(instance: runner_slot_instance_name(slot: expected)) {
+    Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == expected.slot_index
     Absent => false
   }
   let github_slot = match slot_of_instance(instance: "srv1-01") { Present { value: _ } => false  Absent => true }
@@ -348,12 +349,16 @@ fn attempt_launch_property_words(attempt: MicroVmAttempt) -> List<String> {
 }
 
 test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool {
+  // THE SLOT'S INSTANCE NAME IS READ FROM THE DERIVED SLOT, THE UNIT-NAME SCHEME IS THE ORACLE (review
+  // 71598). The shakedown index moves with srv1's committed width, so a literal instance here was a
+  // copy of today's width and would red on every width change for no reason about routing.
+  let instance = runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()) as String
   match microvm_attempt(slot: srv1_microvm_shakedown_slot(), attempt_id: "w-42") {
     MicroVmAttemptRefused { refusal: _ } => false
     MicroVmAttemptAccepted { attempt: a } =>
       attempt_launch_property_words(attempt: a) == [
-        "--property=Slice=fabric-cell-srv1-11.slice",
-        "--property=PartOf=gunbc-microvm-slot@srv1-11.service",
+        concat(concat("--property=Slice=fabric-cell-", instance), ".slice"),
+        concat(concat("--property=PartOf=gunbc-microvm-slot@", instance), ".service"),
       ]
   }
 }
