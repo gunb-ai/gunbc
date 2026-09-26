@@ -12,7 +12,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.serving_arm {
   ArmIntent,
 }
-import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for }
+import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for, glm_native_arm_container }
 
 // ── THE ONE CALL SITE THAT SAYS WHAT GROUP B LAUNCHES ─────────────────────────────────────────
 //
@@ -136,5 +136,6 @@ fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
     intent: intent,
     profile: a.profile,
     deployment_env: glm_group_b_deployment_env(),
+    container: glm_native_arm_container,
   )
 }

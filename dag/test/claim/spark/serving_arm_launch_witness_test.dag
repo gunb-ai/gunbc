@@ -19,7 +19,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch {
   ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
-  plan_arm_launch, plan_arm_launch_for, arm_node, arm_container_spec,
+  plan_arm_launch, plan_arm_launch_for, arm_node, arm_container_spec, glm_native_arm_container,
 }
 
 // THE FIXTURE IS THE REAL GROUP B ARM, because the property under test is a property of THIS
@@ -40,6 +40,8 @@ fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -
     topology: FourSparkTp4,
     group: FabricGroupB,
     profile: profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   ) {
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
@@ -142,7 +144,9 @@ test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool 
             node: fx_socket_rank,
             master: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 21),
             crow: crow, rrow: rrow, ranks: 4,
-            profile: glm_native_initial_profile)
+            profile: glm_native_initial_profile,
+            deployment_env: [] as List<DockerEnvAssignment>,
+            container: glm_native_arm_container)
           length(spec.devices) == 0
             && length(spec.cap_add) == 0
             && !spec.memlock_unlimited
@@ -170,6 +174,8 @@ fn plan_unrun_subject(intent: ArmIntent) -> ArmLaunchPlan {
     group: FabricGroupB,
     intent: intent,
     profile: glm_native_initial_profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   )
 }
 
@@ -229,6 +235,8 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
     group: FabricGroupB,
     intent: ArmBoundedExperiment,
     profile: profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   ) {
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)

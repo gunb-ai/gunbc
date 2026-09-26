@@ -1,0 +1,525 @@
+module gunbc.spark.v41_group_a_launch
+
+import std.types { String, Bool, List, NonEmptyStr, Port, EpochSecs }
+import std.nat { Nat, nat_max }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { zip_map }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { TokenCount, BasisPoint, byte_size }
+import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { shell_quote }
+import extdeps.docker.cli { DockerEnvAssignment, BindMount }
+import extdeps.container.oci.digest { render_oci_content_digest_wire }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { admit_host_held_by_subject_among, spark_serving_admissible_hosts }
+import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryReading }
+import gunbc.spark.serving_arm {
+  ServingRuntime, GunbcDeepseekV41EngramProduced, DeepseekV41FlashDba1be0a, FourSparkTp4,
+  ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_measurement_profile,
+  runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for,
+}
+import gunbc.spark.native_serving_realization {
+  ArmUnitIdentity, GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
+  arm_host_unit_file, glm_native_rendezvous_endpoint,
+}
+import gunbc.spark.native_serving_apply {
+  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of,
+  spark_native_preflight_plans, spark_native_apply_stage_plans,
+}
+import gunbc.spark.pair_serving_apply { SparkPairHostApplyPlan }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor,
+  FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished,
+  pair_serving_successor_may_launch,
+}
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread,
+  current_pair_serving_authorities, current_authority_for, current_authority_wire,
+}
+import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused, v41_candidate }
+import gunbc.spark.v41_runtime_realized {
+  V41ProducedRuntimeStanding, V41RuntimeProduced, V41RuntimeProductionUnestablished, V41RuntimeProductionRefused,
+}
+import gunbc.spark.v41_capacity_measurement { v41_measurement_max_model_len, v41_staircase_concurrencies }
+import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
+
+// ── THE V4.1 FOUR-RANK LAUNCH ON GROUP A, AS ONE MORE CALL SITE OF THE ARM LAUNCHER ─────────────
+//
+// WHY THIS IS NOT A SECOND LAUNCHER. Group A's incumbent realization is the Ray pair
+// (gunbc.spark.pair_serving_realization), and V4.1 cannot run on it: the V4.1 image is upstream vLLM
+// d2d649e6's vllm-openai target, and neither that revision's requirements nor its Dockerfile installs
+// Ray, so `ray start` has nothing to run. The launcher that fits already exists -- the mp-backend
+// multi-node arm (gunbc.spark.serving_arm_launch plan_arm_launch_for: --nnodes, --node-rank,
+// --master-addr over the fabric rail, headless followers), its unit renderer
+// (gunbc.spark.native_serving_realization) and its transactional apply
+// (gunbc.spark.native_serving_apply: preflight, preserve, head-first apply, per-rank readback, commit or
+// rollback). This module names V4.1's tuple once, the way gunbc.spark.glm_group_b_launch names Group B's,
+// and every V4.1 rendering projects from it. Ruled by proud-deer-538 on 2026-09-26 (DS4.1).
+//
+// WHAT IT RENDERS AND WHAT IT DOES NOT. It plans, renders every host's unit and container line, and
+// renders the Engram staging and the apply's preflight and apply scripts for all four hosts -- a DRY
+// RUN. It has no wet entry: nothing here reaches a host except the read of the authority log. The first
+// consumer that executes these plans is the capacity measurement's serve
+// (gunbc.spark.v41_capacity_measurement, the wet runner it names as its frontier), and it must pass
+// v41_group_a_launch_admission before it does.
+
+// ── WHAT THIS DEPLOYMENT IS CALLED, DISTINCT FROM EVERY OTHER ────────────────────────────────
+//
+// THE NAMES ARE NEW ON PURPOSE. Host occupancy is read by unit and container name, and Group A's hosts
+// may still carry the V4 pair's gunbc-spark-pair container and units. Reusing any of those names would
+// let a V4 unit still running read as this arm already installed -- the one mistake the admission below
+// must never make, since a running V4 unit is occupancy to refuse on, never something to stop.
+data v41_group_a_container_name: NonEmptyStr = "gunbc-v41-tp4" as NonEmptyStr
+
+data v41_group_a_units: ArmUnitIdentity = ArmUnitIdentity {
+  head_unit_name: "gunbc-v41-tp4-head.service" as NonEmptyStr,
+  rank_unit_name: "gunbc-v41-tp4-rank.service" as NonEmptyStr,
+  head_log_path: "/var/log/gunbc/v41-tp4-head.log" as NonEmptyStr,
+  rank_log_path: "/var/log/gunbc/v41-tp4-rank.log" as NonEmptyStr,
+  description: "gunbc DeepSeek V4.1 four-rank arm" as NonEmptyStr,
+}
+
+// THE SERVED NAME IS THIS LAUNCH'S, and the port is the route's: V4.1 succeeds V4 on the same serving
+// subject (gunbc.spark.serving_subject PairServingUnitOn on Group A), and gunbc.serving.serving_enrollment
+// reads Group A's port from gunbc.spark.pair_serving_realization spark_pair_serve_port. Serving on any
+// other port would leave the enrolled route asking a door this launch never opens.
+data v41_group_a_served_alias: NonEmptyStr = "deepseek-v4.1-flash" as NonEmptyStr
+
+// THE RENDEZVOUS PORT IS torch.distributed's DEFAULT, 29500, chosen rather than inherited. Group A's
+// incumbent rendezvous is Ray's GCS on 6379 (gunbc.spark.pair_serving_observed first_pair_ray_head), so
+// the two do not collide on a host that still carries the pair.
+//
+// THE SHARED-MEMORY SIZE IS DOCKER'S OWN DEFAULT (64 MiB). With --ipc host the container's /dev/shm is
+// the host's, so the figure is nearly inert, but a spec may not carry a number nobody chose: this one
+// is the daemon's default rather than a figure borrowed from another arm's inspect.
+data v41_group_a_master_port: Port = 29500
+
+// ── THE ENGRAM FILE-BACKED PATH: TWO VARIABLES AND THREE MOUNTS ───────────────────────────────
+//
+// THE VARIABLE NAMES ARE THE OVERLAY'S. The file-backed Engram overlay (patches/d2d649e6,
+// engram_file_backed.py, its MANIFEST_ENV and TOUCH_RECEIPT_DIR_ENV constants, landing with #12359)
+// reads the row-store manifest from the FILE the first names -- load_manifest opens that path -- and
+// writes one touch receipt per rank into the directory the second names when the staircase runner sends
+// SIGUSR2 at a step boundary.
+data v41_engram_manifest_env_name: NonEmptyStr = "GUNBC_ENGRAM_ROW_STORE_MANIFEST" as NonEmptyStr
+data v41_engram_touch_receipt_env_name: NonEmptyStr = "GUNBC_ENGRAM_TOUCH_RECEIPT_DIR" as NonEmptyStr
+
+// THE MANIFEST AND THE RECEIPTS EACH GET THEIR OWN HOST DIRECTORY, mounted at the same path inside, so
+// a path the manifest names and a path the engine opens are one string. The manifest is read-only to
+// the engine; the receipt directory is the one place it writes. The row stores are mounted read-only
+// at their own path for the same reason: the manifest names them by the path the encode wrote them to.
+data v41_engram_manifest_dir: NonEmptyStr = "/var/lib/gunbc/v41-engram-manifest" as NonEmptyStr
+data v41_engram_touch_receipt_dir: NonEmptyStr = "/var/lib/gunbc/v41-engram-touch" as NonEmptyStr
+
+fn v41_engram_manifest_path() -> NonEmptyStr {
+  join([v41_engram_manifest_dir as String, "/row-store-manifest.json"], "") as NonEmptyStr
+}
+
+data v41_group_a_arm_container: ArmContainerIdentity = ArmContainerIdentity {
+  container_name: v41_group_a_container_name,
+  master_port: v41_group_a_master_port,
+  shm_size: byte_size(count: 67108864),
+  extra_mounts: [
+    BindMount { host_path: v41_row_store_output_directory(), container_path: v41_row_store_output_directory(), readonly: true },
+    BindMount { host_path: v41_engram_manifest_dir, container_path: v41_engram_manifest_dir, readonly: true },
+    BindMount { host_path: v41_engram_touch_receipt_dir, container_path: v41_engram_touch_receipt_dir, readonly: false },
+  ],
+}
+
+fn v41_group_a_deployment_env() -> List<DockerEnvAssignment> {
+  [
+    DockerEnvAssignment { name: v41_engram_manifest_env_name, value: v41_engram_manifest_path() as String },
+    DockerEnvAssignment { name: v41_engram_touch_receipt_env_name, value: v41_engram_touch_receipt_dir as String },
+  ]
+}
+
+// ── THE LAUNCH SHAPE IS THE MEASUREMENT'S ─────────────────────────────────────────────────────
+//
+// ONE SERVE FOR THE WHOLE STAIRCASE (clever-gull-48, 2026-09-26): a relaunch between steps would reset
+// the page cache, the refault baselines and the KV pool the stop rules read across steps. So the window
+// is the measurement's maximum and the admitted sequences are the staircase's largest step, folded over
+// the plan rather than written as a number. The KV pool is fixed at startup, and the measurement's
+// startup receipt records what the engine actually admitted, so a step the pool cannot hold refuses
+// there rather than preempting.
+fn v41_staircase_max_concurrency() -> Nat {
+  let none_yet: Nat = 0
+  fold(v41_staircase_concurrencies, init: none_yet, f: (acc, c) => nat_max(a: acc, b: c))
+}
+
+// THE REST OF THE SHAPE IS NOT YET ON MAIN, AND ABSENT IS THE ONLY TRUE VALUE. The scheduler budget and
+// the memory fraction are DECLARED MEASUREMENT AXES in gunbc.spark.v41_capacity_measurement
+// v41_measurement_launch_shape (#12371), and the prefix-caching request is asked of the same authority.
+// None may be borrowed from V4's measured 2048 / 8200, so until they land this launch refuses and says
+// which.
+type V41MeasurementLaunchChoices {
+  max_num_batched_tokens: TokenCount
+  gpu_memory_basis_points: BasisPoint
+  prefix_caching: VllmPrefixCachingRequest
+}
+
+data v41_measurement_launch_choices_obligation: NonEmptyStr = "the scheduler budget, memory fraction and prefix-caching request this launch serves at are measurement axes owned by gunbc.spark.v41_capacity_measurement v41_measurement_launch_shape (#12371), which has not landed" as NonEmptyStr
+
+// ── THE INPUTS A PLAN IS MADE OF, SUPPLIED RATHER THAN READ INSIDE ────────────────────────────
+//
+// EVERY INPUT THAT IS NOT A DECLARATION ON MAIN ARRIVES AS A VALUE: the produced image and its registry
+// reading (the build lane's answer, read back at run time), the measurement's choices, and the manifest
+// text (#12359's gunbc.spark.v41_engram_store_manifest). A witness supplies them; the live binding below
+// reads what exists and names what does not.
+type V41GroupALaunchInputs {
+  produced: V41ProducedRuntimeStanding
+  registry_reading: ArchitectureRegistryReading?
+  choices: V41MeasurementLaunchChoices?
+  manifest_text: String?
+}
+
+type V41GroupALaunchPlan
+  = V41GroupALaunchPlanned {
+      lines: List<ArmNodeLaunch>
+      profile: ServingLaunchProfile
+      specification_runtime_key: ContentHash
+      manifest_text: String
+      master_endpoint: NonEmptyStr
+    }
+  | V41GroupALaunchUnestablished { obligations: List<String> }
+  | V41GroupALaunchRefused { causes: List<String> }
+
+// THE RUNTIME VARIANT IS THE PRODUCED IMAGE'S IDENTITY: its configuration digest (the only id a
+// never-pushed image has, and the one gunbc.spark.v41_runtime_image_converge distributes by), the
+// source tree the build observed, and that tree's worktree diff -- the patch set as it was applied.
+fn v41_serving_runtime(produced: V41ProducedRuntimeStanding, registry_reading: ArchitectureRegistryReading?) -> ServingRuntime? {
+  match produced {
+    V41RuntimeProductionUnestablished { obligations: _ } => none
+    V41RuntimeProductionRefused { defects: _ } => none
+    V41RuntimeProduced { specification_runtime_key: k, image: i } =>
+      Present { value: GunbcDeepseekV41EngramProduced {
+        artifact: runtime_artifact_identity(
+          pin: PinnedByDigest { reference: render_oci_content_digest_wire(d: i.local_config_digest) as NonEmptyStr },
+          source: SourceRevisionEstablished { revision: i.observed.revision_head },
+          patch_set: [join(["worktree-diff-sha256:", i.observed.worktree_diff_sha256.hex as String], "") as NonEmptyStr],
+          provenance: join(["produced by the V4.1 build lane under tag ", i.tag as String, " with build key ", serialize_content_hash(hash: i.build_key) as String, ", and admitted against the candidate's specification runtime key ", serialize_content_hash(hash: k) as String], "") as NonEmptyStr,
+        ),
+        registry_reading: registry_reading,
+      } }
+  }
+}
+
+fn v41_produced_obligations(p: V41ProducedRuntimeStanding) -> List<String> {
+  match p {
+    V41RuntimeProduced { specification_runtime_key: _, image: _ } => [] as List<String>
+    V41RuntimeProductionUnestablished { obligations: o } => map(o, x => join(["the V4.1 image: ", x as String], ""))
+    V41RuntimeProductionRefused { defects: _ } => [] as List<String>
+  }
+}
+
+fn v41_produced_defects(p: V41ProducedRuntimeStanding) -> List<String> {
+  match p {
+    V41RuntimeProductionRefused { defects: d } => map(d, x => join(["the V4.1 image was refused: ", x as String], ""))
+    V41RuntimeProduced { specification_runtime_key: _, image: _ } => [] as List<String>
+    V41RuntimeProductionUnestablished { obligations: _ } => [] as List<String>
+  }
+}
+
+fn v41_group_a_profile(choices: V41MeasurementLaunchChoices) -> ServingLaunchProfile {
+  deepseek_v41_measurement_profile(
+    max_model_len: v41_measurement_max_model_len,
+    max_num_seqs: v41_staircase_max_concurrency(),
+    max_num_batched_tokens: choices.max_num_batched_tokens,
+    gpu_memory_basis_points: choices.gpu_memory_basis_points,
+    prefix_caching: choices.prefix_caching,
+    serve_port: spark_pair_serve_port,
+    served_alias: v41_group_a_served_alias,
+  )
+}
+
+// THE PLAN. A defect in any input refuses; otherwise every missing input is named at once, so one run
+// reports the whole distance to a launchable plan rather than the first gap. Only a complete set of
+// inputs reaches the arm launcher, and its own walls -- the arm admission (registry reading, fit), the
+// compatibility roster and the bounded-experiment intent -- still decide.
+fn v41_group_a_launch_plan(inputs: V41GroupALaunchInputs) -> V41GroupALaunchPlan {
+  let defects = v41_produced_defects(p: inputs.produced)
+  let obligations = concat(concat(
+    v41_produced_obligations(p: inputs.produced),
+    match inputs.choices { Present { value: _ } => [] as List<String>  Absent => [v41_measurement_launch_choices_obligation as String] }),
+    match inputs.manifest_text { Present { value: _ } => [] as List<String>  Absent => ["the Engram row-store manifest text: gunbc.spark.v41_engram_store_manifest (#12359) has not landed, so there is no derived manifest to stage"] })
+  if length(defects) != 0 {
+    V41GroupALaunchRefused { causes: defects }
+  } else if length(obligations) != 0 {
+    V41GroupALaunchUnestablished { obligations: obligations }
+  } else {
+    match inputs.produced {
+      V41RuntimeProductionUnestablished { obligations: _ } => V41GroupALaunchUnestablished { obligations: obligations }
+      V41RuntimeProductionRefused { defects: _ } => V41GroupALaunchRefused { causes: defects }
+      V41RuntimeProduced { specification_runtime_key: key, image: _ } =>
+        match v41_serving_runtime(produced: inputs.produced, registry_reading: inputs.registry_reading) {
+          Absent => V41GroupALaunchRefused { causes: ["unreachable: a produced image always has a runtime identity"] }
+          Present { value: runtime } =>
+            match inputs.choices {
+              Absent => V41GroupALaunchUnestablished { obligations: [v41_measurement_launch_choices_obligation as String] }
+              Present { value: choices } =>
+                match inputs.manifest_text {
+                  Absent => V41GroupALaunchUnestablished { obligations: obligations }
+                  Present { value: manifest } => {
+                    let profile = v41_group_a_profile(choices: choices)
+                    match plan_arm_launch_for(
+                      checkpoint: DeepseekV41FlashDba1be0a,
+                      runtime: runtime,
+                      topology: FourSparkTp4,
+                      group: FabricGroupA,
+                      intent: ArmBoundedExperiment,
+                      profile: profile,
+                      deployment_env: v41_group_a_deployment_env(),
+                      container: v41_group_a_arm_container,
+                    ) {
+                      ArmLaunchRefused { cause: c } => V41GroupALaunchRefused { causes: [c as String] }
+                      ArmLaunchPlanned { lines: ls, master: m } =>
+                        V41GroupALaunchPlanned {
+                          lines: ls, profile: profile, specification_runtime_key: key, manifest_text: manifest,
+                          master_endpoint: glm_native_rendezvous_endpoint(master: m, port: v41_group_a_master_port),
+                        }
+                    }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ── THE UNITS, THE STEPS AND THE ENGRAM STAGING, ONE PER HOST ──────────────────────────────────
+
+fn v41_group_a_unit_renders(p: V41GroupALaunchPlan) -> List<GlmNativeUnitRender> {
+  match p {
+    V41GroupALaunchPlanned { lines: ls, profile: prof, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } =>
+      map(ls, l => arm_host_unit_file(launch: l, units: v41_group_a_units, served_alias: prof.served_alias))
+    V41GroupALaunchUnestablished { obligations: _ } => [] as List<GlmNativeUnitRender>
+    V41GroupALaunchRefused { causes: _ } => [] as List<GlmNativeUnitRender>
+  }
+}
+
+fn v41_group_a_steps(p: V41GroupALaunchPlan) -> SparkNativeArmSteps {
+  match p {
+    V41GroupALaunchPlanned { lines: ls, profile: prof, specification_runtime_key: _, manifest_text: _, master_endpoint: e } =>
+      spark_native_arm_steps_of(launches: ls, renders: v41_group_a_unit_renders(p: p), master_endpoint: Present { value: e }, units: v41_group_a_units, profile: prof)
+    V41GroupALaunchUnestablished { obligations: o } => NativeArmStepsRefused { cause: join(o, "; ") as NonEmptyStr }
+    V41GroupALaunchRefused { causes: c } => NativeArmStepsRefused { cause: join(c, "; ") as NonEmptyStr }
+  }
+}
+
+// THE ENGRAM STAGING RUNS BEFORE THE APPLY'S PREFLIGHT, because the preflight refuses a container whose
+// mount sources are missing (gunbc.spark.native_serving_apply spark_native_mount_source_checks), and the
+// manifest and receipt directories exist only once this has run. The manifest is written beside itself
+// and renamed into place, so an engine never reads half a document; the receipt directory is emptied
+// so a receipt from an earlier serve cannot be read as this one's.
+fn v41_engram_staging_script(manifest_text: String) -> String {
+  let m = v41_engram_manifest_path() as String
+  join([
+    "set -e\n",
+    "install -d -m 755 ", v41_engram_manifest_dir as String, "\n",
+    "printf '%s' ", shell_quote(arg: manifest_text), " > ", m, ".next\n",
+    "mv -f ", m, ".next ", m, "\n",
+    "install -d -m 755 ", v41_engram_touch_receipt_dir as String, "\n",
+    "find ", v41_engram_touch_receipt_dir as String, " -mindepth 1 -delete\n",
+    "test -d ", v41_row_store_output_directory() as String, "\n",
+    "echo engram-staged\n",
+  ], "")
+}
+
+fn v41_engram_staging_plans(steps: List<SparkNativeHostStep>, manifest_text: String) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => SparkPairHostApplyPlan { host: st.host, unit_name: st.unit_name, script: v41_engram_staging_script(manifest_text: manifest_text) })
+}
+
+// ── ADMISSION: WHO MAY START THIS ARM ON THESE HOSTS ─────────────────────────────────────────
+//
+// FOUR CONJUNCTS, EACH A REFUSAL WITH ITS OWN CAUSE.
+//   (1) THE AUTHORITY. Group A must be SuspendedForAuthorizedSuccessor with a live lease
+//       (gunbc.spark.pair_serving_authority pair_serving_successor_may_launch). Active, pending,
+//       fenced and released all refuse; an expired lease refuses to START (cleanup is another door).
+//   (2) THE SUCCESSOR IS THIS ONE. The authority's exact candidate realization must be keyed, and its
+//       key must be the V4.1 candidate's key (gunbc.spark.v41_runtime_candidate V41CandidateKeyed
+//       candidate), which is what D0's grant names as successor. A suspension granted to some other
+//       candidate does not admit this one.
+//   (3) THE BYTES ARE THE CANDIDATE'S. The produced image was admitted against a specification runtime
+//       key, and that key must be the candidate's runtime_artifact key -- so an image built from another
+//       tree cannot ride an authorization granted to this one.
+//   (4) EVERY HOST IS HELD BY THE SUBJECT. Each of the plan's four hosts must be one Group A's serving
+//       subject holds (gunbc.spark.host_commitment admit_host_held_by_subject_among).
+// OCCUPANCY IS A DECLARED FRONTIER, NOT AN OMISSION. A V4 pair unit still running on a host is
+// occupancy, to refuse on and never to stop. The reading and its fold are #12351
+// (gunbc.spark.host_occupancy_admission admit_spark_host_unoccupied), which has not landed; this
+// admission gains that fifth conjunct when it does. TRIGGER: #12351 merges. SUFFICIENT FOR: a host
+// whose V4 unit or any GPU process is live, or whose available memory is short, refuses this launch.
+// Until then the wet runner that would consume this does not exist either, so no launch can proceed on
+// the four conjuncts alone.
+type V41LaunchAdmission
+  = V41LaunchAdmitted
+  | V41LaunchAdmissionRefused { causes: List<String> }
+
+fn content_hash_text(h: ContentHash) -> String {
+  serialize_content_hash(hash: h) as String
+}
+
+fn v41_authority_causes(authority: PairServingGroupAuthority?, candidate: ContentHash) -> List<String> {
+  match authority {
+    Absent => ["Group A has no serving authority row; absence is not permission"]
+    Present { value: a } =>
+      match a {
+        PairServingActive { group: _, exact_realization: _ } =>
+          ["Group A's serving authority is Active for the incumbent; a successor may launch only under SuspendedForAuthorizedSuccessor"]
+        SuspensionPendingReconciliation { group: _, hosts: _, transaction: _, authorization_binding: _, lease: _ } =>
+          ["Group A's suspension is still pending reconciliation; D0 has not settled it to an authorized successor"]
+        FencedRefusal { group: _, hosts: _, cause: c, disposition_authority: _ } =>
+          [join(["Group A is fenced (", c as String, "); only cleanup may proceed"], "")]
+        ReleasedToFleet { group: _, release_receipt: _ } =>
+          ["Group A has been released to the fleet; there is no suspension to launch a successor under"]
+        SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: r, lease: _, cleanup: _ } =>
+          concat(
+            if pair_serving_successor_may_launch(a: a) { [] as List<String> } else { ["the successor authorization's lease is not running as expected, so it may not START a launch (cleanup still may)"] },
+            match r {
+              PairRealizationUnestablished { obligation: o } => [join(["the authorized successor realization is not keyed: ", o as String], "")]
+              PairRealizationKeyed { key: k } =>
+                if content_hash_equal(left: k, right: candidate) { [] as List<String> } else {
+                  [join(["the suspension authorizes successor ", content_hash_text(h: k), ", not this candidate ", content_hash_text(h: candidate)], "")]
+                }
+            })
+      }
+  }
+}
+
+fn v41_host_causes(hosts: List<HostIdentity>, held: List<HostIdentity>) -> List<String> {
+  flat_map(hosts, h => match admit_host_held_by_subject_among(raw: h, subject: PairServingUnitOn { group: FabricGroupA }, held: held) {
+    Absent => [] as List<String>
+    Present { value: why } => [why]
+  })
+}
+
+fn v41_group_a_launch_admission(
+  plan: V41GroupALaunchPlan,
+  authority: PairServingGroupAuthority?,
+  candidate: V41CandidateStanding,
+  held: List<HostIdentity>,
+) -> V41LaunchAdmission {
+  match plan {
+    V41GroupALaunchUnestablished { obligations: o } => V41LaunchAdmissionRefused { causes: map(o, x => join(["the plan is not established: ", x], "")) }
+    V41GroupALaunchRefused { causes: c } => V41LaunchAdmissionRefused { causes: map(c, x => join(["the plan refused: ", x], "")) }
+    V41GroupALaunchPlanned { lines: ls, profile: _, specification_runtime_key: spec, manifest_text: _, master_endpoint: _ } =>
+      match candidate {
+        V41CandidateUnestablished { obligations: o } => V41LaunchAdmissionRefused { causes: map(o, x => join(["the V4.1 candidate is not keyed: ", x as String], "")) }
+        V41CandidateRefused { defects: d } => V41LaunchAdmissionRefused { causes: map(d, x => join(["the V4.1 candidate is refused: ", x as String], "")) }
+        V41CandidateKeyed { runtime_artifact: runtime_key, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } => {
+          let causes = concat(concat(
+            v41_authority_causes(authority: authority, candidate: c),
+            if content_hash_equal(left: spec, right: runtime_key) { [] as List<String> } else {
+              [join(["the produced image was admitted against runtime key ", content_hash_text(h: spec), ", not the candidate's ", content_hash_text(h: runtime_key)], "")]
+            }),
+            v41_host_causes(hosts: map(ls, l => l.node.host), held: held))
+          if length(causes) == 0 { V41LaunchAdmitted } else { V41LaunchAdmissionRefused { causes: causes } }
+        }
+      }
+  }
+}
+
+// THE LIVE AUTHORITY IS THE LOG'S, exactly as gunbc.spark.pair_serving_apply spark_pair_apply_plan_current
+// reads it: an unread authority refuses with the read's cause, and never falls back to the source row.
+fn v41_group_a_launch_admission_current(
+  plan: V41GroupALaunchPlan,
+  current: List<CurrentAuthority>,
+  candidate: V41CandidateStanding,
+  held: List<HostIdentity>,
+) -> V41LaunchAdmission {
+  match current_authority_for(current: current, group: FabricGroupA) {
+    Absent => v41_group_a_launch_admission(plan: plan, authority: none, candidate: candidate, held: held)
+    Present { value: c } =>
+      match c {
+        CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
+          V41LaunchAdmissionRefused { causes: [join(["Group A's serving authority could not be read: ", current_authority_wire(c: c)], "")] }
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+          v41_group_a_launch_admission(plan: plan, authority: Present { value: a }, candidate: candidate, held: held)
+      }
+  }
+}
+
+// ── THE DRY RUN ──────────────────────────────────────────────────────────────────────────────
+//
+// THE REPORT IS EVERY HOST'S UNIT AND CONTAINER LINE, ITS ENGRAM STAGING, AND THE APPLY'S PREFLIGHT AND
+// APPLY SCRIPTS -- what a wet runner would send, in the order it would send it -- followed by the
+// admission verdict. A plan that cannot be made reports every obligation it is waiting on.
+fn v41_group_a_dry_run_report(plan: V41GroupALaunchPlan, admission: V41LaunchAdmission) -> String {
+  let verdict = match admission {
+    V41LaunchAdmitted => "ADMITTED"
+    V41LaunchAdmissionRefused { causes: c } => join(["REFUSED\n", join(map(c, x => join(["  - ", x], "")), "\n")], "")
+  }
+  let body = match plan {
+    V41GroupALaunchUnestablished { obligations: o } => join(["plan: UNESTABLISHED\n", join(map(o, x => join(["  - ", x], "")), "\n")], "")
+    V41GroupALaunchRefused { causes: c } => join(["plan: REFUSED\n", join(map(c, x => join(["  - ", x], "")), "\n")], "")
+    V41GroupALaunchPlanned { lines: ls, profile: _, specification_runtime_key: _, manifest_text: manifest, master_endpoint: e } =>
+      match v41_group_a_steps(p: plan) {
+        NativeArmStepsRefused { cause: c } => join(["plan: UNITS DID NOT RENDER: ", c as String], "")
+        NativeArmSteps { steps: steps, master_endpoint: _ } =>
+          join([
+            "plan: ", to_string(length(ls)), " ranks, rendezvous ", e as String, "\n",
+            join(zip_map(a: steps, b: zip_map(a: v41_engram_staging_plans(steps: steps, manifest_text: manifest), b: zip_map(a: spark_native_preflight_plans(steps: steps), b: spark_native_apply_stage_plans(steps: steps), f: fn(pf, ap) { join(["--- preflight\n", pf.script, "\n--- apply\n", ap.script], "") }), f: fn(stg, rest) { join(["--- engram staging\n", stg.script, "\n", rest], "") }), f: fn(st, scripts) {
+              join([
+                "=== host ", st.host as String, " rank ", to_string(st.launch.node.node_rank), " unit ", st.unit_name as String, "\n",
+                "--- create\n", join(concat([st.launch.create.program as String], st.launch.create.arguments), " "), "\n",
+                "--- unit\n", st.unit_text, "\n",
+                scripts, "\n",
+              ], "")
+            }), "\n"),
+          ], "")
+      }
+  }
+  join(["V4.1 Group A TP4 launch -- DRY RUN (no host is touched)\n", body, "\nadmission: ", verdict, "\n"], "")
+}
+
+// THE LIVE INPUTS, AND WHY EACH IS WHAT IT IS ON MAIN TODAY. No produced-image receipt is carried in
+// the tree -- the build lane's admission is a value its own run reads back -- so the live standing names
+// that obligation rather than transcribing a digest; no registry reading exists inside that image; the
+// measurement's choices and the manifest are the two open PRs named above.
+fn v41_group_a_live_inputs() -> V41GroupALaunchInputs {
+  V41GroupALaunchInputs {
+    produced: V41RuntimeProductionUnestablished { obligations: ["no produced-image admission (gunbc.spark.v41_runtime_realized v41_admit_produced_runtime) is carried on main; the dry run is handed one by the converge that produced and distributed it (#12353)" as NonEmptyStr] },
+    registry_reading: none,
+    choices: none,
+    manifest_text: none,
+  }
+}
+
+data v41_group_a_dry_run_path: String = "target/v41-group-a-launch-dry-run.txt"
+
+// THE DRY-RUN ENTRY. It reads the authority log (read-only) and the held hosts, renders, writes the
+// report, and exits zero only when the plan rendered AND admission holds -- a report of a plan nobody
+// may start is written all the same, and the exit says it may not start.
+fn v41_group_a_launch_dry_run() -> ProcessExit {
+  let plan = v41_group_a_launch_plan(inputs: v41_group_a_live_inputs())
+  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
+  let candidate = v41_candidate().standing
+  let admission = match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => V41LaunchAdmissionRefused { causes: [join(["the executor could not be identified, so Group A's authority log could not be read: ", c], "")] }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => V41LaunchAdmissionRefused { causes: ["the clock could not be read, so the authority's lease standing cannot be derived"] }
+        Present { value: at } =>
+          v41_group_a_launch_admission_current(plan: plan, current: current_pair_serving_authorities(short_hostname: executor, at: at), candidate: candidate, held: held)
+      }
+  }
+  let report = v41_group_a_dry_run_report(plan: plan, admission: admission)
+  let w = Filesystem.Write(path: v41_group_a_dry_run_path, content: report)
+  if !w.success {
+    exit_failure(reason: join(["v41_group_a_launch_dry_run: the report could not be written: ", w.error], ""))
+  } else {
+    match admission {
+      V41LaunchAdmitted => ExitSuccess
+      V41LaunchAdmissionRefused { causes: c } => exit_failure(reason: join(["v41_group_a_launch_dry_run: not admitted (report at ", v41_group_a_dry_run_path, "): ", join(c, "; ")], ""))
+    }
+  }
+}

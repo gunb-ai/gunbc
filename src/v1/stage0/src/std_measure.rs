@@ -408,6 +408,16 @@ pub fn gibibyte_count(g: Gibibyte) -> Nat {
     measure_count(g.clone())
 }
 
+pub fn gibibyte_ceiling(b: ByteSize) -> Gibibyte {
+    {
+        let scale = gibibyte_scale_factor_bytes();
+        gibibyte(v1_rt::int_div(
+            v1_rt::int_add(byte_size_count(b.clone()), v1_rt::int_sub(scale.clone(), 1)),
+            scale.clone(),
+        ))
+    }
+}
+
 pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size(v1_rt::int_mul(
         gibibyte_count(g.clone()),
