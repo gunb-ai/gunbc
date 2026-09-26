@@ -50,20 +50,23 @@ fn resolve_accepts(root: Rc<Node>) -> bool {
     )
 }
 
-// The planted fault feeds the malformed tree where the well-formed one is expected, so the fault
-// run goes red only if emitted resolve really refuses it.
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let valid_input = if inject_fault {
-        value_with_child()
+    let malformed_accepted = resolve_accepts(value_with_child());
+    let all_pass = if inject_fault {
+        println!("resolve injected: not_well_formed accepted={malformed_accepted}");
+        malformed_accepted
     } else {
-        value_node()
+        let valid_accepts = resolve_accepts(value_node());
+        println!("resolve well_formed accepts={valid_accepts}");
+        println!("resolve not_well_formed refuses={}", !malformed_accepted);
+        valid_accepts && !malformed_accepted
     };
-    let valid_accepts = resolve_accepts(valid_input);
-    println!("resolve well_formed inject_fault={inject_fault} accepts={valid_accepts}");
-    let malformed_refuses = !resolve_accepts(value_with_child());
-    println!("resolve not_well_formed refuses={malformed_refuses}");
-    if valid_accepts && malformed_refuses {
+
+    if all_pass {
         println!("SELF_HOST_03_RESOLVE_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }

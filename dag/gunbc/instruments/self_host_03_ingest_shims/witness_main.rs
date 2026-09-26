@@ -40,19 +40,27 @@ fn class_of(identity: &str) -> Option<String> {
     }
 }
 
-// The planted fault asks for the unrecoverable atom where the bound one is expected, so the fault
-// run goes red only if emitted ingest really refuses to invent a class.
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let bound = class_of(if inject_fault { "unbound_atom" } else { "fn_name" });
-    let bound_ok = bound.as_deref() == Some("Ident");
-    println!("frontier class via binding inject_fault={inject_fault} class={bound:?} ok={bound_ok}");
-    let direct = class_of("LParen");
-    let direct_ok = direct.as_deref() == Some("LParen");
-    println!("frontier class via token set class={direct:?} ok={direct_ok}");
-    let refused = class_of("unbound_atom").is_none();
-    println!("frontier class unrecoverable refused={refused}");
-    if bound_ok && direct_ok && refused {
+    let unrecoverable = class_of("unbound_atom");
+    let all_pass = if inject_fault {
+        println!("frontier class injected: unrecoverable class={unrecoverable:?}");
+        unrecoverable.is_some()
+    } else {
+        let bound = class_of("fn_name");
+        let bound_ok = bound.as_deref() == Some("Ident");
+        println!("frontier class via binding class={bound:?} ok={bound_ok}");
+        let direct = class_of("LParen");
+        let direct_ok = direct.as_deref() == Some("LParen");
+        println!("frontier class via token set class={direct:?} ok={direct_ok}");
+        println!("frontier class unrecoverable refused={}", unrecoverable.is_none());
+        bound_ok && direct_ok && unrecoverable.is_none()
+    };
+
+    if all_pass {
         println!("SELF_HOST_03_INGEST_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }

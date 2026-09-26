@@ -52,21 +52,28 @@ fn assemble(text: &str) -> Result<(), Vec<String>> {
     }
 }
 
-// The planted fault feeds the unparseable read where the well-formed one is expected, so the
-// fault run goes red only if emitted assembly really refuses it.
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let valid = assemble(if inject_fault { UNPARSEABLE } else { WELL_FORMED });
-    let valid_accepts = valid.is_ok();
-    println!("assemble well_formed inject_fault={inject_fault} accepts={valid_accepts}");
-    // The ROUTE, not only the verdict: the refusal must carry the parse stage's own refusal (parse_g0_tokens_remain: the grammar stopped with input left), so a
-    // refusal reached for some other reason (a grammar-level residue riding the chain) does not
-    // count.
+    // The ROUTE, not only the verdict: the refusal must carry the parse stage's own refusal
+    // (parse_g0_tokens_remain: the grammar stopped with input left), so a refusal reached for some
+    // other reason (a grammar-level residue riding the chain) does not count as refusing.
     let invalid = assemble(UNPARSEABLE);
     let invalid_refuses = matches!(&invalid, Err(reasons) if reasons.iter().any(|r| r == "parse_g0_tokens_remain"));
     let distinct: std::collections::BTreeSet<&String> = invalid.as_ref().err().into_iter().flatten().collect();
-    println!("assemble unparseable distinct_reasons={distinct:?} refuses_with_tokens_remain={invalid_refuses}");
-    if valid_accepts && invalid_refuses {
+    let all_pass = if inject_fault {
+        println!("assemble injected: unparseable not refused through tokens_remain={} reasons={distinct:?}", !invalid_refuses);
+        !invalid_refuses
+    } else {
+        let valid_accepts = assemble(WELL_FORMED).is_ok();
+        println!("assemble well_formed accepts={valid_accepts}");
+        println!("assemble unparseable distinct_reasons={distinct:?} refuses_with_tokens_remain={invalid_refuses}");
+        valid_accepts && invalid_refuses
+    };
+
+    if all_pass {
         println!("SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }

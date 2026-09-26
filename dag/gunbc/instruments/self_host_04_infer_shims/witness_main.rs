@@ -33,8 +33,9 @@ fn foreign_node() -> Rc<Node> {
     )
 }
 
-// The planted fault queries the foreign node where the inferred root is expected, so the fault run
-// goes red only if emitted infer really refuses a node it did not infer.
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
     let tree = match &*emitted::infer(value_node()) {
@@ -46,22 +47,24 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let covered_query = if inject_fault {
-        foreign_node()
-    } else {
-        value_node()
-    };
-    let covered_holds = matches!(
-        &*emitted::inferred_facts_witness_for_node(tree.clone(), covered_query),
+    let foreign_held = matches!(
+        &*emitted::inferred_facts_witness_for_node(tree.clone(), foreign_node()),
         Witness::Holds { .. }
     );
-    println!("infer covers root inject_fault={inject_fault} holds={covered_holds}");
-    let foreign_refused = matches!(
-        &*emitted::inferred_facts_witness_for_node(tree, foreign_node()),
-        Witness::Violates { .. }
-    );
-    println!("infer foreign node refused={foreign_refused}");
-    if covered_holds && foreign_refused {
+    let all_pass = if inject_fault {
+        println!("infer injected: foreign node held={foreign_held}");
+        foreign_held
+    } else {
+        let covered_holds = matches!(
+            &*emitted::inferred_facts_witness_for_node(tree, value_node()),
+            Witness::Holds { .. }
+        );
+        println!("infer covers root holds={covered_holds}");
+        println!("infer foreign node refused={}", !foreign_held);
+        covered_holds && !foreign_held
+    };
+
+    if all_pass {
         println!("SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }

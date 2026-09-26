@@ -102,22 +102,32 @@ fn decode(quotient: Rc<Node>) -> Option<DecodeFidelity> {
     }
 }
 
-// The planted fault feeds the unrecognized quotient where the modeled one is expected, so the
-// fault run goes red only if emitted target_carriers really refuses it.
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let lossless = decode(if inject_fault { unrecognized() } else { modeled_only() });
-    let lossless_ok = matches!(lossless, Some(DecodeFidelity::Lossless));
-    println!("quotient modeled inject_fault={inject_fault} fidelity={lossless:?} ok={lossless_ok}");
-    let lossy = decode(with_fail_closed());
-    let lossy_ok = matches!(lossy, Some(DecodeFidelity::Lossy));
-    println!("quotient fail_closed fidelity={lossy:?} ok={lossy_ok}");
-    let refused = decode(unrecognized()).is_none();
-    println!("quotient unrecognized refused={refused}");
-    let bundles = (quotient_in(bundle(0)), quotient_in(bundle(1)), quotient_in(bundle(2)));
-    let bundles_ok = bundles == (Some(false), Some(true), None);
-    println!("bundle quotient none/one/two={bundles:?} ok={bundles_ok}");
-    if lossless_ok && lossy_ok && refused && bundles_ok {
+    let unrecognized_decoded = decode(unrecognized());
+    let ambiguous_bundle = quotient_in(bundle(2));
+    let all_pass = if inject_fault {
+        let wrongly_accepted = unrecognized_decoded.is_some() || ambiguous_bundle.is_some();
+        println!("quotient injected: unrecognized={unrecognized_decoded:?} ambiguous_bundle={ambiguous_bundle:?} wrongly_accepted={wrongly_accepted}");
+        wrongly_accepted
+    } else {
+        let lossless = decode(modeled_only());
+        let lossless_ok = matches!(lossless, Some(DecodeFidelity::Lossless));
+        println!("quotient modeled fidelity={lossless:?} ok={lossless_ok}");
+        let lossy = decode(with_fail_closed());
+        let lossy_ok = matches!(lossy, Some(DecodeFidelity::Lossy));
+        println!("quotient fail_closed fidelity={lossy:?} ok={lossy_ok}");
+        println!("quotient unrecognized refused={}", unrecognized_decoded.is_none());
+        let bundles = (quotient_in(bundle(0)), quotient_in(bundle(1)), ambiguous_bundle);
+        let bundles_ok = bundles == (Some(false), Some(true), None);
+        println!("bundle quotient none/one/two={bundles:?} ok={bundles_ok}");
+        lossless_ok && lossy_ok && unrecognized_decoded.is_none() && bundles_ok
+    };
+
+    if all_pass {
         println!("SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }

@@ -40,20 +40,23 @@ fn grammar_with_undefined_nonterminal() -> Rc<ParseGrammar> {
     })
 }
 
-// The planted fault feeds the invalid grammar where the modeled one is expected, so the fault run
-// goes red only if emitted prepare_grammar really refuses it.
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let valid_input = if inject_fault {
-        grammar_with_undefined_nonterminal()
+    let invalid_accepted = prepares(grammar_with_undefined_nonterminal());
+    let all_pass = if inject_fault {
+        println!("prepare_grammar injected: undefined_nonterminal accepted={invalid_accepted}");
+        invalid_accepted
     } else {
-        dag_grammar()
+        let valid_accepts = prepares(dag_grammar());
+        println!("prepare_grammar dag_grammar accepts={valid_accepts}");
+        println!("prepare_grammar undefined_nonterminal refuses={}", !invalid_accepted);
+        valid_accepts && !invalid_accepted
     };
-    let valid_accepts = prepares(valid_input);
-    println!("prepare_grammar dag_grammar inject_fault={inject_fault} accepts={valid_accepts}");
-    let invalid_refuses = !prepares(grammar_with_undefined_nonterminal());
-    println!("prepare_grammar undefined_nonterminal refuses={invalid_refuses}");
-    if valid_accepts && invalid_refuses {
+
+    if all_pass {
         println!("SELF_HOST_02_PARSE_BEHAVIORAL_RECEIPT: PASS");
         std::process::exit(0);
     }
