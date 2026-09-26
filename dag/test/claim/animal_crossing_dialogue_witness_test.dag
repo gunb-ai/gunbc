@@ -9,7 +9,7 @@ import extdeps.games.animal_crossing.message {
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
 import examples.animal_crossing.acmsg { AcmsgBlock, AcmsgEdit, AcmsgAccepted, AcmsgRefused, parse_acmsg, render_acmsg }
 import extdeps.games.animal_crossing.dialogue_catalog { CatalogEntry, Personality, Cranky, dialogue_catalog, personalities, personality_looks, personality_of_looks }
-import examples.animal_crossing.dialogue { label_blocks }
+import examples.animal_crossing.dialogue { LineFinding, LineFits, LineOverflows, LineMayOverflow, label_blocks, line_width_finding }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -233,4 +233,23 @@ test fn catalog_topics_are_unique() -> Bool {
 test fn dumped_blocks_are_labelled_with_topic_personality_and_position() -> Bool {
   let blocks = [AcmsgBlock { id: 10, label: "", text: "a" }, AcmsgBlock { id: 11, label: "", text: "b" }]
   return (label_blocks(blocks: blocks, topic: "chat", p: Cranky) |> map(b => b.label)) == ["chat / cranky 1 of 2", "chat / cranky 2 of 2"]
+}
+
+fn finding_kind(f: LineFinding) -> String {
+  match f {
+    LineFits => "fits"
+    LineOverflows { reason: _ } => "overflows"
+    LineMayOverflow { reason: _ } => "may overflow"
+  }
+}
+
+fn width_line(min: Int, max: Int) -> TextLine {
+  TextLine { page: 0, line: 0, extent: LineWidthRange { min: min, max: max } }
+}
+
+test fn line_widths_are_judged_against_the_window() -> Bool {
+  return finding_kind(f: line_width_finding(line: width_line(min: 245, max: 245), units: 245)) == "fits"
+    && finding_kind(f: line_width_finding(line: width_line(min: 246, max: 246), units: 245)) == "overflows"
+    && finding_kind(f: line_width_finding(line: width_line(min: 100, max: 300), units: 245)) == "may overflow"
+    && finding_kind(f: line_width_finding(line: TextLine { page: 0, line: 0, extent: LineUnbounded { reason: "scaled" } }, units: 245)) == "may overflow"
 }

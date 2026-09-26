@@ -107,11 +107,16 @@ fn inserted_string_max_octets(code_name: String) -> Int? {
 }
 
 // How wide a line the message window shows. The window places text at center - 96 * scale
-// (m_msg_draw_font.c_inc mMsg_draw_font), which bounds where a line starts but not where the
-// window's right edge clips it, so the width is measured in game rather than derived; until it has
-// been, it is uncalibrated and no line width is judged.
+// (m_msg_draw_font.c_inc mMsg_draw_font), which fixes where a line starts but not where the window
+// ends, so the width is measured in game. `units` is the widest line known to draw whole inside the
+// window, not the window's edge.
 type LineWidthLimit
   = LineWidthMeasured { units: Int }
   | LineWidthUncalibrated
 
-data message_window_line_width: LineWidthLimit = LineWidthUncalibrated
+// Measured on the Animal Crossing Deluxe build (Dolphin, 2026-09-26): two save-screen lines of digit
+// rulers, 240 and 245 units (thirty 8-unit digits, the second after a 5-unit space), both drew
+// whole inside the bubble with margin to spare; the bubble's edge was not reached. The base game's
+// own lines keep well inside this -- almost none exceed 186 units -- which is a house style, not
+// the limit.
+data message_window_line_width: LineWidthLimit = LineWidthMeasured { units: 245 }
