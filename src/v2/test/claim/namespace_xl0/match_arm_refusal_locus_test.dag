@@ -35,13 +35,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and no offset is compared across specimens or copied from a measurement. The fixtures are ASCII,
 // so a character count is a byte count. The locus resolves to the literal's opening bracket.
 //
-// THE WRONG-LOCUS CONTROL. The navigation refusal this change removed located the ARM (the arm
-// capture was its only locus). Each specimen's arm start is constructed the same way (the offset of
-// its `true =>` pattern), and a claim asserts the refusal is NOT there, so an implementation that
-// kept the cause but pointed at the enclosing arm is red here while the cause claims stay green.
-// Its executed mutation (the list-literal refusal re-pointed at the enclosing value capture) is
-// recorded in gunbc#12321.
-
+// THE WRONG-LOCUS MUTATION, AND WHY THERE IS NO "NOT AT THE ARM" CLAIM. The navigation refusal this
+// change removed located the ARM. Re-pointing the arm refusal at its enclosing arm while keeping its
+// cause (v2.compiler.body_lowering_fold body_lower_match_arm_wired answering the same reason at
+// arm_capture) reds all three located claims below while
+// v2.test.claim.namespace_xl0.match_arm_refusal_carried's cause claims stay green; that run is
+// recorded in gunbc#12321. A companion claim "not located at the arm's start" was written and
+// DELETED: under that exact mutation it stayed green for the comma-separated specimen, because a
+// comma arm's capture does not begin at its pattern, so it was fooled by the defect it named. The
+// exact-start claims are the discriminator.
+//
 data marl_prelude: String = "module v2.test.marl\n\nfn marl_g(acc: List<Int>) -> List<Int> { acc }\n\nfn marl_probe(b: Bool, acc: List<Int>) -> List<Int> {\n"
 
 data marl_second_before_arm: String = "  match b {\n    false => acc\n    "
@@ -61,15 +64,13 @@ data marl_literal: String = "[]"
 type MarlSpecimen {
   source: String
   literal_start: Int
-  arm_start: Int
 }
 
 fn marl_specimen(before_arm: String, arm_head: String, suffix: String) -> MarlSpecimen {
   let arm_start = length(xs: marl_prelude) + length(xs: before_arm)
   MarlSpecimen {
     source: marl_prelude + before_arm + arm_head + marl_literal + suffix,
-    literal_start: arm_start + length(xs: arm_head),
-    arm_start: arm_start
+    literal_start: arm_start + length(xs: arm_head)
   }
 }
 
@@ -165,13 +166,6 @@ fn marl_starts_at(v: MarlLocated, at: Int) -> Bool {
   }
 }
 
-fn marl_resolved_elsewhere_than(v: MarlLocated, at: Int) -> Bool {
-  match v {
-    MarlAt { start: s, end: _ } => s != at
-    _ => false
-  }
-}
-
 test fn a_second_arm_refusal_is_located_at_its_own_literal() -> Bool {
   marl_starts_at(v: marl_outcomes().second, at: marl_second().literal_start)
 }
@@ -182,12 +176,4 @@ test fn a_comma_separated_arm_refusal_is_located_at_its_own_literal() -> Bool {
 
 test fn a_first_arm_refusal_is_located_at_its_own_literal() -> Bool {
   marl_starts_at(v: marl_outcomes().first, at: marl_first().literal_start)
-}
-
-test fn a_second_arm_refusal_is_not_located_at_its_enclosing_arm() -> Bool {
-  marl_resolved_elsewhere_than(v: marl_outcomes().second, at: marl_second().arm_start)
-}
-
-test fn a_comma_separated_arm_refusal_is_not_located_at_its_enclosing_arm() -> Bool {
-  marl_resolved_elsewhere_than(v: marl_outcomes().comma, at: marl_comma().arm_start)
 }
