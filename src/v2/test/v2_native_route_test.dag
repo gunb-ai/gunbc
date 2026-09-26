@@ -33,6 +33,7 @@ import gunbc.witness_v2_native_route {
   required_v2_native_job_name,
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
   native_route_admission_summary,
+  native_route_file_refusals_attributed,
   native_route_live_control_module,
   NativeRouteCauseTally,
   native_route_file_refusal_tally,
@@ -70,7 +71,7 @@ import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import v2.std.collection { List }
+import v2.std.collection { Cons, List }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -901,6 +902,47 @@ test fn an_unattributed_file_refusal_is_refused() -> Bool {
     )),
     cause_name: "unattributed_file_refusals_present"
   )
+}
+
+// THE BODY-LOWERING FATAL CAUSES OF THE BROAD RUN AT main bd2c586926b9 ARE OWNED. Supplied rows
+// in the receipt's shape (DESIGN section 3, a witness discriminates at one interface): one file
+// refusal per cause the run measured unowned, and the file-refusal clause holds over them. The
+// paired control keeps the clause discriminating -- the same receipt plus one row whose fatal
+// cause has no ownership row still fails it, so the owned rows did not become a catch-all.
+fn body_lowering_frontier_refusals() -> List<NativeTestFileRefusal> {
+  [
+    file_refusal_row(path: ^bl_a, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_call_argument_unread),
+    file_refusal_row(path: ^bl_b, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_operator_operand_unread),
+    file_refusal_row(path: ^bl_c, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_type_annotation_not_carried),
+    file_refusal_row(path: ^bl_d, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_paren_group_unread)
+  ]
+}
+
+test fn the_body_lowering_frontier_causes_are_owned_at_fatal_grain() -> Bool {
+  native_route_file_refusals_attributed(receipt: receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: body_lowering_frontier_refusals()
+  ))
+    && match classify_native_refusal(stage: NativeTestStageContext, reason: ^body_lowering_reason_call_argument_unread) {
+      CompilerFrontierAttributed { reason: _ } => true
+      NativeEntryResolutionLimit { reason: _ } => false
+      NativeEvalBoundary { reason: _ } => false
+      UnattributedRefusal { reason: _ } => false
+    }
+}
+
+test fn an_unknown_fatal_cause_beside_the_owned_ones_still_refuses_unowned() -> Bool {
+  !native_route_file_refusals_attributed(receipt: receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: Cons {
+      head: file_refusal_row(path: ^bl_e, head: ^parse_grammar_choice_overlap_residue, fatal: ^some_unowned_cause),
+      tail: body_lowering_frontier_refusals()
+    }
+  ))
 }
 
 test fn an_unattributed_head_advisory_is_refused() -> Bool {
