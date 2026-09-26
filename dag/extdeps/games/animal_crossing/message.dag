@@ -6,6 +6,7 @@ import std.octet_read { be_u32_at, be_u32_octets, hex_octets, octet_hex, octets_
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.games.animal_crossing.charset { ac_glyph_octet, ac_octet_glyph }
+import extdeps.games.animal_crossing.font { glyph_advance, inserted_string_max_octets, widest_glyph_advance }
 
 // Animal Crossing (GameCube, GAFE01) dialogue as the game stores and draws it. Messages live in
 // forest_2nd.arc as `data/message_data.bin` (every message concatenated) and
@@ -39,11 +40,8 @@ data message_data_path: String = "data/message_data.bin"
 data message_table_path: String = "data/message_data_table.bin"
 
 data control_prefix: Int = 127
-// `mMsg_data` is 0x660 bytes in ac-decomp's GAFE01 foresta symbols
-// (config/GAFE01_00/foresta/symbols.txt). The object may hold more than the text, so a real limit
-// can only be lower: this bounds what could possibly load, and long messages still need a look in
-// an emulator.
-data message_octets_ceiling: Int = 1632
+// The octet that ends a drawn line (the font table's "\n").
+data message_line_break: Int = 205
 
 // `size` counts every octet of the code: 0x7F, the code byte and its arguments.
 type ControlCode {
@@ -407,4 +405,76 @@ fn text_message(codes: List<ControlCode>, text: String) -> MessageOutcome<List<I
   if r.refusal != "" { MessageRefused { reason: r.refusal } }
   else if r.mode == 2 { MessageRefused { reason: "unterminated '{' placeholder" } }
   else { MessageAccepted { value: r.octets } }
+}
+
+// ---- layout ----
+
+// A drawn line's width in font units: exact when every octet is known, a range when an inserted
+// string (a name, the catchphrase...) of bounded length is in it, and unbounded when the line holds
+// a string with no length bound or changes its own scale or position.
+type LineExtent
+  = LineWidthRange { min: Int, max: Int }
+  | LineUnbounded { reason: String }
+
+// `line` counts from 0 within `page`; only lines that draw something are counted, because a line
+// holding nothing but control codes takes no row in the window.
+type TextLine {
+  page: Int
+  line: Int
+  extent: LineExtent
+}
+
+type LayoutFold {
+  lines: List<TextLine>
+  page: Int
+  line: Int
+  min: Int
+  max: Int
+  unbounded: String
+  visible: Bool
+}
+
+fn layout_close(acc: LayoutFold) -> LayoutFold {
+  if acc.visible {
+    let extent = if acc.unbounded != "" { LineUnbounded { reason: acc.unbounded } } else { LineWidthRange { min: acc.min, max: acc.max } }
+    LayoutFold { lines: list_push(acc.lines, TextLine { page: acc.page, line: acc.line, extent: extent }), page: acc.page, line: acc.line + 1, min: 0, max: 0, unbounded: "", visible: false }
+  } else {
+    LayoutFold { lines: acc.lines, page: acc.page, line: acc.line, min: 0, max: 0, unbounded: "", visible: false }
+  }
+}
+
+fn layout_widen(acc: LayoutFold, min: Int, max: Int, visible: Bool) -> LayoutFold {
+  LayoutFold { lines: acc.lines, page: acc.page, line: acc.line, min: acc.min + min, max: acc.max + max, unbounded: acc.unbounded, visible: acc.visible || visible }
+}
+
+fn layout_unbound(acc: LayoutFold, reason: String) -> LayoutFold {
+  LayoutFold { lines: acc.lines, page: acc.page, line: acc.line, min: acc.min, max: acc.max, unbounded: if acc.unbounded == "" { reason } else { acc.unbounded }, visible: acc.visible }
+}
+
+fn layout_control(acc: LayoutFold, code: ControlCode, arguments: List<Int>) -> LayoutFold {
+  if code.name == "CLEAR" {
+    let closed = layout_close(acc: acc)
+    LayoutFold { lines: closed.lines, page: closed.page + 1, line: 0, min: 0, max: 0, unbounded: "", visible: false }
+  } else if code.name == "LAST" || code.name == "CONTINUE" || code.name == "MSG_TIME_END" { layout_close(acc: acc) }
+  else if code.name == "SPACE" { layout_widen(acc: acc, min: get(arguments, 0) ?? 0, max: get(arguments, 0) ?? 0, visible: false) }
+  else if code.name == "SET_LINE_SCALE" || code.name == "SET_CHAR_SCALE" || code.name == "SET_LINE_OFFSET" || code.name == "SET_LINE_TYPE" {
+    layout_unbound(acc: acc, reason: join([code.name, " changes how the line is scaled or placed"], ""))
+  } else if code.name.starts_with(prefix: "PUT_STRING_") {
+    match inserted_string_max_octets(code_name: code.name) {
+      Present { value: n } => layout_widen(acc: acc, min: 0, max: n * widest_glyph_advance(), visible: true)
+      Absent => layout_widen(acc: layout_unbound(acc: acc, reason: join([code.name, " inserts a string of unbounded length"], "")), min: 0, max: 0, visible: true)
+    }
+  } else { acc }
+}
+
+fn layout_step(acc: LayoutFold, token: MessageToken) -> LayoutFold {
+  match token {
+    Glyph { octet: o } => if o == message_line_break { layout_close(acc: acc) } else { layout_widen(acc: acc, min: glyph_advance(octet: o), max: glyph_advance(octet: o), visible: true) }
+    Control { code: c, arguments: a } => layout_control(acc: acc, code: c, arguments: a)
+  }
+}
+
+// Every line the window draws for a message, page by page.
+fn message_lines(tokens: List<MessageToken>) -> List<TextLine> {
+  layout_close(acc: fold(tokens, init: LayoutFold { lines: [], page: 0, line: 0, min: 0, max: 0, unbounded: "", visible: false }, f: (acc, t) => layout_step(acc: acc, token: t))).lines
 }

@@ -21,9 +21,15 @@ import extdeps.formats.jsystem.rarc {
 }
 import extdeps.games.animal_crossing.message {
   ControlCode, MessageAccepted, MessageRefused,
-  message_archive_path, message_data_path, message_table_path, message_octets_ceiling,
+  message_archive_path, message_data_path, message_table_path,
   message_table_ends, message_table_octets, message_start, message_end, message_tokens, message_text,
-  steering_tokens, text_message,
+  steering_tokens, text_message, LineWidthRange, LineUnbounded, TextLine, message_lines,
+}
+import examples.animal_crossing.acmsg {
+  AcmsgBlock, AcmsgEdit, AcmsgAccepted, AcmsgRefused, message_id_of, parse_acmsg, render_acmsg,
+}
+import extdeps.games.animal_crossing.font {
+  LineWidthLimit, LineWidthMeasured, LineWidthUncalibrated, message_octet_limit, message_window_line_width, page_line_limit,
 }
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_build_image_sha1, deluxe_control_codes }
 
@@ -175,84 +181,9 @@ fn read_message_text(base: AcBase, id: Int) -> String? {
 
 // ---- the patch set ----
 
-type AcmsgEdit {
-  id: Int
-  label: String
-  text: String
-  source: String
-}
-
 type PatchSet {
   base_sha1: String
   edits: List<AcmsgEdit>
-}
-
-fn hex_int(digits: String) -> Int? {
-  match hex_octets(hex: if digits.length() % 2 == 1 { concat("0", digits) } else { digits }) {
-    Absent => none
-    Present { value: o } => Present { value: fold(o, init: 0, f: (acc, x) => acc * 256 + x) }
-  }
-}
-
-fn message_id_of(token: String) -> Int? {
-  if token.starts_with(prefix: "0x") { hex_int(digits: substring(s: token, start: 2, end: token.length())) } else { parse_int(token) }
-}
-
-fn is_header_line(line: String) -> Bool {
-  line.starts_with(prefix: "=== ") && line.ends_with(suffix: " ===") && line.length() > 8
-}
-
-type AcmsgFold {
-  edits: List<AcmsgEdit>
-  open: Bool
-  id: Int
-  label: String
-  header_line: Int
-  body: List<String>
-  line: Int
-  refusal: String
-}
-
-fn acmsg_close(acc: AcmsgFold, source: String) -> List<AcmsgEdit> {
-  if acc.open {
-    list_push(acc.edits, AcmsgEdit { id: acc.id, label: acc.label, text: acc.body |> join(separator: "\n"), source: join([source, ":", to_string(acc.header_line)], "") })
-  } else { acc.edits }
-}
-
-fn acmsg_refused(acc: AcmsgFold, source: String, line: Int, reason: String) -> AcmsgFold {
-  AcmsgFold { edits: acc.edits, open: false, id: 0, label: "", header_line: 0, body: [], line: line, refusal: join([source, ":", to_string(line), ": ", reason], "") }
-}
-
-fn acmsg_header(acc: AcmsgFold, source: String, line: Int, text: String) -> AcmsgFold {
-  let inner = substring(s: text, start: 4, end: text.length() - 4)
-  let id_token = get(split(s: inner, delimiter: " "), 0) ?? ""
-  match message_id_of(token: id_token) {
-    Absent => acmsg_refused(acc: acc, source: source, line: line, reason: "header does not start with a message id")
-    Present { value: id } => AcmsgFold {
-      edits: acmsg_close(acc: acc, source: source), open: true, id: id,
-      label: trim(s: substring(s: inner, start: id_token.length(), end: inner.length())),
-      header_line: line, body: [], line: line, refusal: "",
-    }
-  }
-}
-
-fn acmsg_step(source: String, acc: AcmsgFold, text: String) -> AcmsgFold {
-  let n = acc.line + 1
-  if acc.refusal != "" { acc }
-  else if is_header_line(line: text) { acmsg_header(acc: acc, source: source, line: n, text: text) }
-  else if acc.open {
-    AcmsgFold { edits: acc.edits, open: true, id: acc.id, label: acc.label, header_line: acc.header_line, body: list_push(acc.body, text), line: n, refusal: "" }
-  } else if trim(s: text) == "" || text.starts_with(prefix: "#") {
-    AcmsgFold { edits: acc.edits, open: false, id: 0, label: "", header_line: 0, body: [], line: n, refusal: "" }
-  } else { acmsg_refused(acc: acc, source: source, line: n, reason: "text before the first '=== id ===' header") }
-}
-
-// Blocks of `=== <id> [label] ===` followed by the message text. The newline that separates a body
-// from the next header, or ends the file, is not part of the message.
-fn parse_acmsg(source: String, content: String) -> Loaded<List<AcmsgEdit>> {
-  let body = if content.ends_with(suffix: "\n") { substring(s: content, start: 0, end: content.length() - 1) } else { content }
-  let r = fold(split(s: body, delimiter: "\n"), init: AcmsgFold { edits: [], open: false, id: 0, label: "", header_line: 0, body: [], line: 0, refusal: "" }, f: (acc, l) => acmsg_step(source: source, acc: acc, text: l))
-  if r.refusal != "" { LoadRefused { reason: r.refusal } } else { LoadedOk { value: acmsg_close(acc: r, source: source) } }
 }
 
 fn read_text(path: String) -> Loaded<String> {
@@ -271,9 +202,9 @@ type EditsFold {
 fn add_edit(acc: EditsFold, edit: AcmsgEdit) -> EditsFold {
   if acc.refusal != "" { acc }
   else {
-    match acc.edits |> filter(e => e.id == edit.id) |> first {
+    match acc.edits |> filter(e => e.block.id == edit.block.id) |> first {
       null => EditsFold { edits: list_push(acc.edits, edit), refusal: "" }
-      other => EditsFold { edits: acc.edits, refusal: join(["message ", to_string(edit.id), " is patched twice: ", other.source, " and ", edit.source], "") }
+      other => EditsFold { edits: acc.edits, refusal: join(["message ", to_string(edit.block.id), " is patched twice: ", other.source, " and ", edit.source], "") }
     }
   }
 }
@@ -286,8 +217,8 @@ fn add_file_edits(root: String, acc: EditsFold, path: String) -> EditsFold {
       LoadRefused { reason: r } => EditsFold { edits: acc.edits, refusal: r }
       LoadedOk { value: content } =>
         match parse_acmsg(source: source, content: content) {
-          LoadRefused { reason: r } => EditsFold { edits: acc.edits, refusal: r }
-          LoadedOk { value: edits } => fold(edits, init: acc, f: (a, e) => add_edit(acc: a, edit: e))
+          AcmsgRefused { reason: r } => EditsFold { edits: acc.edits, refusal: r }
+          AcmsgAccepted { value: edits } => fold(edits, init: acc, f: (a, e) => add_edit(acc: a, edit: e))
         }
     }
   }
@@ -320,10 +251,66 @@ type ValidEdit {
 type ValidateFold {
   valid: List<ValidEdit>
   refusals: List<String>
+  warnings: List<String>
+}
+
+// Edits that passed, and what the checks could not settle about them.
+type CheckedEdits {
+  edits: List<ValidEdit>
+  warnings: List<String>
+}
+
+fn edit_where(edit: AcmsgEdit) -> String {
+  join([edit.source, " (message ", to_string(edit.block.id), ")"], "")
 }
 
 fn refuse_edit(acc: ValidateFold, edit: AcmsgEdit, reason: String) -> ValidateFold {
-  ValidateFold { valid: acc.valid, refusals: list_push(acc.refusals, join([edit.source, " (message ", to_string(edit.id), "): ", reason], "")) }
+  ValidateFold { valid: acc.valid, refusals: list_push(acc.refusals, join([edit_where(edit: edit), ": ", reason], "")), warnings: acc.warnings }
+}
+
+fn line_where(line: TextLine) -> String {
+  join(["page ", to_string(line.page + 1), " line ", to_string(line.line + 1)], "")
+}
+
+// A line that certainly overflows is refused; one that only might (an inserted name that could be
+// long, a line that rescales itself) is a warning.
+fn line_width_finding(line: TextLine, units: Int) -> LineFinding {
+  match line.extent {
+    LineWidthRange { min: lo, max: hi } =>
+      if lo > units { LineOverflows { reason: join([line_where(line: line), " is ", to_string(lo), " units wide; the window shows ", to_string(units)], "") } }
+      else if hi > units { LineMayOverflow { reason: join([line_where(line: line), " reaches ", to_string(hi), " of ", to_string(units), " units if its inserted strings are long"], "") } }
+      else { LineFits }
+    LineUnbounded { reason: r } => LineMayOverflow { reason: join([line_where(line: line), " cannot be measured: ", r], "") }
+  }
+}
+
+type LineFinding
+  = LineFits
+  | LineOverflows { reason: String }
+  | LineMayOverflow { reason: String }
+
+fn layout_findings(lines: List<TextLine>) -> List<LineFinding> {
+  let pages = lines |> filter(l => l.line >= page_line_limit) |> map(l => LineOverflows { reason: join(["page ", to_string(l.page + 1), " draws more than ", to_string(page_line_limit), " lines"], "") })
+  let widths = match message_window_line_width {
+    LineWidthMeasured { units: u } => lines |> map(l => line_width_finding(line: l, units: u))
+    LineWidthUncalibrated => []
+  }
+  concat(pages, widths)
+}
+
+fn accept_edit(acc: ValidateFold, edit: AcmsgEdit, old_octets: List<Int>, new_octets: List<Int>, lines: List<TextLine>) -> ValidateFold {
+  let findings = layout_findings(lines: lines)
+  let refusals = findings |> filter(f => match f { LineOverflows { reason: _ } => true  LineMayOverflow { reason: _ } => false  LineFits => false })
+  let maybes = findings |> filter(f => match f { LineMayOverflow { reason: _ } => true  LineOverflows { reason: _ } => false  LineFits => false })
+  if count(refusals) > 0 {
+    fold(refusals, init: acc, f: (a, r) => match r { LineOverflows { reason: why } => refuse_edit(acc: a, edit: edit, reason: why)  LineMayOverflow { reason: _ } => a  LineFits => a })
+  } else {
+    ValidateFold {
+      valid: list_push(acc.valid, ValidEdit { edit: edit, old_size: count(old_octets), octets: new_octets }),
+      refusals: acc.refusals,
+      warnings: concat(acc.warnings, maybes |> map(m => match m { LineMayOverflow { reason: why } => join([edit_where(edit: edit), ": ", why], "")  LineOverflows { reason: why } => why  LineFits => "" })),
+    }
+  }
 }
 
 fn steering_text(codes: List<ControlCode>, steering: List<List<Int>>) -> String {
@@ -345,10 +332,10 @@ fn validate_tokens(base: AcBase, acc: ValidateFold, edit: AcmsgEdit, old_octets:
           let got = steering_tokens(tokens: new_tokens)
           if want != got {
             refuse_edit(acc: acc, edit: edit, reason: join(["conversation-steering codes changed; they must stay exactly ", steering_text(codes: base.codes, steering: want), " in order, got ", steering_text(codes: base.codes, steering: got)], ""))
-          } else if count(new_octets) > message_octets_ceiling {
-            refuse_edit(acc: acc, edit: edit, reason: join([to_string(count(new_octets)), " octets exceeds the ", to_string(message_octets_ceiling), "-octet message buffer"], ""))
+          } else if count(new_octets) > message_octet_limit {
+            refuse_edit(acc: acc, edit: edit, reason: join([to_string(count(new_octets)), " octets exceeds the ", to_string(message_octet_limit), "-octet message buffer"], ""))
           } else {
-            ValidateFold { valid: list_push(acc.valid, ValidEdit { edit: edit, old_size: count(old_octets), octets: new_octets }), refusals: acc.refusals }
+            accept_edit(acc: acc, edit: edit, old_octets: old_octets, new_octets: new_octets, lines: message_lines(tokens: new_tokens))
           }
         }
       }
@@ -356,12 +343,12 @@ fn validate_tokens(base: AcBase, acc: ValidateFold, edit: AcmsgEdit, old_octets:
 }
 
 fn validate_edit(base: AcBase, acc: ValidateFold, edit: AcmsgEdit) -> ValidateFold {
-  if edit.id < 0 || edit.id >= count(base.ends) { refuse_edit(acc: acc, edit: edit, reason: join(["no such message; the table has ", to_string(count(base.ends))], "")) }
+  if edit.block.id < 0 || edit.block.id >= count(base.ends) { refuse_edit(acc: acc, edit: edit, reason: join(["no such message; the table has ", to_string(count(base.ends))], "")) }
   else {
-    match text_message(codes: base.codes, text: edit.text) {
+    match text_message(codes: base.codes, text: edit.block.text) {
       MessageRefused { reason: r } => refuse_edit(acc: acc, edit: edit, reason: r)
       MessageAccepted { value: new_octets } =>
-        match read_message(base: base, id: edit.id) {
+        match read_message(base: base, id: edit.block.id) {
           Absent => refuse_edit(acc: acc, edit: edit, reason: "could not read the original message")
           Present { value: old_octets } => validate_tokens(base: base, acc: acc, edit: edit, old_octets: old_octets, new_octets: new_octets)
         }
@@ -369,12 +356,18 @@ fn validate_edit(base: AcBase, acc: ValidateFold, edit: AcmsgEdit) -> ValidateFo
   }
 }
 
-fn validate(base: AcBase, patches: PatchSet) -> Loaded<List<ValidEdit>> {
+data uncalibrated_width_warning: String = "line widths are not checked: the message window's width has not been measured in game (extdeps.games.animal_crossing.font message_window_line_width)"
+
+fn validate(base: AcBase, patches: PatchSet) -> Loaded<CheckedEdits> {
   if patches.base_sha1 != base.sha1 { LoadRefused { reason: join(["patch set is pinned to base ", patches.base_sha1, ", but the image is ", base.sha1], "") } }
   else {
-    let r = fold(patches.edits, init: ValidateFold { valid: [], refusals: [] }, f: (acc, e) => validate_edit(base: base, acc: acc, edit: e))
+    let r = fold(patches.edits, init: ValidateFold { valid: [], refusals: [], warnings: [] }, f: (acc, e) => validate_edit(base: base, acc: acc, edit: e))
+    let calibration = match message_window_line_width {
+      LineWidthMeasured { units: _ } => []
+      LineWidthUncalibrated => [uncalibrated_width_warning]
+    }
     if count(r.refusals) > 0 { LoadRefused { reason: r.refusals |> join(separator: "\n") } }
-    else { LoadedOk { value: sort_by(r.valid, fn(v) { v.edit.id }) } }
+    else { LoadedOk { value: CheckedEdits { edits: sort_by(r.valid, fn(v) { v.edit.block.id }), warnings: concat(calibration, r.warnings) } } }
   }
 }
 
@@ -401,7 +394,7 @@ fn ends_step(edits: List<ValidEdit>, acc: EndsFold, end: Int) -> EndsFold {
   match get(edits, acc.next) {
     null => EndsFold { ends: list_push(acc.ends, end + acc.delta), delta: acc.delta, next: acc.next, id: acc.id + 1 }
     other =>
-      if other.edit.id == acc.id {
+      if other.edit.block.id == acc.id {
         let delta = acc.delta + count(other.octets) - other.old_size
         EndsFold { ends: list_push(acc.ends, end + delta), delta: delta, next: acc.next + 1, id: acc.id + 1 }
       } else {
@@ -423,13 +416,13 @@ type SpliceFold {
 }
 
 fn splice_step(base: AcBase, acc: SpliceFold, edit: ValidEdit) -> SpliceFold {
-  let start = message_start(ends: base.ends, id: edit.edit.id)
+  let start = message_start(ends: base.ends, id: edit.edit.block.id)
   let gap = start - acc.source
   let copies = if gap > 0 { list_push(acc.copies, DdRangeCopy { source_offset: message_data_offset(base: base) + acc.source, target_offset: acc.target, length: gap }) } else { acc.copies }
   SpliceFold {
     copies: copies,
     writes: list_push(acc.writes, OctetPatch { offset: acc.target + gap, octets: edit.octets }),
-    source: message_end(ends: base.ends, id: edit.edit.id),
+    source: message_end(ends: base.ends, id: edit.edit.block.id),
     target: acc.target + gap + count(edit.octets),
   }
 }
@@ -536,7 +529,7 @@ fn execute(base: AcBase, plan: BuildPlan, out: String) -> Loaded<Bool> {
 }
 
 fn edit_landed(patched: AcBase, edit: ValidEdit) -> Bool {
-  read_message(base: patched, id: edit.edit.id) == Present { value: edit.octets }
+  read_message(base: patched, id: edit.edit.block.id) == Present { value: edit.octets }
 }
 
 // The output is read back through the same decoders, decoded with the base's code table (its
@@ -550,14 +543,14 @@ fn confirm(base: AcBase, out: String, edits: List<ValidEdit>) -> Loaded<Bool> {
       else {
         match edits |> filter(e => edit_landed(patched: patched, edit: e) == false) |> first {
           null => LoadedOk { value: true }
-          other => LoadRefused { reason: join(["message ", to_string(other.edit.id), " did not land in the patched image"], "") }
+          other => LoadRefused { reason: join(["message ", to_string(other.edit.block.id), " did not land in the patched image"], "") }
         }
       }
   }
 }
 
 fn manifest_row(e: ValidEdit) -> String {
-  join(["  ", to_string(e.edit.id), "  ", e.edit.source, "  ", to_string(e.old_size), " -> ", to_string(count(e.octets)), " octets  ", e.edit.label, "\n"], "")
+  join(["  ", to_string(e.edit.block.id), "  ", e.edit.source, "  ", to_string(e.old_size), " -> ", to_string(count(e.octets)), " octets  ", e.edit.block.label, "\n"], "")
 }
 
 fn manifest(base: AcBase, edits: List<ValidEdit>, plan: BuildPlan, out_sha1: String) -> String {
@@ -578,7 +571,7 @@ fn say(text: String) -> ProcessExit {
 
 // ---- entry points ----
 
-fn checked_edits(base: AcBase, patches: String) -> Loaded<List<ValidEdit>> {
+fn checked_edits(base: AcBase, patches: String) -> Loaded<CheckedEdits> {
   match load_patch_set(root: patches) {
     LoadRefused { reason: r } => LoadRefused { reason: r }
     LoadedOk { value: set } =>
@@ -595,12 +588,17 @@ fn check(base: String, patches: String) -> ProcessExit {
     LoadedOk { value: b } =>
       match checked_edits(base: b, patches: patches) {
         LoadRefused { reason: r } => exit_failure(reason: r)
-        LoadedOk { value: edits } => say(text: join(["ok: ", to_string(count(edits)), " message edits apply cleanly\n"], ""))
+        LoadedOk { value: checked } => say(text: join([warning_lines(warnings: checked.warnings), "ok: ", to_string(count(checked.edits)), " message edits apply cleanly\n"], ""))
       }
   }
 }
 
-fn build_into(b: AcBase, edits: List<ValidEdit>, out: String) -> ProcessExit {
+fn warning_lines(warnings: List<String>) -> String {
+  warnings |> map(w => join(["warning: ", w, "\n"], "")) |> join(separator: "")
+}
+
+fn build_into(b: AcBase, checked: CheckedEdits, out: String) -> ProcessExit {
+  let edits = checked.edits
   match build_plan(base: b, edits: edits) {
     LoadRefused { reason: r } => exit_failure(reason: r)
     LoadedOk { value: plan } =>
@@ -613,7 +611,7 @@ fn build_into(b: AcBase, edits: List<ValidEdit>, out: String) -> ProcessExit {
               match sha1_file(path: out) {
                 Absent => exit_failure(reason: join(["could not digest ", out], ""))
                 Present { value: d } => {
-                  let text = manifest(base: b, edits: edits, plan: plan, out_sha1: d.hex)
+                  let text = concat(manifest(base: b, edits: edits, plan: plan, out_sha1: d.hex), warning_lines(warnings: checked.warnings))
                   let w = Filesystem.Write(path: concat(out, ".manifest"), content: text)
                   if w.success { say(text: text) } else { exit_failure(reason: join(["built ", out, " but could not write its manifest: ", w.error], "")) }
                 }
@@ -629,19 +627,48 @@ fn build(base: String, patches: String, out: String) -> ProcessExit {
     LoadedOk { value: b } =>
       match checked_edits(base: b, patches: patches) {
         LoadRefused { reason: r } => exit_failure(reason: r)
-        LoadedOk { value: edits } => build_into(b: b, edits: edits, out: out)
+        LoadedOk { value: checked } => build_into(b: b, checked: checked, out: out)
       }
   }
 }
 
-fn show_block(base: AcBase, token: String) -> String {
-  match message_id_of(token: trim(s: token)) {
-    Absent => join(["# not a message id: ", token, "\n"], "")
-    Present { value: id } =>
-      match read_message_text(base: base, id: id) {
-        Absent => join(["# message ", to_string(id), " could not be read\n"], "")
-        Present { value: text } => join(["=== ", to_string(id), " ===\n", text, "\n"], "")
-      }
+fn message_block(base: AcBase, id: Int, octets: List<Int>) -> AcmsgBlock? {
+  match message_tokens(codes: base.codes, message: octets) {
+    MessageAccepted { value: t } => Present { value: AcmsgBlock { id: id, label: "", text: message_text(tokens: t) } }
+    MessageRefused { reason: _ } => none
+  }
+}
+
+fn say_blocks(comments: List<String>, blocks: List<AcmsgBlock>) -> ProcessExit {
+  match render_acmsg(comments: comments, blocks: blocks) {
+    AcmsgAccepted { value: text } => say(text: text)
+    AcmsgRefused { reason: r } => exit_failure(reason: r)
+  }
+}
+
+type ShowFold {
+  blocks: List<AcmsgBlock>
+  refusal: String
+}
+
+fn show_step(base: AcBase, acc: ShowFold, token: String) -> ShowFold {
+  if acc.refusal != "" { acc }
+  else {
+    match message_id_of(token: trim(s: token)) {
+      Absent => ShowFold { blocks: acc.blocks, refusal: join(["not a message id: ", token], "") }
+      Present { value: id } =>
+        if id < 0 || id >= count(base.ends) { ShowFold { blocks: acc.blocks, refusal: join(["no message ", to_string(id)], "") } }
+        else {
+          match read_message(base: base, id: id) {
+            Absent => ShowFold { blocks: acc.blocks, refusal: join(["message ", to_string(id), " could not be read"], "") }
+            Present { value: octets } =>
+              match message_block(base: base, id: id, octets: octets) {
+                Absent => ShowFold { blocks: acc.blocks, refusal: join(["message ", to_string(id), " does not tokenize"], "") }
+                Present { value: b } => ShowFold { blocks: list_push(acc.blocks, b), refusal: "" }
+              }
+          }
+        }
+    }
   }
 }
 
@@ -650,6 +677,56 @@ fn show_block(base: AcBase, token: String) -> String {
 fn show(base: String, ids: String) -> ProcessExit {
   match load_base(path: base) {
     LoadRefused { reason: r } => exit_failure(reason: r)
-    LoadedOk { value: b } => say(text: split(s: ids, delimiter: ",") |> map(t => show_block(base: b, token: t)) |> join(separator: ""))
+    LoadedOk { value: b } => {
+      let r = fold(split(s: ids, delimiter: ","), init: ShowFold { blocks: [], refusal: "" }, f: (acc, t) => show_step(base: b, acc: acc, token: t))
+      if r.refusal != "" { exit_failure(reason: r.refusal) } else { say_blocks(comments: [], blocks: r.blocks) }
+    }
+  }
+}
+
+type DumpFold {
+  blocks: List<AcmsgBlock>
+  id: Int
+  refusal: String
+}
+
+fn dump_step(base: AcBase, octets: List<Int>, first_start: Int, acc: DumpFold) -> DumpFold {
+  if acc.refusal != "" { acc }
+  else {
+    let s = message_start(ends: base.ends, id: acc.id) - first_start
+    let e = message_end(ends: base.ends, id: acc.id) - first_start
+    match message_block(base: base, id: acc.id, octets: octets.skip(n: s).take(n: e - s)) {
+      Absent => DumpFold { blocks: acc.blocks, id: acc.id + 1, refusal: join(["message ", to_string(acc.id), " does not tokenize"], "") }
+      Present { value: b } => DumpFold { blocks: list_push(acc.blocks, b), id: acc.id + 1, refusal: "" }
+    }
+  }
+}
+
+// `number` consecutive messages from `from`, read as one byte range, printed as .acmsg.
+fn dump(base: String, from: String, number: String) -> ProcessExit {
+  match load_base(path: base) {
+    LoadRefused { reason: r } => exit_failure(reason: r)
+    LoadedOk { value: b } =>
+      match message_id_of(token: from) {
+        Absent => exit_failure(reason: join(["not a message id: ", from], ""))
+        Present { value: first_id } =>
+          match parse_int(number) {
+            Absent => exit_failure(reason: join(["not a count: ", number], ""))
+            Present { value: n } =>
+              if first_id < 0 || n < 1 || first_id + n > count(b.ends) { exit_failure(reason: "the range runs outside the message table") }
+              else {
+                let start = message_start(ends: b.ends, id: first_id)
+                let end = message_end(ends: b.ends, id: first_id + n - 1)
+                match read_range(path: b.path, offset: message_data_offset(base: b) + start, length: end - start) {
+                  Absent => exit_failure(reason: "could not read the message range")
+                  Present { value: octets } => {
+                    let r = fold(zeros(n: n), init: DumpFold { blocks: [], id: first_id, refusal: "" }, f: (acc, _) => dump_step(base: b, octets: octets, first_start: start, acc: acc))
+                    if r.refusal != "" { exit_failure(reason: r.refusal) }
+                    else { say_blocks(comments: [join(["messages ", to_string(first_id), "..", to_string(first_id + n - 1), " of base ", b.sha1], "")], blocks: r.blocks) }
+                  }
+                }
+              }
+          }
+      }
   }
 }

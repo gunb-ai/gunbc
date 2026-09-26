@@ -2,11 +2,12 @@ module test.claim.animal_crossing_dialogue_witness
 
 import std.types { Bool, Int, List, String }
 import extdeps.games.animal_crossing.message {
+  LineWidthRange, LineUnbounded, TextLine, message_lines,
   MessageAccepted, MessageRefused, message_table_ends, message_table_octets, message_tokens, message_text,
   steering_tokens, text_message, vanilla_control_codes,
 }
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
-import examples.animal_crossing.dialogue { AcmsgEdit, LoadedOk, LoadRefused, parse_acmsg }
+import examples.animal_crossing.acmsg { AcmsgBlock, AcmsgEdit, AcmsgAccepted, AcmsgRefused, parse_acmsg, render_acmsg }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -124,18 +125,87 @@ test fn a_ragged_message_table_is_refused() -> Bool {
 test fn acmsg_blocks_parse_with_labels_and_keep_a_trailing_break() -> Bool {
   let content = "# comment\n\n=== 12573 cranky: done ===\nline one\nline two\n=== 0x10 ===\nends with a break\n\n"
   return match parse_acmsg(source: "f.acmsg", content: content) {
-    LoadedOk { value: edits } =>
+    AcmsgAccepted { value: edits } =>
       edits == [
-        AcmsgEdit { id: 12573, label: "cranky: done", text: "line one\nline two", source: "f.acmsg:3" },
-        AcmsgEdit { id: 16, label: "", text: "ends with a break\n", source: "f.acmsg:6" },
+        AcmsgEdit { block: AcmsgBlock { id: 12573, label: "cranky: done", text: "line one\nline two" }, source: "f.acmsg:3" },
+        AcmsgEdit { block: AcmsgBlock { id: 16, label: "", text: "ends with a break\n" }, source: "f.acmsg:6" },
       ]
-    LoadRefused { reason: _ } => false
+    AcmsgRefused { reason: _ } => false
   }
 }
 
 test fn acmsg_refuses_text_before_the_first_header() -> Bool {
   return match parse_acmsg(source: "f.acmsg", content: "stray\n=== 1 ===\nx\n") {
-    LoadedOk { value: _ } => false
-    LoadRefused { reason: r } => r == "f.acmsg:1: text before the first '=== id ===' header"
+    AcmsgAccepted { value: _ } => false
+    AcmsgRefused { reason: r } => r == "f.acmsg:1: text before the first '=== id ===' header"
+  }
+}
+
+data render_cases: List<AcmsgBlock> = [
+  AcmsgBlock { id: 12573, label: "cranky: done", text: "line one\nline two\{CONTINUE}" },
+  AcmsgBlock { id: 7, label: "", text: "" },
+  AcmsgBlock { id: 8, label: "ends with a break", text: "x\n" },
+  AcmsgBlock { id: 9, label: "", text: "\n\nblank lines first" },
+]
+
+test fn acmsg_render_then_parse_is_the_identity() -> Bool {
+  return match render_acmsg(comments: ["generated", "second note"], blocks: render_cases) {
+    AcmsgRefused { reason: _ } => false
+    AcmsgAccepted { value: text } =>
+      match parse_acmsg(source: "r", content: text) {
+        AcmsgAccepted { value: edits } => (edits |> map(e => e.block)) == render_cases
+        AcmsgRefused { reason: _ } => false
+      }
+  }
+}
+
+fn render_refused(block: AcmsgBlock) -> Bool {
+  match render_acmsg(comments: [], blocks: [block]) {
+    AcmsgAccepted { value: _ } => false
+    AcmsgRefused { reason: _ } => true
+  }
+}
+
+test fn acmsg_render_refuses_what_would_not_read_back() -> Bool {
+  return render_refused(block: AcmsgBlock { id: 1, label: "", text: "fine\n=== 2 ===\nsmuggled" })
+    && render_refused(block: AcmsgBlock { id: 1, label: " padded", text: "x" })
+    && render_refused(block: AcmsgBlock { id: 1, label: "two\nlines", text: "x" })
+    && render_refused(block: AcmsgBlock { id: -1, label: "", text: "x" })
+    && render_refused(block: AcmsgBlock { id: 1, label: "ok", text: "x" }) == false
+}
+
+fn lines_of(text: String) -> List<TextLine> {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageRefused { reason: _ } => []
+    MessageAccepted { value: o } =>
+      match message_tokens(codes: vanilla_control_codes, message: o) {
+        MessageAccepted { value: t } => message_lines(tokens: t)
+        MessageRefused { reason: _ } => []
+      }
+  }
+}
+
+// Digits advance 8 units and a space 5 (12 minus m_font_offset.c_inc's 4 and 7).
+test fn a_plain_line_measures_the_sum_of_its_glyph_advances() -> Bool {
+  return lines_of(text: "12 34\{LAST}") == [TextLine { page: 0, line: 0, extent: LineWidthRange { min: 37, max: 37 } }]
+}
+
+// PLAYER_NAME inserts up to 8 octets, each at most 12 units wide.
+test fn an_inserted_name_widens_the_line_to_a_range() -> Bool {
+  return lines_of(text: "1\{PUT_STRING_PLAYER_NAME}\{LAST}") == [TextLine { page: 0, line: 0, extent: LineWidthRange { min: 8, max: 104 } }]
+}
+
+test fn control_only_lines_take_no_row_and_clear_starts_a_page() -> Bool {
+  let lines = lines_of(text: "1\n2\{BUTTON}\n\{CLEAR}3\n\{SET_FORCE_NEXT}\{CONTINUE}")
+  return (lines |> map(l => [l.page, l.line])) == [[0, 0], [0, 1], [1, 0]]
+}
+
+test fn a_scaled_line_is_not_measured() -> Bool {
+  return match get(lines_of(text: "\{SET_LINE_SCALE:10}1\{LAST}"), 0) {
+    null => false
+    other => match other.extent {
+      LineUnbounded { reason: _ } => true
+      LineWidthRange { min: _, max: _ } => false
+    }
   }
 }
