@@ -1422,7 +1422,9 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredHostDirectory { path, owner } => [
       deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
     ]
-    EnsuredManagedHostDirectory { admission } => [deploy_raw(command: ensure_managed_directory_command(admission: admission))]
+    EnsuredManagedHostDirectory { admission } =>
+      concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
+        map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
   }
 }
 
@@ -1449,15 +1451,26 @@ fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> Str
 // dissolve-on = PosixUser (or a PosixGroup beside it) carries the group name, at which point this
 // projects it instead of reusing the user's.
 fn install_d_managed_command(dir: ManagedDirectory) -> String {
-  let install = install_directory_owned_command(
+  install_directory_owned_command(
     mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
     owner: dir.owner.name,
     group: dir.group_principal.name,
     path: dir.path as String,
   )
-  match dir.entries {
-    EntriesUnmanaged => install
-    EntriesReadableByDependents { repaired_by } => join([install, " && ", managed_directory_entry_repair_command(dir: dir, repaired_by: repaired_by)], "")
+}
+
+// THE REPAIR IS ITS OWN STEP, never text glued to the install: the deploy's pipeline already
+// sequences steps and fails the apply at the first one that refuses, so a second command is a
+// second step rather than a shell `&&` spelled in a string. A refused admission repairs nothing --
+// its install step is already the poison marker.
+fn managed_directory_entry_repair_commands(admission: ManagedDirectoryAdmission) -> List<String> {
+  match admission {
+    ManagedDirectoryRefused { member: _, path: _, writer: _ } => []
+    ManagedDirectoryAdmitted { dir } =>
+      match dir.entries {
+        EntriesUnmanaged => []
+        EntriesReadableByDependents { repaired_by } => [managed_directory_entry_repair_command(dir: dir, repaired_by: repaired_by)]
+      }
   }
 }
 

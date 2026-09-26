@@ -1,5 +1,6 @@
 module extdeps.filesystem.filesystem_io
 
+import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, List, String }
