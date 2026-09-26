@@ -753,6 +753,22 @@ fn required_gate_prefixes() -> List<String> {
 // class the red has to execute where merges are decided, so the six leave the cost-debt roster in
 // the same change. All six claims read parse-and-normalize subjects that are WARM in
 // `v2.workflow.floor_pure_producer_share`. The module declares SubstrateInputsOnly.
+//
+// THE SEVENTH ROW IS THE HOST ALLOCATION CONSERVATION WALL (adhoc-063da1b9-c42; parent ruling
+// msg_c48f6766 from proud-deer-538, following operator option A of 2026-09-26). The runner width
+// envelope once ignored the served deployment's slice charge while the placement verdict counted it
+// (repaired by gunbc#12354). srv1 then committed 14 slots on a host that conserved only 11, and its
+// placement plan refused. No lane saw it: `committed_width_fits_on_every_host_with_an_established_charge`
+// was FALSE on main while this module dispositioned DeclinedOutsideRequiredGate. The same fork, copied
+// into the module's own closed form, had also kept
+// `saturation_refuses_rather_than_reporting_the_ceiling` red with no reader. An over-commit is a
+// silent capacity lie until the kernel OOM-kills something, so its wall has to run where merges are
+// decided. Every claim in the module was measured under the new-witness step ceiling with a local
+// claim_batch run over the module (its [witness] eval_steps lines re-derive the figures, which are
+// not transcribed here). Preparation growth is gunbc.fleet_host_budget,
+// gunbc.ci_runner_placement and gunbc.live_deploy.served_slice_charge beyond what the runner-capacity
+// rows already carry. The module declares SubstrateInputsOnly. The first required run after
+// admission is the priced receipt; read its identity-grained disposition.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -761,6 +777,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.stage0_emitted_edge_admission_witness",
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
+    "test.claim.host_allocation_conservation",
   ]
 }
 

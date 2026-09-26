@@ -41,7 +41,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
   gunbc_admitted_runner_slot_allocations,
   gunbc_runner_slice_cap_for_width, gunbc_runner_pool_for_host_at_width,
-  host_memory_admitted_width,
+  host_memory_admitted_width, memory_admitted_width_of_envelope, gunbc_microvm_shakedown_host,
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_slot_shape_standing,
@@ -628,7 +628,29 @@ fn derived_width_is_unestablished(s: DerivedAdmittedWidth) -> Bool {
   }
 }
 
+// THE CLOSED FORM CHARGES WHAT THE WALL CHARGES, OR IT IS NOT A SECOND ROUTE TO THE SAME WIDTH.
+// This subtraction omitted the served deployment's slice allowance, which live_verdict_with_session_charge
+// passes to host_allocation_verdict, and it divided every slot by the fleet row where the verdict charges
+// srv1's shakedown slot its cell plus controller. So on srv1 the search (charged) and this form
+// (uncharged) disagreed -- 12 against 15 on main before gunbc#12354 -- and
+// saturation_refuses_rather_than_reporting_the_ceiling was red for that reason, not for any saturation.
+// That is the same width-versus-verdict fork gunbc#12354 closed in production, copied into the witness.
+// The subtraction stays written out here (it is this probe's independent route); the division reads
+// memory_admitted_width_of_envelope because that is the one authority for how the shakedown charge
+// spends an envelope, and restating it here would be a third copy.
+//
+// A PLACED DEPLOYMENT WITH AN UNMEASURED ALLOWANCE ANSWERS 0 - 1, the value this module already uses
+// for "no host can admit this" (admitted_width_charging), so every consumer's assertion fails loudly
+// rather than dividing a fabricated envelope.
 fn derived_width_with_charge(host: HostIdentity, session: ByteSize) -> Int {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentClaimUnmeasured { cause: _ } => 0 - 1
+    ServedDeploymentNotPlaced => derived_width_with_charges(host: host, session: session, served: byte_size(0))
+    ServedDeploymentClaimResolved { memory: m } => derived_width_with_charges(host: host, session: session, served: m)
+  }
+}
+
+fn derived_width_with_charges(host: HostIdentity, session: ByteSize, served: ByteSize) -> Int {
   let usable = usable_ram_of(host: host)
   let after_overhead = byte_size_saturating_sub(
     total: usable,
@@ -638,11 +660,18 @@ fn derived_width_with_charge(host: HostIdentity, session: ByteSize) -> Int {
     total: after_overhead,
     reserved: session
   )
-  let available = byte_size_saturating_sub(
+  let after_served = byte_size_saturating_sub(
     total: after_session,
+    reserved: served
+  )
+  let available = byte_size_saturating_sub(
+    total: after_served,
     reserved: oomd_actuation_floor(host: usable)
   )
-  measure_fit_count_floor(capacity: available, each: gunbc_runner_slot_desired().memory_max)
+  memory_admitted_width_of_envelope(
+    envelope: available,
+    carries_shakedown_slot: (host as String) == (gunbc_microvm_shakedown_host as String),
+  )
 }
 
 // THE LIVE SESSION-CHARGE DISCRIMINATOR FOLLOWS THE BOUNDARY INSTEAD OF PINNING A WIDTH. The old
