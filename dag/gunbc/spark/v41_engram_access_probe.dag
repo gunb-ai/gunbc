@@ -34,7 +34,9 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
 }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 
 // ══ V4.1 ENGRAM ACCESS PROBE: PRICE BOTH CUTOVER DESIGNS FROM ONE RUN ═══════════════════════════
@@ -629,7 +631,10 @@ fn v41_access_probe_on(ctx: SparkMaterializeContext, image: NonEmptyStr) -> V41E
 // ── THE FLEET-CONVERGE ENTRY ────────────────────────────────────────────────────────────────────
 //
 // `spark_v41_engram_access_probe` with SPARK_CONVERGE_TARGET naming ONE Spark that holds the arm A
-// image (srv8). The host passes the shared admission seam: a serving or reserved host refuses.
+// image (srv8). Admission is the Group A route the image build and the checkpoint materialize take:
+// the host must be one the Group A pair subject holds (admit_host_held_by_subject), and the probe
+// lands a host-effect claim (claim_host_effect_live) so it serializes with builds on that host,
+// releasing it on every exit.
 data v41_access_probe_attempt_raw: String = "v41-engram-access-probe-ci"
 data v41_access_probe_receipt_path: String = "target/v41-engram-access-probe-receipt.txt"
 data v41_access_probe_host_purpose: NonEmptyStr = "an Engram access probe, which starts one GPU container that writes and reads a synthetic 17 GB row store inside itself" as NonEmptyStr
@@ -647,10 +652,13 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode starts a GPU container on ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
-      match admit_unplaced_host_live(term: v41_access_probe_host_effect_term, raw: target_host as String, purpose: v41_access_probe_host_purpose, residue: v41_access_probe_host_residue(image: v41_access_probe_image)) {
-        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
-        SparkHostAdmitted { host: _, claim: claim } =>
-          release_host_effect_live(handle: claim, exit: {
+      match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match claim_host_effect_live(host: target_host, purpose: v41_access_probe_host_purpose, term: v41_access_probe_host_effect_term, residue: v41_access_probe_host_residue(image: v41_access_probe_image)) {
+            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+            HostEffectClaimLanded { handle: handle } =>
+          release_host_effect_live(handle: Present { value: handle }, exit: {
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_engram_access_probe_ci: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -705,6 +713,7 @@ fn v41_engram_access_probe_ci_wet() -> ProcessExit
               }
           }
       }})
+          }
       }
   }
 }
