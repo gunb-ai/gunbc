@@ -182,6 +182,126 @@ fn arrow_declared_parameter_order(arrow: Node) -> ArrowParameterOrder {
   }
 }
 
+// THE ONE BINDING AUTHORITY FOR AN APPLICATION. Given the callee Arrow and the application's actual
+// edges (callee excluded) in authored order, it answers, for each declared parameter IN DECLARED
+// ORDER, which actual fills it -- by its index in authored order. A positional actual fills the next
+// declared slot; a named actual fills the slot of that name. v2.compiler.infer checks inhabitance
+// over this plan, and v2.compiler.eval evaluates the actuals in authored order and binds through it,
+// so the two stages cannot bind one call differently (ruling neat-boar-16, 2026-09-26: eval consumes
+// infer's binding plan, a section 5 hard-reject class otherwise). Every conflict refuses with a typed
+// reason and the actual it is located at; none is resolved by guessing.
+type ApplicationSlot {
+  label: Symbol
+  actual_index: Int
+}
+
+type ApplicationBindingPlan
+  = ApplicationBound { slots: List<ApplicationSlot> }
+  | ApplicationBindingRefused { reason: Symbol, at: Int }
+
+type ApplicationBindingWalk {
+  index: Int
+  positional_next: Int
+  bound: List<ApplicationSlot>
+  refused: List<ApplicationBindingRefusal>
+}
+
+type ApplicationBindingRefusal {
+  reason: Symbol
+  at: Int
+}
+
+fn application_binding_plan(arrow: Node, actuals: List<Edge>) -> ApplicationBindingPlan {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderAbsent => ApplicationBindingRefused { reason: ^application_parameter_order_absent, at: 0 }
+    ArrowParameterOrderMalformed => ApplicationBindingRefused { reason: ^application_parameter_order_malformed, at: 0 }
+    ArrowParameterOrderDeclared { labels: labels } => application_binding_plan_over(labels: labels, actuals: actuals)
+  }
+}
+
+fn application_binding_plan_over(labels: List<Symbol>, actuals: List<Edge>) -> ApplicationBindingPlan {
+  let walk = fold(actuals, init: ApplicationBindingWalk { index: 0, positional_next: 0, bound: [], refused: [] }, f: fn(acc, e) {
+    if count(acc.refused) > 0 {
+      acc
+    } else {
+      match e.label {
+        Positional =>
+          match list_at_optional(xs: labels, index: acc.positional_next) {
+            Absent => application_walk_refuse(acc: acc, reason: ^application_positional_surplus)
+            Present { value: label } =>
+              if application_slot_bound(bound: acc.bound, label: label) {
+                application_walk_refuse(acc: acc, reason: ^application_argument_slot_bound_twice)
+              } else {
+                ApplicationBindingWalk {
+                  index: acc.index + 1,
+                  positional_next: acc.positional_next + 1,
+                  bound: list_snoc_item(xs: acc.bound, item: ApplicationSlot { label: label, actual_index: acc.index }),
+                  refused: []
+                }
+              }
+          }
+        Named { name: label } =>
+          if !contains(xs: labels, item: label, eq: symbol_eq) {
+            application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
+          } else if application_slot_bound(bound: acc.bound, label: label) {
+            application_walk_refuse(acc: acc, reason: ^application_argument_slot_bound_twice)
+          } else {
+            ApplicationBindingWalk {
+              index: acc.index + 1,
+              positional_next: acc.positional_next,
+              bound: list_snoc_item(xs: acc.bound, item: ApplicationSlot { label: label, actual_index: acc.index }),
+              refused: []
+            }
+          }
+      }
+    }
+  })
+  match walk.refused {
+    Cons { head: r, tail: _ } => ApplicationBindingRefused { reason: r.reason, at: r.at }
+    Empty =>
+      fold(labels, init: ApplicationBound { slots: [] }, f: fn(acc, label) {
+        match acc {
+          ApplicationBindingRefused { reason: _, at: _ } => acc
+          ApplicationBound { slots: slots } =>
+            match application_slot_of(bound: walk.bound, label: label) {
+              Present { value: slot } => ApplicationBound { slots: list_snoc_item(xs: slots, item: slot) }
+              Absent => ApplicationBindingRefused { reason: ^application_positional_deficit, at: walk.index }
+            }
+        }
+      })
+  }
+}
+
+fn application_walk_refuse(acc: ApplicationBindingWalk, reason: Symbol) -> ApplicationBindingWalk {
+  ApplicationBindingWalk {
+    index: acc.index + 1,
+    positional_next: acc.positional_next,
+    bound: acc.bound,
+    refused: [ApplicationBindingRefusal { reason: reason, at: acc.index }]
+  }
+}
+
+fn application_slot_bound(bound: List<ApplicationSlot>, label: Symbol) -> Bool {
+  fold(bound, init: false, f: fn(acc, s) { acc || (s.label == label) })
+}
+
+fn application_slot_of(bound: List<ApplicationSlot>, label: Symbol) -> Optional<ApplicationSlot> {
+  fold(bound, init: optional_absent(), f: fn(acc, s) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if s.label == label { optional_present(value: s) } else { acc }
+    }
+  })
+}
+
+// The application's actual edges, callee excluded, in authored order.
+fn application_actual_edges(site: Node) -> List<Edge> {
+  match site.children {
+    Empty => []
+    Cons { head: _, tail: rest } => rest
+  }
+}
+
 fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },

@@ -18,6 +18,10 @@ import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
   ArrowParameterOrderMalformed,
+  ApplicationBindingRefused,
+  ApplicationBound,
+  application_actual_edges,
+  application_binding_plan,
   arrow_declared_parameter_order
 }
 import v2.std.algebra { fold_list, length }
@@ -1331,6 +1335,11 @@ fn eval_bind_param_edge_step(
   }
 }
 
+// BINDING GOES THROUGH THE ONE PLAN. `args` are the application's actuals evaluated in authored
+// order (eval_edge_is_runtime_argument); v2.std.compilers.body_lowering application_binding_plan says,
+// for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
+// the two stages cannot bind one call differently. A domain with no named binder keeps its positional
+// edges, bound in their own order.
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
@@ -1341,62 +1350,62 @@ fn eval_bind_arrow_params(
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
-      bind_outcome(o: eval_param_edges_in_declared_order(arrow: arrow, domain: domain_edge.target, node: node), f: fn(param_edges) {
-      match fold_list(
-        xs: param_edges,
-        empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
-        cons: fn(state, param_edge) {
-          eval_bind_param_edge_step(
-            state: state,
-            param_edge: param_edge,
-            args: args,
-            bind: bind,
-            node: node
-          )
+      if eval_domain_has_named_binder(domain: domain_edge.target) {
+        match application_binding_plan(arrow: arrow, actuals: application_actual_edges(site: node)) {
+          ApplicationBindingRefused { reason: reason, at: _ } =>
+            outcome_rejected(d: eval_diagnostic(reason: reason, node: node))
+          ApplicationBound { slots: slots } =>
+            fold(slots, init: Accepted { value: environment, diagnostics: None }, f: fn(acc, slot) {
+              bind_outcome(o: acc, f: fn(env) {
+                bind_outcome(
+                  o: eval_witness_outcome(
+                    witness: list_nth(
+                      xs: args,
+                      wanted: slot.actual_index,
+                      absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
+                    )
+                  ),
+                  f: fn(value) { bind.bind_value(environment_binding_key_for_symbol(sym: slot.label), value, env) }
+                )
+              })
+            })
         }
-      ) {
-        EvalParamBindAcc { idx: param_count, acc: bound } =>
-          if eval_actual_present(args: args, wanted: param_count, node: node) {
-            outcome_rejected(
-              d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node)
-            )
-          } else {
-            bound
-          }
+      } else {
+        eval_bind_positional_domain(domain: domain_edge.target, args: args, environment: environment, bind: bind, node: node)
       }
-      })
     }
   )
 }
 
-// THE PARAMETERS IN DECLARED ORDER. A domain of named binders is a Conj sorted by label, so its
-// stored sequence is not the order the author wrote; the order is read from the Arrow's
-// ^arrow_signature_order_edge through the one reader infer also uses
-// (v2.std.compilers.body_lowering arrow_declared_parameter_order), so the two stages cannot bind one
-// call differently. A named domain with no readable order refuses; a domain with no named binder
-// keeps its positional edges, whose order is their own.
-fn eval_param_edges_in_declared_order(arrow: Node, domain: Node, node: Node) -> Outcome<List<Edge>> {
-  if fold(domain.children, init: false, f: fn(acc, e) {
+fn eval_domain_has_named_binder(domain: Node) -> Bool {
+  fold(domain.children, init: false, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => true
       Positional => acc
     }
-  }) {
-    match arrow_declared_parameter_order(arrow: arrow) {
-      ArrowParameterOrderDeclared { labels: labels } =>
-        Accepted {
-          value: fold(labels, init: Empty, f: fn(acc, label) {
-            list_snoc_item(xs: acc, item: Edge { label: Named { name: label }, target: domain })
-          }),
-          diagnostics: None
-        }
-      ArrowParameterOrderAbsent =>
-        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_absent, node: node))
-      ArrowParameterOrderMalformed =>
-        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_malformed, node: node))
+  })
+}
+
+fn eval_bind_positional_domain(
+  domain: Node,
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  match fold_list(
+    xs: domain.children,
+    empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
+    cons: fn(state, param_edge) {
+      eval_bind_param_edge_step(state: state, param_edge: param_edge, args: args, bind: bind, node: node)
     }
-  } else {
-    Accepted { value: domain.children, diagnostics: None }
+  ) {
+    EvalParamBindAcc { idx: param_count, acc: bound } =>
+      if eval_actual_present(args: args, wanted: param_count, node: node) {
+        outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node))
+      } else {
+        bound
+      }
   }
 }
 
@@ -2118,13 +2127,15 @@ fn empty_runtime_values() -> List<RuntimeValue> {
   []
 }
 
+// An applied callee's actuals are every edge after the callee, positional AND named, evaluated in
+// authored order; eval_bind_arrow_params binds them through the one binding plan. Filtering to
+// positional edges dropped every named actual silently.
 fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } =>
-        if p == 0 { false } else { is_positional(e: edge) }
-      ReadyToInterpret => is_positional(e: edge)
-      Interpreted => is_positional(e: edge)
+      AwaitingChildren { processed: p } => p != 0
+      ReadyToInterpret => true
+      Interpreted => true
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {

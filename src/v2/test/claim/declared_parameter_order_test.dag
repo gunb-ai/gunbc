@@ -5,7 +5,6 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.infer { FormalsInDeclaredOrder, FormalsOrderRefused, FormalsUnresolved, infer_application_formals }
-import v2.compiler.eval { eval_param_edges_in_declared_order }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.anonymous_binder { anonymous_param_label }
@@ -15,6 +14,9 @@ import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
   ArrowParameterOrderMalformed,
+  ApplicationBindingRefused,
+  ApplicationBound,
+  application_binding_plan,
   arrow_declared_parameter_order,
   lower_list_introduction
 }
@@ -319,30 +321,26 @@ test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
     })
 }
 
-fn dpo_domain(arrow: Node) -> Node {
-  match node_positional_child_targets(node: arrow) {
-    Cons { head: domain, tail: _ } => domain
-    Empty => arrow
+// The binding plan v2.compiler.eval binds through (and infer checks over): two positional actuals
+// against the Arrow; each slot's label with the index of the actual that fills it.
+fn dpo_plan_slots(arrow: Node) -> List<Symbol> {
+  match application_binding_plan(
+    arrow: arrow,
+    actuals: [Edge { label: Positional, target: arrow }, Edge { label: Positional, target: arrow }]
+  ) {
+    ApplicationBound { slots: slots } => fold(slots, init: [], f: fn(acc, sl) { concat(acc, [sl.label]) })
+    ApplicationBindingRefused { reason: _, at: _ } => []
   }
 }
 
 fn dpo_eval_param_labels(arrow: Node) -> List<Symbol> {
-  match eval_param_edges_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
-    Accepted { value: edges, diagnostics: _ } =>
-      fold(edges, init: [], f: fn(acc, e) {
-        match e.label {
-          Named { name: sym } => concat(acc, [sym])
-          Positional => acc
-        }
-      })
-    Rejected { diagnostics: _ } => []
-  }
+  dpo_plan_slots(arrow: arrow)
 }
 
 fn dpo_eval_refuses_with(arrow: Node, reason: Symbol) -> Bool {
-  match eval_param_edges_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  match application_binding_plan(arrow: arrow, actuals: []) {
+    ApplicationBound { slots: _ } => false
+    ApplicationBindingRefused { reason: r, at: _ } => r == reason
   }
 }
 
