@@ -437,16 +437,24 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
 // re-check computation edges. Record Conj field wiring is the only
 // ArrowBodyForm-specific structural gate beyond classification
 // (arrow_body_record_construct_conforms).
+//
+// FunctionValueBody is a body that IS a function value -- `fn f() -> fn(A) -> B { fn(a) { .. } }`,
+// curried `x => y => ..`. It adds no validity check of its own: well_formed is a fold_node, so the
+// inner Arrow is admitted by its own Arrow arm (arrow_body_edges_conform) and nesting is that
+// recursion, bounded by the finite source. Only Arrow is a function value; every other TypeNode
+// connective stays UnsupportedArrowBody.
 type ArrowBodyForm
   = DirectAtomBody
   | RecordConstructBody
   | ComputationBody { behavior: Behavior }
+  | FunctionValueBody
   | UnsupportedArrowBody
 
 fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
     TypeNode { connective: Conj } => RecordConstructBody
+    TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     _ => UnsupportedArrowBody
   }
@@ -457,6 +465,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
     UnsupportedArrowBody => false
     DirectAtomBody => true
     RecordConstructBody => false
+    FunctionValueBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
     ComputationBody { behavior: Branch } => true
@@ -496,6 +505,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
     UnsupportedArrowBody => false
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
     DirectAtomBody => true
+    FunctionValueBody => true
     ComputationBody { behavior: _ } => true
   }
 }

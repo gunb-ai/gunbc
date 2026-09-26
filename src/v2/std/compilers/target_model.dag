@@ -95,6 +95,12 @@ import v2.std.passing_candidate_fold {
 import v2.std.type_binder { cast_target_optional }
 import v2.std.node {
   Arrow,
+  ComputationBody,
+  DirectAtomBody,
+  FunctionValueBody,
+  RecordConstructBody,
+  UnsupportedArrowBody,
+  classify_arrow_body_form,
   ArrowBodyEdges,
   Atom,
   Branch,
@@ -13763,7 +13769,25 @@ fn target_value_expr_arrow_has_record_construct_body(arrow: Node) -> Bool {
   }
 }
 
+// VALUE-EXPRESSION ADMISSION CONSUMES THE BODY'S ArrowBodyForm, the same classification the
+// projector (target_project_arrow_body_to_value_expression) dispatches on, so the two cannot hold
+// different answers for which forms project. A function-value body projects as a returned closure;
+// every other form keeps its per-kind admission.
 fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody => true
+        DirectAtomBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        RecordConstructBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        ComputationBody { behavior: _ } => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        UnsupportedArrowBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn target_value_expr_arrow_has_value_expression_body_by_kind(arrow: Node) -> Bool {
   target_value_expr_arrow_has_transform_body(arrow: arrow)
     || target_value_expr_arrow_has_branch_body(arrow: arrow)
     || target_value_expr_arrow_has_bind_body(arrow: arrow)
@@ -15020,88 +15044,112 @@ fn target_project_arrow_body_to_value_expression(
 ) -> Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
-      match body.kind {
-        ComputationNode { behavior: Transform } =>
-          if target_value_expr_field_access_gate(node: body) {
-            target_project_field_access(
-              arrow: arrow,
-              body: body,
-              target: target,
-              source_bool_form: source_bool_form,
-              handle_transform: handle_transform
-            )
-          } else {
-            handle_transform(arrow, body, target)
-          }
-        ComputationNode { behavior: Branch } =>
-          target_project_branch_bool_if_else(
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody =>
+          target_project_closure_in_arrow_scope(
+            closure: body,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+        DirectAtomBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        RecordConstructBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        ComputationBody { behavior: _ } => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        UnsupportedArrowBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// The per-kind projection of a body classify_arrow_body_form did not classify as a function
+// value; a function-value body is dispatched above by its ArrowBodyForm, never by a raw kind here.
+fn target_project_arrow_body_by_kind(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+    match body.kind {
+      ComputationNode { behavior: Transform } =>
+        if target_value_expr_field_access_gate(node: body) {
+          target_project_field_access(
             arrow: arrow,
             body: body,
             target: target,
             source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
-        ComputationNode { behavior: Bind } =>
-          target_project_bind_let(
+        } else {
+          handle_transform(arrow, body, target)
+        }
+      ComputationNode { behavior: Branch } =>
+        target_project_branch_bool_if_else(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      ComputationNode { behavior: Bind } =>
+        target_project_bind_let(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      ComputationNode { behavior: Loop } =>
+        target_project_loop(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      ComputationNode { behavior: Match } =>
+        target_project_match(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      TypeNode { connective: Conj } =>
+        if target_value_expr_record_construct_gate(node: body) {
+          target_project_record_construct(
             arrow: arrow,
             body: body,
             target: target,
             source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
-        ComputationNode { behavior: Loop } =>
-          target_project_loop(
-            arrow: arrow,
-            body: body,
-            target: target,
-            source_bool_form: source_bool_form,
-            handle_transform: handle_transform
-          )
-        ComputationNode { behavior: Match } =>
-          target_project_match(
-            arrow: arrow,
-            body: body,
-            target: target,
-            source_bool_form: source_bool_form,
-            handle_transform: handle_transform
-          )
-        TypeNode { connective: Conj } =>
-          if target_value_expr_record_construct_gate(node: body) {
-            target_project_record_construct(
-              arrow: arrow,
-              body: body,
-              target: target,
-              source_bool_form: source_bool_form,
-              handle_transform: handle_transform
-            )
-          } else {
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
-                node: body
-              )
-            )
-          }
-        TypeNode { connective: Atom { identity: _ } } =>
-          if target_value_expr_is_int_literal_atom(node: body) {
-            target_value_expr_project_int_literal_atom(node: body)
-          } else {
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
-                node: body
-              )
-            )
-          }
-        _ =>
+        } else {
           outcome_rejected(
             target_value_expr_diagnostic(
               reason: ^target_value_expr_reason_transform_shape_invalid,
               node: body
             )
           )
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      TypeNode { connective: Atom { identity: _ } } =>
+        if target_value_expr_is_int_literal_atom(node: body) {
+          target_value_expr_project_int_literal_atom(node: body)
+        } else {
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        }
+      _ =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_arrow_body_form_unsupported,
+            node: body
+          )
+        )
   }
 }
 

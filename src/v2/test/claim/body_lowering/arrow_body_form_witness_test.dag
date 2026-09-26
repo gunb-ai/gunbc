@@ -25,6 +25,7 @@ import v2.std.node {
   DirectAtomBody,
   Disj,
   Edge,
+  FunctionValueBody,
   Loop,
   Match,
   Named,
@@ -47,6 +48,7 @@ import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   ArrowBodyFormAdmissionProduction,
   ArrowBodyFormAdmissionRedNoComputationBody,
   ArrowBodyFormAdmissionRedNoDirectAtom,
+  ArrowBodyFormAdmissionRedNoFunctionValueBody,
   arrow_body_form_admits_body_with_mirror,
   arrow_body_form_eval_binary_int_holds,
   arrow_body_form_eval_call_does_not_reject_unsupported_callee,
@@ -188,6 +190,61 @@ test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
     ComputationBody { behavior: Transform } => true
     _ => false
   }
+}
+
+// A BODY THAT IS ITSELF AN ARROW IS A FUNCTION VALUE: it classifies FunctionValueBody, the outer
+// Arrow is well-formed exactly when the inner one is (its own Arrow arm is the only check), and eval
+// refuses it by the eval-entry population rather than dispatching into it.
+fn arrow_body_form_fixture_function_value_body() -> Node {
+  arrow_body_form_fixture_arrow_with_body(
+    body: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
+  )
+}
+
+test fn arrow_body_form_classify_function_value_holds() -> Bool {
+  match classify_arrow_body_form(target: arrow_body_form_fixture_function_value_body()) {
+    FunctionValueBody => true
+    _ => false
+  }
+}
+
+test fn arrow_body_form_function_value_body_well_formed_holds() -> Bool {
+  well_formed(n: arrow_body_form_fixture_arrow_with_body(body: arrow_body_form_fixture_function_value_body()))
+    && well_formed(
+      n: arrow_body_form_fixture_arrow_with_body(
+        body: arrow_body_form_fixture_arrow_with_body(body: arrow_body_form_fixture_function_value_body())
+      )
+    )
+}
+
+test fn arrow_body_form_ill_formed_inner_arrow_refused_well_formed_holds() -> Bool {
+  !well_formed(
+    n: arrow_body_form_fixture_arrow_with_body(
+      body: arrow_body_form_fixture_arrow_with_body(
+        body: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+      )
+    )
+  )
+}
+
+test fn arrow_body_form_function_value_refused_eval_entry_holds() -> Bool {
+  !arrow_body_admits_eval_entry(form: FunctionValueBody)
+}
+
+// THE MUTATION CONTROL: production admits a function-value body; the mirror with the
+// FunctionValueBody arm deleted refuses the same body.
+test fn arrow_body_form_function_value_body_admitted_structurally_holds() -> Bool {
+  arrow_body_form_admits_body_with_mirror(
+    target: arrow_body_form_fixture_function_value_body(),
+    mirror: ArrowBodyFormAdmissionProduction
+  )
+}
+
+test fn arrow_body_form_RED_no_function_value_refuses_function_value_body_holds() -> Bool {
+  !arrow_body_form_admits_body_with_mirror(
+    target: arrow_body_form_fixture_function_value_body(),
+    mirror: ArrowBodyFormAdmissionRedNoFunctionValueBody
+  )
 }
 
 test fn arrow_body_form_classify_unsupported_holds() -> Bool {

@@ -1,0 +1,49 @@
+module v2.test.claim.body_lowering.function_value_body
+
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FUNCTION VALUE AS AN ARROW'S WHOLE BODY LOWERS WELL-FORMED (v2.std.node ArrowBodyForm
+// FunctionValueBody). Before that arm, v2.compiler.body_lowering_fold body_lower_reify_arrow_body
+// refused these at the inner Arrow; with the arm deleted from the classifier they refuse again
+// (post_normalize_not_well_formed), so each claim is red without it. The route past normalize --
+// resolve with the inner binders scoped, infer, emit -- is
+// v2.test.claim.body_lowering.function_value_body_route's.
+fn fvb_lowers_well_formed(src: String) -> Bool {
+  match conserved_normalize_of_text(path: "fvb_probe_file", text: src, explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data fvb_fn_literal_body_source: String = "module m.t\nfn f(x: Int) -> fn(Int) -> Int {\n  fn(a) { x }\n}\n"
+
+data fvb_curried_lambda_source: String = "module m.t\nfn g(r: Int) -> Int { r }\nfn f() -> Int { g(x => y => x) }\n"
+
+// ONE NULLARY PRODUCER, ENROLLED WARM (v2.workflow.floor_pure_producer_share): each normalize is a
+// front end, more than one claim's budget, so the claims read its stored verdicts.
+type FvbLoweringVerdicts { fn_literal_body: Bool, curried_lambda: Bool }
+
+fn fvb_lowering_verdicts() -> FvbLoweringVerdicts {
+  FvbLoweringVerdicts {
+    fn_literal_body: fvb_lowers_well_formed(src: fvb_fn_literal_body_source),
+    curried_lambda: fvb_lowers_well_formed(src: fvb_curried_lambda_source)
+  }
+}
+
+// A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
+test fn a_fn_whose_body_is_a_fn_literal_lowers_well_formed() -> Bool {
+  let v = fvb_lowering_verdicts()
+  v.fn_literal_body
+}
+
+// A curried lambda: the outer lambda's body is itself a lambda.
+test fn a_curried_lambda_argument_lowers_well_formed() -> Bool {
+  let v = fvb_lowering_verdicts()
+  v.curried_lambda
+}

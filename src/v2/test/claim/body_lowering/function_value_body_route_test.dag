@@ -1,0 +1,175 @@
+module v2.test.claim.body_lowering.function_value_body_route
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.compile {
+  NativeTestContext,
+  native_test_context_from_ingest,
+  native_test_prepare_module
+}
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.self_host.compiler_closure_emit { emit_compiler_import_closure_from_ingest_located }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE ROUTE PAST LOWERING FOR A FUNCTION WHOSE BODY IS A FUNCTION VALUE
+// (v2.std.node FunctionValueBody). The lowering controls -- that such a body lowers well-formed
+// instead of refusing -- are v2.test.claim.body_lowering.function_value_body's. These claims read
+// what follows: the module RESOLVES with the inner binders scoped (an inner body naming both the
+// outer and the inner parameter resolves; an undeclared name there refuses at its own atom), it
+// reaches INFER, and the Rust closure-emit door refuses a function-typed declared return at its
+// type-shape frontier (the last claim below; it does not emit). Removing the FunctionValueBody arm makes the module ill-formed at normalize, so
+// every positive claim here goes red with it.
+data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport v2.std.logic { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
+
+data fvb_curried_source: String = "module v2.test.fvb_curried\n\nimport v2.std.logic { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => x, v: p) }\n"
+
+data fvb_curried_undeclared_source: String = "module v2.test.fvb_curried_undeclared\n\nimport v2.std.logic { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => fvb_undeclared_inner, v: p) }\n"
+
+fn fvb_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data fvb_ingest: SourceRootIngest = Cons {
+    head: fvb_read(source: fvb_direct_source, id: ^fvb_direct_artifact, unit: ^fvb_direct_cu, path: "src/v2/test/fixture/body_lowering/fvb_direct.dag"),
+    tail: Cons {
+      head: fvb_read(source: fvb_curried_source, id: ^fvb_curried_artifact, unit: ^fvb_curried_cu, path: "src/v2/test/fixture/body_lowering/fvb_curried.dag"),
+      tail: Cons {
+        head: fvb_read(source: fvb_curried_undeclared_source, id: ^fvb_curried_undeclared_artifact, unit: ^fvb_curried_undeclared_cu, path: "src/v2/test/fixture/body_lowering/fvb_curried_undeclared.dag"),
+        tail: Empty
+      }
+    }
+  }
+
+// ONE FRONT END; the stored value is a verdict per module, no Node or context.
+type FvbVerdict
+  = FvbInferred
+  | FvbRefused { reason: Symbol, at_atom: Optional<Symbol> }
+
+type FvbOutcomes
+  = FvbContextRefused { reason: Symbol }
+  | FvbOutcomesDecided { direct: FvbVerdict, curried: FvbVerdict, curried_undeclared: FvbVerdict }
+
+fn fvb_verdict_in(context: NativeTestContext, module: String) -> FvbVerdict {
+  match native_test_prepare_module(context: context, module: qualified_name_from_dotted_string(dotted: module)) {
+    Accepted { value: _, diagnostics: _ } => FvbInferred
+    Rejected { diagnostics: d } =>
+      FvbRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn fvb_outcomes() -> FvbOutcomes {
+  match native_test_context_from_ingest(ingest: fvb_ingest) {
+    Rejected { diagnostics: d } => FvbContextRefused { reason: d.head.reason }
+    Accepted { value: context, diagnostics: _ } =>
+      FvbOutcomesDecided {
+        direct: fvb_verdict_in(context: context, module: "v2.test.fvb_direct"),
+        curried: fvb_verdict_in(context: context, module: "v2.test.fvb_curried"),
+        curried_undeclared: fvb_verdict_in(context: context, module: "v2.test.fvb_curried_undeclared")
+      }
+  }
+}
+
+test fn a_function_whose_body_is_a_fn_literal_resolves_and_reaches_infer() -> Bool {
+  match fvb_outcomes() {
+    FvbOutcomesDecided { direct: v, curried: _, curried_undeclared: _ } =>
+      match v {
+        FvbInferred => true
+        FvbRefused { reason: _, at_atom: _ } => false
+      }
+    FvbContextRefused { reason: _ } => false
+  }
+}
+
+test fn a_curried_lambda_naming_its_outer_binder_resolves_and_reaches_infer() -> Bool {
+  match fvb_outcomes() {
+    FvbOutcomesDecided { direct: _, curried: v, curried_undeclared: _ } =>
+      match v {
+        FvbInferred => true
+        FvbRefused { reason: _, at_atom: _ } => false
+      }
+    FvbContextRefused { reason: _ } => false
+  }
+}
+
+test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool {
+  match fvb_outcomes() {
+    FvbOutcomesDecided { direct: _, curried: _, curried_undeclared: v } =>
+      match v {
+        FvbRefused { reason: _, at_atom: Present { value: id } } => id == ^fvb_undeclared_inner
+        _ => false
+      }
+    FvbContextRefused { reason: _ } => false
+  }
+}
+
+// THE EMISSION CONTROL, EXECUTED THROUGH THE CLOSURE-EMIT DOOR (the route v2.cli.compile_cli
+// takes). A function whose DECLARED RETURN TYPE is a function type is a declared frontier of the
+// Rust target: the produced-declaration renderer has no type shape for a closure-returning
+// signature (impl Fn versus Box<dyn Fn> is an unmodeled target decision), so the module refuses
+// produced_decl_render_type_shape_unsupported before the body is projected. The claim asserts THAT
+// typed refusal: an Accepted emission or any other reason is red, so the frontier cannot close
+// silently or be crossed by a signature-only rendering. The FunctionValueBody body projection
+// (target_project_closure_in_arrow_scope) sits behind the refusal and is not reached today.
+// TRIGGER (the capability, not an artifact): the Rust target model renders a closure-returning
+// signature AND an executed curried emit compiles and runs. When that lands this claim flips: it
+// asserts FvbEmitted carrying the nested closures (`|x|`, `|y|`) and that the emitted crate builds
+// and runs, and a refusal becomes red.
+data fvb_emit_source: String = "module fvb_emit_probe\n\nimport v2.std.logic { Bool }\n\nfn fvb_curried_emit(p: Bool) -> fn(Bool) -> fn(Bool) -> Bool { x => y => x }\n"
+
+type FvbEmitVerdict
+  = FvbEmitted { text: String }
+  | FvbEmitRefused { reason: Symbol }
+
+fn fvb_emit_verdict() -> FvbEmitVerdict {
+  let e = emit_compiler_import_closure_from_ingest_located(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: fvb_emit_source, fidelity: Lossless },
+        artifact: Artifact { kind: SourceFile, id: ^fvb_emit_probe_artifact, file_path: "src/v2/fvb_emit_probe.dag" },
+        compilation_unit: ^fvb_emit_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^fvb_emit_probe, tail: Empty } },
+      imports: Empty
+    },
+    target: rust_target_model()
+  )
+  match e.outcome {
+    Accepted { value: receipt, diagnostics: _ } => FvbEmitted { text: receipt.source.carried }
+    Rejected { diagnostics: d } => FvbEmitRefused { reason: diagnostics_fatal_reason(d: d) }
+  }
+}
+
+test fn a_function_typed_return_refuses_at_the_rust_type_shape_frontier() -> Bool {
+  match fvb_emit_verdict() {
+    FvbEmitted { text: _ } => false
+    FvbEmitRefused { reason: r } => r == ^produced_decl_render_type_shape_unsupported
+  }
+}

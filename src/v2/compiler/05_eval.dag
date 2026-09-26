@@ -99,6 +99,10 @@ import v2.std.node {
   Arrow,
   Atom,
   DirectAtomBody,
+  FunctionValueBody,
+  ComputationBody,
+  RecordConstructBody,
+  UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
   classify_arrow_body_form,
@@ -1607,6 +1611,20 @@ fn eval_value_node(
   }
 }
 
+// A CALLEE WHOSE BODY IS ITSELF A FUNCTION VALUE REFUSES UNDER ITS OWN REASON. The body is
+// well-formed (v2.std.node FunctionValueBody), but eval carries no closure value to return, so the
+// call is refused -- never folded into the generic unsupported-callee reason, which would hide
+// which capability is missing.
+fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
+  match form {
+    FunctionValueBody => ^eval_rejected_function_value_body
+    DirectAtomBody => ^eval_rejected_unsupported_callee
+    RecordConstructBody => ^eval_rejected_unsupported_callee
+    ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
+    UnsupportedArrowBody => ^eval_rejected_unsupported_callee
+  }
+}
+
 fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
@@ -1669,7 +1687,10 @@ fn eval_transform_node(
                   )
                 } else {
                   outcome_rejected(
-                    d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
+                    d: eval_diagnostic(
+                      reason: eval_callee_body_refusal_reason(form: body_form),
+                      node: callee_edge.target
+                    )
                   )
                 }
               Rejected { diagnostics: _ } =>

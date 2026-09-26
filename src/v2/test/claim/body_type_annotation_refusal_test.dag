@@ -75,20 +75,53 @@ fn btar_if_arm_fn_literal() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Bool) -> Int { if x { fn(y) { zz } } else { 1 } }\n")
 }
 
-// (3) A fn literal's return annotation refuses with the exact reason, located at the authored `Q`,
-// before the literal can be collapsed. RED BEFORE: Accepted (the literal lowered to the `fn` token).
-test fn btar_fn_literal_return_annotation_refuses() -> Bool {
-  btar_refused_at_authored_q(o: btar_fn_literal_annotated())
+// (3) A fn literal's return annotation REACHES RESOLVE at the authored `Q`. gunbc#12210 lowers the
+// literal to an Arrow whose codomain is its written return type, so `Q` is no longer dropped nor
+// refused as uncarried: resolve refuses it unbound, located at the authored `Q`. RED BEFORE
+// gunbc#12248: Accepted (the literal lowered to the `fn` token). Between #12248 and #12210 it refused
+// body_lowering_reason_type_annotation_not_carried at `Q`; that interim refusal is retired.
+fn btar_resolve_refused_at_authored_q(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol)
+        && match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } => btar_atom_in(n: a.at, id: ^Q)
+          _ => false
+        }
+  }
 }
 
-// (4) The unannotated let-bound literal is no longer erased: it is not Accepted, and it does not
-// refuse for the annotation reason. Its disposition CHANGED on purpose -- it was Accepted only
-// because the literal lowered to its `fn` token -- and it now refuses loudly at resolve, since
-// nothing on this route binds a literal's parameters.
+test fn btar_fn_literal_return_annotation_reaches_resolve() -> Bool {
+  btar_fn_literal_outcomes().annotated_reaches_resolve
+}
+
+// (4) The unannotated let-bound literal is not erased: it lowers whole (gunbc#12210), its parameter
+// bound for its body, so the program is Accepted AND no `fn` keyword atom -- the eraser's answer --
+// survives in it. RED BEFORE gunbc#12248: Accepted with the literal lowered to its `fn` token.
+fn btar_plain_literal_not_erased(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: tree, diagnostics: _ } => !btar_atom_in(n: tree, id: ^dag_token_kw_fn)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
-  match btar_fn_literal_plain() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) != ^body_lowering_reason_type_annotation_not_carried
+  btar_fn_literal_outcomes().plain_not_erased
+}
+
+// ONE WARM PRODUCER FOR THE TWO FN-LITERAL VERDICTS (3) and (4): each once paid its own front end.
+// Enrolled in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the
+// claims only read their Bool.
+type BtarFnLiteralOutcomes {
+  annotated_reaches_resolve: Bool
+  plain_not_erased: Bool
+}
+
+fn btar_fn_literal_outcomes() -> BtarFnLiteralOutcomes {
+  BtarFnLiteralOutcomes {
+    annotated_reaches_resolve: btar_resolve_refused_at_authored_q(o: btar_fn_literal_annotated()),
+    plain_not_erased: btar_plain_literal_not_erased(o: btar_fn_literal_plain())
   }
 }
 
