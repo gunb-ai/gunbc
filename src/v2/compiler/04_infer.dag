@@ -2853,6 +2853,20 @@ fn infer_gather_product_row_on_entries(
   }
 }
 
+// AN ARROW'S DECLARED ORDER IS NOT INFERRED. The ^arrow_signature_order_edge's subtree is a list of
+// the domain's binder LABELS (v2.std.compilers.body_lowering signature_order_edge), not values: there
+// is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
+// frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
+// as its own evidence (infer_edge_is_signature_order), and this step takes nothing from its subtree --
+// the same shape as infer_arrow_empty_domain_edge and the literal payload arm, where the parent's
+// model, not the child's walk, says what the child is.
+fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => infer_edge_is_signature_order(edge: edge)
+    _ => false
+  }
+}
+
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -2862,6 +2876,14 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) {
+    infer_gather_fold_step_merged(
+      acc: acc,
+      merged_entries: acc.entries,
+      merged_pending: acc.pending,
+      partials: partials,
+      tree: tree
+    )
   } else if child.failed {
     infer_gather_fold_acc_failed(
       node: acc.node,
