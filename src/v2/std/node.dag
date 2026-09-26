@@ -237,6 +237,8 @@ type EdgeDiscipline
 
   | ArrowBodyEdges
 
+  | PositionalPrefixThenLabeledEdges
+
 // 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
 // ^dag_token_int_literal via ^integer_literal_magnitude_field) —
 // atom_connective_edge_discipline(child_count) is the single authority (NoEdges when
@@ -692,7 +694,31 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     PositionalEdges => all_edges_positional(children: children)
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
+    PositionalPrefixThenLabeledEdges => positional_prefix_then_labeled_conform(children: children)
   }
+}
+
+// AN APPLICATION'S ACTUALS: a positional prefix -- the callee first, then positional actuals in
+// order -- followed by named actuals, each label at most once. A positional edge after a named one
+// has no slot independent of which names preceded it, so it has no constructor
+// (v2.compiler.body_lowering_fold body_lower_call_arg_edges refuses it located) and is ill formed
+// here. Named actuals bind by name against the callee's name-keyed domain (gunbc#12054), so their
+// authored order carries no meaning: the content hash sorts them
+// (canonicalize_positional_prefix_then_labeled), while the stored node keeps authored order for the
+// occurrence layer.
+fn positional_prefix_then_labeled_conform(children: List<Edge>) -> Bool {
+  let walk = fold(children, init: PrefixWalk { seen_named: false, ok: true }, f: fn(acc, e) {
+    match e.label {
+      Positional => PrefixWalk { seen_named: acc.seen_named, ok: acc.ok && !acc.seen_named }
+      Named { name: _ } => PrefixWalk { seen_named: true, ok: acc.ok }
+    }
+  })
+  walk.ok && all_names_distinct(children: children)
+}
+
+type PrefixWalk {
+  seen_named: Bool
+  ok: Bool
 }
 
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
@@ -754,7 +780,9 @@ fn match_arm_children_conform_skip_first(children: List<Edge>, skipped_scrutinee
 fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
-    Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Transform =>
+      edges_conform(children: children, d: PositionalPrefixThenLabeledEdges)
+        && (positional_child_count(children: children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
@@ -794,7 +822,7 @@ fn is_empty_conj_root(n: Node) -> Bool {
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   match b {
     Value => NoEdges
-    Transform => PositionalEdges
+    Transform => PositionalPrefixThenLabeledEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
     Bind => PositionalEdges
@@ -902,7 +930,17 @@ fn canonicalize_labeled_for_content_hash<T>(
     PositionalEdges => items
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
+    PositionalPrefixThenLabeledEdges => canonicalize_positional_prefix_then_labeled(items: items, label_of: label_of)
   }
+}
+
+// The positional prefix keeps its order; the named suffix sorts by label. So f(a: 1, b: 2) and
+// f(b: 2, a: 1) are one node, and f(1, 2) and f(2, 1) stay two.
+fn canonicalize_positional_prefix_then_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+  concat(
+    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
+    sort_labeled(items: filter(items, fn(x) { !labeled_is_positional(x: x, label_of: label_of) }), label_of: label_of)
+  )
 }
 
 // THE PROJECTIONS ARE NAMED TOP-LEVEL FUNCTIONS, NOT INLINE LAMBDAS, and that is forced rather than
