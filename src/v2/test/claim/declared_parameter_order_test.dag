@@ -35,6 +35,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   arrow_signature_edges_conform,
+  canonicalize_node_for_content_hash,
   content_hash,
   node_subtree_nodes,
   well_formed
@@ -63,7 +64,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `<anonymous-parameter-10>` before `<anonymous-parameter-2>` in label order.
 //
 // MUTATION RECEIPT: infer_application_formals returning the domain's stored formals (the pre-change
-// fold) reds (3) and (4); eval_param_edges_in_declared_order returning domain.children reds (6).
+// fold) reds (3) and (4) through their canonical-domain arm; eval_param_edges_in_declared_order
+// returning domain.children reds (6) the same way; resolve walking the order edge reds (7).
 
 data dpo_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -180,6 +182,31 @@ fn dpo_order_list(labels: List<Symbol>) -> Node {
   )
 }
 
+// THE ARROW AS IDENTITY SEES IT: its domain canonicalized, which sorts the Conj's binders by label.
+// The production route happens to store a domain in declared order, so binding over the stored
+// sequence agrees with declared order there and discriminates nothing; a node that round-trips
+// through canonicalization (the case gunbc#12054 names) is where the stored fold binds wrongly. Every
+// binding claim below asserts over BOTH, and must answer the same.
+type DpoDomainWalk {
+  done: Bool
+  edges: List<Edge>
+}
+
+fn dpo_canonical_domain(arrow: Node) -> Node {
+  let seen = fold(arrow.children, init: DpoDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        if acc.done {
+          DpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
+        } else {
+          DpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
+        }
+      Named { name: _ } => DpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+    }
+  })
+  Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
+}
+
 // An application of `arrow` to nothing: infer_application_formals reads only the callee.
 fn dpo_application(arrow: Node) -> Node {
   Node {
@@ -233,7 +260,12 @@ test fn dpo_parameter_order_distinguishes_function_types() -> Bool {
 // fold answers [a, b].
 test fn dpo_infer_formals_follow_declared_order() -> Bool {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
-  (count(arrows) == 1) && fold(arrows, init: true, f: fn(acc, a) { acc && (dpo_formal_labels(arrow: a) == [^b, ^a]) })
+  (count(arrows) == 1)
+    && fold(arrows, init: true, f: fn(acc, a) {
+      acc
+        && (dpo_formal_labels(arrow: a) == [^b, ^a])
+        && (dpo_formal_labels(arrow: dpo_canonical_domain(arrow: a)) == [^b, ^a])
+    })
 }
 
 // (4) TEN OR MORE ANONYMOUS SLOTS BIND IN SLOT ORDER. Minted labels sort as text, so label order puts
@@ -242,7 +274,10 @@ test fn dpo_eleven_anonymous_slots_bind_in_declared_order() -> Bool {
   let arrows = dpo_arrow_of_arity(o: dpo_eleven_anonymous(), arity: 11)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
-      acc && (dpo_order(arrow: a) == dpo_eleven_labels()) && (dpo_formal_labels(arrow: a) == dpo_eleven_labels())
+      acc
+        && (dpo_order(arrow: a) == dpo_eleven_labels())
+        && (dpo_formal_labels(arrow: a) == dpo_eleven_labels())
+        && (dpo_formal_labels(arrow: dpo_canonical_domain(arrow: a)) == dpo_eleven_labels())
     })
 }
 
@@ -280,6 +315,7 @@ test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
         && (dpo_refusal_reason(arrow: bare) == [^application_parameter_order_absent])
         && dpo_eval_refuses_with(arrow: bare, reason: ^application_parameter_order_absent)
         && (dpo_eval_param_labels(arrow: a) == [^b, ^a])
+        && (dpo_eval_param_labels(arrow: dpo_canonical_domain(arrow: a)) == [^b, ^a])
     })
 }
 
