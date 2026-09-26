@@ -105,3 +105,40 @@ appends are written 0600 until #12342 lands.
 - On srv1: `heads/pair-serving-authority-group-a.1` exists and names the `AuthorityEstablished` object.
   The `host-placement` head has advanced by three events, ending in `placement-finalized`.
 - Run the command a second time. It must refuse at `established`. This is the discriminating control.
+
+## Sequencing (parent ruling)
+
+Establishment fences srv5–8, so it runs **after** the remaining V4.1 staging: the production image
+build on srv8, distribution to srv5–7, and the image probe. The operator runs it on srv1 at that point,
+under route (A).
+
+## What follows Established, for the V4.1 launch
+
+The launch admits through `gunbc.spark.pair_serving_authority` `pair_serving_successor_may_launch`. The
+states below are read from `gunbc.spark.pair_serving_d0` (`d0_transaction`, `d0_settle`, `d0_decide`).
+
+1. **Established:** `PairServingActive`, generation 0 (the genesis event). may_launch = **false**.
+2. **D0 first write:** a transition at the exact head that was read, to
+   `SuspensionPendingReconciliation { hosts: grant.subject.hosts, transaction, authorization_binding, lease }`.
+   - The lease epoch is minted for generation + 1.
+   - No grant is carried yet.
+   - D0 refuses first if the grant's hosts are not the group's current population (an identity join).
+   - may_launch = **false**.
+3. **D0 settle:** records an entry-state receipt, then makes **one** compare-and-set from the pending
+   state to one of three terminals:
+   - `SuspendedForAuthorizedSuccessor { hosts, authorization: <escalation id>, exact_candidate_realization: PairRealizationKeyed { key: grant.subject.successor }, lease, cleanup }`.
+     This is reached only when the incumbent didn't answer, the head is quiet, and the declared occupant
+     has drifted. Only this terminal carries a `LeaseGrant`:
+     - `reference` = transaction
+     - `fence` = (the admitting pending event, the pending generation)
+     - `max duration` = `grant.subject.term` (`d0_lease_policy`)
+   - `PairServingActive`, restored unchanged, when the incumbent answers as the declared realization.
+     may_launch = false.
+   - `FencedRefusal` for any unread or unidentified occupancy. may_launch = false; only
+     `pair_serving_may_finish` is true.
+4. **Launch admission:** true only for `SuspendedForAuthorizedSuccessor` whose lease's **observed**
+   state is `LeaseRunningExpected`, which maps to `Converged`. The observed state is derived **at read
+   time** from the grant and the current instant (`lease_observed_at`). The launch must therefore read
+   `current_pair_serving_authorities` (the log), never the source row. An expired term reads
+   `LeaseRunningStale`, which maps to `Drifted`. That blocks START, while cleanup continues through
+   `pair_serving_may_finish`.
