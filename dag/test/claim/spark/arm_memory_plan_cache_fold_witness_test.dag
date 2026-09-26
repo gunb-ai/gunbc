@@ -21,7 +21,11 @@ import gunbc.spark.arm_memory_fit {
   ArmRankCacheSupply, cache_fit_verdict_from_plan,
   CacheCapacityCandidate, cache_capacity_candidate,
 }
-import gunbc.spark.arm_memory_experiment_observed { arm_experiment_gib_hundredths_floor }
+import gunbc.spark.arm_memory_experiment_observed {
+  arm_experiment_gib_hundredths_floor,
+  arm_experiment_2026_09_26_arena_readings, arm_experiment_2026_09_26_limiting_rank,
+  arm_experiment_2026_09_26_cache_supplies,
+}
 import gunbc.spark.vllm_allocation_plan_observe {
   kv_allocation_plan_capture_from_startup_log,
   KvPlanCaptureParsed, KvPlanCaptureUnreadable,
@@ -31,10 +35,10 @@ import test.fixture.kv_allocation_plan_emission.real_262144x6_line { real_262144
 // ── THE DIRECT ROSTER FOLD OVER THE REAL 262144x6 CAPTURE ────────────────────────────────────────
 //
 // THE SUBJECT is the allocation plan the patched engine printed at the bounded 262144x6
-// experiment's launch (2026-09-25, engine self-report 0.1.dev1+g8d09804c8, the capture committed
-// verbatim beside the shared fixture module and imported as real_262144x6_kv_plan_line). The plan
-// minted off those bytes IS the exact group roster the doctrine required — 6 allocation groups
-// rostering the model's 67 layer identities over 45 layers, with the engine's own
+// experiment's first launch (2026-09-25, engine self-report 0.1.dev1+g8d09804c8, the capture
+// committed verbatim beside the shared fixture module and imported as real_262144x6_kv_plan_line).
+// The plan minted off those bytes IS the exact group roster the doctrine required — 6 allocation
+// groups rostering the model's 67 layer identities over 45 layers, with the engine's own
 // blocks_at_requested_length per group — and gunbc.spark.arm_memory_fit's
 // cache_fit_verdict_from_plan prices it: seats x the plan's own figures against every rank's
 // allocator evidence. THE DEMAND THE REAL BYTES PRICE: group-0 (mla_attention, the 11 sparse
@@ -42,17 +46,24 @@ import test.fixture.kv_allocation_plan_emission.real_262144x6_line { real_262144
 // window 4) 1 block x 76032 = 76,032; the four mamba groups (34 KDA layers) 2 blocks each x
 // 1511424 = 3,022,848 apiece — 123 blocks and 20,835,072 bytes per full-context seat.
 //
-// THE VERDICT STRUCTURE ON TODAY'S EVIDENCE: the block wall decides on the plan's allocator
-// inventory — 1035 blocks, the engine's own figure, computed from the LIMITING rank and uniform
-// across the tensor-parallel ranks by the engine's construction — and 6 seats x 123 = 738 <= 1035
-// decides on EVERY rank. The byte wall decides per rank against the observed KV arena: TP0/srv9's
-// worker line at this launch read 22.59 GiB (pool 121.69, envelope 104.25 at 8567 basis points);
-// the TP1-3 worker lines were NOT captured — the stop legs fired ~35 seconds after the head's
-// anchor, before the ranks printed — so the byte wall is decided on rank 0 and OPEN on ranks 1-3,
-// and the fold says exactly that: CacheFitUnestablished naming the three unobserved arenas, with
-// the block wall's proof and rank 0's byte proof visible in what did NOT refuse. The completing
-// act is one more bounded launch holding the stop legs past the ranks' prints; the
-// worst-arena-ever-observed completion below pins that the open wall is not the sensitive input.
+// THE VERDICT ON TODAY'S EVIDENCE. The first launch's stop legs fired ~35 seconds after the
+// head's anchor, before ranks 1-3 printed their own profile lines, and the fold on that evidence
+// was CacheFitUnestablished naming exactly the three uncaptured arenas (commit 0fd1d463f5). THE
+// COMPLETING LAUNCH (2026-09-26 — the same bounded experiment re-run with the per-rank readback
+// bracket, all four rank profile lines at gpu_worker.py:867 captured into the one receipt) IS
+// today's evidence: gunbc.spark.arm_memory_experiment_observed's 2026-09-26 bundle binds the four
+// KV arenas as observed intervals at the 262144x6 subject — TP0/srv9 23.45 GiB, TP1/srv10 18.62
+// GiB, TP2/srv12 18.90 GiB, TP3/srv11 17.29 GiB — and the fold over them PROVES six seats. The
+// block wall decides on the plan's 1035-block inventory on every rank (6 x 123 = 738), and the
+// byte wall decides per rank against the observed arena: 6 x 20,835,072 = 125,010,432 bytes is
+// 67 basis points — 0.67% — even of the worst rank's arena floor (TP3/srv11's 17.29 GiB reads
+// 18,564,996,136 bytes at the hundredths floor), and no other rank reads lower. The verdict is
+// CacheFitProved { rank: 3, seats: 6 } with the worst-rank headroom carried, and the conservation
+// control below pins that the proof is the four arenas TOGETHER: drop any one and the fold falls
+// back to CacheFitUnestablished naming exactly that rank. The cross-launch composition (the plan
+// from the first launch, the arenas from the completing launch) is the designed completion commit
+// 0fd1d463f5 pinned — one experiment, two launches, the second admitted only to capture what the
+// first one's early stop legs missed — not a pairing any consumer may generalize.
 
 fn w_minted_real_plan() -> ResolvedKvAllocationPlan? {
   match kv_allocation_plan_capture_from_startup_log(captured_stdout: real_262144x6_kv_plan_line) {
@@ -116,16 +127,12 @@ fn w_uniform_supplies(blocks: Nat, arena: ByteSize) -> List<ArmRankCacheSupply> 
 }
 
 // TODAY'S EVIDENCE, one row per rank: the plan's 1035-block inventory on every rank (the
-// engine-derived launch-level figure), TP0's observed 22.59 GiB arena on rank 0, and the zero
-// spelling of unobserved on ranks 1-3 — the supply side stays open there, exactly the existing
-// zero wall's semantics.
-fn w_today_supplies() -> List<ArmRankCacheSupply> {
-  [
-    ArmRankCacheSupply { rank: 0, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: 2259) },
-    ArmRankCacheSupply { rank: 1, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: byte_size(count: 0) },
-    ArmRankCacheSupply { rank: 2, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: byte_size(count: 0) },
-    ArmRankCacheSupply { rank: 3, allocator_blocks: allocator_block_count(count: 1035), admitted_kv_arena_bytes: byte_size(count: 0) },
-  ]
+// engine-derived launch-level figure) joined with the completing launch's four observed arenas —
+// projected by the observation bundle itself (arm_experiment_2026_09_26_cache_supplies), one
+// authority for the readings, at the hundredths floor the supply spelling has carried since
+// commit 0fd1d463f5.
+fn w_four_arena_supplies() -> List<ArmRankCacheSupply> {
+  arm_experiment_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1035))
 }
 
 // THE ROSTER BINDS THE EXACT MODEL on the real bytes: the census (34 KDA entries across the mamba
@@ -193,37 +200,138 @@ test fn zero_seats_name_no_admission() -> Bool {
   }
 }
 
-// TODAY'S VERDICT, HONEST AS IT STANDS: the block wall proves on every rank (738 of 1035 blocks,
-// and no block refusal carries), the byte wall proves on rank 0 (125,010,432 bytes against
-// 22.59 GiB — the demand is 0.52% of the observed arena), and the verdict is
-// CacheFitUnestablished naming exactly the three ranks whose arenas were not captured today.
-test fn the_fold_over_todays_evidence_names_the_three_unobserved_arenas() -> Bool {
+// THE PROOF ON THE COMPLETED EVIDENCE: the byte wall now proves on EVERY rank — 125,010,432 bytes
+// is 67 basis points of the worst arena (TP3/srv11's 17.29 GiB floor, 18,564,996,136 bytes) and
+// less everywhere else — and the block wall was already proved on every rank (6 x 123 = 738 of
+// 1035). The verdict is CacheFitProved naming the limiting rank (rank 3) with the worst-rank
+// headroom carried: 18,564,996,136 - 125,010,432 = 18,439,985,704 bytes.
+test fn the_four_arena_evidence_proves_six_seats_at_the_limiting_rank() -> Bool {
   match w_minted_real_plan() {
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
         plan: p, shape: glm_5_3_flash_hybrid_shape,
         seats: 6,
-        supplies: w_today_supplies(),
+        supplies: w_four_arena_supplies(),
         rank_count: 4) {
-        CacheFitUnestablished { obligations: os } =>
-          length(os) == 3
-            && any(os, o => string_contains(s: o as String, pattern: "rank 1 carries a zero"))
-            && any(os, o => string_contains(s: o as String, pattern: "rank 2 carries a zero"))
-            && any(os, o => string_contains(s: o as String, pattern: "rank 3 carries a zero"))
-            && !any(os, o => string_contains(s: o as String, pattern: "rank 0"))
+        CacheFitProved { rank: r, seats: s, length: l, demand_bytes: d, headroom_bytes: h } =>
+          r == 3
+            && s == 6
+            && token_count_value(t: l) == 262144
+            && byte_size_count(b: d) == 125010432
+            && byte_size_count(b: h) == 18439985704
         _ => false
       }
   }
 }
 
-// THE COMPLETING ARITHMETIC, PINNED AT THE WORST ARENA THIS ARM HAS EVER READ: the 64K run's
-// per-rank bundle read TP3/srv11's KV arena at 17.03 GiB — the smallest the arm has ever
-// observed. Pricing six seats at 20,835,072 bytes each against THAT floor on all four ranks (the
-// designed completion; the real rank lines replace it, and nothing about the completion is the
-// sensitive input — the demand is 0.68% even of the worst reading) yields CacheFitProved with
-// the six-seat byte demand carried: 125,010,432 bytes. This is the shape the adoption consumes
-// once the three arenas land.
+// THE CONSERVATION LAW, DISCRIMINATING: the proof is the four arenas TOGETHER. Drop any one
+// arena — spell it zero, the supply side's own spelling of unobserved — and the fold falls back
+// to CacheFitUnestablished naming EXACTLY that rank and no other: a missing rank is an unnamed
+// obligation, never a generous reading, in every one of the four positions. This is the
+// three-unobserved-arenas verdict of 2026-09-25 generalized into a control that must hold on
+// any rank's evidence, and it pins that the Proved verdict above consumes all four arenas.
+test fn dropping_any_one_arena_falls_back_to_unestablished_naming_that_rank() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      w_drop_one_arena_names_that_rank(p: p, dropped: 0)
+        && w_drop_one_arena_names_that_rank(p: p, dropped: 1)
+        && w_drop_one_arena_names_that_rank(p: p, dropped: 2)
+        && w_drop_one_arena_names_that_rank(p: p, dropped: 3)
+  }
+}
+
+fn w_drop_one_arena_names_that_rank(p: ResolvedKvAllocationPlan, dropped: Nat) -> Bool {
+  match cache_fit_verdict_from_plan(
+    plan: p, shape: glm_5_3_flash_hybrid_shape,
+    seats: 6,
+    supplies: map(w_four_arena_supplies(), s => ArmRankCacheSupply {
+      rank: s.rank,
+      allocator_blocks: s.allocator_blocks,
+      admitted_kv_arena_bytes: match s.rank == dropped {
+        true => byte_size(count: 0)
+        false => s.admitted_kv_arena_bytes
+      },
+    }),
+    rank_count: 4) {
+    CacheFitUnestablished { obligations: os } =>
+      length(os) == 1
+        && any(os, o => string_contains(s: o as String, pattern: join(["rank ", to_string(dropped), " carries a zero"], "")))
+    _ => false
+  }
+}
+
+// THE BYTE HEADROOM BLOCK, PINNED PER RANK: the six-seat demand (125,010,432 bytes) against each
+// rank's arena floor as admitted into the fold — TP0/srv9 49 basis points of it, TP1/srv10 62,
+// TP2/srv12 61, TP3/srv11 67 — and the headroom the Proved verdict carries: 18,439,985,704 bytes,
+// 9,932 basis points (99.33%) of the worst arena left after the demand. The shares are computed
+// against the supplies the observation bundle projects — the evidence, not a re-spelled literal —
+// and the reporter's rounding unit cannot move any of it: 0.01 GiB is about 10.7 MB against a
+// headroom of about 18.44 GB. The block wall's slack (297 blocks, about two seats), the ceiling
+// (floor(1035 / 123) = 8, the ninth seat refusing at 1107), and the printed-token figures are
+// pinned beside this at the_block_ceiling_is_eight_and_the_ninth_seat_refuses and
+// the_headroom_figures_are_pinned.
+test fn the_byte_headroom_block_is_pinned_per_rank() -> Bool {
+  let supplies = w_four_arena_supplies()
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_fit_verdict_from_plan(
+        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: supplies,
+        rank_count: 4) {
+        CacheFitProved { rank: r, seats: _, length: _, demand_bytes: d, headroom_bytes: h } =>
+          r == 3
+            && byte_size_count(b: d) == 125010432
+            && byte_size_count(b: h) == 18439985704
+            && w_bytes_share_bp(supplies: supplies, rank: 0, of: d) == 49
+            && w_bytes_share_bp(supplies: supplies, rank: 1, of: d) == 62
+            && w_bytes_share_bp(supplies: supplies, rank: 2, of: d) == 61
+            && w_bytes_share_bp(supplies: supplies, rank: 3, of: d) == 67
+            && w_bytes_share_bp(supplies: supplies, rank: 3, of: h) == 9932
+        _ => false
+      }
+  }
+}
+
+// THE DEMAND'S SHARE OF ONE RANK'S ARENA in basis points, floor-divided against the arena floor
+// the observation bundle admits into the fold: floor(of x 10000 / arena floor). The absurd
+// sentinel on a missing rank is a witness refusal, not a generous zero.
+fn w_bytes_share_bp(supplies: List<ArmRankCacheSupply>, rank: Nat, of: ByteSize) -> Nat {
+  match first(filter(supplies, s => s.rank == rank)) {
+    Present { value: s } => byte_size_count(b: of) * 10000 / byte_size_count(b: s.admitted_kv_arena_bytes)
+    Absent => 1000000000
+  }
+}
+
+// THE LIMITING RANK, PINNED TWICE OVER: the observation bundle names rank 3 and this suite names
+// its host — TP3/srv11, the smallest arena at the readback bracket (17.29 GiB) — and the rank's
+// floor is the least of the four supplies. A drift between the observation's limiting rank and
+// the fold's worst-rank corner is red here, at the row that moved.
+test fn the_limiting_rank_is_tp3_on_srv11() -> Bool {
+  let supplies = w_four_arena_supplies()
+  arm_experiment_2026_09_26_limiting_rank == 3
+    && (match first(filter(arm_experiment_2026_09_26_arena_readings, x => x.rank == arm_experiment_2026_09_26_limiting_rank)) {
+      Present { value: reading } => reading.host as String == "srv11"
+      Absent => false
+    })
+    && (match first(filter(supplies, s => s.rank == arm_experiment_2026_09_26_limiting_rank)) {
+      Present { value: worst } =>
+        all(supplies, s => byte_size_count(b: s.admitted_kv_arena_bytes) >= byte_size_count(b: worst.admitted_kv_arena_bytes))
+      Absent => false
+    })
+}
+
+// THE WORST-EVER-ARENA FLOOR, STILL PINNED: the 64K run's per-rank bundle read TP3/srv11's KV
+// arena at 17.03 GiB — the smallest the arm has ever observed, and STILL the smallest after the
+// completing 262144x6 launch (whose own worst is 17.29 GiB). This arm was the designed completion
+// commit 0fd1d463f5 pinned while the three arenas stood uncaptured; the real four-arena proof it
+// stood in for now lives at the_four_arena_evidence_proves_six_seats_at_the_limiting_rank, and
+// this arm stays as the worst-reading floor — nothing about the completion is the sensitive input
+// (the demand is 0.68% even of the worst reading the arm has ever taken) and the Proved verdict
+// the adoption consumes no longer leans on it.
 test fn the_completion_at_the_worst_prior_arena_proves_six_seats() -> Bool {
   match w_minted_real_plan() {
     Absent => false
@@ -244,7 +352,7 @@ test fn the_completion_at_the_worst_prior_arena_proves_six_seats() -> Bool {
 
 // THE BLOCK ARITHMETIC, PINNED END TO END: 6 seats x 123 blocks = 738 of 1035 — slack 297
 // blocks; the ceiling is floor(1035 / 123) = 8 seats (8 x 123 = 984 <= 1035, slack 51), and the
-// ninth seat refuses at 1107 > 1035. The byte demand at 8 seats is 166,680,576 — still 9.5% of
+// ninth seat refuses at 1107 > 1035. The byte demand at 8 seats is 166,680,576 — still 0.9% of
 // the worst arena — so the block wall is the binding constraint at every seat count through 8.
 test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool {
   match w_minted_real_plan() {

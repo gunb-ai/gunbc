@@ -6,6 +6,7 @@ import std.checked_arithmetic { nat_magnitude }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   TokenCount, token_count, token_count_value,
+  AllocatorBlockCount,
   gibibyte_scale_factor_bytes, concurrent_request_hundredths, basis_point,
 }
 import v2.std.optional { Present, Absent }
@@ -36,6 +37,7 @@ import gunbc.spark.arm_memory_fit {
   ArmWetStanding, ArmWetObservedInterval, ArmWetObservationOnly, ArmWetCompositeObservation,
   ArmWetGraphAttributionUnestablished, ArmWetBindingAdmission,
   ArmWetReceiptBinding, arm_admit_wet_binding,
+  ArmRankCacheSupply,
   CacheCapacityCandidate, cache_capacity_candidate,
 }
 
@@ -418,4 +420,176 @@ fn arm_experiment_2026_09_25_envelope_readings() -> List<ArmExperimentEnvelopeRe
 // refuse by name, the static ones transfer, and the composite ones still discharge nothing.
 fn arm_experiment_2026_09_25_admit(target: MemoryProofSubject) -> List<ArmWetBindingAdmission> {
   map(arm_experiment_2026_09_25_bindings(), b => arm_admit_wet_binding(binding: b, target: target))
+}
+
+// ── THE WET RECEIPT BUNDLE OF 2026-09-26: THE COMPLETING 262144x6 RUN ────────────────────────────
+//
+// THE SECOND BOUNDED LAUNCH AT THE 262144x6 SUBJECT, and the one whose per-rank readback bracket
+// commit c542528314 added held the stop legs past EVERY rank's print. The experiment: the group B
+// bounded run -- six 262144-token seats, 2048 batched tokens, fp8 KV, decided utilization 8567
+// basis points, image derived-kvplan-20260925, engine self-report v0.1.dev1+g8d09804c8 -- across
+// four Sparks, TP0 srv9, TP1 srv10, TP2 srv12, TP3 srv11. The first launch at this subject
+// (2026-09-25) printed the KV_ALLOCATION_PLAN_JSON line the plan fold prices, but its one-head
+// readback released the stop legs ~35 seconds after the head's anchor, BEFORE ranks 1-3 printed
+// their own profile lines -- that launch's byte wall stood open on exactly those ranks (commit
+// 0fd1d463f5's verdict names them). THE COMPLETING LAUNCH RERAN THE SAME EXPERIMENT with one
+// readback leg per rank host, and all four rank profile lines (gpu_worker.py:867,
+// "Free memory on device", 2026-09-26T00:19:24Z) now stand in the one receipt
+// (target/spark-native-experiment-apply-receipt.txt): TP0/srv9 KV arena 23.45 GiB, TP1/srv10
+// 18.62 GiB, TP2/srv12 18.90 GiB, TP3/srv11 17.29 GiB -- TP3 (srv11) the limiting rank again:
+// the smallest pool (119.69 GiB against 121.69), the smallest envelope (102.54 against 104.25),
+// and the smallest arena.
+//
+// THIS MODULE OWNS THE OBSERVATION, not the law -- the 2026-09-25 bundle's standing rule applies
+// verbatim. WHAT THIS BUNDLE BINDS is the four KV arena readings, the rank-supply evidence the
+// completing run owed the cache fold: per-rank OBSERVED INTERVALS at the reporter's two-decimal
+// GiB rounding unit, same measurement standings as the 64K bundle (an observation bounds nothing
+// until a bounding protocol promotes it). The same profile lines' pool, envelope, weights+nontorch,
+// activation and graph figures are raw in the receipt and are NOT bound here: nothing in this
+// lane consumes them, and a reading bound without a consumer is a standing nobody reads. THE FIRST
+// 262144x6 LAUNCH'S LONE RANK-0 READING (22.59 GiB) IS NOT CARRIED EITHER: the completing
+// launch's four readings are the bundle this subject stands on, and one subject carries one
+// authority for a rank's arena.
+//
+// THESE READINGS SUPERSEDE NOTHING. The 2026-09-25 64Kx1 bundle above stays stamped at its own
+// subject -- a receipt about a 64Kx1 run is evidence about a 64Kx1 subject, and this bundle is a
+// different subject AND a different launch. Neither bundle amends, replaces, or demotes the other;
+// a consumer comparing them meets the compatibility law in gunbc.spark.arm_memory_fit, not here.
+//
+// THE CROSS-LAUNCH COMPOSITION, NAMED because the corpus names every composition: the demand side
+// of the cache fold is the ALLOCATION PLAN the FIRST 262144x6 launch printed (2026-09-25, committed
+// verbatim at test.fixture.kv_allocation_plan_emission); the supply side is the four arenas the
+// COMPLETING launch read (2026-09-26). One proof pricing a plan from one launch against arenas
+// from another is lawful here because the two launches ARE the same experiment -- same subject,
+// same configuration, same image, same engine revision, the second launch admitted only to capture
+// what the first one's early stop legs missed -- which is exactly the designed completion commit
+// 0fd1d463f5 pinned, not a pairing any consumer may generalize. THE RUN-TO-RUN VARIANCE the two
+// launches evidence (TP0 read 22.59 GiB on 2026-09-25 and 23.45 GiB on 2026-09-26 at one subject
+// and configuration) is named so it is never silently folded into a bound: what that variance
+// prices lives outside this subproof's terms, exactly as the 64K bundle's sensitivity note says.
+data arm_experiment_2026_09_26_engine_self_report: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+// THE FOUR ARENA READINGS, one record per rank, hundredths of GiB exactly as reported. The host
+// names are part of the observation: TP3's identity as srv11 is what makes the limiting rank
+// locatable, and a rank reading is meaningless without the unit it was read from.
+type ArmExperimentArenaReading {
+  rank: Nat
+  host: NonEmptyStr
+  kv_arena_hundredths_gib: Nat
+}
+
+data arm_experiment_2026_09_26_arena_readings: List<ArmExperimentArenaReading> = [
+  ArmExperimentArenaReading { rank: 0, host: "srv9" as NonEmptyStr, kv_arena_hundredths_gib: 2345 },
+  ArmExperimentArenaReading { rank: 1, host: "srv10" as NonEmptyStr, kv_arena_hundredths_gib: 1862 },
+  ArmExperimentArenaReading { rank: 2, host: "srv12" as NonEmptyStr, kv_arena_hundredths_gib: 1890 },
+  ArmExperimentArenaReading { rank: 3, host: "srv11" as NonEmptyStr, kv_arena_hundredths_gib: 1729 },
+]
+
+data arm_experiment_2026_09_26_limiting_rank: Nat = 3
+
+data arm_experiment_2026_09_26_generation: NonEmptyStr = "group-b/bounded-experiment-2026-09-26" as NonEmptyStr
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE COMPLETING RUN'S OWN SUBJECT, minted from the workload the experiment RAN -- six cold seats
+// at 262144 tokens, a 2048 batch ceiling -- which at this launch IS the declared group B
+// restoration workload (the bounded experiment launches the group B restoration executable). The
+// launch policy beside the workload is the arm's standing policy, spelled here exactly as the
+// 2026-09-25 bundle spells it (this module mints its subjects from its own runs, and the two
+// bundles agree on the policy values by quoting them, not by sharing an import the observation
+// layer has no business in). Absent means the workload refused to derive -- a state the bindings
+// below cannot be claimed in.
+fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } =>
+      MemoryProofSubjectRefused { cause: "the completing run's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: experiment_intent } =>
+      memory_proof_subject_for_launch(
+        checkpoint: Glm53NativeFp8,
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_intent(
+          intent: experiment_intent,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true }),
+        launch_generation: arm_experiment_2026_09_26_generation,
+      )
+  }
+}
+
+fn arm_experiment_2026_09_26_subject() -> MemoryProofSubject? {
+  match arm_experiment_2026_09_26_subject_mint() {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// ── THE ARENA BINDINGS: THE FOUR READINGS BESIDE THEIR DOCTRINE STANDING ─────────────────────────
+//
+// FOUR BINDINGS, one per rank: the KV arena against the ArmKvCache term, admitted as an OBSERVED
+// INTERVAL at the reporter's rounding unit -- the 64K bundle's standing unchanged. The term BOUND
+// stays open in every binding: a wet observation is not a bound, and the standing carries what
+// the reading establishes until a bounding protocol or a derivation discharges the obligation.
+fn arm_experiment_2026_09_26_provenance(host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "2026-09-26 completing bounded experiment (6x262144, 2048 batched, fp8 KV, 8567 basis points, engine ",
+    arm_experiment_2026_09_26_engine_self_report as String, ") on ", host as String,
+    ", per-rank memory-profile line at gpu_worker.py:867 captured by the experiment's per-rank readback bracket (receipt target/spark-native-experiment-apply-receipt.txt)",
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_2026_09_26_open_bound(obligation: NonEmptyStr) -> ArmComponentBound {
+  ComponentBoundOpen { obligation: obligation }
+}
+
+fn arm_experiment_2026_09_26_arena_binding(reading: ArmExperimentArenaReading, measured_on: MemoryProofSubject) -> ArmWetReceiptBinding {
+  let provenance = arm_experiment_2026_09_26_provenance(host: reading.host)
+  ArmWetReceiptBinding {
+    term: MemoryTerm {
+      component: ArmKvCache,
+      placement_law: MemoryPlacementAllocatorCarve,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseIdleServing,
+      lifetime: MemoryLifetimeLaunch,
+      bound: arm_experiment_2026_09_26_open_bound(obligation: "the observed carve bounds no demand term; the arena is supply evidence for the cache fold once a roster exists, and the cache subproof decides by the direct fold alone" as NonEmptyStr),
+      derivation: "admitted KV arena carve at the experiment's allocator decision (8567 basis points on the rank's pool): what the engine's profiling left for the cache, observed on this rank by the completing launch's readback bracket" as NonEmptyStr,
+    },
+    rank: reading.rank,
+    standing: ArmWetObservedInterval {
+      lower: arm_experiment_gib_hundredths_lower(hundredths: reading.kv_arena_hundredths_gib),
+      upper: arm_experiment_gib_hundredths_upper(hundredths: reading.kv_arena_hundredths_gib),
+      receipt: provenance,
+    },
+    measured_on: measured_on,
+    provenance: provenance,
+  }
+}
+
+// ALL FOUR BINDINGS, or none while the subject refuses.
+fn arm_experiment_2026_09_26_bindings() -> List<ArmWetReceiptBinding> {
+  match arm_experiment_2026_09_26_subject() {
+    Absent => [] as List<ArmWetReceiptBinding>
+    Present { value: measured_on } =>
+      map(arm_experiment_2026_09_26_arena_readings, r => arm_experiment_2026_09_26_arena_binding(reading: r, measured_on: measured_on))
+  }
+}
+
+// ── THE RANK-SUPPLY PROJECTION: THE FORM THE CACHE FOLD CONSUMES ─────────────────────────────────
+//
+// THE FOLD'S SUPPLY VOCABULARY, projected from the readings: the arena at the hundredths FLOOR --
+// the conservative point of the observed interval, the same spelling the 2026-09-25-derived
+// supplies carried (commit 0fd1d463f5's witness priced rank 0's arena that way). The rounding
+// unit (0.01 GiB, about 10.7 MB) sits two orders of magnitude below the byte wall's worst-rank
+// headroom (about 18.44 GB), so floor-versus-interval cannot move the wall: the demand is 0.67%
+// even of the worst rank's floor. THE ALLOCATOR INVENTORY IS THE CALLER'S: the plan's 1035-block
+// figure is launch-level and arrives from the demand side, never from this observation layer.
+fn arm_experiment_2026_09_26_cache_supplies(allocator_blocks: AllocatorBlockCount) -> List<ArmRankCacheSupply> {
+  map(arm_experiment_2026_09_26_arena_readings, r => ArmRankCacheSupply {
+    rank: r.rank,
+    allocator_blocks: allocator_blocks,
+    admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: r.kv_arena_hundredths_gib),
+  })
 }
