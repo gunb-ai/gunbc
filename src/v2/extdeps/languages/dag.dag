@@ -127,6 +127,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_sub,
   canonical_operation_op_mul,
   canonical_operation_op_div,
+  canonical_operation_op_coerce,
   canonical_operation_op_and,
   canonical_operation_op_or,
   canonical_operation_op_lt,
@@ -408,6 +409,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_mul())
   } else if surface_token == ^dag_token_slash {
     outcome_accepted(canonical_operation_op_div())
+  } else if surface_token == ^dag_token_kw_as {
+    outcome_accepted(canonical_operation_op_coerce())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
@@ -3358,6 +3361,12 @@ fn dag_zip_fold_closure_edges() -> List<Edge> {
       target: dag_inhabitant_atom(id: ^dag_surface_spelling_int)
     )
   ]
+}
+
+// The field of an inhabitant record whose target is the type the record declares; every other
+// field states a fact about that type (std.kind roster_member_kind).
+fn dag_declared_inhabitants_subject_field() -> Symbol {
+  ^dag_inhabitant_field_atom
 }
 
 fn dag_declared_inhabitants_root() -> Node {

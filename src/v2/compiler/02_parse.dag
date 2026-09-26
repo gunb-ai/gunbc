@@ -265,14 +265,28 @@ type ParseMemoStats {
   lookup_calls: Int
 }
 
+// THE FURTHEST POSITION A REJECTED ALTERNATIVE REACHED, which is where a refusal is located.
+// `parse_g0_tokens_remain` used to report the FIRST LEFTOVER token: the start of the module item
+// whose production failed as a whole, after `repeat` stopped. That names the symptom item, not
+// the refusal -- a `test fn` whose body holds one unadmitted construct was reported at `test`
+// (DESIGN section 6b). The rejection that went furthest into the stream is the earliest token no
+// admitted production could consume, so it is the locus. A join over one monotone order: the later
+// token wins, end of input beats every token, and the empty value is the unit -- so the answer is
+// independent of the order alternatives were tried in.
+type ParseFurthestFailure
+  = FurthestNone
+  | FurthestAtToken { token: Token }
+  | FurthestAtEnd
+
 type ParseMemoEntry
   = ParseMemoAccepted {
       remaining: List<Token>,
       captured: Node,
       diagnostics: List<Diagnostic>,
-      prov: ParseProvenanceState
+      prov: ParseProvenanceState,
+      furthest: ParseFurthestFailure
     }
-  | ParseMemoRejected { diagnostics: List<Diagnostic> }
+  | ParseMemoRejected { diagnostics: List<Diagnostic>, furthest: ParseFurthestFailure }
 
 type ParseExprResult
   = ParseExprAccepted {
@@ -318,6 +332,7 @@ type ParseTableRealization {
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
+  furthest: ParseFurthestFailure
   nullable_set: List<Symbol>
   first_rows: Map<Symbol, List<FirstKey>>
   productions_by_name: Map<Symbol, GrammarProduction>
@@ -343,6 +358,32 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
     reason: ^parse_grammar_not_well_formed,
     at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_not_well_formed),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// Located at the furthest rejection when one reached past the first leftover token; otherwise at
+// that token. A furthest record at end of input locates at the last token's end, zero-width.
+fn parse_g0_tokens_remain_diagnostic_at(tokens: List<Token>, furthest: ParseFurthestFailure) -> Diagnostic {
+  match list_at_optional(xs: tokens, index: 0) {
+    Absent => parse_g0_tokens_remain_diagnostic(tokens: tokens)
+    Present { value: first } =>
+      match furthest {
+        FurthestNone => parse_g0_tokens_remain_diagnostic(tokens: tokens)
+        FurthestAtToken { token: tok } =>
+          if tok.start > first.start {
+            parse_g0_tokens_remain_diagnostic(tokens: [tok])
+          } else {
+            parse_g0_tokens_remain_diagnostic(tokens: tokens)
+          }
+        FurthestAtEnd =>
+          match list_at_optional(xs: tokens, index: length(xs: tokens) - 1) {
+            Absent => parse_g0_tokens_remain_diagnostic(tokens: tokens)
+            Present { value: last } =>
+              parse_g0_tokens_remain_diagnostic(
+                tokens: [Token { class: last.class, lexeme: last.lexeme, file: last.file, start: last.end, end: last.end }]
+              )
+          }
+      }
   }
 }
 
@@ -547,10 +588,11 @@ fn parse_memo_entry_from_expr(result: ParseExprResult) -> ParseMemoEntry {
         remaining: remaining,
         captured: captured,
         diagnostics: diagnostics,
-        prov: prov
+        prov: prov,
+        furthest: parse_expr_result_table(result: result).furthest
       }
-    ParseExprRejected { diagnostics: diagnostics, table: _ } =>
-      ParseMemoRejected { diagnostics: diagnostics }
+    ParseExprRejected { diagnostics: diagnostics, table: table } =>
+      ParseMemoRejected { diagnostics: diagnostics, furthest: table.furthest }
   }
 }
 
@@ -607,11 +649,60 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
     memo_hits: hits,
     memo_misses: misses,
     memo_lookup_calls: lookups,
+    furthest: table.furthest,
     nullable_set: table.nullable_set,
     first_rows: table.first_rows,
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs
   }
+}
+
+// A MEMO ENTRY CARRIES ITS OWN SUBPARSE'S FURTHEST FAILURE, and a hit joins it back in. The
+// seed serves entries across parses of one token stream (v1_interpreter
+// parse_table_memo_scope_and_key), so a table-only record would lose the deep rejection inside a
+// served subparse and the refusal's locus would depend on cache warmth. The miss path runs the
+// subparse from the unit, stores what that subparse alone reached, then joins it with the caller's.
+fn parse_furthest_join(left: ParseFurthestFailure, right: ParseFurthestFailure) -> ParseFurthestFailure {
+  match left {
+    FurthestNone => right
+    FurthestAtEnd => FurthestAtEnd
+    FurthestAtToken { token: lt } =>
+      match right {
+        FurthestNone => left
+        FurthestAtEnd => FurthestAtEnd
+        FurthestAtToken { token: rt } => if rt.start > lt.start { right } else { left }
+      }
+  }
+}
+
+fn parse_furthest_at(tokens: List<Token>) -> ParseFurthestFailure {
+  match parse_token_first(tokens: tokens) {
+    Present { value: tok } => FurthestAtToken { token: tok }
+    Absent => FurthestAtEnd
+  }
+}
+
+fn parse_table_with_furthest(table: ParseTable, furthest: ParseFurthestFailure) -> ParseTable {
+  ParseTableRealization {
+    artifact_kind: table.artifact_kind,
+    provider_id: table.provider_id,
+    materialization: table.materialization,
+    grammar_digest: table.grammar_digest,
+    token_stream_digest: table.token_stream_digest,
+    entries: table.entries,
+    memo_hits: table.memo_hits,
+    memo_misses: table.memo_misses,
+    memo_lookup_calls: table.memo_lookup_calls,
+    furthest: furthest,
+    nullable_set: table.nullable_set,
+    first_rows: table.first_rows,
+    productions_by_name: table.productions_by_name,
+    prepared_exprs: table.prepared_exprs
+  }
+}
+
+fn parse_table_join_furthest(table: ParseTable, furthest: ParseFurthestFailure) -> ParseTable {
+  parse_table_with_furthest(table: table, furthest: parse_furthest_join(left: table.furthest, right: furthest))
 }
 
 fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
@@ -718,6 +809,7 @@ fn parse_table_for_production_analyzed(
     memo_hits: 0,
     memo_misses: 0,
     memo_lookup_calls: 0,
+    furthest: FurthestNone,
     nullable_set: analysis.nullable_set,
     first_rows: analysis.first_rows,
     productions_by_name: analysis.productions_by_name,
@@ -753,6 +845,7 @@ fn parse_table_empty(materialization: Materialization) -> ParseTable {
     memo_hits: 0,
     memo_misses: 0,
     memo_lookup_calls: 0,
+    furthest: FurthestNone,
     nullable_set: std.algebra.Empty,
     first_rows: empty_map(),
     productions_by_name: empty_map(),
@@ -1312,9 +1405,9 @@ fn parse_nonterminal_memoized_core(
         Holds { value: inner } =>
           let table_hit = parse_table_record_hit(table: table_at_lookup)
           match inner {
-            ParseMemoRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags, table: table_hit }
-            ParseMemoAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+            ParseMemoRejected { diagnostics: diags, furthest: served } =>
+              ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table_hit, furthest: served) }
+            ParseMemoAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, furthest: served } =>
               let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
               let stamped = parse_wrap_production_captured(
                 production: production,
@@ -1326,7 +1419,7 @@ fn parse_nonterminal_memoized_core(
                 captured: stamped.node,
                 diagnostics: diags,
                 prov: stamped.prov,
-                table: table_hit
+                table: parse_table_join_furthest(table: table_hit, furthest: served)
               }
           }
         Violates { diagnostic: _ } =>
@@ -1336,13 +1429,16 @@ fn parse_nonterminal_memoized_core(
             tokens: tokens,
             all_tokens: all_tokens,
             root: root,
-            table: table_miss,
+            table: parse_table_with_furthest(table: table_miss, furthest: FurthestNone),
             prov: parse_prov_enter_frame(prov: prov)
           )
-          let table_after_memo = parse_table_insert(
-            table: parse_expr_result_table(result: inner),
-            key: key,
-            value: parse_memo_entry_from_expr(result: inner)
+          let table_after_memo = parse_table_join_furthest(
+            table: parse_table_insert(
+              table: parse_expr_result_table(result: inner),
+              key: key,
+              value: parse_memo_entry_from_expr(result: inner)
+            ),
+            furthest: table_miss.furthest
           )
           match inner {
             ParseExprRejected { diagnostics: diags, table: _ } =>
@@ -3517,6 +3613,22 @@ fn parse_expr_with_first(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
+  match parse_expr_dispatch(expr: expr, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
+      ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
+    ParseExprRejected { diagnostics: diags, table: table1 } =>
+      ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table1, furthest: parse_furthest_at(tokens: tokens)) }
+  }
+}
+
+fn parse_expr_dispatch(
+  expr: PreparedGrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
   match expr {
     PreparedTerminal { token_class: token_class, stamp: stamp } =>
       parse_expr_terminal(
@@ -3730,7 +3842,11 @@ fn parse_production_prepared_measured_seeded(
             }
           } else {
             ParseProductionMeasured {
-              outcome: Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) },
+              outcome: Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: parse_g0_tokens_remain_diagnostic_at(tokens: remaining, furthest: final_table.furthest)
+                )
+              },
               memo: parse_table_memo_stats(table: final_table)
             }
           }

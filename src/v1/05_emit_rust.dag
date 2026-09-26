@@ -214,7 +214,7 @@ import v1.compiler.infer {
   build_params_scope, extend_scope,
   build_emit_graph_info,
   declared_return_type_node,
-  match_unguarded_absent_arm_index, optional_scrutinee_binding_is_present,
+  match_unguarded_absent_arm_index, optional_match_arm_sees_present_value,
   expr_span,
   resolved_type_name,
   expand_type_for_field_access,
@@ -13558,27 +13558,22 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
   concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
 }
 
-// A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE, and the emitted pattern must
-// say so. v1.compiler.infer types the bare binding in `match opt { null => a  v => b }` at the
-// scrutinee's REQUIRED type (optional_scrutinee_binding_is_present over
-// match_unguarded_absent_arm_index); the body is emitted against that narrowed type. Emitting the
-// binding as a bare `v` bound the whole Option<T>, so the body met an Option where it was typed T
-// (E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>). The narrowing is read
-// from the checker's own predicate, never re-derived here, so the pattern and the typing cannot
-// disagree about which arm narrows: in exactly that arm the binding is emitted `Some(v)`, which the
-// earlier `None` arm keeps exhaustive. The tail-call lowering's own arm emitter
-// (emit_typed_tco_match_arm) and the String-literal re-emission (emit_typed_match's needs_string_from
-// arm) read the same predicate, so the three match renderings agree. In that re-emission a string
-// LITERAL arm over an optional scrutinee is `Some(ref __s)` as well: a literal matches only a
-// present value (the interpreter's Null never equals a Str), which is pattern semantics over an
-// optional carrier rather than the checker's narrowing, so it is keyed on the scrutinee's cardinality.
+// AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
+// is one checker decision, v1.compiler.infer optional_match_arm_sees_present_value: a bare binding
+// after an unguarded `null` arm (typed at the scrutinee's REQUIRED type, so a bare `v` bound the
+// whole Option<T> -- E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>), and a
+// non-null literal arm (a literal matches only a present value). Every match rendering here -- this
+// one, the tail-call lowering's emit_typed_tco_match_arm and emit_typed_match's String-literal
+// re-emission -- and the interpreter's eval_match read that predicate and decide nothing of their
+// own, so the typing, the emitted pattern and the interpreted arm cannot disagree about which arm
+// sees the payload. The earlier `None` arm keeps the `Some(..)` arms exhaustive.
 fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
     let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
     arms |> enumerate |> map(pair =>
       emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false,
-        present_binding: optional_scrutinee_binding_is_present(scrut_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
+        present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
     let entries = arms |> map(arm => RcGroupedArmEntry {
@@ -13642,10 +13637,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
     let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
-    let sf_scrut_optional = resolved_type(n: scrutinee).return_cardinality == CardOptional
     let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
-      present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)
-        || (sf_scrut_optional && is_string_lit_pattern(p: arm_pattern(n: pair.second)))))
+      present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
@@ -15028,7 +15021,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
       let arm_strs = arm_list |> enumerate |> map(pair =>
         emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
-          present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
+          present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_rc_option_ref {
@@ -17474,9 +17467,9 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
       "    let reads = read_ingest(&roots);", "\n",
       "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));", "\n",
       "    let text = v2_cli_outcome_text(outcome.clone());", "\n",
+      "    print!(\"\{text\}\");", "\n",
       "    match &*v2_cli_exit(outcome) \{", "\n",
       "        ProcessExit::ExitSuccess => \{", "\n",
-      "            print!(\"\{text\}\");", "\n",
       "            std::process::exit(0);", "\n",
       "        \}", "\n",
       "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",
