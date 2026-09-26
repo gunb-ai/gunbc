@@ -1096,6 +1096,29 @@ fn compile_stage0(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
 ) -> Result<HashMap<String, String>, String> {
+    // This is the one emission whose population IS the stage0 seed, so the host shell's module
+    // roster is read from its lib.rs and the package graph from the emitted tree's own partition.
+    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
+        &workspace_root().join("src/v1/stage0/src/lib.rs"),
+    )?;
+    compile_stage0_admitted(
+        sources,
+        selection,
+        Rc::new(host_shell_modules.into_iter().collect()),
+        emitted_tree_packages(&workspace_root())?,
+    )
+}
+
+/// THE EMISSION AND ITS EDGE ADMISSION, OVER A SUPPLIED PACKAGE GRAPH. `compile_stage0` supplies
+/// the seed tree's host shell and partition; a witness over a fixture population supplies the rows
+/// that population is built under, rather than being judged against the seed's (DESIGN §3, a
+/// witness supplies its inputs). The admission itself is not relaxed for either.
+fn compile_stage0_admitted(
+    sources: &[(String, String)],
+    selection: &Rc<RustModuleRenderSelection>,
+    host_shell_modules: Rc<im::Vector<String>>,
+    packages: Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages>,
+) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
         .iter()
         .map(|(path, content)| {
@@ -1117,17 +1140,13 @@ fn compile_stage0(
     }
     // EVERY EDGE THE EMITTER WROTE MUST RESOLVE IN THE CRATE ITS MODULE LANDS IN. The emitter
     // returns its use-line and prelude edges beside the text (`gunbc.rust_emitted_edge`), and
-    // `gunbc.stage0_emitted_edge_admission` maps both ends through the partition rows and the
-    // package graph. This is the one emission whose population IS the stage0 seed, so the host
-    // shell's module roster is read from its lib.rs and supplied; a module in neither the rows
-    // nor the shell refuses as not covered rather than passing.
-    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
-        &workspace_root().join("src/v1/stage0/src/lib.rs"),
-    )?;
+    // `gunbc.stage0_emitted_edge_admission` maps both ends through the supplied partition rows
+    // and package graph; a module in neither the rows nor the shell refuses as not covered rather
+    // than passing.
     let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
         result.emitted_edges.clone(),
-        Rc::new(host_shell_modules.into_iter().collect()),
-        emitted_tree_packages(&workspace_root())?,
+        host_shell_modules,
+        packages,
     );
     if let crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
         edge_count,
@@ -1162,12 +1181,9 @@ fn compile_stage0(
 fn emitted_tree_packages(
     workspace: &Path,
 ) -> Result<Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String> {
-    use crate::gunbc_stage0_crate_partition_generated::{
-        GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
-    };
+    use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
     use crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
     use crate::v1_interpreter::{self, ExecutionMode};
-    const ROWS: &str = "generated_partition_crate_rows";
     let roots: Vec<String> = super::regen_source_roots()
         .all()
         .iter()
@@ -1195,101 +1211,28 @@ fn emitted_tree_packages(
                 format!("refusal: the emitted tree's package graph did not resolve: {e}")
             })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    let evaluate = |name: &str| {
-        v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::run_in_context_with_args(&ctx, name, &[], false)
+    // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
+    // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
+    // The wire encoder's tag policy and the mirror's `#[serde(...)]` attributes come from the same
+    // emitter, so the row shape and the kind variants are not restated here, and a row or kind this
+    // binary's mirror cannot represent refuses as undecodable rather than being guessed.
+    fn decode<T: serde::de::DeserializeOwned>(
+        ctx: &v1_interpreter::InterpContext,
+        name: &str,
+    ) -> Result<T, String> {
+        let value = v1_interpreter::with_active_context(ctx, || {
+            v1_interpreter::run_in_context_with_args(ctx, name, &[], false)
         })
-        .map_err(|e| format!("refusal: {name} did not evaluate: {e}"))
-    };
-    let value = evaluate(ROWS)?;
-    let field = |fields: &[(v1_interpreter::Symbol, ModelValue)], name: &str| {
-        fields
-            .iter()
-            .find(|(sym, _)| ctx.sym_eq(*sym, name))
-            .map(|(_, v)| v.clone())
-            .ok_or_else(|| format!("refusal: a {ROWS} row carries no field {name}"))
-    };
-    let string = |value: ModelValue, name: &str| match value {
-        ModelValue::Str(s) => Ok(s.to_string()),
-        other => Err(format!(
-            "refusal: {ROWS} field {name} is a {} where a String was expected",
-            other.type_label_public()
-        )),
-    };
-    let ModelValue::List(items) = value else {
-        return Err(format!(
-            "refusal: {ROWS} evaluated to a {} where a List was expected",
-            value.type_label_public()
-        ));
-    };
-    let mut rows = im::Vector::new();
-    for item in items.iter() {
-        let ModelValue::Record { fields, .. } = item else {
-            return Err(format!(
-                "refusal: a {ROWS} member is a {} where a GeneratedPartitionCrateRow was expected",
-                item.type_label_public()
-            ));
-        };
-        let kind = match field(fields, "kind")? {
-            ModelValue::Variant { variant_name, .. } => {
-                if ctx.sym_eq(variant_name, "GeneratedFoundationCrate") {
-                    GeneratedPartitionCrateKind::GeneratedFoundationCrate
-                } else if ctx.sym_eq(variant_name, "GeneratedLayeredCoreCrate") {
-                    GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate
-                } else if ctx.sym_eq(variant_name, "GeneratedEmitCoreCrate") {
-                    GeneratedPartitionCrateKind::GeneratedEmitCoreCrate
-                } else {
-                    return Err(format!(
-                        "refusal: a {ROWS} row names a crate kind this binary does not know"
-                    ));
-                }
-            }
-            other => {
-                return Err(format!(
-                    "refusal: {ROWS} field kind is a {} where a variant was expected",
-                    other.type_label_public()
-                ))
-            }
-        };
-        let carries_non_empty_wrappers = match field(fields, "carries_non_empty_wrappers")? {
-            ModelValue::Bool(b) => b,
-            other => {
-                return Err(format!(
-                    "refusal: {ROWS} field carries_non_empty_wrappers is a {} where a Bool was expected",
-                    other.type_label_public()
-                ))
-            }
-        };
-        rows.push_back(Rc::new(GeneratedPartitionCrateRow {
-            package_name: string(field(fields, "package_name")?, "package_name")?,
-            crate_dir: string(field(fields, "crate_dir")?, "crate_dir")?,
-            kind,
-            modules: Rc::new(im::Vector::from(model_value_to_string_list(
-                &field(fields, "modules")?,
-                ROWS,
-            )?)),
-            reexport_packages: Rc::new(im::Vector::from(model_value_to_string_list(
-                &field(fields, "reexport_packages")?,
-                ROWS,
-            )?)),
-            carries_non_empty_wrappers,
-        }));
+        .map_err(|e| format!("refusal: {name} did not evaluate: {e}"))?;
+        let wire = super::value_to_wire_json(&value, ctx)
+            .map_err(|e| format!("refusal: {name} did not wire-encode: {e}"))?;
+        serde_json::from_value(wire).map_err(|e| format!("refusal: {name} did not decode: {e}"))
     }
-    const SHELL_NAME: &str = "generated_host_shell_package_name";
-    const SHELL_DEPS: &str = "generated_host_shell_partition_dependencies";
-    let host_shell_package_name = match evaluate(SHELL_NAME)? {
-        ModelValue::Str(s) => s.to_string(),
-        other => {
-            return Err(format!(
-                "refusal: {SHELL_NAME} evaluated to a {} where a String was expected",
-                other.type_label_public()
-            ))
-        }
-    };
-    let host_shell_dependencies = im::Vector::from(model_value_to_string_list(
-        &evaluate(SHELL_DEPS)?,
-        SHELL_DEPS,
-    )?);
+    let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
+        decode(&ctx, "generated_partition_crate_rows")?;
+    let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
+    let host_shell_dependencies: im::Vector<String> =
+        decode(&ctx, "generated_host_shell_partition_dependencies")?;
     Ok(Rc::new(Stage0EmittedTreePackages {
         rows: Rc::new(rows),
         host_shell_package_name,
@@ -2711,6 +2654,55 @@ mod tests {
             .collect()
     }
 
+    /// THE PACKAGE GRAPH THE FIXTURE POPULATION IS BUILT UNDER, supplied rather than read from the
+    /// seed tree, whose rows name none of the fixture modules and so would refuse every edge as not
+    /// covered. It has the seed's shape at the scale of the fixture: the runtime prelude module
+    /// (`gunbc.rust_emitted_edge` `rust_runtime_prelude_module`) in a foundation crate, and the
+    /// three fixture modules in a layered core crate that re-exports it, so each prelude edge is
+    /// admitted by the partition's own layering rule rather than by a hand-written edge.
+    fn selection_fixture_packages(
+    ) -> Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages> {
+        use crate::gunbc_stage0_crate_partition_generated::{
+            GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+        };
+        let row = |package: &str,
+                   kind: GeneratedPartitionCrateKind,
+                   modules: im::Vector<String>,
+                   reexports: im::Vector<String>| {
+            Rc::new(GeneratedPartitionCrateRow {
+                package_name: package.to_string(),
+                crate_dir: package.replace('-', "_"),
+                kind,
+                modules: Rc::new(modules),
+                reexport_packages: Rc::new(reexports),
+                carries_non_empty_wrappers: false,
+            })
+        };
+        Rc::new(
+            crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
+                rows: Rc::new(im::vector![
+                    row(
+                        "fx-runtime",
+                        GeneratedPartitionCrateKind::GeneratedFoundationCrate,
+                        im::vector![crate::gunbc_rust_emitted_edge::rust_runtime_prelude_module()],
+                        im::Vector::new(),
+                    ),
+                    row(
+                        "fx-core",
+                        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
+                        selection_fixture()
+                            .iter()
+                            .map(|(path, _)| path.trim_end_matches(".dag").to_string())
+                            .collect(),
+                        im::vector!["fx-runtime".to_string()],
+                    ),
+                ]),
+                host_shell_package_name: "fx-host".to_string(),
+                host_shell_dependencies: Rc::new(im::vector!["fx-core".to_string()]),
+            },
+        )
+    }
+
     /// `selected_basenames` is `None` for the whole-closure arm and `Some(list)` for a selection.
     /// The `RustModuleRenderSelection` itself is built INSIDE the worker thread: the emitter's
     /// values are `Rc`-shaped and therefore not `Send`, so the selection cannot cross the thread
@@ -2726,11 +2718,80 @@ mod tests {
                         basenames: Rc::new(names.into_iter().collect()),
                     },
                 });
-                compile_stage0(&selection_fixture(), &selection).expect("fixture emits clean")
+                compile_stage0_admitted(
+                    &selection_fixture(),
+                    &selection,
+                    Rc::new(im::Vector::new()),
+                    selection_fixture_packages(),
+                )
+                .expect("fixture emits clean")
             })
             .expect("spawn emit thread")
             .join()
             .expect("emit thread panicked")
+    }
+
+    /// THE ADMISSION IS NOT RELAXED FOR THE FIXTURE. The same population, judged against a package
+    /// graph whose rows omit its modules, still refuses as not covered: the supplied rows are what
+    /// admit it, and removing them reds.
+    #[test]
+    fn the_fixture_refuses_as_not_covered_without_its_partition_rows() {
+        let refusal = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let bare = Rc::new(
+                    crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
+                        rows: Rc::new(im::Vector::new()),
+                        ..(*selection_fixture_packages()).clone()
+                    },
+                );
+                compile_stage0_admitted(
+                    &selection_fixture(),
+                    &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                    Rc::new(im::Vector::new()),
+                    bare,
+                )
+                .expect_err("a population no partition row covers must refuse")
+            })
+            .expect("spawn emit thread")
+            .join()
+            .expect("emit thread panicked");
+        assert!(
+            refusal.contains("Stage0EmittedEdgesNotCovered") && refusal.contains("fx_beta"),
+            "the refusal must be the not-covered arm naming a fixture module: {refusal}"
+        );
+    }
+
+    /// THE DECODE READS THE REAL TREE, and at a settled head the tree's rows ARE the rows this
+    /// binary was built from, so the two must agree exactly. This is the inhabitance claim for
+    /// `emitted_tree_packages`: the fixture claims above supply the package graph, and this one
+    /// runs the production read of it through the wire decode.
+    #[test]
+    fn the_emitted_tree_package_graph_decodes_to_the_compiled_rows_at_a_settled_head() {
+        require_measurable_host_budget();
+        // Asserted inside the worker: the decoded values are `Rc`-shaped and do not cross threads.
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let packages =
+                    emitted_tree_packages(&workspace_root()).expect("the tree's package graph decodes");
+                assert_eq!(
+                    *packages.rows,
+                    *crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows(),
+                    "decoded partition rows"
+                );
+                assert_eq!(
+                    packages.host_shell_package_name,
+                    crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_package_name()
+                );
+                assert_eq!(
+                    *packages.host_shell_dependencies,
+                    *crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies()
+                );
+            })
+            .expect("spawn decode thread")
+            .join()
+            .expect("the decode claim held");
     }
 
     fn beta_only() -> Option<Vec<String>> {
@@ -4383,6 +4444,24 @@ struct PartitionRebuildActuation {
 }
 
 type ModelValue = crate::v1_interpreter::Value;
+
+/// A CLAIM THAT RESOLVES THE LIVE CORPUS CANNOT BE MEASURED WITHOUT A READABLE HOST MEMORY BOUND,
+/// and says so at its own boundary before it starts. Resolution refuses `HostBudgetUnreadable` on
+/// such a host anyway (`cli_run::entry_resolve`); this states that precondition where the claim is
+/// declared, as a red. It never returns early: an unmeasured claim that reports a pass is the
+/// vacuous-pass class (`gunbc.recurring_failure_mode`
+/// `missing_precondition_reported_as_a_pass`).
+#[cfg(test)]
+fn require_measurable_host_budget() {
+    let budget = crate::memory_governor::read_host_budget_resolution();
+    if budget.bytes().is_none() {
+        panic!(
+            "NOT MEASURED: host budget unreadable ({}). This claim resolves the live corpus and \
+             cannot run without a readable memory bound. This is a red, not a pass.",
+            budget.label()
+        );
+    }
+}
 
 fn model_string_list(xs: &[String]) -> ModelValue {
     use crate::v1_interpreter::str_value;
@@ -6222,6 +6301,7 @@ mod regen_round_cost_tests {
     /// exercises the real host-to-model boundary's named refusal.
     #[test]
     fn live_module_mirrors_have_owners_and_removed_shell_owner_refuses() {
+        require_measurable_host_budget();
         use crate::v1_interpreter::{self, ExecutionMode, Value};
         let workspace = workspace_root();
         let stage0 = workspace.join("src/v1/stage0/src");
@@ -6309,6 +6389,7 @@ mod regen_round_cost_tests {
     /// forty-minute round. The expected text is the same fixture the .dag witness asserts.
     #[test]
     fn host_built_receipt_renders_through_the_model() {
+        require_measurable_host_budget();
         // Both roots the production driver passes: `std.observation`'s closure reaches
         // `std.cache_interface`, which imports `v2.std.optional` from src/v2.
         let roots: Vec<String> = ["dag", "src/v2"]
@@ -6389,11 +6470,22 @@ mod regen_convergence_host_instrument_tests {
     static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
     fn fixture_workspace() -> (PathBuf, PathBuf, PathBuf, RegenConvergenceCheckpointSubject) {
+        // THE FIXTURE OWNS A FRESH ROOT. Process id and counter alone repeat across runs (a test
+        // that panics never reaches its `remove_dir_all`, and a later process can draw the same
+        // id), so the name also carries the wall-clock nanos, and the root is created with
+        // `create_dir`: a root that already exists refuses here, located, rather than being
+        // written into with a previous run's files and permissions still in it.
         let root = std::env::temp_dir().join(format!(
-            "gunbc-regen-convergence-host-{}-{}",
+            "gunbc-regen-convergence-host-{}-{}-{}",
             std::process::id(),
-            FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
+            FIXTURE_ID.fetch_add(1, Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
         ));
+        fs::create_dir(&root)
+            .unwrap_or_else(|e| panic!("fixture root {} must be fresh: {e}", root.display()));
         let stage0 = root.join("src/v1/stage0/src");
         let candidate = root.join("candidate/src");
         fs::create_dir_all(&stage0).unwrap();
@@ -6505,6 +6597,7 @@ mod regen_convergence_host_instrument_tests {
     /// sees them together; rebuild runs once.
     #[test]
     fn mixed_role_two_mirror_candidate_installs_all_then_rebuilds_once() {
+        require_measurable_host_budget();
         let (workspace, stage0, candidate, subject) = fixture_workspace();
         let rows = [
             (
@@ -6605,6 +6698,7 @@ mod regen_convergence_host_instrument_tests {
     /// Positive control: a single GenerationInput mirror still takes PromoteGenerationInputs.
     #[test]
     fn single_generation_input_still_promotes_alone() {
+        require_measurable_host_budget();
         let (workspace, stage0, candidate, _) = fixture_workspace();
         let rows = [(
             "fixture_producer.rs",
@@ -6673,6 +6767,7 @@ mod regen_convergence_host_instrument_tests {
     /// rather than evidence that something else refused first.
     #[test]
     fn install_admission_contains_the_destination_against_a_symlink() {
+        require_measurable_host_budget();
         let (workspace, stage0, candidate, subject) = fixture_workspace();
         let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
 
@@ -6754,6 +6849,7 @@ mod regen_convergence_host_instrument_tests {
     /// join that refuses everything, which is the shape the positive controls exclude.
     #[test]
     fn population_joins_refuse_by_identity_and_admit_an_exact_partition() {
+        require_measurable_host_budget();
         let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
         let modules = fixture_modules(&[
             ("a.rs", "fixture.a", ""),
@@ -6845,6 +6941,7 @@ mod regen_convergence_host_instrument_tests {
 
     #[test]
     fn stage_execution_joins_the_plan_to_independently_observed_effects() {
+        require_measurable_host_budget();
         let (workspace, stage0, candidate, subject) = fixture_workspace();
         let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
         // One module map covering BOTH surfaces: an observed effect on an unplanned path must
@@ -7021,6 +7118,7 @@ mod regen_convergence_host_instrument_tests {
 
     #[test]
     fn install_admission_refuses_unaddressable_and_hand_maintained() {
+        require_measurable_host_budget();
         let (workspace, stage0, candidate, subject) = fixture_workspace();
         let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
         // NO Cargo.toml ARM HERE, deliberately. The emitted manifest is stage0's own package
@@ -7182,6 +7280,7 @@ mod regen_convergence_host_instrument_tests {
     /// production. Only the external seed build and executable digest are hermetic callbacks.
     #[test]
     fn mutating_transaction_binds_candidates_restores_and_reaches_staged_fixed_point() {
+        require_measurable_host_budget();
         let roots = fixture_roots();
         let model = RegenConvergenceModel::load(&roots).unwrap();
 
@@ -8446,8 +8545,11 @@ mod regen_emission_scope_tests {
         let formatter = match ResolvedFormatter::admit() {
             Ok(f) => f,
             // The formatter is a boundary fact; where it is absent this half of the control is
-            // unobservable and says so rather than passing vacuously.
-            Err(_) => return,
+            // unobservable, and an unobserved control is a red, never an early-return pass.
+            Err(e) => panic!(
+                "NOT MEASURED: no admissible formatter ({e}), so the tree-digest walls cannot be \
+                 observed. This is a red, not a pass."
+            ),
         };
         assert!(tree_digest_from_map(&formatter, &HashMap::new(), &[]).is_err());
         assert!(tree_digest_for_basenames(&formatter, &tmp, &[], "committed").is_err());
@@ -8458,6 +8560,7 @@ mod regen_emission_scope_tests {
     /// forty-minute round.
     #[test]
     fn host_selection_and_model_selection_agree() {
+        require_measurable_host_budget();
         for scope in [
             RegenEmissionScope::WholePopulation,
             RegenEmissionScope::Affected {
@@ -8480,6 +8583,7 @@ mod regen_emission_scope_tests {
     /// `Err` carries, asserted on the side that owns the vocabulary.
     #[test]
     fn the_model_selects_nothing_on_the_unlocatable_arm() {
+        require_measurable_host_budget();
         let scope = RegenEmissionScope::Unlocatable {
             paths: vec![s("dag/std/departed.dag")],
             reason: s("regen-affected-set: EditedSetUnlocatable unlocatable=1"),
@@ -8532,6 +8636,7 @@ mod regen_affected_set_tests {
 
     #[test]
     fn host_walk_and_model_fold_agree_on_the_fixture_graph() {
+        require_measurable_host_budget();
         let host = regen_reverse_closure_host(&[s("std.a")], &fixture_edges());
         assert_eq!(
             host,
@@ -8572,6 +8677,7 @@ mod regen_affected_set_tests {
     /// population -- the arm is the refusal, and the edited module beside it is not walked.
     #[test]
     fn an_unlocatable_edited_path_refuses_and_selects_nothing() {
+        require_measurable_host_budget();
         let bound = render_affected_set_bound(
             &roots(),
             &[s("std.a")],
@@ -8642,6 +8748,7 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
     /// edit is the whole population.
     #[test]
     fn live_tree_controls_land_on_the_measured_arms() {
+        require_measurable_host_budget();
         let workspace = workspace_root();
         let (edges, modules) = regen_module_edges(&workspace).expect("the closure edge index maps");
         let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
