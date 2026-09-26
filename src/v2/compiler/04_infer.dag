@@ -9,7 +9,7 @@ import v2.std.bounded_lattice_completeness {
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_wire_matches_operation,
-  target_model_canonical_operations_roster_root
+  target_model_canonical_operation_member_declared_type
 }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.inferred_tree {
@@ -26,7 +26,7 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
-  dag_grammar_productions_roster_root
+  dag_grammar_production_member_declared_type
 }
 import v2.extdeps.languages.python { python_declared_inhabitants_root }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root }
@@ -578,38 +578,19 @@ fn infer_type_node_awaits_product_row(n: Node) -> Bool {
   (length(xs: n.children) > 0) && !infer_node_declared_in_language_inhabitants_bool(n: n)
 }
 
-// THE CANONICAL-OPERATION ROSTER MEMBERSHIP DERIVATION. The resolver canonicalizes a dag surface
-// operator (e.g. `+`) to the target-model authority's declared canonical operation, and the
-// transform rule already validates operators by matching against that authority's wire nodes
-// (canonical_operation_wire_matches_operation). The wire atoms -- the operation discriminant and
-// its field references -- are declared components of those same wire nodes, gathered under the
-// authority's declared roster root (target_model_canonical_operations_roster_root). So a node
-// that IS a roster member derives by lookup with the roster root as evidence, never by invention
-// -- the same frame as the dag declared-inhabitants roster, and general over every declared
-// operation rather than add-narrow. The end-state deletes this lookup with the other
-// specimen-scope rules, when the resolver hands infer declaration-resolved identities directly.
+// THE CANONICAL-OPERATION AND GRAMMAR-PRODUCTION MEMBER DERIVATIONS. The resolver canonicalizes a
+// dag surface operator to a target-model CanonicalOperation wire node, and the bridge projects a
+// grammar production's identity atom (e.g. dag_surface_module) into the tree. Each such node is a
+// member of its authority's roster, and derives with the type that authority DECLARES for the
+// member (v2.std.compilers.target_model target_model_canonical_operation_member_declared_type,
+// v2.extdeps.languages.dag dag_grammar_production_member_declared_type) -- never the roster root,
+// which would make derived_type carry provenance where every reader expects a type (DESIGN §3).
 
-fn infer_node_declared_in_canonical_operations(n: Node) -> Bool {
-  any(
-    xs: node_subtree_nodes(root: target_model_canonical_operations_roster_root()),
-    predicate: fn(member) { member == n }
-  )
-}
-
-// THE GRAMMAR-PRODUCTION ROSTER MEMBERSHIP DERIVATION. The bridge projects a grammar production's
-// parse into the tree as (identity atom, captured content) pairs; the identity atom (e.g.
-// dag_surface_module) is the emitted surface atom the dag grammar authority declares for that
-// production, gathered under the authority's roster root (dag_grammar_productions_roster_root).
-// So a node that IS a roster member derives by lookup with the roster root as evidence, never by
-// invention -- the same frame as the declared-inhabitants roster, general over every declared
-// production. The end-state deletes this lookup with the other specimen-scope rules, when the
-// resolver hands infer declaration-resolved identities directly.
-
-fn infer_node_declared_in_dag_grammar_productions(n: Node) -> Bool {
-  any(
-    xs: node_subtree_nodes(root: dag_grammar_productions_roster_root()),
-    predicate: fn(member) { member == n }
-  )
+fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
+  match target_model_canonical_operation_member_declared_type(n: n) {
+    Present { value: member_type } => optional_present(value: member_type)
+    Absent => dag_grammar_production_member_declared_type(n: n)
+  }
 }
 
 fn infer_product_child_evidence_edges(
@@ -721,20 +702,14 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                           descent: Holds { value: descent_proof }
                         )
                       Absent =>
-                        if infer_node_declared_in_canonical_operations(n: n) {
-                          inferred_facts_from_derived_type(
-                            node: n,
-                            derived_type: target_model_canonical_operations_roster_root(),
-                            descent: Holds { value: descent_proof }
-                          )
-                        } else {
-                          if infer_node_declared_in_dag_grammar_productions(n: n) {
+                        match infer_roster_member_declared_type(n: n) {
+                          Present { value: member_type } =>
                             inferred_facts_from_derived_type(
                               node: n,
-                              derived_type: dag_grammar_productions_roster_root(),
+                              derived_type: member_type,
                               descent: Holds { value: descent_proof }
                             )
-                          } else {
+                          Absent =>
                             match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
                               Present { value: domain_ty } =>
                                 inferred_facts_from_derived_type(
@@ -748,7 +723,6 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                                   descent: Holds { value: descent_proof }
                                 )
                             }
-                          }
                         }
                     }
                   Absent =>
