@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation: RecurringFailureMode = RecurringFailureMode {
+  identity: "gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation" as NonEmptyStr,
+  receipts: [
+    "**every `gunbc run` step pays a fixed per-invocation cost that does not scale with its entry's closure** (INVALID STATE: a CI step whose work is a few-module fold -- read one environment variable, compare it to one host name -- costs minutes of wall time before it evaluates anything, and the cost is denominated in the corpus rather than in the entry. A step budget sized for the fold is then consumed by work the fold never demanded.)",
+    "HARM. Every fleet-converge and floor step that shells `gunbc run` pays it on every dispatch, so it multiplies across steps and runs. It also hides closure cost: a step that times out cannot be told apart, from its budget alone, from a step whose entry closure grew. Run 36170715248 timed out at 'Mt. Collins boot admission (credential-free)' on a combination of both.",
+    "DISTINGUISHING FACTS. This is not the closure-size defect that run exhibited. Moving the admission fold into its own module (gunbc#12311, gunbc.machine_intake_mtcollins1_boot_admission) removed the typecheck of the boot run's closure, and the same measurement fell substantially. It did not fall toward zero: the remainder is paid identically for a closure of three modules and printed no typecheck lines. So the residue is a fixed cost paid before the entry is resolved -- that much is measured. WHAT it is remains a HYPOTHESIS (DESIGN §4d): whole-tree preparation is the leading candidate, not an established cause, and this row is named for the measured fact so that confirming or refuting the hypothesis does not rename it.",
+    "INSTRUMENT (DESIGN §6: named here, its figures deliberately not transcribed): `time FLEET_CONVERGE_EXPECTED_HOST=srv1 gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/machine_intake/mtcollins1_boot_admission.dag --function mtcollins1_boot_admit_executor` on a head-built gunbc, compared with the same function under the larger entry that held it before gunbc#12311. The row claims the comparison's SHAPE -- the small entry is much cheaper than the large one and still far from free -- and a reader re-derives the magnitudes rather than reading them here.",
+    "RUNG FOUND AT: mitigatable -- the shared gunbc_ci_aux_step_timeout_minutes bounds the step, and the step refuses at its budget rather than running unbounded.",
+    "CEILING: mechanically preventable. A gate can hold each gunbc run step's measured wall time against a cost derived from its entry closure. Whether the fixed part can be removed entirely depends on what the preparation computes, which is not yet decomposed.",
+    "NEXT-RUNG TRIGGER: a decomposition of `gunbc run`'s pre-entry preparation into named phases with their own costs, sufficient to show which part a small-closure entry does not demand. Until then, a step timeout derived from closure cost has no fixed-cost term to add.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet_workflow_steps", decl_name: "gunbc_ci_aux_step_timeout_minutes", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_mtcollins1_boot_admit_target", field: WholeDeclaration },
+  ],
+}
