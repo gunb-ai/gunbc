@@ -71,7 +71,8 @@ import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import v2.std.collection { Cons, List }
+import v2.std.collection { List }
+import std.algebra { Cons }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
