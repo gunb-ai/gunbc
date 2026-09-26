@@ -1,0 +1,406 @@
+module gunbc.native_frontier_workflow
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { list_map }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowDispatch, Schedule,
+  WorkflowPermissions, PermRead,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool
+}
+import extdeps.cron.schedule_model { CronSchedule, Exact, Wildcard }
+import extdeps.exec.command { shell_command_render }
+import extdeps.systemd { MemoryMax }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_user_scope_command }
+import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
+import gunbc.action_use_admission { checkout_action, upload_artifact_action }
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
+  workflow_job_capability_closure, capability_closure_is_closed
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+}
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, floor_attempt_command_log_filename }
+import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.gunbc_cli_command { gunbc_test_command }
+import gunbc.heal_workflow { job_permissions_carry_write }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import v2.std.orchestration {
+  Pipeline, PipelineStep, Do, Comment, Exit, If, Run, FailFast,
+  ExitZero, Not, DiscardOut, ToFile
+}
+import v2.std.optional { optional_present, optional_absent }
+import v2.workflow.ci_workflow_run_emit { ci_workflow_run_emit_pipeline, ci_workflow_do }
+
+// THE NIGHTLY NATIVE FRONTIER RUN (operator-approved 2026-09-23 as one additional job, on a nightly
+// cadence only). It runs `//gunbc/instruments:v2-native-frontier` once a night on the srv
+// self-hosted class and publishes what that run proposes. The verdict is
+// gunbc.native_frontier_ratchet's; this module decides only the job's realization.
+//
+// WHY NIGHTLY AND NOT MERGE_GROUP. The adjudicating native run is the route whose measured wall
+// retired the `required-v2-native` lane (gunbc.rung_drop v2_native_route_off_the_merge_path, now
+// replaced by gunbc.rung_drop v2_native_frontier_nightly_cadence). A per-pull-request or
+// merge_group lane needs a further operator decision, and that decision should be made from the
+// wall THIS job measures. The job does not restate that wall: the emitted binary prints it on its
+// `[native-cost-partition]` line (`parent_span_nanos`, `peak_rss_bytes`), and the step timings
+// record it on every run.
+//
+// WHY THE SRV CLASS, AND WHY THE BOUND. A BuildBuddy runner (7 GiB) is killed by native emission.
+// The run's resident set is the reason it cannot share a host unbounded. So the instrument runs in
+// a transient user scope with a MemoryMax the kernel enforces
+// (extdeps.systemd.systemd_run systemd_run_user_scope_command). An over-budget run is killed inside
+// its own cgroup and reported red by the step. It is never allowed to compete for the host.
+// `GUNBC_MEMORY_BUDGET_BYTES` would not do here: the seed reads it as a planning ceiling and does
+// not enforce it (v1 memory_governor).
+//
+// NO CREDENTIAL ON THE FLEET. The job is read-only. It uploads the proposed roster file as an
+// artifact and writes the frontier lines to the job summary. Opening the shrink pull request is a
+// recurring privileged write, which DESIGN section 3b routes through
+// gunbc.auth.authorization_pattern_selection. Our self-hosted runners also run pull-request code,
+// so a token there would be reachable from it. The publisher is a DECLARED FRONTIER (operator
+// ruling via neat-boar-16, 2026-09-23). It must reuse gunbc.heal_publisher_workflow's route (its
+// WIF federation and per-secret cell, on a GitHub-hosted runner), extended there if heal-publish
+// cannot yet express "open a roster pull request", and never mint a second publisher. TRIGGER: that
+// extension lands. Until then an advance is not progress: the ratchet's own report says
+// "N roster row(s) cleared or later-staged, NOT YET APPLIED", and the committed roster stays
+// authoritative.
+//
+// `emit-build`'s cancellation ruling does not apply: this is a schedule and a manual dispatch, and a
+// newer run of the same subject supersedes an older one (cancel-in-progress), so no head ever holds
+// more than one native claimant.
+
+data native_frontier_workflow_name: String = "native-frontier"
+
+data native_frontier_job_id: String = "frontier"
+
+data native_frontier_required_bins: List<String> = ["gunbc"]
+
+data native_frontier_build_step_name: String = "Build the compiler the instrument runs through"
+
+data native_frontier_run_step_name: String = "Run //gunbc/instruments:v2-native-frontier under a memory bound"
+
+data native_frontier_run_step_id: String = "frontier_run"
+
+data native_frontier_proposal_path: String = "native-frontier-roster-proposal.dag"
+
+data native_frontier_proposal_artifact_name: String = "native-frontier-roster-proposal"
+
+data native_frontier_artifact_retention_days: Int = 14
+
+// A BOUND, NOT A BUDGET. The one full native run measured on srv2 peaked near 15 GB (the drop row's
+// figure, re-derived by this job's own `[native-cost-partition]` line). The bound leaves room above
+// that, and stays far enough under an srv host that co-tenant runner slots survive a runaway.
+data native_frontier_memory_max: NonEmptyStr = "24G"
+
+// A BOUND ABOVE THE ONE MEASURED FULL RUN (4h06m on srv2), for the same reason as the memory bound:
+// trimming a slow but honest run would turn a verdict into silence. The wall this job measures is
+// what a later merge_group decision reads.
+data native_frontier_timeout_minutes: Int = 360
+
+// 03:17 UTC, off the hour so it does not queue behind every other scheduled workflow on GitHub.
+data native_frontier_schedule: CronSchedule = CronSchedule {
+  minute: Exact { value: 17 },
+  hour: Exact { value: 3 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+fn native_frontier_instrument_command() -> String {
+  shell_command_render(command: systemd_run_user_scope_command(
+    properties: [SystemdRunProperty { property: MemoryMax, value: native_frontier_memory_max }],
+    command: gunbc_test_command(label: "//gunbc/instruments:v2-native-frontier")
+  ))
+}
+
+// THE MEMORY BOUND'S PRECONDITION, ASSERTED FIRST AND REFUSED WITH A TYPED CAUSE. `systemd-run --user`
+// needs a reachable user manager for the runner user, and that is a host fact, not a repository
+// one. Measured by neat-boar-16 on 2026-09-23 for ghrunner (uid 999): srv1 has Linger=yes, but its
+// /run/user/999 was absent at the time of reading (the manager may start lazily; unverified), and
+// srv2 reports the user neither logged in nor lingering, so it cannot host this job until an
+// operator enables linger there. This step runs before the build, so an unfit host refuses in
+// seconds, naming `UserManagerUnreachable`, instead of hours into the census. There is no
+// unbounded fallback.
+// MARKED ON REQUEST (review 70711): both hand-shell steps in this job carry an on-carrier marker,
+// as their siblings in the prelude do, and each names the capability that ends it.
+data native_frontier_preflight_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: native_frontier_preflight_step -- orch-emitted foreign-executor step probing the runner user's systemd manager (systemctl --user show-environment) and refusing with UserManagerUnreachable; the if/echo/exit strings remain until a typed host-manager-reachability probe lands on host_effect_apply (#5828 / shell-to-intent Phase 2), whose refusal arm this step's cause becomes")
+
+data native_frontier_publish_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: native_frontier_publish_step -- orch-emitted foreign-executor step copying the [native-frontier] and [native-frontier-roster] lines the emitted binary already rendered (gunbc.native_frontier_ratchet native_frontier_report_lines, native_frontier_proposal_file_lines) into the job summary and the proposal file; the sed/echo/redirect strings remain until the emitted driver writes those two files itself, which is the capability gunbc.source_root_eval_driver_seed_growth names for its whole rendered main (a .dag driver receiving host effects as values, v2.cli.compile_cli NativeCliDriver). Adding the writes to the rendered main now instead would grow hand-written seed Rust to retire hand-written shell, which the 2026-09-23 seed policy refuses")
+
+// THE PREFLIGHT AS A PIPELINE, NOT AS SHELL TEXT (review 70721). The branch, the refusal and the
+// exit are v2.std.orchestration structure, rendered by the same bash emitter as the prelude steps.
+// Only the leaf commands are strings, which is the same level the prelude sits at.
+fn native_frontier_preflight_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      Comment { text: dissolution_description(condition: native_frontier_preflight_shell_emit_dissolution_trigger) },
+      If {
+        cond: Not { inner: ExitZero { run: Run {
+          command: shell_command_render(command: systemctl_user_manager_probe_command()),
+          env: [],
+          redirect: optional_present(value: DiscardOut),
+          capture: optional_absent()
+        } } },
+        then_: Pipeline {
+          steps: [
+            ci_workflow_do(command: "echo \"::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict.\""),
+            Exit { status: "1" }
+          ],
+          on_failure: FailFast
+        },
+        else_: optional_absent()
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn native_frontier_preflight_step() -> Step {
+  RunStep {
+    name: Present { value: "Assert the runner user's systemd manager is reachable (the memory bound needs it)" },
+    id: none,
+    run: ci_workflow_run_emit_pipeline(p: native_frontier_preflight_pipeline()),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn native_frontier_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: [kv(key: "persist-credentials", value: yaml_bool(b: false))] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE RUN'S LOG IS THE WRAPPER'S OWN (gunbc.ci_failure_class floor_attempt_command_log_filename).
+// The wrapper tees the command under pipefail, so the step's status is the instrument's. A second
+// tee inside the command would report tee's status instead. The failure-class wrapper is the
+// floor's, so a lost runner reads as `infra` rather than as a frontier verdict.
+fn native_frontier_run_step() -> Step {
+  RunStep {
+    name: Present { value: native_frontier_run_step_name },
+    id: Present { value: native_frontier_run_step_id },
+    run: concat(
+      wrap_command_with_floor_attempt_receipt(
+        command: native_frontier_instrument_command()
+      ),
+      "\n"
+    ),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE READ-BACK IS A PREFIX STRIP AND NOTHING ELSE. Every line it copies was rendered by
+// gunbc.native_frontier_ratchet (`native_frontier_report_lines`, `native_frontier_proposal_file_lines`),
+// so this step decides no fact. It runs whatever the verdict was, because a lost or unminted run
+// is exactly the run whose lines a reader needs. The proposal file is a typed redirect (ToFile).
+// The summary appends stay inside leaf commands, as the prelude's `>> "$GITHUB_ENV"` rows do,
+// because v2.std.orchestration RedirectSpec has no append arm.
+fn native_frontier_prefix_strip_command(prefix: String) -> String {
+  join(["sed -n 's/^\\[", prefix, "\\] //p' ", floor_attempt_command_log_filename], "")
+}
+
+fn native_frontier_summary_append_command(command: String) -> String {
+  join([command, " >> \"$GITHUB_STEP_SUMMARY\""], "")
+}
+
+fn native_frontier_publish_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      Comment { text: dissolution_description(condition: native_frontier_publish_shell_emit_dissolution_trigger) },
+      Do { run: Run {
+        command: native_frontier_prefix_strip_command(prefix: "native-frontier-roster"),
+        env: [],
+        redirect: optional_present(value: ToFile { path: native_frontier_proposal_path }),
+        capture: optional_absent()
+      } },
+      ci_workflow_do(command: native_frontier_summary_append_command(command: "echo '## native frontier'")),
+      ci_workflow_do(command: native_frontier_summary_append_command(command: "echo '```'")),
+      ci_workflow_do(command: native_frontier_summary_append_command(command: native_frontier_prefix_strip_command(prefix: "native-frontier"))),
+      ci_workflow_do(command: native_frontier_summary_append_command(command: "echo '```'")),
+      If {
+        cond: ExitZero { run: Run { command: join(["test -s ", native_frontier_proposal_path], ""), env: [], redirect: optional_absent(), capture: optional_absent() } },
+        then_: Pipeline {
+          steps: [ci_workflow_do(command: native_frontier_summary_append_command(command: join(["echo 'A proposed roster is attached as the ", native_frontier_proposal_artifact_name, " artifact. It is NOT applied: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it.'"], "")))],
+          on_failure: FailFast
+        },
+        else_: optional_absent()
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn native_frontier_publish_step() -> Step {
+  RunStep {
+    name: Present { value: "Publish the frontier lines and the proposed roster" },
+    id: none,
+    run: ci_workflow_run_emit_pipeline(p: native_frontier_publish_pipeline()),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn native_frontier_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the proposed roster" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: native_frontier_proposal_artifact_name)),
+        kv(key: "path", value: yaml_string(s: native_frontier_proposal_path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(key: "retention-days", value: yaml_int(n: native_frontier_artifact_retention_days))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+type NativeFrontierBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn native_frontier_bound_steps() -> List<NativeFrontierBoundStep> {
+  [
+    NativeFrontierBoundStep { step: native_frontier_checkout_step(), role: capability_neutral, step_name: "Checkout" },
+    NativeFrontierBoundStep { step: native_frontier_preflight_step(), role: capability_neutral, step_name: "Assert the runner user's systemd manager is reachable (the memory bound needs it)" },
+    NativeFrontierBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    NativeFrontierBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    NativeFrontierBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    NativeFrontierBoundStep {
+      step: witness_floor_build_step(step_name: native_frontier_build_step_name, build_script: repo_self_build_command(bins: native_frontier_required_bins)),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: native_frontier_build_step_name,
+    },
+    NativeFrontierBoundStep { step: native_frontier_run_step(), role: consumes_only(capabilities: [CargoCapability]), step_name: native_frontier_run_step_name },
+    NativeFrontierBoundStep { step: native_frontier_publish_step(), role: capability_neutral, step_name: "Publish the frontier lines and the proposed roster" },
+    NativeFrontierBoundStep { step: native_frontier_upload_step(), role: capability_neutral, step_name: "Upload the proposed roster" },
+  ]
+}
+
+fn native_frontier_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: native_frontier_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+data native_frontier_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: none,
+  id_token: none
+}
+
+fn native_frontier_job() -> Job {
+  Job {
+    id: native_frontier_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: native_frontier_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: native_frontier_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: native_frontier_permissions },
+    environment: none
+  }
+}
+
+data native_frontier_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax {
+  group: "native-frontier",
+  cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+  explicit_single: none
+}
+
+data native_frontier_workflow: Workflow = Workflow {
+  name: native_frontier_workflow_name,
+  run_name: none,
+  on: [Schedule { cron: native_frontier_schedule }, WorkflowDispatch { inputs: [] }],
+  concurrency: Present { value: native_frontier_concurrency },
+  env: Present {
+    value: [
+      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: "MALLOC_ARENA_MAX", value: yaml_string(s: "2"))
+    ]
+  },
+  permissions: Present { value: native_frontier_permissions },
+  jobs: [native_frontier_job()]
+}
+
+type NativeFrontierWorkflowGenerationOutcome
+  = NativeFrontierWorkflowGenerated { content: String }
+  | NativeFrontierWorkflowGenerationRefused { reason: String }
+
+data native_frontier_credential_refusal_reason: String = "REFUSED gunbc.native_frontier_workflow: the frontier job carries a write grant, and it runs on the self-hosted fleet, which also runs pull-request code. The shrink pull request is opened by the declared heal-publish extension, never from this job. No workflow yaml was emitted."
+
+data native_frontier_capability_refusal_reason: String = "REFUSED gunbc.native_frontier_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
+
+fn expected_native_frontier_workflow_yml() -> NativeFrontierWorkflowGenerationOutcome {
+  match admit_workflow_toolchain_homes(workflow: native_frontier_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      NativeFrontierWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted =>
+      if job_permissions_carry_write(permissions: native_frontier_job().permissions) {
+        NativeFrontierWorkflowGenerationRefused { reason: native_frontier_credential_refusal_reason }
+      } else if !native_frontier_capability_closure_holds() {
+        NativeFrontierWorkflowGenerationRefused { reason: native_frontier_capability_refusal_reason }
+      } else {
+        match emit_yaml(v: project_workflow_to_yaml(workflow: native_frontier_workflow)) {
+          EmittedYaml { text: t } => NativeFrontierWorkflowGenerated { content: t }
+          YamlEmitRefused { path: p, reason: r } => NativeFrontierWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.native_frontier_workflow", path: p, reason: r) }
+        }
+      }
+  }
+}

@@ -100,8 +100,8 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
     run_native_claim_program, run_required_v2_native, run_self_host, run_v2_native_cli,
-    NativeClaimProgramRun, NativeMemberTermination, NativeRouteOutcome, SelfHostHeld,
-    V2NativeCliHeld,
+    run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{

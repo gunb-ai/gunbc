@@ -416,6 +416,20 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// A `_` IN VALUE POSITION NAMES NOTHING, AND THE REFUSAL SAYS WHY. An anonymous parameter slot is
+// bound under a minted label no source can spell (v2.std.anonymous_binder), so a `_` reaching an
+// atom lookup finds no binder by construction -- the slot is never referenceable. The generic
+// unbound-symbol refusal would be true but would send the author looking for a missing declaration;
+// this cause names the actual rule. It is located at the mention's own occurrence, never at the
+// slot's label, which carries none.
+fn anonymous_parameter_referenced_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_anonymous_parameter_referenced,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 // AN UNBOUND NAME THE CORPUS DOES DECLARE IS A MISSING BINDING, NOT A TYPO, AND THE REFUSAL SAYS SO.
 // Deleting the corpus-wide spelling search makes a reference refuse when nothing on its chain binds
 // it -- correct, and the point of the package -- but on its own it hands the author of a module
@@ -876,6 +890,13 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
                   value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
                   diagnostics: pending
                 }
+              } else if identity == pattern_wildcard_name() {
+                Rejected {
+                  diagnostics: rejected_with_pending(
+                    pending: pending,
+                    rejected: diagnostics_singleton(d: anonymous_parameter_referenced_diagnostic(n: n))
+                  )
+                }
               } else {
                 Rejected {
                   diagnostics: rejected_with_pending(
@@ -1318,25 +1339,27 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 // come from resolve_pattern_binders over the pattern's SYNTAX and the symbol index, before the
 // fold runs, so a refused pattern does not leave the body under an invented scope and no site is
 // marked unobservable (P4's one exception, a Bind's binder, has no counterpart here).
-fn resolve_pattern_field_target_walk(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
-  match target.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == pattern_wildcard_name() {
-        ResolveWalkAccepted { value: target, diagnostics: None }
-      } else {
-        resolve_node_walk(ctx: ctx, n: target)
-      }
-    _ => resolve_pattern_node_walk(ctx: ctx, pat: target)
+fn resolve_pattern_is_wildcard(pat: Node) -> Bool {
+  match pat.kind {
+    TypeNode { connective: Atom { identity: id } } => id == pattern_wildcard_name()
+    _ => false
   }
 }
 
+// A pattern is the arm's whole `pat` or a constructor field's target, and `_` is the same pattern
+// form in both: it binds nothing and names nothing, so it is kept as it is at every depth rather
+// than looked up as a reference to a symbol spelled `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
-  match construct_tag_optional(n: pat) {
-    Absent => resolve_node_walk(ctx: ctx, n: pat)
-    Present { value: _ } =>
-      child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
-        child_walk_step(w: acc, e: e, r: resolve_pattern_field_target_walk(ctx: ctx, target: e.target))
-      }))
+  if resolve_pattern_is_wildcard(pat: pat) {
+    ResolveWalkAccepted { value: pat, diagnostics: None }
+  } else {
+    match construct_tag_optional(n: pat) {
+      Absent => resolve_node_walk(ctx: ctx, n: pat)
+      Present { value: _ } =>
+        child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
+          child_walk_step(w: acc, e: e, r: resolve_pattern_node_walk(ctx: ctx, pat: e.target))
+        }))
+    }
   }
 }
 
