@@ -9,8 +9,8 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }

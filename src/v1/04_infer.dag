@@ -17,7 +17,7 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -106,7 +106,7 @@ import v1.compiler.infer_types {
   is_declared_container_alias_spelling, structural_carrier_template_name,
   node_type_deps,
   method_receiver_element_node,
-  infer_literal_node, infer_binop_type_node,
+  infer_literal_node, infer_binop_type_node, subtraction_refinement_of,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has,
@@ -1416,6 +1416,38 @@ fn declared_type_kernel_inhabitance_mismatch_at_element(
   }
 }
 
+// A FUNCTION TYPE AT THE ELEMENT POSITION IS JUDGED BY THE ARROW AUTHORITY, one peel deep like the
+// kernel check above. `List<fn() -> Int>` returned where `List<fn() -> String>` is declared was
+// refused only BY ACCIDENT while v1.compiler.infer_types child_type_node erased an Arrow type
+// argument to its codomain -- the pair read as List<Int> against List<String>, both ground. With the
+// arrow kept, neither side is ground and the pair fell to the unjudged arm. The judgment is
+// callable_signature_mismatch, the same relation the top-level arrow arm consults, so a parameter
+// or arity difference now refuses too, where before it was accepted under the erasure.
+fn callable_element_signature_mismatch(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let both_element_collections = node_is_element_collection(n: declared, source_indices: source_indices)
+    && node_is_element_collection(n: produced, source_indices: source_indices)
+    && node_is_keyed_collection(n: declared, source_indices: source_indices) == false
+    && node_is_keyed_collection(n: produced, source_indices: source_indices) == false
+    && declared.return_cardinality == Required
+    && produced.return_cardinality == Required
+  if both_element_collections == false {
+    false
+  } else {
+    match declared.children |> first {
+      Absent => false
+      Present { value: dl } =>
+        match produced.children |> first {
+          Absent => false
+          Present { value: pr } =>
+            let declared_element = child_type_node(ch: dl)
+            let produced_element = child_type_node(ch: pr)
+            type_node_is_arrow(n: declared_element) && type_node_is_arrow(n: produced_element)
+              && callable_signature_mismatch(formal: declared_element, actual: produced_element, source_indices: source_indices)
+        }
+    }
+  }
+}
+
 fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
   declared: Node,
   produced: Node,
@@ -1469,6 +1501,14 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
   }
   else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
       && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -2813,12 +2853,21 @@ fn match_unguarded_absent_arm_index(arm_nodes: List<Node>) -> Int {
   )
 }
 
-fn optional_scrutinee_binding_is_present(scrut_type: Node, arm_pattern: MatchPattern, arm_index: Int, absent_arm_index: Int) -> Bool {
-  let is_bind = match arm_pattern {
-    Bind { declaration: _ } => true
+// A NON-NULL LITERAL ARM OVER AN OPTIONAL SEES THE PRESENT VALUE too: a literal denotes a present
+// value, so it can match only one, and the arm's pattern is checked at the scrutinee's REQUIRED type.
+// This is the ONE decision of which arms of a match over an optional see the present value; the
+// interpreter (v1.compiler.interpreter eval_match peels the payload in exactly these arms) and every
+// Rust match rendering (the arm emitted under `Some(..)`) read it rather than deciding it again.
+fn optional_match_arm_sees_present_value(scrutinee_type: Node, arm_pattern: MatchPattern, arm_index: Int, absent_arm_index: Int) -> Bool {
+  let pattern_sees_present = match arm_pattern {
+    Bind { declaration: _ } => absent_arm_index >= 0 && arm_index > absent_arm_index
+    LitPattern { value: v } => match v {
+      LitNull => false
+      _ => true
+    }
     _ => false
   }
-  is_bind && absent_arm_index >= 0 && arm_index > absent_arm_index && scrut_type.return_cardinality == CardOptional
+  pattern_sees_present && scrutinee_type.return_cardinality == CardOptional
 }
 
 fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferScope) -> List<ErrorNode> {
@@ -8092,8 +8141,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
         let arm_b = arm_body(n: arm_node)
-        let arm_subject = if optional_scrutinee_binding_is_present(
-            scrut_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
+        let arm_subject = if optional_match_arm_sees_present_value(
+            scrutinee_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
           pattern_subject_from_node(n: with_required_cardinality(n: scrut_rt))
         } else { scrut_subject }
         let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, scope: scope)
@@ -8420,12 +8469,23 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_result = operands.right
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
+      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
+      let refinement_diags = match op {
+        Sub =>
+          match subtraction_refinement_of(left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env) {
+            SubtractionRefinementAmbiguous { from_types: fts } =>
+              [inference_error(
+                message: concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ", to_string(fts |> count), " rows for this operand's declaration (source types ", join(fts, ", "), "); the difference's type would depend on row order"),
+                span: span, module_name: scope.module_name)]
+            _ => []
+          }
+        _ => []
+      }
       let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
-        diagnostics: concat(concat(left_diags, right_diags), eq_wall_diags)
+        diagnostics: concat(concat(concat(left_diags, right_diags), eq_wall_diags), refinement_diags)
       }
 
     ExprUnaryOp { op: op } =>

@@ -1,9 +1,9 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..b5c332c
+index 0000000..f134c1d
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,473 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -16,7 +16,7 @@ index 0000000..b5c332c
 +#
 +# This module keeps the staging buffer, the stream, and the prefetch protocol.
 +# It changes where the rows come from: a rank-local file whose identity is
-+# verified at open, mmap'd MAP_PRIVATE without registering the whole table
++# verified at open, mmap'd read-only without registering the whole table
 +# with CUDA. Token-time gathers copy requested rows into the existing bounded
 +# pinned staging buffer. A missing local path refuses; there is no NFS arm.
 +#
@@ -24,17 +24,41 @@ index 0000000..b5c332c
 +# v41_row_store_magic then weight||scale records; v41_row_address offsets follow;
 +# the store's SHA-256 is over those prefixed bytes. Open checks expected.magic
 +# (supplied from that symbol, not minted here) and whole-file digest against
-+# rank_digest_hex. encoding_digest / rank / format_revision are not on this
++# rank_digest_hex. expected.record_bytes is v41_row_bytes of the admitted spec,
++# supplied likewise. encoding_digest / rank / format_revision are not on this
 +# type until a modeled header carries them.
++#
++# The open and gather contracts are gunbc.spark.v41_engram_file_backed:
++# v41_open_residency_verdict (verification's page-cache residue is released and
++# read back as zero over the whole file, else open refuses; its two refusal
++# branches are the two raises in _verify_and_release, and the receipt's fields
++# are V41StoreOpenReceipt's) and v41_gather_rows (one batched gather
++# at record-aligned offsets, in request order; a misaligned offset refuses).
++#
++# The touch counter is gunbc.spark.v41_engram_file_backed v41_touched_pages /
++# V41FetchTouchReceipt: every successful fetch_rows marks the (file, page)
++# pages its rows' bytes [off, off + record) cover in a bit-packed bitmap over
++# this file's page count (one bit per page, ~1.5 MiB for a 47 GiB file at
++# 4 KiB), so a repeated offset counts once and a row straddling a page
++# boundary counts both pages. Only page indices are recorded, never row
++# contents. snapshot_touches(reset=...) is the observation; write_touch_receipt
++# is the per-rank file receipt a staircase step reads and resets.
 +
 +from __future__ import annotations
 +
++import ctypes
++import ctypes.util
 +import hashlib
 +import mmap
++import json
 +import os
++import threading
++import time
++import warnings
 +from dataclasses import dataclass
-+from typing import Tuple
++from typing import Sequence, Tuple
 +
++import numpy as np
 +import torch
 +
 +
@@ -50,18 +74,91 @@ index 0000000..b5c332c
 +    pass
 +
 +
++class EngramPageCacheResident(RuntimeError):
++    pass
++
++
++class EngramRowOffsetMisaligned(RuntimeError):
++    pass
++
++
 +@dataclass(frozen=True)
 +class ExpectedRowStoreIdentity:
 +    rank_digest_hex: str
 +    magic: bytes
++    record_bytes: int
 +
 +
-+def _sha256_file(path: str) -> str:
++@dataclass(frozen=True)
++class EngramStoreOpenReceipt:
++    """What open() observed: the verified range and its page-cache residency
++    before and after the release (gunbc.spark.v41_engram_file_backed
++    V41StoreOpenReceipt)."""
++
++    store_bytes: int
++    verified_bytes: int
++    resident_bytes_after_verify: int
++    resident_bytes_after_release: int
++
++
++@dataclass(frozen=True)
++class EngramFetchTouchObservation:
++    """fetch_rows' cumulative touches of this file since open or the last
++    reset (gunbc.spark.v41_engram_file_backed V41FetchTouchReceipt). Page
++    indices are file-relative: page = byte offset // page_bytes."""
++
++    path: str
++    page_bytes: int
++    page_count: int
++    distinct_pages_touched: int
++    fetch_rows_calls: int
++    rows_fetched: int
++    fetch_rows_us: int
++
++
++_libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
++_libc.mmap.restype = ctypes.c_void_p
++_libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]
++_libc.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
++_libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
++_MAP_FAILED = ctypes.c_void_p(-1).value
++_RESIDENCY_WINDOW = 1 << 30
++
++
++def resident_bytes(fd: int, size: int) -> int:
++    """Page-cache resident bytes of [0, size) of fd, by mincore over a
++    transient mapping that is never touched (so reading does not fault)."""
++    page = os.sysconf("SC_PAGE_SIZE")
++    resident_pages = 0
++    off = 0
++    while off < size:
++        length = min(_RESIDENCY_WINDOW, size - off)
++        addr = _libc.mmap(None, length, mmap.PROT_READ, mmap.MAP_SHARED, fd, off)
++        if addr in (None, _MAP_FAILED):
++            raise OSError(ctypes.get_errno(), "mmap for residency readback failed")
++        try:
++            pages = (length + page - 1) // page
++            vec = (ctypes.c_ubyte * pages)()
++            if _libc.mincore(addr, length, vec) != 0:
++                raise OSError(ctypes.get_errno(), "mincore failed")
++            resident_pages += sum(b & 1 for b in bytes(vec))
++        finally:
++            _libc.munmap(addr, length)
++        off += length
++    return min(resident_pages * page, size)
++
++
++def _sha256_fd(fd: int, magic_len: int) -> Tuple[str, bytes, int]:
 +    h = hashlib.sha256()
-+    with open(path, "rb") as f:
++    head = b""
++    total = 0
++    with os.fdopen(os.dup(fd), "rb", closefd=True) as f:
 +        for chunk in iter(lambda: f.read(1024 * 1024), b""):
++            if len(head) < magic_len:
++                head += chunk[: magic_len - len(head)]
 +            h.update(chunk)
-+    return h.hexdigest()
++            total += len(chunk)
++    return h.hexdigest(), head, total
 +
 +
 +class FileBackedEngramStorage:
@@ -73,36 +170,188 @@ index 0000000..b5c332c
 +                f"rank-local Engram row store missing at {path}; "
 +                "token-time NFS fallback is refused"
 +            )
-+        opened = _sha256_file(path)
-+        if opened != expected.rank_digest_hex:
-+            raise EngramRowStoreIdentityMismatch(
-+                f"opened {path} digest {opened}, expected rank digest "
-+                f"{expected.rank_digest_hex}"
-+            )
 +        self.path = os.path.abspath(path)
 +        self.expected = expected
 +        self._fd = os.open(self.path, os.O_RDONLY)
-+        self._mmap = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
-+        if self._mmap[: len(expected.magic)] != expected.magic:
-+            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
++        try:
++            self.receipt = self._verify_and_release()
++            self._mmap = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
++        except BaseException:
++            os.close(self._fd)
++            raise
++        with warnings.catch_warnings():
++            # The mmap is read-only; the table is only ever read through index.
++            warnings.simplefilter("ignore", UserWarning)
++            self._table = torch.frombuffer(self._mmap, dtype=torch.uint8)
++        self._span = torch.arange(expected.record_bytes, dtype=torch.int64)
 +        self._header_ok = True
++        self._page_bytes = os.sysconf("SC_PAGE_SIZE")
++        self._page_count = (self._mmap.size() + self._page_bytes - 1) // self._page_bytes
++        # A record of R bytes covers at most ceil((R - 1) / P) + 1 pages.
++        self._page_span = np.arange(
++            (expected.record_bytes + self._page_bytes - 2) // self._page_bytes + 1, dtype=np.int64
++        )
++        self._touch_lock = threading.Lock()
++        self._touched = np.zeros((self._page_count + 7) // 8, dtype=np.uint8)
++        self._calls = 0
++        self._rows = 0
++        self._ns = 0
++
++    def _verify_and_release(self) -> EngramStoreOpenReceipt:
++        # Verification stays fail-closed and whole-file; only its cache residue goes.
++        store = os.fstat(self._fd).st_size
++        opened, head, verified = _sha256_fd(self._fd, len(self.expected.magic))
++        if verified != store:
++            raise EngramRowStoreIdentityMismatch(
++                f"verified {verified} of {store} store bytes; verification is over the whole file"
++            )
++        if opened != self.expected.rank_digest_hex:
++            raise EngramRowStoreIdentityMismatch(
++                f"opened {self.path} digest {opened}, expected rank digest "
++                f"{self.expected.rank_digest_hex}"
++            )
++        if head != self.expected.magic:
++            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
++        after_verify = resident_bytes(self._fd, verified)
++        os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
++        after_release = resident_bytes(self._fd, verified)
++        receipt = EngramStoreOpenReceipt(
++            store_bytes=store,
++            verified_bytes=verified,
++            resident_bytes_after_verify=after_verify,
++            resident_bytes_after_release=after_release,
++        )
++        if after_release != 0:
++            raise EngramPageCacheResident(
++                f"{self.path}: {after_release} of {verified} verified bytes remain "
++                f"page-cache resident after POSIX_FADV_DONTNEED; receipt {receipt}"
++            )
++        return receipt
 +
 +    def close(self) -> None:
++        del self._table
 +        self._mmap.close()
 +        os.close(self._fd)
 +
-+    def fetch_rows(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
-+        """Copy selected rows into an already-allocated bounded staging tensor."""
++    def _check_dest(self, dest: torch.Tensor) -> None:
 +        if dest.is_pinned() and dest.numel() * dest.element_size() >= self._mmap.size():
 +            raise EngramFullTablePinned(
 +                "staging destination covers the whole table; this runtime refuses "
 +                "full-Engram pinned allocation"
 +            )
++
++    def _record_index(self, offsets: list[int], nbytes: int) -> torch.Tensor:
++        record = self.expected.record_bytes
++        if nbytes != record:
++            raise EngramRowOffsetMisaligned(
++                f"fetch of {nbytes} bytes per row; the store's record is {record} bytes"
++            )
++        magic = len(self.expected.magic)
++        size = self._mmap.size()
++        for off in offsets:
++            if off < magic or (off - magic) % record != 0 or off + record > size:
++                raise EngramRowOffsetMisaligned(
++                    f"offset {off} is not magic + k * {record} inside a {size}-byte store"
++                )
++        return (torch.as_tensor(offsets, dtype=torch.int64).unsqueeze(1) + self._span).view(-1)
++
++    def fetch_rows(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
++        """Copy selected rows, in request order, into an already-allocated
++        bounded staging tensor with one batched gather."""
++        start = time.perf_counter_ns()
++        self._check_dest(dest)
++        index = self._record_index(offsets, nbytes)
++        rows = dest.view(torch.uint8).view(dest.shape[0], -1)[: len(offsets), :nbytes]
++        if rows.is_contiguous():
++            torch.index_select(self._table, 0, index, out=rows.view(-1))
++        else:
++            rows.copy_(torch.index_select(self._table, 0, index).view(len(offsets), nbytes))
++        # Timed: validation and gather. Not timed: the counter's own bookkeeping.
++        elapsed = time.perf_counter_ns() - start
++        self._note_touches(offsets, nbytes, elapsed)
++
++    def _note_touches(self, offsets: Sequence[int], nbytes: int, elapsed_ns: int) -> None:
++        # O(rows * pages-per-record), vectorized; reads offsets only, never row bytes.
++        offs = np.asarray(offsets, dtype=np.int64)
++        first = offs // self._page_bytes
++        last = (offs + nbytes - 1) // self._page_bytes
++        pages = first[:, None] + self._page_span
++        pages = pages[pages <= last[:, None]]
++        bits = np.left_shift(1, pages & 7).astype(np.uint8)
++        with self._touch_lock:
++            # ufunc.at is unbuffered, so repeated pages OR into one bit.
++            np.bitwise_or.at(self._touched, pages >> 3, bits)
++            self._calls += 1
++            self._rows += len(offs)
++            self._ns += elapsed_ns
++
++    def snapshot_touches(self, reset: bool) -> EngramFetchTouchObservation:
++        """The cumulative observation; with reset, the next one starts empty,
++        atomically with respect to concurrent fetch_rows."""
++        with self._touch_lock:
++            obs = EngramFetchTouchObservation(
++                path=self.path,
++                page_bytes=self._page_bytes,
++                page_count=self._page_count,
++                distinct_pages_touched=int(np.unpackbits(self._touched).sum(dtype=np.int64)),
++                fetch_rows_calls=self._calls,
++                rows_fetched=self._rows,
++                fetch_rows_us=self._ns // 1000,
++            )
++            if reset:
++                self._touched.fill(0)
++                self._calls = 0
++                self._rows = 0
++                self._ns = 0
++        return obs
++
++    def _fetch_rows_per_row(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
++        # The replaced per-row copy, kept ONLY as the differential oracle for
++        # measure_fetch_rows. It is never a fallback for fetch_rows.
++        self._check_dest(dest)
++        self._record_index(offsets, nbytes)
 +        view = memoryview(self._mmap)
 +        for i, off in enumerate(offsets):
 +            dest[i].view(torch.uint8).view(-1)[:nbytes].copy_(
 +                torch.frombuffer(view[off : off + nbytes], dtype=torch.uint8)
 +            )
++
++
++def measure_fetch_rows(storage: FileBackedEngramStorage, rows: int, repeats: int, seed: int = 0) -> dict:
++    """THE INSTRUMENT: seconds per fetch_rows call of `rows` random records,
++    batched gather versus the per-row oracle, and whether their bytes agree."""
++    record = storage.expected.record_bytes
++    count = (storage._mmap.size() - len(storage.expected.magic)) // record
++    g = torch.Generator().manual_seed(seed)
++    local = torch.randint(0, count, (rows,), generator=g)
++    offsets = (len(storage.expected.magic) + local * record).tolist()
++    a = torch.zeros((rows, record), dtype=torch.uint8)
++    b = torch.zeros((rows, record), dtype=torch.uint8)
++    timings = {}
++    for name, fn, dest in (("batched", storage.fetch_rows, a), ("per_row", storage._fetch_rows_per_row, b)):
++        fn(offsets, record, dest)
++        start = time.perf_counter()
++        for _ in range(repeats):
++            fn(offsets, record, dest)
++        timings[name] = (time.perf_counter() - start) / repeats
++    return {"rows": rows, "repeats": repeats, "seconds_per_call": timings, "bytes_agree": bool(torch.equal(a, b))}
++
++
++def write_touch_receipt(
++    rank: int, storages: Sequence[FileBackedEngramStorage], path: str, reset: bool
++) -> dict:
++    """THE RANK'S TOUCH RECEIPT: one observation per rank-local file, written
++    atomically (temp + rename) so a reader never sees a partial step. Distinct
++    (file, page) pairs across files are the sum of the per-file counts."""
++    receipt = {
++        "rank": rank,
++        "files": [s.snapshot_touches(reset).__dict__ for s in storages],
++    }
++    tmp = f"{path}.tmp.{os.getpid()}"
++    with open(tmp, "w") as f:
++        json.dump(receipt, f)
++    os.replace(tmp, path)
++    return receipt
 +
 +
 +def allocate_file_backed(
@@ -119,3 +368,112 @@ index 0000000..b5c332c
 +            "pinned staging is not smaller than the row store; refusing full-table pin"
 +        )
 +    return storage, staging
++
++
++def self_test(directory: str) -> int:
++    """THE SELF-TEST: a tiny synthetic rank file through the batched gather and
++    the touch counter, against independent expectations. One PASS/FAIL line per
++    check; nonzero on any failure. `directory` must not be tmpfs: open() refuses
++    when the verify read's page cache cannot be released."""
++    import hashlib as _h
++    import sys as _s
++    import tempfile
++
++    m = _s.modules[__name__]
++
++    page = os.sysconf("SC_PAGE_SIZE")
++    magic = b"GUNBCTST"
++    record = 1000
++    count = (3 * page) // record + 4
++    g = torch.Generator().manual_seed(7)
++    body = torch.randint(0, 256, (count * record,), dtype=torch.uint8, generator=g).numpy().tobytes()
++    data = magic + body
++
++    results = []
++
++    def check(name: str, ok: bool, detail: str = "") -> None:
++        results.append(ok)
++        print(f"{'PASS' if ok else 'FAIL'} {name}{': ' + detail if detail and not ok else ''}")
++
++    fd, path = tempfile.mkstemp(prefix="engram_selftest_", dir=directory)
++    try:
++        with os.fdopen(fd, "wb") as f:
++            f.write(data)
++            f.flush()
++            os.fsync(f.fileno())
++        s = m.FileBackedEngramStorage(
++            path, m.ExpectedRowStoreIdentity(_h.sha256(data).hexdigest(), magic, record)
++        )
++        try:
++            off = lambda k: len(magic) + k * record
++            pages_of = lambda o: set(range(o // page, (o + record - 1) // page + 1))
++
++            # 1. Bytes: batched gather equals the per-row oracle and the file itself.
++            ks = [3, 0, count - 1, 3, 5]
++            offs = [off(k) for k in ks]
++            b = torch.zeros((len(ks), record), dtype=torch.uint8)
++            c = torch.zeros((len(ks), record), dtype=torch.uint8)
++            s.fetch_rows(offs, record, b)
++            s._fetch_rows_per_row(offs, record, c)
++            want = torch.tensor(list(b"".join(data[o : o + record] for o in offs)), dtype=torch.uint8).view(len(ks), record)
++            check("batched gather bytes identical to per-row oracle", torch.equal(b, c) and torch.equal(b, want))
++
++            # 2. Duplicate offset within a batch counts once.
++            s.snapshot_touches(reset=True)
++            k1 = next(k for k in range(count) if len(pages_of(off(k))) == 1)
++            s.fetch_rows([off(k1)] * 4, record, torch.zeros((4, record), dtype=torch.uint8))
++            o2 = s.snapshot_touches(reset=True)
++            check("duplicate offset counts once", o2.distinct_pages_touched == 1 and o2.rows_fetched == 4 and o2.fetch_rows_calls == 1, str(o2))
++
++            # 3. A row spanning a page boundary counts both pages.
++            k2 = next(k for k in range(count) if len(pages_of(off(k))) == 2)
++            s.fetch_rows([off(k2)], record, torch.zeros((1, record), dtype=torch.uint8))
++            o3 = s.snapshot_touches(reset=True)
++            check("row spanning a page boundary counts both pages", o3.distinct_pages_touched == 2, str(o3))
++
++            # 4. Union across calls matches an independent set; then reset empties.
++            batches = [[off(k) for k in range(0, count, 3)], [off(k) for k in range(1, count, 2)]]
++            for bt in batches:
++                s.fetch_rows(bt, record, torch.zeros((len(bt), record), dtype=torch.uint8))
++            expect = set().union(*(pages_of(o) for bt in batches for o in bt))
++            o4 = s.snapshot_touches(reset=True)
++            o5 = s.snapshot_touches(reset=False)
++            check("distinct pages across calls match an independent set", o4.distinct_pages_touched == len(expect) and o4.fetch_rows_calls == 2 and o4.rows_fetched == sum(map(len, batches)), f"{o4} expected {len(expect)}")
++            check("snapshot(reset) resets", (o5.distinct_pages_touched, o5.fetch_rows_calls, o5.rows_fetched, o5.fetch_rows_us) == (0, 0, 0, 0), str(o5))
++
++            # 5. A refused (misaligned) fetch neither counts nor times.
++            try:
++                s.fetch_rows([off(1) + 1], record, torch.zeros((1, record), dtype=torch.uint8))
++                refused = False
++            except m.EngramRowOffsetMisaligned:
++                refused = True
++            o6 = s.snapshot_touches(reset=False)
++            check("misaligned fetch refuses and is not counted", refused and o6.fetch_rows_calls == 0 and o6.distinct_pages_touched == 0, str(o6))
++        finally:
++            s.close()
++    finally:
++        os.unlink(path)
++
++    return 0 if all(results) else 1
++
++
++
++if __name__ == "__main__":
++    import argparse
++    import sys
++
++    if len(sys.argv) >= 2 and sys.argv[1] == "--self-test":
++        sys.exit(self_test(sys.argv[2] if len(sys.argv) > 2 else os.getcwd()))
++    p = argparse.ArgumentParser(description="measure fetch_rows over a rank-local Engram row store")
++    p.add_argument("--store", required=True)
++    p.add_argument("--rank-digest-hex", required=True)
++    p.add_argument("--magic-hex", required=True)
++    p.add_argument("--record-bytes", type=int, required=True)
++    p.add_argument("--rows", type=int, required=True)
++    p.add_argument("--repeats", type=int, default=100)
++    a = p.parse_args()
++    s = FileBackedEngramStorage(a.store, ExpectedRowStoreIdentity(a.rank_digest_hex, bytes.fromhex(a.magic_hex), a.record_bytes))
++    try:
++        print(json.dumps({"open_receipt": s.receipt.__dict__, "fetch_rows": measure_fetch_rows(s, a.rows, a.repeats)}))
++    finally:
++        s.close()

@@ -248,7 +248,8 @@ pub fn provenance_host_numeric_alias(
     name: String,
     p: Rc<TypeDeclarationProvenance>,
 ) -> Option<String> {
-    if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
+    if ((((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
+        || (name.clone() == "std.nat.Nat".to_string()))
         && provenance_realizes_natively(p.clone()))
     {
         Some("i64".to_string())

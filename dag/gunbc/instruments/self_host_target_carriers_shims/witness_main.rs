@@ -1,100 +1,131 @@
-use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
-use v1_compiled::extdeps_communication_medium::{
-    DecodeFidelity as EDecodeFidelity, Medium as EMedium,
-};
-use v1_compiled::std_algebra::FreeMonoid;
+
+use v1_compiled::extdeps_communication_medium::DecodeFidelity;
 use v1_compiled::v2_compiler_target_carriers as emitted;
-use v1_compiled::v2_std_nat::Nat;
-use v1_compiled::v2_std_text::Char;
-use v1_compiler::v2_compiler_target_carriers as seed;
+use v1_compiled::v2_std_diagnostic::Outcome;
+use v1_compiled::v2_std_node::{node_synthetic, Behavior, Connective, Edge, EdgeLabel, Node, NodeKind};
 
-fn nat_from_u32(n: u32) -> Rc<Nat> {
-    (0..n).fold(Rc::new(Nat::Zero), |acc, _| {
-        Rc::new(Nat::Succ { prev: acc })
-    })
-}
+// NO SEED ORACLE, ON PURPOSE. This driver used to compare emitted lossless_source / source_medium
+// against v1_compiler::v2_compiler_target_carriers, a hand copy, over a FreeMonoid<Char> carrier
+// the emitter no longer produces (FreeMonoid is emitted as im::Vector, and Medium carries String),
+// so it failed to compile against the real crate. Its expected verdicts are read off the authority
+// instead: src/v2/compiler/07_target_carriers.dag fidelity_quotient_decode_fidelity folds a target's
+// fidelity quotient to Lossless when every disposition is the modeled kind, to Lossy when one
+// declares a fail-closed kind, and refuses (target_carriers_fidelity_disposition_malformed) a
+// disposition it does not recognize -- it never defaults one to Lossless. And
+// bundle_fidelity_quotient_optional reads a bundle with no fidelity-quotient edge as Absent (which
+// decodes Lossless) but refuses one with two (target_carriers_fidelity_quotient_ambiguous) rather
+// than reading a self-contradicting target as declaring none.
 
-fn free_monoid_from_str(s: &str) -> Rc<FreeMonoid<Char>> {
-    s.chars()
-        .rev()
-        .fold(Rc::new(FreeMonoid::Empty), |tail, ch| {
-            Rc::new(FreeMonoid::Cons {
-                head: nat_from_u32(ch as u32),
-                tail: Rc::new(vec![tail]),
-            })
-        })
-}
-
-fn decode_fidelity_eq(e: EDecodeFidelity, s: seed::DecodeFidelity) -> bool {
-    matches!(
-        (e, s),
-        (EDecodeFidelity::Lossless, seed::DecodeFidelity::Lossless)
-            | (EDecodeFidelity::Lossy, seed::DecodeFidelity::Lossy)
+fn atom(identity: &str) -> Rc<Node> {
+    node_synthetic(
+        Rc::new(NodeKind::TypeNode {
+            connective: Rc::new(Connective::Atom {
+                identity: identity.to_string(),
+            }),
+        }),
+        Rc::new(im::vector![]),
     )
 }
 
-fn medium_text_eq_emitted_seed(
-    e: &EMedium<Rc<FreeMonoid<Char>>>,
-    s: &seed::Medium<String>,
-) -> bool {
-    decode_fidelity_eq(e.fidelity, s.fidelity) && free_monoid_to_string(&e.carried) == s.carried
+fn conj(children: Vec<(Rc<EdgeLabel>, Rc<Node>)>) -> Rc<Node> {
+    node_synthetic(
+        Rc::new(NodeKind::TypeNode {
+            connective: Rc::new(Connective::Conj),
+        }),
+        Rc::new(
+            children
+                .into_iter()
+                .map(|(label, target)| Rc::new(Edge { label, target }))
+                .collect(),
+        ),
+    )
 }
 
-fn free_monoid_to_string(fm: &Rc<FreeMonoid<Char>>) -> String {
-    match &**fm {
-        FreeMonoid::Empty => String::new(),
-        FreeMonoid::Cons { head, tail } => {
-            let mut out = String::new();
-            let code = nat_to_u32(head);
-            if code != 0 {
-                out.push(char::from_u32(code).unwrap_or('\u{fffd}'));
-            }
-            if let Some(rest) = tail.iter().next() {
-                out.push_str(&free_monoid_to_string(rest));
-            }
-            out
-        }
+fn positional(n: Rc<Node>) -> (Rc<EdgeLabel>, Rc<Node>) {
+    (Rc::new(EdgeLabel::Positional), n)
+}
+
+fn modeled_only() -> Rc<Node> {
+    conj(vec![positional(atom("dag_fidelity_disposition_kind_modeled"))])
+}
+
+fn with_fail_closed() -> Rc<Node> {
+    let fail_closed = conj(vec![(
+        Rc::new(EdgeLabel::Named {
+            name: "dag_fidelity_disposition_kind_fail_closed".to_string(),
+        }),
+        node_synthetic(
+            Rc::new(NodeKind::ComputationNode {
+                behavior: Behavior::Value,
+            }),
+            Rc::new(im::vector![]),
+        ),
+    )]);
+    conj(vec![
+        positional(atom("dag_fidelity_disposition_kind_modeled")),
+        positional(fail_closed),
+    ])
+}
+
+fn unrecognized() -> Rc<Node> {
+    conj(vec![positional(atom("self_host_witness_unknown_disposition"))])
+}
+
+fn bundle(quotient_edges: usize) -> Rc<Node> {
+    conj(
+        (0..quotient_edges)
+            .map(|_| {
+                (
+                    Rc::new(EdgeLabel::Named {
+                        name: "target_model_edge_fidelity_quotient".to_string(),
+                    }),
+                    modeled_only(),
+                )
+            })
+            .collect(),
+    )
+}
+
+// None = refused, Some(false) = Absent, Some(true) = Present.
+fn quotient_in(bundle: Rc<Node>) -> Option<bool> {
+    match &*emitted::bundle_fidelity_quotient_optional(bundle) {
+        Outcome::Accepted { value, .. } => Some(value.is_some()),
+        Outcome::Rejected { .. } => None,
     }
 }
 
-fn nat_to_u32(n: &Rc<Nat>) -> u32 {
-    match &**n {
-        Nat::Zero => 0,
-        Nat::Succ { prev } => nat_to_u32(prev).saturating_add(1),
+fn decode(quotient: Rc<Node>) -> Option<DecodeFidelity> {
+    match &*emitted::fidelity_quotient_decode_fidelity(quotient) {
+        Outcome::Accepted { value, .. } => Some(value.clone()),
+        Outcome::Rejected { .. } => None,
     }
 }
 
+// --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): the injected run is
+// PASS exactly when the emitted module accepts what the .dag refuses, so a correct module reds it
+// and a module that wrongly accepts greens it -- which the harness then rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let mut all_pass = true;
-
-    let probe = "fn add(x:Int, y:Int) -> Int { x + y }";
-    let e_text = free_monoid_from_str(probe);
-    let e_lossless = if inject_fault {
-        emitted::source_medium(e_text.clone(), EDecodeFidelity::Lossy)
+    let unrecognized_decoded = decode(unrecognized());
+    let ambiguous_bundle = quotient_in(bundle(2));
+    let all_pass = if inject_fault {
+        let wrongly_accepted = unrecognized_decoded.is_some() || ambiguous_bundle.is_some();
+        println!("quotient injected: unrecognized={unrecognized_decoded:?} ambiguous_bundle={ambiguous_bundle:?} wrongly_accepted={wrongly_accepted}");
+        wrongly_accepted
     } else {
-        emitted::lossless_source(e_text.clone())
+        let lossless = decode(modeled_only());
+        let lossless_ok = matches!(lossless, Some(DecodeFidelity::Lossless));
+        println!("quotient modeled fidelity={lossless:?} ok={lossless_ok}");
+        let lossy = decode(with_fail_closed());
+        let lossy_ok = matches!(lossy, Some(DecodeFidelity::Lossy));
+        println!("quotient fail_closed fidelity={lossy:?} ok={lossy_ok}");
+        println!("quotient unrecognized refused={}", unrecognized_decoded.is_none());
+        let bundles = (quotient_in(bundle(0)), quotient_in(bundle(1)), ambiguous_bundle);
+        let bundles_ok = bundles == (Some(false), Some(true), None);
+        println!("bundle quotient none/one/two={bundles:?} ok={bundles_ok}");
+        lossless_ok && lossy_ok && unrecognized_decoded.is_none() && bundles_ok
     };
-    let s_lossless = seed::lossless_source(probe.to_string());
-    let lossless_ok = medium_text_eq_emitted_seed(&e_lossless, &s_lossless);
-    println!(
-        "lossless_source probe={probe:?} eq={lossless_ok} fidelity emitted={:?} seed={:?}",
-        e_lossless.fidelity, s_lossless.fidelity
-    );
-    all_pass &= lossless_ok;
-
-    let e_lossy = emitted::source_medium(e_text.clone(), EDecodeFidelity::Lossy);
-    let s_lossy = seed::source_medium(probe.to_string(), seed::DecodeFidelity::Lossy);
-    let lossy_ok = medium_text_eq_emitted_seed(&e_lossy, &s_lossy);
-    println!("source_medium Lossy eq={lossy_ok}");
-    all_pass &= lossy_ok;
-
-    let e_lossless2 = emitted::source_medium(e_text, EDecodeFidelity::Lossless);
-    let s_lossless2 = seed::source_medium(probe.to_string(), seed::DecodeFidelity::Lossless);
-    let lossless2_ok = medium_text_eq_emitted_seed(&e_lossless2, &s_lossless2);
-    println!("source_medium Lossless eq={lossless2_ok}");
-    all_pass &= lossless2_ok;
 
     if all_pass {
         println!("SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS");

@@ -11,8 +11,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_append, list_snoc_item, list_tail }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_tail }
 import v2.std.collection { Absent, List, Present, empty_map, list_at_optional, map_insert, map_lookup }
 import std.types { Map }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
@@ -41,6 +41,7 @@ import v2.std.node {
   arrow_body_target_lookup,
   coproduct_nullary_payload_type_name,
   named_edge_sort_key,
+  node_lowered_from,
   node_with_occurrence_id
 }
 import std.constructors { Cardinality, Required, Optional }
@@ -260,22 +261,27 @@ fn declared_field_named(payload: Node, name: Symbol) -> Optional<DeclaredField> 
 // (v2.extdeps.languages.dag dag_rec_construct_body_node, dag_variant_holds_construct_node). A
 // match-arm PATTERN over a fielded variant is the same construct whose field targets are the
 // binders, so construction and elimination read one shape.
-fn construct_tag_edge(tag: Symbol, source: Node) -> Edge {
+// THE TAG ATOM STANDS FOR THE TAG TOKEN, so it is lowered from that token, not from the whole
+// construct: `tag_source` is the authored terminal the constructor name was read from, and the
+// Conj keeps the construct's own occurrence. Lowering the atom from the enclosing capture gave it
+// the shell's occurrence, so the tag's locus was a coarser, different span
+// (docs/plans/lowering-occurrence-projection-design.md, rank 3).
+fn construct_tag_edge(tag: Symbol, tag_source: Node) -> Edge {
   Edge {
     label: Named { name: tag },
-    target: node_with_occurrence_id(
+    target: node_lowered_from(
       kind: TypeNode { connective: Atom { identity: tag } },
       children: [],
-      occurrence_id: source.occurrence_id
+      source: tag_source
     )
   }
 }
 
-fn construct_node(tag: Symbol, field_edges: List<Edge>, source: Node) -> Node {
+fn construct_node(tag: Symbol, tag_source: Node, field_edges: List<Edge>, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: list_append(
-      left: [construct_tag_edge(tag: tag, source: source)],
+      left: [construct_tag_edge(tag: tag, tag_source: tag_source)],
       right: field_edges
     ),
     occurrence_id: source.occurrence_id
