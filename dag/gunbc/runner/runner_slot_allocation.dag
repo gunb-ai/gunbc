@@ -238,8 +238,9 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // raises the ceiling on a failed fit.
 //
 // THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
-// an index at the width moves when the width moves. 13 sits above the twelve GitHub slots srv1
-// runs and below its memory-admitted width.
+// an index at the width moves when the width moves. It need not sit inside 1..width: the slot is a
+// committed member by identity (host_committed_identities_at), and the fleet range beneath it is
+// 1..(width - 1). 13 is the index the live unit, cell slice and allocation-store key already carry.
 data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
 
 data gunbc_microvm_shakedown_slot_index: Nat = 13
@@ -1773,12 +1774,49 @@ fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
       CommittedPopulationWidthUnresolved { host: host, cause: c }
     RunnerWidthDerived { slots: slots } =>
       CommittedPopulationDerived {
-        members: map(
-          nat_range_inclusive(lo: 1, hi: slots),
-          i => RunnerSlotIdentity { host: host, slot_index: i }
-        ),
+        members: host_committed_identities_at(host: host, committed: slots),
       }
   }
+}
+
+// THE SHAKEDOWN SLOT IS A MEMBER BY ITS AUTHORED IDENTITY, NOT BY FALLING INSIDE 1..width. The width
+// (memory_admitted_width_of_envelope) charges it FIRST and fills the remainder with fleet slots, so
+// on the host that carries it the width is 1 + the fleet count. Membership mirrors that: fleet slots
+// 1..(width - 1) plus srv1_microvm_shakedown_slot at its authored index. Enumerating 1..width instead
+// named a fleet slot the width never charged for and dropped the shakedown slot the moment the width
+// fell to or below its index -- which is what happened when the served slices entered the envelope
+// and srv1 went from 14 to 11 (operator ruling via the parent session, 2026-09-26: keep srv1-13,
+// rename no live state). The index stays authored for the reason gunbc_microvm_shakedown_slot_index
+// gives; only the fleet range beneath it is derived.
+fn host_fleet_slot_top(host: HostIdentity, committed: Int) -> Int {
+  if host_carries_microvm_shakedown_slot(host: host) && committed > 0 {
+    if committed > (gunbc_microvm_shakedown_slot_index as Int) { committed } else { committed - 1 }
+  } else {
+    committed
+  }
+}
+
+// THE FLEET INDICES ARE 1..top WITH THE AUTHORED INDEX SKIPPED, so a width large enough to reach the
+// shakedown index cannot name that index twice (once as a fleet slot, once as the authored member).
+fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
+  filter(
+    nat_range_inclusive(lo: 1, hi: host_fleet_slot_top(host: host, committed: committed)),
+    i => !(host_carries_microvm_shakedown_slot(host: host) && i == gunbc_microvm_shakedown_slot_index)
+  )
+}
+
+fn host_authored_members_above_fleet_range(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
+  if host_carries_microvm_shakedown_slot(host: host) && committed > 0 { [srv1_microvm_shakedown_slot()] } else { [] }
+}
+
+fn host_committed_identities_at(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
+  concat(
+    map(
+      host_fleet_slot_indices(host: host, committed: committed),
+      i => RunnerSlotIdentity { host: host, slot_index: i }
+    ),
+    host_authored_members_above_fleet_range(host: host, committed: committed)
+  )
 }
 
 fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMembership {
@@ -1787,7 +1825,7 @@ fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMemb
     RunnerWidthUnresolved { cause: c } =>
       SlotMembershipWidthUnresolved { identity: identity, cause: c }
     RunnerWidthDerived { slots: committed } =>
-      if slot_index > committed || slot_index < 1 {
+      if !identity_in_list(identity: identity, members: host_committed_identities_at(host: host, committed: committed)) {
         SlotOutsideCommittedPopulation { identity: identity, committed_width: committed }
       } else if identity_is_fabric_execution_member(identity: identity) {
         CommittedSlotMember { identity: identity, purpose: SlotServesFabricExecution }

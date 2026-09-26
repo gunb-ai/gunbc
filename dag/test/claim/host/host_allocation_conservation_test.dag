@@ -900,6 +900,14 @@ fn admitted_width_search(host: HostIdentity, control_plane: ByteSize) -> WidthSe
 // THE DISCRIMINATING RED. srv3 admits 29, so a search bounded at 3 is exactly the state the old fold
 // silently reported as a width -- and this row is the executed proof that it now refuses instead.
 // The positive control beside it is what stops the refusal from being satisfied by refusing always.
+// THE ROOMY ARM ASKS THE SEARCH TO REPRODUCE THE PRODUCTION WIDTH, not to match a number typed in
+// beside it. Two independent routes to the same width -- a linear search against the conservation
+// wall, and gunbc.runner_slot_allocation host_memory_admitted_width -- agree or this reds, which is
+// exactly the property "width and verdict charge a host the same". It compared against
+// derived_width_with_charge until that stopped being a complete derivation: it subtracts neither
+// the served-deployment slices nor the shakedown slot's charge, so on srv1 it answered 15 while the
+// wall admitted fewer, and this row was red on main for that reason. A literal here would have been
+// a measurement copied from the tree it is asserted against, which DESIGN 5 rules out as an oracle.
 test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
   let short = match admitted_width_search_within(
     host: operator_host_srv3, control_plane: byte_size(0), range: [1, 2, 3], bound: 3
@@ -911,25 +919,12 @@ test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
   let roomy = match admitted_width_search_within(
     host: operator_host_srv1, control_plane: byte_size(0), range: width_search_range(), bound: width_search_bound
   ) {
-    WidthSearchFound { slots: n } => n == derived_width_with_charge(host: operator_host_srv1, session: srv1_established_session_charge())
+    WidthSearchFound { slots: n } => n == host_memory_admitted_width(host: operator_host_srv1)
     WidthSearchSaturated { host: _, bound: _ } => false
     WidthSearchUnestablished { host: _, cause: _ } => false
   }
   let unsized = admitted_width_is_unestablished(host: operator_host_srv2, control_plane: byte_size(0))
   short && roomy && unsized
-}
-
-// THE ROOMY ARM ASKS THE SEARCH TO REPRODUCE THE CLOSED-FORM DERIVATION, not to match a number
-// typed in beside it. Two independent routes to the same width -- a linear search against the
-// conservation wall, and the closed-form subtraction in derived_width_with_charge -- agree or this
-// reds. A literal here would have been a measurement copied from the tree it is asserted against,
-// which DESIGN 5 rules out as an oracle; a second derivation is not.
-fn srv1_established_session_charge() -> ByteSize {
-  match host_session_slice_resolution(host: operator_host_srv1) {
-    SessionSliceCharged { bytes: b } => b
-    SessionSliceNotApplicable => byte_size(0)
-    SessionSliceUnsized { reason: _ } => byte_size(0)
-  }
 }
 
 // AND THE FLEET DOES NOT SATURATE THE REAL BOUND TODAY. This is the quiet guard: mechanism exists,

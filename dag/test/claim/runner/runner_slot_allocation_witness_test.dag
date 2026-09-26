@@ -51,6 +51,8 @@ import gunbc.runner_slot_allocation {
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import gunbc.floor_demand {
   gunbc_floor_measured_peak_observation,
@@ -659,4 +661,39 @@ test fn the_shakedown_host_runner_charge_carries_the_shakedown_slot_at_its_real_
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv3, slots: 17))
       == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 17))
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 0)) == 0
+}
+
+// srv1's SHAKEDOWN SLOT STAYS A COMMITTED MEMBER BY ITS AUTHORED IDENTITY WHEN THE WIDTH FALLS BELOW
+// ITS INDEX. The width charges srv1-13 first, so the population is the fleet range 1..(width - 1)
+// plus srv1-13 -- never 1..width. Discriminating in both directions: enumerating 1..width would
+// make srv1-13 an outsider (first conjunct red) and would admit a fleet slot the width never
+// charged for (the width-index conjunct red). Indices are read from the live width, not typed in,
+// so the row does not move when the width moves.
+fn srv1_membership_is(slot_index: Int, expect_member: Bool, expect_fabric: Bool) -> Bool {
+  match checked_int_to_nat(n: slot_index) {
+    Absent => false
+    Present { value: n } => srv1_membership_at(slot_index: n, expect_member: expect_member, expect_fabric: expect_fabric)
+  }
+}
+
+fn srv1_membership_at(slot_index: Nat, expect_member: Bool, expect_fabric: Bool) -> Bool {
+  match runner_slot_membership(host: operator_host_srv1, slot_index: slot_index) {
+    SlotMembershipWidthUnresolved { identity: _, cause: _ } => false
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => !expect_member
+    CommittedSlotMember { identity: _, purpose: p } =>
+      expect_member && match p {
+        SlotServesFabricExecution => expect_fabric
+        SlotServesGitHubActions => !expect_fabric
+      }
+  }
+}
+
+test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> Bool {
+  match gunbc_runner_committed_width(host: operator_host_srv1) {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: w } =>
+      srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
+        && srv1_membership_is(slot_index: w - 1, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: w, expect_member: false, expect_fabric: false)
+  }
 }

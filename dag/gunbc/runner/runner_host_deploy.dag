@@ -19,10 +19,12 @@ import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet_intent { fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { runner_slot_index_suffix }
+import gunbc.build_cache_instance { runner_slot_index_suffix, RunnerSlotIdentity }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
+  host_fleet_slot_indices,
+  host_committed_identities_at,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
@@ -521,8 +523,21 @@ fn runner_index_seq(n: Int) -> List<Int> {
   }
 }
 
+// THE ACTIONS RUNNER UNITS ARE THE FLEET RANGE, NOT 1..runner_count. On the host carrying the
+// microVM shakedown slot, runner_count includes that slot at its authored index, so the Actions
+// units stop one below the count (gunbc.runner_slot_allocation host_fleet_slot_indices).
 fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
-  map(runner_index_seq(n: deploy.runner_count), i => runner_instance_name(deploy: deploy, index: i))
+  map(
+    host_fleet_slot_indices(host: deploy.host_label as HostIdentity, committed: deploy.runner_count),
+    i => runner_instance_name(deploy: deploy, index: i as Int)
+  )
+}
+
+// EVERY COMMITTED SLOT IDENTITY ON THE DEPLOY'S HOST: the fleet range plus any authored member
+// above it (gunbc.runner_slot_allocation host_committed_identities_at), one answer for every
+// consumer that enumerates a host's slots from its deploy row.
+fn runner_slot_identities_of(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
+  host_committed_identities_at(host: deploy.host_label as HostIdentity, committed: deploy.runner_count)
 }
 
 fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
