@@ -24399,6 +24399,46 @@ pub fn emit_typed_expr(
                     )
                 }
             }
+            ExprData::ExprListLit => {
+                if rust_list_lit_holds_callables(texpr.clone()) {
+                    {
+                        let element_type = rust_list_lit_callable_element_type(
+                            texpr.clone(),
+                            shared_types.clone(),
+                            scope.clone(),
+                            emit_info.clone(),
+                        );
+                        crate::v1_compiler_emit::emit_list_lit_expr(
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for el in texpr.children.clone().iter().cloned() {
+                                    __result.push(rust_callable_list_element(
+                                        el.clone(),
+                                        element_type.clone(),
+                                        registry.clone(),
+                                        scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                    ));
+                                }
+                                __result
+                            }),
+                            RenderTarget::Rust,
+                        )
+                    }
+                } else {
+                    emit_typed_expr_shared(
+                        texpr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        fuel.clone(),
+                    )
+                }
+            }
             _ => emit_typed_expr_shared(
                 texpr.clone(),
                 registry.clone(),
@@ -24410,6 +24450,98 @@ pub fn emit_typed_expr(
             ),
         }
     })
+}
+
+pub fn rust_list_lit_holds_callables(texpr: Rc<Node>) -> bool {
+    {
+        let mut __found = false;
+        for el in texpr.children.clone().iter().cloned() {
+            if match (*el.expr_data.clone()).clone() {
+                ExprData::ExprLambda => true,
+                _ => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn rust_list_lit_callable_element_type(
+    texpr: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    match crate::v1_compiler_infer_types::resolved_type(texpr.clone())
+        .children
+        .clone()
+        .first()
+        .cloned()
+    {
+        Some(el) => {
+            let et = crate::v1_compiler_infer_types::child_type_node(el.clone());
+            if (et.connective.clone() == Connective::Arrow) {
+                Some(render_rust_type(
+                    et.clone(),
+                    shared_types.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    emit_info.clone(),
+                ))
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn rust_callable_list_element(
+    el: Rc<Node>,
+    element_type: Option<String>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    match (*el.expr_data.clone()).clone() {
+        ExprData::ExprLambda => {
+            let wrapped = rust_callable_field_value_wrap(
+                emit_typed_collection_lambda(
+                    el.clone(),
+                    "_".to_string(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ),
+                Some(el.clone()),
+                scope.clone(),
+            );
+            match element_type.clone() {
+                Some(ty) => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("{ let __callable: ".to_string(), ty.clone()),
+                        v1_rt::concat(" = ".to_string(), wrapped.clone()),
+                    ),
+                    "; __callable }".to_string(),
+                ),
+                std::option::Option::None => wrapped.clone(),
+            }
+        }
+        _ => emit_typed_expr(
+            el.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            1024,
+        ),
+    }
 }
 
 pub fn emit_typed_expr_shared(
@@ -30561,15 +30693,26 @@ pub fn emit_typed_let(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let val_str = emit_typed_expr(
-            value.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-            1024,
-        );
+        let val_str = match (*value.expr_data.clone()).clone() {
+            ExprData::ExprLambda => emit_typed_collection_lambda(
+                value.clone(),
+                "_".to_string(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            ),
+            _ => emit_typed_expr(
+                value.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
+        };
         crate::v1_compiler_emit::emit_typed_let_shared(
             name.clone(),
             val_str.clone(),
