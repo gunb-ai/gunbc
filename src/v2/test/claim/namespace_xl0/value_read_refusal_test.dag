@@ -59,27 +59,33 @@ data vrr_block_arm_lambda_source: String = vrr_header + "fn leaf(v: Bool) -> Boo
 
 data vrr_field_initializer_source: String = vrr_header + "fn p(v: Bool) -> VrrRecord {\n  VrrRecord { f: fn(y) { y } }\n}\n"
 
-type VrrVerdict
-  = VrrRefused { fatal: Diagnostic }
-  | VrrNotRefused
+// THE FRONT END RUNS ONCE, OVER ALL SEVEN SPECIMENS, AND EACH CLAIM READS ITS OWN ROW. Every claim
+// here asks what the REAL tokenize -> parse -> normalize route answers for one specimen, and each
+// full run costs ~150k-390k eval steps -- over the new-witness per-claim budget, measured by the
+// required floor's adjudication on this PR's first run. The same shape as
+// v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes: vrr_outcomes is a
+// nullary pure producer over inline sources, enrolled WARM in v2.workflow.floor_pure_producer_share,
+// so the stage still EXECUTES -- once, in preparation -- and each row records what that execution
+// observed. The row is reduced to symbols and booleans (fatal reason, and what the refusal's locus
+// holds) so it reifies without carrying a Node, and the claims below assert exactly what they
+// asserted when each ran the front end itself.
+type VrrObserved
+  = VrrAccepted
+  | VrrRefusedAt {
+      reason: Symbol
+      locus_holds_fn_literal: Bool
+      locus_holds_arrow_lambda: Bool
+      locus_holds_enclosing_token: Bool
+    }
 
-fn vrr_normalize(source: String) -> VrrVerdict {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => VrrNotRefused
-    Accepted { value: prepared, diagnostics: residue } =>
-      match tokenize(text: source, file: ^value_read_refusal_file, rules: dag_lex()) {
-        Rejected { diagnostics: _ } => VrrNotRefused
-        Accepted { value: token_stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
-            Rejected { diagnostics: _ } => VrrNotRefused
-            Accepted { value: artifact, diagnostics: _ } =>
-              match normalize(parse_tree: artifact.tree) {
-                Accepted { value: _, diagnostics: _ } => VrrNotRefused
-                Rejected { diagnostics: d } => VrrRefused { fatal: diagnostics_fatal(d: d) }
-              }
-          }
-      }
-  }
+type VrrOutcomes {
+  arm_body: VrrObserved
+  if_arm: VrrObserved
+  if_condition: VrrObserved
+  let_value: VrrObserved
+  field_initializer: VrrObserved
+  swallowed_fold_refusal: VrrObserved
+  block_arm_lambda: VrrObserved
 }
 
 fn vrr_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
@@ -108,46 +114,96 @@ fn vrr_subtree_has_token(root: Node, token: Symbol) -> Bool {
   )
 }
 
+fn vrr_observe_refusal(d: Diagnostic) -> VrrObserved {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      VrrRefusedAt {
+        reason: d.reason,
+        locus_holds_fn_literal: vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_fn_literal),
+        locus_holds_arrow_lambda: vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda),
+        locus_holds_enclosing_token: vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_match) || vrr_subtree_has_token(root: a.at, token: ^dag_token_fat_arrow) || vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_if) || vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_let)
+      }
+    _ =>
+      VrrRefusedAt {
+        reason: d.reason,
+        locus_holds_fn_literal: false,
+        locus_holds_arrow_lambda: false,
+        locus_holds_enclosing_token: false
+      }
+  }
+}
+
+fn vrr_observe(source: String) -> VrrObserved {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: source, file: ^value_read_refusal_file, rules: dag_lex()) {
+        Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Accepted { value: _, diagnostics: _ } => VrrAccepted
+                Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
+              }
+          }
+      }
+  }
+}
+
+fn vrr_outcomes() -> VrrOutcomes {
+  VrrOutcomes {
+    arm_body: vrr_observe(source: vrr_arm_body_source),
+    if_arm: vrr_observe(source: vrr_if_arm_source),
+    if_condition: vrr_observe(source: vrr_if_condition_source),
+    let_value: vrr_observe(source: vrr_let_value_source),
+    field_initializer: vrr_observe(source: vrr_field_initializer_source),
+    swallowed_fold_refusal: vrr_observe(source: vrr_swallowed_fold_refusal_source),
+    block_arm_lambda: vrr_observe(source: vrr_block_arm_lambda_source)
+  }
+}
+
 // The refusal is the value's: its fatal cause is value_unlowered, and its locus holds the fn literal
-// and none of the enclosing form's tokens.
-fn vrr_refused_at_the_value(source: String) -> Bool {
-  match vrr_normalize(source: source) {
-    VrrNotRefused => false
-    VrrRefused { fatal: d } =>
-      (d.reason == ^body_lowering_reason_value_unlowered)
-        && match d.at {
-             NodeLocus { anchor: a } =>
-               vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_fn_literal)
-                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_match)
-                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_fat_arrow)
-                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_if)
-                 && !vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_let)
-             _ => false
-           }
+// and none of the enclosing form's tokens (`match`, `=>`, `if`, `let`).
+fn vrr_refused_at_the_value(o: VrrObserved) -> Bool {
+  match o {
+    VrrAccepted => false
+    VrrRefusedAt { reason: r, locus_holds_fn_literal: f, locus_holds_arrow_lambda: _, locus_holds_enclosing_token: e } =>
+      (r == ^body_lowering_reason_value_unlowered) && f && !e
+  }
+}
+
+// The refusal is the lambda argument's own: call_argument_unread, located at the lambda.
+fn vrr_refused_at_the_lambda(o: VrrObserved) -> Bool {
+  match o {
+    VrrAccepted => false
+    VrrRefusedAt { reason: r, locus_holds_fn_literal: _, locus_holds_arrow_lambda: l, locus_holds_enclosing_token: _ } =>
+      (r == ^body_lowering_reason_call_argument_unread) && l
   }
 }
 
 // THE RELABEL, ASKED DIRECTLY: an unlowerable arm body is the arm body's refusal, not the arm's.
 test fn an_unlowerable_match_arm_body_refuses_at_the_body_not_as_navigation_holds() -> Bool {
-  vrr_refused_at_the_value(source: vrr_arm_body_source)
+  vrr_refused_at_the_value(o: vrr_outcomes().arm_body)
 }
 
 test fn an_unlowerable_if_arm_refuses_at_the_arm_value_not_as_navigation_holds() -> Bool {
-  vrr_refused_at_the_value(source: vrr_if_arm_source)
+  vrr_refused_at_the_value(o: vrr_outcomes().if_arm)
 }
 
 test fn an_unlowerable_if_condition_refuses_at_the_condition_holds() -> Bool {
-  vrr_refused_at_the_value(source: vrr_if_condition_source)
+  vrr_refused_at_the_value(o: vrr_outcomes().if_condition)
 }
 
 test fn an_unlowerable_let_value_refuses_at_the_value_holds() -> Bool {
-  vrr_refused_at_the_value(source: vrr_let_value_source)
+  vrr_refused_at_the_value(o: vrr_outcomes().let_value)
 }
 
 // THE CARRY'S FORMER POSITION: this specimen Accepted under the value_carried_unlowered advisory and
 // refused later, at resolve, at the wrong atom.
 test fn an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_carried_holds() -> Bool {
-  vrr_refused_at_the_value(source: vrr_field_initializer_source)
+  vrr_refused_at_the_value(o: vrr_outcomes().field_initializer)
 }
 
 // A FOLD REFUSAL INSIDE A VALUE IS THE VALUE'S REFUSAL, NOT A CUE TO GO LOOKING FOR A SMALLER VALUE.
@@ -159,15 +215,7 @@ test fn an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_c
 // lambda argument's own, call_argument_unread, located at the lambda; the specimen's `f:` body carries
 // a `let` because a body the walker can lower is what the swallow latched onto.
 test fn a_fold_refusal_inside_a_let_value_propagates_instead_of_binding_an_inner_subtree_holds() -> Bool {
-  match vrr_normalize(source: vrr_swallowed_fold_refusal_source) {
-    VrrNotRefused => false
-    VrrRefused { fatal: d } =>
-      (d.reason == ^body_lowering_reason_call_argument_unread)
-        && match d.at {
-             NodeLocus { anchor: a } => vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda)
-             _ => false
-           }
-  }
+  vrr_refused_at_the_lambda(o: vrr_outcomes().swallowed_fold_refusal)
 }
 
 // A BLOCK ARM WHOSE CONTENT REFUSES KEEPS ITS CONTENT'S REFUSAL. The arm position is read twice --
@@ -177,13 +225,5 @@ test fn a_fold_refusal_inside_a_let_value_propagates_instead_of_binding_an_inner
 // (dag/extdeps/vllm/engram_layout.dag vllm_engram_is_prime). The retry is now owed only to a shape
 // miss, and the arm's own refusal stands, located at the lambda.
 test fn a_block_arm_whose_content_refuses_keeps_the_content_refusal_not_navigation_holds() -> Bool {
-  match vrr_normalize(source: vrr_block_arm_lambda_source) {
-    VrrNotRefused => false
-    VrrRefused { fatal: d } =>
-      (d.reason == ^body_lowering_reason_call_argument_unread)
-        && match d.at {
-             NodeLocus { anchor: a } => vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda)
-             _ => false
-           }
-  }
+  vrr_refused_at_the_lambda(o: vrr_outcomes().block_arm_lambda)
 }
