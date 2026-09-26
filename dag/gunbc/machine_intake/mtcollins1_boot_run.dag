@@ -23,16 +23,17 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject,
   mtcollins1_boot_subject,
 }
-import gunbc.machine_intake_mtcollins1_standing_ruling {
-  StandingRulingConfirmation, StandingRulingConfirmed, StandingRulingRefused, mtcollins1_boot_standing_ruling_read,
-}
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
 }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
+import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.machine_intake_mtcollins1_boot_milestone {
+  MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
+  MtCollins1PlacementReading, PlacementHeld, PlacementNoNodeLines, PlacementMismatch, mtcollins1_boot_placement_reading,
+}
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
@@ -51,8 +52,7 @@ import extdeps.bootloader.grub {
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import v2.std.optional { Present }
-import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
@@ -417,6 +417,8 @@ type MtCollins1BootTerminalCause
   | TerminalSectionFailed { name: String, exit_code: String }
   | TerminalSectionMalformed { name: String, reason: String }
   | HardwareThreadCountMismatch { expected: HardwareThreadCount, observed: String }
+  | SocketPlacementMismatch { expected: MtCollins1BootTopologyExpectation, observed: String }
+  | SocketPlacementUnread
   | BootMediaLabelAbsent { label: NonEmptyStr }
   | EdacCountersNotClean { name: String }
   | WorkloadWriteFailed { rc: String }
@@ -454,6 +456,26 @@ fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: HardwareThr
     SectionPending { output: _ } => QualificationPending
     SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "nproc", reason: r } }
     SectionComplete { exit_code: code, output: out } => qualification_judged(name: "nproc", exit_code: code, cause: nproc_judge(expected: expected, out: out))
+  }
+}
+
+// THE COUNT IS NOT THE MILESTONE: nproc 80 is also what a boot with both sockets half-enumerated
+// prints. The placement is read from the numa section against the same expectation, so 80 on
+// socket 0 holds and 80 split across sockets refuses (gunbc.machine_intake_mtcollins1_boot_milestone).
+fn placement_qualification(envelope: BoundHostCaptureEnvelope, expected: MtCollins1BootTopologyExpectation) -> TerminalQualification {
+  match host_capture_section_reading(envelope: envelope, name: "numa") {
+    SectionAbsent => QualificationPending
+    SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "numa", reason: r } }
+    SectionComplete { exit_code: code, output: out } => qualification_judged(name: "numa", exit_code: code, cause: placement_judge(expected: expected, out: out))
+  }
+}
+
+fn placement_judge(expected: MtCollins1BootTopologyExpectation, out: List<String>) -> MtCollins1BootTerminalCause? {
+  match mtcollins1_boot_placement_reading(expected: expected, out: out) {
+    PlacementHeld => none
+    PlacementNoNodeLines => Present { value: SocketPlacementUnread }
+    PlacementMismatch { observed: o } => Present { value: SocketPlacementMismatch { expected: expected, observed: o } }
   }
 }
 
@@ -551,9 +573,10 @@ fn terminal_fold_step(acc: TerminalFold, q: TerminalQualification) -> TerminalFo
   }
 }
 
-fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> List<NamedQualification> {
+fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, topology: MtCollins1BootTopologyExpectation, label: NonEmptyStr) -> List<NamedQualification> {
   [
-    NamedQualification { name: "nproc", qualification: nproc_qualification(envelope: envelope, expected: threads) },
+    NamedQualification { name: "nproc", qualification: nproc_qualification(envelope: envelope, expected: topology.threads) },
+    NamedQualification { name: "numa", qualification: placement_qualification(envelope: envelope, expected: topology) },
     NamedQualification { name: "boot-media", qualification: boot_media_qualification(envelope: envelope, label: label) },
     NamedQualification { name: "edac-before", qualification: edac_qualification(envelope: envelope, name: "edac-before") },
     NamedQualification { name: "workload", qualification: workload_qualification(envelope: envelope) },
@@ -578,17 +601,17 @@ fn closed_qualification(envelope: BoundHostCaptureEnvelope, q: NamedQualificatio
   }
 }
 
-fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, topology: MtCollins1BootTopologyExpectation, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
   let f = fold(
-    map(mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label), q => closed_qualification(envelope: envelope, q: q)),
+    map(mtcollins1_boot_qualifications(envelope: envelope, topology: topology, label: label), q => closed_qualification(envelope: envelope, q: q)),
     init: TerminalFold { causes: [], pending: false },
     f: (acc, q) => terminal_fold_step(acc: acc, q: q),
   )
-  if count(f.causes) == 0 { TerminalAccepted { run: envelope.run, threads: threads } } else { TerminalRefused { causes: f.causes } }
+  if count(f.causes) == 0 { TerminalAccepted { run: envelope.run, threads: topology.threads } } else { TerminalRefused { causes: f.causes } }
 }
 
-fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
-  let qs = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
+fn terminal_over_open(envelope: BoundHostCaptureEnvelope, topology: MtCollins1BootTopologyExpectation, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let qs = mtcollins1_boot_qualifications(envelope: envelope, topology: topology, label: label)
   let f = fold(
     map(qs, q => q.qualification),
     init: TerminalFold { causes: [], pending: false },
@@ -661,7 +684,7 @@ fn mtcollins1_boot_loader_verdict(lines: List<String>) -> MtCollins1BootTerminal
 }
 
 fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> MtCollins1BootTerminalVerdict {
-  let threads = mtcollins1_nproc
+  let topology = mtcollins1_boot_topology_expectation
   let medium_image = mtcollins1_boot_medium_image_name(medium: medium)
   let medium_sha256 = mtcollins1_boot_medium_image_sha256(medium: medium)
   let joined = (subject.image_name as String) == (medium_image as String)
@@ -672,8 +695,8 @@ fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubj
       match host_capture_bind(capture: capture, machine: subject.machine) {
         HostCaptureNotBegun => mtcollins1_boot_pre_os_verdict(capture: capture)
         HostCaptureUnbound { reason: r } => TerminalRefused { causes: [TerminalCaptureUnbound { reason: r }] }
-        HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, threads: threads, label: label)
-        HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, threads: threads, label: label)
+        HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, topology: topology, label: label)
+        HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, topology: topology, label: label)
       }
   }
 }
@@ -694,6 +717,8 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
     TerminalSectionMalformed { name: _, reason: r } => r
     HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", hardware_thread_count_value(t: e) as String)
+    SocketPlacementMismatch { expected: e, observed: o } => concat("numa placement ", o, ", milestone expects ", hardware_thread_count_value(t: e.threads) as String, " CPUs on socket ", to_string(e.socket as Int), " and none elsewhere")
+    SocketPlacementUnread => "numa section carries no node cpus line; socket placement is not read"
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
@@ -816,7 +841,6 @@ fn mtcollins1_boot_actuate(
 // compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
 // caller could author. The hold is freed whatever the actuation answered.
 fn mtcollins1_boot_under_live_unit_hold(
-  ruling: StandingRulingConfirmation,
   run_id: NonEmptyStr,
   subject: MtCollins1BootSubject,
   password_file: String,
@@ -827,7 +851,7 @@ fn mtcollins1_boot_under_live_unit_hold(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
   ]
 {
-  match mtcollins1_boot_acquire_unit_hold(ruling: ruling, run_id: run_id) {
+  match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
     UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
     UnitHeld { proof: p } =>
       unit_hold_release(
@@ -844,23 +868,11 @@ fn mtcollins1_boot_under_live_unit_hold(
   }
 }
 
-fn mtcollins1_boot_host_must_be_srv1(host: String) -> Bool {
-  host == operator_host_srv1 as String
-}
-
-fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
-  if mtcollins1_boot_host_must_be_srv1(host: host) {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("mtcollins1 boot refuses host '", concat(host, concat("': the unit hold store (gunbc.machine_intake_mtcollins1_maintenance_hold unit_hold_store_root) is on the runner host where the operator takes maintenance holds, which is ", operator_host_srv1 as String))))
-  }
-}
-
 // EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
 // writes the diagnostic bundle (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) and the
 // receipt, and appends the bundle's decisive findings to a refusal reason. The attempt returns a
 // RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
-// was read -- including the standing ruling unconfirmed or the unit held -- still uploads a bundle
+// was read -- including the unit held -- still uploads a bundle
 // saying the BMC sections were NOT TAKEN and why.
 // THE SDR CACHE SITS BESIDE THE CREDENTIAL FILE, under the runner's per-job temporary directory,
 // because it is dumped with that credential and lives exactly as long as the attempt that reads it.
@@ -949,7 +961,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   let exit_word = match concluded { ExitSuccess => "ok"  _ => "refused" }
   let receipt_body = join([
-    "authorization=standing ruling (gunbc.machine_intake_mtcollins1_standing_ruling), read before the unit hold; no per-run approval",
+    "authorization=workload identity of the fleet-converge run on main (operator ruling 2026-09-25); no per-run or standing approval; the unit hold is the interlock",
     concat("attempt=", attempt_identity_text(a: run)),
     concat("exit=", exit_word),
     bundle_write_receipt_line(w: write),
@@ -965,23 +977,8 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   concluded
 }
 
-// THE HOST ADMISSION, ONE FOLD FOR BOTH SEAMS: the dispatch's host input must name the store host.
-// The boot job always starts on srv1's runner (its labels never read the input), so a dispatch naming
-// another host is REFUSED there with a typed reason -- never skipped, since a skipped job reports
-// success (review 70894) -- by mtcollins1_boot_admit_executor, a credential-free step before the WIF
-// token and the fleet key. The wet entry re-runs the same fold, so neither seam can drift.
-fn mtcollins1_boot_host_admission() -> ProcessExit {
-  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } =>
-      exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; the unit hold store is srv1 only")))))
-    ActionsVariablePresent { value: host } => mtcollins1_boot_refuses_off_srv1(host: host)
-  }
-}
-
-fn mtcollins1_boot_admit_executor() -> ProcessExit {
-  mtcollins1_boot_host_admission()
-}
-
+// THE HOST ADMISSION lives in gunbc.machine_intake_mtcollins1_boot_admission, whose closure is
+// small enough for the credential-free step; the wet entry re-runs the same fold.
 fn mtcollins1_boot_wet() -> ProcessExit
 {
   let attempt = match mtcollins1_boot_host_admission() {
@@ -991,8 +988,7 @@ fn mtcollins1_boot_wet() -> ProcessExit
   mtcollins1_boot_conclude(attempt: attempt)
 }
 
-// THE "BEFORE" SEL SNAPSHOT IS A READONLY READ taken once the credential is read and the standing
-// ruling confirmed, and before the unit hold is taken, so the delta brackets every controller write
+// THE "BEFORE" SEL SNAPSHOT IS A READONLY READ taken once the credential is read, and before the unit hold is taken, so the delta brackets every controller write
 // the attempt makes (gunbc#12093).
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
@@ -1028,22 +1024,18 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
   if !pw_read.success {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error)))
   }
-  let ruling = match mtcollins1_boot_standing_ruling_read() {
-    StandingRulingRefused { reason: r } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: r as String))
-    StandingRulingConfirmed { confirmation: c } => c
-  }
   let subject = mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr)
   match mtcollins1_bmc_username {
     Absent =>
       MtCollins1BootAttempt {
-        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        outcome: mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
         bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
       }
     Present { value: user } => {
       let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
       let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
       MtCollins1BootAttempt {
-        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        outcome: mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
         bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
       }
     }

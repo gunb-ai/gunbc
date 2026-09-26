@@ -27,7 +27,7 @@ import v2.std.compilers.target_model {
   EmitSpellingQuote,
   EmitSpellingWrap,
   TokenClassEmitTransform,
-  apply_emit_spelling_transform,
+  apply_emit_spelling_quote,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
@@ -717,21 +717,23 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
 // extdeps.posix.shell_command_language and this transform row derives from them rather than
 // re-spelling the encoding here.
 
+fn bash_posix_single_quote_escapes() -> List<EmitSpellingEscape> {
+  [EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }]
+}
+
 fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform {
   EmitSpellingQuote {
     prefix: prefix,
     open: posix_single_quote_delimiter,
     close: posix_single_quote_delimiter,
-    escapes: [
-      EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }
-    ]
+    escapes: bash_posix_single_quote_escapes()
   }
 }
 
 // Derived from the same transform row the emit map carries, so the directive text builders and
 // the token-class rendering cannot disagree on the encoding.
 fn bash_single_quote_spaced(spelling: String) -> String {
-  apply_emit_spelling_transform(transform: bash_posix_single_quote_transform(prefix: " "), spelling: spelling)
+  apply_emit_spelling_quote(prefix: " ", open: posix_single_quote_delimiter, close: posix_single_quote_delimiter, escapes: bash_posix_single_quote_escapes(), spelling: spelling)
 }
 
 fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {

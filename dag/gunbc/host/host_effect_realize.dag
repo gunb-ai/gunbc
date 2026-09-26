@@ -1,6 +1,6 @@
 module gunbc.host_effect_realize
 
-import std.algebra { trim }
+import std.algebra { trim, list_snoc_item, list_append }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -64,7 +64,7 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list, list_snoc_item, list_append, list_map }
+import v2.std.algebra { fold_list, list_map }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec

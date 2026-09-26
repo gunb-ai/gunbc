@@ -1,0 +1,96 @@
+module test.claim.spark.v41_indexer_topk_route_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.vllm.sparse_indexer_topk {
+  vllm_d2d649e6_deepselect_block, vllm_d2d649e6_sm12_indexer_topk_route, vllm_d2d649e6_indexer_topk_class,
+}
+import extdeps.vllm.source_build { vllm_d2d649e6_revision }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_recipe }
+import gunbc.spark.serving_runtime_capability_probe {
+  RuntimeKernelCapability, IndexerTopkRouteCorrect, V41SpeculativeDecode, V41BaselineDecode,
+  v41_required_capabilities, runtime_kernel_capability_label,
+}
+import gunbc.spark.v41_runtime_image_probe {
+  v41_probe_script, v41_capability_reading, v41_probe_label, v41_py_op_name,
+  V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
+}
+
+// THE DEEPSELECT WARNING IS EXPECTED IN THE IMAGE THIS RECIPE BUILDS, AND THIS IS THE JOIN THAT SAYS
+// SO. Upstream's DeepSelect arch set is the 10.x family alone; the V4.1 candidate recipe's
+// TORCH_CUDA_ARCH_LIST names no 10.x entry, so the extension cannot be compiled into it. If the
+// recipe ever gains a 10.x target -- or upstream's gate gains a 12.x family -- this goes red and the
+// warning becomes a question again rather than an expected state.
+// A FAMILY ENTRY (`10.0f`) MATCHES ANY TARGET WITH THE SAME MAJOR, which is cuda_archs_loose_intersection's
+// rule for the `f` suffix; the prefix is that major and its dot.
+fn gate_major_prefix(entry: NonEmptyStr) -> String {
+  match first(split(s: entry as String, delimiter: ".")) {
+    Absent => entry as String
+    Present { value: m } => join([m, "."], "")
+  }
+}
+
+test fn the_candidate_recipe_targets_nothing_in_deepselects_arch_family() -> Bool {
+  let gate = vllm_d2d649e6_deepselect_block.arch_entries
+  length(gate) > 0
+    && !any(gate, g => starts_with(s: g as String, prefix: "12."))
+    && !any(v41_candidate_recipe().torch_cuda_arch_list, a =>
+         any(gate, g => starts_with(s: a as String, prefix: gate_major_prefix(entry: g))))
+    && any(v41_candidate_recipe().torch_cuda_arch_list, a => starts_with(s: a as String, prefix: "12."))
+}
+
+// THE ROUTE FACT IS ANCHORED TO THE REVISION THE CANDIDATE IS BUILT FROM. indexer_topk.py does not
+// exist at the older revision the SM12 demand roster reads, so a route read against any source other
+// than the candidate recipe's would be a fact about a different program.
+test fn the_indexer_topk_route_is_read_at_the_candidate_recipes_own_revision() -> Bool {
+  (vllm_d2d649e6_sm12_indexer_topk_route.established_against.full_revision as String) == (v41_candidate_recipe().source.full_revision as String)
+    && (vllm_d2d649e6_revision.full_revision as String) == (v41_candidate_recipe().source.full_revision as String)
+}
+
+// BOTH PROFILES REQUIRE IT, because both decode through the sparse indexer.
+fn requires_route(caps: List<RuntimeKernelCapability>) -> Bool {
+  any(caps, c => runtime_kernel_capability_label(c: c) == runtime_kernel_capability_label(c: IndexerTopkRouteCorrect))
+}
+
+test fn both_v41_profiles_require_the_indexer_topk_route() -> Bool {
+  requires_route(caps: v41_required_capabilities(profile: V41SpeculativeDecode))
+    && requires_route(caps: v41_required_capabilities(profile: V41BaselineDecode))
+}
+
+// THE SCRIPT ASKS WHAT THE ROUTE ROW SAYS: the resolver class, both kernels by the name reached on
+// torch.ops._C, the backend it must answer, and a verdict that needs a nonzero case count. Rename a
+// kernel in the row and the probe calls the new name; drop the case-count clause and a run that
+// compared nothing would read present.
+test fn the_generated_probe_calls_the_route_and_both_kernels_the_row_names() -> Bool {
+  let script = v41_probe_script()
+  let route = vllm_d2d649e6_sm12_indexer_topk_route
+  string_contains(s: script, pattern: vllm_d2d649e6_indexer_topk_class as String)
+    && string_contains(s: script, pattern: join(["\"", v41_py_op_name(qualified: route.decode_operator) as String, "\""], ""))
+    && string_contains(s: script, pattern: join(["\"", v41_py_op_name(qualified: route.prefill_operator) as String, "\""], ""))
+    && (v41_py_op_name(qualified: route.decode_operator) as String) == "persistent_topk"
+    && string_contains(s: script, pattern: "_cases > 0 and _agreed == _cases")
+    && string_contains(s: script, pattern: "resolve_backend")
+}
+
+// A TIMING LINE IS NEVER A VERDICT. The cost instrument prints under the same label; a stdout that
+// carries only its TIMING and an error DETAIL must read UNREAD, and one carrying the verdict reads it.
+test fn timing_output_alone_never_admits_the_route() -> Bool {
+  let label = v41_probe_label(c: IndexerTopkRouteCorrect)
+  let timing_only = join(["TIMING ", label as String, " persistent rows 4 seq 65536 topk 512 kernel_ms 0.1 torch_topk_ms 0.2\nDETAIL ", label as String, " error RuntimeError\n"], "")
+  let read = join(["VERDICT ", label as String, "=present\n"], "")
+  let refused = join(["VERDICT ", label as String, "=absent\n"], "")
+  (match v41_capability_reading(stdout: timing_only, capability: label) {
+    V41CapabilityUnread { capability: _, cause: _ } => true
+    V41CapabilityPresent { capability: _ } => false
+    V41CapabilityAbsent { capability: _ } => false
+  })
+    && (match v41_capability_reading(stdout: read, capability: label) {
+      V41CapabilityPresent { capability: _ } => true
+      V41CapabilityUnread { capability: _, cause: _ } => false
+      V41CapabilityAbsent { capability: _ } => false
+    })
+    && (match v41_capability_reading(stdout: refused, capability: label) {
+      V41CapabilityAbsent { capability: _ } => true
+      V41CapabilityUnread { capability: _, cause: _ } => false
+      V41CapabilityPresent { capability: _ } => false
+    })
+}

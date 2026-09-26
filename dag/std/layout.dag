@@ -7,7 +7,16 @@ type Doc
   | DocText { text: String }
   | DocLine
   | DocConcat { parts: List<Doc> }
-  | DocNest { levels: Int, body: Doc }
+  | DocNest { indent: NestIndent, body: Doc }
+
+// ONE NEST, TWO SOURCES FOR WHAT IT INDENTS BY. A document built against a LayoutProtocol nests by
+// levels of the protocol's unit; a document assembled from a target's grammar rows nests by the unit
+// that TARGET spells (v2.std.compilers.target_model target_text_nested), because one render serves
+// every target and no single protocol knows each target's unit. Either way the nest is a tree, so a
+// block cannot be left open.
+type NestIndent
+  = ProtocolIndent { levels: Int }
+  | SpelledIndent { unit: String }
 
 type LayoutProtocol {
   indent_unit: String
@@ -27,7 +36,18 @@ fn doc_concat(parts: List<Doc>) -> Doc {
 }
 
 fn doc_nest(levels: Int, body: Doc) -> Doc {
-  DocNest { levels: levels, body: body }
+  DocNest { indent: ProtocolIndent { levels: levels }, body: body }
+}
+
+fn doc_nest_by(unit: String, body: Doc) -> Doc {
+  DocNest { indent: SpelledIndent { unit: unit }, body: body }
+}
+
+fn nest_indent_text(indent: NestIndent, proto: LayoutProtocol) -> String {
+  match indent {
+    ProtocolIndent { levels: n } => repeat_string(s: proto.indent_unit, n: n)
+    SpelledIndent { unit: u } => u
+  }
 }
 
 fn doc_line_of(text: String) -> Doc {
@@ -38,24 +58,24 @@ fn doc_blank() -> Doc {
   DocLine
 }
 
-fn render_go(doc: Doc, level: Int, proto: LayoutProtocol, st: RenderState) -> RenderState {
+fn render_go(doc: Doc, indent: String, proto: LayoutProtocol, st: RenderState) -> RenderState {
   match doc {
     DocEmpty => st
     DocText { text: t } =>
       if t == "" {
         st
       } else if st.at_line_start {
-        RenderState { out: concat(concat(st.out, repeat_string(s: proto.indent_unit, n: level)), t), at_line_start: false }
+        RenderState { out: concat(concat(st.out, indent), t), at_line_start: false }
       } else {
         RenderState { out: concat(st.out, t), at_line_start: false }
       }
     DocLine => RenderState { out: concat(st.out, "\n"), at_line_start: true }
     DocConcat { parts: parts } =>
-      fold(parts, init: st, f: (acc, part) => render_go(doc: part, level: level, proto: proto, st: acc))
-    DocNest { levels: n, body: body } => render_go(doc: body, level: level + n, proto: proto, st: st)
+      fold(parts, init: st, f: (acc, part) => render_go(doc: part, indent: indent, proto: proto, st: acc))
+    DocNest { indent: by, body: body } => render_go(doc: body, indent: concat(indent, nest_indent_text(indent: by, proto: proto)), proto: proto, st: st)
   }
 }
 
 fn render(doc: Doc, proto: LayoutProtocol) -> String {
-  render_go(doc: doc, level: 0, proto: proto, st: RenderState { out: "", at_line_start: true }).out
+  render_go(doc: doc, indent: "", proto: proto, st: RenderState { out: "", at_line_start: true }).out
 }

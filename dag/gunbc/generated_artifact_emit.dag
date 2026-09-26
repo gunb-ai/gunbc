@@ -58,7 +58,7 @@ import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendere
 import gunbc.runner_host_grants {
   runner_host_refused_sudoers_content, runner_host_sudoers_content }
 import gunbc.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
-import gunbc.plan { expected_plan_md }
+import gunbc.plan { plan_generation, PlanGenerated, PlanGenerationRefused }
 import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.stage0_crate_layout_emit {
   expected_stage0_crate_layout_generated_dag,
@@ -214,7 +214,10 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
             }
         }
     }
-    PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
+    PlanArtifact { plan } => match plan_generation(p: plan) {
+      PlanGenerated { content } => artifact_generated(content: content)
+      PlanGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
   }
 }
 

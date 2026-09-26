@@ -8,7 +8,21 @@ import extdeps.languages.json.parse {
   json_object_members_named, json_field, json_field_int, json_field_string, json_field_string_list,
   json_field_value, json_field_cause,
 }
-import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name, approval_ntfy_unit_name }
+import std.algebra { trim }
+import std.measure { Second, second }
+import std.resources { Network }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.systemd { ActiveState, MainPID }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_one_per_line_command, timeout_command }
+import extdeps.tools.stat { stat_dereferenced_inode_command }
+import extdeps.linux.procfs { procfs_pid_file_path }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved }
 
 // THE CONTRACT OF THE NTFY RUNTIME-OBSERVATION HELPER, and only the contract. The enrolment-code
 // verb (gunbc.auth.approval_device_routes issue_device_enrolment_code, #12077) must join its ACL
@@ -29,11 +43,8 @@ import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
 // crosses the process boundary, and both directions of it are defined here. The release-scoped argv
 // and the grant are owned by gunbc.live_deploy.emit, because they are functions of the release
 // locus. This module cannot import emit: emit imports this module, and the import graph is acyclic.
-// The entry FUNCTION BODY -- the reads themselves -- and the four joins over its result land in
-// #12077, in this module. Until then the grant names a function that does not resolve on main. That
-// is a declared frontier, not a dangling one: its trigger is #12077 adding
-// `fn approval_ntfy_runtime_observe() -> CliWireResponse` here. A helper run before that refuses at
-// resolve (no function), which is a loud failure of the verb's read, never a widened answer.
+// The entry FUNCTION BODY -- the reads themselves -- is approval_ntfy_runtime_observe below. The
+// four joins over its result are the verb's, in gunbc.auth.approval_ntfy_access_readback.
 
 data approval_ntfy_runtime_observe_entry_rel: NonEmptyStr = "dag/gunbc/auth/approval_ntfy_runtime_observe.dag"
 data approval_ntfy_runtime_observe_function: NonEmptyStr = "approval_ntfy_runtime_observe"
@@ -363,5 +374,181 @@ fn ntfy_runtime_observe_decode(text: String) -> NtfyRuntimeObserveReading {
             NtfyRuntimeReadingUndecodable { cause: concat("unknown outcome ", o) }
           }
       }
+  }
+}
+
+// ── THE ENTRY: the reads, as the server's own principal ─────────────────────────────────────
+// Run only through the per-release grant (gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_argv),
+// so it runs as gunbc-ntfy and can read /proc/<MainPID>/{environ,exe,fd}. It accepts nothing: the
+// MainPID is systemd's, read here, and the verb joins it against its own reading of the unit.
+//
+// EVERY READ IS AN extdeps ARGV UNDER THE SAME TIMEOUT THE VERB'S READS USE, and every failure is the
+// NtfyRuntimeObserveRefused arm naming that read. Nothing is skipped: an fd that closes between the
+// listing of fd/ and its readlink refuses the whole observation rather than dropping out of the set,
+// because a set with a hole in it cannot answer "is the auth file among them". The operator re-runs.
+// The outcome is ALWAYS printed and the exit is ALWAYS success: a refusal is an observation of the
+// process, and only a helper that could not run at all reaches the verb as a nonzero exit.
+data ntfy_runtime_observe_read_timeout: Second = second(count: 10)
+data ntfy_runtime_observe_read_kill_after: Second = second(count: 2)
+
+type NtfyObservedText
+  = NtfyTextRead { stdout: String }
+  | NtfyTextRefused { read: String, cause: String }
+
+fn ntfy_runtime_observe_read(read: String, command: ArgvCommand) -> NtfyObservedText
+  uses net: Network
+{
+  match run_shell_command_observe_outcome(
+    command: timeout_command(duration: ntfy_runtime_observe_read_timeout, kill_after: ntfy_runtime_observe_read_kill_after, command: command),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: p, cause: c } => NtfyTextRefused { read: read, cause: "'" + (p as String) + "' could not be spawned: " + (c as String) }
+    ProcessRan { observation: o } =>
+      if o.exit_code != 0 { NtfyTextRefused { read: read, cause: "exit " + to_string(o.exit_code) + ": " + trim(s: o.stderr) } }
+      else { NtfyTextRead { stdout: o.stdout } }
+  }
+}
+
+// readlink(1) ends its line with one newline; exactly that one is removed, so the target is otherwise
+// VERBATIM (a ` (deleted)` suffix stays).
+fn readlink_target(stdout: String) -> String {
+  let n = string_length(s: stdout)
+  if n > 0 && substring(s: stdout, start: n - 1, end: n) == "\n" { substring(s: stdout, start: 0, end: n - 1) } else { stdout }
+}
+
+// /proc/<pid>/environ: NAME=value entries, each NUL-terminated. Only the names are kept, in order.
+fn environ_names(text: String) -> List<String> {
+  map(filter(split(s: text, delimiter: "\x00"), e => e != ""), e => match first(split(s: e, delimiter: "=")) { Present { value: n } => n  Absent => e })
+}
+
+fn ntfy_observe_refused(read: String, cause: String) -> NtfyRuntimeObserveOutcome {
+  NtfyRuntimeObserveRefused { read: read, cause: cause }
+}
+
+// The unit's MainPID when the unit is active and names a process; otherwise the refusal cause.
+type NtfyUnitPid
+  = NtfyUnitPidFound { pid: Int }
+  | NtfyUnitPidRefused { cause: String }
+
+fn ntfy_unit_main_pid(text: String) -> NtfyUnitPid {
+  match systemctl_show_property_value(text: text, key: "ActiveState") {
+    Absent => NtfyUnitPidRefused { cause: "no ActiveState= line" }
+    Present { value: state } =>
+      if state != "active" { NtfyUnitPidRefused { cause: "unit is '" + state + "', not active" } }
+      else { match systemctl_show_property_value(text: text, key: "MainPID") {
+        Absent => NtfyUnitPidRefused { cause: "no MainPID= line" }
+        Present { value: p } => match parse_int(s: p) {
+          Absent => NtfyUnitPidRefused { cause: "MainPID '" + p + "' is not an integer" }
+          Present { value: n } => if n <= 0 { NtfyUnitPidRefused { cause: "MainPID is " + p + ": no main process" } } else { NtfyUnitPidFound { pid: n } }
+        }
+      } }
+  }
+}
+
+fn ntfy_start_ticks(text: String) -> Int? {
+  match proc_pid_stat_start_time(content: text) {
+    StartTimeObserved { ticks_since_boot: t } => Present { value: t }
+    _ => none
+  }
+}
+
+fn approval_ntfy_runtime_observe() -> CliWireResponse
+  uses net: Network
+{
+  CliWirePrintable { bytes: ntfy_runtime_observe_encode(outcome: approval_ntfy_runtime_observation()) + "\n", exit: ExitSuccess }
+}
+
+fn approval_ntfy_runtime_observation() -> NtfyRuntimeObserveOutcome
+  uses net: Network
+{
+  match ntfy_runtime_observe_read(read: "unit", command: systemctl_show_properties_command(unit: approval_ntfy_unit_name, properties: [ActiveState, MainPID])) {
+    NtfyTextRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+    NtfyTextRead { stdout: unit } => match ntfy_unit_main_pid(text: unit) {
+      NtfyUnitPidRefused { cause: c } => ntfy_observe_refused(read: "unit", cause: c)
+      NtfyUnitPidFound { pid: pid } => ntfy_observe_process(pid: to_string(pid), main_pid: pid)
+    }
+  }
+}
+
+fn ntfy_observe_process(pid: String, main_pid: Int) -> NtfyRuntimeObserveOutcome
+  uses net: Network
+{
+  match ntfy_runtime_observe_read(read: "stat", command: cat_command(path: procfs_pid_file_path(pid: pid, file: "stat"))) {
+    NtfyTextRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+    NtfyTextRead { stdout: stat_before } => match ntfy_start_ticks(text: stat_before) {
+      Absent => ntfy_observe_refused(read: "stat", cause: "no starttime field")
+      Present { value: before } => match ntfy_runtime_observe_read(read: "environ", command: cat_command(path: procfs_pid_file_path(pid: pid, file: "environ"))) {
+        NtfyTextRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+        NtfyTextRead { stdout: environ } => match ntfy_runtime_observe_read(read: "exe", command: readlink_command(path: procfs_pid_file_path(pid: pid, file: "exe"))) {
+          NtfyTextRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+          NtfyTextRead { stdout: exe } => match ntfy_runtime_observe_read(read: "exe inode", command: stat_dereferenced_inode_command(path: procfs_pid_file_path(pid: pid, file: "exe"))) {
+            NtfyTextRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+            NtfyTextRead { stdout: exe_inode_text } => match parse_int(s: trim(s: exe_inode_text)) {
+              Absent => ntfy_observe_refused(read: "exe inode", cause: "not an integer: " + trim(s: exe_inode_text))
+              Present { value: exe_inode } => match ntfy_observe_fds(pid: pid) {
+                NtfyFdsRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+                NtfyFdsRead { fds: fds } => match ntfy_runtime_observe_read(read: "stat", command: cat_command(path: procfs_pid_file_path(pid: pid, file: "stat"))) {
+                  NtfyTextRefused { read: r, cause: c } => ntfy_observe_refused(read: r, cause: c)
+                  NtfyTextRead { stdout: stat_after } => match ntfy_start_ticks(text: stat_after) {
+                    Absent => ntfy_observe_refused(read: "stat", cause: "no starttime field (last)")
+                    Present { value: after } => NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
+                      main_pid: main_pid,
+                      start_ticks_before: before,
+                      start_ticks_after: after,
+                      environment_names: environ_names(text: environ),
+                      exe_target: readlink_target(stdout: exe),
+                      exe_inode: exe_inode,
+                      open_fds: fds,
+                    } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+type NtfyFdsObserved
+  = NtfyFdsRead { fds: List<NtfyOpenFd> }
+  | NtfyFdsRefused { read: String, cause: String }
+
+type NtfyFdObserved
+  = NtfyFdRead { fd: NtfyOpenFd }
+  | NtfyFdRefused { read: String, cause: String }
+
+fn ntfy_observe_fd(pid: String, n: String) -> NtfyFdObserved
+  uses net: Network
+{
+  let path = procfs_pid_file_path(pid: pid, file: "fd/" + n)
+  match parse_int(s: n) {
+    Absent => NtfyFdRefused { read: "fd", cause: "fd/ entry '" + n + "' is not a descriptor number" }
+    Present { value: _ } => match ntfy_runtime_observe_read(read: "fd " + n, command: readlink_command(path: path)) {
+      NtfyTextRefused { read: r, cause: c } => NtfyFdRefused { read: r, cause: c }
+      NtfyTextRead { stdout: target } => match ntfy_runtime_observe_read(read: "fd " + n + " inode", command: stat_dereferenced_inode_command(path: path)) {
+        NtfyTextRefused { read: r, cause: c } => NtfyFdRefused { read: r, cause: c }
+        NtfyTextRead { stdout: inode_text } => match parse_int(s: trim(s: inode_text)) {
+          Absent => NtfyFdRefused { read: "fd " + n + " inode", cause: "not an integer: " + trim(s: inode_text) }
+          Present { value: i } => NtfyFdRead { fd: NtfyOpenFd { target: readlink_target(stdout: target), target_inode: i } }
+        }
+      }
+    }
+  }
+}
+
+fn ntfy_observe_fds(pid: String) -> NtfyFdsObserved
+  uses net: Network
+{
+  match ntfy_runtime_observe_read(read: "fd", command: ls_one_per_line_command(path: procfs_pid_file_path(pid: pid, file: "fd"))) {
+    NtfyTextRefused { read: r, cause: c } => NtfyFdsRefused { read: r, cause: c }
+    NtfyTextRead { stdout: listing } => {
+      let observed = map(filter(split(s: listing, delimiter: "\n"), l => l != ""), n => ntfy_observe_fd(pid: pid, n: n))
+      match first(filter(observed, o => match o { NtfyFdRefused { read: _, cause: _ } => true  NtfyFdRead { fd: _ } => false })) {
+        Present { value: NtfyFdRefused { read: r, cause: c } } => NtfyFdsRefused { read: r, cause: c }
+        _ => NtfyFdsRead { fds: flat_map(observed, o => match o { NtfyFdRead { fd: fd } => [fd]  NtfyFdRefused { read: _, cause: _ } => [] }) }
+      }
+    }
   }
 }
