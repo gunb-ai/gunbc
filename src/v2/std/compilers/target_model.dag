@@ -136,13 +136,15 @@ import v2.std.node {
 import v2.std.witness {
   StructuralPropertyWitness
 }
+import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
   node_positional_child_targets,
-  nullary_inhabitant_by_discriminant
+  nullary_inhabitant_by_discriminant,
+  pattern_wildcard_name
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -1119,6 +1121,11 @@ fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String
   lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
 }
 
+// A MINTED ANONYMOUS SLOT IS SPELLED AS ITS AUTHORED SOURCE, `_`, never as its marker text: the
+// marker is not an identifier in any target. That is the inverse of the one mint
+// (v2.std.anonymous_binder anonymous_binder_mint_domain). A target that admits only one `_` per
+// signature receives two and its own compiler refuses them; no target row carries a per-target
+// anonymous-parameter spelling yet.
 fn bound_spelling_from_map(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
@@ -1126,7 +1133,12 @@ fn bound_spelling_from_map(
   match map_get(binding_spellings, binding) {
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-      Absent => symbol_interned_spelling(binding: binding)
+      Absent =>
+        if is_anonymous_param_label(sym: binding) {
+          symbol_interned_spelling(binding: pattern_wildcard_name())
+        } else {
+          symbol_interned_spelling(binding: binding)
+        }
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }

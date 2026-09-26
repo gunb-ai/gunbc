@@ -1,0 +1,121 @@
+module v2.test.tokenize.byte_range_octet_unit
+
+import v2.std.text { String, OctetScalarIndex, OctetAtScalarBoundary, OctetInsideScalar, OctetBeyondEnd, string_scalar_index_of_octet }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { ModeledLexRules, Token, TokenStream, symbol_intern_lexeme }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.lens.identity_captured_navigation.analyze { source_slice_of_byte_range }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Every v2 token and diagnostic extent is a ByteRange, so it counts UTF-8 octets. Each source here
+// puts a 2-byte ('°' U+00B0), a 3-byte ('€' U+20AC) and a 4-byte (U+1F600) scalar BEFORE the
+// asserted offset, so a scalar-counting lexer lands 6 lower than an octet-counting one and every
+// assertion below is red under the old unit.
+
+fn lex(src: String) -> Outcome<TokenStream> {
+  tokenize(text: src, file: ^probe, rules: ModeledLexRules { root: dag_lex_rules() })
+}
+
+// `data d: String = "` is 18 octets, the three scalars are 2+3+4 = 9, then `" ` is 2, so the
+// unrecognized em dash (U+2014, 3 octets) starts at octet 29 and covers 29..32. Counted in scalars
+// it would be 23..24.
+test fn refusal_locus_is_the_octet_offset_after_multibyte_scalars_holds() -> Bool {
+  match lex(src: "data d: String = \"°€😀\" —") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      (ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+        match ds.head.at {
+          Textual { file: _, extent: e } =>
+            match e {
+              ByteRange { start: s, end: end_byte } => (s == 29) && (end_byte == 32)
+              WholeFile => false
+            }
+          NodeLocus { anchor: _ } => false
+          SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
+        }
+  }
+}
+
+fn last_token(stream: TokenStream) -> Optional<Token> {
+  fold_list(xs: stream.all, empty: Absent, cons: fn(acc, t) { Present { value: t } })
+}
+
+// The string-literal token after the three scalars spans octets 17..28 (11 octets: two quotes and
+// 9 octets of text), not 17..22.
+test fn token_extent_counts_octets_holds() -> Bool {
+  match lex(src: "data d: String = \"°€😀\"") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match last_token(stream: stream) {
+        Absent => false
+        Present { value: t } => (t.start == 17) && (t.end == 28)
+      }
+  }
+}
+
+// THE SLICING CONSUMER, ON THE REAL ROUTE: the lexer's own ByteRange for the last token, sliced
+// out of the same source by the lens that recovers source text from an extent, returns exactly that
+// token's text. Under the old pairing (scalar extents, scalar substring) this also held, so the
+// discriminating half is the next claim.
+test fn lens_slice_of_a_lexed_extent_returns_the_token_text_holds() -> Bool {
+  let src = "data d: String = \"°€😀\""
+  match lex(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match last_token(stream: stream) {
+        Absent => false
+        Present { value: t } =>
+          match source_slice_of_byte_range(source_text: src, start: t.start, end: t.end) {
+            Absent => false
+            Present { value: sym } => sym == symbol_intern_lexeme(lexeme: "\"°€😀\"")
+          }
+      }
+  }
+}
+
+// An octet range after multibyte text slices the right scalars (`b` is octets 3..4 of "a°b€c"),
+// and an endpoint inside a scalar's encoding refuses rather than rounding to a neighbour.
+test fn lens_slice_by_octets_is_exact_and_refuses_mid_scalar_holds() -> Bool {
+  let exact = match source_slice_of_byte_range(source_text: "a°b€c", start: 3, end: 4) {
+    Absent => false
+    Present { value: sym } => sym == symbol_intern_lexeme(lexeme: "b")
+  }
+  let mid = match source_slice_of_byte_range(source_text: "a°b€c", start: 2, end: 4) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  exact && mid
+}
+
+test fn octet_index_distinguishes_boundary_inside_and_beyond_holds() -> Bool {
+  let s = chars(s: "°€😀")
+  let at_boundary = match string_scalar_index_of_octet(code_points: s, octet: 5) {
+    OctetAtScalarBoundary { index: i } => i == 2
+    OctetInsideScalar => false
+    OctetBeyondEnd => false
+  }
+  let at_end = match string_scalar_index_of_octet(code_points: s, octet: 9) {
+    OctetAtScalarBoundary { index: i } => i == 3
+    OctetInsideScalar => false
+    OctetBeyondEnd => false
+  }
+  let inside = match string_scalar_index_of_octet(code_points: s, octet: 7) {
+    OctetAtScalarBoundary { index: _ } => false
+    OctetInsideScalar => true
+    OctetBeyondEnd => false
+  }
+  let beyond = match string_scalar_index_of_octet(code_points: s, octet: 10) {
+    OctetAtScalarBoundary { index: _ } => false
+    OctetInsideScalar => false
+    OctetBeyondEnd => true
+  }
+  at_boundary && at_end && inside && beyond
+}

@@ -40,7 +40,21 @@ import v2.std.node {
   well_formed
 }
 import v2.std.text { String }
-import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_binder_labels_conform, type_decl_view, type_decl_wrapper, type_param_names, type_params_marker }
+import v2.std.optional { Absent, Present }
+import v2.std.type_binder {
+  GenericOpaqueTypeDecl,
+  GenericTypeAlias,
+  GenericTypeDecl,
+  PlainTypeDecl,
+  type_alias_wrapper,
+  type_binder_labels_conform,
+  type_decl_view,
+  type_decl_wrapper,
+  type_opaque_wrapper,
+  type_param_names,
+  type_params_marker
+}
+import v2.compiler.symbol_index_fill { symbol_index_declared }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -534,6 +548,8 @@ fn tpb_generic_member(o: Outcome<Node>) -> List<Node> {
             if (count(acc) == 0) && (count(type_param_names(n: m)) > 0) {
               match type_decl_view(target: m) {
                 GenericTypeDecl { binders: _, member: member } => [member]
+                GenericTypeAlias { binders: _, aliased: _ } => acc
+                GenericOpaqueTypeDecl { binders: _ } => acc
                 PlainTypeDecl { member: _ } => acc
               }
             } else {
@@ -611,10 +627,167 @@ fn tpb_type_decl_generic_alias() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\ntype Id<T> = T\n")
 }
 
-// (25) A generic alias whose right-hand side is not a member refuses with the exact
-// uncarried-member reason rather than dropping its binders.
-test fn tpb_generic_alias_without_a_member_refuses() -> Bool {
-  tpb_refuses_with(o: tpb_type_decl_generic_alias(), reason: ^body_lowering_reason_generic_type_decl_member_uncarried)
+fn tpb_type_decl_generic_alias_instantiation() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Maybe<A> = Some { v: A } | None\n\ntype Box<T> = Maybe<T>\n")
+}
+
+fn tpb_type_decl_generic_alias_colliding() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype T = Int\n\ntype Id<T> = T\n")
+}
+
+fn tpb_type_decl_generic_alias_undeclared() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Id<T> = Q\n")
+}
+
+fn tpb_type_decl_generic_opaque() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype W<bits>\n")
+}
+
+fn tpb_type_decl_generic_single_variant_after_separator() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype X<T> =\n  | Only\n")
+}
+
+fn tpb_type_decl_plain_single_variant_after_separator() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype S =\n  | Only\n")
+}
+
+fn tpb_type_decl_plain_single_alias() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype S = Int\n")
+}
+
+// Whether the resolved tree holds a Disj with exactly one arm, labelled `label`.
+fn tpb_has_one_arm_disj(o: Outcome<Node>, label: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: false, f: fn(acc, m) {
+        acc || match m.kind {
+          TypeNode { connective: Disj } =>
+            (count(m.children) == 1) && (tpb_arm_labels(members: [m]) == [label])
+          _ => false
+        }
+      })
+  }
+}
+
+// The v2.std.type_binder view of every generic declaration target in the resolved tree, as a tag.
+fn tpb_generic_view_tags(o: Outcome<Node>) -> List<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } => acc
+          _ =>
+            if count(type_param_names(n: m)) > 0 {
+              match type_decl_view(target: m) {
+                GenericTypeDecl { binders: _, member: _ } => concat(acc, [^view_generic_member])
+                GenericTypeAlias { binders: _, aliased: _ } => concat(acc, [^view_generic_alias])
+                GenericOpaqueTypeDecl { binders: _ } => concat(acc, [^view_generic_opaque])
+                PlainTypeDecl { member: _ } => acc
+              }
+            } else {
+              acc
+            }
+        }
+      })
+  }
+}
+
+// GENERIC ALIASES AND BODYLESS GENERICS (v2.compiler.body_lowering_fold body_lower_generic_eq_type_decl).
+// RED BEFORE, MEASURED ON THE PRE-CHANGE TREE: (25) (25b) (25c) (27) refused
+// body_lowering_reason_generic_type_decl_member_uncarried -- the refusal nine corpus files took,
+// v2.std.collection's `type List<T> = std.algebra.FreeMonoid<T>` among them. (26) refused with that same
+// reason, so it discriminates only beside (25). (28) is green before and after: the leading-`|` single
+// variant is a one-variant coproduct in v1, so carrying it as an alias would change its meaning.
+
+// (25) A generic alias carries its binders in the alias wrapper and lowers.
+test fn tpb_generic_alias_carries_its_binders() -> Bool {
+  tpb_accepts(o: tpb_type_decl_generic_alias())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_generic_alias()) == [[^T]]
+    && tpb_generic_view_tags(o: tpb_type_decl_generic_alias()) == [^view_generic_alias]
+}
+
+// (25b) An alias to an instantiation of a generic coproduct: both declarations carry their binders,
+// each read through its own view arm.
+test fn tpb_generic_alias_to_an_instantiation_lowers() -> Bool {
+  tpb_accepts(o: tpb_type_decl_generic_alias_instantiation())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_generic_alias_instantiation()) == [[^A], [^T]]
+    && tpb_generic_view_tags(o: tpb_type_decl_generic_alias_instantiation()) == [^view_generic_member, ^view_generic_alias]
+}
+
+// (25c) THE ALIAS'S `T` IS ITS BINDER: beside `type T = Int` the binder refuses as a shadow rather than
+// the right-hand side binding to that type -- the resolve frame opens over the alias wrapper as it
+// does over a member.
+test fn tpb_generic_alias_param_shadowing_a_visible_name_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_type_decl_generic_alias_colliding(), reason: ^resolve_reason_type_parameter_shadows_visible_name)
+}
+
+// (26) An undeclared name on an alias's right-hand side still refuses unbound: carrying the alias makes
+// its right-hand side resolvable, not accepted.
+test fn tpb_generic_alias_undeclared_rhs_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_type_decl_generic_alias_undeclared(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// (27) A bodyless generic carries its binders alone, in the opaque wrapper.
+test fn tpb_generic_opaque_carries_its_binders() -> Bool {
+  tpb_accepts(o: tpb_type_decl_generic_opaque())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_generic_opaque()) == [[^bits]]
+    && tpb_generic_view_tags(o: tpb_type_decl_generic_opaque()) == [^view_generic_opaque]
+}
+
+// (28) A SINGLE VARIANT AFTER A LEADING SEPARATOR IS A ONE-VARIANT COPRODUCT, as v1.compiler.parse
+// parse_type_body_after_eq reads it, never an alias (v2.std.compilers.sugar
+// sugar_separated_rhs_as_coproduct). RED BEFORE: the separator was dropped as layout, so the generic
+// form lowered as an ALIAS under this change's first cut (measured) and refused uncarried on main;
+// the plain form lowered to an alias shell naming `Only`, and no one-arm Disj existed (28b). (28c) is
+// the twin without the separator, an alias before and after, so the coproduct is the separator's.
+test fn tpb_generic_single_variant_after_separator_is_a_coproduct() -> Bool {
+  tpb_accepts(o: tpb_type_decl_generic_single_variant_after_separator())
+    && tpb_generic_view_tags(o: tpb_type_decl_generic_single_variant_after_separator()) == [^view_generic_member]
+}
+
+test fn tpb_plain_single_variant_after_separator_is_a_coproduct() -> Bool {
+  tpb_has_one_arm_disj(o: tpb_type_decl_plain_single_variant_after_separator(), label: ^Only)
+}
+
+test fn tpb_plain_single_alias_is_not_a_coproduct() -> Bool {
+  tpb_accepts(o: tpb_type_decl_plain_single_alias())
+    && !tpb_has_one_arm_disj(o: tpb_type_decl_plain_single_alias(), label: ^Int)
+}
+
+fn tpb_index_descends(target: Node) -> Bool {
+  match symbol_index_declared(target: target).members {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// (29) THE INDEX DECLARES NO MEMBER UNDER AN ALIAS OR A BODYLESS GENERIC -- it binds the name to the
+// wrapper, which keeps the binders -- and does descend into a member wrapper's member
+// (v2.compiler.symbol_index_fill symbol_index_declared), over supplied wrappers.
+test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
+  let alias = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
+  !tpb_index_descends(target: alias)
+    && (symbol_index_declared(target: alias).bound == alias)
+    && !tpb_index_descends(target: type_opaque_wrapper(binders: tpb_t_binders()))
+    && tpb_index_descends(target: tpb_box_member(with_params: true))
+}
+
+// (30) A WRAPPER THE VIEW GIVES NO ARM IS REFUSED (review 71202's example): a Conj carrying
+// <type-parameters> beside an unrelated Named edge is PlainTypeDecl to v2.std.type_binder
+// type_decl_view, and a plain node may carry no marker, so type_binder_labels_conform refuses it; its
+// twin, the alias wrapper built by its one producer, conforms.
+test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
+  let stray = node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: type_params_marker() }, target: tpb_t_binders() },
+      Edge { label: Named { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
+    ]
+  )
+  !type_binder_labels_conform(root: stray)
+    && type_binder_labels_conform(root: type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T)))
 }
 
 fn tpb_type_decl_nullary_tag() -> Outcome<Node> {
