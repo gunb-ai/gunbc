@@ -4015,7 +4015,7 @@ fn body_lower_function_value_arrow(
               left: [
                 Edge {
                   label: Positional,
-                  target: node_lowered_from(kind: TypeNode { connective: Conj }, children: sig.domain, source: shell)
+                  target: node_lowered_from(kind: TypeNode { connective: Conj }, children: [], source: shell)
                 },
                 Edge { label: Positional, target: codomain_node },
                 Edge { label: Positional, target: codomain_node }
