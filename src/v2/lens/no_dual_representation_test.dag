@@ -15,7 +15,8 @@ import v2.lens.no_dual_representation_test.scan {
   dual_rep_violation_count_from_scans,
   empty_dual_rep_module_refs
 }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }

@@ -2,7 +2,8 @@ module v2.lens.enforcement.contract
 
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.std.algebra { length, fold_list, list_snoc_item, contains, for_all }
+import v2.std.algebra { length, fold_list, contains, for_all }
+import std.algebra { list_snoc_item }
 import v2.std.integer { Int }
 import v2.lens.registry {
   LensRegistryEntryV0, LensIdV0, lens_id_v0_eq, Cost,

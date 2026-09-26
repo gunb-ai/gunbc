@@ -51,7 +51,8 @@ import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
   emit_complement_eval_subject,
 }
-import v2.std.algebra { Cons, Empty, length, list_append }
+import v2.std.algebra { Cons, Empty, length }
+import std.algebra { list_append }
 import v2.std.collection {
   List
 }
