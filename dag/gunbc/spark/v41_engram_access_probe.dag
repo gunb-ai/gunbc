@@ -262,7 +262,13 @@ fn v41_access_probe_script() -> String {
     "    start = time.perf_counter_ns()\n",
     "    out = fn()\n",
     "    torch.cuda.synchronize()\n",
-    "    return out, (time.perf_counter_ns() - start) // 1000\n",
+    "    return out, time.perf_counter_ns() - start\n",
+    "\n",
+    "\n",
+    "def distinct_pages(idx):\n",
+    "    page = os.sysconf(\"SC_PAGE_SIZE\")\n",
+    "    off = idx.cpu().to(torch.int64) * RECORD\n",
+    "    return int(torch.unique(torch.cat([off // page, (off + RECORD - 1) // page])).numel())\n",
     "\n",
     "\n",
     "def report(path_label, temperature, batch_label, rows, samples):\n",
@@ -287,6 +293,8 @@ fn v41_access_probe_script() -> String {
     "    g = torch.Generator(device=\"cuda\").manual_seed(11)\n",
     "    batches = ((\"decode\", DECODE_ROWS), (\"prefill262k\", PREFILL_ROWS))\n",
     "    idx_of = \{label: torch.randint(0, ROWS, (n,), device=\"cuda\", generator=g, dtype=torch.int64) for label, n in batches\}\n",
+    "    for label, n in batches:\n",
+    "        print(\"PAGES\", label, n, distinct_pages(idx_of[label]), os.sysconf(\"SC_PAGE_SIZE\"))\n",
     "\n",
     "    fd = os.open(path, os.O_RDONLY)\n",
     "    mm = mmap.mmap(fd, 0, access=mmap.ACCESS_READ)\n",
@@ -327,6 +335,7 @@ fn v41_access_probe_script() -> String {
     "                cold.append(us)\n",
     "            table_bytes = mm\n",
     "            check(\"mmap_unregistered\", out, idx, table_bytes)\n",
+    "            print(\"COLD_VERIFIED mmap_unregistered\", label)\n",
     "            report(\"mmap_unregistered\", \"cold\", label, n, cold)\n",
     "            base = np.frombuffer(mm, dtype=np.uint8).ctypes.data\n",
     "            warm = []\n",
@@ -360,6 +369,7 @@ fn v41_access_probe_script() -> String {
     "            out, us = timed(lambda: cpu_gather(idx))\n",
     "            cold.append(us)\n",
     "        check(\"cpu_gather\", out, idx, mm)\n",
+    "        print(\"COLD_VERIFIED cpu_gather\", label)\n",
     "        report(\"cpu_gather\", \"cold\", label, n, cold)\n",
     "        warm = []\n",
     "        for _ in range(REPS):\n",
@@ -484,6 +494,62 @@ fn v41_access_per_row(t: V41AccessTiming) -> Nanosecond {
   if t.rows == 0 { nanosecond(count: 0) } else { nanosecond(count: nanosecond_count(n: t.median) / t.rows) }
 }
 
+// ── PLAUSIBILITY: A CELL THAT OUTRUNS THE HARDWARE IS NOT A READING ─────────────────────────────
+//
+// A lookup cell reads rows x 264 logical bytes; a cold cell also pulls its distinct pages off the
+// drive. A timing implying more than the host's memory bandwidth, or a cold cell implying more than
+// the NVMe link can carry, is an instrument defect (a unit, an unsynchronised timer, a view instead
+// of a copy), and the reading refuses rather than being ranked. Run 36227645107 is why: its program
+// printed microseconds that the receipt labelled nanoseconds, and every cell looked impossible.
+// These ceilings only catch the impossible; they are not performance expectations.
+//   memory: 273 GB/s (273000 B/us), the DGX Spark's published LPDDR5x bandwidth (NVIDIA DGX Spark specifications).
+//   drive: 15.75 GB/s (15750 B/us), the PCIe 5.0 x4 link rate, which bounds any NVMe drive on such a link.
+data v41_access_memory_ceiling_bytes_per_microsecond: Nat = 273000
+data v41_access_drive_ceiling_bytes_per_microsecond: Nat = 15750
+data v41_access_record_bytes: Nat = 264
+
+type V41BatchPages sole_constructor { batch: V41AccessBatch, rows: Nat, distinct_pages: Nat, page_bytes: Nat }
+
+fn v41_batch_pages_of(stdout: String, batch: V41AccessBatch) -> V41BatchPages? {
+  match list_at_optional(xs: filter(v41_lines_with(stdout: stdout, keyword: "PAGES"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: b } => b == v41_batch_token(b: batch)  Absent => false }), index: 0) {
+    Absent => none
+    Present { value: ws } => match v41_nat_word(ws: ws, index: 2) {
+      Absent => none
+      Present { value: rows } => match v41_nat_word(ws: ws, index: 3) {
+        Absent => none
+        Present { value: pages } => match v41_nat_word(ws: ws, index: 4) {
+          Absent => none
+          Present { value: page } => Present { value: V41BatchPages { batch: batch, rows: rows, distinct_pages: pages, page_bytes: page } }
+        }
+      }
+    }
+  }
+}
+
+// bytes / ns > ceiling, compared as bytes x 1000 > ceiling-per-microsecond x ns: no division, so a
+// small time cannot round to zero, and in bytes per microsecond so neither product overflows 64 bits
+// for any store or run this probe makes (the substrate refuses an overflow rather than wrapping).
+fn v41_exceeds(bytes: Nat, ns: Nat, ceiling_bytes_per_microsecond: Nat) -> Bool {
+  bytes * 1000 > ceiling_bytes_per_microsecond * ns
+}
+
+fn v41_implausibility(t: V41AccessTiming, pages: V41BatchPages) -> String? {
+  let ns = nanosecond_count(n: t.median)
+  if ns == 0 {
+    Present { value: join(["cell ", v41_timing_key_wire(t: t), " reports zero time"], "") }
+  } else if v41_exceeds(bytes: t.rows * v41_access_record_bytes, ns: ns, ceiling_bytes_per_microsecond: v41_access_memory_ceiling_bytes_per_microsecond) {
+    Present { value: join(["cell ", v41_timing_key_wire(t: t), " implies more than the 273 GB/s memory ceiling"], "") }
+  } else {
+    match t.temperature {
+      AccessWarm => none
+      AccessCold =>
+        if v41_exceeds(bytes: pages.distinct_pages * pages.page_bytes, ns: ns, ceiling_bytes_per_microsecond: v41_access_drive_ceiling_bytes_per_microsecond) {
+          Present { value: join(["cold cell ", v41_timing_key_wire(t: t), " implies more than the 15.75 GB/s drive link for its distinct pages"], "") }
+        } else { none }
+    }
+  }
+}
+
 type V41DeviceAttributes sole_constructor {
   pageable_memory_access: Nat
   pageable_memory_access_uses_host_page_tables: Nat
@@ -491,7 +557,7 @@ type V41DeviceAttributes sole_constructor {
 }
 
 type V41EngramAccessProbeOutcome
-  = V41AccessProbeRead { image_config: NonEmptyStr, attributes: V41DeviceAttributes, timings: List<V41AccessTiming>, mmap_not_attempted: Bool }
+  = V41AccessProbeRead { image_config: NonEmptyStr, attributes: V41DeviceAttributes, timings: List<V41AccessTiming>, pages: List<V41BatchPages>, mmap_not_attempted: Bool }
   | V41AccessProbeRefused { step: NonEmptyStr, cause: NonEmptyStr }
 
 fn v41_words(line: String) -> List<String> {
@@ -622,8 +688,21 @@ fn v41_admit_access_reading(image_config: NonEmptyStr, stdout: String) -> V41Eng
                       [join(["no byte check passed for ", p], "")]
                     } else { [] as List<String> })
                   let done = length(v41_lines_with(stdout: stdout, keyword: "DONE")) == 1
-                  let causes = concat(concat(concat(concat(
-                    join_causes,
+                  let pages = flat_map([AccessDecodeStep, AccessPrefill262k], b => match v41_batch_pages_of(stdout: stdout, batch: b) { Present { value: p } => [p]  Absent => [] as List<V41BatchPages> })
+                  let pages_causes = flat_map([AccessDecodeStep, AccessPrefill262k], b => match v41_batch_pages_of(stdout: stdout, batch: b) { Present { value: _ } => [] as List<String>  Absent => [join(["no distinct-page count for ", v41_batch_token(b: b)], "")] })
+                  let cold_causes = flat_map(filter(owed, k => match k.temperature { AccessCold => true  AccessWarm => false }), k =>
+                    if length(filter(v41_lines_with(stdout: stdout, keyword: "COLD_VERIFIED"), ws => match list_at_optional(xs: ws, index: 1) { Present { value: p } => p == v41_access_path_token(p: k.path) && match list_at_optional(xs: ws, index: 2) { Present { value: b } => b == v41_batch_token(b: k.batch)  Absent => false }  Absent => false })) == 1 {
+                      [] as List<String>
+                    } else { [join(["cold was not verified for ", v41_cell_key_wire(k: k)], "")] })
+                  let plausibility_causes = flat_map(timings, t => match list_at_optional(xs: filter(pages, p => v41_batch_token(b: p.batch) == v41_batch_token(b: t.batch)), index: 0) {
+                    Absent => [] as List<String>
+                    Present { value: p } => match v41_implausibility(t: t, pages: p) { Present { value: why } => [why]  Absent => [] as List<String> }
+                  })
+                  let causes = concat(concat(concat(concat(concat(concat(concat(
+                    pages_causes,
+                    cold_causes),
+                    plausibility_causes),
+                    join_causes),
                     map(extra, t => join(["an unowed cell ", v41_timing_key_wire(t: t)], ""))),
                     check_causes),
                     if unparsed > 0 { [join([to_string(unparsed), " TIME lines did not parse"], "")] } else { [] as List<String> }),
@@ -635,6 +714,7 @@ fn v41_admit_access_reading(image_config: NonEmptyStr, stdout: String) -> V41Eng
                       image_config: image_config,
                       attributes: V41DeviceAttributes { pageable_memory_access: pageable, pageable_memory_access_uses_host_page_tables: host_tables, concurrent_managed_access: managed },
                       timings: timings,
+                      pages: pages,
                       mmap_not_attempted: !attempted,
                     }
                   }
@@ -652,8 +732,9 @@ fn v41_access_timing_line(t: V41AccessTiming) -> String {
 fn v41_access_probe_body(o: V41EngramAccessProbeOutcome) -> String {
   match o {
     V41AccessProbeRefused { step: s, cause: c } => join(["REFUSED step=", s as String, " cause=", c as String, "\n"], "")
-    V41AccessProbeRead { image_config: i, attributes: a, timings: ts, mmap_not_attempted: skipped } =>
+    V41AccessProbeRead { image_config: i, attributes: a, timings: ts, pages: ps, mmap_not_attempted: skipped } =>
       join([
+        join(map(ps, p => join(["distinct_pages ", v41_batch_token(b: p.batch), " rows=", to_string(p.rows), " pages=", to_string(p.distinct_pages), " page_bytes=", to_string(p.page_bytes), "\n"], "")), ""),
         join(["image_config=", i as String, "\n"], ""),
         join(["pageable_memory_access=", to_string(a.pageable_memory_access), " uses_host_page_tables=", to_string(a.pageable_memory_access_uses_host_page_tables), " concurrent_managed_access=", to_string(a.concurrent_managed_access), "\n"], ""),
         if skipped { "design A (mmap_unregistered): NOT ATTEMPTED, the GPU reports no pageable-memory access\n" } else { "" },
@@ -730,14 +811,8 @@ fn v41_access_probe_host_residue() -> HostEffectResidueSpec {
 // claim refuses, so a recovered row is deleted rather than left to accumulate.
 type V41AccessProbeClaimRecovery { host: HostIdentity, claim: EventId, standing: ClaimantStanding, receipt: NonEmptyStr }
 
-data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = [
-  V41AccessProbeClaimRecovery {
-    host: "srv8" as HostIdentity,
-    claim: ("be2cf3990cbf0e40" as NonEmptyStr) as EventId,
-    standing: ClaimantTerminated,
-    receipt: "fleet-converge run 36223556832 (spark_v41_engram_access_probe): after recovering 6ce079b2a3889272 it claimed be2cf3990cbf0e40, and its remote exec (ssh.PasswordFileSsh.ExecPortableWordsWithStdin, started 06:36:11) never returned; the job's 60-minute cap killed the step, so no release ran" as NonEmptyStr,
-  },
-]
+// Empty: be2cf3990cbf0e40 was recovered by run 36227645107, and 6ce079b2a3889272 by run 36223556832.
+data v41_access_probe_claim_recoveries: List<V41AccessProbeClaimRecovery> = []
 
 fn v41_access_probe_recover(ctx: SparkMaterializeContext, host: HostIdentity) -> ProcessExit {
   if length(filter(v41_access_probe_claim_recoveries, r => (r.host as String) == (host as String))) == 0 {
@@ -770,7 +845,7 @@ fn v41_access_probe_receipt_exit(at: String, host: HostIdentity, executor: Strin
     exit_failure(reason: join(["v41 engram access probe receipt write failed: ", w.error], ""))
   } else {
     match outcome {
-      V41AccessProbeRead { image_config: _, attributes: _, timings: _, mmap_not_attempted: _ } => ExitSuccess
+      V41AccessProbeRead { image_config: _, attributes: _, timings: _, pages: _, mmap_not_attempted: _ } => ExitSuccess
       V41AccessProbeRefused { step: _, cause: _ } => exit_failure(reason: join(["the engram access probe refused:\n", body], ""))
     }
   }

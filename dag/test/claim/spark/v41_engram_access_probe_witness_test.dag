@@ -20,11 +20,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // arm A image on a Spark (the spark_v41_engram_access_probe fleet mode); these outputs have its
 // line grammar.
 
+data w_pages: String = "PAGES decode 96 190 4096\nPAGES prefill262k 1572864 1400000 4096\n"
 data w_attrs_on: String = "ATTR pageable_memory_access 1\nATTR concurrent_managed_access 1\nATTR pageable_memory_access_uses_host_page_tables 1\n"
 data w_attrs_off: String = "ATTR pageable_memory_access 0\nATTR concurrent_managed_access 1\nATTR pageable_memory_access_uses_host_page_tables 0\n"
-data w_pinned: String = "TIME pinned warm decode 96 40 41 40 39\nTIME pinned warm prefill262k 1572864 9000 9000 9100 8990\nCHECK pinned ok\n"
-data w_mmap: String = "TIME mmap_unregistered cold decode 96 900 900 910 890\nTIME mmap_unregistered warm decode 96 50 50 51 49\nTIME mmap_unregistered cold prefill262k 1572864 4718592000 4718592000 4800000000 4700000000\nTIME mmap_unregistered warm prefill262k 1572864 12000 12000 12100 11900\nCHECK mmap_unregistered ok\n"
-data w_gather: String = "TIME cpu_gather cold decode 96 1200 1200 1210 1190\nTIME cpu_gather warm decode 96 300 300 301 299\nTIME cpu_gather cold prefill262k 1572864 6000000 6000000 6100000 5900000\nTIME cpu_gather warm prefill262k 1572864 400000 400000 401000 399000\nCHECK cpu_gather ok\n"
+data w_pinned: String = "TIME pinned warm decode 96 40000 41000 40000 39000\nTIME pinned warm prefill262k 1572864 90000000 90000000 91000000 89900000\nCHECK pinned ok\n"
+data w_mmap: String = "TIME mmap_unregistered cold decode 96 900000 900000 910000 890000\nTIME mmap_unregistered warm decode 96 50000 50000 51000 49000\nTIME mmap_unregistered cold prefill262k 1572864 4718592000 4718592000 4800000000 4700000000\nTIME mmap_unregistered warm prefill262k 1572864 120000000 120000000 121000000 119000000\nCHECK mmap_unregistered ok\nCOLD_VERIFIED mmap_unregistered decode\nCOLD_VERIFIED mmap_unregistered prefill262k\n"
+data w_gather: String = "TIME cpu_gather cold decode 96 1200000 1200000 1210000 1190000\nTIME cpu_gather warm decode 96 300000 300000 301000 299000\nTIME cpu_gather cold prefill262k 1572864 6000000000 6000000000 6100000000 5900000000\nTIME cpu_gather warm prefill262k 1572864 400000000 400000000 401000000 399000000\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
 
 fn w_run(parts: List<String>) -> String {
   join(parts, "")
@@ -33,13 +34,13 @@ fn w_run(parts: List<String>) -> String {
 fn w_refused_with(o: V41EngramAccessProbeOutcome, needle: String) -> Bool {
   match o {
     V41AccessProbeRefused { step: _, cause: c } => contains(c as String, needle)
-    V41AccessProbeRead { image_config: _, attributes: _, timings: _, mmap_not_attempted: _ } => false
+    V41AccessProbeRead { image_config: _, attributes: _, timings: _, pages: _, mmap_not_attempted: _ } => false
   }
 }
 
 test fn a_complete_run_is_admitted_with_every_cell_and_per_row_latency() -> Bool {
-  match v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, w_pinned, w_mmap, w_gather, "DONE\n"])) {
-    V41AccessProbeRead { image_config: _, attributes: a, timings: ts, mmap_not_attempted: skipped } => {
+  match v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, w_gather, "DONE\n"])) {
+    V41AccessProbeRead { image_config: _, attributes: a, timings: ts, pages: _, mmap_not_attempted: skipped } => {
       let cold_prefill = filter(ts, t => match t.path { AccessMmapUnregistered => match t.batch { AccessPrefill262k => match t.temperature { AccessCold => true  gunbc.spark.v41_engram_access_probe.AccessWarm => false }  gunbc.spark.v41_engram_access_probe.AccessDecodeStep => false }  gunbc.spark.v41_engram_access_probe.AccessPinnedUva => false  gunbc.spark.v41_engram_access_probe.AccessCpuGather => false })
       a.pageable_memory_access == 1 && !skipped && length(ts) == 10 && length(cold_prefill) == 1
         && length(filter(cold_prefill, t => nanosecond_count(n: v41_access_per_row(t: t)) == 3000)) == 1
@@ -50,8 +51,8 @@ test fn a_complete_run_is_admitted_with_every_cell_and_per_row_latency() -> Bool
 
 // WITHOUT PAGEABLE ACCESS, DESIGN A IS NOT ATTEMPTED AND NOT OWED; the run is still a reading.
 test fn without_pageable_access_design_a_is_not_owed() -> Bool {
-  match v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_off, "SKIP mmap_unregistered pageable_memory_access=0\n", w_pinned, w_gather, "DONE\n"])) {
-    V41AccessProbeRead { image_config: _, attributes: _, timings: ts, mmap_not_attempted: skipped } => skipped && length(ts) == 6
+  match v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_off, "SKIP mmap_unregistered pageable_memory_access=0\n", w_pinned, w_gather, "DONE\n"])) {
+    V41AccessProbeRead { image_config: _, attributes: _, timings: ts, pages: _, mmap_not_attempted: skipped } => skipped && length(ts) == 6
     V41AccessProbeRefused { step: _, cause: _ } => false
   }
 }
@@ -63,17 +64,17 @@ test fn an_unread_device_attribute_refuses() -> Bool {
 }
 
 test fn the_programs_refusal_is_carried() -> Bool {
-  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, "REFUSED cold not established: 4096 store bytes stayed resident\n"])), needle: "cold not established")
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, "REFUSED cold not established: 4096 store bytes stayed resident\n"])), needle: "cold not established")
 }
 
 test fn a_missing_cell_refuses() -> Bool {
-  let no_warm_gather = "TIME cpu_gather cold decode 96 1200 1200\nTIME cpu_gather cold prefill262k 1572864 6000000 6000000\nTIME cpu_gather warm prefill262k 1572864 400000 400000\nCHECK cpu_gather ok\n"
-  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, w_pinned, w_mmap, no_warm_gather, "DONE\n"])), needle: "cell cpu_gather warm decode appears 0 times")
+  let no_warm_gather = "TIME cpu_gather cold decode 96 1200000 1200000\nTIME cpu_gather cold prefill262k 1572864 6000000000 6000000000\nTIME cpu_gather warm prefill262k 1572864 400000000 400000000\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, no_warm_gather, "DONE\n"])), needle: "cell cpu_gather warm decode appears 0 times")
 }
 
 test fn a_failed_byte_check_or_no_done_refuses() -> Bool {
-  let unchecked = w_run(parts: [w_attrs_on, w_pinned, w_mmap, "TIME cpu_gather cold decode 96 1 1\nTIME cpu_gather warm decode 96 1 1\nTIME cpu_gather cold prefill262k 1572864 1 1\nTIME cpu_gather warm prefill262k 1572864 1 1\nCHECK cpu_gather mismatch\n", "DONE\n"])
-  let unfinished = w_run(parts: [w_attrs_on, w_pinned, w_mmap, w_gather])
+  let unchecked = w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather mismatch\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n", "DONE\n"])
+  let unfinished = w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, w_gather])
   w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: unchecked), needle: "no byte check passed for cpu_gather")
     && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: unfinished), needle: "did not reach DONE")
 }
@@ -119,4 +120,19 @@ test fn the_label_residue_round_trips_and_two_filters_refuse() -> Bool {
     Absent => true
   }
   round && incoherent
+}
+
+// THE INSTRUMENT GATES. Run 36227645107's receipt, read as the nanoseconds it claimed, is refused as
+// implausible (27 us for 415 MB is ~15 TB/s), and a cold cell whose drop was not verified refuses.
+test fn a_run_implying_more_than_the_hardware_refuses() -> Bool {
+  let fast_warm = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 26869 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+  let fast_cold = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 1626327 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\nCOLD_VERIFIED cpu_gather prefill262k\n"
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, fast_warm, "DONE\n"])), needle: "cpu_gather warm prefill262k implies more than the 273 GB/s memory ceiling")
+    && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, fast_cold, "DONE\n"])), needle: "cold cell cpu_gather cold prefill262k implies more than the 15.75 GB/s drive link")
+}
+
+test fn an_unverified_cold_or_a_missing_page_count_refuses() -> Bool {
+  let unverified = "TIME cpu_gather cold decode 96 1200000 1\nTIME cpu_gather warm decode 96 300000 1\nTIME cpu_gather cold prefill262k 1572864 6000000000 1\nTIME cpu_gather warm prefill262k 1572864 400000000 1\nCHECK cpu_gather ok\nCOLD_VERIFIED cpu_gather decode\n"
+  w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_pages, w_attrs_on, w_pinned, w_mmap, unverified, "DONE\n"])), needle: "cold was not verified for cpu_gather cold prefill262k")
+    && w_refused_with(o: v41_admit_access_reading(image_config: "sha256:ea39" as NonEmptyStr, stdout: w_run(parts: [w_attrs_on, w_pinned, w_mmap, w_gather, "DONE\n"])), needle: "no distinct-page count for decode")
 }
