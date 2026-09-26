@@ -15,6 +15,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingExplicit, PrefixCachingOmitted }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved }
 import extdeps.vllm.kv_layout { VllmReportedCapacity, observed_revisions_agree }
 import extdeps.linux.psi { PsiReading, PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable, psi_full_stall_interval }
@@ -70,11 +71,17 @@ data v41_staircase_concurrencies: List<Nat> = [1, 2, 4, 6, 8, 12, 16]
 //     the three capacities measured. A different utilization is a different measurement.
 //   max_num_batched_tokens 8192: the prefill chunk per scheduler step; it also sizes the file-backed
 //     lookup's pinned staging (max_num_batched_tokens x local heads x record).
+//   prefix caching explicitly OFF: every request pays its own KV and its own Engram lookups, so the
+//     pool, residency and refault readings are not flattered by shared prefixes, and the probe cells'
+//     "prefix caching defeated" holds by the launch rather than by prompt construction alone. Left
+//     omitted, the V4.1 image would resolve it from the model config, so the engine and not this plan
+//     would decide what is measured.
 type V41MeasurementLaunchShape sole_constructor {
   max_model_len: TokenCount
   max_num_seqs: Nat
   max_num_batched_tokens: TokenCount
   gpu_memory_utilization: BasisPoint
+  prefix_caching: VllmPrefixCachingRequest
 }
 
 data v41_measurement_gpu_memory_utilization: BasisPoint = basis_point(count: 8000)
@@ -86,6 +93,7 @@ fn v41_measurement_launch_shape() -> V41MeasurementLaunchShape {
     max_num_seqs: fold(v41_staircase_concurrencies, init: nat_min(a: 0, b: 0), f: (acc, c) => nat_max(a: acc, b: c)),
     max_num_batched_tokens: v41_measurement_max_num_batched_tokens,
     gpu_memory_utilization: v41_measurement_gpu_memory_utilization,
+    prefix_caching: PrefixCachingExplicit { enabled: false },
   }
 }
 
