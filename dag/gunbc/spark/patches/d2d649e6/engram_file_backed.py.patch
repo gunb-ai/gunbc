@@ -1,9 +1,9 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..f8472e8
+index 0000000..f134c1d
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,383 @@
+@@ -0,0 +1,473 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -370,10 +370,100 @@ index 0000000..f8472e8
 +    return storage, staging
 +
 +
++def self_test(directory: str) -> int:
++    """THE SELF-TEST: a tiny synthetic rank file through the batched gather and
++    the touch counter, against independent expectations. One PASS/FAIL line per
++    check; nonzero on any failure. `directory` must not be tmpfs: open() refuses
++    when the verify read's page cache cannot be released."""
++    import hashlib as _h
++    import sys as _s
++    import tempfile
++
++    m = _s.modules[__name__]
++
++    page = os.sysconf("SC_PAGE_SIZE")
++    magic = b"GUNBCTST"
++    record = 1000
++    count = (3 * page) // record + 4
++    g = torch.Generator().manual_seed(7)
++    body = torch.randint(0, 256, (count * record,), dtype=torch.uint8, generator=g).numpy().tobytes()
++    data = magic + body
++
++    results = []
++
++    def check(name: str, ok: bool, detail: str = "") -> None:
++        results.append(ok)
++        print(f"{'PASS' if ok else 'FAIL'} {name}{': ' + detail if detail and not ok else ''}")
++
++    fd, path = tempfile.mkstemp(prefix="engram_selftest_", dir=directory)
++    try:
++        with os.fdopen(fd, "wb") as f:
++            f.write(data)
++            f.flush()
++            os.fsync(f.fileno())
++        s = m.FileBackedEngramStorage(
++            path, m.ExpectedRowStoreIdentity(_h.sha256(data).hexdigest(), magic, record)
++        )
++        try:
++            off = lambda k: len(magic) + k * record
++            pages_of = lambda o: set(range(o // page, (o + record - 1) // page + 1))
++
++            # 1. Bytes: batched gather equals the per-row oracle and the file itself.
++            ks = [3, 0, count - 1, 3, 5]
++            offs = [off(k) for k in ks]
++            b = torch.zeros((len(ks), record), dtype=torch.uint8)
++            c = torch.zeros((len(ks), record), dtype=torch.uint8)
++            s.fetch_rows(offs, record, b)
++            s._fetch_rows_per_row(offs, record, c)
++            want = torch.tensor(list(b"".join(data[o : o + record] for o in offs)), dtype=torch.uint8).view(len(ks), record)
++            check("batched gather bytes identical to per-row oracle", torch.equal(b, c) and torch.equal(b, want))
++
++            # 2. Duplicate offset within a batch counts once.
++            s.snapshot_touches(reset=True)
++            k1 = next(k for k in range(count) if len(pages_of(off(k))) == 1)
++            s.fetch_rows([off(k1)] * 4, record, torch.zeros((4, record), dtype=torch.uint8))
++            o2 = s.snapshot_touches(reset=True)
++            check("duplicate offset counts once", o2.distinct_pages_touched == 1 and o2.rows_fetched == 4 and o2.fetch_rows_calls == 1, str(o2))
++
++            # 3. A row spanning a page boundary counts both pages.
++            k2 = next(k for k in range(count) if len(pages_of(off(k))) == 2)
++            s.fetch_rows([off(k2)], record, torch.zeros((1, record), dtype=torch.uint8))
++            o3 = s.snapshot_touches(reset=True)
++            check("row spanning a page boundary counts both pages", o3.distinct_pages_touched == 2, str(o3))
++
++            # 4. Union across calls matches an independent set; then reset empties.
++            batches = [[off(k) for k in range(0, count, 3)], [off(k) for k in range(1, count, 2)]]
++            for bt in batches:
++                s.fetch_rows(bt, record, torch.zeros((len(bt), record), dtype=torch.uint8))
++            expect = set().union(*(pages_of(o) for bt in batches for o in bt))
++            o4 = s.snapshot_touches(reset=True)
++            o5 = s.snapshot_touches(reset=False)
++            check("distinct pages across calls match an independent set", o4.distinct_pages_touched == len(expect) and o4.fetch_rows_calls == 2 and o4.rows_fetched == sum(map(len, batches)), f"{o4} expected {len(expect)}")
++            check("snapshot(reset) resets", (o5.distinct_pages_touched, o5.fetch_rows_calls, o5.rows_fetched, o5.fetch_rows_us) == (0, 0, 0, 0), str(o5))
++
++            # 5. A refused (misaligned) fetch neither counts nor times.
++            try:
++                s.fetch_rows([off(1) + 1], record, torch.zeros((1, record), dtype=torch.uint8))
++                refused = False
++            except m.EngramRowOffsetMisaligned:
++                refused = True
++            o6 = s.snapshot_touches(reset=False)
++            check("misaligned fetch refuses and is not counted", refused and o6.fetch_rows_calls == 0 and o6.distinct_pages_touched == 0, str(o6))
++        finally:
++            s.close()
++    finally:
++        os.unlink(path)
++
++    return 0 if all(results) else 1
++
++
++
 +if __name__ == "__main__":
 +    import argparse
-+    import json
++    import sys
 +
++    if len(sys.argv) >= 2 and sys.argv[1] == "--self-test":
++        sys.exit(self_test(sys.argv[2] if len(sys.argv) > 2 else os.getcwd()))
 +    p = argparse.ArgumentParser(description="measure fetch_rows over a rank-local Engram row store")
 +    p.add_argument("--store", required=True)
 +    p.add_argument("--rank-digest-hex", required=True)
