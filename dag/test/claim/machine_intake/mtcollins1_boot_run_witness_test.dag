@@ -255,7 +255,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -274,7 +274,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -293,7 +293,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -312,7 +312,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -331,7 +331,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -355,7 +355,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -374,7 +374,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
         concat(
           "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\n----ARGV workload: echo workload-write-rc=0; echo workload-digest-stable=yes\nworkload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: echo workload-write-rc=0; echo workload-digest-stable=yes\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
@@ -427,7 +427,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
 // restoration trigger of gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent, and must be read
 // as that rather than silently passing a milestone it exceeds. The machine's own figure stays 160.
 fn milestone_capture(nproc: String, numa: String) -> String {
-  milestone_capture_with_workload(nproc: nproc, numa: numa, workload: "workload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n")
+  milestone_capture_with_workload(nproc: nproc, numa: numa, workload: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n")
 }
 
 fn milestone_capture_with_workload(nproc: String, numa: String, workload: String) -> String {
@@ -449,7 +449,9 @@ fn milestone_capture_with_workload(nproc: String, numa: String, workload: String
 // against a 16 GiB machine, as run 35808203121 would have reported it had the preflight existed) is
 // its own cause carrying both capacities, never "write rc unreported"; a capture that exercised the
 // DUAL-SOCKET footprint to success is refused on the footprint -- a boot may not qualify a profile
-// it did not run -- and a capture stating no footprint at all refuses too. An OPEN envelope whose
+// it did not run -- and a capture stating no footprint at all refuses too. The fit is re-derived here
+// over ByteSize, NOT taken from the host's token: a guard that printed `fits` over a 1 GiB /dev/shm
+// refuses, and a capacity that is absent or not an integer is its own typed reading, never room. An OPEN envelope whose
 // workload has printed its refusal refuses at once rather than waiting out the deadline.
 test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight() -> Bool {
   let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
@@ -458,6 +460,8 @@ test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight
   let fits = "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
   let refused = "workload-bytes=4294967296\nworkload-shm-avail-bytes=1073741824\nworkload-mem-available-bytes=15032385536\nworkload-preflight=refused\n----EXIT workload: 1\n"
   let dual = "workload-bytes=68719476736\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
+  let lying_guard = "workload-bytes=4294967296\nworkload-shm-avail-bytes=1073741824\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
+  let garbled = "workload-bytes=4294967296\nworkload-shm-avail-bytes=8G\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
   let silent = "workload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
   let open_refused = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
@@ -469,13 +473,17 @@ test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight
       TerminalAccepted { run: _, threads: _ } => true
       _ => false })
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: refused), subject: subject, medium: census_medium),
-      texts: ["workload preflight refused before writing: declared 4294967296 bytes, /dev/shm free 1073741824, MemAvailable 15032385536"])
+      texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free 1073741824, MemAvailable 15032385536"])
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: dual), subject: subject, medium: census_medium),
       texts: ["workload footprint 68719476736 bytes, profile declares 4294967296"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: lying_guard), subject: subject, medium: census_medium),
+      texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free 1073741824, MemAvailable 15032385536"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: garbled), subject: subject, medium: census_medium),
+      texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free unparsed '8G', MemAvailable unreported"])
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: silent), subject: subject, medium: census_medium),
       texts: ["workload footprint unreported bytes, profile declares 4294967296"])
     && (match mtcollins1_boot_terminal_verdict(capture: open_refused, subject: subject, medium: census_medium) {
-      TerminalRefused { causes: cs } => any(cs, c => starts_with(s: mtcollins1_boot_terminal_cause_text(cause: c), prefix: "workload preflight refused before writing"))
+      TerminalRefused { causes: cs } => any(cs, c => starts_with(s: mtcollins1_boot_terminal_cause_text(cause: c), prefix: "workload preflight refused"))
       _ => false })
 }
 

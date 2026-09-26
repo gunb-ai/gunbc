@@ -153,7 +153,12 @@ fn host_capture_workload_total_bytes(workload: HostCaptureWorkloadShape) -> Byte
   byte_size(count: fold(workload.chunk_stems, init: 0, f: (acc, _) => acc + per_chunk))
 }
 
-// THE PREFLIGHT REFUSES; IT NEVER SHRINKS (DESIGN §5). Before a single byte is written the stage
+// THE PREFLIGHT REFUSES; IT NEVER SHRINKS (DESIGN §5). The guard is SHELL because it must run on the
+// host before any write -- once dd has run the tmpfs is already full -- and it is covered by
+// host_capture_program_shell_emit_dissolution_trigger below with the rest of the program. It is not
+// the authority for the fit: gunbc.machine_intake_mtcollins1_boot_run workload_footprint_judge
+// re-derives it over ByteSize from the capacities printed here and refuses whenever they do not hold
+// the declared total, whatever this guard printed. Before a single byte is written the stage
 // prints the declared total and the two capacities that bound it -- MemAvailable and the free space
 // of the tmpfs the chunks land on -- and if either is below the declared total it prints the refused
 // token, removes its directory and exits nonzero. There is no arm that writes a smaller footprint:
@@ -245,7 +250,7 @@ fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMar
 // THE CAPTURE PROGRAM IS SHELL TEXT BUILT BY CONCATENATION, and that carrier half is declared rather
 // than left implicit: what it runs and how it is framed are modeled (the roster and the envelope
 // tokens above, read by the parser too), but the program that sequences them is a string.
-data host_capture_program_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.machine_intake_host_capture_envelope host_capture_program / host_capture_stage_program / host_capture_edac_counters_command / host_capture_workload_command -- concat-built POSIX sh for the live-session census (exec to the console, per-stage section/argv/exit framing, sync, halt), quoting through extdeps.posix.shell_command_language posix_single_quote. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) renders a stage roster through orchestration emit without a medium-as-string scaffold, at which point these renderers become one emitted program derived from the same roster rows.")
+data host_capture_program_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.machine_intake_host_capture_envelope host_capture_program / host_capture_stage_program / host_capture_edac_counters_command / host_capture_workload_command -- concat-built POSIX sh for the live-session census (exec to the console, per-stage section/argv/exit framing, sync, halt, and the workload stage's capacity preflight: df/MemAvailable reads, the fits/refused guard that must run on the host before any dd, and the chunk writes and hash passes), quoting through extdeps.posix.shell_command_language posix_single_quote. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) renders a stage roster through orchestration emit without a medium-as-string scaffold, at which point these renderers become one emitted program derived from the same roster rows.")
 
 fn host_capture_stage_program(stage: HostCaptureStage) -> String {
   let name = stage.name as String
