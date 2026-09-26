@@ -1,7 +1,6 @@
 module v2.std.node
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash {
