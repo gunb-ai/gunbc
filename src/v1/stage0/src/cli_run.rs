@@ -26009,6 +26009,13 @@ pub(crate) struct FloorDiffEdits {
     /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
     /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
+    /// `(file, declaration)` for every non-test-fn declaration -- fn, type or data -- whose
+    /// lines the diff edited, plus EVERY declaration of a file whose pre-declaration region
+    /// (its imports) was edited, since an import edit can rebind any name the module reads.
+    /// The seeds of `namespace_baseline` `body_reach_from_changed_declarations`: the
+    /// declaration grain `touched_entry_files` collapses to a file. A test fn is not a seed,
+    /// because nothing reads one; an edited test fn is a changed witness in its own right.
+    touched_declarations: HashSet<(String, String)>,
 }
 
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";

@@ -1012,6 +1012,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     let mut edited_test_fns = HashSet::new();
     let mut enrolled_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
+    let mut touched_declarations: HashSet<(String, String)> = HashSet::new();
     // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
     // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
     // handled by the `continue` arm below), so neither flag is needed here.
@@ -1163,6 +1164,11 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
         let has_post_decl = changed.iter().any(|&l| l >= first_decl_line);
         if has_pre_decl {
             touched_entry_files.insert(file_norm.clone());
+            for (_, name, _) in &decls {
+                if !test_fn_names.contains(name) {
+                    touched_declarations.insert((file_norm.clone(), name.clone()));
+                }
+            }
             if !has_post_decl {
                 continue;
             }
@@ -1195,8 +1201,10 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                 }
             } else if *is_data {
                 overlapping_data_items.insert((file_norm.clone(), name.clone()));
+                touched_declarations.insert((file_norm.clone(), name.clone()));
             } else {
                 touched_entry_files.insert(file_norm.clone());
+                touched_declarations.insert((file_norm.clone(), name.clone()));
             }
         }
     }
@@ -1210,6 +1218,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
         edited_test_fns,
         enrolled_test_fns,
         touched_entry_files,
+        touched_declarations,
     })
 }
 
@@ -1359,7 +1368,9 @@ fn changed_and_enrolled_witness_identities_with_index(
     // arm (gunbc.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
     // and this one reads as `SeamInterfaceConsumerPlanning` (`floor_seam_tokens`).
     floor_seam("interface-consumer-planning");
-    let interface_consumers = interface_consumer_planning(planning_index)?;
+    let touched_declarations =
+        declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
+    let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
@@ -1414,7 +1425,38 @@ pub(crate) enum InterfaceConsumerPlanning {
         base: String,
         head: String,
         selection: crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
+        /// The EXECUTION-grain peer over the same two indexes: every declaration whose
+        /// evaluation transitively reads a changed one. Observed and printed; no claim is
+        /// planned from it until the enabling switch lands (neat-boar-16 ruling, operator
+        /// sign-off pending, adhoc-be476b8f-943).
+        body_reach: crate::cli_run::namespace_baseline::BodyReachSelection,
     },
+}
+
+/// `(module_path, declaration)` for every touched non-test declaration, spelled by the
+/// touched file's own `module` header -- the same header rule as
+/// `module_seeds_from_touched_entry_files`, and a file without one refuses for the same reason.
+pub(crate) fn declaration_seeds_from_touched_declarations(
+    base: &Path,
+    touched: &HashSet<(String, String)>,
+) -> Result<std::collections::BTreeSet<(String, String)>, String> {
+    let mut modules: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
+    let mut out = std::collections::BTreeSet::new();
+    for (file, declaration) in touched {
+        if !modules.contains_key(file.as_str()) {
+            let content = std::fs::read_to_string(base.join(file))
+                .map_err(|e| format!("touched-declaration reach seed: read {file}: {e}"))?;
+            let module = extract_module_path(&content).ok_or_else(|| {
+                format!(
+                    "touched-declaration reach seed: {file} has an edited declaration but no \
+                     module header, so its declarations cannot be named"
+                )
+            })?;
+            modules.insert(file.as_str(), module);
+        }
+        out.insert((modules[file.as_str()].clone(), declaration.clone()));
+    }
+    Ok(out)
 }
 
 /// The dependents-direction seeds, derived from the parse phase's `DeclarationIndex` and its
@@ -1430,9 +1472,11 @@ pub(crate) enum InterfaceConsumerPlanning {
 /// blind; a local run without a diff baseline never reaches here.
 fn interface_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
+    touched_declarations: &std::collections::BTreeSet<(String, String)>,
 ) -> Result<InterfaceConsumerPlanning, String> {
     use crate::cli_run::namespace_baseline::{
-        git_stdout, interface_changed_consumers, reconstruct_base_index, BaselineReconstruction,
+        body_reach_from_changed_declarations, git_stdout, interface_changed_consumers,
+        reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
         return Ok(InterfaceConsumerPlanning::NotEvaluated {
@@ -1467,11 +1511,33 @@ fn interface_consumer_planning(
             head,
             base_index,
             ..
-        } => Ok(InterfaceConsumerPlanning::Selected {
-            base,
-            head,
-            selection: interface_changed_consumers(&base_index, head_index),
-        }),
+        } => {
+            let selection = interface_changed_consumers(&base_index, head_index);
+            // An interface change is a behaviour change too, and it is the only seed a
+            // REMOVED declaration has (its file-side attribution is empty by construction).
+            let mut seeds = touched_declarations.clone();
+            seeds.extend(
+                selection
+                    .changes
+                    .iter()
+                    .map(|c| (c.module_path.clone(), c.declaration.clone())),
+            );
+            let started = std::time::Instant::now();
+            let body_reach = body_reach_from_changed_declarations(&base_index, head_index, &seeds);
+            eprintln!(
+                "[floor-phase] phase=body-reach-selection state=completed wall_ms={} \
+                 changed_declarations={} reached_declarations={}",
+                started.elapsed().as_millis(),
+                body_reach.changed.len(),
+                body_reach.reached.len()
+            );
+            Ok(InterfaceConsumerPlanning::Selected {
+                base,
+                head,
+                selection,
+                body_reach,
+            })
+        }
     }
 }
 
@@ -6681,7 +6747,26 @@ pub fn run_required_floor(
                 base,
                 head,
                 selection,
+                body_reach,
             } => {
+                // OBSERVE-ONLY. The reached witness identities are printed so a replay can
+                // join them against a base-versus-head verdict list; none is planned yet.
+                let mut reached_witness_identities: Vec<String> = Vec::new();
+                for r in &body_reach.reached {
+                    if r.witness_carrier {
+                        reached_witness_identities
+                            .push(format!("{}.{}", r.module_path, r.declaration));
+                        eprintln!(
+                            "[floor-plan] BodyReachWitness identity={}.{} through={}.{}",
+                            r.module_path, r.declaration, r.through.0, r.through.1
+                        );
+                    }
+                }
+                eprintln!(
+                    "[floor-phase] phase=body-reach-selection observe_only=true \
+                     reached_witness_declarations={}",
+                    reached_witness_identities.len()
+                );
                 use crate::cli_run::namespace_baseline::{
                     InterfaceChangeGround, InterfaceConsumerBinding,
                 };
@@ -13324,6 +13409,119 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
         let _ = std::fs::remove_dir_all(&fx);
         assert!(selection.changes.is_empty(), "{:?}", selection.changes);
         assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// A witness two calls from `width_of`, and a witness that reads nothing `width_of` reaches.
+    const REACH_WITNESS: &str = "module iface.reach_test\n\nimport iface.fc { twice }\n\n\
+test fn twice_is_six() -> Bool {\n  twice() == 6\n}\n";
+    const REACH_UNRELATED_WITNESS: &str = "module iface.unrelated_test\n\n\
+test fn one_is_one() -> Bool {\n  1 == 1\n}\n";
+
+    fn reach_of(
+        name: &str,
+        base: &[(&str, &str)],
+        head: &[(&str, &str)],
+        changed: &[(&str, &str)],
+    ) -> (
+        crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
+        crate::cli_run::namespace_baseline::BodyReachSelection,
+    ) {
+        let base_fx = interface_fixture(name, "base", base);
+        let head_fx = interface_fixture(name, "head", head);
+        let base_index = interface_index(&base_fx);
+        let head_index = interface_index(&head_fx);
+        let _ = std::fs::remove_dir_all(&base_fx);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let seeds: BTreeSet<(String, String)> = changed
+            .iter()
+            .map(|(m, d)| (m.to_string(), d.to_string()))
+            .collect();
+        (
+            crate::cli_run::namespace_baseline::interface_changed_consumers(
+                &base_index,
+                &head_index,
+            ),
+            crate::cli_run::namespace_baseline::body_reach_from_changed_declarations(
+                &base_index,
+                &head_index,
+                &seeds,
+            ),
+        )
+    }
+
+    fn reached_witnesses(
+        reach: &crate::cli_run::namespace_baseline::BodyReachSelection,
+    ) -> Vec<String> {
+        let mut out: Vec<String> = reach
+            .reached
+            .iter()
+            .filter(|r| r.witness_carrier)
+            .map(|r| format!("{}.{}", r.module_path, r.declaration))
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// THE RED (gunbc#12361's shape). A body-only edit to `width_of` changes no interface, so the
+    /// compile-grain selector plans nothing -- correctly, nothing can fail to typecheck -- and a
+    /// witness two calls away in an untouched file is exactly the claim whose VERDICT the edit
+    /// can change. Execution-grain reach selects it, through the caller.
+    #[test]
+    fn a_body_only_change_reaches_the_witness_two_calls_away() {
+        let files_base = [
+            ("f.dag", IFACE_F_BASE),
+            ("fc.dag", IFACE_F_CALLER),
+            ("fi.dag", IFACE_F_IDLE),
+            ("reach_test.dag", REACH_WITNESS),
+            ("unrelated_test.dag", REACH_UNRELATED_WITNESS),
+        ];
+        let mut files_head = files_base;
+        files_head[0] = ("f.dag", IFACE_F_BODY_ONLY);
+        let (selection, reach) = reach_of(
+            "reach_body",
+            &files_base,
+            &files_head,
+            &[("iface.f", "width_of")],
+        );
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+        assert_eq!(
+            reached_witnesses(&reach),
+            vec!["iface.reach_test.twice_is_six".to_string()],
+            "{:?}",
+            reach.reached
+        );
+        let twice = reach
+            .reached
+            .iter()
+            .find(|r| r.declaration == "twice")
+            .expect("the caller is reached");
+        assert_eq!(
+            twice.through,
+            ("iface.f".to_string(), "width_of".to_string())
+        );
+        // CONTROL: the idle importer is not a reader, and the unrelated witness reads nothing
+        // the edit reaches -- the selection is bounded by the reads, not by importers or files.
+        assert!(
+            !reach
+                .reached
+                .iter()
+                .any(|r| r.module_path == "iface.fi" || r.module_path == "iface.unrelated_test"),
+            "{:?}",
+            reach.reached
+        );
+    }
+
+    /// CONTROL: no changed declaration, no reach. The empty seed set is an answer, not an
+    /// absorbing "everything" (DESIGN 5).
+    #[test]
+    fn no_changed_declaration_reaches_nothing() {
+        let files = [
+            ("f.dag", IFACE_F_BASE),
+            ("fc.dag", IFACE_F_CALLER),
+            ("reach_test.dag", REACH_WITNESS),
+        ];
+        let (_, reach) = reach_of("reach_none", &files, &files, &[]);
+        assert!(reach.reached.is_empty(), "{:?}", reach.reached);
     }
 
     /// A sealed constructor whose `admit_callers:` roster names two callers, the roster widened
