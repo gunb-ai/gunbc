@@ -51,7 +51,9 @@ fn kind_node(kind: Kind) -> Node {
 // LINEAR IN THE ROSTER. A record's facts are its subtree minus the record and its subject, and only
 // a RECORD (a member carrying the subject field) walks a subtree -- every other member answers at
 // the named-child lookup -- so a classification visits each record's subtree once, never a subtree
-// per member and never through a copied accumulator (DESIGN section 6, bare minimum cost). A record is
+// per member and never through a copied accumulator (DESIGN section 6, bare minimum cost). That
+// bound holds because records do not nest in the declared-inhabitants rosters; a record inside
+// another record's facts would be walked once per enclosing record. A record is
 // found through the canonical accessor v2.std.node_query named_child_lookup, which already requires
 // a Conj; an ambiguous subject field is not a record (the language authorities declare one subject
 // edge per record).
