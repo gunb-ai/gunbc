@@ -833,6 +833,16 @@ fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
   }
 }
 
+// THE INT VALUE TYPE, AS A NODE. This module owns what `Int` denotes, exactly as v2.std.logic
+// bool_node owns what `Bool` denotes: a language's binding join (v2.extdeps.languages.dag
+// dag_binding_denotation) points here, and every consumer of an Int value's type -- infer's
+// literal, add and branch rules, the evaluator's primitive type -- reads this one node. Its atom
+// identity keeps the spelling `dag_binding_type_int` it carried before the authority moved here;
+// that is the identity every consumer compares against, so renaming it is a separate migration.
+fn integer_int_type_node() -> Node {
+  integer_inhabitant_atom(id: ^dag_binding_type_int)
+}
+
 // THE TYPES OF A DECIMAL MAGNITUDE'S NODE ENCODING, AS NODES. integer_decimal_magnitude_node encodes
 // a magnitude as fold_list_node over integer_decimal_digit_node: each digit atom is a DecimalDigit and
 // each cons cell (and the empty tail) is a FreeMonoid<DecimalDigit>. v2.compiler.infer

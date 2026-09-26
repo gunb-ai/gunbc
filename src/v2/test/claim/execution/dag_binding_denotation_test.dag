@@ -8,16 +8,16 @@ import v2.compiler.infer {
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
+import std.kind { TypeDenotationKind, kind_node }
 import v2.extdeps.languages.dag {
   dag_binding_denotation,
-  dag_int_inhabitant_node,
   dag_int_type_binding
 }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.integer { Int }
+import v2.std.integer { Int, integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_node }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Present }
 
@@ -28,8 +28,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is the direct-rust-door fixture's ingest -- the corpus's smallest real-ingest dag module whose
 // resolved tree carries canonical binding atoms (`dag_binding_type_int`, the resolver's binding
 // of the surface spelling "Int"). The positive control pins both the derivation and its evidence:
-// every canonical Int binding atom carries DerivedGrounding whose structural evidence is the dag
-// authority's Int inhabitant, and the census count (4) pins that the witness actually saw them.
+// every canonical Int binding atom carries DerivedGrounding whose structural evidence is its KIND
+// (std.kind TypeDenotationKind: the expression `Int` is a type), and the census count (4) pins that
+// the witness actually saw them. What the binding DENOTES is a separate fact, pinned by
+// dag_binding_denotation_rows_point_at_std_authorities_holds: each row is the std authority's node
+// (v2.std.integer, v2.std.logic), never a node the language row mints and never the roster's Int
+// record (docs/plans/arrow-elimination-model.md).
 // The boundary control pins the rule's edge at the authority itself: dag_binding_denotation
 // declares no denotation for the operand bindings `x`/`y` -- the table is a lookup, not an
 // invention. (The operand atoms derive today, but by a different rule -- the binding-reference
@@ -65,7 +69,7 @@ fn int_binding_atom_derived(inferred: InferredTree, n: Node) -> Bool {
       match facts.grounding {
         GroundingNotDerived { node: _ } => false
         DerivedGrounding { grounding: g } =>
-          g.witness.structural.evidence == dag_int_inhabitant_node()
+          g.witness.structural.evidence == kind_node(kind: TypeDenotationKind)
       }
   }
 }
@@ -138,4 +142,9 @@ test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds
         Absent => true
       }
   }
+}
+
+test fn dag_binding_denotation_rows_point_at_std_authorities_holds() -> Bool {
+  (dag_binding_denotation(sym: dag_int_type_binding()) == Present { value: integer_int_type_node() })
+    && (dag_binding_denotation(sym: ^dag_binding_type_bool) == Present { value: bool_node() })
 }

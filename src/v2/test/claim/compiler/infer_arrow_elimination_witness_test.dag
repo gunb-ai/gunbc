@@ -1,0 +1,145 @@
+module v2.test.claim.compiler.infer_arrow_elimination_witness_test
+
+// ARROW INTRODUCTION AND ELIMINATION IN v2 INFER (docs/plans/arrow-elimination-model.md). An
+// application `f(1)` of a bodied Arrow takes the type the Arrow DECLARES it returns, and the Arrow is
+// admitted only when its body inhabits that return. Both directions are measured through the real
+// infer, and the Bool control through the real evaluator: before this rule no application derived,
+// Int included, and eval refused both with eval_rejected_grounding_not_derived.
+
+import v2.compiler.infer { InferredTree, infer, inferred_facts_grounding_derived, inferred_facts_resolved_type }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason }
+import v2.std.integer { integer_int_type_node }
+import v2.std.logic { Bool, bool_node }
+import v2.std.optional { Absent, Present }
+import v2.std.runtime { RuntimeValue }
+import v2.std.witness { Holds, Violates }
+import v2.std.node { ComputationNode, Conj, Edge, Named, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+
+fn ae_domain() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^ae_param_x },
+        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ]
+  )
+}
+
+fn ae_arrow(returns: Symbol, body: Node) -> Node {
+  dag_arrow_with_body_node(domain: ae_domain(), return_type_binding: returns, body: body)
+}
+
+fn ae_apply(returns: Symbol, body: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: ae_arrow(returns: returns, body: body) },
+      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+    ]
+  )
+}
+
+fn ae_true() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_true)
+}
+
+fn ae_false() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_false)
+}
+
+// The application's derived type, compared to the expected authority node. False when infer refuses,
+// the node carries no facts, or its grounding is not derived.
+fn ae_application_derives(tree: Node, expected: Node) -> Bool {
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(tree) {
+        Absent => false
+        Present { value: facts } =>
+          inferred_facts_grounding_derived(facts: facts)
+            && (match inferred_facts_resolved_type(facts: facts) {
+              Holds { value: t } => t == expected
+              Violates { diagnostic: _ } => false
+            })
+      }
+  }
+}
+
+fn ae_refuses_body_return(tree: Node) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(
+        d: Some { diagnostics: nds },
+        reason: ^arrow_body_does_not_inhabit_declared_return
+      )
+  }
+}
+
+fn ae_eval(tree: Node) -> Outcome<RuntimeValue> {
+  match infer(tree: tree) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: inferred, diagnostics: _ } =>
+      eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: tree))
+  }
+}
+
+fn ae_accepted(o: Outcome<RuntimeValue>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn infer_bool_application_derives_bool_holds() -> Bool {
+  ae_application_derives(tree: ae_apply(returns: ^dag_binding_type_bool, body: ae_true()), expected: bool_node())
+}
+
+// The same rule, not a Bool case: the Int application derives the std.integer Int node.
+test fn infer_int_application_derives_int_holds() -> Bool {
+  ae_application_derives(
+    tree: ae_apply(returns: ^dag_binding_type_int, body: dag_int_literal_fixture_one()),
+    expected: integer_int_type_node()
+  )
+}
+
+// The evaluator's true value: f(1) evaluates to what the literal `true` does, and not to what
+// `false` does -- the result is the body's, not a constant the control could match by accident.
+test fn eval_bool_application_is_the_evaluators_true_holds() -> Bool {
+  let applied = ae_eval(tree: ae_apply(returns: ^dag_binding_type_bool, body: ae_true()))
+  ae_accepted(o: applied)
+    && (applied == ae_eval(tree: ae_true()))
+    && (applied != ae_eval(tree: ae_false()))
+}
+
+test fn infer_int_body_at_declared_bool_refuses_holds() -> Bool {
+  ae_refuses_body_return(tree: ae_apply(returns: ^dag_binding_type_bool, body: dag_int_literal_fixture_one()))
+}
+
+test fn infer_bool_body_at_declared_int_refuses_holds() -> Bool {
+  ae_refuses_body_return(tree: ae_apply(returns: ^dag_binding_type_int, body: ae_true()))
+}
+
+// The refusal belongs to arrow INTRODUCTION: the bare Arrow refuses with no application around it.
+test fn infer_bare_arrow_with_mismatched_body_refuses_holds() -> Bool {
+  ae_refuses_body_return(tree: ae_arrow(returns: ^dag_binding_type_bool, body: dag_int_literal_fixture_one()))
+}
+
+// Frontier accounting stays counted: a return the language join does not denote derives nothing,
+// and the application is admitted on the frontier, never typed.
+test fn infer_undenoted_return_leaves_application_on_frontier_holds() -> Bool {
+  let tree = ae_apply(returns: ^ae_undenoted_type, body: ae_true())
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(tree) {
+        Absent => false
+        Present { value: facts } => !inferred_facts_grounding_derived(facts: facts)
+      }
+  }
+}

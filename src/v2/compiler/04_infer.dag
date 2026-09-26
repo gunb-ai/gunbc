@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.kind { Kind, kind_node, roster_member_kind }
+import std.kind { Kind, TypeDenotationKind, kind_node, roster_member_kind }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_tail, zip_map }
 import std.algebra { Cons, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
@@ -26,6 +26,7 @@ import v2.compiler.inferred_tree {
 import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
+  DagCanonicalLiteral,
   dag_binding_denotation,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
@@ -100,7 +101,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
-import v2.std.logic { Bool, bool_node }
+import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
@@ -122,7 +123,10 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  Ambiguous,
+  Found,
   all_edges_positional,
+  arrow_body_target_lookup,
   canonicalize_node_strip_provenance,
   fold_node,
   loop_edge_contributes_to_iteration_fold,
@@ -644,6 +648,51 @@ fn infer_product_child_evidence_edges(
   )
 }
 
+// ARROW INTRODUCTION: A BODIED ARROW'S BODY MUST INHABIT THE RETURN IT DECLARES. Asked only once every
+// child of the Arrow is derived (the product row above), so the body's type is known. The body's
+// value type must equal the declared return's denotation, structurally with provenance stripped
+// (infer_type_equal_ignoring_provenance, the list rule's authority); otherwise the Arrow refuses,
+// located at the body. An Arrow with no body edge, or whose return is not a binding the language
+// join denotes, is not judged here -- and arrow elimination derives nothing from such a return.
+fn infer_arrow_body_does_not_inhabit_declared_return_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^arrow_body_does_not_inhabit_declared_return,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: node.children) {
+        Ambiguous => outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+        Found { target: body } =>
+          match infer_arrow_declared_return_type(arrow: node) {
+            Absent => outcome_accepted(value: true)
+            Present { value: declared } =>
+              match lookup_inferred_facts_in_entries(entries: entries, key: body) {
+                Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body))
+                Present { value: body_facts } =>
+                  match inferred_facts_resolved_type(facts: body_facts) {
+                    Violates { diagnostic: d } => outcome_rejected(d)
+                    Holds { value: body_type } =>
+                      if infer_type_equal_ignoring_provenance(a: declared, b: body_type) {
+                        outcome_accepted(value: true)
+                      } else {
+                        outcome_rejected(
+                          infer_arrow_body_does_not_inhabit_declared_return_diagnostic(body: body)
+                        )
+                      }
+                  }
+              }
+          }
+        _ => outcome_accepted(value: true)
+      }
+    _ => outcome_accepted(value: true)
+  }
+}
+
 fn infer_product_facts_from_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
@@ -666,17 +715,22 @@ fn infer_product_facts_from_entries(
                 )
               )
             Present { value: evidence_edges } =>
-              bind_outcome_accepted(
-                od: cd,
-                inner: inferred_facts_from_derived_type(
-                  node: node,
-                  derived_type: Node {
-                    kind: node.kind,
-                    children: evidence_edges,
-                    occurrence_id: OccurrenceSynthetic
-                  },
-                  descent: Holds { value: descent_proof }
-                )
+              bind_outcome(
+                o: infer_arrow_body_inhabits_declared_return(node: node, entries: entries),
+                f: fn(_checked) {
+                  bind_outcome_accepted(
+                    od: cd,
+                    inner: inferred_facts_from_derived_type(
+                      node: node,
+                      derived_type: Node {
+                        kind: node.kind,
+                        children: evidence_edges,
+                        occurrence_id: OccurrenceSynthetic
+                      },
+                      descent: Holds { value: descent_proof }
+                    )
+                  )
+                }
               )
           }
       }
@@ -692,18 +746,17 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
           match dag_canonical_literal_from_node(node: n) {
-            Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
-              inferred_facts_from_derived_type(
-                node: n,
-                derived_type: bool_node(),
-                descent: Holds { value: descent_proof }
-              )
-            Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
-              inferred_facts_from_derived_type(
-                node: n,
-                derived_type: infer_branch_int_binding_type_node(),
-                descent: Holds { value: descent_proof }
-              )
+            Accepted { value: literal, diagnostics: _ } =>
+              match infer_literal_value_type(literal: literal) {
+                Present { value: literal_type } =>
+                  inferred_facts_from_derived_type(
+                    node: n,
+                    derived_type: literal_type,
+                    descent: Holds { value: descent_proof }
+                  )
+                Absent =>
+                  inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              }
             Rejected { diagnostics: _ } =>
               match infer_node_declared_in_language_inhabitants(n: n) {
                 Present { value: member_kind } =>
@@ -716,10 +769,10 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
                 match infer_atom_binding_sym(node: n) {
                   Present { value: binding } =>
                     match dag_binding_denotation(sym: binding) {
-                      Present { value: denotation } =>
+                      Present { value: _ } =>
                         inferred_facts_from_derived_type(
                           node: n,
-                          derived_type: denotation,
+                          derived_type: kind_node(kind: TypeDenotationKind),
                           descent: Holds { value: descent_proof }
                         )
                       Absent =>
@@ -871,11 +924,42 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
   }
 }
 
-fn infer_branch_int_binding_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
-    children: [],
-    occurrence_id: OccurrenceSynthetic
+// A VALUE'S TYPE COMES FROM THE LANGUAGE'S ONE BINDING JOIN, NEVER A NODE THIS FOLD MINTS. A literal
+// is typed by what its type binding denotes (v2.extdeps.languages.dag dag_binding_denotation, whose
+// rows point at v2.std.integer and v2.std.logic), and so is an application's result (its callee's
+// declared return). A type-expression atom that names such a binding derives its KIND, not the type
+// it denotes: the type of the expression `Int` is a type, and taking the denotation would type the
+// atom as a node structurally equal to itself (docs/plans/arrow-elimination-model.md).
+fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
+  match literal {
+    DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
+    DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
+  }
+}
+
+fn infer_literal_value_type(literal: DagCanonicalLiteral) -> Optional<Node> {
+  dag_binding_denotation(sym: infer_literal_type_binding(literal: literal))
+}
+
+fn infer_binding_value_type_witness(binding: Symbol, at: Node) -> Witness<Node> {
+  match dag_binding_denotation(sym: binding) {
+    Present { value: t } => Holds { value: t }
+    Absent => Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: at)) }
+  }
+}
+
+// The value type an Arrow DECLARES it returns: the denotation of its return atom as written
+// (positional child 1). Read from the declaration, never from the Arrow's composed evidence, which
+// also carries the body. Absent when the return is not a binding this language's join denotes, and
+// then nothing is derived from it.
+fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+    Absent => Absent
+    Present { value: ret } =>
+      match infer_atom_binding_sym(node: ret) {
+        Absent => Absent
+        Present { value: binding } => dag_binding_denotation(sym: binding)
+      }
   }
 }
 
@@ -955,10 +1039,8 @@ fn infer_branch_operand_resolved_type_in_tree(
   tree: Node,
 ) -> Witness<Node> {
   match dag_canonical_literal_from_node(node: node) {
-    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
-      Holds { value: bool_node() }
-    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
-      Holds { value: infer_branch_int_binding_type_node() }
+    Accepted { value: literal, diagnostics: _ } =>
+      infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
     Rejected { diagnostics: _ } =>
       match infer_atom_binding_sym(node: node) {
         Present { value: binding } =>
@@ -1055,7 +1137,7 @@ fn infer_match_bool_arm_body_type(
   match dag_canonical_literal_from_node(node: body_target) {
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
       if infer_branch_type_is_int(type_node: scrutinee_type) {
-        Holds { value: infer_branch_int_binding_type_node() }
+        infer_binding_value_type_witness(binding: ^dag_binding_type_int, at: body_target)
       } else {
         infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
       }
@@ -2333,7 +2415,13 @@ fn infer_gather_application_row_on_entries(
       )
     Accepted { value: _, diagnostics: id } =>
       let merged_pending = diagnostics_merge(outer: pending, inner: id)
-      match infer_transform_derived_optional(node: node, partials: partials, entries: entries, tree: tree) {
+      match infer_transform_derived_optional(
+        node: node,
+        partials: partials,
+        entries: entries,
+        tree: tree,
+        arguments_decided: infer_diagnostics_none(d: id)
+      ) {
         Present { value: derived } =>
         match derived {
           Rejected { diagnostics: r } =>
@@ -2388,16 +2476,67 @@ fn infer_gather_application_row_on_entries(
 
 // THE TRANSFORMS WHOSE TYPE IS DERIVED, by shape: the binary Int add, and a cast whose operand's
 // grounding is derived. Absent is the counted frontier (GroundingNotDerived), never an admission.
+fn infer_diagnostics_none(d: Diagnostics) -> Bool {
+  match d {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+// arguments_decided: argument inhabitance returned no counted-undecidable obligation. Arrow
+// elimination derives only then -- an application whose argument obligation is still undecided
+// stays on the frontier rather than typing past it.
 fn infer_transform_derived_optional(
   node: Node,
   partials: List<Node>,
   entries: List<InferredFactsEntry>,
   tree: Node,
+  arguments_decided: Bool,
 ) -> Optional<Outcome<InferredFacts>> {
   if infer_transform_is_binary_infix_int_add_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
-  } else {
+  } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries)
+  } else if arguments_decided {
+    infer_transform_application_optional(node: node, entries: entries)
+  } else {
+    optional_absent()
+  }
+}
+
+// ARROW ELIMINATION. `f(a)`, where the callee is an Arrow, has the type the Arrow DECLARES it
+// returns (infer_arrow_declared_return_type: the return atom as written, never the composed
+// evidence). The caller has already admitted argument inhabitance, and the callee must itself be
+// derived -- so arrow introduction has checked its body against that return. An underived callee,
+// a non-Arrow operator, or a return the language join does not denote stays on the counted
+// frontier: Absent here, never an admission.
+fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+  match infer_application_callee_arrow(node: node) {
+    Absent => optional_absent()
+    Present { value: arrow } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: arrow) {
+        Absent => optional_absent()
+        Present { value: arrow_facts } =>
+          if !inferred_facts_grounding_derived(facts: arrow_facts) {
+            optional_absent()
+          } else {
+            match infer_arrow_declared_return_type(arrow: arrow) {
+              Absent => optional_absent()
+              Present { value: return_type } =>
+                optional_present(
+                  value: match infer_descent_witness_for_node(n: node) {
+                    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+                    Holds { value: descent_proof } =>
+                      inferred_facts_from_derived_type(
+                        node: node,
+                        derived_type: return_type,
+                        descent: Holds { value: descent_proof }
+                      )
+                  }
+                )
+            }
+          }
+      }
   }
 }
 
