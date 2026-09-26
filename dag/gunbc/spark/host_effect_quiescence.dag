@@ -2,12 +2,13 @@ module gunbc.spark.host_effect_quiescence
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
 import std.algebra { trim }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
 import extdeps.exec.command { argv_words }
 import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome }
-import extdeps.docker.cli { DockerPsFilter, DockerPsByName, DockerPsByAncestor, docker_ps_filter_wire, docker_ps_running_command }
+import extdeps.docker.cli { DockerPsFilter, DockerPsByName, DockerPsByAncestor, DockerPsByLabel, DockerLabel, docker_ps_filter_wire, docker_ps_running_command }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
 import product.capacity.event_json { member_nonempty, member_nat }
 
@@ -206,6 +207,7 @@ fn container_filter_members(prefix: String, f: DockerPsFilter?) -> List<JsonKeyV
     Absent => [] as List<JsonKeyValue>
     Present { value: DockerPsByName { name: n } } => [json_kv(key: join([prefix, "container_name"], ""), value: json_string(s: n as String))]
     Present { value: DockerPsByAncestor { image: i } } => [json_kv(key: join([prefix, "container_image"], ""), value: json_string(s: i as String))]
+    Present { value: DockerPsByLabel { label: l } } => [json_kv(key: join([prefix, "container_label_key"], ""), value: json_string(s: l.key as String)), json_kv(key: join([prefix, "container_label_value"], ""), value: json_string(s: l.value as String))]
   }
 }
 
@@ -214,12 +216,27 @@ type ContainerFilterMember
   | ContainerFilterPresent { filter: DockerPsFilter }
   | ContainerFilterIncoherent
 
+// EXACTLY ONE FILTER, OR NONE: two filter members, or a label key without its value, is an
+// incoherent document and refuses rather than choosing one.
 fn container_filter_decode(doc: JsonValue, prefix: String) -> ContainerFilterMember {
   let by_name = member_nonempty(doc: doc, key: join([prefix, "container_name"], ""))
   let by_image = member_nonempty(doc: doc, key: join([prefix, "container_image"], ""))
-  match by_name {
-    Present { value: n } => match by_image { Absent => ContainerFilterPresent { filter: DockerPsByName { name: n } }  Present { value: _ } => ContainerFilterIncoherent }
-    Absent => match by_image { Absent => ContainerFilterAbsent  Present { value: i } => ContainerFilterPresent { filter: DockerPsByAncestor { image: i } } }
+  let label_key = member_nonempty(doc: doc, key: join([prefix, "container_label_key"], ""))
+  let label_value = member_nonempty(doc: doc, key: join([prefix, "container_label_value"], ""))
+  let present = length(filter([by_name, by_image, label_key], m => match m { Present { value: _ } => true  Absent => false }))
+  if present > 1 {
+    ContainerFilterIncoherent
+  } else {
+    match by_name {
+      Present { value: n } => match label_value { Absent => ContainerFilterPresent { filter: DockerPsByName { name: n } }  Present { value: _ } => ContainerFilterIncoherent }
+      Absent => match by_image {
+        Present { value: i } => match label_value { Absent => ContainerFilterPresent { filter: DockerPsByAncestor { image: i } }  Present { value: _ } => ContainerFilterIncoherent }
+        Absent => match label_key {
+          Present { value: k } => match label_value { Present { value: v } => ContainerFilterPresent { filter: DockerPsByLabel { label: DockerLabel { key: k, value: v } } }  Absent => ContainerFilterIncoherent }
+          Absent => match label_value { Absent => ContainerFilterAbsent  Present { value: _ } => ContainerFilterIncoherent }
+        }
+      }
+    }
   }
 }
 
