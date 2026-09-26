@@ -215,6 +215,7 @@ type Xl2Prerequisite
   | AsCastOperandLowering
   | ElseLessIfStatementLowering
   | WildcardMatchArmResolution
+  | QualifiedFieldTypeVisibility
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -254,6 +255,7 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   AsCastOperandLowering,
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
+  QualifiedFieldTypeVisibility,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -275,6 +277,7 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     AsCastOperandLowering => "an `as` cast `e as T` has a lowered form on every route, so its operand and its target type both reach resolve"
     ElseLessIfStatementLowering => "an else-less statement `if` (an early-return guard) lowers with the rest of the statement spine as its else, so every later statement reaches resolve"
     WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
+    QualifiedFieldTypeVisibility => "a QUALIFIED field-position type name reaches the census, so field position is established as a whole, not only for bare names"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
   }
 }
@@ -289,7 +292,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     IfArmCallArgumentReferenceVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom"),
       evidence: Xl2PrerequisiteEvidence { pr: 12221, merge_sha: "e74e345a93" as NonEmptyStr, measured_at: "e74e345a93" as NonEmptyStr },
-      qualification: "if-arms lower through the statement authority (v2.compiler.body_lowering_fold body_lower_if_arm_lowered), so an undeclared name used as a call argument in a then arm, an else arm or a nested if-arm, or as a bare name in an arm, refuses at resolve at its own atom; the declared controls (declared_call_arguments_in_if_arms_resolve, a_let_block_in_an_if_arm_resolves, a_match_in_an_if_arm_resolves) resolve. Bounded to arms whose statements lower: an else-less statement `if` is ElseLessIfStatementLowering, and a match inside an arm now reaches resolve, where a wildcard arm refuses (WildcardMatchArmResolution)." as NonEmptyStr,
+      qualification: "if-arms lower through the statement authority (v2.compiler.body_lowering_fold body_lower_if_arm_lowered), so an undeclared name used as a call argument in a then arm, an else arm or a nested if-arm, or as a bare name in an arm, refuses at resolve at its own atom; the declared controls (declared_call_arguments_in_if_arms_resolve, a_let_block_in_an_if_arm_resolves, a_match_in_an_if_arm_resolves) resolve. Bounded to arms whose statements lower: an else-less statement `if` is ElseLessIfStatementLowering, and a match inside an arm now reaches resolve, where a wildcard arm resolves since gunbc#12297 (WildcardMatchArmResolution)." as NonEmptyStr,
     }
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
@@ -314,7 +317,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     MatchOnCallScrutineeNavigation => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_atom"),
       evidence: Xl2PrerequisiteEvidence { pr: 12173, merge_sha: "bc61f22b53" as NonEmptyStr, measured_at: "9ce9082ef7" as NonEmptyStr },
-      qualification: "gunbc#12173 reads a match scrutinee through v2.compiler.body_lowering_fold body_lower_value_lowered, so a match whose scrutinee is a call has its arms navigated and an undeclared name in the scrutinee refuses at resolve at its atom. Its positive controls landed in gunbc#12194 (9ce9082ef7): a_call_match_scrutinee_resolves, a_multi_line_call_match_scrutinee_resolves and a_match_with_a_call_scrutinee_nested_in_an_arm_resolves. NOT claimed: a match exhaustive only through a wildcard arm, which refuses at resolve at `_` (WildcardMatchArmResolution)." as NonEmptyStr,
+      qualification: "gunbc#12173 reads a match scrutinee through v2.compiler.body_lowering_fold body_lower_value_lowered, so a match whose scrutinee is a call has its arms navigated and an undeclared name in the scrutinee refuses at resolve at its atom. Its positive controls landed in gunbc#12194 (9ce9082ef7): a_call_match_scrutinee_resolves, a_multi_line_call_match_scrutinee_resolves and a_match_with_a_call_scrutinee_nested_in_an_arm_resolves. A match exhaustive only through a wildcard arm refused at resolve at `_` until gunbc#12297 (WildcardMatchArmResolution)." as NonEmptyStr,
     }
     CompoundCallArgumentValueLowering => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_its_atom"),
@@ -323,7 +326,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     }
     OptionalAccessorLocatedRefusal => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
-      why: "the Optional operand reader v2.compiler.body_lowering_fold body_lower_arm_operand_resolved_optional answers without a located refusal on an operand it cannot read, and its caller body_lower_bound_value accepts that answer: the specimen `let x = b && (u)` followed by `x`, with `u` undeclared, RESOLVES on main, so `u` never reaches resolve. The tracking row stays open for exactly this. No fix has merged." as NonEmptyStr,
+      why: "the Optional operand reader v2.compiler.body_lowering_fold body_lower_arm_operand_resolved_optional answers without a located refusal on an operand it cannot read, and its caller body_lower_bound_value accepts that answer: the specimen `let x = b && (u)` followed by `x`, with `u` undeclared, resolved on main before gunbc#12245. PARTIAL EVIDENCE, not delivery: gunbc#12245 (56f13fc2f7) fixed four part-for-whole readers -- a let's bound value now lowers whole (that specimen and `let x = g(p: u)` refuse at `u`, v2.test.claim.namespace_xl0.bound_value_resolve_refusal), the operand readers carry the operator reader's refusal as OperandRefRead, an else-if arm lowers whole, and the literal bool/int readers no longer answer a proper part. What remains keeps the arm OUTSTANDING: the other first-match readers still answer the first atom they find, and the fold-to-walker fallback still swallows an unreadable operand instead of refusing it located. The tracking row stays open, updated not retired by gunbc#12245." as NonEmptyStr,
     }
     StrippedTreeRehearsalComposition => PrerequisiteDelivered {
       owner: decl_ref(module_path: "test.claim.namespace_xl2_rehearsal_census", decl_name: "xl2_residual_control_is_reported_holds"),
@@ -355,13 +358,18 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.else_less_if_statement_has_no_lowered_form", decl_name: "else_less_if_statement_has_no_lowered_form"),
       why: "body_lower_try_if_from_captured requires an else arm, so an early-return guard refuses its module at normalize as body_lowering_reason_else_less_if_unlowered and the statements after it never reach resolve. Exposed by gunbc#12145, not introduced. No fix has merged." as NonEmptyStr,
     }
-    WildcardMatchArmResolution => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name", decl_name: "a_wildcard_match_arm_resolves_as_an_unbound_name"),
-      why: "a pre-existing resolve defect surfaced by gunbc#12221: a wildcard arm `_` is looked up as a symbol and refuses as resolve_reason_unbound_symbol at `_`. It is RED-LOUD, not a drop -- independent refusals in the same declaration still reach the census (ResolveOccurrenceCompleteness) -- but it puts rows in the residual that name no rewritable occurrence and are indistinguishable by cause from a real unbound name, so the residual this stage exists to take is not exact while it stands. No fix has merged." as NonEmptyStr,
+    WildcardMatchArmResolution => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.wildcard_arm_resolve", decl_name: "a_match_exhaustive_through_a_wildcard_arm_resolves"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12297, merge_sha: "0579afae7f" as NonEmptyStr, measured_at: "0579afae7f" as NonEmptyStr },
+      qualification: "delivered at RESOLVE grain: v2.compiler.resolve resolve_pattern_node_walk recognizes `_` at every pattern depth, so resolve no longer emits a spurious unbound row at `_`; an undeclared name in a wildcard arm's body is still the sole refusal at its own atom (an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom). NOT claimed: a distinct lowered wildcard form -- none exists, the wildcard reaches resolve as the atom `_` and resolve declines to look it up -- so gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name stays OPEN until the pattern has its own lowered form." as NonEmptyStr,
+    }
+    QualifiedFieldTypeVisibility => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_qualified_field_type_mention_is_absent_from_the_census_today"),
+      why: "a qualified field-type mention is absent from the census: qualification no longer hides a mention (a qualified parameter type reaches, a_qualified_type_position_mention_reaches_the_census_holds), but a record declaration's qualified field type is not grafted into the containment tree, so its import-dependent reference never reaches the residual. BareFieldTypeVisibility bounds itself to bare names for this reason. Tracked by the claim that asserts the absence, which reddens when the mention reaches. No fix has merged." as NonEmptyStr,
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),
-      why: "most authored atoms do not keep their minted occurrence through normalize: lowering rebuilds type-position atoms, field projections, match and record constructors, pipe and lambda arguments and dotted spines as node_synthetic, and binders become Named edge labels with no occurrence. Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. The per-module count is the conservation check's, re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. No fix has merged." as NonEmptyStr,
+      why: "reference-position atoms that lowering rebuilds do not keep their minted occurrence through normalize: record-literal tags and pattern constructors are lowered from their enclosing shell (v2.std.node_query construct_tag_edge), and dotted-spine segments are rebuilt as node_synthetic (v2.std.qualified_name qualified_name_spine_node). Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. Binders and labels are also locus-erased but are outside the XL-2 residual. Design and ranked sites: docs/plans/lowering-occurrence-projection-design.md. The per-module count is the conservation check's, re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. No fix has merged." as NonEmptyStr,
     }
   }
 }

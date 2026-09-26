@@ -470,10 +470,15 @@ test fn a_caret_symbol_operand_refuses_at_normalize() -> Bool {
   }
 }
 
-test fn an_as_cast_operand_refuses_at_normalize() -> Bool {
+// A cast operand RESOLVES: the postfix chain folds `c as Bool` into the typed cast node
+// (Transform[coerce, c] + <cast-target> Bool, v2.compiler.body_lowering_fold body_lower_cast_node)
+// before the operator reader sees it, and resolve binds `Bool` in type role
+// (gunbc.recurring_failure_mode as_cast_has_no_lowered_form). It refused operator_operand_unread,
+// then type_annotation_not_carried at `Bool`, before the node carried the target.
+test fn an_as_cast_operand_resolves() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: v, else_less_if: _ } =>
-      cav_is_file_refused_for(v: v, reason: ^body_lowering_reason_operator_operand_unread)
+      cav_is_resolved(v: v)
     CavContextRefused => false
   }
 }

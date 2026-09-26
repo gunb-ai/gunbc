@@ -371,8 +371,8 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
 }
 
 // THE DECLARED ORDER IS EXACTLY A PERMUTATION OF THE DOMAIN'S BINDERS. An Arrow built from a declared
-// signature carries one ^arrow_signature_order_edge (v2.compiler.body_lowering_fold
-// body_lower_signature_order_edge): a Transform whose positional children after the head are
+// signature carries one ^arrow_signature_order_edge (v2.std.compilers.body_lowering
+// signature_order_edge): a Transform whose positional children after the head are
 // childless Atoms, one per domain binder, each binder exactly once. The producer mints the list and
 // the domain from one fold (v2.std.anonymous_binder anonymous_binder_mint_parameter_list), so a
 // disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
@@ -704,7 +704,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 // (v2.compiler.body_lowering_fold body_lower_call_arg_edges refuses it located) and is ill formed
 // here. Named actuals bind by name against the callee's name-keyed domain (gunbc#12054), so their
 // authored order carries no meaning: the content hash sorts them
-// (canonicalize_positional_prefix_then_labeled), while the stored node keeps authored order for the
+// (canonicalize_positional_then_named), while the stored node keeps authored order for the
 // occurrence layer.
 fn positional_prefix_then_labeled_conform(children: List<Edge>) -> Bool {
   let walk = fold(children, init: PrefixWalk { seen_named: false, ok: true }, f: fn(acc, e) {
@@ -909,6 +909,30 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
   )
 }
 
+// A TRANSFORM'S CANONICAL ORDER: its positional children in order, then its named edges sorted by
+// label. The named edges are either one v2.std.type_binder marker (a cast's target) or an
+// application's named actuals (positional_prefix_then_labeled_conform states the shape;
+// v2.std.type_binder type_binder_labels_conform states which labels, and forbids mixing the two).
+// Positional order is identity-bearing, so it is kept; named edges bind by label, so where a producer
+// placed them cannot move the content hash: f(a: 1, b: 2) and f(b: 2, a: 1) are one node, and
+// f(1, 2) and f(2, 1) stay two. A Bind stays PositionalEdges until the let-annotation carrier lands.
+//
+// EVALUATION ORDER IS NEVER READ FROM A CANONICALIZED NODE. Actuals are evaluated in the stored
+// node's authored order (v2.compiler.eval eval_edge_is_runtime_argument); this ordering exists for
+// identity only. The identity claim rests on purity: for effectful actuals two hash-equal
+// applications perform their effects in different orders, so no consumer may reuse or dedupe a
+// result across hash-equal applications when an actual may be effectful
+// (gunbc.recurring_failure_mode argument_order_silently_orders_two_effects).
+fn canonicalize_positional_then_named<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+  concat(
+    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
+    sort_labeled(
+      items: filter(items, fn(x) { !labeled_is_positional(x: x, label_of: label_of) }),
+      label_of: label_of
+    )
+  )
+}
+
 // The discipline depends on the kind and the child COUNT -- never on a child's target -- which is
 // exactly why this generalizes. node_edge_discipline delegates here rather than duplicating it.
 fn kind_edge_discipline(kind: NodeKind, child_count: Int) -> EdgeDiscipline {
@@ -930,24 +954,8 @@ fn canonicalize_labeled_for_content_hash<T>(
     PositionalEdges => items
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
-    PositionalPrefixThenLabeledEdges => canonicalize_positional_prefix_then_labeled(items: items, label_of: label_of)
+    PositionalPrefixThenLabeledEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
   }
-}
-
-// The positional prefix keeps its order; the named suffix sorts by label. So f(a: 1, b: 2) and
-// f(b: 2, a: 1) are one node, and f(1, 2) and f(2, 1) stay two.
-//
-// EVALUATION ORDER IS NEVER READ FROM A CANONICALIZED NODE. Actuals are evaluated in the stored
-// node's authored order (v2.compiler.eval eval_edge_is_runtime_argument); this ordering exists for
-// identity only. The identity claim rests on purity: for effectful actuals two hash-equal
-// applications perform their effects in different orders, so no consumer may reuse or dedupe a
-// result across hash-equal applications when an actual may be effectful
-// (gunbc.recurring_failure_mode argument_order_silently_orders_two_effects).
-fn canonicalize_positional_prefix_then_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
-  concat(
-    filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
-    sort_labeled(items: filter(items, fn(x) { !labeled_is_positional(x: x, label_of: label_of) }), label_of: label_of)
-  )
 }
 
 // THE PROJECTIONS ARE NAMED TOP-LEVEL FUNCTIONS, NOT INLINE LAMBDAS, and that is forced rather than

@@ -1,5 +1,6 @@
 module v2.test.claim.type_param_binder_frame
 
+import v2.std.compilers.body_lowering { declared_signature }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -217,12 +218,12 @@ fn tpb_type_param_as_value() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { T }\n")
 }
 
-// (7b) A TYPE PARAMETER IS NOT A VALUE. The frame covers the signature and not the body, whose
-// lowered form carries no type position today (v2.compiler.resolve resolve_arrow_node says why),
-// so `T` in the body is a value-position use and refuses. Measured: with the frame over the body
-// this specimen was ACCEPTED -- the widening this row exists to keep out.
+// (7b) A TYPE PARAMETER IS NOT A VALUE. The fn's <T> is on the TYPE-ROLE frame over the whole Arrow
+// (v2.compiler.resolve ResolveContext type_scope), which only type positions consult, so `T` in a
+// body value position refuses -- with its own reason, not as an unknown name. Measured: with the
+// lexical frame widened over the body this specimen was ACCEPTED, the widening this row keeps out.
 test fn tpb_type_param_in_value_position_refuses() -> Bool {
-  tpb_refuses_with(o: tpb_type_param_as_value(), reason: ^resolve_reason_unbound_symbol)
+  tpb_refuses_with(o: tpb_type_param_as_value(), reason: ^resolve_reason_type_parameter_in_value_position)
 }
 
 // INFER READS THE BOUND `T` AS A DECLARED TYPE VARIABLE (v2.std.inhabitance FormalDeclaration).
@@ -248,10 +249,12 @@ fn tpb_binder_edge(name: Symbol) -> Edge {
 }
 
 fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
+  let signature = declared_signature(params: formals, source: dag_type_atom_node(identity: ^dag_binding_type_int))
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Conj }, children: formals) },
+      signature.domain,
+      signature.order,
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge {

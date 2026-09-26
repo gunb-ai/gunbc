@@ -14,6 +14,7 @@ import v2.compiler.infer {
   inferred_facts_resolved_type
 }
 import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.type_binder { edge_is_cast_target }
 import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
@@ -865,7 +866,7 @@ type InterpretationCacheDigestAuthority
 
 // A VERDICT IS REUSED ON CONTENT IDENTITY ONLY WHERE CONTENT IDENTITY DETERMINES THE RUN. A named
 // actual's position is not part of an application's identity (v2.std.node
-// canonicalize_positional_prefix_then_labeled sorts the named suffix), but it is part of its
+// canonicalize_positional_then_named sorts the named suffix), but it is part of its
 // EVALUATION ORDER, which is authored order. For pure evaluation the two coincide; with an effect
 // bundle present, f(a: e1(), b: e2()) and f(b: e2(), a: e1()) hash equal and perform their effects
 // in opposite orders, so a verdict keyed on the hash could be reused across two different runs. An
@@ -2175,7 +2176,7 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
   } else if eval_node_is_loop(node: parent) {
     false
   } else if eval_node_is_transform(node: parent) {
-    true
+    !edge_is_cast_target(e: edge)
   } else {
     is_positional(e: edge)
   }

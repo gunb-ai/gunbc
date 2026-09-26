@@ -28,7 +28,7 @@ import gunbc.spark.pair_serving_authority_log {
 }
 import gunbc.spark.host_effect_quiescence {
   HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRun, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
-  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, parse_claimant_standing,
+  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantStanding, parse_claimant_standing,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -1036,6 +1036,20 @@ fn settle_host_effect_over(handle: HostEffectHandle, provenance: ReleaseProvenan
 }
 
 fn settle_host_effect_live(handle: HostEffectHandle) -> HostEffectSettlement {
+  match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
+    FleetSshContextRefused { cause: c } => HostEffectStillHeld { cause: join(["the host could not be reached to observe quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
+    FleetSshContextReady { context: context, receipt: _ } =>
+      settle_host_effect_live_over(handle: handle, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) })
+  }
+}
+
+// THE OBSERVATION LEG IS THE LANE'S WHEN ITS RESIDUE NEEDS THE LANE'S PRIVILEGE. The fleet agent can
+// scan processes but cannot read a docker socket, so a lane that ran a container as the host
+// administrator and declares that container as residue must observe it with the same privilege, or
+// its release reads "unread" and the claim stays live (measured: spark_v41_engram_access_probe run
+// 36221850026, claim 6ce079b2a3889272 on srv8). The lane supplies the leg; the resolution of store,
+// executor and clock, and the release itself, stay here.
+fn settle_host_effect_live_over(handle: HostEffectHandle, run: fn(List<String>) -> ArgvRun) -> HostEffectSettlement {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => HostEffectStillHeld { cause: join(["the executor could not be identified for the release: ", c], "") }
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
@@ -1045,28 +1059,35 @@ fn settle_host_effect_live(handle: HostEffectHandle) -> HostEffectSettlement {
           match now_epoch_seconds() {
             Absent => HostEffectStillHeld { cause: "the clock could not be read as epoch seconds for the release" }
             Present { value: at } =>
-              match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
-                FleetSshContextRefused { cause: c } => HostEffectStillHeld { cause: join(["the host could not be reached to observe quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
-                FleetSshContextReady { context: context, receipt: _ } =>
-                  settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: executor as NonEmptyStr }, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at)
-              }
+              settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: executor as NonEmptyStr }, run: run, store: store, executor: executor as NonEmptyStr, at: at)
           }
       }
+  }
+}
+
+fn release_host_effect_settled(settlement: HostEffectSettlement, exit: ProcessExit) -> ProcessExit {
+  match settlement {
+    HostEffectSettled => exit
+    HostEffectStillHeld { cause: why } =>
+      match exit {
+        ExitSuccess => exit_failure(reason: why)
+        ExitFailure { code: _, reason: r } => exit_failure(reason: join([r, "\n", why], ""))
+      }
+  }
+}
+
+// The release with a lane-supplied observation leg (see settle_host_effect_live_over).
+fn release_host_effect_live_over(handle: HostEffectHandle?, run: fn(List<String>) -> ArgvRun, exit: ProcessExit) -> ProcessExit {
+  match handle {
+    Absent => exit
+    Present { value: h } => release_host_effect_settled(settlement: settle_host_effect_live_over(handle: h, run: run), exit: exit)
   }
 }
 
 fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> ProcessExit {
   match handle {
     Absent => exit
-    Present { value: h } =>
-      match settle_host_effect_live(handle: h) {
-        HostEffectSettled => exit
-        HostEffectStillHeld { cause: why } =>
-          match exit {
-            ExitSuccess => exit_failure(reason: why)
-            ExitFailure { code: _, reason: r } => exit_failure(reason: join([r, "\n", why], ""))
-          }
-      }
+    Present { value: h } => release_host_effect_settled(settlement: settle_host_effect_live(handle: h), exit: exit)
   }
 }
 
@@ -1094,38 +1115,45 @@ fn host_effect_recover_wet(host: String, claim: String, claimant: String, receip
       Absent => exit_failure(reason: join(["`", claimant, "` is not a claimant standing; say terminated or abandoned"], ""))
       Present { value: standing } => {
         let h = host as HostIdentity
-        let c = (claim as NonEmptyStr) as EventId
-        match observe_executor_reach() {
-          ExecutorReachUnknown { cause: cause } => exit_failure(reason: join(["the executor could not be identified: ", cause], ""))
-          ExecutorReachKnown { short_hostname: executor, path: _ } =>
-            match event_log_store_for_host(short_hostname: executor) {
-              HostStoreRefused { detail: d } => exit_failure(reason: d)
-              HostStoreResolved { store: store, executor: _ } =>
-                match now_epoch_seconds() {
-                  Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
-                  Present { value: at } => {
-                    let provenance = RecoveryAuthorized { claim: c, claimant: standing, authorized_by: executor as NonEmptyStr, receipt: receipt as NonEmptyStr }
-                    match live_claim_on(store: store, host: h, claim: c) {
-                      LiveClaimUnread { step: st, reason: why } => exit_failure(reason: join(["the host-placement partition could not be read at ", st, ": ", why], ""))
-                      LiveClaimAbsent => exit_failure(reason: join(["no live host-effect claim ", claim, " on ", host, "; nothing to recover"], ""))
-                      LiveClaimFound { record: r } =>
-                        match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
-                          FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
-                          FleetSshContextReady { context: context, receipt: _ } => {
-                            let handle = HostEffectHandle { host: h, residue: r.residue, claim: r.id }
-                            match settle_host_effect_over(handle: handle, provenance: provenance, run: fn(argv) { fleet_argv_run(context: context, host: h, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at) {
-                              HostEffectSettled => ExitSuccess
-                              HostEffectStillHeld { cause: why } => exit_failure(reason: why)
-                            }
-                          }
-                        }
-                    }
-                  }
-                }
-            }
+        match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
+          FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+          FleetSshContextReady { context: context, receipt: _ } =>
+            host_effect_recover_over(host: h, claim: (claim as NonEmptyStr) as EventId, standing: standing, receipt: receipt as NonEmptyStr, run: fn(argv) { fleet_argv_run(context: context, host: h, argv: argv) })
         }
       }
     }
+  }
+}
+
+// THE RECOVERY WITH A LANE-SUPPLIED OBSERVATION LEG, for a claim whose residue the fleet agent cannot
+// read (a container run as the host administrator). Everything else is the recovery above: the exact
+// claim, the claimant's typed standing and its receipt, a live-claim read, and a release only on a
+// quiet host.
+fn host_effect_recover_over(host: HostIdentity, claim: EventId, standing: ClaimantStanding, receipt: NonEmptyStr, run: fn(List<String>) -> ArgvRun) -> ProcessExit {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: cause } => exit_failure(reason: join(["the executor could not be identified: ", cause], ""))
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match event_log_store_for_host(short_hostname: executor) {
+        HostStoreRefused { detail: d } => exit_failure(reason: d)
+        HostStoreResolved { store: store, executor: _ } =>
+          match now_epoch_seconds() {
+            Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
+            Present { value: at } => {
+              let provenance = RecoveryAuthorized { claim: claim, claimant: standing, authorized_by: executor as NonEmptyStr, receipt: receipt }
+              match live_claim_on(store: store, host: host, claim: claim) {
+                LiveClaimUnread { step: st, reason: why } => exit_failure(reason: join(["the host-placement partition could not be read at ", st, ": ", why], ""))
+                LiveClaimAbsent => exit_failure(reason: join(["no live host-effect claim ", claim as String, " on ", host as String, "; nothing to recover"], ""))
+                LiveClaimFound { record: r } => {
+                  let handle = HostEffectHandle { host: host, residue: r.residue, claim: r.id }
+                  match settle_host_effect_over(handle: handle, provenance: provenance, run: run, store: store, executor: executor as NonEmptyStr, at: at) {
+                    HostEffectSettled => ExitSuccess
+                    HostEffectStillHeld { cause: why } => exit_failure(reason: why)
+                  }
+                }
+              }
+            }
+          }
+      }
   }
 }
 

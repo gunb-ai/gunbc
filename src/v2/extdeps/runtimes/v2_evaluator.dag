@@ -12,7 +12,8 @@ import v2.std.collection {
 }
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
-  canonical_operation_wire_matches_operation
+  canonical_operation_wire_matches_operation,
+  canonical_operation_op_coerce
 }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
@@ -343,12 +344,37 @@ fn v2_eval_transform_is_int_add(node: Node) -> Bool {
   }
 }
 
+fn v2_eval_transform_is_coerce(node: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: op_node } =>
+      canonical_operation_wire_matches_operation(wire: op_node, operation: canonical_operation_op_coerce())
+    Absent => false
+  }
+}
+
+// A CAST REALIZES AS ITS OPERAND'S VALUE. The coercion operation is grounded by exact structural
+// equality (v2.std.compilers.target_model canonical_operation_op_coerce), and infer admits the
+// crossing only when v2.std.coercion finds that homomorphism, so the value carries over unchanged.
+// Any other arity refuses.
+fn v2_eval_coerce(node: Node, args: List<RuntimeValue>) -> Outcome<RuntimeValue> {
+  if count(args) == 1 {
+    match list_at_optional(xs: args, index: 0) {
+      Present { value: v } => outcome_accepted(value: v)
+      Absent => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    }
+  } else {
+    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  }
+}
+
 fn v2_eval_call_primitive(
   node: Node,
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  if v2_eval_transform_is_int_add(node: node) {
+  if v2_eval_transform_is_coerce(node: node) {
+    v2_eval_coerce(node: node, args: args)
+  } else if v2_eval_transform_is_int_add(node: node) {
     if count(args) == 2 {
       match list_at_optional(xs: args, index: 0) {
         Present { value: left } =>

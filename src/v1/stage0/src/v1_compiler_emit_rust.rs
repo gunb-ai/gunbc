@@ -188,7 +188,7 @@ pub use crate::v1_compiler_infer::{
     build_emit_graph_info, build_params_scope, call_args_by_name, caller_resource_requirements,
     declared_return_type_node, established_resource_binding, expand_type_for_field_access,
     expr_span, extend_scope, is_where_refinement_type, match_unguarded_absent_arm_index,
-    optional_scrutinee_binding_is_present, resolved_type_name,
+    optional_match_arm_sees_present_value, resolved_type_name,
 };
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
@@ -29922,7 +29922,7 @@ pub fn emit_typed_match_arm_strs(
                             scrut_type.clone(),
                             match_result_type.clone(),
                             false,
-                            crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                            crate::v1_compiler_infer::optional_match_arm_sees_present_value(
                                 scrut_rt.clone(),
                                 crate::v1_std_core::arm_pattern(pair.1.clone()),
                                 pair.0.clone(),
@@ -30179,13 +30179,6 @@ pub fn emit_typed_match(
                                     crate::v1_compiler_infer::match_unguarded_absent_arm_index(
                                         arms.clone(),
                                     );
-                                let sf_scrut_optional =
-                                    (crate::v1_compiler_infer_types::resolved_type(
-                                        scrutinee.clone(),
-                                    )
-                                    .return_cardinality
-                                    .clone()
-                                        == Cardinality::CardOptional);
                                 let sf_arm_strs = Rc::new({
                                     let mut __result = Vec::new();
                                     for pair in Rc::new(
@@ -30199,7 +30192,7 @@ pub fn emit_typed_match(
                                     .iter()
                                     .cloned()
                                     {
-                                        __result.push(emit_typed_match_arm(pair.1.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), true, (crate::v1_compiler_infer::optional_scrutinee_binding_is_present(crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()), crate::v1_std_core::arm_pattern(pair.1.clone()), pair.0.clone(), sf_absent_arm_index.clone()) || (sf_scrut_optional.clone() && is_string_lit_pattern(crate::v1_std_core::arm_pattern(pair.1.clone()))))));
+                                        __result.push(emit_typed_match_arm(pair.1.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), true, crate::v1_compiler_infer::optional_match_arm_sees_present_value(crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()), crate::v1_std_core::arm_pattern(pair.1.clone()), pair.0.clone(), sf_absent_arm_index.clone())));
                                     }
                                     __result
                                 });
@@ -34046,7 +34039,7 @@ pub fn emit_rust_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                                 tco_scrut_type.clone(),
-                                crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                                crate::v1_compiler_infer::optional_match_arm_sees_present_value(
                                     crate::v1_compiler_infer_types::resolved_type(s.clone()),
                                     crate::v1_std_core::arm_pattern(pair.1.clone()),
                                     pair.0.clone(),
@@ -39576,7 +39569,7 @@ pub fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: Strin
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), emit_host_source_root_read_rs()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = v2_cli_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    let reads = read_ingest(&roots);".to_string()), "\n".to_string()), "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            print!(\"{text}\");".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), emit_host_source_root_read_rs()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = v2_cli_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    let reads = read_ingest(&roots);".to_string()), "\n".to_string()), "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    print!(\"{text}\");".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
 })
     }
 }
