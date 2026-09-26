@@ -12,7 +12,6 @@ import v2.compiler.self_host.direct_rust_door_fixture {
 }
 import std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 import v2.extdeps.languages.dag {
-  dag_declared_inhabitants_root,
   dag_grammar_surface_production_type_node,
   dag_inhabitant_atom,
   dag_int_inhabitant_node
@@ -57,7 +56,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // stays on the frontier. The roster-root red pins that no specimen node's derived type is the
 // canonical-operations roster root (provenance is not a type, DESIGN section 3). The
 // declared-inhabitant controls pin that a record derives its KIND (std.kind TypeDenotationKind),
-// a fact hung off a record derives TypeFactKind, and neither derives the roster root. The closing control pins the specimen's full closure: zero frontier
+// a fact hung off a record derives TypeFactKind -- each asserts the exact kind node, so a roster
+// root reaching derived_type reddens both. The closing control pins the specimen's full closure: zero frontier
 // nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
 // the boundary control.
 
@@ -222,13 +222,6 @@ test fn declared_inhabitant_fact_derives_type_fact_kind_holds() -> Bool {
   match atom_grounding_standalone_evidence(n: dag_inhabitant_atom(id: ^dag_surface_spelling_int)) {
     Absent => false
     Present { value: evidence } => evidence == kind_node(kind: TypeFactKind)
-  }
-}
-
-test fn declared_inhabitant_never_derives_the_roster_root_holds() -> Bool {
-  match atom_grounding_standalone_evidence(n: dag_int_inhabitant_node()) {
-    Absent => false
-    Present { value: evidence } => !(evidence == dag_declared_inhabitants_root())
   }
 }
 
