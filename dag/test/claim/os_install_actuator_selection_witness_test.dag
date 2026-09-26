@@ -61,22 +61,23 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
 }
 
 test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
-  match actuator_step_realization_under(
-    step: os_install_actuator_steps(
-      mechanism: NbdProxyVirtualMediaInstall,
-      export: srv3_nbd_proxy_export_placeholder,
-    ).first(),
-    selection: unsatisfiable_actuator_selection_fixture,
-    image: srv3_resolved_image_fixture,
-  ) {
-    ActuatorStepRefused { cause: c } =>
-      match c {
-        ActuatorStepActuatorHostUnsatisfiable { step: _, reason: why } =>
-          string_contains(s: why, pattern: "fixture: no candidate host")
-        ActuatorStepRealizationAbsent { step: _ } => false
-        ActuatorStepImageUnresolved { step: _, reason: _ } => false
+  match os_install_actuator_steps(mechanism: NbdProxyVirtualMediaInstall, export: srv3_nbd_proxy_export_placeholder).first() {
+    Absent => false
+    Present { value: first_step } =>
+      match actuator_step_realization_under(
+        step: first_step,
+        selection: unsatisfiable_actuator_selection_fixture,
+        image: srv3_resolved_image_fixture,
+      ) {
+        ActuatorStepRefused { cause: c } =>
+          match c {
+            ActuatorStepActuatorHostUnsatisfiable { step: _, reason: why } =>
+              string_contains(s: why, pattern: "fixture: no candidate host")
+            ActuatorStepRealizationAbsent { step: _ } => false
+            ActuatorStepImageUnresolved { step: _, reason: _ } => false
+          }
+        ActuatorStepReady { intent: _ } => false
       }
-    ActuatorStepReady { intent: _ } => false
   }
 }
 
