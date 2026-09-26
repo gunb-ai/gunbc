@@ -10,11 +10,9 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
     EmittedCrateRootTarget, EmittedModuleTarget,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
-pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
 pub use crate::gunbc_stage0_partition_package_graph::{
-    stage0_host_shell_dependency_names, stage0_host_shell_package_name,
-    stage0_partition_package_dependency_names, stage0_partition_row_is_module_bearing_package,
+    partition_package_dependency_names_over, stage0_partition_row_is_module_bearing_package,
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
@@ -24,6 +22,13 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Stage0EmittedTreePackages {
+    pub rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    pub host_shell_package_name: String,
+    pub host_shell_dependencies: Rc<Vec<String>>,
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -75,10 +80,6 @@ pub enum Stage0EmittedEdgeAdmission {
     },
 }
 
-pub fn stage0_partition_module_owner_packages(module_basename: String) -> Rc<Vec<String>> {
-    partition_module_owner_packages_over(module_basename.clone(), generated_partition_crate_rows())
-}
-
 pub fn partition_module_owner_packages_over(
     module_basename: String,
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
@@ -93,8 +94,9 @@ pub fn partition_module_owner_packages_over(
 pub fn stage0_emitted_module_owner(
     module_basename: String,
     host_shell_modules: Rc<Vec<String>>,
+    packages: Rc<Stage0EmittedTreePackages>,
 ) -> Rc<Stage0EmittedModuleOwner> {
-    match stage0_partition_module_owner_packages(module_basename.clone())
+    match partition_module_owner_packages_over(module_basename.clone(), packages.rows.clone())
         .first()
         .cloned()
     {
@@ -113,9 +115,7 @@ pub fn stage0_emitted_module_owner(
                 __found
             } {
                 Rc::new(Stage0EmittedModuleOwner::Stage0EmittedModuleOwned {
-                    package_name:
-                        crate::gunbc_stage0_partition_package_graph::stage0_host_shell_package_name(
-                        ),
+                    package_name: packages.host_shell_package_name.clone(),
                 })
             } else {
                 Rc::new(Stage0EmittedModuleOwner::Stage0EmittedModuleNotCovered)
@@ -124,17 +124,18 @@ pub fn stage0_emitted_module_owner(
     }
 }
 
-pub fn stage0_package_direct_dependencies(package_name: String) -> Rc<Vec<String>> {
-    if (package_name.clone()
-        == crate::gunbc_stage0_partition_package_graph::stage0_host_shell_package_name())
-    {
-        crate::gunbc_stage0_partition_package_graph::stage0_host_shell_dependency_names()
+pub fn stage0_package_direct_dependencies(
+    package_name: String,
+    packages: Rc<Stage0EmittedTreePackages>,
+) -> Rc<Vec<String>> {
+    if (package_name.clone() == packages.host_shell_package_name.clone()) {
+        packages.host_shell_dependencies.clone()
     } else {
         Rc::new({
             let mut __result = Vec::new();
             for row in Rc::new({
                 let mut __result = Vec::new();
-                for row in generated_partition_crate_rows().iter().cloned() {
+                for row in packages.rows.clone().iter().cloned() {
                     if (row.package_name.clone() == package_name.clone()) {
                         __result.push(row);
                     }
@@ -144,15 +145,18 @@ pub fn stage0_package_direct_dependencies(package_name: String) -> Rc<Vec<String
             .iter()
             .cloned()
             {
-                __result.extend((*crate::gunbc_stage0_partition_package_graph::stage0_partition_package_dependency_names(row.clone())).iter().cloned());
+                __result.extend((*crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over(row.clone(), packages.rows.clone())).iter().cloned());
             }
             __result
         })
     }
 }
 
-pub fn stage0_package_reachable(package_name: String) -> Rc<Vec<String>> {
-    generated_partition_crate_rows().iter().cloned().fold(
+pub fn stage0_package_reachable(
+    package_name: String,
+    packages: Rc<Stage0EmittedTreePackages>,
+) -> Rc<Vec<String>> {
+    packages.rows.clone().iter().cloned().fold(
         Rc::new(vec![package_name.clone()]),
         |reached: Rc<Vec<String>>, _row: Rc<GeneratedPartitionCrateRow>| {
             v1_rt::concat(
@@ -161,7 +165,7 @@ pub fn stage0_package_reachable(package_name: String) -> Rc<Vec<String>> {
                     let mut __result = Vec::new();
                     for p in reached.iter().cloned() {
                         __result.extend(
-                            (*stage0_package_direct_dependencies(p.clone()))
+                            (*stage0_package_direct_dependencies(p.clone(), packages.clone()))
                                 .iter()
                                 .cloned(),
                         );
@@ -197,16 +201,16 @@ pub struct Stage0PackageReach {
     pub reachable: Rc<Vec<String>>,
 }
 
-pub fn stage0_package_reach_table() -> Rc<Vec<Rc<Stage0PackageReach>>> {
+pub fn stage0_package_reach_table(
+    packages: Rc<Stage0EmittedTreePackages>,
+) -> Rc<Vec<Rc<Stage0PackageReach>>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in v1_rt::concat(
-            Rc::new(vec![
-                crate::gunbc_stage0_partition_package_graph::stage0_host_shell_package_name(),
-            ]),
+            Rc::new(vec![packages.host_shell_package_name.clone()]),
             Rc::new({
                 let mut __result = Vec::new();
-                for row in generated_partition_crate_rows().iter().cloned() {
+                for row in packages.rows.clone().iter().cloned() {
                     __result.push(row.package_name.clone());
                 }
                 __result
@@ -217,7 +221,7 @@ pub fn stage0_package_reach_table() -> Rc<Vec<Rc<Stage0PackageReach>>> {
         {
             __result.push(Rc::new(Stage0PackageReach {
                 package_name: p.clone(),
-                reachable: stage0_package_reachable(p.clone()),
+                reachable: stage0_package_reachable(p.clone(), packages.clone()),
             }));
         }
         __result
@@ -266,6 +270,7 @@ pub fn stage0_emitted_edge_target_basename(edge: Rc<EmittedEdge>) -> Rc<Vec<Stri
 pub fn stage0_emitted_edge_uncovered(
     edge: Rc<EmittedEdge>,
     host_shell_modules: Rc<Vec<String>>,
+    packages: Rc<Stage0EmittedTreePackages>,
 ) -> Rc<Vec<Rc<Stage0EmittedEdgeUncovered>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -277,8 +282,12 @@ pub fn stage0_emitted_edge_uncovered(
         .cloned()
         {
             __result.extend(
-                (*match (*stage0_emitted_module_owner(m.clone(), host_shell_modules.clone()))
-                    .clone()
+                (*match (*stage0_emitted_module_owner(
+                    m.clone(),
+                    host_shell_modules.clone(),
+                    packages.clone(),
+                ))
+                .clone()
                 {
                     Stage0EmittedModuleOwner::Stage0EmittedModuleOwned {
                         package_name: _, ..
@@ -302,6 +311,7 @@ pub fn stage0_emitted_edge_uncovered(
 pub fn stage0_emitted_edge_crossing(
     edge: Rc<EmittedEdge>,
     host_shell_modules: Rc<Vec<String>>,
+    packages: Rc<Stage0EmittedTreePackages>,
     reach: Rc<Vec<Rc<Stage0PackageReach>>>,
 ) -> Rc<Vec<Rc<Stage0EmittedEdgeCrossing>>> {
     Rc::new({
@@ -314,6 +324,7 @@ pub fn stage0_emitted_edge_crossing(
                 (*match (*stage0_emitted_module_owner(
                     edge.from.clone(),
                     host_shell_modules.clone(),
+                    packages.clone(),
                 ))
                 .clone()
                 {
@@ -324,6 +335,7 @@ pub fn stage0_emitted_edge_crossing(
                     } => match (*stage0_emitted_module_owner(
                         target.clone(),
                         host_shell_modules.clone(),
+                        packages.clone(),
                     ))
                     .clone()
                     {
@@ -361,20 +373,25 @@ pub fn stage0_emitted_edge_crossing(
 pub fn stage0_emitted_edge_admission(
     edges: Rc<Vec<Rc<EmittedEdge>>>,
     host_shell_modules: Rc<Vec<String>>,
+    packages: Rc<Stage0EmittedTreePackages>,
 ) -> Rc<Stage0EmittedEdgeAdmission> {
     {
         let uncovered = Rc::new({
             let mut __result = Vec::new();
             for edge in edges.iter().cloned() {
                 __result.extend(
-                    (*stage0_emitted_edge_uncovered(edge.clone(), host_shell_modules.clone()))
-                        .iter()
-                        .cloned(),
+                    (*stage0_emitted_edge_uncovered(
+                        edge.clone(),
+                        host_shell_modules.clone(),
+                        packages.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
         });
-        let reach = stage0_package_reach_table();
+        let reach = stage0_package_reach_table(packages.clone());
         let crossings = Rc::new({
             let mut __result = Vec::new();
             for edge in edges.iter().cloned() {
@@ -382,6 +399,7 @@ pub fn stage0_emitted_edge_admission(
                     (*stage0_emitted_edge_crossing(
                         edge.clone(),
                         host_shell_modules.clone(),
+                        packages.clone(),
                         reach.clone(),
                     ))
                     .iter()

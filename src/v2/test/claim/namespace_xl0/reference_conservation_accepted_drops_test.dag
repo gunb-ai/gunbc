@@ -1,0 +1,89 @@
+module v2.test.claim.namespace_xl0.reference_conservation_accepted_drops
+
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_report_of, conservation_subject, report_drop_count }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PINNED DROPS, STATED AS TODAY'S MEASUREMENT, the convention of
+// v2.test.claim.namespace_xl0.reference_conservation (whose fixture helpers this module uses rather
+// than restating): each claim holds while lowering loses the named atom and reds when a repair
+// stops the loss; the repair re-states it as a conserved control (DESIGN section 4b(4)). A located
+// refusal at or above the atom is not a drop under the census's own rule, so a repair that refuses
+// the shape at normalize also reds these, and re-states them the same way. Each subject is nullary
+// and enrolled WARM in v2.workflow.floor_pure_producer_share, so a claim pays for the check alone.
+
+// Found by the XL-2 census of accepted modules (gentle-crane-869). Each fixture carries one shape
+// the conservation census found absent from the normalized tree of
+// modules normalize ACCEPTS, reproduced on a minimal module. The dropped name is a data declaration
+// used in another declaration, so no same-spelled label in the using declaration can absorb it.
+
+// An expression that CONTAINS a match or an if lowers to that block alone: the operand beside it,
+// the enclosing record's other field, the enclosing call's callee and other argument are gone.
+// Rostered as gunbc.recurring_failure_mode
+// expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering.
+data binary_operand_beside_match_source: String = "module v2.test.reference_conservation_binop_match\n\ntype RcT = RcA | RcB\n\ndata rc_left: Bool = true\n\nfn rc_and(t: RcT) -> Bool {\n  rc_left && match t {\n    RcA => true\n    RcB => false\n  }\n}\n"
+
+fn binary_operand_beside_match_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "binary_operand_beside_match", source: binary_operand_beside_match_source)
+}
+
+test fn a_binary_operand_beside_a_match_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: binary_operand_beside_match_subject()), wanted: ^rc_left) == 1
+}
+
+data binary_operand_beside_if_source: String = "module v2.test.reference_conservation_binop_if\n\ndata rc_left: Bool = true\n\nfn rc_and(c: Bool) -> Bool {\n  rc_left && if c { true } else { false }\n}\n"
+
+fn binary_operand_beside_if_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "binary_operand_beside_if", source: binary_operand_beside_if_source)
+}
+
+test fn a_binary_operand_beside_an_if_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: binary_operand_beside_if_subject()), wanted: ^rc_left) == 1
+}
+
+data record_field_beside_match_source: String = "module v2.test.reference_conservation_record_match\n\ntype RcT = RcA | RcB\n\ntype RcR { k: Bool, j: Bool }\n\ndata rc_sibling: Bool = true\n\nfn rc_record(t: RcT) -> RcR {\n  RcR { k: match t {\n      RcA => true\n      RcB => false\n    }, j: rc_sibling }\n}\n"
+
+fn record_field_beside_match_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "record_field_beside_match", source: record_field_beside_match_source)
+}
+
+test fn a_record_field_beside_a_match_valued_field_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: record_field_beside_match_subject()), wanted: ^rc_sibling) == 1
+}
+
+data call_argument_beside_match_source: String = "module v2.test.reference_conservation_call_match\n\ntype RcT = RcA | RcB\n\ndata rc_sibling: Bool = true\n\nfn rc_h(a: Bool, b: Bool) -> Bool { a }\n\nfn rc_call(t: RcT) -> Bool {\n  rc_h(a: match t {\n      RcA => true\n      RcB => false\n    }, b: rc_sibling)\n}\n"
+
+fn call_argument_beside_match_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "call_argument_beside_match", source: call_argument_beside_match_source)
+}
+
+test fn a_call_argument_beside_a_match_valued_argument_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: call_argument_beside_match_subject()), wanted: ^rc_sibling) == 1
+}
+
+// A primary expression the primary readers do not recognize lowers to its first atom: a map literal
+// to its opening brace, a module-qualified constructor literal to its head path segment. Rostered as
+// gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering.
+data map_literal_value_source: String = "module v2.test.reference_conservation_map\n\nimport v2.std.logic { Bool }\nimport v2.std.text { String }\nimport v2.std.collection { Map }\n\ndata rc_value: Bool = true\n\ndata rc_map: Map<String, Bool> = { \"k\": rc_value }\n"
+
+fn map_literal_value_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "map_literal_value", source: map_literal_value_source)
+}
+
+test fn a_map_literal_value_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: map_literal_value_subject()), wanted: ^rc_value) == 1
+}
+
+data qualified_constructor_value_source: String = "module v2.test.reference_conservation_qualified\n\ntype RcR { k: Bool }\n\ndata rc_value: Bool = true\n\ndata rc_q: RcR = v2.test.reference_conservation_qualified.RcR { k: rc_value }\n"
+
+fn qualified_constructor_value_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "qualified_constructor_value", source: qualified_constructor_value_source)
+}
+
+test fn a_qualified_constructor_literal_value_is_reported_dropped_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: qualified_constructor_value_subject()), wanted: ^rc_value) == 1
+}

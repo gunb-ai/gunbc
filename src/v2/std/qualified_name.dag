@@ -11,10 +11,10 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list, fold_list_node, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init, list_snoc_item }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, fold_list_node, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
 import v2.std.collection {
   List
 }

@@ -431,7 +431,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "compiler-algorithm-survey-2026-07-04",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "v2.std.algebra", decl_name: "list_snoc_item", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.algebra", decl_name: "list_snoc_item", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.compilers.lexing", decl_name: "token_stream_first", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject fold_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },

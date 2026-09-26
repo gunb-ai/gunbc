@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.behavior_named_edge_label_validated_not_constructed
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data behavior_named_edge_label_validated_not_constructed: RecurringFailureMode = RecurringFailureMode {
+  identity: "behavior_named_edge_label_validated_not_constructed" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a behavior node carrying a Named edge whose label is not the marker that behavior admits -- a Transform with a Named edge other than `v2.std.type_binder` `<cast-target>`, or (once the let-annotation carrier lands) a Bind with a Named edge other than its annotation marker. `v2.std.node` states only the SHAPE (`PositionalPlusOneNamedEdges`: at most one Named edge beside the positional children) and cannot intern the marker lexemes, so the LABEL is checked by a second function, `v2.std.type_binder` `type_binder_labels_conform`, over any Node. HARM if it were not checked: a foreign Named edge on a Transform would be carried as a cast target nobody authored, or skipped by readers that pass the marker over.",
+    "RUNG FOUND AT: structurally guaranteed (rung 3), not impossible. The mislabelled node is CONSTRUCTIBLE -- Edge.label is an open `Named { name: Symbol }` -- but no Accepted program contains one: `v2.compiler.resolve` gates the tree on `well_formed(n) && type_binder_labels_conform(root: n)` before resolving, and refuses a mislabelled tree as malformed. Discriminating evidence: `v2.test.claim.body_cast_node` `bcn_a_foreign_label_on_a_transform_refuses` (a Transform carrying a non-marker Named edge fails the gate predicate) with its positive partner `bcn_a_loop_passes_the_resolver_gate` (a real fold-lowered Loop, whose Named edges belong to its own edge discipline, passes it); the Bind arm's control is `v2.test.claim.body_let_annotation` `bla_bind_admits_only_its_annotation_label`, landing with the let-annotation carrier (gunbc#12322), which adds its DeclarationRef here. Ruled by neat-boar-16 on review 71525 (gunbc#12322).",
+    "CEILING: structurally impossible -- which label a behavior's Named edge may carry is decidable and fully modeled, so the invalid state need not have a constructor. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: edge labels on behavior nodes become a closed coproduct owned by `v2.std.node`, so a Transform's or Bind's Named edge can only be constructed as the marker that behavior admits and a foreign label has no constructor; `type_binder_labels_conform`'s label arm for behaviors then dissolves, its discriminating red kept as the evidence. It must be ONE authority with the edge-discipline coproduct gentle-koi-724's lane is building, not a second one beside it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_a_foreign_label_on_a_transform_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_a_loop_passes_the_resolver_gate", field: WholeDeclaration },
+  ],
+}

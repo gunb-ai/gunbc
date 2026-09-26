@@ -51,6 +51,7 @@ import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_in
 import gunbc.runner_host_deploy { runner_index_seq }
 import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { unit_hold_store_root, mtcollins1_unit_hold_store_host }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -313,7 +314,30 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
     },
     EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
     SystemdDaemonReload
-  ]
+  ] + unit_hold_store_operations(spec: spec)
+}
+
+// THE UNIT HOLD STORE LIVES ON EXACTLY ONE HOST. gunbc.machine_intake_mtcollins1_maintenance_hold
+// places the Mt. Collins interlock's file-backed store on mtcollins1_unit_hold_store_host, where the
+// boot job is pinned and the operator takes maintenance holds; the boot refuses when the store root
+// is unreadable, so the root must exist before the first acquire and nothing else creates it. It is
+// the job user's (the boot and the operator's session both write slots as that account); the store
+// publishes DefaultAccessCreateOnly (gunbc.durable_exclusive_hold_file_store), so the directory
+// carries no confidentiality requirement beyond the executor's managed mode. Every other host
+// contributes nothing: a store root on a host no hold-owner runs on would be an unused authority.
+fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if (spec.host_label as String) == (mtcollins1_unit_hold_store_host as String) {
+    [
+      EnsureOwnedDirectory {
+        path: unit_hold_store_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: executor_managed_directory_mode,
+      },
+    ]
+  } else {
+    []
+  }
 }
 
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {

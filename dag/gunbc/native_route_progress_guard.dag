@@ -1,6 +1,7 @@
 module gunbc.native_route_progress_guard
 
-import v2.std.algebra { any, count_where, fold_list, is_empty, length, list_append, list_flat_map, list_map }
+import v2.std.algebra { any, count_where, fold_list, is_empty, length, list_flat_map, list_map }
+import std.algebra { list_append }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }

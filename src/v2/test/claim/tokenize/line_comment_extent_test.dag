@@ -1,0 +1,65 @@
+module v2.test.tokenize.line_comment_extent
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_all }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A LINE COMMENT ADVANCES THE LEXER BY ITS OWN LENGTH, AND ITS CAPTURED TEXT IS ITSELF.
+//
+// The `.dag` line-comment rule is Sequence(Literal "//", Repeat(LineCommentTextChar)), and the
+// sequence arm of v2.compiler.tokenize lex_rule_thunk joins the two lexemes with list_append. The
+// literal matcher answered the pattern's own text -- a native String on the seed -- beside the
+// repeat's codepoint list, and the seed's concat renders a list it cannot tell from data: `// ab`
+// became the text `//[32, 97, 98]` and a bare `//` became `//Empty`. lex_walk_step advances every
+// extent by the lexeme's length, so every token after any line comment carried a ByteRange past its
+// true offset. The route here is the production one: the `.dag` language's own rule set through
+// lex_walk_artifact. Rostered as gunbc.recurring_failure_mode
+// lexer_literal_lexeme_straddles_its_sequence_partner.
+//
+// The sources are ASCII so byte and scalar offsets agree; the unit question is gunbc#12285's.
+fn token_starts(source: String) -> String {
+  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      fold_list(
+        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+        empty: "",
+        cons: fn(acc, t) { concat(acc, concat("|", concat(t.lexeme, concat("@", to_string(t.start))))) }
+      )
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn annotation_texts(source: String) -> String {
+  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      fold_list(
+        xs: lex_artifact_annotations(artifact: a),
+        empty: "",
+        cons: fn(acc, n) { concat(acc, concat("|", concat(n.lexeme, concat("@", concat(to_string(n.start), concat("-", to_string(n.end))))))) }
+      )
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+// The control: no comment, so no join, and the extents were always right.
+test fn tokens_without_a_comment_start_at_their_offsets() -> Bool {
+  token_starts(source: "a\n\nb\n") == "|a@0|b@3"
+}
+
+test fn a_token_after_a_line_comment_starts_at_its_offset() -> Bool {
+  token_starts(source: "a\n// ab\nb\n") == "|a@0|b@8"
+}
+
+test fn a_token_after_a_bare_line_comment_starts_at_its_offset() -> Bool {
+  token_starts(source: "a\n//\nb\n") == "|a@0|b@5"
+}
+
+test fn a_line_comment_captures_its_own_text_and_extent() -> Bool {
+  annotation_texts(source: "a\n// ab\nb\n") == "|// ab@2-7"
+}

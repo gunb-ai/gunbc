@@ -20,7 +20,7 @@ import v2.std.compilers.semantic_decl_emission {
   semantic_decl_serialize_profile_bundle
 }
 import v2.std.collection { List }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.std.node {
   Conj,
   Edge,
