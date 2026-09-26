@@ -1,0 +1,98 @@
+module v2.test.claim.claim_verdict_rejection_cause
+
+import v2.compiler.eval {
+  eval_diagnostic,
+  eval_round_trip_claim_input_for_verdict,
+  run_test_claim_round_trip_verdict_runtime,
+  run_test_claim_structural_equals_verdict
+}
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, Outcome, Rejected, outcome_rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  Value,
+  node_synthetic
+}
+import v2.std.verdict { SemanticMismatch, Verdict }
+
+// The claim-verdict helpers once relabelled ANY Rejected actual as
+// eval_rejected_invalid_node, erasing the real refusal cause (§5). These claims
+// pin the pass-through: a known foreign reason survives the verdict, and a
+// genuinely ill-formed input still reports invalid_node through the real producer.
+
+fn claim_verdict_cause_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn claim_verdict_cause_ill_formed() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_domain) },
+      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return) },
+      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return) },
+      Edge {
+        label: Named { name: ^arrow_body_edge },
+        target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+      }
+    ]
+  )
+}
+
+fn claim_verdict_cause_at() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+fn claim_verdict_foreign_rejection() -> Outcome<Node> {
+  outcome_rejected(
+    d: eval_diagnostic(reason: ^claim_verdict_foreign_cause, node: claim_verdict_cause_at())
+  )
+}
+
+fn verdict_head_reason<S, T>(v: Verdict<S, T>) -> Symbol {
+  match v {
+    SemanticMismatch { actual: a, falsification: _ } => match a {
+      Rejected { diagnostics: ds } => ds.head.reason
+      _ => ^claim_verdict_cause_not_rejected
+    }
+    _ => ^claim_verdict_cause_not_mismatch
+  }
+}
+
+test fn structural_equals_verdict_keeps_the_actual_refusal_cause() -> Bool {
+  verdict_head_reason(
+    v: run_test_claim_structural_equals_verdict(
+      actual: claim_verdict_foreign_rejection(),
+      rhs: claim_verdict_cause_at(),
+      at: claim_verdict_cause_at()
+    )
+  ) == ^claim_verdict_foreign_cause
+}
+
+test fn round_trip_runtime_verdict_keeps_the_actual_refusal_cause() -> Bool {
+  verdict_head_reason(
+    v: run_test_claim_round_trip_verdict_runtime(
+      actual: claim_verdict_foreign_rejection(),
+      at: claim_verdict_cause_at()
+    )
+  ) == ^claim_verdict_foreign_cause
+}
+
+test fn ill_formed_input_still_reports_invalid_node() -> Bool {
+  verdict_head_reason(
+    v: run_test_claim_structural_equals_verdict(
+      actual: eval_round_trip_claim_input_for_verdict(input: claim_verdict_cause_ill_formed()),
+      rhs: claim_verdict_cause_at(),
+      at: claim_verdict_cause_at()
+    )
+  ) == ^eval_rejected_invalid_node
+}

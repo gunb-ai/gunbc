@@ -2676,12 +2676,7 @@ fn run_test_claim_round_trip_verdict_runtime(
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match actual {
-    Rejected { diagnostics: _ } =>
-      verdict_fail(
-        actual: outcome_rejected(
-          d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
-        )
-      )
+    Rejected { diagnostics: ds } => verdict_fail(actual: Rejected { diagnostics: ds })
     Accepted { value: _, diagnostics: _ } =>
       if dag_round_trip_authorities_ready() {
         Pass
@@ -2709,12 +2704,7 @@ fn run_test_claim_structural_equals_verdict(
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match actual {
-    Rejected { diagnostics: _ } =>
-      verdict_fail(
-        actual: outcome_rejected(
-          d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
-        )
-      )
+    Rejected { diagnostics: ds } => verdict_fail(actual: Rejected { diagnostics: ds })
     Accepted { value: admitted, diagnostics: _ } =>
       if outcome_node_eq(
         a: Accepted { value: admitted, diagnostics: None },
