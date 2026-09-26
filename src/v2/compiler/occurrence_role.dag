@@ -219,12 +219,35 @@ fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
   })
 }
 
-// Both directions refuse, typed: a name-holding production with no row (the silent skip this check
-// exists to prevent), and a row naming a production the grammar does not have (a stale row that
-// would make the table claim coverage it cannot exercise).
+// Three refusals, typed: a name-holding production with no row (the silent skip this check exists
+// to prevent); a row naming a production the grammar does not have (a stale row that would make the
+// table claim coverage it cannot exercise); and a row whose production carries no atom identity for
+// the parse tree to be keyed by (review 71409), which the walk could never dispatch to. An admitted
+// table carries the keyed dispatch it was admitted with, so the walk cannot use a different one.
 type NameProductionTableAdmission
-  = NameProductionTableAdmitted { rows: List<NameProductionRow> }
-  | NameProductionTableRefused { unlisted: List<Symbol>, unknown: List<Symbol> }
+  = NameProductionTableAdmitted { by_emitted: Map<Symbol, NameProductionDisposition> }
+  | NameProductionTableRefused { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
+
+type KeyedRows {
+  by_emitted: Map<Symbol, NameProductionDisposition>
+  unkeyed: FreeMonoid<Symbol>
+}
+
+// The table keyed by what the parse tree carries: each row joined to its grammar production's
+// emitted identity. A listed production whose emitted node is not an atom is unkeyed.
+fn key_rows_by_emitted(root: GrammarRoot, rows: List<NameProductionRow>) -> KeyedRows {
+  let by_production = fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.production, value: row.disposition) })
+  fold(root.productions, init: KeyedRows { by_emitted: empty_map(), unkeyed: Empty }, f: fn(acc, p) {
+    match map_lookup(m: by_production, key: p.name) {
+      Absent => acc
+      Present { value: disposition } =>
+        match node_atom_identity_optional(node: p.emitted) {
+          Present { value: emitted } => KeyedRows { by_emitted: map_insert(m: acc.by_emitted, key: emitted, value: disposition), unkeyed: acc.unkeyed }
+          Absent => KeyedRows { by_emitted: acc.by_emitted, unkeyed: list_snoc_item(xs: acc.unkeyed, item: p.name) }
+        }
+    }
+  })
+}
 
 fn name_production_table_admission(root: GrammarRoot, rows: List<NameProductionRow>) -> NameProductionTableAdmission {
   let listed = fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.production, value: true) })
@@ -245,10 +268,11 @@ fn name_production_table_admission(root: GrammarRoot, rows: List<NameProductionR
       Absent => list_snoc_item(xs: acc, item: row.production)
     }
   })
-  if length(xs: unlisted) == 0 && length(xs: unknown) == 0 {
-    NameProductionTableAdmitted { rows: rows }
+  let keyed = key_rows_by_emitted(root: root, rows: rows)
+  if length(xs: unlisted) == 0 && length(xs: unknown) == 0 && length(xs: keyed.unkeyed) == 0 {
+    NameProductionTableAdmitted { by_emitted: keyed.by_emitted }
   } else {
-    NameProductionTableRefused { unlisted: unlisted, unknown: unknown }
+    NameProductionTableRefused { unlisted: unlisted, unknown: unknown, unkeyed: keyed.unkeyed }
   }
 }
 
@@ -269,7 +293,7 @@ type OccurrenceRoles {
 
 type OccurrenceRoleOutcome
   = OccurrenceRolesRead { roles: OccurrenceRoles }
-  | OccurrenceRoleTableRefused { unlisted: List<Symbol>, unknown: List<Symbol> }
+  | OccurrenceRoleTableRefused { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
 fn occurrence_roles_empty() -> OccurrenceRoles {
   OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0 }
@@ -333,29 +357,11 @@ fn roles_walk(acc: OccurrenceRoles, node: Node, by_emitted: Map<Symbol, NameProd
   fold(node.children, init: here, f: fn(inner, edge) { roles_walk(acc: inner, node: edge.target, by_emitted: by_emitted) })
 }
 
-// The table keyed by what the parse tree carries: each admitted row joined to its grammar
-// production's emitted identity.
-fn dispositions_by_emitted(root: GrammarRoot, rows: List<NameProductionRow>) -> Map<Symbol, NameProductionDisposition> {
-  let by_production = fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.production, value: row.disposition) })
-  fold(root.productions, init: empty_map(), f: fn(acc, p) {
-    match map_lookup(m: by_production, key: p.name) {
-      Absent => acc
-      Present { value: disposition } =>
-        match node_atom_identity_optional(node: p.emitted) {
-          Present { value: emitted } => map_insert(m: acc, key: emitted, value: disposition)
-          Absent => acc
-        }
-    }
-  })
-}
-
 fn occurrence_roles_of_tree(tree: Node, root: GrammarRoot, rows: List<NameProductionRow>) -> OccurrenceRoleOutcome {
   match name_production_table_admission(root: root, rows: rows) {
-    NameProductionTableRefused { unlisted: u, unknown: k } => OccurrenceRoleTableRefused { unlisted: u, unknown: k }
-    NameProductionTableAdmitted { rows: admitted } =>
-      OccurrenceRolesRead {
-        roles: roles_walk(acc: occurrence_roles_empty(), node: tree, by_emitted: dispositions_by_emitted(root: root, rows: admitted))
-      }
+    NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x }
+    NameProductionTableAdmitted { by_emitted: by_emitted } =>
+      OccurrenceRolesRead { roles: roles_walk(acc: occurrence_roles_empty(), node: tree, by_emitted: by_emitted) }
   }
 }
 

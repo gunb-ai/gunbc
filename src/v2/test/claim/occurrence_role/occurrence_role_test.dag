@@ -39,8 +39,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn the_dag_name_table_covers_the_dag_grammar_holds() -> Bool {
   match name_production_table_admission(root: dag_grammar_root(), rows: dag_name_production_rows()) {
-    NameProductionTableAdmitted { rows: _ } => true
-    NameProductionTableRefused { unlisted: _, unknown: _ } => false
+    NameProductionTableAdmitted { by_emitted: _ } => true
+    NameProductionTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
   }
 }
 
@@ -61,8 +61,8 @@ fn planted_grammar() -> GrammarRoot {
 
 test fn a_planted_unlisted_binder_production_refuses_by_name_holds() -> Bool {
   match name_production_table_admission(root: planted_grammar(), rows: dag_name_production_rows()) {
-    NameProductionTableAdmitted { rows: _ } => false
-    NameProductionTableRefused { unlisted: u, unknown: k } => u == [^occurrence_role_planted_binder_production] && length(xs: k) == 0
+    NameProductionTableAdmitted { by_emitted: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => u == [^occurrence_role_planted_binder_production] && length(xs: k) == 0 && length(xs: x) == 0
   }
 }
 
@@ -73,8 +73,8 @@ fn rows_without(production: Symbol) -> List<NameProductionRow> {
 
 test fn a_missing_row_refuses_by_name_holds() -> Bool {
   match name_production_table_admission(root: dag_grammar_root(), rows: rows_without(production: ^dag_production_fn_decl)) {
-    NameProductionTableAdmitted { rows: _ } => false
-    NameProductionTableRefused { unlisted: u, unknown: k } => u == [^dag_production_fn_decl] && length(xs: k) == 0
+    NameProductionTableAdmitted { by_emitted: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => u == [^dag_production_fn_decl] && length(xs: k) == 0 && length(xs: x) == 0
   }
 }
 
@@ -82,8 +82,37 @@ test fn a_missing_row_refuses_by_name_holds() -> Bool {
 test fn a_row_for_an_absent_production_refuses_as_unknown_holds() -> Bool {
   let rows = list_snoc_item(xs: dag_name_production_rows(), item: name_row(production: ^occurrence_role_absent_production, disposition: NamesAreReferences))
   match name_production_table_admission(root: dag_grammar_root(), rows: rows) {
-    NameProductionTableAdmitted { rows: _ } => false
-    NameProductionTableRefused { unlisted: u, unknown: k } => length(xs: u) == 0 && k == [^occurrence_role_absent_production]
+    NameProductionTableAdmitted { by_emitted: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => length(xs: u) == 0 && k == [^occurrence_role_absent_production] && length(xs: x) == 0
+  }
+}
+
+// AN UNKEYED ROW (review 71409): the real grammar with fn_decl's emitted identity replaced by a
+// non-atom node. The row is listed and the production exists, but the parse tree could never be
+// keyed to it, so admission refuses it as unkeyed rather than letting the walk skip every fn_decl.
+fn unkeyed_grammar() -> GrammarRoot {
+  let root = dag_grammar_root()
+  GrammarRoot {
+    start: root.start,
+    productions: fold(root.productions, init: [], f: fn(acc, p) {
+      if p.name == ^dag_production_fn_decl {
+        list_snoc_item(xs: acc, item: GrammarProduction {
+          name: p.name,
+          expression: p.expression,
+          emitted: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic)
+        })
+      } else {
+        list_snoc_item(xs: acc, item: p)
+      }
+    }),
+    sync_tokens: root.sync_tokens
+  }
+}
+
+test fn a_row_whose_production_has_no_atom_identity_refuses_as_unkeyed_holds() -> Bool {
+  match name_production_table_admission(root: unkeyed_grammar(), rows: dag_name_production_rows()) {
+    NameProductionTableAdmitted { by_emitted: _ } => false
+    NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => length(xs: u) == 0 && length(xs: k) == 0 && x == [^dag_production_fn_decl]
   }
 }
 
@@ -94,14 +123,14 @@ data roles_fixture_source: String = "module v2.test.occurrence_role_fixture\n\nt
 fn roles_fixture_outcome() -> OccurrenceRoleOutcome {
   let subject = conservation_subject(id_tail: "occurrence_role", source: roles_fixture_source)
   match subject.parsed {
-    Rejected { diagnostics: _ } => OccurrenceRoleTableRefused { unlisted: [^occurrence_role_fixture_unparsed], unknown: [] }
+    Rejected { diagnostics: _ } => OccurrenceRoleTableRefused { unlisted: [^occurrence_role_fixture_unparsed], unknown: [], unkeyed: [] }
     Accepted { value: artifact, diagnostics: _ } => occurrence_roles_of_tree(tree: artifact.tree, root: dag_grammar_root(), rows: dag_name_production_rows())
   }
 }
 
 fn roles_count(outcome: OccurrenceRoleOutcome, role: OccurrenceRole, category: OccurrenceCategory) -> Int {
   match outcome {
-    OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => 0 - 1
+    OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => 0 - 1
     OccurrenceRolesRead { roles: r } =>
       fold_list(xs: r.roles, empty: 0, cons: fn(acc, a) { if a.role == role && a.category == category { acc + 1 } else { acc } })
   }
@@ -126,7 +155,7 @@ test fn the_fixture_declarations_and_labels_are_recorded_holds() -> Bool {
 // fixture counts one.
 test fn the_fixture_records_no_reference_to_a_module_scope_name_holds() -> Bool {
   match roles_fixture_outcome() {
-    OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => false
+    OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
       length(xs: r.roles) == 7 && r.unminted == 0
         && refused_at(roles: r, emitted: ^dag_surface_arg) == 0
@@ -159,7 +188,7 @@ fn planted_unreadable_fn_decl() -> Node {
 
 test fn an_unreadable_binder_is_counted_as_a_reader_refusal_holds() -> Bool {
   match occurrence_roles_of_tree(tree: planted_unreadable_fn_decl(), root: dag_grammar_root(), rows: dag_name_production_rows()) {
-    OccurrenceRoleTableRefused { unlisted: _, unknown: _ } => false
+    OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } => refused_at(roles: r, emitted: ^dag_surface_fn_decl) == 1 && length(xs: r.roles) == 0
   }
 }
