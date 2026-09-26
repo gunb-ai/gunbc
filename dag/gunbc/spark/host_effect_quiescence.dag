@@ -8,7 +8,7 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
 import extdeps.exec.command { argv_words }
 import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome }
-import extdeps.docker.cli { DockerPsFilter, DockerPsByName, DockerPsByAncestor, DockerPsByLabel, DockerLabel, docker_label_wire, docker_ps_filter_wire, docker_ps_running_command }
+import extdeps.docker.cli { DockerPsFilter, DockerPsByName, DockerPsByAncestor, DockerPsByLabel, DockerLabel, docker_ps_filter_wire, docker_ps_running_command }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
 import product.capacity.event_json { member_nonempty, member_nat }
 
