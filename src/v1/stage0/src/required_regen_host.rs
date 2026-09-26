@@ -2769,26 +2769,29 @@ mod tests {
     #[test]
     fn the_emitted_tree_package_graph_decodes_to_the_compiled_rows_at_a_settled_head() {
         require_measurable_host_budget();
-        let packages = std::thread::Builder::new()
+        // Asserted inside the worker: the decoded values are `Rc`-shaped and do not cross threads.
+        std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
-            .spawn(|| emitted_tree_packages(&workspace_root()).map(|p| (*p).clone()))
+            .spawn(|| {
+                let packages =
+                    emitted_tree_packages(&workspace_root()).expect("the tree's package graph decodes");
+                assert_eq!(
+                    *packages.rows,
+                    *crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows(),
+                    "decoded partition rows"
+                );
+                assert_eq!(
+                    packages.host_shell_package_name,
+                    crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_package_name()
+                );
+                assert_eq!(
+                    *packages.host_shell_dependencies,
+                    *crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies()
+                );
+            })
             .expect("spawn decode thread")
             .join()
-            .expect("decode thread panicked")
-            .expect("the tree's package graph decodes");
-        assert_eq!(
-            *packages.rows,
-            *crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows(),
-            "decoded partition rows"
-        );
-        assert_eq!(
-            packages.host_shell_package_name,
-            crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_package_name()
-        );
-        assert_eq!(
-            *packages.host_shell_dependencies,
-            *crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies()
-        );
+            .expect("the decode claim held");
     }
 
     fn beta_only() -> Option<Vec<String>> {
