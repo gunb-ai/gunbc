@@ -23,7 +23,7 @@ import extdeps.languages.json.emit {
   JsonNumber,
   JsonObject,
 }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

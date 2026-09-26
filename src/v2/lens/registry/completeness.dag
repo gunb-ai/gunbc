@@ -4,7 +4,8 @@ import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_li
 import v2.lens.registry { Bound, LensModulePathV0, LensRegistryEntryV0, Unbound, lens_registry_v0 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { contains, count_where, fold_list, length, list_snoc_item }
+import v2.std.algebra { contains, count_where, fold_list, length }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
