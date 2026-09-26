@@ -1,0 +1,143 @@
+module v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus
+
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  diagnostics_fatal
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REFUSAL IS LOCATED WHERE THE PARSE STOPPED, NOT WHERE THE FAILED ITEM BEGAN. The gen-two
+// census of v2.compiler.compile (probe/neat-boar-16-gen2-census) reported all 387
+// parse_g0_tokens_remain refusals at the first token of a top-level item -- `test` 204, `fn` 117,
+// `service` 41 -- because the module's `repeat` stops at an item whose production fails as a
+// whole, and the diagnostic named the first leftover token. The treatment: an unadmitted token
+// inside a type body is reported at that token, on a cold parse and again on a served one. The
+// control: a failure that consumed nothing inside the item stays at the item's first token, so the
+// furthest rule does not invent depth.
+//
+// COST SHAPE (DESIGN section 3, a witness discriminates at one interface). The subject is the
+// parse, so each specimen enters as a supplied token stream and is parsed for real
+// (v2.test.parse.supplied_token_stream_support); each stream is paired with a fidelity claim that
+// the real tokenizer emits exactly it. The unit claim's subject is the lexer, so it tokenizes and
+// parses nothing.
+
+data treatment_source: String = "module m.t\ntype T {\n  x Int\n}\n"
+
+data control_source: String = "module m.t\nfn ok() -> Int { 1 }\n]\n"
+
+// `type T` begins at 11; the field `x` demands a `:` and meets `Int` at 24. A type field rather than
+// an unadmitted expression token: a failed expression backtracks through every expression
+// alternative, which cost the floor 572ms per parse against a 302ms enrolment budget.
+fn treatment_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^furthest_locus_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^furthest_locus_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^furthest_locus_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^furthest_locus_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^furthest_locus_probe, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "T", file: ^furthest_locus_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^furthest_locus_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^furthest_locus_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^furthest_locus_probe, start: 24, end: 27 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^furthest_locus_probe, start: 28, end: 29 }
+  ])
+}
+
+// `fn ok` parses whole; the stray `]` at 32 is the next item's first token.
+fn control_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^furthest_locus_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^furthest_locus_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^furthest_locus_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^furthest_locus_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^furthest_locus_probe, start: 11, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "ok", file: ^furthest_locus_probe, start: 14, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^furthest_locus_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^furthest_locus_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^furthest_locus_probe, start: 19, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^furthest_locus_probe, start: 22, end: 25 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^furthest_locus_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^furthest_locus_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^furthest_locus_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^furthest_locus_probe, start: 32, end: 33 }
+  ])
+}
+
+// The fatal diagnostic is the last one (v2.std.diagnostic diagnostics_fatal); grammar advisories ride
+// ahead of it. -1 is no tokens_remain refusal on a source extent; every claim compares against a
+// positive offset.
+fn tokens_remain_start(parsed: Outcome<Node>) -> Int {
+  match parsed {
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      if fatal.reason == ^parse_g0_tokens_remain {
+        match fatal.at {
+          SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s
+          SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
+          Textual { file: _, extent: _ } => -1
+          NodeLocus { anchor: _ } => -1
+          InvariantPortLocus { anchor: _, invariant: _ } => -1
+          DeclarationLocus { declaration: _ } => -1
+        }
+      } else {
+        -1
+      }
+    Accepted { value: _, diagnostics: _ } => -1
+  }
+}
+
+test fn treatment_stream_is_what_tokenize_emits() -> Bool {
+  supplied_stream_matches_tokenize(text: treatment_source, file: ^furthest_locus_probe, supplied: treatment_stream())
+}
+
+test fn control_stream_is_what_tokenize_emits() -> Bool {
+  supplied_stream_matches_tokenize(text: control_source, file: ^furthest_locus_probe, supplied: control_stream())
+}
+
+// THE TREATMENT, AND THE LOCUS DOES NOT DEPEND ON CACHE WARMTH. The seed serves parse memo entries
+// across parses of one token stream (v1_interpreter parse_table_memo_scope_and_key), so the second
+// parse meets entries the first stored; each entry carries its own subparse's furthest record, and
+// the served parse must land on the same token. The cold assertion alone is implied by this claim.
+test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool {
+  let cold = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
+  let warm = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
+  cold == 24 && warm == 24
+}
+
+test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
+  tokens_remain_start(parsed: supplied_stream_parse(tokens: control_stream())) == 32
+}
+
+fn rbracket_start(src: String) -> Int {
+  match tokenize(text: src, file: ^furthest_locus_probe, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: ts, diagnostics: _ } =>
+      fold(ts.all, init: -1, f: fn(acc, t) { if t.lexeme == "]" { t.start } else { acc } })
+  }
+}
+
+// THE UNIT IS UTF-8 OCTETS, AS v2.std.diagnostic ByteRange NAMES IT. Three two-byte scalars in the
+// string precede the `]`: byte offset 9, code-point offset 6. This refusal's locus is the lexer's
+// extent, so it carries whatever unit tokenize counts; gunbc#12285 made that octets, and this control
+// goes red (6) if the lexer ever counts code points again.
+test fn tokens_remain_offset_unit_is_octets_as_lexed() -> Bool {
+  rbracket_start(src: "\"ééé\" ]") == 9
+}

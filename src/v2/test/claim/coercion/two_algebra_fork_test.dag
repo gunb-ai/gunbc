@@ -7,9 +7,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 //   (a) THE NAME-KEYED ALGEBRA. std.coercion dag_can_cast folds over two authored rosters of
 //       (from_type, to_type) SPELLINGS: dag_cast_rules and grounded_primitive_coproduct_identities.
-//       This side executes and is load-bearing -- v1.compiler.infer consults it at argument-versus-
-//       formal admission, at literal admission, and in the type-relation fold, and
-//       v1.compiler.coercion builds on it.
+//       This side executes and is load-bearing -- v1.compiler.infer consults it in
+//       kernel_value_declared_type_mismatch_bounded, application_type_names_compatible and
+//       validate_cast (explicit `as`), each AFTER a name-identity test. v1.compiler.coercion does NOT build on it: target casts read each
+//       target's own CastSyntax cast_rules.
 //   (b) THE HOMOMORPHISM ALGEBRA. v2.std.coercion coercion_fold asks v2.std.find_witness
 //       find_witness for a structure-preserving witness from the source node into a candidate set,
 //       and returns a CoercionResult carrying a CoercionWitness and a CoercionQuality. This is the

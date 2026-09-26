@@ -142,7 +142,7 @@ fn flat_320000() -> ProcessExit { rung_owes(rung: "flat_320000", observed: chunk
 
 // THE ACCUMULATOR DISCRIMINATOR: a recursion threading a growing list. Its curve with the memo on
 // against GUNBC_EVAL_MEMO=0 is the reading for the instance the carrier repair does not close.
-fn grow(i: Int, n: Int, acc: List<Int>) -> Int { if i >= n { count(acc) } else { grow(i: i + 1, n: n, acc: acc |> list_push(i)) } }
+fn grow(i: Int, n: Int, acc: List<Int>) -> Int { if i >= n { count(acc) as Int } else { grow(i: i + 1, n: n, acc: acc |> list_push(i)) } }
 fn accumulate_10000() -> ProcessExit { rung_owes(rung: "accumulate_10000", observed: grow(i: 0, n: 10000, acc: []), owed: 10000) }
 fn accumulate_20000() -> ProcessExit { rung_owes(rung: "accumulate_20000", observed: grow(i: 0, n: 20000, acc: []), owed: 20000) }
 fn accumulate_40000() -> ProcessExit { rung_owes(rung: "accumulate_40000", observed: grow(i: 0, n: 40000, acc: []), owed: 40000) }

@@ -4,11 +4,14 @@ import std.types { Int, List, String, Bool }
 import v2.std.algebra { filter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
-import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub }
+import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub, bignat_add }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.crypto.sha2 { sha256_hex, sha384 }
-import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets, p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
-import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
+import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets, p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine, p256_on_curve }
+import extdeps.crypto.nist_p384 { p384_curve, p384_on_curve, p384_point_octets_on_curve, p384_gx, p384_gy, p384_p_octets, p384_gy_octets }
+import extdeps.crypto.nist_prime_curve { jacobian_is_infinity, curve_affine, curve_double, curve_add, curve_negate, curve_jacobian_on_curve }
+import extdeps.apple.app_attest { attestation_parts, AttestationPartsOk, AttestationPartsRefused, app_attest_certificate, app_attest_root }
+import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets }
 import extdeps.standards.fips_180 { Fips180DigestVector, fips180_sha256_vectors, fips180_sha384_vectors }
 import extdeps.standards.rfc_6979 {
   rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_message_test,
@@ -153,10 +156,66 @@ fn order_n_cases() -> List<NativeCryptoCase> {
   ]
 }
 
+// ── THE CURVE PARAMETERS THEMSELVES: P-256's and P-384's base points satisfy their curve equations,
+// the P-384 group law closes over the curve, and Apple's real P-384 keys are on it. These are the
+// ten identities gunbc.rung_drop app_attest_interpreted_crypto_new_witness_eval_step_cost names
+// (the three SHA-384 FIPS vectors are the sha384_* cases above), now ALSO executing natively here,
+// each still evaluating the real curve equation or the real hash. ADDITIVE, NOT A REPLACEMENT: this
+// row runs by name and is not on the merge path, so the interpreted claims stay on the floor as the
+// acceptance-path evidence, and the drop stays standing until this row itself executes on the merge
+// path (its trigger; review 71377 of gunbc#12306 caught a first cut that retired it early). Every
+// positive has a red built from the same published parameters: G's neighbour (y + 1) is off the
+// curve and stays off under doubling, and a point whose x is p itself is refused before arithmetic.
+fn p384_g_neighbour_y() -> BigNat {
+  bignat_add(a: p384_gy, b: bignat_one())
+}
+
+fn apples_p384_keys_on_curve() -> Bool {
+  match attestation_parts(object: sample_attestation_octets) {
+    AttestationPartsRefused { cause: _ } => false
+    AttestationPartsOk { parts: parts } =>
+      match app_attest_certificate(octets: parts.ca) {
+        Absent => false
+        Present { value: ca } =>
+          match app_attest_root() {
+            Absent => false
+            Present { value: root } => p384_point_octets_on_curve(point: ca.tbs.spki_public_key) && p384_point_octets_on_curve(point: root.tbs.spki_public_key)
+          }
+      }
+  }
+}
+
+fn bool_text(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn curve_parameter_cases() -> List<NativeCryptoCase> {
+  let g = curve_affine(c: p384_curve, x: p384_gx, y: p384_gy)
+  let g2 = curve_double(c: p384_curve, p: g)
+  let g3 = curve_add(c: p384_curve, p: g2, q: g)
+  let group_law = curve_jacobian_on_curve(c: p384_curve, p: g2) && curve_jacobian_on_curve(c: p384_curve, p: g3) && !jacobian_is_infinity(p: g2) && !jacobian_is_infinity(p: g3) && jacobian_is_infinity(p: curve_add(c: p384_curve, p: g, q: curve_negate(c: p384_curve, p: g)))
+  let bad2 = curve_double(c: p384_curve, p: curve_affine(c: p384_curve, x: p384_gx, y: p384_g_neighbour_y()))
+  let bad_stays_off = !curve_jacobian_on_curve(c: p384_curve, p: bad2) && !jacobian_is_infinity(p: bad2)
+  let p256_g = p256_on_curve(x: p256_gx, y: p256_gy)
+  let p384_g = p384_on_curve(x: p384_gx, y: p384_gy)
+  let beside_off = !p384_on_curve(x: p384_gx, y: p384_g_neighbour_y())
+  let at_p_refused = !p384_point_octets_on_curve(point: concat([4], concat(p384_p_octets, p384_gy_octets)))
+  let apple = apples_p384_keys_on_curve()
+  [
+    NativeCryptoCase { identity: "p256_the_base_point_is_on_the_curve", held: p256_g, observed: bool_text(b: p256_g) },
+    NativeCryptoCase { identity: "p384_the_base_point_is_on_the_curve", held: p384_g, observed: bool_text(b: p384_g) },
+    NativeCryptoCase { identity: "p384_red_a_point_beside_the_base_point_is_off_the_curve", held: beside_off, observed: bool_text(b: beside_off) },
+    NativeCryptoCase { identity: "p384_red_a_point_with_a_coordinate_at_p_is_not_admitted", held: at_p_refused, observed: bool_text(b: at_p_refused) },
+    NativeCryptoCase { identity: "p384_doubling_and_adding_the_base_point_stay_on_the_curve", held: group_law, observed: bool_text(b: group_law) },
+    NativeCryptoCase { identity: "p384_red_doubling_an_off_curve_point_stays_off_the_curve", held: bad_stays_off, observed: bool_text(b: bad_stays_off) },
+    NativeCryptoCase { identity: "p384_apples_ca_and_root_keys_are_on_the_curve", held: apple, observed: bool_text(b: apple) },
+  ]
+}
+
 fn native_crypto_cases() -> List<NativeCryptoCase> {
   concat(
     concat(fips180_sha256_vectors |> flat_map(v => sha256_cases(v: v)), fips180_sha384_vectors |> flat_map(v => sha384_cases(v: v))),
-    concat(p256_cases(), order_n_cases())
+    concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases())
   )
 }
 
@@ -197,7 +256,14 @@ data native_crypto_expected_identities: List<String> = [
   "p256_wycheproof_tc26",
   "p256_wycheproof_tc2",
   "p256_the_base_point_has_order_n",
-  "p256_red_n_minus_one_times_g_is_finite"
+  "p256_red_n_minus_one_times_g_is_finite",
+  "p256_the_base_point_is_on_the_curve",
+  "p384_the_base_point_is_on_the_curve",
+  "p384_red_a_point_beside_the_base_point_is_off_the_curve",
+  "p384_red_a_point_with_a_coordinate_at_p_is_not_admitted",
+  "p384_doubling_and_adding_the_base_point_stay_on_the_curve",
+  "p384_red_doubling_an_off_curve_point_stays_off_the_curve",
+  "p384_apples_ca_and_root_keys_are_on_the_curve"
 ]
 
 fn native_claim_report() -> NativeClaimReport {

@@ -2,6 +2,7 @@ module extdeps.vllm.engram_layout
 
 import std.types { Bool, List, Int, String }
 import std.nat { Nat, nat_max }
+import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -121,7 +122,10 @@ fn vllm_engram_count_up(n: Nat) -> List<Nat> {
 }
 
 fn vllm_engram_count_down(n: Nat) -> List<Nat> {
-  if n == 0 { [] as List<Nat> } else { concat([n - 1], vllm_engram_count_down(n: n - 1)) }
+  match checked_int_to_nat(n: n - 1) {
+    Present { value: predecessor } => concat([predecessor], vllm_engram_count_down(n: predecessor))
+    Absent => [] as List<Nat>
+  }
 }
 
 fn vllm_engram_orders(max_ngram_size: Nat) -> Nat {
