@@ -40,7 +40,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_demand_sum_memory_max,
   gunbc_runner_slot_desired,
   gunbc_admitted_runner_slot_allocations,
-  gunbc_runner_slice_cap_for_width,
+  gunbc_runner_slice_cap_for_width, gunbc_runner_pool_for_host_at_width,
   host_memory_admitted_width,
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
@@ -212,10 +212,7 @@ fn live_verdict_with_session_charge(
     host: usable_ram_of(host: host),
     overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
     headroom: oomd_actuation_floor(host: usable_ram_of(host: host)),
-    runner_pool: gunbc_runner_slot_demand_sum_memory_max(
-      slots: slots,
-      per_slot: gunbc_runner_slot_desired().memory_max
-    ),
+    runner_pool: gunbc_runner_pool_for_host_at_width(host: host, slots: slots),
     session_pool: session_pool,
     compile_pool: byte_size(0),
     control_plane: control_plane,

@@ -29,6 +29,10 @@ import gunbc.fabric_control_plane_charge {
   HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured,
   host_fabric_control_plane_claim,
 }
+import gunbc.live_deploy.served_slice_charge {
+  HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured,
+  host_served_deployment_claim,
+}
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand {
@@ -483,21 +487,45 @@ fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSi
         cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
       }
     ControlPlaneNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
     ControlPlaneClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: m)
+      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: m)
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+// THE SERVED DEPLOYMENT'S SLICES ARE SUBTRACTED HERE, BECAUSE THE VERDICT ALREADY CHARGES THEM
+// (operator option A, 2026-09-26). gunbc.ci_runner_placement host_standing_at_width passes
+// host_served_deployment_claim to host_allocation_verdict, so the conservation verdict counted the
+// deployment's slice allowance while this envelope -- the one the committed width divides -- did not.
+// Two answers to "how much of this host may runners have" is the §3 fork, and the one that lost was
+// the width: srv1 committed a runner pool that fit only on a host without the deployment on it. The
+// claim's arms are consumed exactly as the control plane's are: not placed is a grounded zero, and
+// placed-with-an-unknown-allowance refuses the envelope rather than dividing a fabricated one.
+fn envelope_after_control_plane(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentClaimUnmeasured { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("served deployment is placed on this host with an unmeasured slice allowance: ", why)
+      }
+    ServedDeploymentNotPlaced =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0))
+    ServedDeploymentClaimResolved { memory: m } =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m)
+  }
+}
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
-          total: byte_size_saturating_sub(total: usable, reserved: overhead),
-          reserved: session
+          total: byte_size_saturating_sub(
+            total: byte_size_saturating_sub(total: usable, reserved: overhead),
+            reserved: session
+          ),
+          reserved: control_plane
         ),
-        reserved: control_plane
+        reserved: served_deployment
       ),
       reserved: oomd_actuation_floor(host: usable)
     )
@@ -973,6 +1001,25 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
     slots: slots,
     per_slot: gunbc_runner_slot_desired().memory_max
   )
+}
+
+// THE POOL A HOST'S VERDICT CHARGES IS THE POOL ITS WIDTH SPENT. memory_admitted_width_of_envelope
+// spends the carrying host's envelope on the shakedown slot's whole charge (cell plus controller)
+// and the rest at the fleet row; gunbc_runner_slice_cap_for_width charges every slot at the fleet row.
+// While the width ignored the served deployment the difference hid inside that larger gap; once the
+// width subtracts it, the verdict admitted srv1 one slot past its width -- two answers to one pool
+// (DESIGN section 3), exposed by test.claim.host.host_allocation_conservation_test
+// one_more_slot_than_memory_admits_refuses_on_every_host. So the verdict reads this, which charges
+// the shakedown slot what the width charged it.
+fn gunbc_runner_pool_for_host_at_width(host: HostIdentity, slots: Int) -> ByteSize {
+  if slots > 0 && (host as String) == (srv1_microvm_shakedown_slot().host as String) {
+    byte_size(
+      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - 1))
+        + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+    )
+  } else {
+    gunbc_runner_slice_cap_for_width(slots: slots)
+  }
 }
 
 fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
