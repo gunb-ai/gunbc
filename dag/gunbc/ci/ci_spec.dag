@@ -8,6 +8,7 @@ import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
+import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -916,6 +917,11 @@ data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "approval_keyring_converge_wet",
 }
 
+data gunbc_ci_approval_device_enrolment_code_issue_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/approval_device_enrolment_code_issue.dag",
+  function: "approval_device_enrolment_code_issue_wet",
+}
+
 data gunbc_ci_pair_serving_d0_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/pair_serving_d0_door.dag",
   function: "pair_serving_d0_ci_wet",
@@ -937,7 +943,7 @@ data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunS
 }
 
 data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+  entry: "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
   function: "mtcollins1_boot_admit_executor",
 }
 
@@ -1012,6 +1018,14 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
 data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
   function: "v41_runtime_image_produce_ci_wet",
+}
+
+// THE DISTRIBUTION OF THAT PRODUCED IMAGE TO ANOTHER GROUP A SPARK: save on the host the production
+// receipt names, scp through the executor, load on the selected Spark, and the configuration digest
+// read back there. The same prelude, because docker's socket on both ends is root-owned.
+data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
+  function: "v41_runtime_image_distribute_ci_wet",
 }
 
 // THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
@@ -1247,6 +1261,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
+    gunbc_ci_approval_device_enrolment_code_issue_target,
     gunbc_ci_mtcollins1_boot_target,
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_mtcollins1_boot_admit_target,
@@ -2578,6 +2593,17 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
 
 // The production shares the probe's prelude, for the same reason and with the same credential: one
 // fleet-key agent from the job and one per-target administrator credential materialized to one file.
+fn gunbc_ci_spark_v41_runtime_image_distribute_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_runtime_image_distribute_target.entry,
+    function: gunbc_ci_spark_v41_runtime_image_distribute_target.function,
+    claim_run: false,
+    receipt_rel: v41_distribution_receipt_path
+  )
+}
+
 fn gunbc_ci_spark_v41_runtime_image_build_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
@@ -2741,6 +2767,19 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaf
 }
 
 data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
+// The enrolment-code step has no prelude: no secret is fetched on the runner, the host holds
+// everything the verb reads, and the step's stdout is the remote receipt line alone.
+fn gunbc_ci_approval_device_enrolment_code_issue_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: [],
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_device_enrolment_code_issue_target.entry,
+    function: gunbc_ci_approval_device_enrolment_code_issue_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
 // holds no BMC credential and no capability key): the shared auth header and SM decode, one

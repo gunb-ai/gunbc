@@ -1,5 +1,6 @@
 module gunbc.auth.approval_device_redemption
 
+import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Timestamp, Int, List }
 import std.logic { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -716,7 +717,9 @@ fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Enrolmen
 
 // THE ISSUER TAKES NO LOGIN: the code is issued to approval_operator_login and to nobody a caller
 // could name, so the verb that runs this cannot enrol a device for anyone else.
-fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite {
+fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_and_deliver_enrolment_code_until"),
+] {
   let challenge = EnrolmentChallenge { code: code, issued_to_login: approval_operator_login, issued_at: issued_at, expires_at: expires_at }
   device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: IssuedCodeRecord), payload: enrolment_code_json(c: challenge) as NonEmptyStr)
 }

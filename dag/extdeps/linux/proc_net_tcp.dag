@@ -4,14 +4,17 @@ import std.types { NonEmptyStr, List, Bool, Int, Port }
 import std.string_type { String }
 import v2.std.optional { Present, Absent }
 import std.algebra { trim }
+import v2.std.algebra { any }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 // THE SHAPE OF /proc/net/tcp AND /proc/net/tcp6 (proc(5), "/proc/net/tcp"): one header line, then
 // one row per socket, whitespace-separated. The fields this module reads are the second
-// (local_address: hex IP, a colon, a 4-hex-digit port) and the fourth (st: the socket state as two
-// hex digits, where 0A is TCP_LISTEN -- include/net/tcp_states.h). Everything else on the row is
+// (local_address: hex IP, a colon, a 4-hex-digit port), the fourth (st: the socket state as two
+// hex digits, where 0A is TCP_LISTEN -- include/net/tcp_states.h), the eighth (uid: the socket's
+// owner's effective uid, decimal) and the tenth (inode: the socket's
+// inode, the number /proc/<pid>/fd/N names as `socket:[inode]`). Everything else on the row is
 // carried past. The port is the same 16-bit hex field in both files; only the address width
 // differs (8 hex digits for v4, 32 for v6), and this parser reads the port from the right of the
 // colon so the width is not its business.
@@ -42,6 +45,8 @@ type TcpSocketRow {
   local_address: String
   local_port: TcpLocalPort
   state: String
+  uid: String
+  inode: String
 }
 
 type ProcNetTcpTable
@@ -59,7 +64,11 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
     Present { value: local } =>
       match get(xs: fields, index: 3) {
         Absent => none
-        Present { value: st } => {
+        Present { value: st } => match get(xs: fields, index: 9) {
+        Absent => none
+        Present { value: inode } => match get(xs: fields, index: 7) {
+        Absent => none
+        Present { value: uid } => {
           let parts = split(s: local, delimiter: ":")
           if length(parts) != 2 { none } else {
             match get(xs: parts, index: 1) {
@@ -67,10 +76,12 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
               Present { value: port_hex } =>
                 match base16_word_value(word: port_hex, max_digits: 4) {
                   Absent => none
-                  Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st } }
+                  Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st, uid: uid, inode: inode } }
                 }
             }
           }
+        }
+        }
         }
       }
   }
@@ -96,6 +107,22 @@ fn proc_net_tcp_table(text: String) -> ProcNetTcpTable {
             }
         }
     })
+}
+
+// THE IPv4 ADDRESS HALF OF local_address, dotted. The kernel prints the __be32 address with %08X
+// read as a host-order word, so on a little-endian host (x86_64, aarch64 -- every machine this
+// repository reads) the four octets appear REVERSED: 127.0.0.1 is 0100007F. A 32-digit tcp6
+// address is not an IPv4 address and answers none.
+fn tcp_local_ipv4_dotted_little_endian(local_address: String) -> String? {
+  match get(xs: split(s: local_address, delimiter: ":"), index: 0) {
+    Absent => none
+    Present { value: hex } =>
+      if string_length(s: hex) != 8 { none } else {
+        let octets = map([6, 4, 2, 0], i => base16_word_value(word: substring(s: hex, start: i, end: i + 2), max_digits: 2))
+        if any(octets, o => match o { Absent => true  Present { value: _ } => false }) { none }
+        else { Present { value: join(map(octets, o => match o { Present { value: v } => to_string(v)  Absent => "" }), ".") } }
+      }
+  }
 }
 
 fn tcp_rows_listening_on(rows: List<TcpSocketRow>, port: Port) -> List<TcpSocketRow> {

@@ -18,6 +18,8 @@ pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
 pub use crate::std_algebra::carrier_container_equality_rows;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
+pub use crate::std_coercion::SubtractionRefinement;
+use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -208,7 +210,7 @@ pub use crate::v1_compiler_infer_types::{
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, template_return_has_variables,
+    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -1878,6 +1880,55 @@ pub fn declared_type_kernel_inhabitance_mismatch_at_element(
     }
 }
 
+pub fn callable_element_signature_mismatch(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let both_element_collections =
+            (((((crate::v1_compiler_infer_types::node_is_element_collection(
+                declared.clone(),
+                source_indices.clone(),
+            ) && crate::v1_compiler_infer_types::node_is_element_collection(
+                produced.clone(),
+                source_indices.clone(),
+            )) && (crate::v1_compiler_infer_types::node_is_keyed_collection(
+                declared.clone(),
+                source_indices.clone(),
+            ) == false))
+                && (crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    produced.clone(),
+                    source_indices.clone(),
+                ) == false))
+                && (declared.return_cardinality.clone() == Cardinality::Required))
+                && (produced.return_cardinality.clone() == Cardinality::Required));
+        if (both_element_collections.clone() == false) {
+            false
+        } else {
+            match declared.children.clone().first().cloned() {
+                std::option::Option::None => false,
+                Some(dl) => match produced.children.clone().first().cloned() {
+                    std::option::Option::None => false,
+                    Some(pr) => {
+                        let declared_element =
+                            crate::v1_compiler_infer_types::child_type_node(dl.clone());
+                        let produced_element =
+                            crate::v1_compiler_infer_types::child_type_node(pr.clone());
+                        ((type_node_is_arrow(declared_element.clone())
+                            && type_node_is_arrow(produced_element.clone()))
+                            && callable_signature_mismatch(
+                                declared_element.clone(),
+                                produced_element.clone(),
+                                source_indices.clone(),
+                            ))
+                    }
+                },
+            }
+        }
+    }
+}
+
 pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -1965,28 +2016,47 @@ pub fn declared_type_conformance_diags(
                             scope.module_name.clone(),
                         )])
                     } else {
-                        if !both_ground.clone() {
-                            Rc::new(vec![])
+                        if callable_element_signature_mismatch(
+                            declared.clone(),
+                            produced.clone(),
+                            si.clone(),
+                        ) {
+                            Rc::new(vec![type_mismatch_error(
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    declared.clone(),
+                                    si.clone(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    produced.clone(),
+                                    si.clone(),
+                                ),
+                                span.clone(),
+                                scope.module_name.clone(),
+                            )])
                         } else {
-                            if crate::v1_compiler_infer_types::node_type_compatible(
-                                declared.clone(),
-                                produced.clone(),
-                                si.clone(),
-                            ) {
+                            if !both_ground.clone() {
                                 Rc::new(vec![])
                             } else {
-                                Rc::new(vec![type_mismatch_error(
-                                    crate::v1_compiler_infer_types::node_type_shape(
-                                        declared.clone(),
-                                        si.clone(),
-                                    ),
-                                    crate::v1_compiler_infer_types::node_type_shape(
-                                        produced.clone(),
-                                        si.clone(),
-                                    ),
-                                    span.clone(),
-                                    scope.module_name.clone(),
-                                )])
+                                if crate::v1_compiler_infer_types::node_type_compatible(
+                                    declared.clone(),
+                                    produced.clone(),
+                                    si.clone(),
+                                ) {
+                                    Rc::new(vec![])
+                                } else {
+                                    Rc::new(vec![type_mismatch_error(
+                                        crate::v1_compiler_infer_types::node_type_shape(
+                                            declared.clone(),
+                                            si.clone(),
+                                        ),
+                                        crate::v1_compiler_infer_types::node_type_shape(
+                                            produced.clone(),
+                                            si.clone(),
+                                        ),
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )])
+                                }
                             }
                         }
                     }
@@ -3768,20 +3838,25 @@ pub fn match_unguarded_absent_arm_index(arm_nodes: Rc<Vec<Rc<Node>>>) -> i64 {
     })
 }
 
-pub fn optional_scrutinee_binding_is_present(
-    scrut_type: Rc<Node>,
+pub fn optional_match_arm_sees_present_value(
+    scrutinee_type: Rc<Node>,
     arm_pattern: Rc<MatchPattern>,
     arm_index: i64,
     absent_arm_index: i64,
 ) -> bool {
     {
-        let is_bind = match (*arm_pattern.clone()).clone() {
-            MatchPattern::Bind { declaration: _, .. } => true,
+        let pattern_sees_present = match (*arm_pattern.clone()).clone() {
+            MatchPattern::Bind { declaration: _, .. } => {
+                ((absent_arm_index.clone() >= 0) && (arm_index.clone() > absent_arm_index.clone()))
+            }
+            MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
+                LiteralValue::LitNull => false,
+                _ => true,
+            },
             _ => false,
         };
-        (((is_bind.clone() && (absent_arm_index.clone() >= 0))
-            && (arm_index.clone() > absent_arm_index.clone()))
-            && (scrut_type.return_cardinality.clone() == Cardinality::CardOptional))
+        (pattern_sees_present.clone()
+            && (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional))
     }
 }
 
@@ -12549,7 +12624,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         let arm_pat = crate::v1_std_core::arm_pattern(arm_node.clone());
                         let arm_g = crate::v1_std_core::arm_guard(arm_node.clone());
                         let arm_b = crate::v1_std_core::arm_body(arm_node.clone());
-                        let arm_subject = if optional_scrutinee_binding_is_present(
+                        let arm_subject = if optional_match_arm_sees_present_value(
                             scrut_rt.clone(),
                             arm_pat.clone(),
                             arm_pair.0.clone(),
@@ -13321,6 +13396,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 op.clone(),
                 crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
                 scope.type_env.clone().source_indices.clone(),
+                scope.type_env.clone(),
             );
             let eq_wall_diags = equality_admission_diags(
                 op.clone(),
@@ -13329,6 +13405,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.clone(),
                 span.clone(),
             );
+            let refinement_diags = match op.clone() {
+    BinOp::Sub => match (*crate::v1_compiler_infer_types::subtraction_refinement_of(crate::v1_compiler_infer_types::resolved_type(left_typed.clone()), scope.type_env.clone().source_indices.clone(), scope.type_env.clone())).clone() {
+    SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: fts, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ".to_string(), ((fts.clone().len() as i64)).to_string()), " rows for this operand's declaration (source types ".to_string()), fts.clone().join(&", ".to_string())), "); the difference's type would depend on row order".to_string()), span.clone(), scope.module_name.clone())]),
+    _ => Rc::new(vec![]),
+},
+    _ => Rc::new(vec![]),
+};
             let bo_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprBinOp {
@@ -13349,8 +13432,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             Rc::new(InferResult {
                 typed: bo_texpr.clone(),
                 diagnostics: v1_rt::concat(
-                    v1_rt::concat(left_diags.clone(), right_diags.clone()),
-                    eq_wall_diags.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(left_diags.clone(), right_diags.clone()),
+                        eq_wall_diags.clone(),
+                    ),
+                    refinement_diags.clone(),
                 ),
             })
         }

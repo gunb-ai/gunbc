@@ -533,10 +533,10 @@ type LoweredTransformPortAcc {
 fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
+      fold(v2.std.node_query.node_positional_child_targets(node: node), init: Absent, f: fn(acc, t) {
         match acc {
           Present { value: _ } => acc
-          Absent => v2.std.grammar.node_atom_identity_optional(node: e.target)
+          Absent => v2.std.grammar.node_atom_identity_optional(node: t)
         }
       })
     _ => Absent
@@ -569,15 +569,15 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
   match node.kind {
     ComputationNode { behavior: Transform } =>
       fold(
-        node.children,
+        v2.std.node_query.node_positional_child_targets(node: node),
         init: LoweredTransformPortAcc { saw_operator: false, readings: std.algebra.Empty },
-        f: fn(acc, e) {
+        f: fn(acc, t) {
           if acc.saw_operator {
             LoweredTransformPortAcc {
               saw_operator: true,
               readings: std.algebra.list_append(
                 left: acc.readings,
-                right: [lowered_arg_port_reading(arg: e.target)]
+                right: [lowered_arg_port_reading(arg: t)]
               )
             }
           } else {

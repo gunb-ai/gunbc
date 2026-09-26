@@ -13,6 +13,7 @@ import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 // The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
 // with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 
 type SystemdRunProperty {
   property: SystemdUnitProperty,
@@ -125,6 +126,22 @@ fn systemd_run_user_wait_arguments(
   command_argv: List<String>,
 ) -> SystemdSummaryPrintingWait {
   SystemdSummaryPrintingWait { argv: concat(["--wait", "--pipe", "--collect"], systemd_run_user_transient_arguments(unit: unit, properties: properties, setenv_bindings: setenv_bindings, command_argv: command_argv)) }
+}
+
+// ONE COMMAND IN A TRANSIENT SCOPE OF THE CALLING USER'S MANAGER, bounded by the given properties
+// (`systemd-run --user --scope -p NAME=VALUE ... -- CMD`, per the cited man page: a scope runs the
+// command synchronously as a child of systemd-run and places it in its own cgroup). The kernel
+// enforces the bound, not the command, so an over-budget run is killed by the cgroup instead of
+// competing for the host. The program is PATH-resolved because the invoking host is unobserved
+// (extdeps.exec.command program_spelling_is_an_observation_claim).
+fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command: ArgvCommand) -> ArgvCommand {
+  let head = ["--user", "--scope"]
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: head, f: (acc, word) => list_push(acc, word))
+  let with_separator = list_push(with_properties, "--")
+  argv_command(
+    program: "systemd-run" as NonEmptyStr,
+    arguments: fold(argv_words(command: command), init: with_separator, f: (acc, arg) => list_push(acc, arg)),
+  )
 }
 
 fn systemd_run_property(name: String, value: String) -> String {

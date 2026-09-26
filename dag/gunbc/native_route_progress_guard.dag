@@ -67,8 +67,18 @@ import gunbc.witness_v2_native_route {
 // CONSUMPTION: THIS IS A DECLARED FRONTIER, AND HERE IS ITS TRIGGER (DESIGN section 3c)
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// NOTHING IN PRODUCTION CALLS THIS FOLD TODAY, AND THAT IS SAID PLAINLY RATHER THAN LEFT FOR A
-// REVIEWER TO FIND. A declaration nothing consumes is section 2's redundant work in its purest
+// CONSUMED SINCE 2026-09-23, PER ROW. gunbc.native_frontier_ratchet calls this module's row, disposition
+// and cause-transition folds (`native_progress_row_findings`, `native_progress_disposition_row_findings`,
+// `native_cause_transition_row_findings`) and `native_progress_finding_text` from inside the emitted
+// binary's adjudicate mode, run nightly by `//gunbc/instruments:v2-native-frontier`. What it does
+// NOT consume is `native_progress_report` as a whole (its whole-baseline adjudication clause cannot
+// hold for a roster compiled into the binary that judges it; the ratchet states why), nor the
+// provenance and advance vocabulary, which stays the frontier described below. The paragraphs
+// that follow were written before that consumer existed, and are kept as the record of the
+// frontier that was declared.
+//
+// NOTHING IN PRODUCTION CALLED THIS FOLD WHEN IT LANDED, AND THAT WAS SAID PLAINLY RATHER THAN LEFT
+// FOR A REVIEWER TO FIND. A declaration nothing consumes is section 2's redundant work in its purest
 // form, and section 3c admits exactly one honest alternative to "consumed in this change": a
 // NAMED consumer landing in a NAMED later change, with the trigger stated beside it. So:
 //

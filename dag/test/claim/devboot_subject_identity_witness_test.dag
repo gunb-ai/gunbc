@@ -20,6 +20,7 @@ import gunbc.live_deploy.spec {
   ArtifactStep,
   DeploymentDependencyStep,
   EnsuredHostDirectory,
+  EnsuredManagedHostDirectory,
   EnsuredPackage,
   ensured_subject_identity,
   deployment_ensured_steps,
@@ -727,6 +728,7 @@ fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep
     EnsuredHostDirectory { path, owner } =>
       if (path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
     EnsuredPackage { package } => acc
+    EnsuredManagedHostDirectory { admission: _ } => acc
   }
 }
 

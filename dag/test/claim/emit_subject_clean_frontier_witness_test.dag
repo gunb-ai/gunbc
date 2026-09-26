@@ -990,7 +990,7 @@ fn fixture_subject(revision: String, compiler_hex: String, tree: WorkingTreeStan
     working_tree: tree,
     compiler: sha256_digest(hex: compiler_hex as NonEmptyStr),
     assembler: sha256_digest(hex: "bbbb" as NonEmptyStr),
-    assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/std" }
+    assembly_mode: SeedLinkedAssembly
   }
 }
 
@@ -1310,7 +1310,7 @@ test fn a_population_scoped_measurement_does_not_match_a_roster_entry() -> Bool 
     working_tree: WorkingTreeClean,
     compiler: sha256_digest(hex: "aaaa" as NonEmptyStr),
     assembler: sha256_digest(hex: "bbbb" as NonEmptyStr),
-    assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/std" }
+    assembly_mode: SeedLinkedAssembly
   }
   emission_subject_entry_text(s: population_subject) != fixture_alpha
 }

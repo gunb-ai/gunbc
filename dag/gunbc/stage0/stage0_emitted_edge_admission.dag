@@ -10,11 +10,9 @@ import gunbc.rust_emitted_edge {
   ReexportFacade,
   SemanticSourceReference
 }
-import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow, generated_partition_crate_rows }
+import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
 import gunbc.stage0_partition_package_graph {
-  stage0_host_shell_dependency_names,
-  stage0_host_shell_package_name,
-  stage0_partition_package_dependency_names,
+  partition_package_dependency_names_over,
   stage0_partition_row_is_module_bearing_package
 }
 
@@ -32,6 +30,17 @@ import gunbc.stage0_partition_package_graph {
 // neither is NOT COVERED: this admission has no crate for it, so it answers with that typed arm,
 // never with a pass. Emitting a closure that is not the seed therefore reaches the not-covered arm
 // by name.
+
+// THE PACKAGE GRAPH THE EMITTED TREE WILL BE BUILT UNDER, as that tree declares it: its partition rows
+// (gunbc.stage0_crate_partition_generated) and the host shell node above them
+// (gunbc.stage0_executable_assembly_generated). All three are supplied by the caller and every owner,
+// dependency and reach lookup below reads them and nothing else, so no answer here re-enters the rows
+// or shell edges compiled into the binary that asks.
+type Stage0EmittedTreePackages {
+  rows: List<GeneratedPartitionCrateRow>
+  host_shell_package_name: String
+  host_shell_dependencies: List<String>
+}
 
 type Stage0EmittedModuleOwner
   = Stage0EmittedModuleOwned { package_name: String }
@@ -59,10 +68,6 @@ type Stage0EmittedEdgeAdmission
 // THE ONE ROW-OWNER LOOKUP. v1.compiler.stage0_crates stage0_lookup_module_owner_package_name reads
 // this too, so the crate a lib.rs includes a module into and the crate this admission places it in
 // are one answer.
-fn stage0_partition_module_owner_packages(module_basename: String) -> List<String> {
-  partition_module_owner_packages_over(module_basename: module_basename, rows: generated_partition_crate_rows)
-}
-
 fn partition_module_owner_packages_over(module_basename: String, rows: List<GeneratedPartitionCrateRow>) -> List<String> {
   rows
     |> filter(row =>
@@ -72,35 +77,35 @@ fn partition_module_owner_packages_over(module_basename: String, rows: List<Gene
     |> map(row => row.package_name)
 }
 
-fn stage0_emitted_module_owner(module_basename: String, host_shell_modules: List<String>) -> Stage0EmittedModuleOwner {
-  match stage0_partition_module_owner_packages(module_basename: module_basename) |> first {
+fn stage0_emitted_module_owner(module_basename: String, host_shell_modules: List<String>, packages: Stage0EmittedTreePackages) -> Stage0EmittedModuleOwner {
+  match partition_module_owner_packages_over(module_basename: module_basename, rows: packages.rows) |> first {
     Present { value: package_name } => Stage0EmittedModuleOwned { package_name: package_name }
     Absent =>
       if host_shell_modules |> any(m => m == module_basename) {
-        Stage0EmittedModuleOwned { package_name: stage0_host_shell_package_name() }
+        Stage0EmittedModuleOwned { package_name: packages.host_shell_package_name }
       } else {
         Stage0EmittedModuleNotCovered
       }
   }
 }
 
-fn stage0_package_direct_dependencies(package_name: String) -> List<String> {
-  if package_name == stage0_host_shell_package_name() {
-    stage0_host_shell_dependency_names()
+fn stage0_package_direct_dependencies(package_name: String, packages: Stage0EmittedTreePackages) -> List<String> {
+  if package_name == packages.host_shell_package_name {
+    packages.host_shell_dependencies
   } else {
-    generated_partition_crate_rows
+    packages.rows
       |> filter(row => row.package_name == package_name)
-      |> flat_map(row => stage0_partition_package_dependency_names(row: row))
+      |> flat_map(row => partition_package_dependency_names_over(row: row, rows: packages.rows))
   }
 }
 
 // Bounded by the package count: each round adds every direct dependency of what is already
 // reached, and a chain over n partition packages plus the shell is complete after n rounds, so the
 // rows themselves are the fuel.
-fn stage0_package_reachable(package_name: String) -> List<String> {
-  generated_partition_crate_rows |> fold(init: [package_name], f: (reached, _row) =>
+fn stage0_package_reachable(package_name: String, packages: Stage0EmittedTreePackages) -> List<String> {
+  packages.rows |> fold(init: [package_name], f: (reached, _row) =>
     reached
-      |> concat(reached |> flat_map(p => stage0_package_direct_dependencies(package_name: p)))
+      |> concat(reached |> flat_map(p => stage0_package_direct_dependencies(package_name: p, packages: packages)))
       |> fold(init: [], f: (acc, p) => if acc |> any(a => a == p) { acc } else { acc |> concat([p]) })
   )
 }
@@ -111,9 +116,9 @@ type Stage0PackageReach {
 }
 
 // Computed once per admission, one row per package, so an edge asks a lookup rather than a closure.
-fn stage0_package_reach_table() -> List<Stage0PackageReach> {
-  concat([stage0_host_shell_package_name()], generated_partition_crate_rows |> map(row => row.package_name))
-    |> map(p => Stage0PackageReach { package_name: p, reachable: stage0_package_reachable(package_name: p) })
+fn stage0_package_reach_table(packages: Stage0EmittedTreePackages) -> List<Stage0PackageReach> {
+  concat([packages.host_shell_package_name], packages.rows |> map(row => row.package_name))
+    |> map(p => Stage0PackageReach { package_name: p, reachable: stage0_package_reachable(package_name: p, packages: packages) })
 }
 
 fn stage0_package_reaches(reach: List<Stage0PackageReach>, from_package: String, to_package: String) -> Bool {
@@ -128,21 +133,21 @@ fn stage0_emitted_edge_target_basename(edge: EmittedEdge) -> List<String> {
   }
 }
 
-fn stage0_emitted_edge_uncovered(edge: EmittedEdge, host_shell_modules: List<String>) -> List<Stage0EmittedEdgeUncovered> {
+fn stage0_emitted_edge_uncovered(edge: EmittedEdge, host_shell_modules: List<String>, packages: Stage0EmittedTreePackages) -> List<Stage0EmittedEdgeUncovered> {
   concat([edge.from], stage0_emitted_edge_target_basename(edge: edge)) |> flat_map(m =>
-    match stage0_emitted_module_owner(module_basename: m, host_shell_modules: host_shell_modules) {
+    match stage0_emitted_module_owner(module_basename: m, host_shell_modules: host_shell_modules, packages: packages) {
       Stage0EmittedModuleOwned { package_name: _ } => []
       Stage0EmittedModuleNotCovered => [Stage0EmittedEdgeUncovered { module: m, edge_from: edge.from, provenance: edge.provenance }]
     }
   )
 }
 
-fn stage0_emitted_edge_crossing(edge: EmittedEdge, host_shell_modules: List<String>, reach: List<Stage0PackageReach>) -> List<Stage0EmittedEdgeCrossing> {
+fn stage0_emitted_edge_crossing(edge: EmittedEdge, host_shell_modules: List<String>, packages: Stage0EmittedTreePackages, reach: List<Stage0PackageReach>) -> List<Stage0EmittedEdgeCrossing> {
   stage0_emitted_edge_target_basename(edge: edge) |> flat_map(target =>
-    match stage0_emitted_module_owner(module_basename: edge.from, host_shell_modules: host_shell_modules) {
+    match stage0_emitted_module_owner(module_basename: edge.from, host_shell_modules: host_shell_modules, packages: packages) {
       Stage0EmittedModuleNotCovered => []
       Stage0EmittedModuleOwned { package_name: from_package } =>
-        match stage0_emitted_module_owner(module_basename: target, host_shell_modules: host_shell_modules) {
+        match stage0_emitted_module_owner(module_basename: target, host_shell_modules: host_shell_modules, packages: packages) {
           Stage0EmittedModuleNotCovered => []
           Stage0EmittedModuleOwned { package_name: to_package } =>
             if stage0_package_reaches(reach: reach, from_package: from_package, to_package: to_package) {
@@ -161,10 +166,20 @@ fn stage0_emitted_edge_crossing(edge: EmittedEdge, host_shell_modules: List<Stri
   )
 }
 
-fn stage0_emitted_edge_admission(edges: List<EmittedEdge>, host_shell_modules: List<String>) -> Stage0EmittedEdgeAdmission {
-  let uncovered = edges |> flat_map(edge => stage0_emitted_edge_uncovered(edge: edge, host_shell_modules: host_shell_modules))
-  let reach = stage0_package_reach_table()
-  let crossings = edges |> flat_map(edge => stage0_emitted_edge_crossing(edge: edge, host_shell_modules: host_shell_modules, reach: reach))
+// THE PACKAGE GRAPH IS THE TREE BEING EMITTED'S, SUPPLIED BY THE CALLER -- never the rows or shell
+// edges compiled into the binary asking. Required-regen emits the seed from the corpus in hand and admits
+// that emission's edges; the only partition that emission will be built under is the one in the same
+// corpus (gunbc.stage0_crate_partition_generated as that corpus declares it). Reading the committed
+// rows instead admitted a candidate against its predecessor's partition: a module added to the
+// partition in the same change had no row in the binary, so the regen refused NotCovered until a
+// regen had already installed the row it was refusing to produce -- a bootstrap deadlock broken only
+// by hand-seeding the generated mirror (#12171 -> #12185). Supplying the rows narrows nothing: every
+// edge is still mapped through owner rows and the package graph, and a module no row and no shell
+// lists still refuses by name.
+fn stage0_emitted_edge_admission(edges: List<EmittedEdge>, host_shell_modules: List<String>, packages: Stage0EmittedTreePackages) -> Stage0EmittedEdgeAdmission {
+  let uncovered = edges |> flat_map(edge => stage0_emitted_edge_uncovered(edge: edge, host_shell_modules: host_shell_modules, packages: packages))
+  let reach = stage0_package_reach_table(packages: packages)
+  let crossings = edges |> flat_map(edge => stage0_emitted_edge_crossing(edge: edge, host_shell_modules: host_shell_modules, packages: packages, reach: reach))
   if uncovered |> count > 0 {
     Stage0EmittedEdgesNotCovered { uncovered: uncovered }
   } else if crossings |> count > 0 {

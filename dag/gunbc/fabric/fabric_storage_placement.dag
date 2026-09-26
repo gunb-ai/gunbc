@@ -1,9 +1,14 @@
 module gunbc.fabric_storage_placement
 
-import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port }
+import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.ownership { Ensured }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal }
+import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
 // POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
@@ -66,4 +71,54 @@ fn fabric_storage_placement() -> FabricStoragePlacement {
     Absent => FabricStorageUnplaced
     Present { value: e } => FabricStoragePlaced { host: operator_host_srv1, store_root: fabric_storage_store_root(), endpoint: e }
   }
+}
+
+// ── WHO WRITES THE STORE, AND SO WHAT ITS DIRECTORIES ARE ────────────────────────────────────────
+//
+// TWO PRINCIPALS WRITE THIS STORE, and until this row neither was stated. The served endpoint
+// (gunbc.live_deploy.emit live_deploy_fabric_storage_unit_file) runs as the dashboard service
+// principal and publishes objects and advances heads for every remote writer. The CI job principal
+// writes it DIRECTLY: gunbc.spark.host_commitment claim_host_effect_live resolves the executor's own
+// store through host_effect_landing_live, and on the placed host that is these local files, not the
+// endpoint. The deploy created the areas owned by the service principal alone at 0755, so the job
+// principal's first create-new in objects/ refused permission_denied (fleet-converge run
+// 36139624393) -- a writer the store's ownership never admitted.
+//
+// Both writes are create-only in flat directories: an object is an exclusive create, and a head
+// generation is a staged sibling hard-linked into its name (gunbc.durable_cas_file_store
+// DefaultAccessCreateOnly). So each writer needs Write and Execute on objects/ and heads/ and Read to
+// list and fetch, and only Execute on the root to reach them; no file is ever rewritten, so no file
+// needs group write, and the umask's 0644 already lets each writer read the other's entries.
+//
+// THE GROUP IS THE CI JOB PRINCIPAL'S OWN PRIMARY GROUP, not a new shared group, and that is derived
+// rather than preferred: with one owner and exactly one other writer, the smallest group that admits
+// the writer is the one it already has. That needs no group creation, no membership edit and no new
+// sudo grant, and grants nothing to anyone but that principal. setgid follows from the group
+// differing from the owner's (gunbc.managed_directory managed_directory_permissions). A third writer
+// with its own gid would land in the other class and REFUSE at managed_directory_admit, which is the
+// point at which a genuinely shared group is modeled -- not before, and never as o+w.
+fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  let needs = if writes { [Read, Write, Execute] } else { [Execute] }
+  ManagedDirectory {
+    member: member,
+    path: path as String as FilePath,
+    owner: service,
+    group_principal: fleet_posix_ci_runner_user,
+    dependents: [
+      DirectoryDependent { who: service, needs: [Read, Write, Execute] },
+      DirectoryDependent { who: fleet_posix_ci_runner_user, needs: needs },
+    ],
+    ownership: Ensured,
+  }
+}
+
+fn fabric_storage_store_directories() -> List<ManagedDirectoryAdmission> {
+  let root = fabric_storage_store_root()
+  let areas = fabric_storage_file_root(root: root)
+  [
+    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false)),
+    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)),
+    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)),
+  ]
 }

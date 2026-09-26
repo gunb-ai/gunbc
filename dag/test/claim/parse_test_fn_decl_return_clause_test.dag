@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, NodeLocus, None, Rejected, Unavailable }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unavailable }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -322,17 +322,19 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
 // The Arrow domain is a Conj keyed by binding name, so a repeated binding has no well-formed domain.
 // Before v2.compiler.body_lowering_fold body_lower_fn_signature_bindings_refusal the lowering built
 // that Conj, and normalize's recursive well_formed gate refused the module with
-// normalize_reason_post_normalize_not_well_formed at the module root (gen-two census:
-// std.key_relation global_key_scope_eq, provider_readiness_independence_claim). These rows parse a
+// normalize_reason_post_normalize_not_well_formed at the module root (the gen-two census specimens,
+// std.key_relation and provider_readiness_independence_claim, were repeated `_`, which now lower to
+// distinct minted binders). These rows parse a
 // real fn and run the fn_decl producer itself, body_lower_fn_decl_to_arrow, the same entry
 // nfbcp_hazard_no_return_type_retains_wrapper_holds uses; the normalize chain that reaches it is
 // already run end to end by nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds,
 // so these rows do not pay for it again (DESIGN section 3, a witness discriminates at one interface).
 // Each asserts the cause and that the locus is the SECOND binding's type (B; the first is A).
-// Answering optional_absent from the bindings arm restores the ill-formed domain and reds both.
+// Answering optional_absent from the bindings arm restores the ill-formed domain and reds the
+// named-repeat row.
 // Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
-// A repeated `_` is its own cause: a v2-behind-v1 frontier (v1 admits it), not an authoring error.
-data nfbcp_anonymous_repeat_source: String = "module m\nfn g(_: A, _: B) -> A { a }\n"
+// Two `_` parameters are NOT a repeat: each anonymous slot lowers to its own minted binder
+// (v2.std.anonymous_binder), and v2.test.claim.anonymous_param_binder holds that route.
 data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A { a }\n"
 
 fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
@@ -356,30 +358,6 @@ fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Boo
           fold(ne.tail, init: (ne.head.reason == reason) && nfbcp_locus_is_atom(d: ne.head, atom: atom), f: fn(found, d) {
             found || ((d.reason == reason) && nfbcp_locus_is_atom(d: d, atom: atom))
           })
-      }
-  }
-}
-
-// The `_` class also asserts its correction arm: CorrectionNotModeled, because the missing piece is a
-// compiler capability, not an authoring error. A diagnostic answering UserInputBoundary here would
-// tell the author to rename a source v1 accepts.
-fn nfbcp_correction_is_not_modeled(d: Diagnostic) -> Bool {
-  match d.correction {
-    Unavailable { reason: CorrectionNotModeled } => true
-    _ => false
-  }
-}
-
-test fn nfbcp_repeated_anonymous_param_refuses_at_the_second_binding_holds() -> Bool {
-  match nfbcp_fn_decl_shell(text: nfbcp_anonymous_repeat_source) {
-    Absent => false
-    Present { value: shell } =>
-      match body_lower_fn_decl_to_arrow(shell: shell) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: ne } =>
-          (ne.head.reason == ^body_lowering_reason_arrow_domain_anonymous_param_repeated)
-            && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
-            && nfbcp_correction_is_not_modeled(d: ne.head)
       }
   }
 }
@@ -426,6 +404,30 @@ test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> 
             && !nfbcp_locus_mentions_atom(d: ne.head, atom: ^A)
       }
   }
+}
+
+// A REPEATED SERVICE OPERATION IS REFUSED AT THE SECOND OPERATION. The service lowering reads the
+// repeated name from v2.std.node_query repeated_name_edges, the same authority the declaration
+// graft above reads; only the second operation carries a field, so a locus at the first operation
+// (no b) or at the service (which mentions S) reds this row.
+data nfbcp_repeated_operation_source: String = "module m\nservice S {\n  operation Op {}\n  operation Op { input { b: Int } }\n}\n"
+
+test fn nfbcp_repeated_operation_refuses_at_the_second_operation_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_repeated_operation_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: nfbcp_is_repeated_operation_at_second(d: ne.head), f: fn(found, d) { found || nfbcp_is_repeated_operation_at_second(d: d) })
+      }
+  }
+}
+
+fn nfbcp_is_repeated_operation_at_second(d: Diagnostic) -> Bool {
+  (d.reason == ^body_lowering_reason_service_operation_repeated)
+    && nfbcp_locus_mentions_atom(d: d, atom: ^b)
+    && !nfbcp_locus_mentions_atom(d: d, atom: ^S)
 }
 
 // AN ANONYMOUS RECORD RETURN TYPE LOWERS; IT IS NOT RETAINED. `-> { s: B }` is a type expression

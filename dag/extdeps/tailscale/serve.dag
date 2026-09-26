@@ -15,6 +15,7 @@ import product.network_topology { NetworkEndpoint }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
 }
@@ -81,6 +82,35 @@ fn tailscale_serve_off_argv(endpoint: TailscaleServeEndpoint) -> List<String> {
 
 fn tailscale_serve_status_json_argv() -> List<String> {
   ["serve", "status", "--json"]
+}
+
+// The status read as a command. The program is PATH-resolved, as the operations below spell it.
+data tailscale_program: NonEmptyStr = "tailscale"
+
+fn tailscale_serve_status_json_command() -> ArgvCommand {
+  argv_command(program: tailscale_program, arguments: tailscale_serve_status_json_argv())
+}
+
+// FUNNEL IS PUBLIC EXPOSURE. The serve config's AllowFunnel member (tailscale ipn.ServeConfig
+// AllowFunnel, map[HostPort]bool; tailscale.com/kb/1223) names each listener the node publishes to
+// the public internet; a listener absent or false there is reachable only from the tailnet. The
+// projection answers every HostPort mapped to true, or that the document could not be read -- the
+// same unreadable-is-not-empty line tailscale_serve_status_proxy_targets draws.
+type TailscaleFunnelProjection
+  = FunnelListeners { host_ports: List<String> }
+  | FunnelStatusUnreadable
+
+fn tailscale_serve_status_funnel_listeners(status_json: String) -> TailscaleFunnelProjection {
+  match parse_json_document(s: status_json) {
+    JsonDocumentUnreadable { gap: _ } => FunnelStatusUnreadable
+    JsonDocumentParsed { value: doc } =>
+      match json_unique_member_value(v: doc, key: "AllowFunnel") {
+        Absent => FunnelListeners { host_ports: [] }
+        Present { value: JsonObject { members: ms } } =>
+          FunnelListeners { host_ports: map(filter(ms, m => match m.value { JsonBool { value: b } => b  _ => true }), m => m.key) }
+        Present { value: _ } => FunnelStatusUnreadable
+      }
+  }
 }
 
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {

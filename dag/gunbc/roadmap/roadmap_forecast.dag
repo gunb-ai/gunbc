@@ -201,7 +201,10 @@ fn observation_for_link(
   if count(matching_nodes) != 1 {
     return CycleTimeHistoryRefused { refusal: HistoryNodeDuplicate { node: link.node } }
   }
-  let node = first(matching_nodes)
+  let node = match first(matching_nodes) {
+    Absent => return CycleTimeHistoryRefused { refusal: HistoryNodeMissing { node: link.node } }
+    Present { value } => value
+  }
   let matching_receipts = receipts |> filter(r => r.node == link.node)
   if count(matching_receipts) == 0 {
     return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
@@ -227,7 +230,12 @@ fn observation_for_link(
       refusal: HistoryPullDuplicate { node: link.node, pull_number: link.pull_number }
     }
   }
-  let pull = first(matching_pulls)
+  let pull = match first(matching_pulls) {
+    Absent => return CycleTimeHistoryRefused {
+      refusal: HistoryPullMissing { node: link.node, pull_number: link.pull_number }
+    }
+    Present { value } => value
+  }
   if pull.merged_at <= pull.opened_at {
     return CycleTimeHistoryRefused {
       refusal: HistoryPullNotMergedAfterOpen { node: link.node, pull_number: link.pull_number }
@@ -351,17 +359,21 @@ fn calibrate_cell(cell: NodeSizing, observations: List<CycleTimeObservation>) ->
     |> filter(o => node_sizing_eq(a: o.sizing_cell, b: cell))
     |> map(o => millisecond_count(m: o.cycle_time))
     |> sort_by(n => n)
-  if count(samples) == 0 {
-    CalibrationRefusedNoSample { cell: cell }
-  } else {
-    Calibrated {
-      interval: CycleTimeInterval {
-        minimum: millisecond(count: first(samples)),
-        median: millisecond(count: median_int(sorted: samples)),
-        maximum: millisecond(count: first(reverse(samples))),
-        sample_count: count(samples),
+  match first(samples) {
+    Absent => CalibrationRefusedNoSample { cell: cell }
+    Present { value: shortest } =>
+      match first(reverse(samples)) {
+        Absent => CalibrationRefusedNoSample { cell: cell }
+        Present { value: longest } =>
+          Calibrated {
+            interval: CycleTimeInterval {
+              minimum: millisecond(count: shortest),
+              median: millisecond(count: median_int(sorted: samples)),
+              maximum: millisecond(count: longest),
+              sample_count: count(samples),
+            }
+          }
       }
-    }
   }
 }
 
@@ -892,9 +904,9 @@ fn capacity_constrained_minimum(
 ) -> CapacityConstrainedMinimum {
   CapacityConstrainedMinimum {
     duration: DurationEstimateInterval {
-      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
-      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
-      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
+      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) as Int } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
+      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) as Int } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
+      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) as Int } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
     },
     under_belt_slot_occupancy: belt_slot_occupancy,
   }

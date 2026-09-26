@@ -44,6 +44,11 @@ fn id_group_names_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program, arguments: ["-nG", "--", user as String])
 }
 
+// -u WITH AN OPERAND: the named account's numeric uid, from the account database (as above).
+fn id_uid_of_command(user: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: id_program, arguments: ["-u", "--", user as String])
+}
+
 service os.Id {
   operation Uid {
     input {}

@@ -26,6 +26,13 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // producer the lane ran, so a receipt minted by hand and one the lane would have minted cannot
 // be two facts. What is lost is EXECUTION ON THE ACCEPTANCE PATH: nothing runs the native route
 // on a merge candidate unless a person chooses to.
+//
+// ITS THIRD OPTION IS BUILT, NOT YET OBSERVED (2026-09-23). The nightly `native-frontier` workflow
+// (gunbc.native_frontier_workflow) is the "job that runs on a different cadence", and its row is
+// gunbc.rung_drop v2_native_frontier_nightly_cadence. This row retires when the first nightly run on
+// main is OBSERVED to execute the whole universe and report a frontier verdict. Its receipt (run
+// id, tested tree, the `[native-cost-partition]` wall and peak) becomes `trigger_fired`. The
+// emission alone does not retire it.
 
 data v2_native_route_off_the_merge_path_population: List<String> = [
   "gunbc.witness_v2_native_route native_route_admission — every receipt clause, on every merge candidate",

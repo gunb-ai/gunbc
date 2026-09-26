@@ -1,0 +1,46 @@
+module gunbc.rung_drop.mtcollins1_boot_accepts_socket1_absent
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-09-25 beside the change that holds the mtcollins1 boot qualification against the
+// one-socket milestone (operator ruling, option A) instead of the machine's figure.
+//
+// WHAT THE PREVIOUS RUNG WAS. The boot verdict compared the host's nproc to
+// gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_nproc (160), on every boot,
+// on the path: a boot on which socket 1 did not enumerate printed 80 and was REFUSED. The invalid
+// state -- the machine qualified with half its processors missing -- was writable but blocked by
+// an executing gate: MECHANICALLY PREVENTABLE.
+//
+// WHAT IT IS NOW. The verdict is held against
+// gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_one_socket_milestone: 80 threads, all
+// on socket 0, none elsewhere. A boot with socket 1 absent is ACCEPTED. What remains is
+// mitigation: the capture's numa section is preserved with every run, and the milestone refuses
+// every PARTIAL state (79 threads; 80 split across sockets), so the only socket-1 state admitted
+// is the declared one. MITIGATABLE, and no lower: the loss is typed, located and bounded, not silent.
+//
+// 160 IS KEPT as the machine's figure precisely so this row has something to restore to. Editing
+// it to 80 would have retired the gate with no row, and nothing would ever ask for socket 1 back.
+
+data mtcollins1_boot_accepts_socket1_absent: RungDrop = RungDrop {
+  identity: "mtcollins1_boot_accepts_socket1_absent" as NonEmptyStr,
+
+  subject: "the mtcollins1 boot qualification accepts a boot on which only socket 0's 80 hardware threads enumerate, where it previously refused anything short of the machine's 160",
+
+  declared: "2026-09-25",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, bound to mtcollins1_one_socket_milestone (socket 0, mtcollins1_nproc / mtcollins1_socket_count threads, no CPU on any other node) and consumed by gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_terminal_verdict through its nproc and numa qualifications",
+    },
+    population: [
+      "every gunbc.machine_intake_mtcollins1_boot_run boot of mtcollins1 whose verdict is held against mtcollins1_one_socket_milestone -- the machine, not a fleet: no other host consumes the milestone",
+    ],
+    restoration_trigger: "THE CAPABILITY: BOTH SOCKETS ENUMERATE AT BOOT on mtcollins1 -- a mtcollins1_boot run whose preserved capture shows nproc equal to mtcollins1_nproc and the numa section carrying CPUs on node 0 AND node 1, 80 each. SUFFICIENT FOR: rebinding mtcollins1_boot_topology_expectation to the whole-machine expectation (every socket, mtcollins1_nproc threads) and that verdict ACCEPTING a real boot. Nothing smaller retires this row: a socket-1 investigation observation, a firmware or DIMM change, an SMpro reading of socket 1, or a boot on which socket 1 enumerates only partially does not; nor does editing mtcollins1_nproc, which would retire the gate rather than restore it.",
+  }
+}

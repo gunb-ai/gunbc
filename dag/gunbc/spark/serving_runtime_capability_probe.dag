@@ -6,6 +6,7 @@ import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout, v41_sm12_attention_class }
+import extdeps.vllm.sparse_indexer_topk { vllm_d2d649e6_sm12_indexer_topk_route, vllm_d2d649e6_indexer_topk_class }
 import gunbc.spark.v41_published_image_observation {
   v41_published_repository, v41_published_tag, v41_published_arm64_reference,
   v41_published_distribution_name,
@@ -131,6 +132,7 @@ type RuntimeKernelCapability
   | Csa2CompressorKernels
   | DSparkSpeculator
   | ModeloptQuantizationModulePresent
+  | IndexerTopkRouteCorrect
 
 // ModeloptQuantizationModulePresent IS MODULE PRESENCE AND NOTHING MORE. It asks whether the
 // installed vLLM package carries vllm/model_executor/layers/quantization/modelopt.py -- the config
@@ -147,6 +149,7 @@ fn runtime_kernel_capability_label(c: RuntimeKernelCapability) -> String {
     Csa2CompressorKernels => "csa2-compressor-kernels"
     DSparkSpeculator => "dspark-speculator"
     ModeloptQuantizationModulePresent => "modelopt-quantization-module-present"
+    IndexerTopkRouteCorrect => "indexer-topk-route-correct"
   }
 }
 
@@ -570,10 +573,15 @@ fn v41_serving_profile_label(p: V41ServingProfile) -> String {
 // image probed before those questions existed now reads UNPROBED for them rather than passing -- which
 // is the correct answer to a question nobody put to it, and the reason the verdict keeps unprobed
 // apart from missing.
+//
+// THE INDEXER TOP-K ROUTE IS REQUIRED BY BOTH FOR THE SAME REASON. Every V4.1 decode step selects its
+// sparse-attention candidates through it, and on major 12 upstream routes that stage to a kernel that
+// no other capability here exercises. Asked as correctness, not presence: a kernel that is registered
+// and returns the wrong top-k serves attention over the wrong tokens without an error.
 fn v41_required_capabilities(profile: V41ServingProfile) -> List<RuntimeKernelCapability> {
   match profile {
-    V41BaselineDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels]
-    V41SpeculativeDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator]
+    V41BaselineDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, IndexerTopkRouteCorrect]
+    V41SpeculativeDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator, IndexerTopkRouteCorrect]
   }
 }
 
@@ -985,6 +993,7 @@ fn v41_capability_probe_symbol(c: RuntimeKernelCapability) -> CapabilityProbeSym
     FlashInferSparseMlaSm120Symbols => ProbeSymbolGrounded { symbol: join(["the FlashInfer sparse MLA SM120 decode entry points extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_demand_symbols declares, each imported inside the image. They are what ", v41_sm12_attention_class as String, " requires on the major-12 arm, and they are asked separately from the layout so a missing package does not read as a rejected layout. The SCOPED question -- has_flashinfer_sparse_mla_sm120_config, which asks whether the dispatch table carries a specialization for this checkpoint's head count and top-k -- is not this capability, and upstream's own docstring says the unscoped one can pass where the scoped one refuses"], "") as NonEmptyStr }
     Csa2CompressorKernels => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.compressor and vllm.models.deepseek_v4_1.sparse_mla -- the compressed sparse attention path, whose compressor pools compress_ratio tokens into one KV latent. Both paths exist in the upstream tree at the pinned revision" as NonEmptyStr }
     DSparkSpeculator => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark, both present in the upstream tree at the pinned revision" as NonEmptyStr }
+    IndexerTopkRouteCorrect => ProbeSymbolGrounded { symbol: join(["the sparse indexer's top-k route on this device, as extdeps.vllm.sparse_indexer_topk reads it at d2d649e6: ", vllm_d2d649e6_indexer_topk_class as String, "(\"auto\").resolve_backend is CALLED at V4.1's index_topk and must answer ", vllm_d2d649e6_sm12_indexer_topk_route.decode_backend as String, ", and then torch.ops.", vllm_d2d649e6_sm12_indexer_topk_route.decode_operator as String, " and torch.ops.", vllm_d2d649e6_sm12_indexer_topk_route.prefill_operator as String, " are CALLED on generated logits and each must agree with a masked torch.topk over every case run, with a nonzero case count. DeepSelect is not asked: its arch gate excludes major 12 and the auto chain never selects it"], "") as NonEmptyStr }
     ModeloptQuantizationModulePresent => ProbeSymbolGrounded { symbol: "the file vllm/model_executor/layers/quantization/modelopt.py inside the installed package, found by glob over that directory; presence of the ModelOpt quantization config module, not of any kernel it would select" as NonEmptyStr }
   }
 }

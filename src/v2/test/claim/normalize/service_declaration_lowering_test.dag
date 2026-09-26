@@ -1,0 +1,255 @@
+module v2.test.claim.normalize.service_declaration_lowering
+
+import v2.compiler.normalize { normalize, normalize_census }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, symbol_intern_lexeme, token_stream_new }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
+import v2.std.algebra { fold_list }
+import v2.std.optional { Absent, Present }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+// DECLARATION-GRADE SERVICE LOWERING (v2.compiler.body_lowering_fold body_lower_service_decl). A
+// service lowers to its interface -- a named product of function types -- and sets its realization
+// members and its unmodeled interface members aside under two counted reasons. Census grade admits a
+// service module; the full normalize route, whose product reaches resolution, eval and emission,
+// refuses it, so no consumer can act on a set-aside realization. The fixture is the smallest service
+// carrying one member of each kind in dag/extdeps/access/posix_effective_principal_read_op.dag, the
+// first gen-two census wall: that file itself is admitted by the census run over the real tree, not
+// here, where parsing all of it would cost the claim its enrolment budget (DESIGN section 3).
+
+data posix_service_source: String = "module m\nservice a.P {\n  operation R {\n    output { o: Int = 1 }\n    readonly\n    transport t {}\n  }\n}\n"
+
+// Two services sharing a prefix in one module, the dag/extdeps/shell.dag shape: each is
+// ONE label spelled as declared, so they stay distinct at the module.
+data shared_prefix_source: String = "module m\nservice s.F {\n  operation R {}\n}\nservice s.E {\n  operation R {}\n}\n"
+
+// The discriminating RED: an operation declaring its input twice has no single domain, so the
+// lowering refuses located at the second block rather than keeping either.
+data repeated_input_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    input { y: Int }\n  }\n}\n"
+
+// SUPPLIED TOKEN STREAMS (the v2.test.parse.supplied_token_stream_support pattern): tokenizing each
+// fixture inside every claim put the claims over the new-witness eval-step budget. Each stream is
+// paired below with a fidelity claim that the real tokenizer produces exactly it, so supplying it
+// removes no execution of the real path (DESIGN section 3 pairing obligation).
+fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize_census(parse_tree: tree) })
+}
+
+fn full_of_stream(tokens: TokenStream) -> Outcome<NormalizedTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize(parse_tree: tree) })
+}
+
+// The dag/extdeps/bmc/http.dag shape the first full gen-two census found: one service declaring an
+// operation name twice. It refuses located at the second declaration with its own cause, which is
+// what distinguishes it from the set-aside members that ride beside it and are admitted.
+data repeated_operation_source: String = "module m\nservice S {\n  operation Op {}\n  operation Op {}\n}\n"
+
+fn index_of(t: CensusTree) -> SymbolIndex {
+  symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
+}
+
+fn declares(index: SymbolIndex, service: String, member: String) -> Bool {
+  match symbol_index_lookup(
+    index: index,
+    qualified_path: Cons { head: ^m, tail: Cons { head: symbol_intern_lexeme(lexeme: service), tail: Cons { head: symbol_intern_lexeme(lexeme: member), tail: Empty } } }
+  ) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn reason_count(d: Diagnostics, reason: Symbol) -> Int {
+  match d {
+    None => 0
+    Some { diagnostics: ne } =>
+      fold_list(
+        xs: ne.tail,
+        empty: if ne.head.reason == reason { 1 } else { 0 },
+        cons: fn(n, x) { if x.reason == reason { n + 1 } else { n } }
+      )
+  }
+}
+
+fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  reason_count(d: Some { diagnostics: ne }, reason: reason) > 0
+}
+
+test fn census_admits_the_posix_service_and_indexes_its_operation_holds() -> Bool {
+  match census_of_stream(tokens: posix_service_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      declares(index: index_of(t: t), service: "a.P", member: "R")
+  }
+}
+
+// Both set-aside reasons, counted apart: the transport is realization (1); the readonly modifier and
+// the io field's default tail are unmodeled interface facts (2).
+test fn census_counts_realization_and_unmodeled_interface_apart_holds() -> Bool {
+  match census_of_stream(tokens: posix_service_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      (reason_count(d: d, reason: ^body_lowering_reason_realization_member_set_aside) == 1)
+        && (reason_count(d: d, reason: ^body_lowering_reason_interface_member_unmodeled) == 2)
+  }
+}
+
+// THE SET-ASIDE IS UNREACHABLE AS LOWERED. Full normalize is what resolution, eval and emission
+// consume; it refuses the same service, and the pending diagnostics carry the set-aside members at
+// their own loci, so no consumer is handed a service whose realization it would have to assume.
+test fn full_door_refuses_a_service_with_a_set_aside_realization_holds() -> Bool {
+  match full_of_stream(tokens: posix_service_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      carries(ne: r, reason: ^body_lowering_reason_service_realization_unreachable)
+        && carries(ne: r, reason: ^body_lowering_reason_realization_member_set_aside)
+  }
+}
+
+test fn two_services_sharing_a_prefix_admit_with_distinct_labels_holds() -> Bool {
+  match census_of_stream(tokens: shared_prefix_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      declares(index: index_of(t: t), service: "s.F", member: "R")
+        && declares(index: index_of(t: t), service: "s.E", member: "R")
+  }
+}
+
+test fn a_repeated_input_block_refuses_located_RED() -> Bool {
+  match census_of_stream(tokens: repeated_input_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_io_block_repeated
+  }
+}
+
+fn posix_service_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^service_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^service_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "a", file: ^service_lowering_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^service_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^service_lowering_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 25, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^service_lowering_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_ident, lexeme: "output", file: ^service_lowering_probe, start: 43, end: 49 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "o", file: ^service_lowering_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^service_lowering_probe, start: 53, end: 54 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^service_lowering_probe, start: 55, end: 58 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^service_lowering_probe, start: 59, end: 60 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^service_lowering_probe, start: 61, end: 62 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 63, end: 64 },
+    Token { class: ^dag_token_ident, lexeme: "readonly", file: ^service_lowering_probe, start: 69, end: 77 },
+    Token { class: ^dag_token_ident, lexeme: "transport", file: ^service_lowering_probe, start: 82, end: 91 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^service_lowering_probe, start: 92, end: 93 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 94, end: 95 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 95, end: 96 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 99, end: 100 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 101, end: 102 }
+  ])
+}
+
+test fn posix_service_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: posix_service_source, file: ^service_lowering_probe, supplied: posix_service_stream())
+}
+
+fn shared_prefix_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^service_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^service_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "s", file: ^service_lowering_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^service_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "F", file: ^service_lowering_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 25, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^service_lowering_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 38, end: 39 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 42, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "s", file: ^service_lowering_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^service_lowering_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_ident, lexeme: "E", file: ^service_lowering_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 58, end: 67 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^service_lowering_probe, start: 68, end: 69 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 70, end: 71 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 71, end: 72 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 73, end: 74 }
+  ])
+}
+
+test fn shared_prefix_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: shared_prefix_source, file: ^service_lowering_probe, supplied: shared_prefix_stream())
+}
+
+fn repeated_input_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^service_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^service_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^service_lowering_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^service_lowering_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_ident, lexeme: "input", file: ^service_lowering_probe, start: 42, end: 47 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^service_lowering_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^service_lowering_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^service_lowering_probe, start: 53, end: 56 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 57, end: 58 },
+    Token { class: ^dag_token_ident, lexeme: "input", file: ^service_lowering_probe, start: 63, end: 68 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_ident, lexeme: "y", file: ^service_lowering_probe, start: 71, end: 72 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^service_lowering_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^service_lowering_probe, start: 74, end: 77 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 78, end: 79 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 84, end: 85 }
+  ])
+}
+
+test fn repeated_input_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: repeated_input_source, file: ^service_lowering_probe, supplied: repeated_input_stream())
+}
+
+test fn a_repeated_operation_name_refuses_located_RED() -> Bool {
+  match census_of_stream(tokens: repeated_operation_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_operation_repeated
+  }
+}
+
+fn repeated_operation_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^service_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^service_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^service_lowering_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^service_lowering_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 41, end: 50 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^service_lowering_probe, start: 51, end: 53 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 55, end: 56 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 57, end: 58 }
+  ])
+}
+
+test fn repeated_operation_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: repeated_operation_source, file: ^service_lowering_probe, supplied: repeated_operation_stream())
+}
