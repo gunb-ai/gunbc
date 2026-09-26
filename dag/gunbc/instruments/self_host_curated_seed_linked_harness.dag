@@ -1,5 +1,6 @@
 module tools.self_host_curated_seed_linked_harness
 
+import gunbc.emitted_closure_artifact { curated_probe_cargo_package_text }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -95,7 +96,13 @@ fn cssl_v1_compiled_cargo_deps_block(root: String) -> String {
 }
 
 fn cssl_v1_compiled_cargo_package_header() -> String {
-  "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n"
+  concat(
+    "[package]\nname = \"",
+    concat(
+      curated_probe_cargo_package_text(),
+      "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n"
+    )
+  )
 }
 
 // Witness-driver [[bin]] layout (cssl_v1_compiled_cargo_toml) for ferret flip lanes. Probe does not
