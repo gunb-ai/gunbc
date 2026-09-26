@@ -3838,20 +3838,25 @@ pub fn match_unguarded_absent_arm_index(arm_nodes: Rc<Vec<Rc<Node>>>) -> i64 {
     })
 }
 
-pub fn optional_scrutinee_binding_is_present(
-    scrut_type: Rc<Node>,
+pub fn optional_match_arm_sees_present_value(
+    scrutinee_type: Rc<Node>,
     arm_pattern: Rc<MatchPattern>,
     arm_index: i64,
     absent_arm_index: i64,
 ) -> bool {
     {
-        let is_bind = match (*arm_pattern.clone()).clone() {
-            MatchPattern::Bind { declaration: _, .. } => true,
+        let pattern_sees_present = match (*arm_pattern.clone()).clone() {
+            MatchPattern::Bind { declaration: _, .. } => {
+                ((absent_arm_index.clone() >= 0) && (arm_index.clone() > absent_arm_index.clone()))
+            }
+            MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
+                LiteralValue::LitNull => false,
+                _ => true,
+            },
             _ => false,
         };
-        (((is_bind.clone() && (absent_arm_index.clone() >= 0))
-            && (arm_index.clone() > absent_arm_index.clone()))
-            && (scrut_type.return_cardinality.clone() == Cardinality::CardOptional))
+        (pattern_sees_present.clone()
+            && (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional))
     }
 }
 
@@ -12619,7 +12624,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         let arm_pat = crate::v1_std_core::arm_pattern(arm_node.clone());
                         let arm_g = crate::v1_std_core::arm_guard(arm_node.clone());
                         let arm_b = crate::v1_std_core::arm_body(arm_node.clone());
-                        let arm_subject = if optional_scrutinee_binding_is_present(
+                        let arm_subject = if optional_match_arm_sees_present_value(
                             scrut_rt.clone(),
                             arm_pat.clone(),
                             arm_pair.0.clone(),
