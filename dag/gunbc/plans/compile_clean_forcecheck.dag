@@ -5,7 +5,8 @@ import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommitted
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, AlignRight }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.compiler_diagnostic_seed_projection { compiler_diagnostic_seed_projection_paragraphs }
-import v2.std.algebra { list_append, list_map }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 
 // THE RECEIPT SECTION IS RENDERED, NOT AUTHORED HERE. The body is three pieces rather than one
 // literal so the CompilerDiagnostic seed-projection paragraphs come from the typed rows in

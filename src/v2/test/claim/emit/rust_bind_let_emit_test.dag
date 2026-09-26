@@ -11,7 +11,7 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex_rules
 }
 import v2.extdeps.languages.rust_test { rust_bind_let_target_model_bundle_core }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.std.collection {
   Map,
   empty_map,
