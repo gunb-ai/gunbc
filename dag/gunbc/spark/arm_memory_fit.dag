@@ -23,7 +23,8 @@ import extdeps.vllm.kv_layout {
   AdmissionCostBlocks, AdmissionCostUnestablished,
   KvGroupKind, FullAttention, SlidingWindowAttention, MambaState, KPoolIndex,
   ResolvedKvAllocationPlan, KvAllocationPlanGroup,
-  KvAdmissionDemand, kv_allocator_carve_from_plan, request_block_equivalent_bytes,
+  KvAllocatorCarve, KvAdmissionDemand, kv_allocator_carve_from_plan, request_block_equivalent_bytes,
+  PoolConstructionVerdict, PoolConstructionProved, PoolConstructionRefused,
 }
 import extdeps.zhipu.glm_5_3_flash {
   Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_hybrid_shape_consistent,
@@ -2571,6 +2572,135 @@ fn cache_admission_verdict(population_blocks: AllocatorBlockCount, inventory: Al
       }
   }
 }
+
+// ── THE POOL-CONSTRUCTION CONTROLS PER RANK, AND THE CONSERVATION RED ────────────────────────────
+//
+// THE TWO REMAINING CONSTRUCTION CONTROLS the doctrine lists beside the mint-level conservation
+// (allocated_pool_bytes == allocator_blocks x physical_pool_bytes_per_block, which the plan mint's
+// conservation wall checks): allocated_pool_bytes <= EVERY rank's admitted KV arena, and the arena
+// slack under one physical block — MODULO NAMED RESERVATIONS/ROUNDING, which the caller spells as
+// an explicit byte allowance with its reason (the block override, the null-block reservation, the
+// profile reporter's rounding unit), because an unnamed fudge factor would be a license to mint
+// anything. A reading that is not THIS pool's arena fails the second control loudly: today's
+// per-rank profile figures are the workers' pre-clamp local pool projections, not the min-clamped
+// 1035-block allocation's arena, so claiming construction against them refuses rather than
+// agreeing by accident.
+fn pool_construction_per_rank(carve: KvAllocatorCarve, supplies: List<ArmRankCacheSupply>, allowance_bytes: ByteSize, allowance_reason: NonEmptyStr) -> PoolConstructionVerdict {
+  match pool_construction_rank_scan(carve: carve, supplies: supplies, allowance_bytes: allowance_bytes, allowance_reason: allowance_reason) {
+    Present { value: refused } => refused
+    Absent =>
+      PoolConstructionProved {
+        physical_pool_block_bytes: carve.physical_pool_bytes_per_block,
+        allocator_blocks: carve.allocator_blocks,
+        allocated_pool_bytes: carve.allocated_pool_bytes,
+      }
+  }
+}
+
+fn pool_construction_rank_scan(carve: KvAllocatorCarve, supplies: List<ArmRankCacheSupply>, allowance_bytes: ByteSize, allowance_reason: NonEmptyStr) -> PoolConstructionVerdict? {
+  first(map(filter(supplies, s =>
+      byte_size_count(b: s.admitted_kv_arena_bytes) == 0
+        || byte_size_count(b: carve.allocated_pool_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes) + byte_size_count(b: allowance_bytes)
+        || byte_size_count(b: s.admitted_kv_arena_bytes) >= byte_size_count(b: carve.allocated_pool_bytes) + byte_size_count(b: carve.physical_pool_bytes_per_block) + byte_size_count(b: allowance_bytes)), s =>
+    match byte_size_count(b: s.admitted_kv_arena_bytes) == 0 {
+      true =>
+        PoolConstructionRefused {
+          cause: join([
+            "pool construction REFUSED at rank ", to_string(s.rank), ": the rank's arena observation is zero, and a zero reading bounds nothing — construction cannot be verified there",
+          ], "") as NonEmptyStr,
+        }
+      false =>
+        match byte_size_count(b: carve.allocated_pool_bytes) > byte_size_count(b: s.admitted_kv_arena_bytes) + byte_size_count(b: allowance_bytes) {
+          true =>
+            PoolConstructionRefused {
+              cause: join([
+                "pool construction REFUSED at rank ", to_string(s.rank), ": the allocated pool of ", to_string(byte_size_count(b: carve.allocated_pool_bytes)),
+                " bytes exceeds the rank's admitted KV arena of ", to_string(byte_size_count(b: s.admitted_kv_arena_bytes)),
+                " bytes even after the named allowance of ", to_string(byte_size_count(b: allowance_bytes)),
+                " bytes (", allowance_reason as String, ")",
+              ], "") as NonEmptyStr,
+            }
+          false =>
+            PoolConstructionRefused {
+              cause: join([
+                "pool construction REFUSED at rank ", to_string(s.rank), ": the arena exceeds the allocated pool by ",
+                to_string(byte_size_count(b: s.admitted_kv_arena_bytes) - byte_size_count(b: carve.allocated_pool_bytes)),
+                " bytes, more than one physical pool block (", to_string(byte_size_count(b: carve.physical_pool_bytes_per_block)),
+                " bytes) beyond the named allowance of ", to_string(byte_size_count(b: allowance_bytes)),
+                " bytes (", allowance_reason as String,
+                "): the reading is not the admitted arena of THIS pool",
+              ], "") as NonEmptyStr,
+            }
+        }
+    }))
+}
+
+// THE CONSERVATION RED: ONE CLAIM, CHECKED AGAINST THE POOL IT CLAIMS TO SIT IN. The block wall
+// owns capacity; this control owns the byte claims a consumer tries to attach to a block
+// population. The exact byte spelling of a block population against this pool is
+// block_equivalent_bytes = request_blocks x physical_pool_bytes_per_block; a claim below it is
+// underpricing the shared pool (reading group-spec page bytes as pool block bytes — the withdrawn
+// move), and a claim below one percent of the SAME pool's allocated bytes is the doctrine's RED
+// sentence verbatim: N blocks of a pool cannot occupy less than 1% of that pool, because
+// allocated_pool_bytes is exactly allocator_blocks x physical_pool_bytes_per_block and N blocks
+// is at least N / allocator_blocks of the product. The withdrawn 125,010,432-byte figure for the
+// 262144x6 population (738 blocks) is the pinned failing case: it must mint Refused here, never
+// anything a capacity question could read as proved.
+type SharedPoolByteClaimVerdict
+  = SharedPoolByteClaimConsistent { request_blocks: AllocatorBlockCount, block_equivalent_bytes: ByteSize }
+  | SharedPoolByteClaimRefused { cause: NonEmptyStr }
+
+fn shared_pool_byte_claim_red(plan: ResolvedKvAllocationPlan, request_blocks: AllocatorBlockCount, claimed_block_equivalent_bytes: ByteSize) -> SharedPoolByteClaimVerdict {
+  match kv_allocator_carve_from_plan(plan: plan) {
+    Absent =>
+      SharedPoolByteClaimRefused {
+        cause: "the plan carries no physical_pool_bytes_per_block or allocated_pool_bytes (the v1 emission vintage), so no byte claim is checkable against its pool: the v1 vintage proves blocks only, and a byte figure beside it rides unpriced" as NonEmptyStr,
+      }
+    Present { value: carve } => {
+      let exact = request_block_equivalent_bytes(demand: KvAdmissionDemand { population_blocks: request_blocks }, carve: carve)
+      match byte_size_count(b: claimed_block_equivalent_bytes) == byte_size_count(b: exact) {
+        true => SharedPoolByteClaimConsistent { request_blocks: request_blocks, block_equivalent_bytes: exact }
+        false =>
+          match byte_size_count(b: claimed_block_equivalent_bytes) < byte_size_count(b: exact) {
+            true =>
+              match byte_size_count(b: claimed_block_equivalent_bytes) * 100 < byte_size_count(b: carve.allocated_pool_bytes) {
+                true =>
+                  SharedPoolByteClaimRefused {
+                    cause: join([
+                      "shared-pool byte claim REFUSED: ", to_string(allocator_block_count_value(c: request_blocks)),
+                      " blocks cannot occupy less than 1% of the same pool — the pool allocates ",
+                      to_string(byte_size_count(b: carve.allocated_pool_bytes)), " bytes (", to_string(allocator_block_count_value(c: carve.allocator_blocks)),
+                      " blocks x ", to_string(byte_size_count(b: carve.physical_pool_bytes_per_block)),
+                      " bytes), so the block-equivalent spelling of the population is ", to_string(byte_size_count(b: exact)),
+                      " bytes, while the claim reads ", to_string(byte_size_count(b: claimed_block_equivalent_bytes)),
+                      " bytes: the claim prices group-spec page bytes as pool block bytes, the withdrawn ~106x underpricing, and it can never mint anything a capacity question reads as proved",
+                    ], "") as NonEmptyStr,
+                  }
+                false =>
+                  SharedPoolByteClaimRefused {
+                    cause: join([
+                      "shared-pool byte claim REFUSED: the claim reads ", to_string(byte_size_count(b: claimed_block_equivalent_bytes)),
+                      " bytes for ", to_string(allocator_block_count_value(c: request_blocks)),
+                      " blocks, under the block-equivalent figure of ", to_string(byte_size_count(b: exact)),
+                      " bytes (blocks x the physical pool block size): a demand's byte spelling must price the shared pool's block, not the group spec's page",
+                    ], "") as NonEmptyStr,
+                  }
+              }
+            false =>
+              SharedPoolByteClaimRefused {
+                cause: join([
+                  "shared-pool byte claim REFUSED: the claim reads ", to_string(byte_size_count(b: claimed_block_equivalent_bytes)),
+                  " bytes for ", to_string(allocator_block_count_value(c: request_blocks)),
+                  " blocks, over the block-equivalent figure of ", to_string(byte_size_count(b: exact)),
+                  " bytes (blocks x the physical pool block size): an inflated byte figure beside a block population is not evidence of more capacity",
+                ], "") as NonEmptyStr,
+              }
+          }
+      }
+    }
+  }
+}
+
 
 // THE WITHDRAWN MOVE, CARRIED AS A NAMED CANDIDATE. floor(printed_pool_tokens / context) is how the
 // six-seat figure arrived; it is a full-context-equivalent projection divided by a context, not a

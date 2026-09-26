@@ -15,6 +15,8 @@ import extdeps.vllm.kv_layout {
   resolved_kv_allocation_plan_from_capture,
   KvAllocationPlanAdmitted, KvAllocationPlanRefused,
   MambaState,
+  KvAllocatorCarve, kv_allocator_carve_from_plan,
+  PoolConstructionProved, PoolConstructionRefused, PoolConstructionUnestablished, pool_construction_verdict,
 }
 import gunbc.spark.arm_memory_fit {
   CacheFitVerdict, CacheFitProved, CacheFitRefused, CacheFitUnestablished,
@@ -23,6 +25,8 @@ import gunbc.spark.arm_memory_fit {
   RequestBlockCostProved, RequestBlockCostRefused, request_block_cost,
   CacheAdmissionProved, CacheAdmissionRefused, cache_admission_verdict,
   CacheCapacityCandidate, cache_capacity_candidate,
+  pool_construction_per_rank,
+  SharedPoolByteClaimConsistent, SharedPoolByteClaimRefused, shared_pool_byte_claim_red,
 }
 import gunbc.spark.arm_memory_experiment_observed {
   arm_experiment_gib_hundredths_floor,
@@ -473,5 +477,238 @@ test fn the_headroom_figures_are_pinned() -> Bool {
   })
     && 2205845 - 6 * 262144 == 632981
     && 262144 * 6 == 1572864
+}
+
+// ── THE CONSERVATION CONTROLS AND THE RED, ON THE DOC-RECONCILED v2 CARVE ────────────────────────
+//
+// THE DESIGNED v2 PLAN is the real v1 plan plus the two pool figures the v2 emission will carry,
+// pinned to the doctrine's own reconciliation (docs/plans/shared-pool-byte-correction.md): TP3's
+// observed 17.29 GiB arena at the hundredths floor is 18,564,996,136 bytes over the plan's 1035
+// blocks, which self-consistently implies physical_pool_bytes_per_block = 17,937,194 and
+// allocated_pool_bytes = 18,564,995,790 — the arena slack is 346 bytes, under one physical block,
+// exactly the conservation control's shape. These are the doc-reconciled design constants for the
+// controls' witnesses; the engine's own v2 emission replaces them with the read figures the day
+// the v2 image flies, and nothing here claims a live engine emitted them.
+
+data w_physical_pool_bytes_per_block: Nat = 17937194
+
+data w_allocated_pool_bytes: Nat = 18564995790
+
+fn w_plan_with_carve(p: ResolvedKvAllocationPlan) -> ResolvedKvAllocationPlan {
+  ResolvedKvAllocationPlan {
+    runtime: p.runtime,
+    image_digest: p.image_digest,
+    cache_format: p.cache_format,
+    allocator_blocks: p.allocator_blocks,
+    physical_pool_bytes_per_block: Present { value: byte_size(count: w_physical_pool_bytes_per_block) },
+    allocated_pool_bytes: Present { value: byte_size(count: w_allocated_pool_bytes) },
+    requested_length: p.requested_length,
+    scheduler_block_size: p.scheduler_block_size,
+    groups: p.groups,
+    grouping_padding: p.grouping_padding,
+  }
+}
+
+fn w_carve() -> KvAllocatorCarve? {
+  match w_minted_real_plan() {
+    Absent => none
+    Present { value: p } => kv_allocator_carve_from_plan(plan: w_plan_with_carve(p: p))
+  }
+}
+
+fn w_capture_of(p: ResolvedKvAllocationPlan) -> KvAllocationPlanCapture {
+  KvAllocationPlanCapture {
+    observed_at_revision: p.runtime,
+    image_digest: p.image_digest,
+    cache_format: Present { value: p.cache_format },
+    allocator_blocks: Present { value: p.allocator_blocks },
+    physical_pool_bytes_per_block: Absent,
+    allocated_pool_bytes: Absent,
+    requested_length: Present { value: p.requested_length },
+    scheduler_block_size: Present { value: p.scheduler_block_size },
+    groups: Present { value: map(p.groups, g => KvAllocationPlanCaptureGroup {
+      identity: Present { value: g.identity },
+      kind: Present { value: g.kind },
+      layer_identities: Present { value: g.layer_identities },
+      block_size: Present { value: g.block_size },
+      group_spec_page_size_bytes: Present { value: g.group_spec_page_size_bytes },
+      tokens_per_state: Present { value: g.tokens_per_state },
+      max_memory_usage_bytes: Present { value: g.max_memory_usage_bytes },
+      blocks_at_requested_length: Present { value: g.blocks_at_requested_length },
+    }) },
+    grouping_padding: Present { value: p.grouping_padding },
+  }
+}
+
+fn w_capture_with_pool_fields(c: KvAllocationPlanCapture, pool_block: ByteSize?, allocated: ByteSize?) -> KvAllocationPlanCapture {
+  KvAllocationPlanCapture {
+    observed_at_revision: c.observed_at_revision,
+    image_digest: c.image_digest,
+    cache_format: c.cache_format,
+    allocator_blocks: c.allocator_blocks,
+    physical_pool_bytes_per_block: pool_block,
+    allocated_pool_bytes: allocated,
+    requested_length: c.requested_length,
+    scheduler_block_size: c.scheduler_block_size,
+    groups: c.groups,
+    grouping_padding: c.grouping_padding,
+  }
+}
+
+// THE MINT-LEVEL CONSERVATION, BOTH VINTAGES: the v1 real plan mints blocks-only and its
+// construction verdict is Unestablished naming the vintage; the designed v2 plan conserves
+// (1035 x 17,937,194 = 18,564,995,790 exactly) and its construction verdict is Proved carrying
+// the engine-side figures; a non-conserving v2 plan (allocated off by one block) refuses at the
+// mint, and a half-emitted pair (exactly one pool field) refuses as a partial vintage.
+test fn pool_construction_verdicts_discriminate_both_vintages() -> Bool {
+  (match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      (match pool_construction_verdict(plan: p) {
+        PoolConstructionUnestablished { cause: c } => string_contains(s: c as String, pattern: "v1 emission vintage")
+        _ => false
+      })
+        && (match pool_construction_verdict(plan: w_plan_with_carve(p: p)) {
+          PoolConstructionProved { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a } =>
+            byte_size_count(b: b) == w_physical_pool_bytes_per_block
+              && allocator_block_count_value(c: bl) == 1035
+              && byte_size_count(b: a) == w_allocated_pool_bytes
+          _ => false
+        })
+        && (match resolved_kv_allocation_plan_from_capture(capture: w_capture_with_pool_fields(
+          c: w_capture_of(p: p),
+          pool_block: Present { value: byte_size(count: w_physical_pool_bytes_per_block) },
+          allocated: Absent)) {
+          KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "one fact")
+          KvAllocationPlanAdmitted { plan: _ } => false
+        })
+        && (match resolved_kv_allocation_plan_from_capture(capture: w_capture_with_pool_fields(
+          c: w_capture_of(p: p),
+          pool_block: Present { value: byte_size(count: w_physical_pool_bytes_per_block) },
+          allocated: Present { value: byte_size(count: w_allocated_pool_bytes + w_physical_pool_bytes_per_block) })) {
+          KvAllocationPlanRefused { cause: c } => string_contains(s: c as String, pattern: "do not conserve")
+          KvAllocationPlanAdmitted { plan: _ } => false
+        })
+  })
+    && w_physical_pool_bytes_per_block * 1035 == w_allocated_pool_bytes
+}
+
+// THE PER-RANK CONSTRUCTION CONTROL AGAINST THE REAL FOUR ARENAS: the allocated pool is the same
+// 1035-block construction on every rank (the engine min-clamped the inventory), so exactly one
+// rank's arena can sit within one physical block of it — TP3/srv11's 17.29 GiB floor (slack 346
+// bytes) PROVES construction, and the other three readings (23.45/18.62/18.90 GiB floors) refuse
+// as not THIS pool's admitted arena: they are the workers' pre-clamp local pool projections, tens
+// of physical blocks above the min-clamped allocation. That asymmetry is why the byte wall was
+// never a per-rank capacity check — and why the conservation control names its allowance. A zero
+// arena reading refuses as bounding nothing.
+test fn pool_construction_at_the_real_arenas_proves_only_at_the_limiting_rank() -> Bool {
+  match w_carve() {
+    Absent => false
+    Present { value: carve } =>
+      (match pool_construction_per_rank(
+        carve: carve,
+        supplies: arm_experiment_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1035)),
+        allowance_bytes: byte_size(count: 0),
+        allowance_reason: "none named" as NonEmptyStr) {
+        PoolConstructionRefused { cause: c } =>
+          string_contains(s: c as String, pattern: "rank 0")
+            && string_contains(s: c as String, pattern: "not the admitted arena of THIS pool")
+        _ => false
+      })
+        && (match pool_construction_per_rank(
+          carve: carve,
+          supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1729)),
+          allowance_bytes: byte_size(count: 0),
+          allowance_reason: "none named" as NonEmptyStr) {
+          PoolConstructionProved { physical_pool_block_bytes: b, allocator_blocks: bl, allocated_pool_bytes: a } =>
+            byte_size_count(b: b) == w_physical_pool_bytes_per_block
+              && allocator_block_count_value(c: bl) == 1035
+              && byte_size_count(b: a) == w_allocated_pool_bytes
+          _ => false
+        })
+        && (match pool_construction_per_rank(
+          carve: carve,
+          supplies: w_uniform_supplies(blocks: 1035, arena: byte_size(count: 18500000000)),
+          allowance_bytes: byte_size(count: 0),
+          allowance_reason: "none named" as NonEmptyStr) {
+          PoolConstructionRefused { cause: c } => string_contains(s: c as String, pattern: "exceeds the rank's admitted KV arena")
+          _ => false
+        })
+        && (match pool_construction_per_rank(
+          carve: carve,
+          supplies: w_uniform_supplies(blocks: 1035, arena: byte_size(count: 0)),
+          allowance_bytes: byte_size(count: 0),
+          allowance_reason: "none named" as NonEmptyStr) {
+          PoolConstructionRefused { cause: c } => string_contains(s: c as String, pattern: "zero")
+          _ => false
+        })
+  }
+}
+
+// THE CONSERVATION RED, PINNING THE WITHDRAWN FIGURE: the 125,010,432-byte claim for the
+// six-seat population (738 blocks) is 0.673% of the same pool's allocated bytes — it mints
+// Refused naming the doctrine's sentence, NEVER anything a capacity question reads as proved.
+// The exact block-equivalent spelling (738 x 17,937,194 = 13,237,649,172 bytes, 71.30% of the
+// pool, ~12.33 GiB) is Consistent; an underprice at or above 1% of the pool refuses without the
+// RED sentence; an overprice refuses; and the v1 plan refuses every byte claim as uncheckable.
+test fn the_conservation_red_pins_the_withdrawn_six_seat_figure() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      let v2 = w_plan_with_carve(p: p)
+      (match shared_pool_byte_claim_red(plan: v2, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 125010432)) {
+        SharedPoolByteClaimRefused { cause: c } =>
+          string_contains(s: c as String, pattern: "cannot occupy less than 1% of the same pool")
+            && string_contains(s: c as String, pattern: "125010432")
+            && string_contains(s: c as String, pattern: "13237649172")
+        SharedPoolByteClaimConsistent { request_blocks: _, block_equivalent_bytes: _ } => false
+      })
+        && (match shared_pool_byte_claim_red(plan: v2, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 738 * w_physical_pool_bytes_per_block)) {
+          SharedPoolByteClaimConsistent { request_blocks: r, block_equivalent_bytes: be } =>
+            allocator_block_count_value(c: r) == 738 && byte_size_count(b: be) == 13237649172
+          SharedPoolByteClaimRefused { cause: _ } => false
+        })
+        && (match shared_pool_byte_claim_red(plan: v2, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 500000000)) {
+          SharedPoolByteClaimRefused { cause: c } =>
+            !string_contains(s: c as String, pattern: "less than 1%")
+              && string_contains(s: c as String, pattern: "under the block-equivalent figure")
+          SharedPoolByteClaimConsistent { request_blocks: _, block_equivalent_bytes: _ } => false
+        })
+        && (match shared_pool_byte_claim_red(plan: v2, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 14000000000)) {
+          SharedPoolByteClaimRefused { cause: c } => string_contains(s: c as String, pattern: "over the block-equivalent figure")
+          SharedPoolByteClaimConsistent { request_blocks: _, block_equivalent_bytes: _ } => false
+        })
+        && (match shared_pool_byte_claim_red(plan: p, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 125010432)) {
+          SharedPoolByteClaimRefused { cause: c } => string_contains(s: c as String, pattern: "v1 emission vintage")
+          SharedPoolByteClaimConsistent { request_blocks: _, block_equivalent_bytes: _ } => false
+        })
+  }
+}
+
+// THE CORRECTED BYTE SPELLING RIDES THE PROVED VERDICT, NAMED: six seats on the designed v2 plan
+// prove at the block wall as before, and the verdict now carries block_equivalent_bytes =
+// 13,237,649,172 — the ONLY byte figure a capacity verdict may hold, named block_equivalent_bytes
+// so it is never read as ordinary memory demand or physical headroom.
+test fn the_proved_verdict_carries_the_block_equivalent_spelling_on_the_v2_plan() -> Bool {
+  match w_minted_real_plan() {
+    Absent => false
+    Present { value: p } =>
+      match cache_fit_verdict_from_plan(
+        plan: w_plan_with_carve(p: p), shape: glm_5_3_flash_hybrid_shape,
+        seats: 6,
+        supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1729)),
+        rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
+        CacheFitProved { limiting_rank: lr, seats: s, blocks_used: bu, blocks_per_seat: bps, hard_ceiling: hc, block_equivalent_bytes: be } =>
+          lr == 3 && s == 6
+            && allocator_block_count_value(c: bu) == 738
+            && allocator_block_count_value(c: bps) == 123
+            && hc == 8
+            && (match be {
+              Present { value: b } => byte_size_count(b: b) == 13237649172
+              Absent => false
+            })
+        _ => false
+      }
+  }
 }
 
