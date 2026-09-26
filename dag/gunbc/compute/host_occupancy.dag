@@ -1,0 +1,180 @@
+module gunbc.compute.host_occupancy
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { Kibibyte, kibibyte_count, Mebibyte, mebibyte, mebibyte_count }
+import extdeps.linux.proc_meminfo { MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
+import extdeps.nvidia.system_management_interface {
+  NvidiaComputeApp, ComputeAppUsedMemory, UsedMemoryReported, UsedMemoryWithheld,
+  NvidiaComputeAppsRead, ComputeAppsParsed, ComputeAppsUnparsed, parse_compute_apps,
+}
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.host_operation_exec {
+  HostOperation, SystemctlIsActive, ProcfsReadMeminfo, NvidiaSmiQueryComputeApps,
+  host_operation_materialize_argv, host_operation_label,
+}
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+
+// ── WHO IS ALREADY USING THIS HOST: A READING, TAKEN ON THE HOST, BEFORE AN EFFECT IS ADMITTED ─
+//
+// OWNERSHIP IS NOT OCCUPANCY. gunbc.spark.host_commitment `admit_host_held_by_subject` answers
+// whether a subject HOLDS a host; it cannot answer whether that subject's own serving is running on it
+// and holding its memory, because holding is a fact in the event log and occupancy is a fact on the
+// machine. The receipt (2026-09-26, srv8): the Group A pair subject held srv8, so a probe was admitted,
+// while that subject's own DeepSeek V4 pair worker held ~99.7 GB of the unified pool; the host was left
+// with 15 GiB, thrashed, and needed a power cycle. So an effect that declares a memory or GPU need is
+// admitted by TWO independent relations -- held by the subject, and unoccupied by this reading -- and
+// neither stands in for the other.
+//
+// THE READING IS THREE MODELED READS, all through gunbc.host_operation_exec so each argv is derived from
+// its extdeps declaration: `systemctl is-active` per serving unit the caller names, nvidia-smi's compute
+// processes, and /proc/meminfo. THE LEG IS SUPPLIED, as gunbc.spark.host_effect_quiescence supplies it:
+// production hands the leg that reaches the host, a claim hands a recorded one.
+//
+// A GPU PROCESS IS AN OCCUPANT WHETHER OR NOT A KNOWN UNIT OWNS IT (proud-deer-538 ruling 2026-09-26).
+// This reader does not attribute a pid to a unit, and does not need to: a foreign or leftover GPU user
+// -- the stray probe container of the same morning -- occupies the host exactly as the pair worker does,
+// so every compute process is listed as its own occupant beside whichever named units are active. An
+// attribution would only improve the refusal's wording; it can never turn an occupant into a vacancy.
+//
+// UNREAD REFUSES. A leg that did not run, a non-zero read, a state word this reader does not know, an
+// nvidia-smi row it cannot parse: each is HostOccupancyUnread and admission refuses on it. Reading any
+// of them as vacant is the absorbing fallback DESIGN section 5 forbids, and here its cost is a host.
+type HostOccupant
+  = ServingUnitActive { unit: NonEmptyStr, state: NonEmptyStr }
+  | GpuComputeProcess { pid: Nat, process_name: String, used: ComputeAppUsedMemory }
+
+type HostOccupancyReading
+  = HostOccupancyRead { occupants: List<HostOccupant>, available: Kibibyte }
+  | HostOccupancyUnread { cause: String }
+
+// THE ADMISSION. `need` is the memory the effect declares it will use; it is compared against
+// MemAvailable even when nothing is running, because a host can be short with no named occupant.
+type HostOccupancyAdmission
+  = HostUnoccupied { available: Kibibyte }
+  | HostOccupiedBy { occupant: HostOccupant, others: List<HostOccupant>, gpu_used: Mebibyte }
+  | HostMemoryShort { available: Kibibyte, need: Kibibyte }
+  | HostOccupancyNotRead { cause: String }
+
+// systemctl(1) is-active prints one of these state words. `inactive` and `failed` hold nothing; every
+// other known state is a unit that is running, starting, or stopping -- occupying, for admission.
+fn unit_state_occupies(state: String) -> Bool? {
+  if state == "inactive" || state == "failed" { Present { value: false } }
+  else if state == "active" || state == "activating" || state == "deactivating" || state == "reloading" || state == "refreshing" { Present { value: true } }
+  else { none }
+}
+
+type HostOperationLeg
+  = HostOperationLegRead { stdout: String }
+  | HostOperationLegUnread { cause: String }
+
+// is-active exits 3 for a unit that is not active, and that is an answer, not a failed read -- which
+// is why the exit codes a read accepts are the caller's to state.
+fn host_operation_leg(run: fn(List<String>) -> ArgvRun, operation: HostOperation, accepted_exits: List<Int>) -> HostOperationLeg {
+  match host_operation_materialize_argv(operation: operation) {
+    ArgvMaterializationRefused { at: _, cause: _ } => HostOperationLegUnread { cause: join([host_operation_label(operation: operation), " could not be materialized as an argv"], "") }
+    ArgvMaterialized { argv: argv } =>
+      match run(argv) {
+        ArgvLegDidNotRun { cause: c } => HostOperationLegUnread { cause: join([host_operation_label(operation: operation), " did not run: ", c], "") }
+        ArgvRan { exit_code: code, stdout: out, stderr: err } =>
+          if any(accepted_exits, e => e == code) { HostOperationLegRead { stdout: out } }
+          else { HostOperationLegUnread { cause: join([host_operation_label(operation: operation), " exited ", to_string(code), ": ", trim(s: err)], "") } }
+      }
+  }
+}
+
+type UnitActivity
+  = UnitOccupies { occupant: HostOccupant }
+  | UnitVacant
+  | UnitUnread { cause: String }
+
+fn read_unit_activity(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> UnitActivity {
+  match host_operation_leg(run: run, operation: SystemctlIsActive { unit: unit }, accepted_exits: [0, 3]) {
+    HostOperationLegUnread { cause: c } => UnitUnread { cause: c }
+    HostOperationLegRead { stdout: out } => {
+      let state = trim(s: out)
+      match unit_state_occupies(state: state) {
+        Absent => UnitUnread { cause: join(["systemctl is-active ", unit as String, " answered a state this reader does not know: `", state, "`"], "") }
+        Present { value: occupies } =>
+          if occupies { UnitOccupies { occupant: ServingUnitActive { unit: unit, state: state as NonEmptyStr } } } else { UnitVacant }
+      }
+    }
+  }
+}
+
+fn read_host_occupancy(run: fn(List<String>) -> ArgvRun, units: List<NonEmptyStr>) -> HostOccupancyReading {
+  let unit_reads = map(units, u => read_unit_activity(run: run, unit: u))
+  let unit_unread = flat_map(unit_reads, r => match r { UnitUnread { cause: c } => [c]  _ => [] as List<String> })
+  if length(unit_unread) != 0 {
+    HostOccupancyUnread { cause: join(unit_unread, "; ") }
+  } else {
+    let unit_occupants = flat_map(unit_reads, r => match r { UnitOccupies { occupant: o } => [o]  _ => [] as List<HostOccupant> })
+    match host_operation_leg(run: run, operation: NvidiaSmiQueryComputeApps, accepted_exits: [0]) {
+      HostOperationLegUnread { cause: c } => HostOccupancyUnread { cause: c }
+      HostOperationLegRead { stdout: apps_text } =>
+        match parse_compute_apps(text: apps_text) {
+          ComputeAppsUnparsed { line: l } => HostOccupancyUnread { cause: join(["nvidia-smi listed a compute process this reader cannot parse: `", l, "`"], "") }
+          ComputeAppsParsed { apps: apps } =>
+            match host_operation_leg(run: run, operation: ProcfsReadMeminfo, accepted_exits: [0]) {
+              HostOperationLegUnread { cause: c } => HostOccupancyUnread { cause: c }
+              HostOperationLegRead { stdout: meminfo } =>
+                match parse_proc_meminfo(text: meminfo) {
+                  MeminfoFieldAbsent { field: f } => HostOccupancyUnread { cause: join(["/proc/meminfo carries no readable ", f as String, " line"], "") }
+                  MeminfoParsed { meminfo: m } =>
+                    HostOccupancyRead {
+                      occupants: concat(unit_occupants, map(apps, a => GpuComputeProcess { pid: a.pid, process_name: a.process_name, used: a.used })),
+                      available: m.mem_available,
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn occupant_reported_mebibytes(o: HostOccupant) -> Nat {
+  match o {
+    GpuComputeProcess { pid: _, process_name: _, used: UsedMemoryReported { used: m } } => mebibyte_count(m: m)
+    _ => 0
+  }
+}
+
+fn admit_host_occupancy(reading: HostOccupancyReading, need: Kibibyte) -> HostOccupancyAdmission {
+  match reading {
+    HostOccupancyUnread { cause: c } => HostOccupancyNotRead { cause: c }
+    HostOccupancyRead { occupants: occ, available: avail } =>
+      match first(occ) {
+        Present { value: o } =>
+          HostOccupiedBy {
+            occupant: o,
+            others: occ |> skip(n: 1),
+            gpu_used: mebibyte(count: fold(occ, init: 0, f: (acc, x) => acc + occupant_reported_mebibytes(o: x))),
+          }
+        Absent =>
+          if kibibyte_count(k: avail) < kibibyte_count(k: need) { HostMemoryShort { available: avail, need: need } }
+          else { HostUnoccupied { available: avail } }
+      }
+  }
+}
+
+fn host_occupant_wire(o: HostOccupant) -> String {
+  match o {
+    ServingUnitActive { unit: u, state: s } => join([u as String, " is ", s as String], "")
+    GpuComputeProcess { pid: p, process_name: n, used: UsedMemoryReported { used: m } } => join(["pid ", to_string(p), " (", n, ") holds ", to_string(mebibyte_count(m: m)), " MiB of GPU memory"], "")
+    GpuComputeProcess { pid: p, process_name: n, used: UsedMemoryWithheld { marker: k } } => join(["pid ", to_string(p), " (", n, ") holds a GPU context whose memory nvidia-smi withheld as ", k as String], "")
+  }
+}
+
+// None when admitted; otherwise the refusal, prefixed with the host and the effect it refuses.
+fn host_occupancy_refusal(host: String, purpose: String, a: HostOccupancyAdmission) -> String? {
+  match a {
+    HostUnoccupied { available: _ } => none
+    HostOccupiedBy { occupant: o, others: rest, gpu_used: g } =>
+      Present { value: join([host, " is occupied, so ", purpose, " is not admitted: ", join(map(concat([o], rest), x => host_occupant_wire(o: x)), "; "), " (", to_string(mebibyte_count(m: g)), " MiB of GPU memory reported in use); vacate it through the modeled pair vacate before admitting a GPU or memory effect"], "") }
+    HostMemoryShort { available: av, need: nd } =>
+      Present { value: join([host, " has ", to_string(kibibyte_count(k: av)), " KiB available and ", purpose, " declares ", to_string(kibibyte_count(k: nd)), " KiB, so it is not admitted"], "") }
+    HostOccupancyNotRead { cause: c } =>
+      Present { value: join([host, " could not be read for occupancy, so ", purpose, " is not admitted: ", c], "") }
+  }
+}

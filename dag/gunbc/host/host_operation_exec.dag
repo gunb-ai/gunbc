@@ -9,6 +9,7 @@ import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
 import extdeps.linux.procfs
 import extdeps.posix.getconf
 import extdeps.crypto.hash
+import extdeps.nvidia.system_management_interface
 import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
@@ -110,6 +111,7 @@ type HostOperation =
     SystemctlIsActive { unit: NonEmptyStr }
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
+  | SystemctlStart { unit: NonEmptyStr }
   | SystemctlMaskNow { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowUserProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
@@ -120,12 +122,14 @@ type HostOperation =
   | CgroupPathIsDirectory { path: NonEmptyStr }
   | CgroupReadEvents { cgroup_path: NonEmptyStr }
   | ProcfsReadStat
+  | ProcfsReadMeminfo
   | ProcfsReadPidStat { pid: NonEmptyStr }
   | ProcfsReadPidCgroup { pid: NonEmptyStr }
   | ProcfsReadNetTcp
   | ProcfsReadNetTcp6
   | GetconfClockTicksPerSecond
   | Sha256SumFile { path: NonEmptyStr }
+  | NvidiaSmiQueryComputeApps
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
 // naming a local process observation after ssh would be a nickname in the return position, and the
@@ -157,6 +161,10 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     )
     SystemctlStop { unit: u } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Stop"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlStart { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Start"),
       bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
     )
     SystemctlMaskNow { unit: u } => bind_operation_invocation(
@@ -231,6 +239,10 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
       at: procfs_operation_ref(operation: "ReadStat"),
       bindings: [],
     )
+    ProcfsReadMeminfo => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadMeminfo"),
+      bindings: [],
+    )
     ProcfsReadPidStat { pid: p } => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadPidStat"),
       bindings: [operation_argv_bind_text(name: "pid", text: p as String)],
@@ -262,6 +274,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         operation: "File",
       },
       bindings: [operation_argv_bind_text(name: "path", text: p as String)],
+    )
+    NvidiaSmiQueryComputeApps => bind_operation_invocation(
+      at: OperationRef {
+        path: nvidia_smi_operation_path,
+        service: nvidia_smi_operation_service,
+        operation: "QueryComputeApps",
+      },
+      bindings: [],
     )
   }
 }
@@ -325,6 +345,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = systemd.Systemctl.Stop(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
+    SystemctlStart { unit: u } => {
+      let result = systemd.Systemctl.Start(unit: u)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
     SystemctlMaskNow { unit: u } => {
       let result = systemd.Systemctl.MaskNow(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
@@ -365,6 +389,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = linux.Procfs.ReadStat()
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
+    ProcfsReadMeminfo => {
+      let result = linux.Procfs.ReadMeminfo()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
     ProcfsReadPidStat { pid: p } => {
       let result = linux.Procfs.ReadPidStat(pid: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
@@ -388,6 +416,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     Sha256SumFile { path: p } => {
       let result = crypto.Sha256Sum.File(path: p as String)
       HostOperationObserved { stdout: result.line, success: result.success, stderr: Present { value: result.stderr } }
+    }
+    NvidiaSmiQueryComputeApps => {
+      let result = nvidia_smi.Smi.QueryComputeApps()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
   }
 }
@@ -465,6 +497,8 @@ data getconf_operation_path: String = "dag/extdeps/posix/getconf.dag"
 data getconf_operation_service: String = "posix.Getconf"
 data sha256sum_operation_path: String = "dag/extdeps/crypto/hash.dag"
 data sha256sum_operation_service: String = "crypto.Sha256Sum"
+data nvidia_smi_operation_path: String = "dag/extdeps/nvidia/system_management_interface.dag"
+data nvidia_smi_operation_service: String = "nvidia_smi.Smi"
 
 fn procfs_operation_ref(operation: String) -> OperationRef {
   OperationRef {

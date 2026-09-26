@@ -1,0 +1,139 @@
+module extdeps.nvidia.system_management_interface
+
+import std.types { NonEmptyStr, Bool, Int, List, Unit }
+import std.string_type { String }
+import std.nat { Nat }
+import std.measure { Mebibyte, mebibyte }
+import std.algebra { trim }
+import v2.std.algebra { skip }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/deploy/nvidia-smi/index.html"
+  }
+}
+
+// ── WHICH PROCESSES HOLD A GPU CONTEXT, AS nvidia-smi REPORTS THEM ─────────────────────────────
+//
+// `--query-compute-apps` lists one row per process holding a compute context on any device, and
+// `--format=csv,noheader,nounits` makes each row `pid, process_name, used_memory` with used_memory in
+// MiB. No compute process is EMPTY OUTPUT with exit 0 -- not an error and not a header. A device that
+// cannot attribute memory to a process prints a bracketed marker (`[N/A]`, `[Not Supported]`) in that
+// column instead of a number; extdeps.nvidia.management_library records that NVML refuses the
+// device-wide memory query on the unified-memory GB10, so the per-process column is modelled as able
+// to refuse the same way. A refusal is its own arm and carries no number: it is not zero, and a
+// consumer must not read the presence of a process as weightless because its figure was withheld.
+service nvidia_smi.Smi {
+  operation QueryComputeApps {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader,nounits"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi --query-compute-apps failed"
+    }
+    mock_response {
+      0 => { value: "", success: true } "hermetic nvidia_smi.Smi.QueryComputeApps: no process holds a compute context"
+    }
+  }
+}
+
+type ComputeAppUsedMemory
+  = UsedMemoryReported { used: Mebibyte }
+  | UsedMemoryWithheld { marker: NonEmptyStr }
+
+type NvidiaComputeApp {
+  pid: Nat
+  process_name: String
+  used: ComputeAppUsedMemory
+}
+
+// A ROW THAT DOES NOT HAVE THE SHAPE IS NOT SKIPPED. Skipping it would read an unparsed GPU user as
+// absent, which is the one direction an occupancy reader must never err in.
+type NvidiaComputeAppsRead
+  = ComputeAppsParsed { apps: List<NvidiaComputeApp> }
+  | ComputeAppsUnparsed { line: String }
+
+// A NEGATIVE OR NON-NUMERIC FIELD IS NOT A ROW. The crossing from Int is the checked one: a runtime Int
+// cast `as Nat` typechecks and then fails at execution.
+fn parse_nat(raw: String) -> Nat? {
+  match parse_int(s: trim(s: raw)) {
+    Absent => none
+    Present { value: n } =>
+      if n < 0 { none } else {
+        match checked_int_magnitude(a: n) {
+          CheckedNatReady { value: m } => Present { value: m }
+          CheckedNatOverflow { cause: _ } => none
+        }
+      }
+  }
+}
+
+fn compute_app_used_memory(raw: String) -> ComputeAppUsedMemory? {
+  let t = trim(s: raw)
+  if starts_with(s: t, prefix: "[") && length(t) > 1 && substring(s: t, start: length(t) - 1, end: length(t)) == "]" {
+    Present { value: UsedMemoryWithheld { marker: t as NonEmptyStr } }
+  } else {
+    match parse_nat(raw: t) {
+      Absent => none
+      Present { value: n } => Present { value: UsedMemoryReported { used: mebibyte(count: n) } }
+    }
+  }
+}
+
+fn compute_app_row(line: String) -> NvidiaComputeApp? {
+  let cells = split(s: line, delimiter: ",")
+  if count(cells) != 3 { none } else {
+    match first(cells) {
+      Absent => none
+      Present { value: raw_pid } =>
+        match parse_nat(raw: raw_pid) {
+          Absent => none
+          Present { value: pid } =>
+            {
+              match first(cells |> skip(n: 1)) {
+                Absent => none
+                Present { value: name } =>
+                  match first(cells |> skip(n: 2)) {
+                    Absent => none
+                    Present { value: raw_used } =>
+                      match compute_app_used_memory(raw: raw_used) {
+                        Absent => none
+                        Present { value: used } => Present { value: NvidiaComputeApp { pid: pid, process_name: trim(s: name), used: used } }
+                      }
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
+// ONE PASS PER LINE AND ONE FLATTEN, not an accumulator re-copied per row (DESIGN section 6).
+fn parse_compute_apps(text: String) -> NvidiaComputeAppsRead {
+  let lines = flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+  let rows = map(lines, l =>
+    match compute_app_row(line: l) {
+      Absent => ComputeAppsUnparsed { line: l }
+      Present { value: a } => ComputeAppsParsed { apps: [a] }
+    })
+  let unparsed = flat_map(rows, r => match r {
+    ComputeAppsUnparsed { line: l } => [l]
+    ComputeAppsParsed { apps: _ } => [] as List<String>
+  })
+  match first(unparsed) {
+    Present { value: bad } => ComputeAppsUnparsed { line: bad }
+    Absent => ComputeAppsParsed { apps: flat_map(rows, r => match r {
+      ComputeAppsParsed { apps: xs } => xs
+      ComputeAppsUnparsed { line: _ } => [] as List<NvidiaComputeApp>
+    }) }
+  }
+}
