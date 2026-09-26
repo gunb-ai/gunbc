@@ -295,6 +295,25 @@ fn statement_let_binder_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source)
 }
 
+// ---- constructor tags keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 3) -----
+
+// A record-literal tag (`RcRow { v: n }`) and a constructor pattern (`RcRow { v: x } =>`) each
+// lower to a construct whose tag atom v2.std.node_query construct_tag_edge builds. Before the
+// repair that atom was lowered from the enclosing capture, so it carried the shell's occurrence and
+// both mentions were counted locus-erased. MEASURED on this fixture: 9 conserved / 13 locus-erased
+// before, 11 / 11 after -- the two tags and nothing else moved. Every other atom here is a binder,
+// a field name or a type position, so the counts are the fixture's own, not a corpus literal.
+data construct_tags_source: String = "module v2.test.reference_conservation_construct_tags\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: n } }\n\nfn rc_read(r: RcRow) -> Int {\n  match r {\n    RcRow { v: x } => x\n  }\n}\n"
+
+fn construct_tags_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "construct_tags", source: construct_tags_source)
+}
+
+test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tags_subject())
+  r.authored == 22 && r.conserved == 11 && r.locus_erased == 11 && length(xs: r.dropped) == 0
+}
+
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------
 
 // Each `_` parameter lowers to its own minted binder (v2.std.anonymous_binder), so the label is
