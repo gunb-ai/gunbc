@@ -51,7 +51,7 @@ data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
       replacement: "gunbc.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness_test",
     },
     population: [
-      "gunbc.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",
+      "gunbc.runner_slot_allocation srv1_microvm_shakedown_slot (the last index under srv1's committed width): 30064771072 bytes against the fleet row's 27917287424",
     ],
     restoration_trigger: "EITHER the shakedown slot leaves fabric_execution_slot_identities with its cell retired through the modeled teardown, OR the fleet row moves to the shakedown ceiling under an operator ruling cited on that change, so gunbc_runner_slot_desired_for has no differing arm and is deleted. A second per-slot arm satisfies neither",
   },

@@ -6,14 +6,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_microvm_slot_start {
   MicrovmSlotStartRun, SlotStartWrongHost, SlotStartRefused, SlotStartInvocationUnread,
   SlotStartAlreadyActive, SlotStartInvocationUnchanged, UnitPropertyRead, UnitPropertyUnread,
-  SlotStartStillActiveAtBound, SlotStartCompleted,
+  SlotStartStillActiveAtBound, SlotStartCompleted, microvm_slot_start_unit,
   ControllerReceiptRead, ControllerReceiptUnreadable,
   microvm_slot_start_admitted,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data u: NonEmptyStr = "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr
+data u: NonEmptyStr = microvm_slot_start_unit()
 data inv: NonEmptyStr = "0123abcd" as NonEmptyStr
 
 // THE START SUCCEEDS ONLY WHEN THIS INVOCATION'S CONTROLLER RECEIPT WAS READ, whatever it says. The

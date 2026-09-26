@@ -4,6 +4,7 @@ import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureSubtraction, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { byte_size_saturating_sub }
+import std.checked_arithmetic { nat_magnitude }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
@@ -28,6 +29,10 @@ import gunbc.host_memory_observation {
 import gunbc.fabric_control_plane_charge {
   HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured,
   host_fabric_control_plane_claim,
+}
+import gunbc.live_deploy.served_slice_charge {
+  HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured,
+  host_served_deployment_claim,
 }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
@@ -233,15 +238,40 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // (memory.peak of a fresh per-attempt cgroup) and never a larger request: no arm here or downstream
 // raises the ceiling on a failed fit.
 //
-// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
-// an index at the width moves when the width moves. 13 sits above the twelve GitHub slots srv1
-// runs and below its memory-admitted width.
+// THE INDEX IS THE TOP OF THE COMMITTED WIDTH, DERIVED, AND THE AUTHORED 13 IT REPLACES IS THE
+// RECEIPT FOR WHY (parent ruling 2026-09-26). The index was authored 13 with the note that it sat
+// "above the twelve GitHub slots srv1 runs and below its memory-admitted width" -- a claim about a
+// DIFFERENT authority that nothing checked. When the width started subtracting the served
+// deployment's slice charge srv1 went 14 -> 11, the note went false without any edit to it, and the
+// shakedown cell landed inside the open runner-slot-26-25-gib retiree range. An authored index is a
+// second answer to "is this slot a member", so it is derived from the one that already decides it:
+// the last index under gunbc_runner_committed_width. That does move when the width moves -- which is
+// the property wanted, since a slot outside the width is not a slot -- and
+// test.claim.runner.runner_microvm_slot_controller_witness_test
+// the_shakedown_index_is_the_top_of_srv1s_committed_width holds it there.
+//
+// THE HOST IS A SEPARATE ROW BECAUSE THE WIDTH READS IT. host_memory_admitted_width asks whether a
+// host carries the shakedown slot before dividing, so asking that through this identity would make
+// the width depend on the index that depends on the width.
+//
+// AN UNRESOLVED WIDTH YIELDS INDEX 0, which is outside every committed range (indices start at 1),
+// so gunbc.runner_lifecycle runner_slot_membership refuses it rather than treating it as a slot.
+// That is the same Int-shim rung host_runner_memory_envelope_bytes declares above -- mechanically
+// preventable at membership, not structurally impossible at the type -- and its next-rung trigger is
+// the same: a typed width standing no caller can read as an Int.
 data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
 
-data gunbc_microvm_shakedown_slot_index: Nat = 13
+data gunbc_microvm_shakedown_host: HostIdentity = operator_host_srv1
+
+fn gunbc_microvm_shakedown_slot_index() -> Nat {
+  match gunbc_runner_committed_width(host: gunbc_microvm_shakedown_host) {
+    RunnerWidthDerived { slots: n } => nat_magnitude(a: n)
+    RunnerWidthUnresolved { cause: _ } => nat_magnitude(a: 0)
+  }
+}
 
 fn srv1_microvm_shakedown_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv1, slot_index: gunbc_microvm_shakedown_slot_index }
+  RunnerSlotIdentity { host: gunbc_microvm_shakedown_host, slot_index: gunbc_microvm_shakedown_slot_index() }
 }
 
 fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
@@ -483,21 +513,45 @@ fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSi
         cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
       }
     ControlPlaneNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
     ControlPlaneClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: m)
+      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: m)
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+// THE SERVED DEPLOYMENT'S SLICES ARE SUBTRACTED HERE, BECAUSE THE VERDICT ALREADY CHARGES THEM
+// (operator option A, 2026-09-26). gunbc.ci_runner_placement host_standing_at_width passes
+// host_served_deployment_claim to host_allocation_verdict, so the conservation verdict counted the
+// deployment's slice allowance while this envelope -- the one the committed width divides -- did not.
+// Two answers to "how much of this host may runners have" is the §3 fork, and the one that lost was
+// the width: srv1 committed a runner pool that fit only on a host without the deployment on it. The
+// claim's arms are consumed exactly as the control plane's are: not placed is a grounded zero, and
+// placed-with-an-unknown-allowance refuses the envelope rather than dividing a fabricated one.
+fn envelope_after_control_plane(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentClaimUnmeasured { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("served deployment is placed on this host with an unmeasured slice allowance: ", why)
+      }
+    ServedDeploymentNotPlaced =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0))
+    ServedDeploymentClaimResolved { memory: m } =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m)
+  }
+}
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
-          total: byte_size_saturating_sub(total: usable, reserved: overhead),
-          reserved: session
+          total: byte_size_saturating_sub(
+            total: byte_size_saturating_sub(total: usable, reserved: overhead),
+            reserved: session
+          ),
+          reserved: control_plane
         ),
-        reserved: control_plane
+        reserved: served_deployment
       ),
       reserved: oomd_actuation_floor(host: usable)
     )
@@ -550,7 +604,7 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
   memory_admitted_width_of_envelope(
     envelope: host_runner_memory_envelope(host: host),
-    carries_shakedown_slot: (host as String) == (srv1_microvm_shakedown_slot().host as String),
+    carries_shakedown_slot: (host as String) == (gunbc_microvm_shakedown_host as String),
   )
 }
 
@@ -973,6 +1027,25 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
     slots: slots,
     per_slot: gunbc_runner_slot_desired().memory_max
   )
+}
+
+// THE POOL A HOST'S VERDICT CHARGES IS THE POOL ITS WIDTH SPENT. memory_admitted_width_of_envelope
+// spends the carrying host's envelope on the shakedown slot's whole charge (cell plus controller)
+// and the rest at the fleet row; gunbc_runner_slice_cap_for_width charges every slot at the fleet row.
+// While the width ignored the served deployment the difference hid inside that larger gap; once the
+// width subtracts it, the verdict admitted srv1 one slot past its width -- two answers to one pool
+// (DESIGN section 3), exposed by test.claim.host.host_allocation_conservation_test
+// one_more_slot_than_memory_admits_refuses_on_every_host. So the verdict reads this, which charges
+// the shakedown slot what the width charged it.
+fn gunbc_runner_pool_for_host_at_width(host: HostIdentity, slots: Int) -> ByteSize {
+  if slots > 0 && (host as String) == (gunbc_microvm_shakedown_host as String) {
+    byte_size(
+      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - 1))
+        + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+    )
+  } else {
+    gunbc_runner_slice_cap_for_width(slots: slots)
+  }
 }
 
 fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
